@@ -103,7 +103,7 @@ export const Simple: Story = {
 
 // ── Classification variants — the type-gating matrix made visible. ──
 
-// An unclassified row (what capture creates): no type badge, no completion checkbox, no
+// An unclassified row (what capture creates): no badge, no icon, no completion checkbox, no
 // add-subtask affordance — just the title. Classifying it unlocks those (see below).
 export const Unclassified: Story = {
   args: {
@@ -111,23 +111,24 @@ export const Unclassified: Story = {
   },
 };
 
-// A task row: the full task affordances (checkbox + add-subtask) and NO row pill — the
-// "Task" badge was removed in ALF-67. This is BASE_NODE's type; spelled out for contrast.
+// A task row: the full task affordances (checkbox + add-subtask) and no row badge — row badges
+// are gone entirely (ALF-224). This is BASE_NODE's type; spelled out for contrast.
 export const TaskClassified: Story = {
   args: {
     node: { ...BASE_NODE, item_type: 'task', title: 'Write the first draft' },
   },
 };
 
-// A code-classified row: the "Code" badge (the one type that still earns a row pill), but
-// still NO task affordances. (Notes stay generic — available via "Open details" on every type.)
+// A code-classified row: the ALF-224 `code` icon fills the checkbox slot it has none of (no
+// row badge), but still NO task affordances. (Notes stay generic — available via "Open
+// details" on every type.)
 export const CodeClassified: Story = {
   args: {
     node: { ...BASE_NODE, item_type: 'code', title: 'Build the webhook worker' },
   },
 };
 
-// A subtask row: title + affordances and NO "Task" pill (ALF-67 removed it everywhere).
+// A subtask row: title + affordances and no row badge (ALF-67/ALF-224 removed it everywhere).
 // ── ALF-129 — an epic under construction: a code parent with ordered code children. ──
 
 const CODE_CHILDREN: ItemNode[] = [
@@ -170,8 +171,9 @@ const CODE_PARENT: ItemNode = {
 };
 
 /**
- * A code parent (an epic under construction) collapsed: the Code badge, the assigned-project
- * chip, the subtask count, and — code root only — the "Add story" affordance.
+ * A code parent (an epic under construction) collapsed: the ALF-224 `code` icon in the checkbox
+ * slot, the assigned-project chip, the subtask count, and — code root only — the "Add story"
+ * affordance.
  */
 export const CodeParentWithChildren: Story = {
   args: {
@@ -181,7 +183,7 @@ export const CodeParentWithChildren: Story = {
 
 /**
  * The same epic under construction expanded: three code children in their manual order, each
- * with the Code badge, no checkbox, and no add affordance of their own (stories are 1-deep).
+ * with the `code` icon, no checkbox, and no add affordance of their own (stories are 1-deep).
  */
 export const CodeParentExpanded: Story = {
   args: {
@@ -210,9 +212,9 @@ export const SubtaskWithPriority: Story = {
   },
 };
 
-// A task filed in a folder: no "Task" pill (ALF-67 — the badge is Inbox-only) and no folder
-// chip (the folder view would restate itself). Filed means dispatched, so the fixture carries
-// the residency stamp; contrast with TaskClassified (Inbox).
+// A task filed in a folder: no row badge (ALF-224 removed it everywhere) and no folder chip
+// (the folder view would restate itself). Filed means dispatched, so the fixture carries the
+// residency stamp; contrast with TaskClassified (Inbox).
 export const TaskInFolder: Story = {
   args: {
     node: {
