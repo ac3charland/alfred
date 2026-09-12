@@ -181,6 +181,8 @@ transform: {
 
 ## Common Pitfalls
 
+**`Cannot find module 'sqlite'` across `daemon/` means the running Node is older than `.nvmrc`'s pinned 24, not that a dependency is missing.** Jest strips the `node:` prefix and asks `module.builtinModules`, which omits still-experimental builtins — so on Node 22 `node:sqlite` falls through to the filesystem and every daemon suite fails, in a package the branch never touched. Switch to the pinned Node (`nvm install 24`) rather than reaching for a resolver mapping; the suites pass untouched there.
+
 **Give time fixtures headroom past the boundary they must read as.** A clock floored to a tick (`useNow` rounds to 30 s) plus elapsed formatting that floors again means a fixture at exactly `now − 2h` renders as "1h ago". Put fixtures ~10 minutes past the boundary (`now − 2h − 10min`) so both floors land on the same side.
 
 **A `Response` can be read once, so never `mockResolvedValue(Response.json(…))` for a fetch the
