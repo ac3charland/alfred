@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-218 — Create code dashboard for Alfred to display lines of code velocity and PR ratio</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .new { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .05em;
+         text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+         border-radius: 999px; padding: 0 .4rem; margin-left: .35rem; vertical-align: middle; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; margin: 1.1rem 0; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-bar .hmeta { color: var(--muted); font-size: .72rem; font-weight: 400; }
+
+  /* The mockup canvas IS the app: every value below is lifted from source, so the mockup reads in
+     alfred's real (dark-only) palette whichever mode this document is read in.
+       bg / surface / border / fg / muted / secondary / teal / green / blue / amber / red
+                                              → frontend/app/globals.css
+       card (r8, 1px border, bg-surface, p16, gap12)  → components/code/pr-ratio.tsx (Card)
+       card heading (14px/500) + detail (12px muted)  → components/code/pr-ratio.tsx (Heading)
+       stacked bar (h 10px, r999, track bg-border)    → components/atoms/ratio-bar.tsx
+       legend dot (8px) + legend row (14px)           → components/code/pr-ratio.tsx
+       view heading (40px circle, r999, 1px border,
+         bg-surface, teal glyph; serif 24px title;
+         14px muted description)                      → components/atoms/view-heading.tsx
+       nav link (r4, px12 py8, 14px; active =
+         bg-secondary + fg + 500, rest muted)         → lib/ui/nav-link-class.ts
+       story ref (mono 12px teal 500)                 → components/code/backlog/backlog-row.tsx
+       state chip (r999, px8 py2, 12px, 600, upper,
+         tracking-wide, bg-teal/15 text-teal)         → components/atoms/badge.tsx + code/state-chip.tsx
+       project key pill (r999, px8 py2, 12px, mono,
+         bg-<accent>/15 text-<accent>)                → lib/code/project-color.ts
+       empty-state frame (r12, dashed border, muted)  → components/code/backlog/backlog-list.tsx */
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f; --a-fg: #e8edf5;
+    --a-muted: #8a96a8; --a-secondary: #1e2a3f; --a-teal: #4fd1e0; --a-green: #34d399;
+    --a-blue: #60a5fa; --a-amber: #f0b429; --a-red: #f87171; --a-plate: #141d2e;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+    font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .mock-body code { background: var(--a-plate); color: var(--a-fg); }
+  .mock-body.flush { padding: 0; display: flex; }
+  .cap { color: var(--a-muted); font-size: .78rem; margin: .75rem 0 0; }
+  .cap.doc { color: var(--muted); font-size: .83rem; }
+  .seclabel { color: rgba(138, 150, 168, .7); font-size: 10px; font-weight: 600;
+              letter-spacing: .16em; text-transform: uppercase; margin: 0 0 .5rem; }
+
+  /* Sidebar rail — ShellNav → ProjectNav. */
+  .rail { width: 224px; flex: 0 0 224px; border-right: 1px solid var(--a-border);
+          background: var(--a-surface); padding: 8px 8px; }
+  .nav { display: flex; flex-direction: column; gap: 4px; }
+  .nl { display: flex; align-items: center; gap: 10px; border-radius: 4px; padding: 8px 12px;
+        font-size: 13px; color: var(--a-muted); }
+  .nl.on { background: var(--a-secondary); color: var(--a-fg); font-weight: 500; }
+  .nl svg { width: 14px; height: 14px; flex: 0 0 14px; }
+  .nl > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .navhead { display: flex; align-items: center; justify-content: space-between;
+             padding: 4px 12px; margin-top: 6px; }
+  .navhead span { font-size: 10px; font-weight: 600; letter-spacing: .16em;
+                  text-transform: uppercase; color: rgba(138,150,168,.7); }
+  .keypill { margin-left: auto; border-radius: 999px; padding: 1px 8px; font-size: 11px;
+             font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .k-blue { background: rgba(96,165,250,.15); color: var(--a-blue); }
+  .k-amber { background: rgba(240,180,41,.15); color: var(--a-amber); }
+
+  /* Main column. */
+  .main { flex: 1 1 auto; min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .vh { display: flex; align-items: center; gap: 12px; }
+  .vh .glyph { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 999px;
+               border: 1px solid var(--a-border); background: var(--a-surface);
+               display: flex; align-items: center; justify-content: center; color: var(--a-teal); }
+  .vh .glyph svg { width: 20px; height: 20px; }
+  .vh h4 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 24px;
+           font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--a-fg); line-height: 1.2; }
+  .vh p { margin: 2px 0 0; font-size: 13px; color: var(--a-muted); }
+
+  .acard { border: 1px solid var(--a-border); border-radius: 8px; background: var(--a-surface);
+           padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .ahead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+           gap: 4px 12px; }
+  .ahead .t { font-size: 14px; font-weight: 500; color: var(--a-fg); }
+  .ahead .d { font-size: 12px; color: var(--a-muted); }
+
+  /* Bar + line chart (the new atom), built the way the spec says to build it. */
+  .plot { position: relative; display: flex; align-items: flex-end; gap: 4px;
+          height: 132px; border-top: 1px dashed var(--a-border);
+          border-bottom: 1px solid var(--a-border); padding-top: 0; }
+  .plot .axismax { position: absolute; top: -8px; left: 0; font-size: 10px; color: var(--a-muted);
+                   background: var(--a-surface); padding-right: 4px; }
+  .col { flex: 1 1 0; display: flex; align-items: flex-end; height: 100%; }
+  .bar { width: 100%; background: var(--a-teal); border-radius: 2px 2px 0 0; min-height: 2px; }
+  .bar.prov { background: rgba(79,209,224,.32); }
+  .line { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .xlab { display: flex; gap: 4px; margin-top: 6px; }
+  .xlab span { flex: 1 1 0; text-align: center; font-size: 9.5px; color: var(--a-muted);
+               white-space: nowrap; }
+  .leg { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; }
+  .leg i { display: inline-flex; align-items: center; gap: 7px; font-style: normal; color: var(--a-fg); }
+  .sw { width: 10px; height: 10px; border-radius: 2px; background: var(--a-teal); flex: 0 0 10px; }
+  .sw.prov { background: rgba(79,209,224,.32); }
+  .swl { width: 14px; height: 0; border-top: 2px solid var(--a-fg); flex: 0 0 14px; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 8px; }
+  .t-teal { background: var(--a-teal); } .t-blue { background: var(--a-blue); }
+  .t-muted { background: var(--a-muted); }
+
+  .ratiobar { display: flex; height: 10px; border-radius: 999px; overflow: hidden;
+              background: var(--a-border); }
+  .rlegend { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px;
+             font-size: 13px; list-style: none; margin: 0; padding: 0; }
+  .rlegend li { display: flex; align-items: center; gap: 8px; }
+  .rlegend .pct { font-weight: 500; }
+  .rlegend .cnt { color: var(--a-muted); }
+
+  /* The two queue widgets. */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid2 > * { min-width: 0; }
+  .whead { display: flex; align-items: center; gap: 8px; }
+  .whead .wg { color: var(--a-teal); display: flex; }
+  .whead .wg svg { width: 15px; height: 15px; }
+  .whead .wt { font-size: 14px; font-weight: 500; color: var(--a-fg); }
+  .whead .wc { border-radius: 999px; padding: 1px 8px; font-size: 11px;
+               background: var(--a-secondary); color: var(--a-muted); }
+  .whead .wx { margin-left: auto; color: var(--a-muted); display: flex; }
+  .whead .wx svg { width: 14px; height: 14px; }
+  .wrows { display: flex; flex-direction: column; gap: 2px; list-style: none; margin: 0; padding: 0; }
+  .wrow { display: flex; align-items: center; gap: 8px; border-radius: 4px; padding: 5px 6px;
+          min-width: 0; }
+  .wrow.hov { background: var(--a-plate); }
+  .wref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+          font-weight: 500; color: var(--a-teal); flex: 0 0 auto; }
+  .wref.c-blue { color: var(--a-blue); } .wref.c-amber { color: var(--a-amber); }
+  .wtitle { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; font-size: 13px; }
+  .chip { border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 600;
+          text-transform: uppercase; letter-spacing: .04em; flex: 0 0 auto;
+          background: rgba(79,209,224,.15); color: var(--a-teal); }
+  .chip.alert { background: rgba(245,158,11,.15); color: #fbbf24; }
+  .empty { border: 1px dashed var(--a-border); border-radius: 12px; padding: 22px 16px;
+           text-align: center; color: var(--a-muted); font-size: 13px; }
+  @media (max-width: 720px) {
+    .grid2 { grid-template-columns: 1fr; }
+    .mock-body.flush { display: block; }
+    .rail { width: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--a-border); }
+    .xlab span:nth-child(even) { visibility: hidden; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Refinement spec · phase: refinement</p>
+<h1>ALF-218 — Create code dashboard for Alfred to display lines of code velocity and PR ratio</h1>
+<p class="sub">
+  A new landing view for the Code module at <code>/code</code>: a lines-changed-per-week chart with a
+  rolling-average trend line, the PR-ratio bar relocated from the Backlog, and two digest panes
+  linking into the Needs-human-action and Backlog queues.
+</p>
+
+<h2>1 · Context &amp; problem</h2>
+
+<p>
+  The Code module has three destinations today — <b>Needs human action</b> (the default, ALF-174),
+  the ranked <b>Backlog</b>, and a per-project <b>Board</b>. Two things are wrong with that shape:
+</p>
+
+<ul class="tight">
+  <li>
+    <b>There is no place that answers "how is the factory doing?".</b> The one measurement the app
+    takes — the merged-PR split (<code>PrRatio</code>, ALF-131/ALF-144) — is wedged above the Backlog
+    list, where it competes with a re-ranking workspace for attention and is seen only when the owner
+    goes to re-rank. Nothing measures <i>output volume</i> at all.
+  </li>
+  <li>
+    <b>Entering the module lands on one queue, with the other invisible.</b> Needs-human-action and
+    the Backlog each answer half of "what now?", and whichever one you're on hides the other.
+  </li>
+</ul>
+
+<p>
+  <b>The change:</b> a Dashboard becomes the module's landing view and its top nav item. It carries
+  the new <b>lines-changed-per-week</b> chart, the <b>relocated PR-ratio bar</b>, and a <b>digest
+  pane per queue</b> (top 5 stories each) whose heading links to the full page and whose rows open
+  the story modal. The Backlog hands its <i>"The Software Factory"</i> hero title to the Dashboard
+  and takes a plain, page-specific heading of its own — the same treatment Needs human action
+  already has.
+</p>
+
+<p class="small">
+  No schema change, no migration, no new environment variable. Everything new is read live from
+  GitHub through one new Route Handler.
+</p>
+
+<h2>2 · Decisions taken up front</h2>
+
+<p class="sub">
+  These four were open in the ticket and were settled with the owner before this spec was written.
+  They are recorded here because the implementation session needs the <i>reasons</i>, not just the
+  outcomes.
+</p>
+
+<div class="dec">
+  <h3><span class="n">D1</span> The LoC metric is <b>churn, author-scoped</b>: additions + deletions, by the configured authors</h3>
+  <p>
+    Per week, sum <code>additions + deletions</code> over every commit authored by a login in
+    <code>PR_RATIO_AUTHORS</code>, across every repo in <code>PR_RATIO_REPOS</code>. Source:
+    <code>GET /repos/{owner}/{repo}/stats/contributors</code> — one request per repo, already bucketed
+    by week, already split by author.
+  </p>
+  <p class="why">
+    <b>Why churn, not net growth.</b> A week spent deleting a dead module or rewriting a component
+    nets out near zero — or negative — while being the busiest week of the month. Net growth is an
+    honest measure of <i>codebase size</i> and a misleading one of <i>velocity</i>.
+    <b>Why author-scoped.</b> The PR-ratio bar already excludes Dependabot, Renovate and
+    <code>github-actions</code>; if the chart beside it counted them, the two widgets on one page
+    would disagree about whose work counts. <code>stats/code_frequency</code> is a smaller payload but
+    cannot be filtered by author, so it was rejected.
+    <b>Note:</b> commits Claude writes are authored by the owner in git, so factory output counts —
+    which is the point.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span> The Dashboard wears <b>"The Software Factory"</b>; the Backlog becomes <b>"Backlog"</b></h3>
+  <p>
+    Dashboard <code>ViewHeading</code>: title <b>The Software Factory</b>, description
+    <b>"Your code module at a glance — what you're shipping, and what's waiting on you."</b><br />
+    Backlog <code>ViewHeading</code>: title <b>Backlog</b>, description
+    <b>"Every story across your projects, ranked by priority."</b> (its existing description, kept).
+  </p>
+  <p class="why">
+    The module's hero name belongs on the module's landing page. Needs human action already names
+    itself plainly and describes itself in one line; after this change all three cross-project views
+    follow one rule — the landing page carries the product name, the queues carry their job.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span> Bare <code>/code</code> renders the Dashboard — the default moves off Needs human action</h3>
+  <p>
+    <code>/code</code> and <code>/code/dashboard</code> both render the Dashboard.
+    <code>/code/needs-human-action</code> keeps rendering its queue, and is no longer highlighted for
+    the bare <code>/code</code>.
+  </p>
+  <p class="why">
+    This reverses ALF-174's default, so the reason it was set that way has to be paid back: entering
+    the module must still surface work blocked on the owner. It does — the Needs-human-action digest
+    pane is on the Dashboard, showing the same ranked rows, each one click from its modal. The queue
+    moves from "the whole screen" to "the pane you read first", and the Dashboard adds the two things
+    the queue could never show.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span> 12 weeks of bars, 4-week trailing average</h3>
+  <p>
+    The chart shows the 12 most recent calendar weeks. The line is the mean of each week and the
+    three before it.
+  </p>
+  <p class="why">
+    Twelve bars stay wide enough to read at phone width, and a 4-week mean reacts inside a month, so
+    the trend is actionable rather than decorative. 26 or 52 weeks turns the bars into slivers on
+    mobile and hands all the signal to the line.
+    <b>Consequence that must be built:</b> a true 4-week mean needs three weeks of history
+    <i>before</i> the first drawn bar, so the server reads <b>15</b> weeks and returns <b>12</b> —
+    see §4.3.
+  </p>
+</div>
+
+<h2>3 · Routes, navigation &amp; what moves</h2>
+
+<h3>3.1 Route table</h3>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th>Path</th><th>Renders</th><th>Sidebar highlight</th><th>Change</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>/code</code></td><td><code>&lt;Dashboard /&gt;</code></td><td>Dashboard</td><td class="yes">changed — was Needs human action</td></tr>
+    <tr><td><code>/code/dashboard</code></td><td><code>&lt;Dashboard /&gt;</code></td><td>Dashboard</td><td class="yes">new route</td></tr>
+    <tr><td><code>/code/needs-human-action</code></td><td><code>&lt;NeedsHumanAction /&gt;</code></td><td>Needs human action</td><td>unchanged view; no longer claims <code>/code</code></td></tr>
+    <tr><td><code>/code/backlog</code></td><td><code>&lt;Backlog /&gt;</code></td><td>Backlog</td><td>heading retitled; <code>PrRatio</code> removed</td></tr>
+    <tr><td><code>/code/&lt;projectId&gt;</code></td><td><code>&lt;Board /&gt;</code></td><td>that project</td><td>unchanged</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  <code>dashboard</code> joins <code>backlog</code> and <code>needs-human-action</code> as a
+  <b>reserved segment</b> in <code>code-view.tsx</code>. Miss this and
+  <code>/code/dashboard</code> falls through to <code>&lt;Board projectId="dashboard" /&gt;</code>,
+  which renders "This project could not be found".
+</p>
+
+<pre><code>// components/code/code-view.tsx — the derivation after this change
+const DASHBOARD_SEGMENT = 'dashboard';
+
+if (pathname.startsWith(CODE_PREFIX)) {
+  const segment = pathname.slice(CODE_PREFIX.length);
+  if (segment === DASHBOARD_SEGMENT) return &lt;Dashboard /&gt;;
+  if (segment === BACKLOG_SEGMENT) return &lt;Backlog /&gt;;
+  if (segment === NEEDS_HUMAN_ACTION_SEGMENT) return &lt;NeedsHumanAction /&gt;;
+  if (segment.length &gt; 0) return &lt;Board projectId={segment} /&gt;;
+}
+// Bare `/code` (and a trailing slash) — the module's default view, now the Dashboard.
+return &lt;Dashboard /&gt;;</code></pre>
+
+<p class="small">
+  Note the shape change: Needs human action becomes an <i>explicit</i> branch rather than the
+  fall-through, so the final <code>return</code> names exactly one default. The existing
+  <code>refreshStatuses()</code> effect keyed on <code>pathname</code> stays as-is and now also
+  reconciles on arrival at the Dashboard — which the digest panes want, since they read the same
+  store slice.
+</p>
+
+<h3>3.2 Sidebar &amp; command palette</h3>
+
+<ul class="tight">
+  <li>
+    <b><code>project-nav.tsx</code></b> — a third queue link, <b>first</b>: Dashboard
+    (<code>LayoutDashboard</code>, <code>/code/dashboard</code>), active when
+    <code>pathname === '/code' || pathname === '/code/dashboard'</code>. Needs human action drops its
+    <code>pathname === '/code'</code> clause and is active on its exact route only. Order becomes
+    <b>Dashboard → Needs human action → Backlog → Projects</b>.
+  </li>
+  <li>
+    <b><code>command-destinations.ts</code></b> — a <code>go-dashboard</code> destination
+    (<code>label: 'Dashboard'</code>, <code>href: '/code/dashboard'</code>,
+    <code>icon: 'dashboard'</code>) inserted before <code>go-needs-human-action</code>, mirroring the
+    sidebar order as that file's comment already requires. Add <code>'dashboard'</code> to
+    <code>DestinationIcon</code> and map it to <code>LayoutDashboard</code> in
+    <code>command-palette.tsx</code>'s <code>ICONS</code> record (a <code>Record&lt;DestinationIcon, …&gt;</code>,
+    so a missing entry is a type error, not a silent blank).
+  </li>
+  <li>
+    <b><code>view-switcher.tsx</code></b> — untouched. Its Code segment points at <code>/code</code>,
+    which now lands on the Dashboard; that is the intended behaviour.
+  </li>
+</ul>
+
+<h3>3.3 What the Backlog loses</h3>
+
+<p>
+  <code>backlog.tsx</code> drops the <code>&lt;PrRatio /&gt;</code> element and its import, and
+  retitles its <code>ViewHeading</code> per <b>D2</b>. Its filter menus, list and empty message are
+  untouched. <code>PrRatio</code> itself is <b>not</b> modified — same component, same hook, same
+  endpoint, new parent. Its doc comment and the "Ratio card" bullet in the Backlog's doc comment both
+  say "the Backlog's"; update that prose to say the Dashboard's, or the next reader is sent to the
+  wrong file.
+</p>
+
+<h2>4 · The lines-changed data path</h2>
+
+<h3>4.1 Shape</h3>
+
+<p>
+  It mirrors the PR ratio exactly — that symmetry is the point, because the two widgets sit in the
+  same card stack and must fail the same way:
+</p>
+
+<div class="scroll">
+<svg viewBox="0 0 940 316" role="img" aria-label="Data flow: the LocVelocity card calls useLocVelocity, which calls getLocVelocity in the api client; that crosses into the server, where the Route Handler calls fetchLocVelocity in a server-only module, which reads the shared GitHub repo config and makes one GitHub stats/contributors request per repo.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8a94a0" />
+    </marker>
+    <style>
+      .bx { fill: none; stroke: #8a94a0; stroke-width: 1.2; rx: 8; }
+      .bx.a { stroke: #0d7d7d; }
+      .lb { font: 600 12px ui-monospace, Menlo, monospace; fill: #1b1f24; }
+      .ls { font: 400 10.5px -apple-system, "Segoe UI", sans-serif; fill: #5c6672; }
+      .zn { font: 700 9.5px -apple-system, "Segoe UI", sans-serif; fill: #8a94a0; letter-spacing: .12em; }
+      .ed { stroke: #8a94a0; stroke-width: 1.2; fill: none; marker-end: url(#ar); }
+      .dv { stroke: #0d7d7d; stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+      @media (prefers-color-scheme: dark) {
+        .lb { fill: #e6eaef; } .bx { stroke: #9aa5b1; } .bx.a { stroke: #46c9c9; }
+        .ed { stroke: #9aa5b1; } .dv { stroke: #46c9c9; }
+      }
+    </style>
+  </defs>
+
+  <text class="zn" x="8" y="16">BROWSER — CLIENT COMPONENTS</text>
+  <rect class="bx" x="8" y="28" width="176" height="64" />
+  <text class="lb" x="20" y="52">LocVelocity</text>
+  <text class="ls" x="20" y="70">card · 5 render states</text>
+  <text class="ls" x="20" y="84">components/code/</text>
+
+  <rect class="bx" x="220" y="28" width="176" height="64" />
+  <text class="lb" x="232" y="52">useLocVelocity()</text>
+  <text class="ls" x="232" y="70">once on mount, never retries</text>
+  <text class="ls" x="232" y="84">lib/hooks/</text>
+
+  <rect class="bx" x="432" y="28" width="200" height="64" />
+  <text class="lb" x="444" y="52">getLocVelocity()</text>
+  <text class="ls" x="444" y="70">maps 501 / 202 to a status</text>
+  <text class="ls" x="444" y="84">lib/api-client.ts</text>
+
+  <line class="dv" x1="0" y1="118" x2="940" y2="118" />
+  <text class="zn" x="8" y="138">SERVER — `server-only`, HOLDS THE PAT</text>
+
+  <rect class="bx a" x="664" y="150" width="268" height="68" />
+  <text class="lb" x="676" y="174">GET /api/code/loc-velocity</text>
+  <text class="ls" x="676" y="192">withSessionOrApiKey · no query params</text>
+  <text class="ls" x="676" y="206">200 / 202 / 501 / 502</text>
+
+  <rect class="bx" x="368" y="150" width="268" height="68" />
+  <text class="lb" x="380" y="174">fetchLocVelocity(config)</text>
+  <text class="ls" x="380" y="192">Promise.all, one request per repo</text>
+  <text class="ls" x="380" y="206">lib/github/loc.ts · server-only</text>
+
+  <rect class="bx" x="8" y="150" width="336" height="68" />
+  <text class="lb" x="20" y="174">getGithubRepoConfig()</text>
+  <text class="ls" x="20" y="192">GITHUB_TOKEN · PR_RATIO_REPOS · PR_RATIO_AUTHORS</text>
+  <text class="ls" x="20" y="206">lib/github/config.ts — shared with the PR ratio</text>
+
+  <rect class="bx" x="368" y="240" width="268" height="64" />
+  <text class="lb" x="380" y="264">GitHub REST</text>
+  <text class="ls" x="380" y="282">/repos/:owner/:repo/stats/contributors</text>
+  <text class="ls" x="380" y="296">next: { revalidate: 3600 }</text>
+
+  <line class="ed" x1="184" y1="60" x2="216" y2="60" />
+  <line class="ed" x1="396" y1="60" x2="428" y2="60" />
+  <path class="ed" d="M 632 60 H 798 V 146" />
+  <line class="ed" x1="664" y1="184" x2="640" y2="184" />
+  <line class="ed" x1="368" y1="184" x2="348" y2="184" />
+  <line class="ed" x1="502" y1="218" x2="502" y2="236" />
+</svg>
+</div>
+
+<p class="small">
+  <code>lib/github/loc.ts</code> is <code>import 'server-only'</code> for the same reason
+  <code>pr-ratio.ts</code> is: it carries the fine-grained PAT, so importing it from a Client
+  Component must be a build error rather than a leaked token.
+</p>
+
+<h3>4.2 Config: one shared repo set, two minimums</h3>
+
+<p>
+  <code>getPrRatioConfig()</code> refuses fewer than two repos — "fewer than this many repos is not a
+  ratio". The chart has no such constraint: one repo is a perfectly good velocity series. So split
+  the reader and keep the ratio's guard where it belongs:
+</p>
+
+<pre><code>// lib/github/config.ts
+export interface GithubRepoConfig {
+  repos: RatioRepo[];
+  authors: string[];
+  token: string;
+}
+
+/** Token + at least one well-formed repo. The shared base both widgets read. */
+export function getGithubRepoConfig(): GithubRepoConfig | undefined { /* today's body, MINIMUM_REPOS → 1 */ }
+
+/** The ratio's stricter view: a split needs at least two repos to be a split. */
+export function getPrRatioConfig(): PrRatioConfig | undefined {
+  const config = getGithubRepoConfig();
+  if (config === undefined || config.repos.length &lt; MINIMUM_RATIO_REPOS) return undefined;
+  return config;
+}</code></pre>
+
+<p>
+  <b>No new environment variables.</b> <code>PR_RATIO_REPOS</code> / <code>PR_RATIO_AUTHORS</code> now
+  feed both widgets — which is correct, not merely convenient: the two measurements on one page
+  should share a denominator. Widen their doc comment in <code>config.ts</code> to say so.
+</p>
+
+<div class="callout">
+  <b>Deliberately not renamed.</b> <code>PR_RATIO_*</code> under-describes its new scope, but renaming
+  it means a coordinated Vercel env change for zero functional gain, and a half-done rename leaves a
+  deployment with an unconfigured dashboard. Out of scope — see §9.
+</div>
+
+<h3>4.3 Bucketing, and the three traps in it</h3>
+
+<p>
+  <code>stats/contributors</code> returns, per contributor, a <code>weeks</code> array of
+  <code>{ w, a, d, c }</code> — <code>w</code> is the Unix-seconds timestamp of that week's
+  <b>Sunday 00:00 UTC</b>, <code>a</code> additions, <code>d</code> deletions, <code>c</code> commits.
+  Three things about it will bite:
+</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Trap</th><th>What happens</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b><code>d</code> is positive here</b></td>
+      <td>
+        In <code>stats/code_frequency</code> deletions come back <i>negative</i>; in
+        <code>stats/contributors</code> they are a positive count. Copying the sign convention from
+        the wrong endpoint silently <i>subtracts</i> deletions from the churn.
+      </td>
+      <td>Sum <code>a + Math.abs(d)</code>. A unit test pins the convention.</td>
+    </tr>
+    <tr>
+      <td><b>HTTP 202 with an empty body</b></td>
+      <td>
+        GitHub computes these statistics asynchronously. A cold cache returns <code>202</code> and
+        <i>no data</i>, commonly on the first-ever request for a repo. Treating it as an error shows
+        "couldn't load" for something that will work in a minute; treating it as success shows a chart
+        of zeros — a lie.
+      </td>
+      <td>Its own outcome, surfaced as its own state. The Handler returns <code>202</code>; the card
+        says so and invites a refresh.</td>
+    </tr>
+    <tr>
+      <td><b>Weeks are Sunday-UTC, not negotiable</b></td>
+      <td>
+        GitHub does the bucketing. A local-timezone re-bucket is impossible without per-commit data,
+        and formatting a UTC-anchored week in a local zone shifts labels by a day.
+      </td>
+      <td>
+        No <code>tz</code> query param (unlike <code>pr-ratio</code>). Labels formatted in UTC, the way
+        <code>pr-ratio.tsx</code>'s <code>formatDay</code> already does.
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>Beyond that:</p>
+
+<ul class="tight">
+  <li>
+    <b>Read 15 weeks, return 12.</b> <code>HISTORY_WEEKS = 12</code>,
+    <code>ROLLING_AVERAGE_WEEKS = 4</code>; the reduce runs over the last
+    <code>HISTORY_WEEKS + ROLLING_AVERAGE_WEEKS - 1 = 15</code> buckets so the <i>first drawn</i> bar
+    already has a true 4-week mean. Without this the line's first three points are means of 1, 2 and
+    3 weeks, which reads as a spurious ramp.
+  </li>
+  <li>
+    <b>Zero-fill.</b> A repo younger than 15 weeks simply has no entries for the weeks before it
+    existed, and a quiet week has no entry either. Build the 15 buckets from the current Sunday
+    backwards and fill missing weeks with 0 — true in both cases for the measured <i>set</i>.
+  </li>
+  <li>
+    <b>The newest bucket is the week in progress.</b> Draw it (it is real work), flag it
+    <code>partial: true</code>, and give it <code>average: null</code> so the trend line <b>stops at
+    the last complete week</b> rather than being dragged down by a Monday reading.
+  </li>
+  <li>
+    <b><code>author</code> can be <code>null</code></b> for commits GitHub can't map to an account. With
+    an allowlist those rows can't match and drop out, which is correct. With an <i>empty</i> allowlist
+    (the "anyone" case) count them, and exclude the three known bot logins by name — the same list
+    <code>pr-ratio.ts</code> already keeps. Export <code>DEPENDENCY_BOTS</code> from there rather than
+    re-typing it.
+  </li>
+  <li>
+    <b>Any repo failing sinks the response</b> (<code>502</code>), exactly as
+    <code>fetchPrRatio</code> does: a velocity number missing one repo's lines is a
+    <i>wrong</i> number, and showing nothing beats showing that. Any repo answering <code>202</code>
+    makes the whole response <code>202</code>.
+  </li>
+  <li>
+    <b>Cache for an hour</b> (<code>next: { revalidate: 3600 }</code>). These hit the 5 000/hr core
+    limit rather than Search's 30/min, and the weekly buckets can't move faster than a push.
+  </li>
+</ul>
+
+<h3>4.4 Contract</h3>
+
+<pre><code>// lib/types.ts
+/** One calendar week of the velocity series. */
+export interface LocWeek {
+  /** ISO date of the week's Sunday, in UTC — e.g. '2026-09-06'. */
+  week: string;
+  /** Lines added + removed that week by the measured authors, across every measured repo. */
+  lines: number;
+  /**
+   * Trailing mean of `lines` over this week and the `averageWeeks - 1` before it, rounded.
+   * `null` on the in-progress week, so the trend line stops at the last COMPLETE week.
+   */
+  average: number | null;
+  /** True for the calendar week still in progress — its `lines` is a partial count. */
+  partial: boolean;
+}
+
+/**
+ * `GET /api/code/loc-velocity` — lines changed per week across the configured repos. Computed
+ * live from GitHub, so it is neither persisted nor reconciled into any store.
+ */
+export interface LocVelocityResponse {
+  /** Exactly `HISTORY_WEEKS` entries, oldest first; the last is the week in progress. */
+  weeks: LocWeek[];
+  /** `owner/name` of every repo counted, in configured order. */
+  repos: string[];
+  /** Logins counted; empty means "every contributor but the known bots". */
+  authors: string[];
+  /** The trailing window the `average` field was computed over. */
+  averageWeeks: number;
+}</code></pre>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Status</th><th>Meaning</th><th>Card renders</th></tr></thead>
+  <tbody>
+    <tr><td><code>200</code></td><td>counted</td><td>the chart (or the all-zero note)</td></tr>
+    <tr><td><code>202</code></td><td>GitHub is still computing these statistics</td><td>one muted line: still being computed, check back</td></tr>
+    <tr><td><code>501</code></td><td>this deployment has no repos configured</td><td><b>nothing at all</b> — no card, no gap</td></tr>
+    <tr><td><code>502</code></td><td>configured, but GitHub wouldn't answer</td><td>one muted line: couldn't load</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  The split is load-bearing, for the reason <code>pr-ratio/route.ts</code> already spells out: silence
+  on a <code>502</code> would read as "you wrote no code for three months".
+</p>
+
+<p>
+  The client returns a discriminated union rather than <code>undefined</code>, because
+  <code>getPrRatio</code>'s two-outcome <code>Response | undefined</code> can't carry a third:
+</p>
+
+<pre><code>// lib/api-client.ts
+export type LocVelocityResult =
+  | { status: 'ready'; velocity: LocVelocityResponse }
+  | { status: 'unconfigured' }   // 501
+  | { status: 'computing' };     // 202
+
+export async function getLocVelocity(): Promise&lt;LocVelocityResult&gt; { /* throws on anything else */ }</code></pre>
+
+<p>
+  <code>useLocVelocity()</code> then exposes the same five-state union the card switches on —
+  <code>loading | ready | computing | unconfigured | error</code> — fetched once on mount, never
+  retried, nothing thrown: the chart is an ornament, never a gate, the rule
+  <code>usePrRatio</code> already states.
+</p>
+
+<h2>5 · UI</h2>
+
+<h3>5.1 The Dashboard</h3>
+
+<p>
+  Drawn in alfred's real palette and geometry (see the stylesheet comment for the source of every
+  value). Sample data: twelve weeks ending Sunday 6&nbsp;Sep&nbsp;2026, read on Saturday
+  12&nbsp;Sep — so the newest bucket is mid-week.
+</p>
+
+<div class="mock">
+  <div class="mock-bar"><span>/code &nbsp;·&nbsp; Dashboard</span><span class="hmeta">desktop — md and up</span></div>
+  <div class="mock-body flush">
+    <div class="rail">
+      <nav class="nav">
+        <div class="nl on">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          <span>Dashboard</span>
+        </div>
+        <div class="nl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
+          <span>Needs human action</span>
+        </div>
+        <div class="nl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+          <span>Backlog</span>
+        </div>
+        <div class="navhead"><span>Projects</span><span>+</span></div>
+        <div class="nl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <span>Alfred</span><span class="keypill k-blue">ALF</span>
+        </div>
+        <div class="nl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#f0b429" stroke-width="2" stroke-linecap="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <span>RealPlay</span><span class="keypill k-amber">RP</span>
+        </div>
+      </nav>
+    </div>
+
+    <div class="main">
+      <div class="vh">
+        <div class="glyph">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        </div>
+        <div>
+          <h4>The Software Factory</h4>
+          <p>Your code module at a glance — what you're shipping, and what's waiting on you.</p>
+        </div>
+      </div>
+
+      <!-- LoC velocity card -->
+      <div class="acard">
+        <div class="ahead">
+          <span class="t">Lines changed per week</span>
+          <span class="d">Jun 21 – Sep 12 &nbsp;·&nbsp; 4-week average 4,400</span>
+        </div>
+        <div>
+          <div class="plot">
+            <span class="axismax">7,000</span>
+            <div class="col"><div class="bar" style="height:26.3%"></div></div>
+            <div class="col"><div class="bar" style="height:44.6%"></div></div>
+            <div class="col"><div class="bar" style="height:35.1%"></div></div>
+            <div class="col"><div class="bar" style="height:69.7%"></div></div>
+            <div class="col"><div class="bar" style="height:17.4%"></div></div>
+            <div class="col"><div class="bar" style="height:52.0%"></div></div>
+            <div class="col"><div class="bar" style="height:74.4%"></div></div>
+            <div class="col"><div class="bar" style="height:57.4%"></div></div>
+            <div class="col"><div class="bar" style="height:41.1%"></div></div>
+            <div class="col"><div class="bar" style="height:87.7%"></div></div>
+            <div class="col"><div class="bar" style="height:65.1%"></div></div>
+            <div class="col"><div class="bar prov" style="height:28.3%"></div></div>
+            <svg class="line" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <polyline fill="none" stroke="#e8edf5" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" vector-effect="non-scaling-stroke"
+                points="4.17,70.9 12.5,67.6 20.83,68.1 29.17,56.1 37.5,58.3 45.83,56.4 54.17,46.6 62.5,49.7 70.83,43.7 79.17,34.8 87.5,37.1" />
+            </svg>
+          </div>
+          <div class="xlab">
+            <span>Jun 21</span><span>Jun 28</span><span>Jul 5</span><span>Jul 12</span>
+            <span>Jul 19</span><span>Jul 26</span><span>Aug 2</span><span>Aug 9</span>
+            <span>Aug 16</span><span>Aug 23</span><span>Aug 30</span><span>Sep 6</span>
+          </div>
+        </div>
+        <div class="leg">
+          <i><span class="sw"></span>Lines changed</i>
+          <i><span class="swl"></span>4-week average</i>
+          <i><span class="sw prov"></span>This week so far</i>
+        </div>
+      </div>
+
+      <!-- PR ratio card — moved verbatim from the Backlog -->
+      <div class="acard">
+        <div class="ahead">
+          <span class="t">PRs merged in the last 7 days</span>
+          <span class="d">Sep 5 – Sep 12 &nbsp;·&nbsp; 9 total</span>
+        </div>
+        <div class="ratiobar">
+          <div style="width:33.3%;background:#4fd1e0"></div>
+          <div style="width:55.6%;background:#60a5fa"></div>
+          <div style="width:11.1%;background:#8a96a8"></div>
+        </div>
+        <ul class="rlegend">
+          <li><span class="dot t-teal"></span><span>RealPlay</span><span class="pct">33%</span><span class="cnt">(3)</span></li>
+          <li><span class="dot t-blue"></span><span>Alfred</span><span class="pct">56%</span><span class="cnt">(5)</span></li>
+          <li><span class="dot t-muted"></span><span>Other</span><span class="pct">11%</span><span class="cnt">(1)</span></li>
+        </ul>
+      </div>
+
+      <!-- The two queue digests -->
+      <div class="grid2">
+        <div class="acard">
+          <div class="whead">
+            <span class="wg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg></span>
+            <span class="wt">Needs human action</span>
+            <span class="wc">7</span>
+            <span class="wx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+          </div>
+          <ul class="wrows">
+            <li class="wrow hov"><span class="wref c-blue">ALF-218</span><span class="wtitle">Create code dashboard for Alfred</span><span class="chip">In Refinement</span></li>
+            <li class="wrow"><span class="wref c-amber">RP-44</span><span class="wtitle">Stage tuner drifts after a key change</span><span class="chip">Ready for Review</span></li>
+            <li class="wrow"><span class="wref c-blue">ALF-212</span><span class="wtitle">Surface a broken Gmail account in the rail</span><span class="chip">Ready for Dev</span></li>
+            <li class="wrow"><span class="wref c-blue">ALF-205</span><span class="wtitle">Forgive a bridged day in the habit streak</span><span class="chip">In Refinement</span></li>
+            <li class="wrow"><span class="wref c-amber">RP-41</span><span class="wtitle">Export a setlist straight to forScore</span><span class="chip">Ready for Dev</span></li>
+          </ul>
+        </div>
+
+        <div class="acard">
+          <div class="whead">
+            <span class="wg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></span>
+            <span class="wt">Backlog</span>
+            <span class="wc">23</span>
+            <span class="wx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+          </div>
+          <ul class="wrows">
+            <li class="wrow"><span class="wref c-blue">ALF-218</span><span class="wtitle">Create code dashboard for Alfred</span><span class="chip">In Refinement</span></li>
+            <li class="wrow"><span class="wref c-amber">RP-44</span><span class="wtitle">Stage tuner drifts after a key change</span><span class="chip">Ready for Review</span></li>
+            <li class="wrow"><span class="wref c-blue">ALF-212</span><span class="wtitle">Surface a broken Gmail account in the rail</span><span class="chip">Ready for Dev</span></li>
+            <li class="wrow"><span class="wref c-blue">ALF-220</span><span class="wtitle">Collapse the comms rail on a narrow window</span><span class="chip alert">Blocked</span></li>
+            <li class="wrow"><span class="wref c-blue">ALF-205</span><span class="wtitle">Forgive a bridged day in the habit streak</span><span class="chip">In Refinement</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="cap doc">
+  Behaviour and layout intent at app fidelity. The third row in the left pane shows a row's hover
+  wash. <b>The two panes overlap by design</b> — the Backlog's states are a superset of Needs human
+  action's, so a top-ranked story awaiting review legitimately appears in both.
+</p>
+
+<h3>5.2 What each region is, precisely</h3>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Region</th><th>Behaviour</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>View heading</b></td>
+      <td>
+        The existing <code>ViewHeading</code> atom with <code>icon={GitBranch}</code> and the
+        <b>D2</b> copy. No <code>accent</code> prop — Code shares the app's teal, which is that atom's
+        default, and neither the Backlog nor Needs human action passes one either.
+      </td>
+    </tr>
+    <tr>
+      <td><b>Lines changed per week</b></td>
+      <td>
+        Card header (14px/500) + detail: the window's first and last day, then
+        <code>4-week average &lt;n&gt;</code> taken from the <i>last complete</i> week. Plot: one bar per
+        week, the trailing-average polyline over them in <code>foreground</code> (a teal line over teal bars
+        disappears — the neutral is the only legible choice inside the palette that doesn't imply a
+        second metric), a dashed top rule labelled with the axis
+        maximum, week labels beneath. The in-progress week's bar is drawn at 32% teal. The line ends at
+        the last complete week — it does <b>not</b> reach the dimmed bar.
+      </td>
+    </tr>
+    <tr>
+      <td><b>Legend</b></td>
+      <td>
+        Three entries, matching exactly the three marks above: a solid teal swatch "Lines changed", a
+        <code>foreground</code>-neutral rule "4-week average", a 32%-teal swatch "This week so far".
+        Nothing else is drawn, so nothing else is listed.
+      </td>
+    </tr>
+    <tr>
+      <td><b>PRs merged in the last 7 days</b></td>
+      <td>Today's <code>&lt;PrRatio /&gt;</code>, unchanged, in its new home.</td>
+    </tr>
+    <tr>
+      <td><b>Queue digest pane ×2</b></td>
+      <td>
+        Header is one <code>ViewLink</code> (client-side nav) spanning glyph + title + count +
+        trailing chevron — the whole header, so the ticket's "clicking the title" has a forgiving
+        target. The count is the <i>full</i> queue size, not the 5 shown, so the pane says how much it
+        is hiding. Then up to 5 rows, each a <code>ViewLink</code> to
+        <code>storyBoardHref(project_id, ref)</code> — the board's <code>?story=&lt;ref&gt;</code>
+        deep-link seam, which opens the detail modal on arrival. A row is ref · title (truncating) ·
+        <code>StateChip</code> — and <b>no project pill</b>: the ref prefix already <i>is</i> the
+        project key, so the pill would print <code>ALF</code> twice on one line. The project signal
+        instead moves onto the ref, tinted with that project's colour
+        (<code>projectTextClasses</code>), which buys back the ~50px a cramped two-up row needs for
+        the title. The full Backlog rows keep their pill and are untouched.
+      </td>
+    </tr>
+    <tr>
+      <td><b>Stacking</b></td>
+      <td>
+        One column at base width, the two panes side by side from <code>md</code>
+        (<code>grid-cols-1 md:grid-cols-2</code>). The chart keeps all 12 bars at every width and hides
+        alternate week labels below <code>sm</code>.
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h3>5.3 The chart's non-obvious states, and the Backlog's new heading</h3>
+
+<div class="mock">
+  <div class="mock-bar"><span>States that aren't the happy path</span><span class="hmeta">same card, five outcomes</span></div>
+  <div class="mock-body">
+    <p class="seclabel">loading</p>
+    <div class="acard" style="margin-bottom:14px">
+      <div class="ahead"><span class="t">Lines changed per week</span></div>
+      <div style="height:132px;border-radius:4px;background:var(--a-border);opacity:.45"></div>
+    </div>
+
+    <p class="seclabel">202 — github is still computing</p>
+    <div class="acard" style="margin-bottom:14px">
+      <div class="ahead"><span class="t">Lines changed per week</span></div>
+      <div style="font-size:13px;color:var(--a-muted)">GitHub is still computing these statistics. Refresh in a minute.</div>
+    </div>
+
+    <p class="seclabel">502 — github wouldn't answer</p>
+    <div class="acard" style="margin-bottom:14px">
+      <div class="ahead"><span class="t">Lines changed per week</span></div>
+      <div style="font-size:13px;color:var(--a-muted)">Couldn't load line counts.</div>
+    </div>
+
+    <p class="seclabel">200, but every week is zero</p>
+    <div class="acard" style="margin-bottom:14px">
+      <div class="ahead"><span class="t">Lines changed per week</span><span class="d">Jun 21 – Sep 12</span></div>
+      <div style="font-size:13px;color:var(--a-muted)">No lines changed in the last 12 weeks.</div>
+    </div>
+
+    <p class="seclabel">501 — unconfigured: no card, no gap</p>
+    <div style="font-size:13px;color:var(--a-muted);font-style:italic">(nothing is rendered — the PR-ratio card moves up to sit directly under the heading)</div>
+
+    <p class="seclabel" style="margin-top:20px">an empty queue pane</p>
+    <div class="acard" style="max-width:420px">
+      <div class="whead">
+        <span class="wg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg></span>
+        <span class="wt">Needs human action</span>
+        <span class="wc">0</span>
+        <span class="wx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+      </div>
+      <div class="empty">Nothing needs your attention right now.</div>
+    </div>
+  </div>
+</div>
+
+<div class="mock">
+  <div class="mock-bar"><span>/code/backlog — the retitled heading</span><span class="hmeta">D2</span></div>
+  <div class="mock-body">
+    <div class="vh">
+      <div class="glyph">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+      </div>
+      <div>
+        <h4>Backlog</h4>
+        <p>Every story across your projects, ranked by priority.</p>
+      </div>
+    </div>
+    <p class="cap">
+      Same <code>GitBranch</code> glyph and same filter row to its right (unchanged, omitted here).
+      The PR-ratio card that used to sit below this heading is gone; the story list starts directly
+      beneath.
+    </p>
+  </div>
+</div>
+
+<h3>5.4 The chart primitive</h3>
+
+<p>
+  <b>No charting library.</b> The repo has none, and pulling one in for a 12-bar chart is a
+  disproportionate dependency. Add a presentation-only atom —
+  <code>components/atoms/bar-line-chart.tsx</code> — modelled on <code>RatioBar</code>: no fetching,
+  no arithmetic over domain values, no domain vocabulary (no "week", no "lines"), so it stays reusable
+  for any bucketed series with a trend.
+</p>
+
+<pre><code>export interface BarLinePoint {
+  /** Short axis label, e.g. 'Sep 6'. */
+  label: string;
+  value: number;
+  /** The trend value at this point, or null to BREAK the line here. */
+  average: number | null;
+  /** Dim the bar — a bucket that is still filling. */
+  provisional?: boolean;
+  /** Hover readout for this bucket, e.g. 'Sep 6 – Sep 12 · 1,980 lines (so far)'. */
+  title: string;
+}
+
+interface BarLineChartProperties {
+  points: readonly BarLinePoint[];
+  /** What the chart conveys, spelled out for assistive tech — as RatioBar does. */
+  ariaLabel: string;
+  className?: string;
+}</code></pre>
+
+<p>Mechanics, because two of them are easy to get subtly wrong:</p>
+
+<ul class="tight">
+  <li>
+    <b>Bars are HTML, not SVG</b> — a flex row of equal-basis columns, each bar a <code>div</code>
+    with <code>style={{ height: '<i>n</i>%' }}</code> of the track, the way <code>RatioBar</code> sets
+    widths. Labels are real text below the track, so they scale with the user's font size instead of
+    being baked into a <code>viewBox</code>.
+  </li>
+  <li>
+    <b>Only the trend line is SVG</b>: one absolutely-positioned overlay at
+    <code>viewBox="0 0 100 100" preserveAspectRatio="none"</code>, so point coordinates are plain
+    percentages. That non-uniform scale would distort the stroke, so the polyline carries
+    <code>vector-effect="non-scaling-stroke"</code> — without it the line is visibly fat horizontally
+    and thin vertically. For the same reason there are <b>no point markers</b>: a circle would scale
+    into an ellipse.
+  </li>
+  <li>
+    <b>A <code>null</code> average splits the series</b> into separate <code>&lt;polyline&gt;</code>
+    elements. One polyline with the gap dropped would draw a straight segment <i>across</i> it; a
+    polyline that treats null as 0 would dive to the floor.
+  </li>
+  <li>
+    <b>Axis maximum is a "nice" ceiling</b>, not the raw max: round up to the next multiple of
+    10<sup>digits−1</sup> (6 140 → 7 000; 420 → 500; 3 → 3). A pure unit-testable helper in the same
+    file. All-zero input yields no bars and no line rather than a divide-by-zero.
+  </li>
+  <li>
+    <b>Floor a non-zero bar at 2px</b> so a quiet week is visible; a genuinely zero week draws nothing.
+  </li>
+  <li>
+    <b>Accessibility</b> follows <code>RatioBar</code>: <code>role="img"</code> on the plot plus the
+    caller's <code>ariaLabel</code> (the visual carries the information, so it is an image with a
+    label, not decoration). Per-bucket numbers are reachable by pointer through each bar's
+    <code>title</code>.
+  </li>
+</ul>
+
+<h2>6 · Files</h2>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Path</th><th>New / changed</th><th>What</th></tr></thead>
+  <tbody>
+    <tr><td><code>frontend/app/(shell)/(code)/code/dashboard/page.tsx</code></td><td><span class="new">new</span></td><td>Renders <code>&lt;ModuleRouter /&gt;</code>, like every page under <code>(shell)</code>. A real static segment so it deep-links server-side and wins precedence over the sibling <code>[project-id]</code>.</td></tr>
+    <tr><td><code>frontend/components/code/dashboard.tsx</code></td><td><span class="new">new</span></td><td>Composition root: heading, <code>LocVelocity</code>, <code>PrRatio</code>, the two digest panes.</td></tr>
+    <tr><td><code>frontend/components/code/loc-velocity.tsx</code></td><td><span class="new">new</span></td><td>The chart card and its five states. Reuses <code>pr-ratio.tsx</code>'s <code>Card</code>/<code>Heading</code> shape — see §8 on extracting it.</td></tr>
+    <tr><td><code>frontend/components/code/dashboard/queue-widget.tsx</code></td><td><span class="new">new</span></td><td>One digest pane: linked header + count + up to <code>n</code> rows + empty message. Used twice.</td></tr>
+    <tr><td><code>frontend/components/code/dashboard/queue-widget-row.tsx</code></td><td><span class="new">new</span></td><td>One compact story row: project-tinted ref · title · <code>StateChip</code>, wrapped in a <code>ViewLink</code>.</td></tr>
+    <tr><td><code>frontend/components/atoms/bar-line-chart.tsx</code></td><td><span class="new">new</span></td><td>The presentation-only bars + trend primitive (§5.4).</td></tr>
+    <tr><td><code>frontend/lib/github/loc.ts</code></td><td><span class="new">new</span></td><td><code>server-only</code>. Fan-out, author filter, bucketing, zero-fill, trailing mean.</td></tr>
+    <tr><td><code>frontend/app/api/code/loc-velocity/route.ts</code></td><td><span class="new">new</span></td><td><code>withSessionOrApiKey</code> GET; 200 / 202 / 501 / 502. No query params.</td></tr>
+    <tr><td><code>frontend/lib/hooks/use-loc-velocity.ts</code></td><td><span class="new">new</span></td><td>Five-state union, fetch once on mount, never throws.</td></tr>
+    <tr><td><code>frontend/lib/github/config.ts</code></td><td>changed</td><td>Split into <code>getGithubRepoConfig</code> (≥1 repo) + <code>getPrRatioConfig</code> (≥2).</td></tr>
+    <tr><td><code>frontend/lib/github/pr-ratio.ts</code></td><td>changed</td><td>Export <code>DEPENDENCY_BOTS</code> so <code>loc.ts</code> shares the bot list rather than copying it.</td></tr>
+    <tr><td><code>frontend/lib/types.ts</code></td><td>changed</td><td><code>LocWeek</code>, <code>LocVelocityResponse</code>. Retarget the PR-ratio types' "the Backlog's" comment.</td></tr>
+    <tr><td><code>frontend/lib/api-client.ts</code></td><td>changed</td><td><code>getLocVelocity()</code> + <code>LocVelocityResult</code>.</td></tr>
+    <tr><td><code>frontend/components/code/code-view.tsx</code></td><td>changed</td><td>Dashboard is the default; <code>dashboard</code> reserved; NHA becomes an explicit branch.</td></tr>
+    <tr><td><code>frontend/components/code/project-nav.tsx</code></td><td>changed</td><td>Dashboard link first; NHA highlight narrowed to its exact route.</td></tr>
+    <tr><td><code>frontend/components/code/backlog.tsx</code></td><td>changed</td><td><code>PrRatio</code> removed; heading retitled (D2).</td></tr>
+    <tr><td><code>frontend/components/code/pr-ratio.tsx</code></td><td>changed</td><td>Doc comment only — it lives on the Dashboard now.</td></tr>
+    <tr><td><code>frontend/components/shell/command-destinations.ts</code></td><td>changed</td><td><code>go-dashboard</code> + the <code>'dashboard'</code> icon token.</td></tr>
+    <tr><td><code>frontend/components/shell/command-palette.tsx</code></td><td>changed</td><td><code>ICONS.dashboard = LayoutDashboard</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>7 · Tests</h2>
+
+<p>
+  Every requirement lands in at least one deterministic test — unit, Storybook or E2E. No test may
+  make a live GitHub call: the endpoint is stubbed at the network boundary in E2E
+  (<code>e2e/pr-ratio.spec.ts</code> already does this for <code>/api/code/pr-ratio</code>) and
+  <code>fetch</code> is mocked in unit tests.
+</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Suite</th><th>Covers</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>Unit — <code>lib/github/loc.test.ts</code></b></td>
+      <td>
+        Deletions add, never subtract (<code>a + |d|</code>); only allowlisted logins counted; a
+        <code>null</code> author dropped under an allowlist and counted (minus the bots) without one;
+        weeks zero-filled including before a repo existed; exactly 12 weeks returned from 15 read;
+        the first drawn week's average is a true 4-week mean; the newest week is
+        <code>partial: true</code> with <code>average: null</code>; one repo's failure yields
+        <code>undefined</code>; one repo's 202 yields the computing outcome.
+      </td>
+    </tr>
+    <tr>
+      <td><b>Unit — <code>bar-line-chart.test.tsx</code></b></td>
+      <td>Nice-ceiling arithmetic; a <code>null</code> average produces two polylines, not one;
+        a zero-value bucket renders no bar; all-zero input renders neither bars nor line.</td>
+    </tr>
+    <tr>
+      <td><b>Unit — <code>config.test.ts</code></b></td>
+      <td>One repo configures the chart but <i>not</i> the ratio; two configure both; no token
+        configures neither.</td>
+    </tr>
+    <tr>
+      <td><b>Unit — route test</b></td>
+      <td>The 200 / 202 / 501 / 502 mapping (the existing <code>pr-ratio/route.test.ts</code> is the
+        pattern).</td>
+    </tr>
+    <tr>
+      <td><b>Unit — <code>code-view.test.tsx</code></b></td>
+      <td>Bare <code>/code</code> and <code>/code/dashboard</code> render the Dashboard;
+        <code>/code/needs-human-action</code> still renders its queue; <code>/code/dashboard</code>
+        does <b>not</b> render a Board.</td>
+    </tr>
+    <tr>
+      <td><b>Unit — <code>project-nav.test.tsx</code></b></td>
+      <td>Dashboard is the first link and is highlighted on both <code>/code</code> and
+        <code>/code/dashboard</code>; NHA is <i>not</i> highlighted on <code>/code</code>.</td>
+    </tr>
+    <tr>
+      <td><b>Unit — <code>queue-widget.test.tsx</code></b></td>
+      <td>At most 5 rows from a longer list; the count shows the full size, not 5; the header links to
+        the page; a row links to <code>?story=&lt;ref&gt;</code>; the empty message replaces the list.</td>
+    </tr>
+    <tr>
+      <td><b>Unit — <code>backlog.test.tsx</code></b></td>
+      <td>Retitled heading; <b>no</b> PR-ratio card (a negative assertion, so the move can't silently
+        leave a copy behind).</td>
+    </tr>
+    <tr>
+      <td><b>Unit — <code>command-destinations.test.ts</code></b></td>
+      <td>Dashboard present, ahead of Needs human action, pointing at <code>/code/dashboard</code>.</td>
+    </tr>
+    <tr>
+      <td><b>Storybook</b></td>
+      <td>
+        <code>loc-velocity.stories.tsx</code> — the five states, plus a mid-week partial and an
+        all-zero window. <code>queue-widget.stories.tsx</code> — populated and empty.
+        <code>bar-line-chart.stories.tsx</code> — joins the atoms gallery, so the chart's geometry is
+        covered by the committed image snapshots.
+      </td>
+    </tr>
+    <tr>
+      <td><b>E2E</b></td>
+      <td>
+        Rename <code>e2e/pr-ratio.spec.ts</code> → <code>e2e/code-dashboard.spec.ts</code> and point it
+        at <code>/code/dashboard</code>, keeping both existing cases (the stubbed split; the 501 that
+        must leave the page fully usable) and adding: both endpoints stubbed → chart + ratio + both
+        panes render; a pane header click lands on that page; a row click opens the story modal;
+        <code>/code</code> shows the Dashboard.
+        <br /><br />
+        <b>Then the existing specs that encode the old default</b> — each re-pointed to the route it
+        <i>meant</i>, not re-asserted on whatever now renders:
+        <ul class="tight" style="margin:.4rem 0 0">
+          <li><code>code-needs-human-action.spec.ts</code> — the test
+            <i>"is the default Code view at the bare /code, listed above the Backlog (ALF-174)"</i> has
+            its premise reversed by <b>D3</b>. Rewrite it: it loads
+            <code>/code/needs-human-action</code>, nav link <b>1</b> (not 0) is Needs human action, and
+            its "<code>software factory</code> has count 0" assertion now belongs to the Dashboard
+            instead.</li>
+          <li><code>code-board.spec.ts</code> and <code>client-nav.spec.ts</code> (three places) assert
+            the <i>"Needs human action"</i> heading after landing on <code>/code</code> — they are
+            testing the module switch and history, so they should expect the Dashboard's heading there.</li>
+          <li><code>code-gate.spec.ts</code> only asserts the <code>/code</code> URL before clicking
+            into a project — unaffected, but verify rather than assume.</li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout">
+  <b>Don't let the default-view change pass silently.</b> Several existing specs navigate to
+  <code>/code</code> and expect the queue. Some will fail (good — that's the guardrail doing its job);
+  the risk is "fixing" one by asserting on whatever now renders. Each one has to be re-pointed to the
+  route it <i>meant</i>.
+</div>
+
+<h2>8 · Notes for the implementation session</h2>
+
+<ul class="tight">
+  <li>
+    <b>The card chrome is about to have a third copy.</b> <code>pr-ratio.tsx</code> keeps private
+    <code>Card</code> and <code>Heading</code> helpers; <code>LocVelocity</code> needs the same frame,
+    and the digest panes need the card without the heading. That's the rule-of-three trigger from the
+    <code>frontend-architecture</code> skill: extract the frame into an atom (a surface card with an
+    optional title/detail header row), adopt it at <b>every</b> call site in this change, and delete
+    the private copies. A half-adopted primitive is worse than none.
+  </li>
+  <li>
+    <b>Read the skills first.</b> <code>frontend-architecture</code> (where things live, the
+    rule-of-three), <code>data-flow</code> (why this is a fetch-on-mount hook and not a store —
+    nothing here is persisted, reconciled or mutated), <code>nextjs</code> (Route Handler + the
+    <code>revalidate</code> fetch cache), <code>react</code>, <code>storybook</code>,
+    <code>playwright</code>, <code>tailwindcss</code>.
+  </li>
+  <li>
+    <b>No store involvement for the chart.</b> The velocity series is derived, live, and
+    never mutated; it does not belong in <code>CodeProvider</code> and must not be seeded at the shell
+    layout — that would put a GitHub fan-out on the critical path of <i>every</i> page in the app.
+  </li>
+  <li>
+    <b>The digest panes read the store the pages already read</b> — <code>useBacklog({ statuses })</code>
+    with <code>HUMAN_REVIEW_STATUSES</code> and <code>DEFAULT_BACKLOG_STATUSES</code> respectively, both
+    module constants and so referentially stable. Slice to 5 <i>after</i> the hook, and take the count
+    from the full array. No project filter on either pane: the Dashboard is cross-project by
+    definition.
+  </li>
+  <li>
+    <b>Tailwind v4 scans for complete class names.</b> Any per-state or per-tone class in the new
+    components must be a full static string in a lookup table, never interpolated — the existing
+    <code>MODULE_ACCENT</code> and <code>PROJECT_BADGE_CLASS</code> tables exist for exactly this.
+    The bar heights are the exception: they're an inline <code>style</code>, like
+    <code>RatioBar</code>'s widths.
+  </li>
+  <li>
+    <b>Demo doc.</b> A user-visible change, so it needs one at
+    <code>docs/demos/&lt;branch&gt;/…</code> per the <code>showboat</code> skill — which owns the
+    evidence rules; follow them rather than anything restated here. Note only that this change has
+    real <i>journeys</i> (pane header → page; row → story modal), so end-state stills alone won't do.
+  </li>
+  <li>
+    <b>Hit friction with a lint rule?</b> Make the code pass as the gate stands and drop a note in
+    <code>docs/lint-suggestions/</code> the same turn. Never an ignore directive, never
+    <code>--no-verify</code>.
+  </li>
+</ul>
+
+<h2>9 · Out of scope</h2>
+
+<ul class="tight">
+  <li><b>Per-repo stacked LoC bars.</b> One solid bar per week is the ticket's "each week's number",
+    and the PR-ratio bar directly below already answers "which repo" for the current week. Stacking is
+    a later call, and the atom's <code>BarLinePoint</code> shape doesn't foreclose it.</li>
+  <li><b>Any range control</b> — no 12/26/52-week switch, no zoom, no date picker. One window (D4).</li>
+  <li><b>Renaming <code>PR_RATIO_REPOS</code> / <code>PR_RATIO_AUTHORS</code></b> (§4.2).</li>
+  <li><b>Persisting the series.</b> No table, no migration, no Worker cron. Live reads with an
+    hour-long fetch cache are adequate at single-user scale; persistence becomes interesting only if
+    the owner wants history older than GitHub's stats window or per-repo backfill.</li>
+  <li><b>Excluding generated files, lockfiles or vendored code from the churn.</b> GitHub's weekly
+    statistics are pre-aggregated and cannot be filtered by path — doing so means per-commit diffs,
+    which is a different (and far more expensive) feature.</li>
+  <li><b>Commits outside each repo's default branch</b>, and <b>the "Other" bucket's lines</b>. The
+    stats endpoint is per-repo and default-branch-only, so the chart measures the configured repos
+    only — the PR-ratio bar's <code>Other</code> segment has no counterpart here.</li>
+  <li><b>Any Board, Backlog or Needs-human-action behaviour</b> beyond the Backlog's heading and the
+    removal of its ratio card. No change to filters, ranking, reorder controls or the story modal.</li>
+</ul>
+
+<h2>10 · Open questions</h2>
+
+<p>
+  None blocking. The four that mattered were settled with the owner as D1–D4 before this spec was
+  written. Two things are worth a look at review, and neither changes the build:
+</p>
+
+<ul class="tight">
+  <li>
+    <b>Does the churn number read as plausible once it's real?</b> Author-scoped churn on a repo where
+    most commits are Claude-authored-but-owner-committed should count fully, but the first real chart
+    is the proof. If the numbers look wrong, the diagnosis is whether <code>author.login</code> matches
+    the configured logins — not the arithmetic.
+  </li>
+  <li>
+    <b>Card order.</b> Chart above ratio, per the ticket's own "lines of code velocity and PR ratio".
+    Trivially swappable if the owner would rather lead with the split.
+  </li>
+</ul>
+
+<h2>11 · Acceptance criteria</h2>
+
+<h4>Routing &amp; navigation</h4>
+<ul class="tight">
+  <li>☐ <code>/code/dashboard</code> renders the Dashboard on a hard load, a refresh and a deep link.</li>
+  <li>☐ Bare <code>/code</code> renders the Dashboard.</li>
+  <li>☐ <code>/code/dashboard</code> does <b>not</b> render a Board or "This project could not be found".</li>
+  <li>☐ <code>/code/needs-human-action</code> still renders the queue; <code>/code/backlog</code> still renders the Backlog; <code>/code/&lt;projectId&gt;</code> still renders that board.</li>
+  <li>☐ The sidebar reads <b>Dashboard → Needs human action → Backlog</b> above Projects, on desktop and in the mobile drawer.</li>
+  <li>☐ Dashboard is highlighted on <code>/code</code> and <code>/code/dashboard</code>; Needs human action is highlighted on its own route only.</li>
+  <li>☐ ⌘K lists <b>Dashboard</b> ahead of Needs human action, with its own icon, routing to <code>/code/dashboard</code>.</li>
+  <li>☐ Every one of these navigations is client-side (no full reload).</li>
+</ul>
+
+<h4>Headings</h4>
+<ul class="tight">
+  <li>☐ The Dashboard heading is <b>The Software Factory</b> with the D2 description and the <code>GitBranch</code> glyph.</li>
+  <li>☐ The Backlog heading is <b>Backlog</b> with "Every story across your projects, ranked by priority."</li>
+  <li>☐ No view shows "The Software Factory" twice.</li>
+</ul>
+
+<h4>Lines-changed chart</h4>
+<ul class="tight">
+  <li>☐ 12 weekly bars, oldest left, with the week's Sunday as the label.</li>
+  <li>☐ Each bar is <code>additions + deletions</code> for the configured authors, summed across the configured repos — deletions <i>increase</i> the bar.</li>
+  <li>☐ A 4-week trailing-average line runs over the bars; <b>the first drawn week's average is a true 4-week mean</b> (15 weeks read, 12 returned).</li>
+  <li>☐ The in-progress week's bar is visibly dimmed and the line stops at the last complete week.</li>
+  <li>☐ A legend names exactly the three marks drawn, and nothing more.</li>
+  <li>☐ The axis maximum is shown as a "nice" rounded tick.</li>
+  <li>☐ The card's detail line shows the window's range and the latest complete 4-week average.</li>
+  <li>☐ Five states behave as §5.3 draws them: loading skeleton · 202 "still computing" · 502 "couldn't load" · all-zero note · <b>501 renders nothing at all</b>, with no gap.</li>
+  <li>☐ A non-zero week is never invisible; a zero week draws no bar.</li>
+  <li>☐ The trend line's stroke width is uniform (not distorted by the non-uniform viewBox scale).</li>
+  <li>☐ No charting library is added to <code>package.json</code>.</li>
+</ul>
+
+<h4>PR ratio</h4>
+<ul class="tight">
+  <li>☐ The PR-ratio card renders on the Dashboard, behaviourally identical to today.</li>
+  <li>☐ It no longer renders anywhere on <code>/code/backlog</code>.</li>
+</ul>
+
+<h4>Queue digest panes</h4>
+<ul class="tight">
+  <li>☐ Two panes, Needs human action and Backlog, side by side from <code>md</code> and stacked below it.</li>
+  <li>☐ Each shows at most 5 stories, in the same ranked order as its full page.</li>
+  <li>☐ Each header shows the <b>full</b> queue count, not the number of rows shown.</li>
+  <li>☐ Clicking a pane header navigates to that page.</li>
+  <li>☐ Clicking a row opens that story's detail modal (<code>/code/&lt;projectId&gt;?story=&lt;ref&gt;</code>).</li>
+  <li>☐ A row shows the ref (tinted with its project's colour), the title and the factory-state chip — and <b>no</b> project key pill; a long title truncates without breaking the layout.</li>
+  <li>☐ An empty queue shows its pane with an empty message rather than a bare card.</li>
+  <li>☐ A story in both queues appearing in both panes is accepted, not deduplicated.</li>
+</ul>
+
+<h4>Config, API &amp; quality</h4>
+<ul class="tight">
+  <li>☐ No new environment variable; one configured repo enables the chart, two are still required for the ratio.</li>
+  <li>☐ No GitHub token can reach the browser (<code>lib/github/loc.ts</code> is <code>server-only</code>).</li>
+  <li>☐ <code>GET /api/code/loc-velocity</code> works under both a browser session and the ingest API key, and takes no query params.</li>
+  <li>☐ No schema change and no migration.</li>
+  <li>☐ Root <code>check</code> is green; no ignore directive, config weakening or <code>--no-verify</code>.</li>
+  <li>☐ A demo doc exists, covers <b>every</b> requirement above including both click journeys, and <code>npm run demo -- verify</code> passes.</li>
+  <li>☐ The PR description is updated to match the branch, with a live link to the demo doc.</li>
+</ul>
+
+<p class="small" style="margin-top:2.5rem">
+  ALF-218 · refinement · spec at <code>docs/specs/ALF-218.html</code>. Iterate in review comments on
+  the refinement PR.
+</p>
+
+</div>
+</body>
+</html>
