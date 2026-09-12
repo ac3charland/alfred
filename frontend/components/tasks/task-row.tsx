@@ -285,6 +285,16 @@ export function TaskRow({
   const isEditingTitle = sameEditor(activeEditor, { itemId: node.id, kind: 'title' });
   const showAddSubtask = sameEditor(activeEditor, { itemId: node.id, kind: 'subtask' });
 
+  // The add-subtask entry dismisses the same way the detail panel does (ALF-127): CaptureBox's
+  // own onBlur only fires when the field is (or was) focused, so a press outside it while it
+  // never gained focus — or already lost it some other way — would otherwise leave the field
+  // stranded open. This backstop fires on any outside pointer press regardless of focus, closing
+  // the field the same way opening another row's own entry already does (via the store above).
+  const handleDismissAddSubtask = React.useCallback(() => {
+    closeEditor({ itemId: node.id, kind: 'subtask' });
+  }, [closeEditor, node.id]);
+  useDismiss(rowContainerRef, handleDismissAddSubtask, showAddSubtask && !inSelectMode);
+
   // The inline add-subtask field animates in (height-grow + fade) and back out (ALF-66), so it
   // must stay mounted through its exit — otherwise the unmount kills the animation. Derive the
   // render flag from `showAddSubtask` DURING RENDER (React's recommended pattern over a
