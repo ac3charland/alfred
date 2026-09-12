@@ -172,3 +172,14 @@ export type CommClassifierHealth = Database['public']['Tables']['comm_classifier
 export interface CommPersonWithHandles extends CommPerson {
   comm_handles: CommHandle[];
 }
+
+/**
+ * Everything the module's health surface is derived from — the accounts and the classifier's
+ * singleton row — read together so a long-lived tab can re-establish it in one request after a
+ * lapse in the realtime stream.
+ */
+export interface CommsHealthSnapshot {
+  accounts: CommAccount[];
+  /** Absent until the classifier sweep has run at least once. */
+  health: CommClassifierHealth | undefined;
+}
