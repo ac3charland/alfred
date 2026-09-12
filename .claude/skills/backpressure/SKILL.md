@@ -146,6 +146,15 @@ in the fan-out printing its own green summary, while the package that actually f
 scrolled past. Redirect instead and check the status directly:
 `npm run check:fast > /tmp/gate.log 2>&1; echo $?`, then grep the log.
 
+## A red root gate on a clean tree means the wrong Node
+
+Before debugging a red `check:fast`, check `node --version` against `.nvmrc` (24). A cloud/web
+session can start on an older Node, and root `check:fast` then fails for reasons unrelated to
+your change: the `daemon` package's `node:sqlite` suites can't resolve the builtin (Jest reports
+`Cannot find module 'sqlite'`), and the import sorter reformats `daemon/src/sources/imessage/*`,
+dirtying files you never touched. Install the pinned version and the whole fan-out goes green —
+never work around it by editing the daemon's Jest config or committing that formatting drift.
+
 ## Related skills
 
 - **`npm-workspaces`** — the `--workspaces --if-present` fan-out and `-w` targeting these compose with.
