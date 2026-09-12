@@ -96,6 +96,23 @@ export const AllZero: Story = {
   decorators: [stubEndpoint(200, velocity(Array.from({ length: 12 }, () => 0)))],
 };
 
+/**
+ * A six-digit week (a big vendor bump or a large refactor): the axis rounds to the nearest
+ * 20,000 rather than the next 100,000, so a 102,000-line week caps the plot at 120,000 instead
+ * of blowing it out to 200,000 (ALF-230).
+ */
+export const HighVolumeWeek: Story = {
+  decorators: [
+    stubEndpoint(
+      200,
+      velocity([
+        42_000, 51_000, 38_000, 67_000, 58_000, 74_000, 91_000, 102_000, 88_000, 65_000, 47_000,
+        12_000,
+      ]),
+    ),
+  ],
+};
+
 /** In flight: the card reserves the plot's height so the cards beneath it don't jump. */
 export const Loading: Story = {
   decorators: [stubEndpoint(200)],
