@@ -169,9 +169,9 @@ The visual direction is drawn from a reference the owner likes (StrongDM's "Soft
 - `--surface` translucent dark slate over the canvas, ~`#0F1626`
 - `--border` cool slate, ~`#1E2A3F`
 - `--text` near-white, ~`#E8EDF5`; `--text-muted` slate gray, ~`#8A96A8`
-- **Accent system (multi-hue, themed per context):** `--accent-teal` ~`#4FD1E0` (primary / Tasks), `--accent-green` ~`#34D399`, `--accent-blue` ~`#60A5FA`, `--accent-amber` ~`#F0B429`. Each is used both as a border/text color and, at low alpha, as a soft outer-glow `box-shadow`.
+- **Accent system (multi-hue, themed per context):** `--accent-teal` ~`#4FD1E0` (primary), `--accent-green` ~`#34D399`, `--accent-blue` ~`#60A5FA`, `--accent-amber` ~`#F0B429` (Tasks). Each is used both as a border/text color and, at low alpha, as a soft outer-glow `box-shadow`.
 
-> **Architecture tie-in:** the section-themed accents map naturally onto the top-level **modules** — e.g. Tasks = teal, Code/Factory = amber, Knowledge = green, Firewall = blue. Each tab/module carries its own accent so the whole system reads as one family while each area stays identifiable. (A deliberate alternative to the generic "one bright accent on black" look, which reads as AI-default.)
+> **Architecture tie-in:** the section-themed accents map naturally onto the top-level **modules** — Tasks = amber, Code/Factory = teal, Knowledge = green, Firewall/Comms = blue. Each tab/module carries its own accent so the whole system reads as one family while each area stays identifiable. (A deliberate alternative to the generic "one bright accent on black" look, which reads as AI-default.)
 
 **Typography:**
 - **Display (used sparingly):** a high-contrast serif for headline moments — section titles, empty states, the capture prompt. The reference reads like a Playfair-style high-contrast serif; **Playfair Display**, **Newsreader**, or **Instrument Serif** all fit.
