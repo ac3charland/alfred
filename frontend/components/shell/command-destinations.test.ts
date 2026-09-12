@@ -46,12 +46,23 @@ describe('buildDestinations', () => {
       'Habits',
       'Completed',
       'Code',
+      'Dashboard',
       'Needs human action',
       'Backlog',
     ]);
     expect(grouped.comms.map((d) => d.label)).toEqual(['Queue', 'People', 'Rubric', 'Examples']);
     expect(grouped.folders.map((d) => d.label)).toEqual(['Software']);
     expect(grouped.projects.map((d) => d.label)).toEqual(['Alfred']);
+  });
+
+  it('routes the Dashboard ahead of Needs human action, mirroring the sidebar', () => {
+    const { go } = buildDestinations('', [], []);
+    const dashboardIndex = go.findIndex((destination) => destination.label === 'Dashboard');
+
+    expect(go[dashboardIndex]).toMatchObject({ href: '/code/dashboard', icon: 'dashboard' });
+    expect(dashboardIndex).toBeLessThan(
+      go.findIndex((destination) => destination.label === 'Needs human action'),
+    );
   });
 
   it('emits the four Comms destinations with their hrefs and icon tokens', () => {
@@ -81,6 +92,7 @@ describe('buildDestinations', () => {
       Habits: '/habits',
       Completed: '/completed',
       Code: '/code',
+      Dashboard: '/code/dashboard',
       'Needs human action': '/code/needs-human-action',
       Backlog: '/code/backlog',
     });
@@ -160,7 +172,7 @@ describe('flattenDestinations', () => {
     );
     const flat = flattenDestinations(grouped);
     expect(flat.map((d) => d.group)).toEqual([
-      ...Array.from({ length: 10 }, () => 'go'),
+      ...Array.from({ length: 11 }, () => 'go'),
       ...Array.from({ length: 4 }, () => 'comms'),
       'folders',
       'projects',

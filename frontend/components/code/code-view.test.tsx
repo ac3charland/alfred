@@ -19,6 +19,7 @@ jest.mock('./backlog', () => ({ Backlog: () => <div>backlog</div> }));
 jest.mock('./needs-human-action', () => ({
   NeedsHumanAction: () => <div>needs-human-action</div>,
 }));
+jest.mock('./dashboard', () => ({ Dashboard: () => <div>dashboard</div> }));
 
 // The navigation refetch goes through the store → api-client.listCode; mock the seam.
 jest.mock('@/lib/api-client');
@@ -82,29 +83,43 @@ describe('CodeView navigation refetch (ALF-69)', () => {
 });
 
 describe('CodeView view routing', () => {
-  it('renders Needs human action for the bare /code and /code/needs-human-action paths (ALF-174)', () => {
+  it('renders the Dashboard for the bare /code and the explicit /code/dashboard', () => {
     mockPathname = '/code';
     const { rerender } = renderWithProviders(<CodeView />);
-    expect(screen.getByText('needs-human-action')).toBeInTheDocument();
-    expect(screen.queryByText('backlog')).not.toBeInTheDocument();
+    expect(screen.getByText('dashboard')).toBeInTheDocument();
+    expect(screen.queryByText('needs-human-action')).not.toBeInTheDocument();
 
-    mockPathname = '/code/needs-human-action';
+    mockPathname = '/code/dashboard';
     rerender(<CodeView />);
-    expect(screen.getByText('needs-human-action')).toBeInTheDocument();
+    expect(screen.getByText('dashboard')).toBeInTheDocument();
   });
 
-  it('renders Needs human action for a trailing-slash /code/ path (ALF-174)', () => {
+  it('renders the Dashboard for a trailing-slash /code/ path', () => {
     mockPathname = '/code/';
     renderWithProviders(<CodeView />);
-    expect(screen.getByText('needs-human-action')).toBeInTheDocument();
+    expect(screen.getByText('dashboard')).toBeInTheDocument();
     expect(screen.queryByText('board')).not.toBeInTheDocument();
+  });
+
+  it('never falls through to a Board for the reserved dashboard segment', () => {
+    mockPathname = '/code/dashboard';
+    renderWithProviders(<CodeView />);
+    // Miss the reservation and this renders "This project could not be found" instead.
+    expect(screen.queryByText('board')).not.toBeInTheDocument();
+  });
+
+  it('still renders Needs human action on its own route (ALF-103)', () => {
+    mockPathname = '/code/needs-human-action';
+    renderWithProviders(<CodeView />);
+    expect(screen.getByText('needs-human-action')).toBeInTheDocument();
+    expect(screen.queryByText('dashboard')).not.toBeInTheDocument();
   });
 
   it('renders the Backlog only for the explicit /code/backlog path (ALF-174)', () => {
     mockPathname = '/code/backlog';
     renderWithProviders(<CodeView />);
     expect(screen.getByText('backlog')).toBeInTheDocument();
-    expect(screen.queryByText('needs-human-action')).not.toBeInTheDocument();
+    expect(screen.queryByText('dashboard')).not.toBeInTheDocument();
     expect(screen.queryByText('board')).not.toBeInTheDocument();
   });
 

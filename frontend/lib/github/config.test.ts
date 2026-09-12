@@ -1,4 +1,4 @@
-import { getPrRatioConfig } from './config';
+import { getGithubRepoConfig, getPrRatioConfig } from './config';
 
 /** The three vars this feature reads. `undefined` means "unset on this deployment". */
 interface PrRatioEnvironment {
@@ -119,5 +119,46 @@ describe('getPrRatioConfig', () => {
     withEnvironment({ ...CONFIGURED, PR_RATIO_AUTHORS: ' , ' });
 
     expect(getPrRatioConfig()?.authors).toEqual([]);
+  });
+});
+
+describe('getGithubRepoConfig vs getPrRatioConfig', () => {
+  afterEach(() => {
+    process.env = { ...originalEnvironment };
+  });
+
+  it('configures the velocity chart from a single repo, but not the ratio', () => {
+    withEnvironment({ ...CONFIGURED, PR_RATIO_REPOS: 'ac3charland/alfred:Alfred' });
+
+    // One repo is a perfectly good velocity series; it is not a split.
+    expect(getGithubRepoConfig()?.repos).toHaveLength(1);
+    expect(getPrRatioConfig()).toBeUndefined();
+  });
+
+  it('configures both once a second repo is measured', () => {
+    withEnvironment(CONFIGURED);
+
+    expect(getGithubRepoConfig()?.repos).toHaveLength(2);
+    expect(getPrRatioConfig()?.repos).toHaveLength(2);
+  });
+
+  it('configures neither without a token, however many repos are listed', () => {
+    withEnvironment({ ...CONFIGURED, GITHUB_TOKEN: undefined });
+
+    expect(getGithubRepoConfig()).toBeUndefined();
+    expect(getPrRatioConfig()).toBeUndefined();
+  });
+
+  it('configures neither when no repo entry is well-formed', () => {
+    withEnvironment({ ...CONFIGURED, PR_RATIO_REPOS: 'not-a-repo' });
+
+    expect(getGithubRepoConfig()).toBeUndefined();
+    expect(getPrRatioConfig()).toBeUndefined();
+  });
+
+  it('hands both widgets the same authors, so the page cannot disagree with itself', () => {
+    withEnvironment(CONFIGURED);
+
+    expect(getGithubRepoConfig()?.authors).toStrictEqual(getPrRatioConfig()?.authors);
   });
 });

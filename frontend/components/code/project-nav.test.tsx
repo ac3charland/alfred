@@ -140,9 +140,13 @@ describe('ProjectNav', () => {
     expect(screen.getByText('Projects')).toBeInTheDocument();
   });
 
-  it('links the Needs human action and Backlog destinations at the top of the nav', () => {
+  it('links the three cross-project destinations at the top of the nav', () => {
     renderNav(PROJECTS);
 
+    expect(screen.getByRole('link', { name: /^dashboard$/i })).toHaveAttribute(
+      'href',
+      '/code/dashboard',
+    );
     expect(screen.getByRole('link', { name: /backlog/i })).toHaveAttribute('href', '/code/backlog');
     expect(screen.getByRole('link', { name: /needs human action/i })).toHaveAttribute(
       'href',
@@ -150,26 +154,40 @@ describe('ProjectNav', () => {
     );
   });
 
-  it('lists Needs human action above the Backlog (ALF-174)', () => {
+  it('reads Dashboard → Needs human action → Backlog, above the projects', () => {
     renderNav(PROJECTS);
 
     const links = screen.getAllByRole('link').map((link) => link.textContent);
+    expect(links.indexOf('Dashboard')).toBe(0);
+    expect(links.indexOf('Dashboard')).toBeLessThan(links.indexOf('Needs human action'));
     expect(links.indexOf('Needs human action')).toBeLessThan(links.indexOf('Backlog'));
   });
 
-  it('highlights Needs human action on the bare /code route, the module default (ALF-174)', () => {
+  it('highlights the Dashboard on the bare /code route, the module landing view', () => {
     mockPathname.mockReturnValue('/code');
     renderNav(PROJECTS);
 
-    expect(screen.getByRole('link', { name: /needs human action/i })).toHaveClass('bg-secondary');
+    expect(screen.getByRole('link', { name: /^dashboard$/i })).toHaveClass('bg-secondary');
+    // The queues no longer claim the bare route — the Dashboard digests them both.
+    expect(screen.getByRole('link', { name: /needs human action/i })).not.toHaveClass(
+      'bg-secondary',
+    );
     expect(screen.getByRole('link', { name: /^backlog$/i })).not.toHaveClass('bg-secondary');
   });
 
-  it('highlights Needs human action on its own route (ALF-103)', () => {
+  it('highlights the Dashboard on its explicit route too', () => {
+    mockPathname.mockReturnValue('/code/dashboard');
+    renderNav(PROJECTS);
+
+    expect(screen.getByRole('link', { name: /^dashboard$/i })).toHaveClass('bg-secondary');
+  });
+
+  it('highlights Needs human action on its own route only (ALF-103)', () => {
     mockPathname.mockReturnValue('/code/needs-human-action');
     renderNav(PROJECTS);
 
     expect(screen.getByRole('link', { name: /needs human action/i })).toHaveClass('bg-secondary');
+    expect(screen.getByRole('link', { name: /^dashboard$/i })).not.toHaveClass('bg-secondary');
     expect(screen.getByRole('link', { name: /^backlog$/i })).not.toHaveClass('bg-secondary');
   });
 
@@ -181,6 +199,7 @@ describe('ProjectNav', () => {
     expect(screen.getByRole('link', { name: /needs human action/i })).not.toHaveClass(
       'bg-secondary',
     );
+    expect(screen.getByRole('link', { name: /^dashboard$/i })).not.toHaveClass('bg-secondary');
   });
 
   it('lists each project as a link with its key', () => {

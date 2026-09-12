@@ -121,6 +121,8 @@ v3?
 
 - **The shadow scale shifted by one step in v4.** The old `shadow` is now `shadow-sm`; old `shadow-sm` is now `shadow-xs`. If a shadow looks larger than expected, you are probably hitting v3 muscle memory on the class name.
 
+- **`border-dashed` / `border-solid` set the style on EVERY side** — there is no per-side style utility. An element needing a dashed rule on one edge and a solid one on another (a chart's axis ceiling above its baseline, say) draws the odd one out as its own absolutely-positioned element.
+
 - **The border default color changed.** In v3, `border` applied a gray-200 colored border. In v4, `border` defaults to `currentColor`. Always specify the color explicitly: `border border-border` or `border border-accent-teal`.
 
 - **Always use `focus-visible:` for interactive elements, not bare `focus:`.** Mouse clicks trigger `focus:` rings unnecessarily. In the alfred dark UI this is especially noticeable. Apply `focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue` together.

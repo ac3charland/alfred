@@ -56,7 +56,8 @@ test('renders the Backlog at /code/backlog, ranked by priority', async ({ page, 
   await seed({ projects: [project], epics: [epic], items, codeItems });
   await page.goto('/code/backlog');
 
-  await expect(page.getByRole('heading', { name: /software factory/i })).toBeVisible();
+  // The view names itself plainly; the module's hero name lives on the Dashboard now.
+  await expect(page.getByRole('heading', { name: 'Backlog' })).toBeVisible();
 
   const rows = page.getByRole('listitem');
   await expect(rows).toHaveCount(3);

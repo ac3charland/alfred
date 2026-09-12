@@ -64,12 +64,8 @@ refinement PR. Neither of the two prior refinement PRs (ALF-123, ALF-130) carrie
       branch owes no demo, and the spec is already linked from the PR via htmlpreview.
 - [ ] `docs/demos/alf-151-habit-edit-spec/` — same shape, same cause (a `commitlint` SKILL.md note
       on a spec-only branch). Delete the folder; the spec is linked from the PR via htmlpreview.
-- [ ] `.claude/skills/jest/SKILL.md` — land the unrecorded gotcha this rule displaced (2026-09-12 ·
-      `claude/alfred-code-dashboard-spec-e75i1c`): a `Cannot find module 'sqlite'` failure across
-      `daemon/` means the running Node is older than `.nvmrc`'s pinned 24 — Jest strips the `node:`
-      prefix before asking `module.isBuiltin`, and on Node 22 `isBuiltin('sqlite')` is `false`, so
-      the resolver falls through to the filesystem and every daemon suite fails in a package the
-      branch never touched. Belongs in that skill's Common Pitfalls.
+- [x] `.claude/skills/jest/SKILL.md` — the displaced gotcha (`Cannot find module 'sqlite'` across
+      `daemon/` = running Node older than the pinned 24) is landed in that skill's Common Pitfalls.
 
 ---
 

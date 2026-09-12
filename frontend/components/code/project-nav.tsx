@@ -1,6 +1,6 @@
 'use client';
 
-import { GitBranch, ListOrdered, Plus, UserCheck } from 'lucide-react';
+import { GitBranch, LayoutDashboard, ListOrdered, Plus, UserCheck } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
@@ -25,9 +25,10 @@ interface ProjectNavProperties {
  * — each project is a `ViewLink` to `/code/[projectId]` (client-side nav), highlighted when
  * that's the active route. Reads the project list from the CodeProvider store.
  *
- * Above the project list sit the two cross-project queues, ordered by urgency: **Needs human
- * action** first — it is the module's default view (ALF-174), so it leads the menu and carries
- * the highlight for the bare `/code` — then the full ranked **Backlog**.
+ * Above the project list sit the module's three cross-project views, in the order the owner
+ * reads them: the **Dashboard** first — the module's landing view, so it leads the menu and
+ * carries the highlight for the bare `/code` — then **Needs human action**, then the full ranked
+ * **Backlog**.
  *
  * Each project shows its 3-char key as the ref-prefix hint, since refs everywhere read
  * `KEY-N`. The `+` opens the same New-project dialog as the gate,
@@ -55,14 +56,25 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
     onClose?.();
   };
 
-  // The Needs-human-action queue (ALF-103) is the default Code view (bare `/code` renders it too,
-  // ALF-174), so highlight its link for both `/code` and `/code/needs-human-action`.
-  const needsHumanActionActive = pathname === '/code' || pathname === '/code/needs-human-action';
+  // The Dashboard is the module's landing view: the bare `/code` renders it too, so it carries
+  // the highlight for both paths.
+  const dashboardActive = pathname === '/code' || pathname === '/code/dashboard';
+  // Each queue is now highlighted on its exact route only.
+  const needsHumanActionActive = pathname === '/code/needs-human-action';
   // The Backlog is now a destination like any other, highlighted on its exact route.
   const backlogActive = pathname === '/code/backlog';
 
   return (
     <nav aria-label="Projects" className="flex flex-col gap-1 py-2">
+      <ViewLink
+        href="/code/dashboard"
+        className={cn(navLinkClass(dashboardActive), 'min-w-0')}
+        {...closeProperty}
+      >
+        <LayoutDashboard size={14} className="shrink-0" />
+        <span className="truncate">Dashboard</span>
+      </ViewLink>
+
       <ViewLink
         href="/code/needs-human-action"
         className={cn(navLinkClass(needsHumanActionActive), 'min-w-0')}

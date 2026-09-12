@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { RatioBar, type RatioSegment } from '@/components/atoms/ratio-bar';
+import { SurfaceCard } from '@/components/atoms/surface-card';
 import { usePrRatio } from '@/lib/hooks/use-pr-ratio';
 import type { PrRatioResponse } from '@/lib/types';
 
@@ -91,29 +92,14 @@ function describeSplit(entries: readonly RatioEntry[]): string {
     .join('; ');
 }
 
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
-      {children}
-    </div>
-  );
-}
-
-function Heading({ detail }: { detail?: string }) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <h3 className="text-sm font-medium text-foreground">PRs merged in the last 7 days</h3>
-      {detail !== undefined && <p className="text-xs text-muted-foreground">{detail}</p>}
-    </div>
-  );
-}
+const TITLE = 'PRs merged in the last 7 days';
 
 /**
- * The Backlog's PR-ratio card: how the last seven days' merged pull requests split across
+ * The Dashboard's PR-ratio card: how the last seven days' merged pull requests split across
  * the configured repos, as a stacked bar plus a per-repo legend.
  *
  * It is an ornament, never a gate. An unconfigured deployment renders **nothing at all** (no
- * card, no gap), and a GitHub failure renders one muted line — either way the Backlog beneath
+ * card, no gap), and a GitHub failure renders one muted line — either way the Dashboard around
  * it stays fully usable.
  */
 export function PrRatio() {
@@ -123,20 +109,18 @@ export function PrRatio() {
 
   if (state.status === 'loading') {
     return (
-      <Card>
-        <Heading />
-        {/* Reserves the bar's height so the story list doesn't jump when the counts land. */}
+      <SurfaceCard title={TITLE}>
+        {/* Reserves the bar's height so the cards below don't jump when the counts land. */}
         <div className="h-2.5 w-full animate-pulse rounded-full bg-border motion-reduce:animate-none" />
-      </Card>
+      </SurfaceCard>
     );
   }
 
   if (state.status === 'error') {
     return (
-      <Card>
-        <Heading />
+      <SurfaceCard title={TITLE}>
         <p className="text-sm text-muted-foreground">Couldn&apos;t load PR counts.</p>
-      </Card>
+      </SurfaceCard>
     );
   }
 
@@ -145,11 +129,10 @@ export function PrRatio() {
 
   if (total === 0) {
     return (
-      <Card>
-        <Heading detail={range} />
+      <SurfaceCard title={TITLE} detail={range}>
         {/* A genuinely quiet week — a normal state, not an error. */}
         <p className="text-sm text-muted-foreground">No PRs merged in the last 7 days.</p>
-      </Card>
+      </SurfaceCard>
     );
   }
 
@@ -161,8 +144,7 @@ export function PrRatio() {
   }));
 
   return (
-    <Card>
-      <Heading detail={`${range}  ·  ${String(total)} total`} />
+    <SurfaceCard title={TITLE} detail={`${range}  ·  ${String(total)} total`}>
       <RatioBar segments={segments} ariaLabel={describeSplit(entries)} />
       <ul className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
         {entries.map((entry) => (
@@ -174,6 +156,6 @@ export function PrRatio() {
           </li>
         ))}
       </ul>
-    </Card>
+    </SurfaceCard>
   );
 }

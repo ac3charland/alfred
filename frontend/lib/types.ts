@@ -49,7 +49,7 @@ export type CodeStory = Database['public']['Views']['v_code_stories']['Row'];
 /** A row returned by the `get_subtree` RPC: an item plus its depth in the tree. */
 export type SubtreeRow = Database['public']['Functions']['get_subtree']['Returns'][number];
 
-// ── PR ratio — the Backlog's weekly merged-PR split across repos. ────────────
+// ── PR ratio — the Dashboard's weekly merged-PR split across repos. ─────────
 
 /** One repo's slice of the week: its merged-PR count and its share of the total. */
 export interface PrRatioRepoCount {
@@ -85,6 +85,38 @@ export interface PrRatioResponse {
   total: number;
   repos: PrRatioRepoCount[];
   other?: PrRatioOtherCount;
+}
+
+// ── Lines-changed velocity — the Dashboard's weekly churn series. ───────────
+
+/** One calendar week of the velocity series. */
+export interface LocWeek {
+  /** ISO date of the week's Sunday, in UTC — e.g. '2026-09-06'. */
+  week: string;
+  /** Lines added + removed that week by the measured authors, across every measured repo. */
+  lines: number;
+  /**
+   * Trailing mean of `lines` over this week and the `averageWeeks - 1` before it, rounded.
+   * `null` on the in-progress week, so the trend line stops at the last COMPLETE week.
+   */
+  average: number | null;
+  /** True for the calendar week still in progress — its `lines` is a partial count. */
+  partial: boolean;
+}
+
+/**
+ * `GET /api/code/loc-velocity` — lines changed per week across the configured repos. Computed
+ * live from GitHub, so it is neither persisted nor reconciled into any store.
+ */
+export interface LocVelocityResponse {
+  /** One entry per week in the reported window, oldest first; the last is the week in progress. */
+  weeks: LocWeek[];
+  /** `owner/name` of every repo counted, in configured order. */
+  repos: string[];
+  /** Logins counted; empty means "every contributor but the known bots". */
+  authors: string[];
+  /** The trailing window the `average` field was computed over. */
+  averageWeeks: number;
 }
 
 // ── Weekly plan archive — one uploaded HTML document per week. ──
