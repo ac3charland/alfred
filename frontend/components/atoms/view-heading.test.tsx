@@ -23,12 +23,21 @@ describe('ViewHeading', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
-  it('wears the Tasks teal by default, so headings written before Comms are unchanged', () => {
+  it('wears the Tasks accent by default — the module most of these headings belong to', () => {
     const { container } = render(
       <ViewHeading icon={ListOrdered} title="Today" description="Due now." />,
     );
 
+    expect(container.querySelector('.text-accent-amber')).toBeInTheDocument();
+  });
+
+  it('wears the Code teal when Code asks for it, never the Tasks default (ALF-219)', () => {
+    const { container } = render(
+      <ViewHeading icon={ListOrdered} title="Backlog" description="Every story." accent="code" />,
+    );
+
     expect(container.querySelector('.text-accent-teal')).toBeInTheDocument();
+    expect(container.querySelector('.text-accent-amber')).not.toBeInTheDocument();
   });
 
   it('wears the named module accent when one is given', () => {

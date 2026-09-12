@@ -187,6 +187,13 @@ describe('Backlog', () => {
     expect(screen.getByRole('button', { name: /filter by status/i })).toBeInTheDocument();
   });
 
+  it('wears the Code teal on its heading glyph, not the Tasks accent (ALF-219)', () => {
+    const { container } = renderBacklog([]);
+
+    expect(container.querySelector('.text-accent-teal')).toBeInTheDocument();
+    expect(container.querySelector('.text-accent-amber')).not.toBeInTheDocument();
+  });
+
   it('hands the module hero name to the Dashboard rather than showing it twice', () => {
     renderBacklog([makeStory('a', { priority: 1 })]);
     expect(screen.queryByText('The Software Factory')).not.toBeInTheDocument();

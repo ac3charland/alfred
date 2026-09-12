@@ -12,8 +12,9 @@ interface ViewHeadingProperties {
   /** One line saying what the view holds — the answer to "why am I looking at this list?". */
   description: string;
   /**
-   * Which module's accent the glyph wears. Defaults to Tasks, so every heading written before
-   * there was a third module keeps the app's teal without stating it.
+   * Which module's accent the glyph wears. Defaults to Tasks, the module most of these headings
+   * belong to. A heading in another module MUST name its own — the default is silent, and while
+   * Tasks and Code shared one hue the Code views rode it without anyone noticing (ALF-219).
    */
   accent?: ModuleId;
 }

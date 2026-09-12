@@ -106,6 +106,13 @@ describe('Dashboard', () => {
     ).toBeInTheDocument();
   });
 
+  it('wears the Code teal on its heading glyph, not the Tasks accent (ALF-219)', async () => {
+    const { container } = await renderDashboard([]);
+
+    expect(container.querySelector('.text-accent-teal')).toBeInTheDocument();
+    expect(container.querySelector('.text-accent-amber')).not.toBeInTheDocument();
+  });
+
   it('digests both queues, each header linking to its full page', async () => {
     await renderDashboard([]);
 
