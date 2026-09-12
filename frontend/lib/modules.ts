@@ -57,16 +57,19 @@ export interface ModuleAccent {
  * like `` `text-accent-${colour}` `` compiles to nothing at all. (Same rule the per-project
  * colour tables follow.)
  *
- * Tasks and Code have always shared the app's teal; Comms is blue, the accent the product spec
- * reserved for the communication firewall.
+ * One colour per module, none shared: Tasks is amber — the palette's yellow — Code keeps the
+ * app's teal, and Comms is blue, the accent the product spec reserved for the communication
+ * firewall. Tasks and Code shared teal until ALF-219, which made an active Tasks segment in the
+ * module switcher indistinguishable from an active Code one; since the switcher, the nav and a
+ * view heading all read this table, changing it here separates them everywhere at once.
  */
 export const MODULE_ACCENT: Record<ModuleId, ModuleAccent> = {
   tasks: {
-    text: 'text-accent-teal',
-    ring: 'ring-accent-teal',
-    dot: 'bg-accent-teal',
-    border: 'border-accent-teal',
-    glow: 'glow-teal',
+    text: 'text-accent-amber',
+    ring: 'ring-accent-amber',
+    dot: 'bg-accent-amber',
+    border: 'border-accent-amber',
+    glow: 'glow-amber',
   },
   code: {
     text: 'text-accent-teal',

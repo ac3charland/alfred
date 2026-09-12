@@ -95,18 +95,44 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Comms' })).not.toHaveClass('text-accent-teal');
   });
 
+  it('highlights an active Tasks in yellow, a colour no other segment wears', () => {
+    mockPathname.mockReturnValue('/priority');
+    const { rerender } = render(<ViewSwitcher />);
+    const tasks = screen.getByRole('link', { name: 'Tasks' });
+    expect(tasks).toHaveClass('text-accent-amber');
+    expect(tasks).not.toHaveClass('text-accent-teal');
+
+    // The point of the colour change: Tasks and Code no longer look identical when active.
+    mockPathname.mockReturnValue('/code');
+    rerender(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Code' })).not.toHaveClass('text-accent-amber');
+  });
+
   it('exposes a labelled group for the switcher', () => {
     render(<ViewSwitcher />);
 
     expect(screen.getByRole('group', { name: /switch module/i })).toBeInTheDocument();
   });
 
-  it('hugs its content instead of spanning the full sidebar width', () => {
+  it('spans the sidebar width instead of hugging three segments past its edge', () => {
     render(<ViewSwitcher />);
 
     const group = screen.getByRole('group', { name: /switch module/i });
-    expect(group).toHaveClass('w-fit');
-    expect(group).toHaveClass('gap-1');
+    expect(group).toHaveClass('w-full');
+    expect(group).not.toHaveClass('w-fit');
     expect(group).not.toHaveClass('justify-between');
+  });
+
+  it('divides that width evenly, so no segment is sized by its label', () => {
+    render(<ViewSwitcher />);
+
+    for (const label of ['Tasks', 'Code', 'Comms']) {
+      const segment = screen.getByRole('link', { name: label });
+      expect(segment).toHaveClass('flex-1');
+      // `flex-1` alone still floors a segment at its label's min-content width, which is what
+      // pushed the old control past the sidebar. `min-w-0` lets the thirds actually hold.
+      expect(segment).toHaveClass('min-w-0');
+      expect(segment).toHaveClass('text-center');
+    }
   });
 });

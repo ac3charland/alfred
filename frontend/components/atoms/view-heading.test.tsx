@@ -23,12 +23,13 @@ describe('ViewHeading', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
-  it('wears the Tasks teal by default, so headings written before Comms are unchanged', () => {
+  it('defaults to the Tasks accent — amber since ALF-219 — when no module is named', () => {
     const { container } = render(
       <ViewHeading icon={ListOrdered} title="Today" description="Due now." />,
     );
 
-    expect(container.querySelector('.text-accent-teal')).toBeInTheDocument();
+    expect(container.querySelector('.text-accent-amber')).toBeInTheDocument();
+    expect(container.querySelector('.text-accent-teal')).not.toBeInTheDocument();
   });
 
   it('wears the named module accent when one is given', () => {
@@ -42,6 +43,6 @@ describe('ViewHeading', () => {
     );
 
     expect(container.querySelector('.text-accent-blue')).toBeInTheDocument();
-    expect(container.querySelector('.text-accent-teal')).not.toBeInTheDocument();
+    expect(container.querySelector('.text-accent-amber')).not.toBeInTheDocument();
   });
 });
