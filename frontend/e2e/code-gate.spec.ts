@@ -39,7 +39,7 @@ test('classify as Code → gate (new project + epic) → leaves inbox, lands on 
   await page.keyboard.press('Enter');
 
   const row = page.getByRole('listitem').filter({ hasText: 'Ship the inbound webhook' });
-  await expect(row.getByText('Code', { exact: true })).toBeVisible();
+  await expect(row.getByRole('img', { name: 'Code' })).toBeVisible();
 
   // 2. Open the gate — the bulk bar's "Send to Code…", the "choose it all now" path (the row
   //    menu dispatches with the labels it already has instead; see the Dispatch test below).

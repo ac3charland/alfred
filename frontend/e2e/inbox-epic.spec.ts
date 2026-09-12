@@ -44,7 +44,7 @@ test('capture with a project prefix → add stories → reorder → send → epi
   await captureBox.fill('Alfred: Construction inbox');
   await captureBox.press('Enter');
   const parentRow = page.getByRole('listitem').filter({ hasText: 'Construction inbox' }).first();
-  await expect(parentRow.getByText('Code', { exact: true })).toBeVisible();
+  await expect(parentRow.getByRole('img', { name: 'Code' })).toBeVisible();
   await expect(parentRow.getByText('ALF', { exact: true })).toBeVisible();
 
   // 2. Build the epic: three stories through the "Add story" affordance (its capture box

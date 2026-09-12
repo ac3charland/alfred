@@ -24,15 +24,15 @@ test.describe('inbox multi-edit', () => {
     });
     await page.goto('/?view=inbox');
 
-    // ALF-105: browsing the Inbox, an untriaged row stays bare…
+    // Browsing the Inbox, an untriaged row stays bare — no badge, no icon.
     await expect(page.getByText('Unclassified')).toHaveCount(0);
 
-    // Enter select mode; each row becomes a selection checkbox.
+    // Enter select mode; each row becomes a selection checkbox. ALF-224 removed row badges
+    // everywhere, including select mode's third-type "Unclassified" pill (ALF-105) — an
+    // unclassified row stays bare there too, since no icon is defined for it either.
     await page.getByRole('button', { name: 'Select' }).click();
-
-    // …and inside select mode every row names its type, since that is what the bulk actions
-    // gate on: all three captures are unclassified, so all three wear the badge.
-    await expect(page.getByText('Unclassified')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: /^select "/i })).toHaveCount(3);
+    await expect(page.getByText('Unclassified')).toHaveCount(0);
 
     await page.getByRole('button', { name: /select "Email the accountant about Q2"/i }).click();
     await page.getByRole('button', { name: /select "Draft the onboarding doc"/i }).click();
