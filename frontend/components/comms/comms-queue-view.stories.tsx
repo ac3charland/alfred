@@ -80,6 +80,19 @@ const IMESSAGE_LIVE = makeCommAccount('iMessage', {
   last_seen_at: ago(5 * MINUTE),
 });
 
+/** The same two Worker-polled mailboxes as the tab last heard about them, hours ago. */
+const PERSONAL_STALE = makeCommAccount('personal', {
+  id: 'acct-personal',
+  kind: 'gmail',
+  last_seen_at: ago(3 * HOUR),
+});
+
+const REALPLAY_STALE = makeCommAccount('RealPlay', {
+  id: 'acct-realplay',
+  kind: 'gmail',
+  last_seen_at: ago(3 * HOUR),
+});
+
 const IMESSAGE_ASLEEP = makeCommAccount('iMessage', {
   id: 'acct-imessage',
   kind: 'imessage',
@@ -372,5 +385,59 @@ export const RowExpanded: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByText(ASAP_ROW.ask ?? ''));
     await canvas.findByRole('button', { name: 'Nothing to answer' });
+  },
+};
+
+/**
+ * A tab that has been left open. Every source is polling normally, but this tab's realtime
+ * socket lapsed while the owner was elsewhere, so it is still holding the roster it was seeded
+ * with hours ago — and because health is read against a ticking clock, that frozen roster has
+ * decayed on its own into three amber dots accusing three healthy sources of having died.
+ *
+ * The story runs the real recovery (ALF-227): returning to the foreground makes the store
+ * re-read `GET /api/comms/health`, which is stubbed here to answer what the pollers have
+ * actually been doing. What is snapshotted is the state AFTER that re-read — every dot green,
+ * every accusation withdrawn — so the pixels this fix exists to restore are gated.
+ */
+export const RecoversAfterTimeAway: Story = {
+  decorators: [
+    (Story) => {
+      globalThis.fetch = (() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
+              health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
+            }),
+        })) as unknown as typeof fetch;
+      return <Story />;
+    },
+  ],
+  parameters: {
+    store: {
+      comms: {
+        // What the tab still holds: the seed it loaded with, hours stale on this clock.
+        accounts: [PERSONAL_STALE, REALPLAY_STALE, WORKMAIL_ASLEEP, IMESSAGE_ASLEEP],
+        messages: [MARCUS, ...shelfRows(2441)],
+        verdicts: VERDICTS,
+        health: makeCommHealth({ last_run_at: ago(3 * HOUR), last_success_at: ago(3 * HOUR) }),
+      },
+      commsSettings: { people: ROSTER },
+    },
+    visualTest: { target: '[data-testid="comms-frame"]' },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText('personal · stale');
+
+    // The tab comes back to the front — the signal the owner actually feels.
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    await canvas.findByLabelText('personal · live');
+    await canvas.findByLabelText('RealPlay · live');
+    await canvas.findByLabelText('WorkMail · live');
+    await canvas.findByLabelText('iMessage · live');
   },
 };
