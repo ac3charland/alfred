@@ -760,7 +760,7 @@ describe('select mode keeps the label chips, inert (S13)', () => {
 
     const row = screen.getByRole('button', { name: /select "labelled"/i });
     // The labels the dispatch decision rests on are visible…
-    expect(within(row).getByText('Task')).toBeInTheDocument();
+    expect(within(row).getByRole('img', { name: 'Task' })).toBeInTheDocument();
     expect(within(row).getByText('Work')).toBeInTheDocument();
     expect(within(row).getByText(/dec 31/i)).toBeInTheDocument();
     // …and none of them is a control: a button inside a button is invalid HTML, and a click

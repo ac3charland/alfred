@@ -2322,89 +2322,102 @@ describe('TaskRow', () => {
 // Classification & type-gating
 //
 // Capture creates `unclassified` items; `Classify as Task` unlocks the task-only
-// affordances (checkbox, subtasks); `Classify as Code` shows the Code badge but still
-// no task affordances. Only "Code" earns a row badge now (ALF-67 removed the "Task" pill).
+// affordances (checkbox, subtasks); `Classify as Code` shows the ALF-224 `code` icon in the
+// checkbox slot but still no task affordances. Row badges are gone entirely (ALF-224): the
+// type reads from an icon instead — the `code` glyph filling a code row's empty checkbox slot,
+// or (in select mode, where every row already has a tick box) small `code` / `square-check-big`
+// icons beside it.
 // ---------------------------------------------------------------------------
 
 const UNCLASSIFIED_ITEM: Item = { ...BASE_ITEM, item_type: 'unclassified' };
 const CODE_ITEM: Item = { ...BASE_ITEM, item_type: 'code' };
 
 describe('TaskRow — classification & type-gating', () => {
-  describe('type badge', () => {
-    it('shows no badge on an unclassified row', () => {
+  describe('type glyph', () => {
+    it('shows no badge and no type icon on an unclassified row', () => {
       renderTasks([UNCLASSIFIED_ITEM]);
 
       expect(screen.queryByText('Task')).not.toBeInTheDocument();
       expect(screen.queryByText('Code')).not.toBeInTheDocument();
       expect(screen.queryByText('Unclassified')).not.toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'Task' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'Code' })).not.toBeInTheDocument();
     });
 
-    // ALF-105 — select mode is the one place the THIRD type earns a badge. There the bulk
-    // actions gate on type (Move refuses a code row, Dispatch skips an unclassified one), and
-    // a bare row was the only one whose type you could not read: unclassified and task were
-    // pixel-identical wherever the row carried no other metadata. Everywhere else the absent
-    // badge still means "nothing to say yet".
-    it('shows an "Unclassified" badge on an unclassified row in select mode', async () => {
+    // ALF-224 removed the row badge in select mode too — an unclassified row still has nothing
+    // to name itself with there: no icon is defined for it, same as outside select mode.
+    it('shows no icon on an unclassified row in select mode', async () => {
       const user = userEvent.setup();
       renderSelectableInbox([UNCLASSIFIED_ITEM]);
 
       await user.click(screen.getByRole('button', { name: 'Select' }));
 
-      expect(screen.getByText('Unclassified')).toBeInTheDocument();
+      expect(screen.queryByText('Unclassified')).not.toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'Task' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'Code' })).not.toBeInTheDocument();
     });
 
-    it('keeps the "Task" and "Code" badges in select mode, so all three types read alike', async () => {
+    // ALF-224 — select mode shows no badges at all now; since every row already carries a
+    // selection tick box, the type reads instead from a small icon beside it.
+    it('shows the code and task icons beside the tick box in select mode, not badges', async () => {
       const user = userEvent.setup();
       renderSelectableInbox([BASE_ITEM, { ...CODE_ITEM, id: 'item-code', title: 'Ship it' }]);
 
       await user.click(screen.getByRole('button', { name: 'Select' }));
 
-      expect(screen.getByText('Task')).toBeInTheDocument();
-      expect(screen.getByText('Code')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Task' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Code' })).toBeInTheDocument();
+      expect(screen.queryByText('Task')).not.toBeInTheDocument();
+      expect(screen.queryByText('Code')).not.toBeInTheDocument();
     });
 
-    it('drops the "Unclassified" badge again when select mode ends', async () => {
+    // Ending select mode swaps back to the ordinary row (its own checkbox-slot icon, no tick
+    // box) rather than dropping the type cue outright — a code row keeps naming itself either way.
+    it('swaps the select-mode tick box for the ordinary row when select mode ends', async () => {
       const user = userEvent.setup();
-      renderSelectableInbox([UNCLASSIFIED_ITEM]);
+      renderSelectableInbox([CODE_ITEM]);
 
       await user.click(screen.getByRole('button', { name: 'Select' }));
-      expect(screen.getByText('Unclassified')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Select "Write tests"' })).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'Done' }));
 
-      expect(screen.queryByText('Unclassified')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Select "Write tests"' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Code' })).toBeInTheDocument();
     });
 
-    // The badge rides inside the row's single <button> like every other select-mode chip: a
+    // The icon rides inside the row's single <button> like every other select-mode chip: a
     // nested control there would be invalid HTML, so it stays an inert span.
-    it('renders the select-mode badge inert, inside the row button', async () => {
+    it('renders the select-mode icon inert, inside the row button', async () => {
       const user = userEvent.setup();
-      renderSelectableInbox([UNCLASSIFIED_ITEM]);
+      renderSelectableInbox([CODE_ITEM]);
 
       await user.click(screen.getByRole('button', { name: 'Select' }));
 
-      const badge = screen.getByText('Unclassified');
-      expect(badge.tagName).toBe('SPAN');
-      expect(badge.closest('button')).toHaveAttribute('aria-pressed');
+      const glyph = screen.getByRole('img', { name: 'Code' });
+      expect(glyph.tagName).toBe('SPAN');
+      expect(glyph.closest('button')).toHaveAttribute('aria-pressed');
     });
 
-    // ALF-170 reverses part of ALF-67 in the one place it matters: the Inbox now holds
-    // unclassified, task and code rows side by side, and only two of the three can be
-    // dispatched — so an undispatched Inbox ROOT task wears the badge again. Subtasks
-    // (ALF-65), folder views and Completed keep showing none.
-    it('shows the "Task" badge on an undispatched Inbox root task', () => {
+    // ALF-224 removed the row badge everywhere: an undispatched Inbox root task shows neither a
+    // badge nor an icon — it already has its own real completion checkbox.
+    it('shows no "Task" badge or icon on an undispatched Inbox root task', () => {
       renderTasks([BASE_ITEM]);
 
-      expect(screen.getByText('Task')).toBeInTheDocument();
+      expect(screen.queryByText('Task')).not.toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'Task' })).not.toBeInTheDocument();
     });
 
-    it('shows a "Code" badge on a code row', () => {
+    it('shows the "Code" icon in the checkbox slot on a code row, not a badge', () => {
       renderTasks([CODE_ITEM]);
 
-      expect(screen.getByText('Code')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Code' })).toBeInTheDocument();
+      expect(screen.queryByText('Code')).not.toBeInTheDocument();
     });
 
-    it('shows no "Task" badge on a subtask row', async () => {
+    it('shows no "Task" badge or icon on a subtask row', async () => {
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
 
@@ -2413,6 +2426,9 @@ describe('TaskRow — classification & type-gating', () => {
       const subtaskRow = screen.getByText('Write unit tests').closest('li');
       expect(subtaskRow).not.toBeNull();
       expect(within(subtaskRow as HTMLElement).queryByText('Task')).not.toBeInTheDocument();
+      expect(
+        within(subtaskRow as HTMLElement).queryByRole('img', { name: 'Task' }),
+      ).not.toBeInTheDocument();
     });
 
     it('shows no "Task" badge for a task filed in a folder', () => {
@@ -2424,7 +2440,7 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.queryByText('Task')).not.toBeInTheDocument();
     });
 
-    it('still shows the "Code" badge on a code subtask', async () => {
+    it('still shows the "Code" icon on a code subtask', async () => {
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, { ...CHILD_ITEM, item_type: 'code' }]);
 
@@ -2432,16 +2448,18 @@ describe('TaskRow — classification & type-gating', () => {
 
       const subtaskRow = screen.getByText('Write unit tests').closest('li');
       expect(subtaskRow).not.toBeNull();
-      expect(within(subtaskRow as HTMLElement).getByText('Code')).toBeInTheDocument();
+      expect(
+        within(subtaskRow as HTMLElement).getByRole('img', { name: 'Code' }),
+      ).toBeInTheDocument();
     });
 
-    it('still shows the "Code" badge for a code item filed in a folder', () => {
+    it('still shows the "Code" icon for a code item filed in a folder', () => {
       renderTasks([{ ...CODE_ITEM, folder_id: 'folder-1', dispatched_at: DISPATCHED_AT }], {
         folders: [FOLDER],
         scope: { type: 'folder', folderId: 'folder-1' },
       });
 
-      expect(screen.getByText('Code')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Code' })).toBeInTheDocument();
     });
   });
 
@@ -2534,7 +2552,7 @@ describe('TaskRow — classification & type-gating', () => {
       ).toBeInTheDocument();
     });
 
-    it('classifies as Code (item_type → code) showing the Code badge but no checkbox', async () => {
+    it('classifies as Code (item_type → code) showing the Code icon but no checkbox', async () => {
       mockUpdateItem.mockResolvedValue({ ...UNCLASSIFIED_ITEM, item_type: 'code' });
       const user = userEvent.setup();
       renderTasks([UNCLASSIFIED_ITEM]);
@@ -2550,7 +2568,7 @@ describe('TaskRow — classification & type-gating', () => {
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'code' });
       });
-      expect(screen.getByText('Code')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Code' })).toBeInTheDocument();
       // Still no task affordance after classifying as code.
       expect(
         screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
@@ -2613,11 +2631,17 @@ describe('TaskRow — classification & type-gating', () => {
       expect(spacer).toHaveClass('hidden', 'md:block');
     });
 
-    it('a code row reserves no checkbox space on mobile (spacer only at md+)', () => {
+    // A code row has no bare spacer any more (ALF-224): the `code` icon fills the checkbox slot
+    // at every width, since it carries real information rather than reserving blank space.
+    it('a code row shows its type icon in the checkbox slot at every width', () => {
       renderTasks([CODE_ITEM]);
 
-      const spacer = rowFor('Write tests').querySelector('[data-testid="checkbox-spacer"]');
-      expect(spacer).toHaveClass('hidden', 'md:block');
+      expect(
+        rowFor('Write tests').querySelector('[data-testid="checkbox-spacer"]'),
+      ).not.toBeInTheDocument();
+      const iconSlot = rowFor('Write tests').querySelector('[data-testid="code-type-icon"]');
+      expect(iconSlot).not.toHaveClass('hidden');
+      expect(within(rowFor('Write tests')).getByRole('img', { name: 'Code' })).toBeInTheDocument();
     });
 
     it('an unclassified row exposes no add-subtask affordance', () => {
@@ -3007,13 +3031,13 @@ describe('TaskRow — epic construction (ALF-129)', () => {
   };
 
   describe('the code child row shape', () => {
-    it('renders under its parent with the Code badge, no checkbox, and no add affordance', async () => {
+    it('renders under its parent with the Code icon, no checkbox, and no add affordance', async () => {
       const user = userEvent.setup();
       renderTasks([CODE_PARENT, ...CODE_CHILDREN]);
 
       await expandRow(user, 'Construction inbox');
       const childRow = rowFor('S1');
-      expect(within(childRow).getAllByText('Code').length).toBeGreaterThan(0);
+      expect(within(childRow).getByRole('img', { name: 'Code' })).toBeInTheDocument();
       expect(within(childRow).queryByRole('button', { name: /mark .* complete/i })).toBeNull();
       expect(within(childRow).queryByRole('button', { name: 'Add story' })).toBeNull();
       expect(within(childRow).queryByRole('button', { name: 'Add subtask' })).toBeNull();
