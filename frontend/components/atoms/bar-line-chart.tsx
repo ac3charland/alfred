@@ -32,12 +32,17 @@ const MINIMUM_BAR_PERCENT = 2;
  * 420 → 500, 3 → 3. A raw maximum would put the tallest bar flush against the top rule and label
  * the axis with an arbitrary number nobody chose.
  *
+ * Six-digit values round to the nearest 20,000 instead of the next 100,000: rounding to a whole
+ * magnitude step is fine when the step is small relative to `max` (6 140 → 7 000 is a 14% move),
+ * but at six digits that same rule can nearly double it — 102 000 → 200 000.
+ *
  * Zero (or less) yields zero — the caller draws no plot at all rather than dividing by it.
  */
 export function niceCeiling(max: number): number {
   if (max <= 0) return 0;
   const magnitude = 10 ** Math.floor(Math.log10(max));
-  return Math.ceil(max / magnitude) * magnitude;
+  const step = magnitude === 100_000 ? 20_000 : magnitude;
+  return Math.ceil(max / step) * step;
 }
 
 /**

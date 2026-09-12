@@ -35,6 +35,15 @@ describe('niceCeiling', () => {
     expect(niceCeiling(0)).toBe(0);
     expect(niceCeiling(-5)).toBe(0);
   });
+
+  it('rounds a six-digit max to the nearest 20,000 rather than the next 100,000', () => {
+    // ALF-230: rounding a six-digit value to the next multiple of its own magnitude (100,000)
+    // could nearly double it — 102,000 topped out at 200,000.
+    expect(niceCeiling(102_000)).toBe(120_000);
+    expect(niceCeiling(101_000)).toBe(120_000);
+    expect(niceCeiling(150_000)).toBe(160_000);
+    expect(niceCeiling(100_000)).toBe(100_000);
+  });
 });
 
 describe('trendSegments', () => {
