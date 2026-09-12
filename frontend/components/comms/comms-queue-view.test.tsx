@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -246,5 +246,49 @@ describe('CommsQueueView — adding the sender of a mistiered row', () => {
       priority: 'high',
       handles: [{ handle: 'd@x.com', kind: 'email' }],
     });
+  });
+});
+
+/**
+ * ALF-227, at the surface the report describes. The view's clock ticks on its own, so a
+ * `last_seen_at` the tab stopped hearing about decays into "stale" with no change on the server
+ * at all — every source disconnected on a page that has simply been open too long.
+ */
+describe('CommsQueueView — a tab that has been away', () => {
+  const OPENED = new Date('2026-09-09T12:00:00.000Z');
+  const LIVE = makeCommAccount('RealPlay', {
+    id: '00000000-0000-4000-8000-0000000000b1',
+    last_seen_at: new Date(OPENED.getTime() - 60 * 1000).toISOString(),
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+  });
+
+  it('re-reads the sources on return, so an hour away does not read as an outage', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(OPENED);
+    // What the poller has been doing the whole hour the tab was away.
+    jest.mocked(api).fetchCommsHealth.mockResolvedValue({
+      accounts: [
+        { ...LIVE, last_seen_at: new Date(OPENED.getTime() + 59 * 60 * 1000).toISOString() },
+      ],
+      health: undefined,
+    });
+    // No `now` prop: this is the view's own ticking clock, which is half the defect.
+    renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
+    expect(screen.getByLabelText('RealPlay · live')).toBeInTheDocument();
+
+    act(() => {
+      jest.advanceTimersByTime(60 * 60 * 1000);
+    });
+    expect(screen.getByLabelText('RealPlay · stale')).toBeInTheDocument();
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(await screen.findByLabelText('RealPlay · live')).toBeInTheDocument();
   });
 });
