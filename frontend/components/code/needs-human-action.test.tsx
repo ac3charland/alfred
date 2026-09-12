@@ -133,6 +133,12 @@ describe('NeedsHumanAction', () => {
     expect(screen.queryByRole('button', { name: /filter by status/i })).not.toBeInTheDocument();
   });
 
+  it('names the Code accent on its heading rather than inheriting the Tasks default', () => {
+    const { container } = renderView([makeStory('a')]);
+    expect(container.querySelector('.text-accent-teal')).toBeInTheDocument();
+    expect(container.querySelector('.text-accent-amber')).not.toBeInTheDocument();
+  });
+
   it('lists only the human-review states, hiding every other status, in priority order', () => {
     renderView([
       makeStory('a', { priority: 50, factory_state: 'in_development' }),

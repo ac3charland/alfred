@@ -67,6 +67,7 @@ export function Backlog() {
           icon={GitBranch}
           title="The Software Factory"
           description="Every story across your projects, ranked by priority."
+          accent="code"
         />
         <div className="flex flex-wrap items-center gap-2">
           <StatusFilterMenu

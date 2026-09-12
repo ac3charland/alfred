@@ -183,6 +183,12 @@ describe('Backlog', () => {
     expect(screen.getByRole('button', { name: /filter by status/i })).toBeInTheDocument();
   });
 
+  it('names the Code accent on its heading rather than inheriting the Tasks default', () => {
+    const { container } = renderBacklog([makeStory('a', { priority: 1 })]);
+    expect(container.querySelector('.text-accent-teal')).toBeInTheDocument();
+    expect(container.querySelector('.text-accent-amber')).not.toBeInTheDocument();
+  });
+
   it('shows a count on the trigger only when the selection differs from the default', async () => {
     const user = userEvent.setup();
     renderBacklog([
