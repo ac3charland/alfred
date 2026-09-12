@@ -86,6 +86,11 @@ npm run uninstall:launchd -w daemon                           # bootout + remove
   as it checks. Type-aware `strictTypeChecked` + `unicorn` are on. The package gate is
   `npm run check:fast -w daemon`; Jest runs as ESM
   (`NODE_OPTIONS=--experimental-vm-modules`, `ts-jest/presets/default-esm`).
+- **The suite needs the pinned Node 24 (`.nvmrc`).** Below it, `sqlite` is absent from
+  `module.builtinModules`, so Jest's resolver strips the `node:` prefix and every iMessage test
+  dies with `Cannot find module 'sqlite'` — an error naming a package that was never a
+  dependency. A sandbox defaulting to an older Node needs `nvm install 24` before the root
+  `check:fast`, which otherwise goes red on work that never touched the daemon.
 
 ## chat.db and iMessage
 

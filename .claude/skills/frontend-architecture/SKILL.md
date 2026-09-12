@@ -141,6 +141,10 @@ or chase a line-count ceiling. Intentional recursion (a task rendering its subta
   created just to satisfy a `no-raw-element` lint rule — consolidate into a real named atom instead.
 - Relocating a compound component into `atoms/` to exempt it from a rule, instead of breaking it into
   atoms and recomposing it in its feature dir.
+- Leaning on a shared-token default — `ViewHeading`'s `accent` falls back to Tasks — because it
+  currently resolves to the value you want. Name the module you mean: retune the table and every
+  coincidental caller changes with it, and a test asserting the resulting class
+  (`.text-accent-teal`) rather than the module never notices.
 
 ## Before you introduce a new shared abstraction
 
