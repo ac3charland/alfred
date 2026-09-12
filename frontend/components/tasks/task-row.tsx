@@ -22,6 +22,7 @@ import { RowDeparture } from '@/components/tasks/task-row/row-departure';
 import { RowMetaCluster } from '@/components/tasks/task-row/row-meta-cluster';
 import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
+import { TypeGlyph } from '@/components/tasks/type-glyph';
 import type { ConvertedEpic } from '@/lib/api-client';
 import { projectBoardHref, storyBoardHref } from '@/lib/code/board-links';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
@@ -204,27 +205,9 @@ export function TaskRow({
   const isTopLevelTask = isTask && node.parent_id === null;
 
   // "An Inbox row": top-level, still undispatched, and not being listed as history. Read by the
-  // two things that only make sense while an item is still awaiting triage — the "Task" badge
-  // and the provenance mark — so the two can never gate differently.
+  // things that only make sense while an item is still awaiting triage — the provenance mark and
+  // the dispatch-ready cue below — so they can never gate differently.
   const isInboxRow = node.parent_id === null && !isCompletedView && !isDispatched(node);
-
-  // "Code" earns a row badge everywhere (the rare, meaningful distinction). "Task" shows one
-  // ONLY on an Inbox row, the one surface that now holds unclassified, task and code rows side
-  // by side, where a bare task row and an unclassified row would otherwise be pixel-identical
-  // while behaving differently under Dispatch. Everywhere else (folder views, Completed,
-  // subtasks) a task keeps showing no badge — the ALF-67 / ALF-65 judgement, intact everywhere
-  // it was made about.
-  //
-  // "Unclassified" is narrower still: select mode only (ALF-105). That is the one surface where
-  // the type is not context you can infer but the input to the press — every bulk action gates
-  // on it (Classify needs a childless root, Move refuses a code row, Dispatch skips an
-  // unclassified one) — so all three types must name themselves or the readiness line is the
-  // only place the composition of the selection shows. Outside select mode an untriaged row
-  // stays bare: browsing the Inbox, "no badge yet" is the quieter, already-correct signal.
-  const showTypeBadge =
-    node.item_type === 'code' ||
-    (node.item_type === 'task' && isInboxRow) ||
-    (node.item_type === 'unclassified' && inSelectMode);
 
   // Where this row's labels came from — the classifier, your own hand, or nothing yet (ALF-180).
   // Inbox rows only, and each clause earns its place: the classifier's sweep predicate is
@@ -744,6 +727,11 @@ export function TaskRow({
             >
               {isSelected && <Check size={10} className="text-background" strokeWidth={3} />}
             </span>
+            {/* The type glyph (ALF-224): every row already carries a selection tick box here, so
+              it can't double as a type cue the way the ordinary row's checkbox does — the type
+              gets its own small mark immediately to the tick box's right instead of a row badge.
+              Renders nothing for an unclassified row (no badge either, unchanged). */}
+            <TypeGlyph itemType={node.item_type} className="h-3.5 w-3.5 text-muted-foreground" />
             {/* Title + provenance travel together in one flex-1 box, with the mark as the title's
             SIBLING rather than its content. The title here is a single clipped `truncate` line,
             so a mark nested inside it would be part of the overflowing content and any title
@@ -760,7 +748,6 @@ export function TaskRow({
               isTask={isTask}
               isTopLevelTask={isTopLevelTask}
               recurrenceRule={recurrenceRule}
-              showTypeBadge={showTypeBadge}
               isCompletedView={isCompletedView}
               showReadyPip={isDispatchReady}
             />
@@ -892,8 +879,9 @@ export function TaskRow({
                 />
               </IconButton>
 
-              {/* Completion is `task`-only: an unclassified/code row shows no checkbox,
-                just a spacer so its title stays aligned with task rows. */}
+              {/* Completion is `task`-only: an unclassified row shows no checkbox, just a spacer
+                so its title stays aligned with task rows; a code row shows the ALF-224 `code`
+                glyph in the same slot instead, so it still names itself without a row badge. */}
               {isTask ? (
                 isDropTarget ? (
                   <div aria-hidden="true" className={dropPlusClass}>
@@ -933,10 +921,23 @@ export function TaskRow({
                   </CheckboxButton>
                 ) /* Completion checkbox — or, while a task is dropped onto this row, a "+" that
                 signals it will become a child here (replaces the checkbox; no animation). */
+              ) : isCode ? (
+                // The ALF-224 `code` glyph fills the checkbox slot a code row has none of —
+                // visible at every width, unlike the unclassified spacer below, since it now
+                // carries real information rather than reserving blank alignment space.
+                <div
+                  className={cn(checkboxSizeClass, 'shrink-0 flex items-center justify-center')}
+                  data-testid="code-type-icon"
+                >
+                  <TypeGlyph
+                    itemType={node.item_type}
+                    className="h-4 w-4 text-muted-foreground md:h-3.5 md:w-3.5"
+                  />
+                </div>
               ) : (
-                // Unclassified/code rows have no checkbox: drop the alignment spacer on mobile so
-                // the title reclaims the column; md+ keeps it so titles stay aligned with
-                // checkboxed task rows.
+                // Unclassified rows have no checkbox and nothing to show in its place: drop the
+                // alignment spacer on mobile so the title reclaims the column; md+ keeps it so
+                // titles stay aligned with checkboxed task rows.
                 <div
                   className={cn(checkboxSizeClass, 'shrink-0', 'hidden md:block')}
                   aria-hidden="true"
@@ -1025,7 +1026,7 @@ export function TaskRow({
                   </div>
                 )}
 
-                {/* Metadata cluster (Type → Folder → Project → Epic → Due → Repeat → Priority →
+                {/* Metadata cluster (Folder → Project → Epic → Due → Repeat → Priority →
                 Subtask count) — the shared RowMetaCluster, interactive here: every label chip is
                 clickable in place, opening the same picker its detail-panel twin does. On mobile
                 it sits on its own line *below* the title inside the shared content column (so a
@@ -1036,7 +1037,6 @@ export function TaskRow({
                   isTask={isTask}
                   isTopLevelTask={isTopLevelTask}
                   recurrenceRule={recurrenceRule}
-                  showTypeBadge={showTypeBadge}
                   isCompletedView={isCompletedView}
                   showReadyPip={isDispatchReady}
                   editing={metaEditing}

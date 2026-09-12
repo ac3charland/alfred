@@ -2,11 +2,12 @@ import { makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
- * Inbox classification & type badges. A captured item starts `unclassified` — no
- * type badge, no completion checkbox, no add-subtask affordance. The actions-menu
- * "Classify as…" submenu flips its type: Code shows a Code badge but still no task
- * affordances; Task unlocks the checkbox, subtasks and the detail's task-only chips
- * (a task itself carries no row pill — ALF-67).
+ * Inbox classification & the type glyph. A captured item starts `unclassified` — no
+ * type badge or icon, no completion checkbox, no add-subtask affordance. The actions-menu
+ * "Classify as…" submenu flips its type: Code shows the `code` icon in its checkbox slot
+ * (ALF-224 — row badges are gone) but still no task affordances; Task unlocks the checkbox,
+ * subtasks and the detail's task-only chips (a task itself carries no icon there — its
+ * checkbox already says what it is).
  *
  * The submenu is driven by keyboard (hover the subtrigger → ArrowRight to open →
  * ArrowDown/Enter to pick) because synthetic pointer clicks race Radix's safe-triangle
@@ -14,7 +15,7 @@ import { expect, test } from './support/fixtures';
  */
 
 test.describe('inbox classification', () => {
-  test('an unclassified item shows no badge, checkbox or add-subtask affordance', async ({
+  test('an unclassified item shows no badge, icon, checkbox or add-subtask affordance', async ({
     page,
     seed,
   }) => {
@@ -24,13 +25,15 @@ test.describe('inbox classification', () => {
     const row = page.getByRole('listitem').filter({ hasText: 'A captured thought' });
     await expect(row.getByText('Task', { exact: true })).toBeHidden();
     await expect(row.getByText('Code', { exact: true })).toBeHidden();
+    await expect(row.getByRole('img', { name: 'Task' })).toBeHidden();
+    await expect(row.getByRole('img', { name: 'Code' })).toBeHidden();
     await expect(
       page.getByRole('button', { name: 'Mark "A captured thought" complete' }),
     ).toBeHidden();
     await expect(page.getByRole('button', { name: 'Add subtask' })).toBeHidden();
   });
 
-  test('classifying as Code shows the Code badge but unlocks no task affordances', async ({
+  test('classifying as Code shows the Code icon but unlocks no task affordances', async ({
     page,
     seed,
   }) => {
@@ -50,7 +53,7 @@ test.describe('inbox classification', () => {
     await page.keyboard.press('Enter');
 
     const row = page.getByRole('listitem').filter({ hasText: 'Ship the webhook' });
-    await expect(row.getByText('Code', { exact: true })).toBeVisible();
+    await expect(row.getByRole('img', { name: 'Code' })).toBeVisible();
     // Still no completion checkbox or add-subtask affordance on a code row.
     await expect(
       page.getByRole('button', { name: 'Mark "Ship the webhook" complete' }),

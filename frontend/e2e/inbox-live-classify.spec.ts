@@ -39,10 +39,9 @@ test('a verdict lands on an open Inbox row, labels and all', async ({ page, seed
   await waitForRealtimeJoin(page, 'items');
   await pushRowUpdate(page, 'items', VERDICT);
 
-  // The verdict's labels, with no reload: the row is a task now (badge, checkbox), it names the
-  // folder it would land in, and the mark credits the classifier.
+  // The verdict's labels, with no reload: the row is a task now (checkbox, no row badge), it
+  // names the folder it would land in, and the mark credits the classifier.
   await expect(row.getByRole('img', { name: 'Labelled by the classifier' })).toBeVisible();
-  await expect(row.getByText('Task', { exact: true })).toBeVisible();
   await expect(row.getByText('Health')).toBeVisible();
   await expect(row.getByRole('button', { name: 'Mark "Call the dentist" complete' })).toBeVisible();
   // A label is not a move — the row is still in the Inbox, waiting to be dispatched.

@@ -220,11 +220,12 @@ export const MobileInbox: Story = {
 };
 
 /**
- * The Inbox mid-triage (ALF-170): four rows side by side — a task labelled with a folder and a
- * due date (Task badge + folder chip), a code item carrying both pre-factory hints (project +
- * epic chips), a bare task (badge only), and an unclassified capture (nothing). Every label the
- * dispatch decision rests on is on the rows — including who filled it in: the first two came
- * from the classifier, the third was claimed by a human edit, and the last has not been judged.
+ * The Inbox mid-triage: four rows side by side — a task labelled with a folder and a due date
+ * (folder + due-date chips, no row badge — ALF-224), a code item with the `code` icon in its
+ * checkbox slot carrying both pre-factory hints (project + epic chips), a bare task (nothing but
+ * the provenance mark), and an unclassified capture (nothing at all). Every label the dispatch
+ * decision rests on is on the rows — including who filled it in: the first two came from the
+ * classifier, the third was claimed by a human edit, and the last has not been judged.
  */
 export const MidTriage: Story = {
   args: { open: true },
@@ -278,10 +279,10 @@ export const MidTriage: Story = {
 };
 
 /**
- * Select mode with all three types stacked (ALF-105): a task, a code item, and an untriaged
- * capture, each naming itself. This is the one surface where the third badge renders — the bulk
- * actions gate on type, so the row that says nothing is the row whose eligibility you cannot
- * read. Every row is deliberately bare otherwise, so the badge is the only difference.
+ * Select mode with all three types stacked: a task and a code item each carry their ALF-224 icon
+ * beside the selection tick box (`square-check-big` / `code`), while the untriaged capture's tick
+ * box carries none — no icon is defined for `unclassified`, so it stays the row whose eligibility
+ * for the bulk actions you cannot read from the row alone. No row badges anywhere (ALF-224).
  */
 export const SelectMode: Story = {
   args: { open: true },
@@ -318,7 +319,7 @@ export const SelectMode: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Select' }));
-    await expect(canvas.getByText('Unclassified')).toBeInTheDocument();
+    await expect(canvas.getByRole('img', { name: 'Code' })).toBeInTheDocument();
   },
 };
 

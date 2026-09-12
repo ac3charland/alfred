@@ -10,7 +10,6 @@ import { PriorityChip } from '@/components/tasks/priority-chip';
 import { ProjectKeyChip } from '@/components/tasks/project-key-chip';
 import { metaFooterClass, subtaskCountBadgeClass } from '@/components/tasks/task-row.styles';
 import { FolderChip, IntendedEpicChip } from '@/components/tasks/task-row/detail-chips';
-import { TypeBadge } from '@/components/tasks/type-badge';
 import { WeekPlanBadge } from '@/components/tasks/week-plan-badge';
 import type { TaskPriority } from '@/lib/priority';
 import { isPriorityLevel } from '@/lib/priority';
@@ -44,18 +43,13 @@ interface RowMetaClusterProperties {
   /** The parsed recurrence rule, or null when the task doesn't repeat. */
   recurrenceRule: RecurrenceRule | null;
   /**
-   * Whether the type badge shows (Code everywhere; Task only on an undispatched Inbox root;
-   * Unclassified only in select mode) — the gate is the row's, see TaskRow's `showTypeBadge`.
-   */
-  showTypeBadge: boolean;
-  /**
    * True inside the Completed view, where the folder chip stays off: the row's context label
    * already names where the item lives, and an undispatched leftover label would shout over it.
    */
   isCompletedView?: boolean;
   /**
    * Whether `dispatchReadiness` calls this row ready (ALF-178) — the gate (Inbox row, undispatched,
-   * outside Completed) is the caller's, same as `showTypeBadge`.
+   * outside Completed) is the caller's.
    */
   showReadyPip: boolean;
   /** Interactive handlers — omit to render every chip as an inert span (select mode). */
@@ -63,19 +57,18 @@ interface RowMetaClusterProperties {
 }
 
 /**
- * The row's metadata cluster (Type → Folder → Project → Epic → Due → Repeat → Priority →
- * Subtask count → Overdue count), shared by the ordinary row and the select-mode branch so the
- * two can't drift. A chip appears only when its field is set — filling an empty field is the
- * detail panel's job — and every label chip that renders is editable where it renders (when
- * `editing` is present), through the same store action the panel uses. Renders nothing at all
- * when the row carries no metadata, so a bare row doesn't reserve an empty footer line.
+ * The row's metadata cluster (Folder → Project → Epic → Due → Repeat → Priority → Subtask count →
+ * Overdue count), shared by the ordinary row and the select-mode branch so the two can't drift. A
+ * chip appears only when its field is set — filling an empty field is the detail panel's job —
+ * and every label chip that renders is editable where it renders (when `editing` is present),
+ * through the same store action the panel uses. Renders nothing at all when the row carries no
+ * metadata, so a bare row doesn't reserve an empty footer line.
  */
 export function RowMetaCluster({
   node,
   isTask,
   isTopLevelTask,
   recurrenceRule,
-  showTypeBadge,
   isCompletedView = false,
   showReadyPip,
   editing,
@@ -103,7 +96,6 @@ export function RowMetaCluster({
   const overdueSubtasks = countOverdueDescendants(node);
 
   const hasMeta =
-    showTypeBadge ||
     // Load-bearing: a planned unclassified capture carries no other chip outside select mode, so
     // without this term its footer — and its only badge — would not render at all.
     showWeekPlanBadge ||
@@ -124,11 +116,9 @@ export function RowMetaCluster({
 
   return (
     <div className={metaFooterClass}>
-      {showTypeBadge && <TypeBadge itemType={node.item_type} />}
-
-      {/* Week plan — this row came from a weekly review's plan document. Directly after the
-          Type badge: both are labels naming what the row IS, before the chips that say when it
-          is due and where it lives. */}
+      {/* Week plan — this row came from a weekly review's plan document. Leads the cluster: a
+          label naming what the row IS, before the chips that say when it is due and where it
+          lives. */}
       {showWeekPlanBadge && <WeekPlanBadge />}
 
       {/* Folder — where the row would land (or already lives). Undispatched rows only. */}

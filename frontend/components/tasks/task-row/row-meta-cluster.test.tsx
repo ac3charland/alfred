@@ -59,7 +59,6 @@ describe('RowMetaCluster — dispatch-ready pip', () => {
         isTask
         isTopLevelTask
         recurrenceRule={null}
-        showTypeBadge={false}
         showReadyPip={false}
       />,
     );
@@ -69,27 +68,19 @@ describe('RowMetaCluster — dispatch-ready pip', () => {
 
   it('renders the cluster when the pip is its only content', () => {
     render(
-      <RowMetaCluster
-        node={BASE_NODE}
-        isTask
-        isTopLevelTask
-        recurrenceRule={null}
-        showTypeBadge={false}
-        showReadyPip
-      />,
+      <RowMetaCluster node={BASE_NODE} isTask isTopLevelTask recurrenceRule={null} showReadyPip />,
     );
 
     expect(screen.getByRole('img', { name: 'Ready to dispatch' })).toBeInTheDocument();
   });
 
-  it('is the LAST child of the cluster, after the type badge and folder chip', () => {
+  it('is the LAST child of the cluster, after the folder chip', () => {
     renderWithProviders(
       <RowMetaCluster
         node={{ ...BASE_NODE, folder_id: HEALTH.id }}
         isTask
         isTopLevelTask
         recurrenceRule={null}
-        showTypeBadge
         showReadyPip
       />,
       { folders: [HEALTH] },
@@ -98,7 +89,6 @@ describe('RowMetaCluster — dispatch-ready pip', () => {
     const pip = screen.getByRole('img', { name: 'Ready to dispatch' });
     expect(pip.parentElement?.lastElementChild).toBe(pip);
     // Sanity: the other metadata really did render ahead of it.
-    expect(screen.getByText('Task')).toBeInTheDocument();
     expect(screen.getByText('Health')).toBeInTheDocument();
   });
 
@@ -109,7 +99,6 @@ describe('RowMetaCluster — dispatch-ready pip', () => {
         isTask
         isTopLevelTask
         recurrenceRule={null}
-        showTypeBadge
         showReadyPip={false}
       />,
       { folders: [HEALTH] },
@@ -130,14 +119,13 @@ describe('RowMetaCluster — dispatch-ready pip', () => {
 describe('RowMetaCluster — the Week plan badge', () => {
   const PLANNED: ItemNode = { ...BASE_NODE, weekly_plan_id: 'plan-1' };
 
-  function renderCluster(node: ItemNode, showTypeBadge = false) {
+  function renderCluster(node: ItemNode) {
     return render(
       <RowMetaCluster
         node={node}
         isTask={node.item_type === 'task'}
         isTopLevelTask={node.item_type === 'task' && node.parent_id === null}
         recurrenceRule={null}
-        showTypeBadge={showTypeBadge}
         showReadyPip={false}
       />,
     );
@@ -170,21 +158,19 @@ describe('RowMetaCluster — the Week plan badge', () => {
   });
 
   it('renders the footer when the badge is its only metadata', () => {
-    // The unclassified planned row: no type badge outside select mode, no due date, no
-    // priority, no children. Without its own `hasMeta` term the whole footer would collapse.
+    // The unclassified planned row: no due date, no priority, no children, no other chip.
+    // Without its own `hasMeta` term the whole footer would collapse.
     const { container } = renderCluster({ ...PLANNED, item_type: 'unclassified' });
 
     expect(container).not.toBeEmptyDOMElement();
     expect(screen.getByLabelText('Week plan item')).toBeInTheDocument();
   });
 
-  it('sits directly after the Type badge', () => {
-    renderCluster(PLANNED, true);
+  it('leads the cluster', () => {
+    renderCluster(PLANNED);
 
     const cluster = screen.getByLabelText('Week plan item').parentElement;
-    const [first, second] = [...(cluster?.children ?? [])];
-    expect(first).toHaveTextContent('Task');
-    expect(second).toHaveTextContent('Week plan');
+    expect(cluster?.firstElementChild).toBe(screen.getByLabelText('Week plan item'));
   });
 
   it('is a non-interactive span, so the select-mode row stays one button', () => {

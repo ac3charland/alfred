@@ -61,7 +61,7 @@ test('a leading colon suggests projects; ↓ ↵ inserts the key prefix and the 
   await box.press('Enter');
 
   const row = page.getByRole('listitem').filter({ hasText: 'Add dark mode' }).first();
-  await expect(row.getByText('Code', { exact: true })).toBeVisible();
+  await expect(row.getByRole('img', { name: 'Code' })).toBeVisible();
   await expect(row.getByText('ALF', { exact: true })).toBeVisible();
 });
 
