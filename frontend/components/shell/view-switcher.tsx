@@ -14,8 +14,13 @@ import { cn } from '@/lib/utils';
  * rule, so URL, content, sidebar, and switcher highlight never disagree.
  *
  * The active segment wears its OWN module's accent, read from the shared accent table rather
- * than hard-coded — Tasks and Code are the app's teal, Comms is blue. One table means the
- * switcher, the sidebar and a view heading can't drift on what colour a module is.
+ * than hard-coded — Tasks is amber, Code teal, Comms blue. One table means the switcher, the
+ * sidebar and a view heading can't drift on what colour a module is.
+ *
+ * It is a FULL-WIDTH control of equal segments, not one that hugs its content. The desktop
+ * sidebar is a fixed 224px with 16px of padding a side, so a content-sized control overflowed
+ * its right border once Comms made a third segment (ALF-219). Equal thirds fit that width by
+ * construction and would keep fitting if a fourth module arrived.
  *
  * Tasks lands on the By-Priority list — the module's default view — rather than the `/`
  * capture screen; capture stays reachable via the `alfred` wordmark (see the app shell).
@@ -29,10 +34,15 @@ import { cn } from '@/lib/utils';
  *
  * It takes no close/navigate callback: the mobile drawer deliberately STAYS open across a
  * module switch (ALF-157), so there is nothing for a segment click to notify.
+ *
+ * `min-w-0` on a segment is what makes those thirds real: a flex item's default
+ * `min-width: auto` floors it at its label's min-content width, so `flex-1` alone would still
+ * let "Comms" push the row wider than the sidebar — the very overflow being fixed.
  */
 const segmentClass = (module: ModuleId, active: boolean) =>
   cn(
-    'rounded-md px-3 py-1 text-sm font-medium transition-colors duration-100 motion-reduce:transition-none',
+    'flex-1 min-w-0 rounded-md px-2 py-1 text-center text-xs font-medium',
+    'transition-colors duration-100 motion-reduce:transition-none',
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface',
     active
       ? cn('bg-surface shadow-[0_1px_2px_0_rgba(0,0,0,0.4)]', MODULE_ACCENT[module].text)
@@ -53,7 +63,7 @@ export function ViewSwitcher() {
     <div
       role="group"
       aria-label="Switch module"
-      className="flex w-fit items-center gap-1 rounded-lg border border-border bg-background/60 p-1"
+      className="flex w-full items-center gap-1 rounded-lg border border-border bg-background/60 p-1"
     >
       {SEGMENTS.map(({ module, label, href }) => (
         <ViewLink
