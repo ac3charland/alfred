@@ -42,6 +42,7 @@ import type {
   Habit,
   HabitEntry,
   Item,
+  LocVelocityResponse,
   PrRatioResponse,
   Project,
   WeeklyPlan,
@@ -500,6 +501,40 @@ export async function getPrRatio(tz?: string): Promise<PrRatioResponse | undefin
   }
 
   return response.json() as Promise<PrRatioResponse>;
+}
+
+// ---------------------------------------------------------------------------
+// Lines-changed velocity
+// ---------------------------------------------------------------------------
+
+/**
+ * The three outcomes `GET /api/code/loc-velocity` can hand the card, as a discriminated union
+ * rather than `Response | undefined`: this endpoint has a THIRD normal outcome (GitHub is
+ * still computing the statistics) that a two-way "the data, or nothing" return can't carry.
+ */
+export type LocVelocityResult =
+  | { status: 'ready'; velocity: LocVelocityResponse }
+  | { status: 'unconfigured' }
+  | { status: 'computing' };
+
+/**
+ * Lines changed per week across the configured repos. Like `getPrRatio`, deliberately not
+ * routed through `apiRequest`: that helper collapses every non-2xx into a thrown Error, and
+ * this caller has to tell "not configured here" and "not ready yet" apart from "GitHub is
+ * unhappy" — which stays a throw.
+ */
+export async function getLocVelocity(): Promise<LocVelocityResult> {
+  const path = '/api/code/loc-velocity';
+  const response = await fetch(path);
+
+  if (response.status === 501) return { status: 'unconfigured' };
+  if (response.status === 202) return { status: 'computing' };
+  if (!response.ok) {
+    const text = await response.text().catch(() => 'Unknown error');
+    throw new Error(`API GET ${path} failed: ${String(response.status)} ${text}`);
+  }
+
+  return { status: 'ready', velocity: (await response.json()) as LocVelocityResponse };
 }
 
 // ---------------------------------------------------------------------------

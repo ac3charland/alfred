@@ -24,8 +24,12 @@ const SEARCH_URL = 'https://api.github.com/search/issues';
 /**
  * Excluded by name when no author allowlist is configured. With an allowlist, the bots are
  * excluded by construction and these qualifiers would be dead weight in the query.
+ *
+ * Exported because the velocity chart filters the same set out of the same repos: two widgets
+ * on one page disagreeing about whose work counts would be worse than either being wrong.
+ * These are search-qualifier forms; a login is the tail after `app/`.
  */
-const DEPENDENCY_BOTS = ['app/dependabot', 'app/renovate', 'app/github-actions'];
+export const DEPENDENCY_BOTS = ['app/dependabot', 'app/renovate', 'app/github-actions'];
 
 /** Only `total_count` is read — the search hits themselves are never inspected. */
 interface SearchResponse {
