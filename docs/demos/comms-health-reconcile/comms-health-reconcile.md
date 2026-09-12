@@ -25,3 +25,21 @@ Step 3, AFTER the fix — returning to the tab (and, for a machine that woke wit
 ![](comms-health-reconcile-image-4.png)
 
 A failed re-read changes nothing and says nothing: the stale reading it would have replaced is still better than a blanked roster, and the next return tries again.
+
+## Gated as pixels, too
+
+The health surface now has its own committed baselines, cropped to the masthead — a whole-view snapshot is thousands of pixels tall and its mismatch threshold is wider than the 8px dot whose colour is the entire claim. Every source live: three green dots and not one sentence.
+
+![](comms-health-reconcile-image-5.png)
+
+Every source stale — the picture ALF-227 reports, and the one a frozen roster produces on its own: amber dots, and a different sentence per home, because the Mac's sources come back by themselves and a Worker-polled mailbox needs a person.
+
+![](comms-health-reconcile-image-6.png)
+
+One source erroring beside two that are fine — polls reaching the mailbox and being refused, which the surface exists to tell apart from silence at a glance.
+
+![](comms-health-reconcile-image-7.png)
+
+And the recovery itself is a snapshot with the real store in it: the queue story is seeded with the stale roster a lapsed tab still holds, the health endpoint is stubbed with what the pollers have actually been doing, and the play function returns the tab to the foreground. The committed baseline is the state AFTER that re-read. Reverting the store fix and re-running the gate fails exactly this one snapshot — here is its three-panel diff (baseline with the fix | changed pixels | received without it), which is the before-and-after of the bug in one image.
+
+![](comms-health-reconcile-image-8.png)
