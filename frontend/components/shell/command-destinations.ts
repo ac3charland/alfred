@@ -28,6 +28,7 @@ export type DestinationIcon =
   | 'habits'
   | 'completed'
   | 'code'
+  | 'dashboard'
   | 'backlog'
   | 'needs-human-action'
   | 'comms'
@@ -71,8 +72,15 @@ const STATIC_DESTINATIONS: readonly Destination[] = [
   { id: 'go-habits', group: 'go', label: 'Habits', href: '/habits', icon: 'habits' },
   { id: 'go-completed', group: 'go', label: 'Completed', href: '/completed', icon: 'completed' },
   { id: 'go-code', group: 'go', label: 'Code', href: '/code', icon: 'code' },
-  // Needs human action leads the Code destinations — it is the module's default view (ALF-174),
-  // and this order mirrors the sidebar's.
+  // The Dashboard leads the Code destinations — it is the module's landing view, and this order
+  // mirrors the sidebar's.
+  {
+    id: 'go-dashboard',
+    group: 'go',
+    label: 'Dashboard',
+    href: '/code/dashboard',
+    icon: 'dashboard',
+  },
   {
     id: 'go-needs-human-action',
     group: 'go',

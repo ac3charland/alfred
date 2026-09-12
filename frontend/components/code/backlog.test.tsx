@@ -13,8 +13,9 @@ jest.mock('@/lib/api-client');
 const mockReorderCode = jest.mocked(api.reorderCode);
 const mockMoveCode = jest.mocked(api.moveCode);
 const mockMoveCodeInProject = jest.mocked(api.moveCodeInProject);
-// The PR-ratio card fetches through the same seam. These cases are about the story list, so
-// answer "not configured here" — the card then renders nothing, as it does in local dev.
+// The PR-ratio card fetches through the same seam. It now lives on the Dashboard, but the mock
+// stays: answering it here proves the card is gone from this view because it was REMOVED, not
+// because an unstubbed fetch happened to leave it unrendered.
 const mockGetPrRatio = jest.mocked(api.getPrRatio);
 
 // The realtime channel the CodeProvider subscribes — stub it so the provider mounts.
@@ -177,10 +178,39 @@ describe('Backlog', () => {
     mockGetPrRatio.mockResolvedValue(undefined);
   });
 
-  it('renders the header hero and a Filter by status control', () => {
+  it('names itself plainly and offers a Filter by status control', () => {
     renderBacklog([makeStory('a', { priority: 1 })]);
-    expect(screen.getByText('The Software Factory')).toBeInTheDocument();
+    expect(screen.getByText('Backlog')).toBeInTheDocument();
+    expect(
+      screen.getByText('Every story across your projects, ranked by priority.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /filter by status/i })).toBeInTheDocument();
+  });
+
+  it('hands the module hero name to the Dashboard rather than showing it twice', () => {
+    renderBacklog([makeStory('a', { priority: 1 })]);
+    expect(screen.queryByText('The Software Factory')).not.toBeInTheDocument();
+  });
+
+  it('no longer carries the PR-ratio card — it moved to the Dashboard', async () => {
+    // A ratio that WOULD render, so a surviving copy of the card shows up rather than
+    // silently rendering nothing the way an unconfigured deployment does.
+    mockGetPrRatio.mockResolvedValue({
+      week: {
+        start: '2026-07-17T16:00:00-04:00',
+        end: '2026-07-24T16:00:00-04:00',
+        timezone: 'UTC',
+      },
+      total: 9,
+      repos: [{ repo: 'ac3charland/alfred', label: 'Alfred', count: 9, percentage: 100 }],
+    });
+
+    renderBacklog([makeStory('a', { priority: 1 })]);
+
+    await waitFor(() => {
+      expect(screen.getByText('ALF-a')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('PRs merged in the last 7 days')).not.toBeInTheDocument();
   });
 
   it('shows a count on the trigger only when the selection differs from the default', async () => {

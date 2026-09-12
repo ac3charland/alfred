@@ -5,7 +5,6 @@ import * as React from 'react';
 
 import { ViewHeading } from '@/components/atoms/view-heading';
 import { BacklogList } from '@/components/code/backlog/backlog-list';
-import { PrRatio } from '@/components/code/pr-ratio';
 import { ProjectFilterMenu } from '@/components/code/project-filter-menu';
 import { StatusFilterMenu } from '@/components/code/status-filter-menu';
 import { useProjectFilter } from '@/lib/hooks/use-project-filter';
@@ -20,19 +19,17 @@ import {
 /**
  * The Backlog (`/code/backlog`). A single global, priority-ordered list of every OUTSTANDING
  * story across all projects and epics, that the owner re-ranks with chevron swaps; the project
- * boards fall in line beneath this one ranking. It was the module's default view until ALF-174
- * handed that role to the "Needs human action" queue, so the bare `/code` no longer lands here.
+ * boards fall in line beneath this one ranking. The bare `/code` no longer lands here — it opens
+ * the Dashboard, which carries the module's "The Software Factory" hero name and the PR-ratio
+ * card this view used to hold.
  *
- * - **Header (the repurposed hero):** the old `CodeLanding` treatment — the `GitBranch` badge and
- *   the `font-serif` "The Software Factory" title — re-copied to describe the Backlog, with two
- *   multi-select dropdowns narrowing what's listed: **Filter by status** (one checkbox per factory
- *   state, defaulting to the outstanding ones so `done`/`abandoned` are hidden until checked) and
- *   **Filter by project** (ALF-156 — one checkbox per project, none checked, so the list stays
- *   cross-project until the owner picks the projects they want; ALF-201). The project control is
- *   absent on a deployment with no projects yet, where it would offer an empty menu.
- * - **Ratio card:** `PrRatio` — this week's merged-PR split across the configured repos. An
- *   ornament, never a gate: it renders nothing at all on a deployment that hasn't configured
- *   it, so the rest of the view is unaffected.
+ * - **Header:** the `GitBranch` badge and the `font-serif` title, naming the view plainly the way
+ *   Needs human action does, with two multi-select dropdowns narrowing what's listed: **Filter by
+ *   status** (one checkbox per factory state, defaulting to the outstanding ones so
+ *   `done`/`abandoned` are hidden until checked) and **Filter by project** (ALF-156 — one checkbox
+ *   per project, none checked, so the list stays cross-project until the owner picks the projects
+ *   they want; ALF-201). The project control is absent on a deployment with no projects yet, where
+ *   it would offer an empty menu.
  * - **List:** the shared `BacklogList` renders one `BacklogRow` per story, ranked by global
  *   `priority`, with the chevron reorder/move controls (see `BacklogList` / `BacklogRow`). Its
  *   controls act over whatever rows are currently shown, so narrowing either filter re-scopes the
@@ -65,7 +62,7 @@ export function Backlog() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <ViewHeading
           icon={GitBranch}
-          title="The Software Factory"
+          title="Backlog"
           description="Every story across your projects, ranked by priority."
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -85,8 +82,6 @@ export function Backlog() {
           ) : null}
         </div>
       </div>
-
-      <PrRatio />
 
       <BacklogList
         stories={stories}
