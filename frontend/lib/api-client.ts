@@ -37,6 +37,7 @@ import type {
   CommMessage,
   CommPersonWithHandles,
   CommRubric,
+  CommsHealthSnapshot,
   Epic,
   Folder,
   Habit,
@@ -568,6 +569,16 @@ export function fetchCommMessages(query: CommMessagesQuery): Promise<CommMessage
   const search = new URLSearchParams({ scope: query.scope });
   if (query.limit !== undefined) search.set('limit', String(query.limit));
   return apiRequest<CommMessage[]>(`/api/comms/messages?${search.toString()}`);
+}
+
+/**
+ * Re-read the module's health surface — every account and the classifier's row. The shell seeds
+ * both and Realtime keeps them current, so this is purely the recovery path for a tab whose
+ * socket lapsed while it was away: without it a frozen `last_seen_at` decays into "stale" on the
+ * ticking clock alone and every source reads as disconnected (ALF-227).
+ */
+export function fetchCommsHealth(): Promise<CommsHealthSnapshot> {
+  return apiRequest<CommsHealthSnapshot>('/api/comms/health');
 }
 
 /**

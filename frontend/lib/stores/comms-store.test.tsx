@@ -1,5 +1,5 @@
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
@@ -41,16 +41,31 @@ import {
 // captured handler by the filter's table — capturing a single handler would let a later
 // subscription silently overwrite an earlier one (see the supabase skill).
 const mockRealtimeHandlers = new Map<string, (payload: never) => void>();
+// The status callback each channel was subscribed with, keyed the same way — the seam a test
+// uses to replay a rejoin after the socket dropped.
+const mockSubscribeCallbacks = new Map<string, (status: string) => void>();
 const mockRemoveChannel = jest.fn();
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     channel: () => {
+      let table: string | undefined;
       const chan = {
         on: (_event: string, filter: { table?: string }, handler: (payload: never) => void) => {
-          if (filter.table !== undefined) mockRealtimeHandlers.set(filter.table, handler);
+          if (filter.table !== undefined) {
+            table = filter.table;
+            mockRealtimeHandlers.set(filter.table, handler);
+          }
           return chan;
         },
-        subscribe: () => chan,
+        subscribe: (callback?: (status: string) => void) => {
+          if (callback !== undefined && table !== undefined) {
+            mockSubscribeCallbacks.set(table, callback);
+            // The real client reports the join through the same callback, so the double does
+            // too — otherwise a replayed REJOIN would arrive as the channel's first join.
+            callback('SUBSCRIBED');
+          }
+          return chan;
+        },
       };
       return chan;
     },
@@ -77,6 +92,7 @@ beforeEach(() => {
   resetCommFixtureClock();
   jest.clearAllMocks();
   mockRealtimeHandlers.clear();
+  mockSubscribeCallbacks.clear();
 });
 
 describe('commsReducer', () => {
@@ -757,5 +773,103 @@ describe('purge', () => {
 
     expect(result.current.messages).toHaveLength(2);
     expect(mockShowToast).toHaveBeenCalledWith("Couldn't purge those messages");
+  });
+});
+
+/**
+ * ALF-227. Realtime is fire-and-forget: a socket that lapses while the tab is backgrounded or
+ * the machine asleep drops every change made in the gap and never replays them. Account health
+ * is the surface that shows it, because it is the one thing read against a ticking clock — a
+ * `last_seen_at` frozen at the seed decays into "stale" on its own, and a tab left open long
+ * enough reports every source as disconnected while all of them are polling fine.
+ */
+/** Shadow `document.hidden` — a read-only getter in jsdom — and fire what that change fires. */
+function setTabHidden(hidden: boolean) {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+describe('CommsProvider — reconciling the health surface after a realtime gap', () => {
+  const STALE_ACCOUNT = makeCommAccount('personal', {
+    id: ACCOUNT,
+    last_seen_at: '2026-09-09T11:00:00.000Z',
+  });
+  const FRESH: CommAccount = { ...STALE_ACCOUNT, last_seen_at: '2026-09-09T11:59:00.000Z' };
+  const FRESH_HEALTH = makeCommHealth({ last_success_at: '2026-09-09T11:59:00.000Z' });
+
+  function wrapper({ children }: { children: React.ReactNode }) {
+    return (
+      <CommsProvider
+        initialAccounts={[STALE_ACCOUNT]}
+        initialMessages={[]}
+        initialVerdicts={[]}
+        initialHealth={makeCommHealth({ last_success_at: '2026-09-09T11:00:00.000Z' })}
+      >
+        {children}
+      </CommsProvider>
+    );
+  }
+
+  afterEach(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+  });
+
+  it('re-reads account health when the tab comes back to the foreground', async () => {
+    mockApi.fetchCommsHealth.mockResolvedValue({ accounts: [FRESH], health: FRESH_HEALTH });
+    const { result } = renderHook(() => useStore(), { wrapper });
+    expect(result.current.accounts[0]?.last_seen_at).toBe(STALE_ACCOUNT.last_seen_at);
+
+    act(() => {
+      setTabHidden(false);
+    });
+
+    await waitFor(() => {
+      expect(result.current.accounts[0]?.last_seen_at).toBe(FRESH.last_seen_at);
+    });
+    expect(mockApi.fetchCommsHealth).toHaveBeenCalledTimes(1);
+    expect(result.current.health).toEqual(FRESH_HEALTH);
+  });
+
+  it('re-reads it when the channel rejoins — the socket dropped while the tab stayed in front', async () => {
+    mockApi.fetchCommsHealth.mockResolvedValue({ accounts: [FRESH], health: FRESH_HEALTH });
+    const { result } = renderHook(() => useStore(), { wrapper });
+    // The subscribe that ran on mount is the FIRST join, not a rejoin: the seed is already fresh.
+    expect(mockApi.fetchCommsHealth).not.toHaveBeenCalled();
+
+    act(() => {
+      mockSubscribeCallbacks.get('comm_accounts')?.('SUBSCRIBED');
+    });
+
+    await waitFor(() => {
+      expect(result.current.accounts[0]?.last_seen_at).toBe(FRESH.last_seen_at);
+    });
+    expect(mockApi.fetchCommsHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-read while the tab is still hidden — a background wake is not a return', () => {
+    mockApi.fetchCommsHealth.mockResolvedValue({ accounts: [FRESH], health: FRESH_HEALTH });
+    renderHook(() => useStore(), { wrapper });
+
+    act(() => {
+      setTabHidden(true);
+    });
+
+    expect(mockApi.fetchCommsHealth).not.toHaveBeenCalled();
+  });
+
+  it('keeps the last known health when the re-read fails, and stays silent about it', async () => {
+    mockApi.fetchCommsHealth.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useStore(), { wrapper });
+
+    act(() => {
+      setTabHidden(false);
+    });
+    await waitFor(() => {
+      expect(mockApi.fetchCommsHealth).toHaveBeenCalledTimes(1);
+    });
+
+    // Emptying the roster would blank every dot — worse than the stale reading it replaces.
+    expect(result.current.accounts).toEqual([STALE_ACCOUNT]);
+    expect(mockShowToast).not.toHaveBeenCalled();
   });
 });

@@ -117,6 +117,20 @@ writer and stay pure seed-once.
 The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
 suite gates, not in branches inside the subscription callback.
 
+**Realtime is fire-and-forget, so a store it keeps current needs a way back from a gap.** A socket
+that lapses — a backgrounded tab throttled past the heartbeat, a machine that slept — drops every
+change made while it was down and replays none on reconnect, leaving the seed frozen for as long
+as the tab stays open. Anything read against a TICKING CLOCK then turns that silence into a false
+alarm on its own: a `last_seen_at` the tab stopped hearing about decays into "stale" while the
+source polls fine (ALF-227 — the Comms health dots). So pair the subscription with a re-read of
+whatever the gap can stale-end, on both signals: the tab returning to the foreground
+(`visibilitychange` / `focus`), and the channel REJOINING, which is the one a machine waking with
+the tab in front gives you (`subscribe(status)`, ignoring the first `SUBSCRIBED` — that is the
+initial join, beside a fresh seed). `CommsProvider` re-reads `GET /api/comms/health` that way.
+Recovery must not be worse than the staleness: **upsert, never replace** (a row leaving is the
+DELETE payload's business), and a **failed re-read changes nothing and toasts nothing** — a
+stale reading beats a blanked roster, and the next trigger retries.
+
 ## A derived status must mirror the query that does the work
 
 Wherever the browser derives "is the Worker keeping up?" from rows it already holds, it is

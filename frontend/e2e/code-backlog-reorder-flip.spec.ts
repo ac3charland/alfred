@@ -115,7 +115,16 @@ test('reordering a story animates smoothly with no mid-flight jump', async ({ pa
  * The shift is injected straight into the DOM rather than driven by whatever card happens to
  * sit above the list today — the property under test belongs to `useFlipList`, and pinning it to
  * one neighbouring component is what made this case break when the ratio card moved to the
- * Dashboard. `useFlipList` measures real rects, so a plain spacer reproduces the trap exactly.
+ * Dashboard. `useFlipList` measures real rects, so padding above the list reproduces the trap
+ * exactly.
+ *
+ * The shift is PADDING on the list's own parent rather than a spacer element inserted before the
+ * list. A foreign node React never rendered is not a stable part of its child order: the next
+ * render of that parent re-inserts the list around it, so the shift silently undoes itself at a
+ * moment nothing here controls — and when that undo lands inside the sampling window, the row's
+ * viewport top drops the shift's whole height in one frame and this test fails for a layout
+ * correction rather than for the jank it exists to catch. Padding is on an element React is not
+ * styling, so it survives every re-render and the shift stays put for the whole swap.
  */
 test('a layout shift above the list does not make the next reorder jump', async ({
   page,
@@ -130,9 +139,7 @@ test('a layout shift above the list does not make the next reorder jump', async 
     const list = document.querySelector('ul');
     const parent = list?.parentElement;
     if (!list || !parent) return 0;
-    const spacer = document.createElement('div');
-    spacer.style.height = '120px';
-    list.before(spacer);
+    parent.style.paddingTop = '120px';
     return list.getBoundingClientRect().top;
   });
   expect(listTop).toBeGreaterThan(120);

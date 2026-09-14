@@ -1,5 +1,6 @@
 'use client';
 
+import { REALTIME_SUBSCRIBE_STATES } from '@supabase/supabase-js';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import * as React from 'react';
 
@@ -379,6 +380,57 @@ export function CommsProvider({
     showToastRef.current = showToast;
   }, [showToast]);
 
+  /**
+   * Re-read the health surface and replace it with what the server currently holds.
+   *
+   * Realtime is fire-and-forget: a socket that lapses — a backgrounded tab whose timers are
+   * throttled past the heartbeat, a machine that slept — drops every change made in the gap and
+   * replays none of them on reconnect. Health is the surface that shows it, because it is the
+   * one thing read against a TICKING CLOCK: a `last_seen_at` frozen at the seed decays into
+   * "stale" on its own, so a tab left open long enough reports every source as disconnected
+   * while all of them are polling fine (ALF-227).
+   *
+   * A failed re-read changes nothing and says nothing: the stale reading it would have replaced
+   * is still better than a blanked roster, and the next trigger tries again. This is recovery,
+   * not a user action — there is nothing for the owner to do about it.
+   */
+  const reconcilingRef = React.useRef(false);
+  const reconcileHealth = React.useCallback(() => {
+    if (reconcilingRef.current || document.hidden) return;
+    reconcilingRef.current = true;
+    void api
+      .fetchCommsHealth()
+      .then((snapshot) => {
+        // Upsert rather than replace: this read is about freshness, and an account leaving is
+        // the realtime DELETE's business.
+        dispatch({ type: 'accounts', action: { type: 'upsert', items: snapshot.accounts } });
+        dispatch({ type: 'health', health: snapshot.health });
+      })
+      .catch(() => {
+        // Deliberately silent — see above.
+      })
+      .finally(() => {
+        reconcilingRef.current = false;
+      });
+  }, []);
+
+  // The two ways a tab learns it may have missed something. The tab coming back to the front is
+  // the one the owner feels; the channel REJOINING is the one that catches a socket that dropped
+  // and recovered while the tab sat in the foreground the whole time (a machine waking). One
+  // channel carries that signal for all four — the socket they share is what lapses.
+  React.useEffect(() => {
+    const onReturn = () => {
+      if (!document.hidden) reconcileHealth();
+    };
+
+    document.addEventListener('visibilitychange', onReturn);
+    globalThis.addEventListener('focus', onReturn);
+    return () => {
+      document.removeEventListener('visibilitychange', onReturn);
+      globalThis.removeEventListener('focus', onReturn);
+    };
+  }, [reconcileHealth]);
+
   // The push channel. All four tables are written out of band — the poller inserts messages
   // and stamps account health, the classifier sweep writes a verdict and (via a separate write
   // to comm_messages) fills in the message's tier — so a browser that only ever read its seed
@@ -386,6 +438,9 @@ export function CommsProvider({
   // a hard reload.
   React.useEffect(() => {
     const supabase = createClient();
+    // Whether the accounts channel has completed a join, so a later one can be told apart as a
+    // rejoin (see its subscribe callback below).
+    let joined = false;
 
     const channel = supabase
       .channel('comm_messages')
@@ -409,7 +464,14 @@ export function CommsProvider({
           if (action !== null) dispatch({ type: 'accounts', action });
         },
       )
-      .subscribe();
+      // The first SUBSCRIBED is this channel's initial join, and the seed it arrives beside is
+      // already current; every one after it is a REJOIN, which means the socket was down and
+      // whatever changed while it was is lost. That is exactly when to re-read.
+      .subscribe((status) => {
+        if (status !== REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) return;
+        if (joined) reconcileHealth();
+        joined = true;
+      });
 
     const healthChannel = supabase
       .channel('comm_classifier_health')
@@ -440,7 +502,7 @@ export function CommsProvider({
       void supabase.removeChannel(healthChannel);
       void supabase.removeChannel(verdictsChannel);
     };
-  }, []);
+  }, [reconcileHealth]);
 
   const actions = React.useMemo<CommsActions>(
     () => {
