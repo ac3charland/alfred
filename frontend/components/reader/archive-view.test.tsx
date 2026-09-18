@@ -1,10 +1,10 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { makeReaderOverview, makeReaderPost, resetReaderFixtureClock } from '@/lib/reader/fixtures';
-import { ARCHIVE_READ_LIMIT } from '@/lib/stores/reader-store';
+import { ARCHIVE_READ_LIMIT, useArchivedPosts, useReaderActions } from '@/lib/stores/reader-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
 import { ArchiveView } from './archive-view';
@@ -29,12 +29,46 @@ function archived(
   return listItem;
 }
 
-/** jsdom plays no CSS transitions, so fire the exit wrapper's own transitionend by hand. */
+/**
+ * jsdom plays no CSS transitions, so fire the exit wrapper's own transitionend by hand. Fired at
+ * every drawn row: a row that is not exiting ignores it, so the helper needs no index.
+ */
 function endExit(): void {
-  const wrapper = screen.getByTestId('reader-row-collapse');
-  const event = new Event('transitionend', { bubbles: true });
-  Object.defineProperty(event, 'propertyName', { value: 'grid-template-rows' });
-  fireEvent(wrapper, event);
+  for (const wrapper of screen.getAllByTestId('reader-row-collapse')) {
+    const event = new Event('transitionend', { bubbles: true });
+    Object.defineProperty(event, 'propertyName', { value: 'grid-template-rows' });
+    fireEvent(wrapper, event);
+  }
+}
+
+/** The drawn row whose title says `title`, so nothing has to be indexed by position. */
+function rowFor(title: string): HTMLElement {
+  const found = screen
+    .getAllByTestId('reader-row')
+    .find((row) => row.querySelector('p')?.textContent === title);
+  if (found === undefined) throw new Error(`No row titled ${title} is on screen`);
+  return found;
+}
+
+/**
+ * A test-only control that empties the archive in one gesture. The "latest 200" line only ever
+ * appears over a read that came back at its ceiling, so reaching an archive that is both full
+ * and empty means putting two hundred posts back — which through the rows' own verb is two
+ * hundred clicks, and through the store is this.
+ */
+function UnarchiveEverything() {
+  const posts = useArchivedPosts();
+  const { unarchive } = useReaderActions();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        for (const post of posts) void unarchive(post.id);
+      }}
+    >
+      unarchive everything
+    </button>
+  );
 }
 
 beforeEach(() => {
@@ -97,6 +131,58 @@ describe('ArchiveView — the read', () => {
 
     expect(await screen.findByText('The only one')).toBeInTheDocument();
     expect(screen.queryByText('Showing the latest 200')).not.toBeInTheDocument();
+  });
+
+  it('drops the slice line once the rows it described have all been put back', async () => {
+    const user = userEvent.setup();
+    const shape = archived({ id: 'p-0', title: 'Post 0' });
+    mockApi.fetchReaderPosts.mockResolvedValue(
+      Array.from({ length: ARCHIVE_READ_LIMIT }, (_, index) =>
+        archived({ id: `p-${String(index)}`, title: `Post ${String(index)}` }),
+      ),
+    );
+    mockApi.patchReaderPost.mockImplementation((id) =>
+      Promise.resolve({ ...shape, id, archived_at: null }),
+    );
+    renderReader(
+      <>
+        <ArchiveView now={NOW} />
+        <UnarchiveEverything />
+      </>,
+    );
+    expect(await screen.findByText('Showing the latest 200')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'unarchive everything' }));
+
+    // The line describes rows; with none left it would be claiming to show 200 of nothing,
+    // right beside the empty state.
+    await waitFor(() => {
+      expect(screen.queryByText('Showing the latest 200')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Nothing archived yet.')).toBeInTheDocument();
+  });
+});
+
+describe('ArchiveView — a read that never answered', () => {
+  it('says so, rather than resting on the empty state', async () => {
+    mockApi.fetchReaderPosts.mockRejectedValue(new Error('offline'));
+    renderReader(<ArchiveView now={NOW} />);
+
+    expect(await screen.findByText("Couldn't load the archive.")).toBeInTheDocument();
+    expect(screen.queryByText('Nothing archived yet.')).not.toBeInTheDocument();
+  });
+
+  it('reads again when Try again is pressed, and draws what comes back', async () => {
+    const user = userEvent.setup();
+    mockApi.fetchReaderPosts
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue([archived({ id: 'p-1', title: 'Back from the archive' })]);
+    renderReader(<ArchiveView now={NOW} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Back from the archive')).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load the archive.")).not.toBeInTheDocument();
   });
 });
 
@@ -162,6 +248,35 @@ describe('ArchiveView — the rows', () => {
     await waitFor(() => {
       expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { archived: false });
     });
+  });
+
+  it('lets the keyboard reach a row again once its unarchive has rolled back', async () => {
+    const user = userEvent.setup();
+    const above = archived({
+      id: 'p-above',
+      title: 'The one above',
+      received_at: '2026-09-12T09:00:00.000Z',
+    });
+    const below = archived({
+      id: 'p-below',
+      title: 'The one below',
+      received_at: '2026-09-11T09:00:00.000Z',
+    });
+    mockApi.fetchReaderPosts.mockResolvedValue([above, below]);
+    mockApi.patchReaderPost.mockRejectedValue(new Error('boom'));
+    renderReader(<ArchiveView now={NOW} />);
+    await screen.findByText('The one above');
+
+    // Unarchiving the top row selects it and moves the selection to the row below as it leaves.
+    await user.click(within(rowFor('The one above')).getByRole('button', { name: 'Unarchive' }));
+    endExit();
+    expect(await screen.findByText("Couldn't unarchive that post")).toBeInTheDocument();
+
+    // The write failed, so the row is back — and navigable again. A row that left on a failed
+    // write must not stay out of the keyboard's reach for the rest of the session.
+    await user.keyboard('k');
+
+    expect(rowFor('The one above')).toHaveAttribute('data-selected', 'true');
   });
 
   it('binds e to Unarchive on the selected row', async () => {

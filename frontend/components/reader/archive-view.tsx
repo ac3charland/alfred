@@ -3,6 +3,7 @@
 import { Archive } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
 import { ViewHeading } from '@/components/atoms/view-heading';
 import { PostList } from '@/components/reader/post-list';
@@ -31,7 +32,7 @@ interface ArchiveViewProperties {
 
 export function ArchiveView({ now: pinnedNow }: ArchiveViewProperties) {
   const posts = useArchivedPosts();
-  const { loaded, full } = useArchiveStatus();
+  const { status, full } = useArchiveStatus();
   const { loadArchive } = useReaderActions();
 
   const ticking = useNow();
@@ -55,14 +56,29 @@ export function ArchiveView({ now: pinnedNow }: ArchiveViewProperties) {
 
       {/* Only once the read has landed: before that, an empty list means "not here yet", and
           saying "nothing archived" would be a claim the view cannot make. */}
-      {posts.length === 0 && loaded && (
+      {posts.length === 0 && status === 'loaded' && (
         <EmptyState
           title="Nothing archived yet."
           description="Archive a post from the reading list and it lands here."
         />
       )}
 
-      {full && <p className="text-sm text-muted-foreground">Showing the latest 200</p>}
+      {/* A read that never answered leaves the view with nothing to say for itself, which reads
+          as an empty archive. Say what happened instead, and offer the read again. */}
+      {status === 'failed' && (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-muted-foreground">Couldn&apos;t load the archive.</p>
+          <Button variant="outline" size="sm" onClick={loadArchive}>
+            Try again
+          </Button>
+        </div>
+      )}
+
+      {/* Beside the rows it qualifies, never on its own: an archive emptied by unarchiving
+          everything would otherwise claim to be showing 200 of nothing. */}
+      {full && posts.length > 0 && (
+        <p className="text-sm text-muted-foreground">Showing the latest 200</p>
+      )}
     </div>
   );
 }
