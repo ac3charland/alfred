@@ -188,6 +188,17 @@ function htmlPreviewStep(project: Project): string {
   return `If the spec is an HTML file, also link it in the description so a reviewer can read the plan rather than the markup — GitHub serves a committed \`.html\` as raw source. On a public repo, route it through htmlpreview: \`https://htmlpreview.github.io/?${blobUrl}\`. htmlpreview can't reach a private repo — if this one is private, link the file directly instead (\`${blobUrl}\`) so the reviewer can download and open it. Either way point at this PR's head branch; the spec isn't on main yet.`;
 }
 
+/**
+ * The no-scheduled-check-ins guardrail every phase prompt carries, verbatim. CLAUDE.md's "No
+ * scheduled check-ins" rule (and each SDLC skill's cross-reference to it) is the source of truth
+ * for *why* — this is the one place that rule is deliberately duplicated into the prompt itself
+ * rather than only linked, because by the time a session is tempted to schedule a wakeup after
+ * opening its PR, it has already stopped reading further files.
+ */
+function noScheduledCheckInsStep(): string {
+  return `Don't schedule a check-in on this PR once it's open — no wakeup, timer, or recurring job to poll it for status. CLAUDE.md forbids this; what happens after the PR is open is not this session's job.`;
+}
+
 /** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */
 function buildUrl(project: Project, prompt: string): string {
   const parameters = new URLSearchParams({
@@ -245,6 +256,7 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
     '',
     `5. ${htmlPreviewStep(project)}`,
     `6. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), the preview link is there if the spec is HTML, and the block is reproduced exactly.`,
+    noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -286,6 +298,7 @@ export function buildSpikeUrl(project: Project, story: CodeStory): string {
     '',
     `6. ${htmlPreviewStep(project)}`,
     `7. Before opening the PR, confirm the findings document is saved, \`spec-path\` above names that document (not the placeholder), the preview link is there, and the block is reproduced exactly.`,
+    noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -329,6 +342,7 @@ export function buildBugUrl(project: Project, story: CodeStory): string {
     frontmatterBlock(ref, 'implementation'),
     '',
     `7. Before opening the PR, confirm the test you wrote now passes, the rest of the suite is green, and the block above is reproduced exactly.`,
+    noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -368,6 +382,7 @@ export function buildEpicRefinementUrl(project: Project, epic: Epic): string {
     '',
     `5. ${htmlPreviewStep(project)}`,
     `6. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), the preview link is there if the spec is HTML, and the block is reproduced exactly.`,
+    noScheduledCheckInsStep(),
     notesContext(epic.notes, 'the epic notes'),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -414,6 +429,7 @@ export function buildEpicImplementationUrl(project: Project, epic: Epic): string
     frontmatterBlock(epic.ref, 'epic-implementation'),
     '',
     `7. Before opening the PR, confirm the epic spec's requirements are built and pinned by tests, the repo's own checks are green, the epic spec is untouched where it sits, and the block above is reproduced exactly.`,
+    noScheduledCheckInsStep(),
     notesContext(epic.notes, 'the epic notes'),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -456,6 +472,7 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
     frontmatterBlock(ref, 'implementation', specPath),
     '',
     `Before opening the PR, confirm your changes satisfy the spec's acceptance criteria, the spec is archived at \`${archivePath}\`, and the block above is reproduced exactly.`,
+    noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -510,6 +527,7 @@ export function buildBypassUrl(project: Project, story: CodeStory): string {
     frontmatterBlock(ref, 'implementation'),
     '',
     `5. Before opening the PR, confirm your changes satisfy the agreed plan and the block above is reproduced exactly.`,
+    noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
