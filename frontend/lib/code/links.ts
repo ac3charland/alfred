@@ -198,7 +198,7 @@ function htmlPreviewStep(project: Project): string {
  * wakeup to pace this session's own still-in-progress work before the PR exists.
  */
 function noScheduledCheckInsStep(): string {
-  return `Once this PR is open, don't proactively schedule a check-in on it (a wakeup, timer, or recurring job polling it, its CI, or its deploy) — left running that's tokens spent finding nothing new. Do respond when a CI failure or comment actually reaches you, via an event subscription (e.g. subscribe_pr_activity) rather than a timer — CLAUDE.md forbids the proactive poll, not reacting to real activity. (Pacing your own work before this PR exists — waiting out a slow check, say — is unaffected and fine.)`;
+  return `Once this PR is open, don't proactively schedule a check-in on it (a wakeup, timer, or recurring job polling it, its CI, or its deploy) — left running that's tokens spent finding nothing new. Do respond when a CI failure or comment actually reaches you, via an event subscription (e.g. subscribe_pr_activity) rather than a timer. (Pacing your own work before this PR exists — waiting out a slow check, say — is unaffected and fine.)`;
 }
 
 /** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */
