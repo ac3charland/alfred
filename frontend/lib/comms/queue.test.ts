@@ -186,4 +186,24 @@ describe('readerClaimedCount', () => {
     expect(readerClaimedCount([claimed, unclaimed, outbound])).toBe(1);
     expect(readerClaimedCount([])).toBe(0);
   });
+
+  it('does not count a claimed message that still owes a reply', () => {
+    // The line reads "n went to the Reader" on the SHELF, so it counts what the shelf would
+    // otherwise have shown. A queued newsletter never left the queue for the reading list.
+    const queued = makeCommMessage(ACCOUNT, {
+      tier: 'today',
+      judged_by: 'model',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+
+    expect(readerClaimedCount([queued])).toBe(0);
+  });
+
+  it('does not count a claimed message nothing has judged yet', () => {
+    const unjudged = makeCommMessage(ACCOUNT, {
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+
+    expect(readerClaimedCount([unjudged])).toBe(0);
+  });
 });

@@ -56,13 +56,22 @@ export function isShelved(message: CommMessage): boolean {
 }
 
 /**
- * How many inbound messages the Reader has claimed — the number the shelf's second line reads
- * out, so nothing leaves the shelf silently. Derived from the messages the store already holds;
- * no separate query.
+ * How many messages the Reader took OFF THE SHELF — the number the shelf's second line reads
+ * out, so nothing leaves it silently. Derived from the messages the store already holds; no
+ * separate query.
+ *
+ * So it counts exactly what `isShelved` would have shown but for the claim: inbound, judged or
+ * cleared, and not queued. A claimed newsletter that still owes a reply never left the shelf for
+ * the reading list — it was never on the shelf — and counting it would say a row went somewhere
+ * it did not while it sits in the queue in plain sight.
  */
 export function readerClaimedCount(messages: CommMessage[]): number {
   return messages.filter(
-    (message) => message.direction === 'inbound' && message.reader_claimed_at !== null,
+    (message) =>
+      message.direction === 'inbound' &&
+      message.reader_claimed_at !== null &&
+      !isQueued(message) &&
+      (message.tier !== null || message.cleared_at !== null),
   ).length;
 }
 
