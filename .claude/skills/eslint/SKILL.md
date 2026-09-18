@@ -205,6 +205,22 @@ column-name constant against a fixture's keys), skip sorting entirely and compar
 with `toStrictEqual`: `expect(new Set(listedColumns)).toStrictEqual(new Set(fixtureColumns))`
 (`frontend/lib/data/reader.test.ts`).
 
+**Two rules make a charset name and an invisible-character class unwritable as spelled**
+
+`unicorn/text-encoding-identifier-case` rejects the string `'utf-8'` anywhere — including as a
+`Record` KEY, where it is the wire's spelling rather than a `TextDecoder` label. Key the map on the
+charset with its punctuation stripped instead (`utf8`, `iso88591`) and normalise the incoming name
+with `.toLowerCase().replaceAll(/\W|_/g, '')`; `new TextDecoder('utf8')` is a valid label, so
+nothing is lost. Separately, `no-misleading-character-class` refuses a combining mark inside `[…]`,
+so an invisible-character pattern has to be an alternation: `/\u034F|\u00AD|[\u200B-\u200D]/g`,
+not one class. (Both hit while decoding RFC 2047 headers in `workers/src/comms/email-text.ts`.)
+
+**`--fix` upper-cases hex escapes, so a literal source match made after linting misses**
+
+`unicorn/escape-case` rewrites `\u00ad` to `\u00AD` in place. A script that edits a file by exact
+string match will silently find nothing on the second pass — read the file back after a lint run
+rather than matching what you wrote.
+
 **`unicorn/prefer-includes-over-repeated-comparisons` fires across *different* variables**
 
 Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.)
