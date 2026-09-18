@@ -109,6 +109,26 @@ Pause one:
 update reader_publications set enabled = false where handle = 'news@example.com';
 ```
 
+### `0036_reader_operability.sql` — running the Reader without SQL (ALF-234)
+
+`0035` built the pipe; this makes it legible and bounded from the app.
+
+- **`reader_health.daily_cap` / `calls_today` / `calls_day`** — the ceiling the tick enforced and
+  the model calls it had made for that UTC day, stamped at the end of each run. The UI reads
+  "the ceiling is reached" off these rather than knowing the Worker's deploy vars.
+- **`reader_posts.text_swept_at`** — when the retention sweep took the body. Null = the post
+  still holds its text; a swept post can never be re-summarised.
+- **`v_reader_candidates`** — inbound bulk senders on the personal account inside 30 days that
+  are NOT on the roster, ranked by volume then recency, carrying the most recent display name.
+  Wider than `v_reader_discovery` (any domain, 30 days) because a human decides what to do with
+  each row rather than it being auto-added.
+- **`v_reader_publications`** — every roster row plus `last_post_at`, the newest `received_at`
+  across its posts (null for a publication with none). Derived rather than denormalised: a
+  per-post write back to the roster would cost the tick a subrequest it doesn't have.
+- **`reader_sweep_text(p_days, p_limit)`** — nulls the body of one batch of posts past the
+  window and returns how many. The Worker loops until it returns 0, so each batch is its own
+  transaction and a timed-out catch-up run keeps every batch it finished.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`

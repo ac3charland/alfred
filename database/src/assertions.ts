@@ -3493,6 +3493,249 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const readerSweepTextResult = await attempt(
+    'reader_sweep_text nulls the body of a post past the window, stamps text_swept_at, and ' +
+      'leaves the summary and a post inside the window alone (ALF-234)',
+    async () => {
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('sweep-test@example.com', 'Sweep Test', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      // 91 days back is past the window; 89 is inside it, one day either side of the boundary
+      // so a cutoff computed off the wrong unit fails here rather than months later in production.
+      await client.query(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                    received_at, text, summary_state, headline, gist, overview,
+                                    summarized_at)
+           values ($1, 'gmail-personal', 'sweep-old', 'Old Post', now() - interval '91 days',
+                   'the stored body', 'done', 'A headline', 'A gist', '{}'::jsonb, now()),
+                  ($1, 'gmail-personal', 'sweep-recent', 'Recent Post', now() - interval '89 days',
+                   'the stored body', 'done', 'A headline', 'A gist', '{}'::jsonb, now())`,
+        [publicationId],
+      );
+
+      const swept = await client.query<{ swept: number }>(
+        `select reader_sweep_text(90, 5000) as swept`,
+      );
+      if (swept.rows[0]?.swept !== 1)
+        throw new Error(`swept ${String(swept.rows[0]?.swept)} posts, expected exactly 1`);
+
+      const { rows: oldRows } = await client.query<{
+        text: string | null;
+        stamped: boolean;
+        title: string;
+        gist: string | null;
+        overview: unknown;
+        summarized: boolean;
+        received: boolean;
+      }>(
+        `select text,
+                text_swept_at is not null as stamped,
+                title,
+                gist,
+                overview,
+                summarized_at is not null as summarized,
+                received_at < now() - interval '90 days' as received
+           from reader_posts where gmail_message_id = 'sweep-old'`,
+      );
+      const old = oldRows[0];
+      if (old === undefined) throw new Error('the swept post is gone');
+      if (old.text !== null) throw new Error('the swept post still holds its text');
+      if (!old.stamped) throw new Error('the swept post has no text_swept_at stamp');
+      if (old.title !== 'Old Post' || old.gist !== 'A gist' || old.overview === null)
+        throw new Error('the sweep took part of the summary with it');
+      if (!old.summarized || !old.received)
+        throw new Error('the sweep moved summarized_at or received_at');
+
+      const { rows: recentRows } = await client.query<{ text: string | null; stamped: boolean }>(
+        `select text, text_swept_at is not null as stamped
+           from reader_posts where gmail_message_id = 'sweep-recent'`,
+      );
+      if (recentRows[0]?.text === null || recentRows[0]?.stamped === true)
+        throw new Error('a post inside the window was swept');
+
+      return 'the old post lost only its text and gained a stamp; the recent one was untouched';
+    },
+  );
+
+  const readerSweepBatchResult = await attempt(
+    'reader_sweep_text sweeps at most p_limit posts per call and reports 0 once the backlog is ' +
+      'drained, which is what lets the caller loop (ALF-234)',
+    async () => {
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('batch-test@example.com', 'Batch Test', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      await client.query(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                    received_at, text)
+           values ($1, 'gmail-personal', 'batch-1', 'Batch One', now() - interval '120 days',
+                   'body one'),
+                  ($1, 'gmail-personal', 'batch-2', 'Batch Two', now() - interval '120 days',
+                   'body two')`,
+        [publicationId],
+      );
+
+      const counts: number[] = [];
+      for (let call = 0; call < 3; call += 1) {
+        const { rows } = await client.query<{ swept: number }>(
+          `select reader_sweep_text(90, 1) as swept`,
+        );
+        counts.push(rows[0]?.swept ?? -1);
+      }
+      if (counts.join(',') !== '1,1,0')
+        throw new Error(`three calls swept ${counts.join(',')}, expected 1,1,0`);
+
+      return 'two eligible posts took two batches of one, and the third call reported nothing left';
+    },
+  );
+
+  const readerCandidatesResult = await attempt(
+    'v_reader_candidates offers off-roster bulk senders inside 30 days, ranked by volume, with ' +
+      "the sender's most recent display name, and drops one once it joins the roster (ALF-234)",
+    async () => {
+      const account = await ensureReaderAccount(client);
+
+      // Three messages from the loud candidate, the newest carrying the name the view should
+      // report; one from the quiet one; one 31 days old from a sender that must not appear.
+      await client.query(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, sender_name,
+                                     has_list_header, received_at)
+           values ($1, 'cand-loud-1', 'cand-loud-1', 'loud@news.example', 'Loud Weekly',
+                   true, now() - interval '20 days'),
+                  ($1, 'cand-loud-2', 'cand-loud-2', 'loud@news.example', null,
+                   true, now() - interval '10 days'),
+                  ($1, 'cand-loud-3', 'cand-loud-3', 'loud@news.example', 'Loud Daily',
+                   true, now() - interval '2 days'),
+                  ($1, 'cand-quiet-1', 'cand-quiet-1', 'quiet@news.example', 'Quiet Monthly',
+                   true, now() - interval '5 days'),
+                  ($1, 'cand-stale-1', 'cand-stale-1', 'stale@news.example', 'Stale Letter',
+                   true, now() - interval '31 days')`,
+        [account],
+      );
+
+      const { rows: loud } = await client.query<{
+        name: string | null;
+        message_count: number;
+      }>(`select name, message_count from v_reader_candidates where handle = 'loud@news.example'`);
+      const louder = loud[0];
+      if (louder?.message_count !== 3)
+        throw new Error(`counted ${String(louder?.message_count)} messages, expected 3`);
+      if (louder.name !== 'Loud Daily')
+        throw new Error(`named the sender ${String(louder.name)}, expected the newest name`);
+
+      const { rows: stale } = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_candidates where handle = 'stale@news.example'`,
+      );
+      if (stale[0]?.n !== '0') throw new Error('a sender last seen 31 days ago is still offered');
+
+      // The view's own order, as a caller with no order of their own receives it.
+      const { rows: ordered } = await client.query<{ handle: string }>(
+        `select handle from v_reader_candidates`,
+      );
+      const positions = ordered.map((row) => row.handle);
+      if (positions.indexOf('loud@news.example') > positions.indexOf('quiet@news.example'))
+        throw new Error('the louder sender did not rank ahead of the quieter one');
+
+      // A handle on the roster is somebody's publication, not a candidate.
+      await client.query(
+        `insert into reader_publications (handle, name, source)
+           values ('loud@news.example', 'Loud Weekly', 'owner')`,
+      );
+      const { rows: afterRoster } = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_candidates where handle = 'loud@news.example'`,
+      );
+      if (afterRoster[0]?.n !== '0') throw new Error('a rostered handle is still offered');
+
+      return 'the loud sender ranked first with its newest name; the stale one and the rostered one were excluded';
+    },
+  );
+
+  const readerPublicationsViewResult = await attempt(
+    'v_reader_publications carries every roster column plus last_post_at — the newest post, or ' +
+      'null for a publication with none (ALF-234)',
+    async () => {
+      const withPosts = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source, notes)
+           values ('view-test@example.com', 'View Test', 'owner', 'a note') returning id`,
+      );
+      const withPostsId = withPosts.rows[0]?.id;
+      if (!withPostsId) throw new Error('could not seed the publication');
+      await client.query(
+        `insert into reader_publications (handle, name, source)
+           values ('view-empty@example.com', 'View Empty', 'owner')`,
+      );
+
+      await client.query(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+           values ($1, 'gmail-personal', 'view-old', 'Older', now() - interval '3 days'),
+                  ($1, 'gmail-personal', 'view-new', 'Newer', now() - interval '1 day')`,
+        [withPostsId],
+      );
+
+      const { rows } = await client.query<{
+        handle: string;
+        notes: string | null;
+        enabled: boolean;
+        newest: boolean;
+      }>(
+        `select handle, notes, enabled,
+                last_post_at = (select max(received_at) from reader_posts where publication_id = $1)
+                  as newest
+           from v_reader_publications where id = $1`,
+        [withPostsId],
+      );
+      const view = rows[0];
+      if (view?.handle !== 'view-test@example.com' || view.notes !== 'a note')
+        throw new Error('the view dropped a roster column');
+      if (!view.enabled) throw new Error('the view dropped the enabled flag');
+      if (!view.newest) throw new Error('last_post_at is not the newest post of that publication');
+
+      const { rows: empty } = await client.query<{ last_post_at: string | null }>(
+        `select last_post_at from v_reader_publications where handle = 'view-empty@example.com'`,
+      );
+      if (empty.length !== 1) throw new Error('a publication with no posts fell out of the view');
+      if (empty[0]?.last_post_at !== null)
+        throw new Error('a publication with no posts reports a last post');
+
+      return 'the roster columns survived the join; last_post_at is the newest post, null with none';
+    },
+  );
+
+  const readerHealthCeilingColumnsResult = await attempt(
+    'reader_health accepts the ceiling stamp (daily_cap, calls_today, calls_day) as ' +
+      'authenticated and reads it back (ALF-234)',
+    async () => {
+      await asRole(client, 'authenticated', async () => {
+        await client.query(
+          `update reader_health
+              set daily_cap = 30, calls_today = 12, calls_day = '2026-09-18'::date
+            where id = 1`,
+        );
+        const { rows } = await client.query<{
+          daily_cap: number | null;
+          calls_today: number | null;
+          calls_day: string | null;
+        }>(
+          `select daily_cap, calls_today, (calls_day at time zone 'utc')::date::text as calls_day
+             from reader_health where id = 1`,
+        );
+        const stamped = rows[0];
+        if (stamped?.daily_cap !== 30 || stamped.calls_today !== 12)
+          throw new Error('the ceiling stamp did not read back');
+        if (stamped.calls_day !== '2026-09-18')
+          throw new Error(`calls_day read back as ${String(stamped.calls_day)}`);
+      });
+      return 'authenticated wrote and read back the cap, the count and the day';
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -3559,5 +3802,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     readerDiscoveryResult,
     readerDoneHasSummaryResult,
     readerCountsNotNegativeResult,
+    readerSweepTextResult,
+    readerSweepBatchResult,
+    readerCandidatesResult,
+    readerPublicationsViewResult,
+    readerHealthCeilingColumnsResult,
   ];
 }

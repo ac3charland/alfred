@@ -917,6 +917,9 @@ export type Database = {
       }
       reader_health: {
         Row: {
+          calls_day: string | null
+          calls_today: number | null
+          daily_cap: number | null
           id: number
           last_error: string | null
           last_error_at: string | null
@@ -924,6 +927,9 @@ export type Database = {
           last_success_at: string | null
         }
         Insert: {
+          calls_day?: string | null
+          calls_today?: number | null
+          daily_cap?: number | null
           id?: number
           last_error?: string | null
           last_error_at?: string | null
@@ -931,6 +937,9 @@ export type Database = {
           last_success_at?: string | null
         }
         Update: {
+          calls_day?: string | null
+          calls_today?: number | null
+          daily_cap?: number | null
           id?: number
           last_error?: string | null
           last_error_at?: string | null
@@ -966,6 +975,7 @@ export type Database = {
           summarizing_since: string | null
           summary_state: string
           text: string | null
+          text_swept_at: string | null
           title: string
           word_count: number
         }
@@ -995,6 +1005,7 @@ export type Database = {
           summarizing_since?: string | null
           summary_state?: string
           text?: string | null
+          text_swept_at?: string | null
           title: string
           word_count?: number
         }
@@ -1024,6 +1035,7 @@ export type Database = {
           summarizing_since?: string | null
           summary_state?: string
           text?: string | null
+          text_swept_at?: string | null
           title?: string
           word_count?: number
         }
@@ -1047,6 +1059,13 @@ export type Database = {
             columns: ["publication_id"]
             isOneToOne: false
             referencedRelation: "reader_publications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reader_posts_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "v_reader_publications"
             referencedColumns: ["id"]
           },
           {
@@ -1313,12 +1332,36 @@ export type Database = {
           },
         ]
       }
+      v_reader_candidates: {
+        Row: {
+          handle: string | null
+          last_seen_at: string | null
+          message_count: number | null
+          name: string | null
+        }
+        Relationships: []
+      }
       v_reader_discovery: {
         Row: {
           first_seen_at: string | null
           handle: string | null
           message_count: number | null
           name: string | null
+        }
+        Relationships: []
+      }
+      v_reader_publications: {
+        Row: {
+          created_at: string | null
+          domain: string | null
+          enabled: boolean | null
+          first_seen_at: string | null
+          handle: string | null
+          id: string | null
+          last_post_at: string | null
+          name: string | null
+          notes: string | null
+          source: string | null
         }
         Relationships: []
       }
@@ -1622,6 +1665,10 @@ export type Database = {
         }
       }
       next_code_ref: { Args: { p_project: string }; Returns: number }
+      reader_sweep_text: {
+        Args: { p_days?: number; p_limit?: number }
+        Returns: number
+      }
       respace_code_priorities: { Args: never; Returns: undefined }
       swap_code_priority: {
         Args: { p_a: string; p_b: string }
