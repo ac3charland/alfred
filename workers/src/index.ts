@@ -11,8 +11,9 @@
  * signed with its own secret and its own scheme, delegating to `handleIngest`.
  *
  * `scheduled` is fired by the cron triggers in wrangler.toml, and dispatches on WHICH schedule
- * fired: the frequent one runs the Inbox classifier and then the comms tick, the daily one runs
- * the comms retention sweep. Every handler stays thin and delegates.
+ * fired: the frequent one runs the Inbox classifier and then the comms judge pass, the poll one
+ * reads Gmail, the reader one runs the newsletter tick, and the daily one runs the comms
+ * retention sweep. Every handler stays thin and delegates.
  */
 import { handleIngest } from './comms/ingest';
 import {
@@ -25,6 +26,8 @@ import {
 import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
+import { READER_DEFAULT_DAILY_CAP } from './reader/config';
+import { type ReaderTickSummary, runReaderTick } from './reader/scheduled';
 import { patchCodeItem, patchEpic } from './supabase';
 import { runSweep } from './sweep';
 import { type TransitionTarget, planTransition } from './transitions';
@@ -51,6 +54,19 @@ export interface Env {
   CLASSIFIER_MODEL: string;
   /** The IANA zone "friday" resolves against, e.g. `America/Chicago`. Also a `[vars]` entry. */
   CLASSIFIER_TIMEZONE: string;
+  /**
+   * Which model summarises a Reader post. A `[vars]` entry like `CLASSIFIER_MODEL`, and typed
+   * `string` for the same reason — but the reader tick re-checks it at runtime and fails closed,
+   * because a CLI `--var` can shadow a `[vars]` entry and the tick must not spend a request on
+   * an `undefined` model.
+   */
+  READER_MODEL: string;
+  /**
+   * The Reader's daily model-call ceiling, as the string every var arrives as. Optional: absent
+   * it defaults to 30 inside the tick; present but not a positive integer it is a systemic
+   * failure the tick records rather than a ceiling it silently ignores.
+   */
+  READER_DAILY_CAP?: string;
   /**
    * The secret the Mac daemon signs its ingest requests with, shared with nothing else. Optional
    * for the same reason as the key above: it is set by hand, once, and until it is the endpoint
@@ -109,6 +125,16 @@ export const POLL_CRON = '*/3 * * * *';
  */
 export const RETENTION_CRON = '17 9 * * *';
 
+/**
+ * The Reader tick — discovery, intake and the summariser, every five minutes on its own trigger.
+ * Its own schedule for the reason the poll has one: a tick spends up to ~44 of the 50
+ * subrequests an invocation gets, so it cannot share. Offset-free like the others, because a
+ * stepped range with a nonzero start collapses onto another schedule (see `POLL_CRON`).
+ * Coinciding with the two- and three-minute schedules on some minutes is harmless — each trigger
+ * is its own invocation with its own budget.
+ */
+export const READER_CRON = '*/5 * * * *';
+
 /** The `pull_request` payload fields we read (a tiny subset of GitHub's event). */
 interface PullRequestPayload {
   action: string;
@@ -148,7 +174,8 @@ export default {
       return new Response(
         `alfred workers ok (build ${env.WORKER_VERSION ?? UNSTAMPED}; ` +
           `classifier ${env.CLASSIFIER_MODEL} @ ${env.CLASSIFIER_TIMEZONE}; ` +
-          `comms ingest ${env.COMMS_INGEST_HMAC_SECRET === undefined ? 'unconfigured' : 'configured'})`,
+          `comms ingest ${env.COMMS_INGEST_HMAC_SECRET === undefined ? 'unconfigured' : 'configured'}; ` +
+          `reader ${env.READER_MODEL} cap ${env.READER_DAILY_CAP ?? String(READER_DEFAULT_DAILY_CAP)})`,
       );
     }
 
@@ -166,7 +193,7 @@ export default {
   },
 
   /**
-   * The cron triggers' entrypoint, shared by all three schedules — the runtime hands over which
+   * The cron triggers' entrypoint, shared by all four schedules — the runtime hands over which
    * one fired and nothing else, so `event.cron` is the whole dispatch. An unrecognised expression
    * takes the frequent path: a schedule that was renamed in wrangler.toml and not here should
    * keep triaging rather than silently do nothing.
@@ -185,6 +212,11 @@ export default {
 
     if (event.cron === POLL_CRON) {
       logCommsTick(await runCommsPoll(env, now));
+      return;
+    }
+
+    if (event.cron === READER_CRON) {
+      logReaderTick(await runReaderTick(env, now));
       return;
     }
 
@@ -243,6 +275,22 @@ function logRetention(summary: CommsRetentionSummary): void {
       : `comms retention: ${String(summary.deleted)} messages deleted`,
   );
   logFailures(summary.failures);
+}
+
+/**
+ * The reader tick, as ONE line of counts, so `wrangler tail` can say how much of a tick ran. The
+ * counts are the tick's own summary; each failure that ended a unit is an error line beneath them.
+ */
+function logReaderTick(summary: ReaderTickSummary): void {
+  console.log(
+    `reader tick: ${String(summary.discovered)} discovered, ${String(summary.intake)} taken in, ` +
+      `${String(summary.summarized)} summarised, ${String(summary.refused)} refused, ` +
+      `${String(summary.countedFailures)} counted failures, ` +
+      `${String(summary.uncountedFailures)} uncounted, ` +
+      `${String(summary.skippedForCap)} waiting on the cap, ` +
+      `${String(summary.skippedForBudget)} left for the budget`,
+  );
+  for (const failure of summary.failures) console.error(`reader: ${failure}`);
 }
 
 function logFailures(failures: string[]): void {

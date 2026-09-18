@@ -29,9 +29,9 @@ test.describe('at a phone width', () => {
     const drawer = page.getByRole('dialog');
     await expect(drawer.getByRole('navigation', { name: 'Navigation' })).toBeVisible();
 
-    // All three modules are reachable from inside the drawer.
+    // All four modules are reachable from inside the drawer (the Reader joined in ALF-233).
     const switcher = drawer.getByRole('group', { name: 'Switch module' });
-    await expect(switcher.getByRole('link')).toHaveCount(3);
+    await expect(switcher.getByRole('link')).toHaveCount(4);
 
     // Comms swaps in without closing the drawer, exactly as Code does.
     await switcher.getByRole('link', { name: 'Comms' }).click();

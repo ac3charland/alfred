@@ -196,6 +196,16 @@ With `incremental: true`, adding a file whose inputs the cache thinks are unchan
 scratch) fails on the very same file. When a build reports a type error the typecheck script
 missed, delete `frontend/tsconfig.tsbuildinfo` and re-run before doubting the error.
 
+**A guard over a `Json`-typed column can't return `value is YourInterface` directly.**
+`value is T` requires `T` assignable to the parameter's declared type. A plain interface has no
+index signature, so it is never assignable to `Json` (TS2677) — even though every one of its
+fields is itself Json-compatible. Fix: intersect in an index signature for the predicate only
+(`type JsonT = T & { [key: string]: Json | undefined }`, then `value is JsonT`); callers still get
+a `T` back, since `JsonT` is a structural subtype of it, and the shared `T` declaration stays
+untouched.
+
+**A `const` annotated with a wider type narrows straight back to the assigned value's type — put the wider type on a function PARAMETER instead when a branch has to survive `no-unnecessary-condition`.** `const usage: Anthropic.Usage | undefined = message.usage; if (usage === undefined)` trips the rule: the compiler narrows `usage` from what was assigned, not from the annotation, and the SDK types `message.usage` as always-present. A parameter's declared type is what the compiler actually trusts, so take the value there instead of the message: `function readUsage(usage: Anthropic.Usage | undefined): … { if (usage === undefined) return undefined; … }` (`workers/src/reader/summarize.ts` `readUsage`).
+
 **`noImplicitOverride` requires the `override` keyword on subclass methods.**
 If you forget `override`, the compiler errors. This is always a useful signal — if the base method
 is renamed, your "override" silently becomes a new method without the keyword.

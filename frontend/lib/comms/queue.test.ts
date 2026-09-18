@@ -1,5 +1,7 @@
+import type { CommMessage } from '@/lib/types';
+
 import { makeCommMessage, resetCommFixtureClock } from './fixtures';
-import { groupByTier, isQueued, isShelved, queueCount, shelved } from './queue';
+import { groupByTier, isQueued, isShelved, queueCount, readerClaimedCount, shelved } from './queue';
 
 const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
 
@@ -63,6 +65,27 @@ describe('isShelved', () => {
     const waiting = makeCommMessage(ACCOUNT);
     expect(isQueued(waiting)).toBe(false);
     expect(isShelved(waiting)).toBe(false);
+  });
+
+  it('does not shelve a newsletter the Reader has claimed — it has a better home', () => {
+    const claimed = makeCommMessage(ACCOUNT, {
+      tier: 'fyi',
+      judged_by: 'filter',
+      filtered_reason: 'newsletter',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+    expect(isShelved(claimed)).toBe(false);
+    expect(shelved([claimed])).toEqual([]);
+  });
+
+  it('still queues a claimed message that owes a reply — the Reader hides an archive, never an obligation', () => {
+    const claimedButQueued = makeCommMessage(ACCOUNT, {
+      tier: 'today',
+      judged_by: 'model',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+    expect(isQueued(claimedButQueued)).toBe(true);
+    expect(queueCount([claimedButQueued])).toBe(1);
   });
 
   it('does not shelve a queued message, or anything outbound', () => {
@@ -148,4 +171,90 @@ describe('queueCount', () => {
   it('is zero for an empty module — the resting state', () => {
     expect(queueCount([])).toBe(0);
   });
+});
+
+describe('readerClaimedCount', () => {
+  it('counts inbound messages the Reader claimed and nothing else', () => {
+    const claimed = makeCommMessage(ACCOUNT, {
+      tier: 'fyi',
+      judged_by: 'filter',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+    const unclaimed = makeCommMessage(ACCOUNT, { tier: 'fyi', judged_by: 'filter' });
+    const outbound = makeCommMessage(ACCOUNT, {
+      direction: 'outbound',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+    expect(readerClaimedCount([claimed, unclaimed, outbound])).toBe(1);
+    expect(readerClaimedCount([])).toBe(0);
+  });
+
+  it('does not count a claimed message that still owes a reply', () => {
+    // The line reads "n went to the Reader" on the SHELF, so it counts what the shelf would
+    // otherwise have shown. A queued newsletter never left the queue for the reading list.
+    const queued = makeCommMessage(ACCOUNT, {
+      tier: 'today',
+      judged_by: 'model',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+
+    expect(readerClaimedCount([queued])).toBe(0);
+  });
+
+  it('does not count a claimed message nothing has judged yet', () => {
+    const unjudged = makeCommMessage(ACCOUNT, {
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+
+    expect(readerClaimedCount([unjudged])).toBe(0);
+  });
+});
+
+describe('the shelf rule', () => {
+  /** One row per shape the two shelf predicates have to agree about. */
+  const SHAPES: { name: string; overrides: Partial<CommMessage>; eligible: boolean }[] = [
+    {
+      name: 'a judged FYI message',
+      overrides: { tier: 'fyi', judged_by: 'model' },
+      eligible: true,
+    },
+    {
+      name: 'a message cleared out of the queue',
+      overrides: {
+        tier: 'today',
+        judged_by: 'model',
+        cleared_at: '2026-02-01T09:00:00.000Z',
+        cleared_by: 'reply',
+      },
+      eligible: true,
+    },
+    {
+      name: 'a cleared message nothing ever tiered',
+      overrides: { cleared_at: '2026-02-01T09:00:00.000Z', cleared_by: 'nothing_to_answer' },
+      eligible: true,
+    },
+    { name: 'a queued message', overrides: { tier: 'asap', judged_by: 'model' }, eligible: false },
+    { name: 'an unjudged message', overrides: {}, eligible: false },
+    {
+      name: 'an outbound message',
+      overrides: { direction: 'outbound', tier: 'fyi', judged_by: 'model' },
+      eligible: false,
+    },
+  ];
+
+  it.each(SHAPES)(
+    'draws or counts $name exactly as the other predicate does not',
+    ({ overrides, eligible }) => {
+      for (const claimedAt of [null, '2026-02-01T09:05:00.000Z']) {
+        const message = makeCommMessage(ACCOUNT, { ...overrides, reader_claimed_at: claimedAt });
+        const drawn = isShelved(message);
+        const counted = readerClaimedCount([message]) === 1;
+
+        // Every eligible row lands on exactly one side of the claim; an ineligible row on neither.
+        expect(drawn && counted).toBe(false);
+        expect(drawn || counted).toBe(eligible);
+        expect(counted).toBe(eligible && claimedAt !== null);
+      }
+    },
+  );
 });

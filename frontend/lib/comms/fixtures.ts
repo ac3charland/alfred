@@ -107,6 +107,7 @@ export function makeCommMessage(
     cleared_by: overrides.cleared_by ?? null,
     inbox_item_id: overrides.inbox_item_id ?? null,
     created_at: overrides.created_at ?? receivedAt,
+    reader_claimed_at: overrides.reader_claimed_at ?? null,
   };
 }
 

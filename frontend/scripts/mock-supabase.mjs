@@ -20,7 +20,8 @@
  *     GET|HEAD|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items,weekly_plans,
  *                                     habits,habit_entries,comm_accounts,comm_messages,
  *                                     comm_verdicts,comm_people,comm_handles,comm_rubrics,
- *                                     comm_corrections,comm_classifier_health}
+ *                                     comm_corrections,comm_classifier_health,
+ *                                     reader_publications,reader_posts}
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
@@ -99,6 +100,11 @@ let commRubrics = [];
 let commCorrections = [];
 /** @type {Record<string, unknown>[]} */
 let commHealth = [];
+// ── Reader (migration 0035): newsletter posts pulled out of Comms and summarised. ──
+/** @type {Record<string, unknown>[]} */
+let readerPublications = [];
+/** @type {Record<string, unknown>[]} */
+let readerPosts = [];
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
@@ -348,6 +354,8 @@ function tableFor(name) {
   if (name === 'comm_rubrics') return commRubrics;
   if (name === 'comm_corrections') return commCorrections;
   if (name === 'comm_classifier_health') return commHealth;
+  if (name === 'reader_publications') return readerPublications;
+  if (name === 'reader_posts') return readerPosts;
   return;
 }
 
@@ -512,6 +520,8 @@ function newCommMessage(input) {
     cleared_by: input.cleared_by ?? null,
     inbox_item_id: input.inbox_item_id ?? null,
     created_at: input.created_at ?? receivedAt,
+    // The Reader intake's claim stamp (migration 0035). Null until Reader mirrors this message.
+    reader_claimed_at: input.reader_claimed_at ?? null,
   };
 }
 
@@ -612,6 +622,57 @@ function commExampleSetVersion() {
     highest = Math.max(highest, Number(row.created_version) || 0, Number(row.pruned_version) || 0);
   }
   return highest;
+}
+
+// ── Reader row constructors (defaults mirror migration 0035). ──
+
+/** A roster row. `source` has no DB default (the migration always states it), so this picks one. */
+function newReaderPublication(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    handle: input.handle ?? '',
+    name: input.name ?? '',
+    domain: input.domain ?? null,
+    enabled: input.enabled ?? true,
+    source: input.source ?? 'auto',
+    notes: input.notes ?? null,
+    first_seen_at: input.first_seen_at ?? new Date().toISOString(),
+    created_at: input.created_at ?? new Date().toISOString(),
+  };
+}
+
+/** A post. Unsummarised by default — `summary_state` and its attempts default like the column. */
+function newReaderPost(input) {
+  const receivedAt = input.received_at ?? new Date().toISOString();
+  return {
+    id: input.id ?? randomUUID(),
+    publication_id: input.publication_id ?? null,
+    comm_message_id: input.comm_message_id ?? null,
+    account_key: input.account_key ?? 'gmail-personal',
+    gmail_message_id: input.gmail_message_id ?? randomUUID(),
+    rfc822_message_id: input.rfc822_message_id ?? null,
+    title: input.title ?? '',
+    author: input.author ?? null,
+    canonical_url: input.canonical_url ?? null,
+    received_at: receivedAt,
+    text: input.text ?? null,
+    word_count: input.word_count ?? 0,
+    html_extracted: input.html_extracted ?? false,
+    headline: input.headline ?? null,
+    gist: input.gist ?? null,
+    overview: input.overview ?? null,
+    model: input.model ?? null,
+    prompt_version: input.prompt_version ?? null,
+    summary_state: input.summary_state ?? 'pending',
+    summarize_attempts: input.summarize_attempts ?? 0,
+    last_error: input.last_error ?? null,
+    summarizing_since: input.summarizing_since ?? null,
+    model_called_at: input.model_called_at ?? null,
+    summarized_at: input.summarized_at ?? null,
+    opened_at: input.opened_at ?? null,
+    archived_at: input.archived_at ?? null,
+    created_at: input.created_at ?? receivedAt,
+  };
 }
 
 // ── Software Factory row constructors (defaults mirror migration 0002). ──
@@ -744,6 +805,8 @@ function rowConstructorFor(name) {
   if (name === 'comm_rubrics') return newCommRubric;
   if (name === 'comm_corrections') return newCommCorrection;
   if (name === 'comm_classifier_health') return newCommHealth;
+  if (name === 'reader_publications') return newReaderPublication;
+  if (name === 'reader_posts') return newReaderPost;
   return;
 }
 
@@ -1524,7 +1587,22 @@ function deleteRows(rest, matched) {
     for (const correction of commCorrections) {
       if (removeIds.has(String(correction.message_id))) correction.message_id = null;
     }
+    // reader_posts.comm_message_id is `on delete set null` (migration 0035): a post outlives the
+    // mail it was extracted from.
+    for (const post of readerPosts) {
+      if (removeIds.has(String(post.comm_message_id))) post.comm_message_id = null;
+    }
     commMessages = commMessages.filter((message) => !removeIds.has(String(message.id)));
+    return;
+  }
+  if (rest === 'reader_publications') {
+    const removeRows = new Set(matched);
+    readerPublications = readerPublications.filter((publication) => !removeRows.has(publication));
+    return;
+  }
+  if (rest === 'reader_posts') {
+    const removeRows = new Set(matched);
+    readerPosts = readerPosts.filter((post) => !removeRows.has(post));
     return;
   }
   if (rest === 'comm_people') {
@@ -1585,6 +1663,8 @@ function handleControl(req, res, url, body) {
     commRubrics = [];
     commCorrections = [];
     commHealth = [];
+    readerPublications = [];
+    readerPosts = [];
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
@@ -1632,6 +1712,14 @@ function handleControl(req, res, url, body) {
     commHealth = Array.isArray(body?.commHealth)
       ? body.commHealth.map((h) => newCommHealth(h))
       : [];
+    // Reader. Publications before posts, so a post's publication_id resolves for any read the
+    // test makes before the seed response is even inspected.
+    readerPublications = Array.isArray(body?.readerPublications)
+      ? body.readerPublications.map((p) => newReaderPublication(p))
+      : [];
+    readerPosts = Array.isArray(body?.readerPosts)
+      ? body.readerPosts.map((p) => newReaderPost(p))
+      : [];
     // Park the sequence above every seeded rank so gate-created stories append at the bottom.
     syncPrioritySequence();
     sendJson(res, 200, {
@@ -1651,6 +1739,8 @@ function handleControl(req, res, url, body) {
       commRubrics,
       commCorrections,
       commHealth,
+      readerPublications,
+      readerPosts,
     });
     return;
   }
@@ -1672,6 +1762,8 @@ function handleControl(req, res, url, body) {
       commRubrics,
       commCorrections,
       commHealth,
+      readerPublications,
+      readerPosts,
     });
     return;
   }

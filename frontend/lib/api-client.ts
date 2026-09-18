@@ -19,7 +19,9 @@ import type {
   CreateProjectInput,
   CreateRubricVersionInput,
   ListItemsQuery,
+  PatchReaderPostInput,
   PurgeInput,
+  ReaderPostsQuery,
   UpdateEpicInput,
   UpdateFolderInput,
   UpdateHabitInput,
@@ -46,6 +48,7 @@ import type {
   LocVelocityResponse,
   PrRatioResponse,
   Project,
+  ReaderPostListItem,
   WeeklyPlan,
 } from '@/lib/types';
 
@@ -710,6 +713,42 @@ export function pruneCommExample(id: string, pruned: boolean): Promise<CommCorre
   });
 }
 
+// ---------------------------------------------------------------------------
+// Reader — the newsletter pipe and reading list
+//
+// Both routes return the row they changed (text omitted), so the store reconciles with
+// the server-canonical post rather than re-reading the module.
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the reading list. The shell seeds the store's initial render, so this is for the store's
+ * own focus/visibility refresh — never the first paint. `query` is partial because every field
+ * has a server-side default (active scope, 200 rows) the caller is usually happy to take.
+ */
+export function fetchReaderPosts(
+  query: Partial<ReaderPostsQuery> = {},
+): Promise<ReaderPostListItem[]> {
+  const parameters = new URLSearchParams();
+  if (query.scope !== undefined) parameters.set('scope', query.scope);
+  if (query.limit !== undefined) parameters.set('limit', String(query.limit));
+  const qs = parameters.toString();
+  return apiRequest<ReaderPostListItem[]>(`/api/reader/posts${qs ? `?${qs}` : ''}`);
+}
+
+/**
+ * The reading list's two verbs, both a PATCH to the same row: archive (either direction, though
+ * the store only ever sends `true` so far) or mark-opened. Returns the patched row.
+ */
+export function patchReaderPost(
+  id: string,
+  body: PatchReaderPostInput,
+): Promise<ReaderPostListItem> {
+  return apiRequest<ReaderPostListItem>(`/api/reader/posts/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
 export {
   type AddHandleInput,
   type ChangeTierInput,
@@ -721,8 +760,10 @@ export {
   type CreateProjectInput,
   type CreateRubricVersionInput,
   type ListItemsQuery,
+  type PatchReaderPostInput,
   type PruneExampleInput,
   type PurgeInput,
+  type ReaderPostsQuery,
   type UpdateEpicInput,
   type UpdateHabitInput,
   type UpdateItemInput,

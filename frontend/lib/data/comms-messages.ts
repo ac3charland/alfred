@@ -65,8 +65,10 @@ export async function getCommMessagesByScope(
     query.scope === 'queue'
       ? base.is('cleared_at', null).in('tier', [...QUEUED_TIERS])
       : // Shelved is "judged, and not in the queue": the `fyi` tier itself, plus every row that
-        // left the queue by one of its exits.
-        base.or('tier.eq.fyi,cleared_at.not.is.null');
+        // left the queue by one of its exits — minus anything the Reader has claimed, which
+        // `isShelved` excludes for the same reason (a claimed newsletter lives in the reading
+        // list; the shelf only counts it).
+        base.or('tier.eq.fyi,cleared_at.not.is.null').is('reader_claimed_at', null);
 
   const ordered = scoped.order('received_at', { ascending: false });
   return query.limit === undefined ? await ordered : await ordered.limit(query.limit);

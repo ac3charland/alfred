@@ -750,3 +750,14 @@ export type HabitsQuery = z.infer<typeof habitsQuerySchema>;
 // ---------------------------------------------------------------------------
 
 export * from '@/lib/api/comms-schemas';
+
+// ---------------------------------------------------------------------------
+// Reader (the newsletter pipe and reading list)
+//
+// Defined in `lib/api/reader-schemas` and re-exported here so every route handler and client
+// wrapper keeps ONE import path for request shapes. The Reader schemas live in their own file
+// because the module is built independently and would otherwise collide on one block of this
+// one.
+// ---------------------------------------------------------------------------
+
+export * from '@/lib/api/reader-schemas';

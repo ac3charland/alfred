@@ -13,7 +13,7 @@ import type { Folder, Project } from '@/lib/types';
  */
 
 /** The destination groups, in display + keyboard-traversal order. */
-export type DestinationGroup = 'go' | 'comms' | 'folders' | 'projects';
+export type DestinationGroup = 'go' | 'comms' | 'reader' | 'folders' | 'projects';
 
 /**
  * A stable icon token per destination, resolved to a concrete lucide icon by the component —
@@ -35,6 +35,7 @@ export type DestinationIcon =
   | 'people'
   | 'rubric'
   | 'examples'
+  | 'reader'
   | 'folder'
   | 'project';
 
@@ -55,6 +56,7 @@ export interface Destination {
 export interface GroupedDestinations {
   go: Destination[];
   comms: Destination[];
+  reader: Destination[];
   folders: Destination[];
   projects: Destination[];
 }
@@ -107,6 +109,31 @@ const COMMS_DESTINATIONS: readonly Destination[] = [
     label: 'Examples',
     href: '/comms/examples',
     icon: 'examples',
+  },
+];
+
+/**
+ * The Reader module's three destinations, in the sidebar's own order — the reading list first
+ * (the module's default view), then the archive and the publications roster. Their own group
+ * for the same reason Comms gets one: a coherent set of module surfaces, not three more rows
+ * bolted onto "Go to". All three share the `reader` icon token — the module has no per-surface
+ * iconography yet.
+ */
+const READER_DESTINATIONS: readonly Destination[] = [
+  { id: 'reader-list', group: 'reader', label: 'Reading list', href: '/reader', icon: 'reader' },
+  {
+    id: 'reader-archive',
+    group: 'reader',
+    label: 'Archive',
+    href: '/reader/archive',
+    icon: 'reader',
+  },
+  {
+    id: 'reader-publications',
+    group: 'reader',
+    label: 'Publications',
+    href: '/reader/publications',
+    icon: 'reader',
   },
 ];
 
@@ -182,6 +209,7 @@ export function buildDestinations(
   return {
     go: filterGroup(q, STATIC_DESTINATIONS),
     comms: filterGroup(q, COMMS_DESTINATIONS),
+    reader: filterGroup(q, READER_DESTINATIONS),
     folders: filterGroup(
       q,
       folders.map((folder) => folderDestination(folder)),
@@ -195,7 +223,13 @@ export function buildDestinations(
 
 /** Every group concatenated into one ordered list for ↑/↓ keyboard navigation. */
 export function flattenDestinations(grouped: GroupedDestinations): Destination[] {
-  return [...grouped.go, ...grouped.comms, ...grouped.folders, ...grouped.projects];
+  return [
+    ...grouped.go,
+    ...grouped.comms,
+    ...grouped.reader,
+    ...grouped.folders,
+    ...grouped.projects,
+  ];
 }
 
 /** A stable DOM id for a destination's `<li role="option">` (for `aria-activedescendant`). */

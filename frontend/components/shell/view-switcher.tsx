@@ -14,14 +14,25 @@ import { cn } from '@/lib/utils';
  * rule, so URL, content, sidebar, and switcher highlight never disagree.
  *
  * The active segment wears its OWN module's accent, read from the shared accent table rather
- * than hard-coded — Tasks amber, Code teal, Comms blue, no two alike (ALF-219). One table means
- * the switcher, the sidebar and a view heading can't drift on what colour a module is.
+ * than hard-coded — Tasks amber, Code teal, Comms blue, Reader green, no two alike (ALF-219).
+ * One table means the switcher, the sidebar and a view heading can't drift on what colour a
+ * module is.
  *
  * The control fills its container and splits that width evenly between the segments, rather than
  * sizing itself to its labels. Hugging the labels (`w-fit`, ALF-93) was fine with two segments
  * and burst the 224px desktop sidebar once Comms made three: the control ran past the sidebar's
  * border and over the main pane. Sized from the container down, a fourth module narrows the
  * segments instead of overflowing, so the layout can't break again from a label's width.
+ *
+ * Four segments needed more than that narrowing, though (ALF-233): measured in the
+ * bundled Geist at 14px/500, "Tasks Code Comms Reader" is 181px of text against the 224px
+ * sidebar's ~176px budget for all four segments — no padding change closes that gap without
+ * truncating a label, which ALF-219 already ruled out. So the desktop sidebar widens to 256px
+ * (`app-shell.tsx`, `md:w-64`) AND the segment type drops from 14px to 13px
+ * (`text-[13px] px-1`, down from `text-sm px-1.5`): at 256px the four 13px labels measure 161px
+ * against a 208px budget, ~15px of slack — comfortably clear of a font-hinting difference.
+ * Everything else about the control (`flex-auto`, `min-w-0`, `truncate` as the floor, `gap-0.5`,
+ * `p-1`) is unchanged.
  *
  * Tasks lands on the By-Priority list — the module's default view — rather than the `/`
  * capture screen; capture stays reachable via the `alfred` wordmark (see the app shell).
@@ -43,7 +54,7 @@ const segmentClass = (module: ModuleId, active: boolean) =>
     // segment what the narrowest needs and clip "Comms" at the sidebar's width. `min-w-0` +
     // `truncate` are the floor under that: a fourth module would truncate inside the control
     // rather than push it past the sidebar border, which is the failure mode being fixed.
-    'flex-auto min-w-0 truncate rounded-md px-1.5 py-1 text-center text-sm font-medium',
+    'flex-auto min-w-0 truncate rounded-md px-1 py-1 text-center text-[13px] font-medium',
     'transition-colors duration-100 motion-reduce:transition-none',
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface',
     active
@@ -56,6 +67,7 @@ const SEGMENTS: readonly { module: ModuleId; label: string; href: string }[] = [
   { module: 'tasks', label: 'Tasks', href: '/priority' },
   { module: 'code', label: 'Code', href: '/code' },
   { module: 'comms', label: 'Comms', href: '/comms' },
+  { module: 'reader', label: 'Reader', href: '/reader' },
 ];
 
 export function ViewSwitcher() {

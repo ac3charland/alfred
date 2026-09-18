@@ -73,6 +73,42 @@ read back what became of them. Everything they stand on lives here:
   patches `code_items` straight through PostgREST when a PR merges. Stories that reached `done`
   before this migration have `null`; the factory kept no transition history to backfill from.
 
+### `0035_reader.sql` — the Reader module (ALF-233)
+
+A newsletter post is never an item: it arrives, is (maybe) summarised, is (maybe) read, and is
+archived — it has no due date, no folder, no subtask tree. So it gets its own tables, same
+reasoning `0034` already applies to a comms message.
+
+- **`reader_publications`** — the roster a post's sender is matched against. `source` is `auto`
+  (added by the Substack discovery view) or `owner` (added by hand); `enabled = false` pauses a
+  publication without losing its mail from the Comms mirror.
+- **`reader_posts`** — one row per extracted post, unique on `(account_key, gmail_message_id)`
+  (the dedupe key a concurrent tick's insert wins or loses on — never a cursor). `summary_state`
+  is `pending | done | refused | failed`, and `reader_posts_done_has_summary` rejects a `done` row
+  with no gist. `summarizing_since` is the tick's lease against overlapping runs; `model_called_at`
+  is what the daily-cap read counts.
+- **`reader_health`** — a singleton, seeded by this migration so the tick only ever patches it.
+- **`comm_messages.reader_claimed_at`** — the one column Reader adds to Comms' table: stamped on
+  a message once it either produced a post or turned out unusable, so the worklist view never
+  re-offers it.
+- **`v_reader_worklist`** — inbound gmail-personal mail from an enabled publication, unclaimed,
+  with no post yet, from the last seven days — the tick's whole read.
+- **`v_reader_discovery`** — Substack senders with a list header, not already on the roster, from
+  the last seven days, excluding Substack's own `no-reply@`/`noreply@` platform senders.
+
+There is no publications route yet, so the roster is seeded by hand. Add a non-Substack
+publication:
+
+```sql
+insert into reader_publications (handle, name, source) values ('news@example.com', 'Example', 'owner');
+```
+
+Pause one:
+
+```sql
+update reader_publications set enabled = false where handle = 'news@example.com';
+```
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`

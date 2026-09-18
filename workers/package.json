@@ -11,6 +11,7 @@
     "gmail:probe": "node scripts/gmail-probe.ts",
     "gmail:authorize": "node scripts/gmail-authorize.ts",
     "eval:comms": "node --import ./scripts/ts-resolve.mjs scripts/comms-eval.ts",
+    "eval:reader": "node --import ./scripts/ts-resolve.mjs scripts/reader-eval.ts",
     "mutation": "stryker run",
     "check:fast": "npm run typecheck && npm run lint && npm run format && npm run test"
   },

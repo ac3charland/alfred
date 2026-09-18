@@ -23,6 +23,7 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Tasks' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Code' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Comms' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Reader' })).toBeInTheDocument();
   });
 
   it('points each segment at its module default view', () => {
@@ -31,6 +32,7 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Tasks' })).toHaveAttribute('href', '/priority');
     expect(screen.getByRole('link', { name: 'Code' })).toHaveAttribute('href', '/code');
     expect(screen.getByRole('link', { name: 'Comms' })).toHaveAttribute('href', '/comms');
+    expect(screen.getByRole('link', { name: 'Reader' })).toHaveAttribute('href', '/reader');
   });
 
   it('marks Tasks active on the inbox/landing route', () => {
@@ -82,6 +84,17 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Comms' })).toHaveAttribute('aria-current', 'page');
   });
 
+  it('marks Reader active on its landing route and on a route beneath it', () => {
+    mockPathname.mockReturnValue('/reader');
+    const { rerender } = render(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Reader' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Tasks' })).not.toHaveAttribute('aria-current');
+
+    mockPathname.mockReturnValue('/reader/archive');
+    rerender(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Reader' })).toHaveAttribute('aria-current', 'page');
+  });
+
   it('gives the active segment its OWN module accent, not one shared colour', () => {
     mockPathname.mockReturnValue('/code');
     const { rerender } = render(<ViewSwitcher />);
@@ -93,6 +106,12 @@ describe('ViewSwitcher', () => {
     rerender(<ViewSwitcher />);
     expect(screen.getByRole('link', { name: 'Comms' })).toHaveClass('text-accent-blue');
     expect(screen.getByRole('link', { name: 'Comms' })).not.toHaveClass('text-accent-teal');
+
+    // Reader is the green module.
+    mockPathname.mockReturnValue('/reader');
+    rerender(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Reader' })).toHaveClass('text-accent-green');
+    expect(screen.getByRole('link', { name: 'Reader' })).not.toHaveClass('text-accent-blue');
   });
 
   it('highlights active Tasks in amber, so it is not mistaken for Code (ALF-219)', () => {
@@ -127,10 +146,10 @@ describe('ViewSwitcher', () => {
   it('grows each segment from its own label and shares out only the leftover width', () => {
     render(<ViewSwitcher />);
 
-    for (const label of ['Tasks', 'Code', 'Comms']) {
+    for (const label of ['Tasks', 'Code', 'Comms', 'Reader']) {
       const segment = screen.getByRole('link', { name: label });
       // `flex-auto` keeps each segment's own label as its starting width; `flex-1` would
-      // give all three equal thirds and clip the longest label ("Comms") in the sidebar.
+      // give all four equal quarters and clip the longest label ("Comms") in the sidebar.
       expect(segment).toHaveClass('flex-auto');
       expect(segment).not.toHaveClass('flex-1');
       // Without `min-w-0` a flex item refuses to shrink below its text width, which is
@@ -138,6 +157,18 @@ describe('ViewSwitcher', () => {
       expect(segment).toHaveClass('min-w-0');
       expect(segment).toHaveClass('truncate');
       expect(segment).toHaveClass('text-center');
+    }
+  });
+
+  it('sizes each segment at 13px/px-1, the type the widened 256px sidebar fits', () => {
+    render(<ViewSwitcher />);
+
+    for (const label of ['Tasks', 'Code', 'Comms', 'Reader']) {
+      const segment = screen.getByRole('link', { name: label });
+      expect(segment).toHaveClass('text-[13px]');
+      expect(segment).toHaveClass('px-1');
+      expect(segment).not.toHaveClass('text-sm');
+      expect(segment).not.toHaveClass('px-1.5');
     }
   });
 });

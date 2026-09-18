@@ -43,7 +43,9 @@ export function AppShell({
     <>
       <div className={shellRootClass}>
         {/* Desktop sidebar */}
-        <aside className="hidden md:flex md:w-56 md:shrink-0 md:flex-col border-r border-border bg-surface">
+        {/* 256px (`md:w-64`), matching the mobile drawer's width — widened from `md:w-56`
+            (ALF-233) so the four-segment switcher's labels fit without truncating. */}
+        <aside className="hidden md:flex md:w-64 md:shrink-0 md:flex-col border-r border-border bg-surface">
           <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
             <AlfredLink
               aria-label="alfred — back to capture"

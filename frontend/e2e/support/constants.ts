@@ -9,6 +9,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { resetCommFixtureClock } from '@/lib/comms/fixtures';
+import { resetReaderFixtureClock } from '@/lib/reader/fixtures';
 import type {
   CodeItem,
   CommAccount,
@@ -25,6 +26,8 @@ import type {
   HabitEntry,
   Item,
   Project,
+  ReaderPost,
+  ReaderPublication,
   WeeklyPlan,
 } from '@/lib/types';
 
@@ -42,6 +45,14 @@ export {
   makeCommRubric,
   makeCommVerdict,
 } from '@/lib/comms/fixtures';
+
+/** Likewise the Reader seed builders — the same ones the unit tests and stories use. */
+export {
+  makeReaderOverview,
+  makeReaderPost,
+  makeReaderPublication,
+  readerFixtureSet,
+} from '@/lib/reader/fixtures';
 
 export const MOCK_PORT = 54_331;
 export const MOCK_URL = `http://localhost:${String(MOCK_PORT)}`;
@@ -77,6 +88,8 @@ export interface SeedState {
   commCorrections?: CommCorrection[];
   /** The singleton classifier-health row, as a list so the seed shape stays uniform. */
   commHealth?: CommClassifierHealth[];
+  readerPublications?: ReaderPublication[];
+  readerPosts?: ReaderPost[];
 }
 
 let sequence = 0;
@@ -94,11 +107,12 @@ function nextSortOrder(): number {
   return sortSequence;
 }
 
-/** Reset every fixture sequence — the local ones plus the shared comms clock. */
+/** Reset every fixture sequence — the local ones plus the shared comms and reader clocks. */
 export function resetSeedClock(): void {
   sequence = 0;
   sortSequence = 0;
   resetCommFixtureClock();
+  resetReaderFixtureClock();
 }
 
 export function makeFolder(name: string, overrides: Partial<Folder> = {}): Folder {

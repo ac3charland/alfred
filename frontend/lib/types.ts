@@ -183,3 +183,38 @@ export interface CommsHealthSnapshot {
   /** Absent until the classifier sweep has run at least once. */
   health: CommClassifierHealth | undefined;
 }
+
+// ── Reader (newsletter posts pulled out of Comms and summarised) — ──
+
+export type ReaderPublication = Database['public']['Tables']['reader_publications']['Row'];
+export type ReaderPublicationInsert = Database['public']['Tables']['reader_publications']['Insert'];
+export type ReaderPublicationUpdate = Database['public']['Tables']['reader_publications']['Update'];
+
+export type ReaderPost = Database['public']['Tables']['reader_posts']['Row'];
+export type ReaderPostInsert = Database['public']['Tables']['reader_posts']['Insert'];
+export type ReaderPostUpdate = Database['public']['Tables']['reader_posts']['Update'];
+
+/** The module-level tick state — a singleton row, seeded by the migration. */
+export type ReaderHealth = Database['public']['Tables']['reader_health']['Row'];
+
+/**
+ * A post without its body — the list read's shape. A 30 KB body times hundreds of rows is a
+ * seed the list never renders (the verb opens the original), so `getReaderSeed`, `getReaderPosts`
+ * and `patchReaderPost` all select the shared `READER_POST_LIST_COLUMNS` instead of `*`.
+ */
+export type ReaderPostListItem = Omit<ReaderPost, 'text'>;
+
+/**
+ * The four summary states `reader_posts.summary_state` is CHECKed down to. The column is a plain
+ * `text` in the generated Row type (Postgres CHECKs, unlike enums, carry no type-level metadata),
+ * so the union is declared by hand here rather than read off `Database`.
+ */
+export type ReaderSummaryState = 'pending' | 'done' | 'refused' | 'failed';
+
+/** The shape `reader_posts.overview` holds for a `done` post — the model's structured take. */
+export interface ReaderOverview {
+  novel_ideas: string[];
+  evidence: string[];
+  argument: string;
+  who_should_read: string;
+}

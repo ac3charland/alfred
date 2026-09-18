@@ -51,6 +51,7 @@ describe('buildDestinations', () => {
       'Backlog',
     ]);
     expect(grouped.comms.map((d) => d.label)).toEqual(['Queue', 'People', 'Rubric', 'Examples']);
+    expect(grouped.reader.map((d) => d.label)).toEqual(['Reading list', 'Archive', 'Publications']);
     expect(grouped.folders.map((d) => d.label)).toEqual(['Software']);
     expect(grouped.projects.map((d) => d.label)).toEqual(['Alfred']);
   });
@@ -78,6 +79,20 @@ describe('buildDestinations', () => {
   it('filters the Comms group like any other', () => {
     expect(buildDestinations('rubr', [], []).comms.map((d) => d.label)).toEqual(['Rubric']);
     expect(buildDestinations('zzz', [], []).comms).toHaveLength(0);
+  });
+
+  it('emits the three Reader destinations with their hrefs and icon tokens', () => {
+    const grouped = buildDestinations('', [], []);
+    expect(grouped.reader.map((d) => [d.href, d.icon])).toEqual([
+      ['/reader', 'reader'],
+      ['/reader/archive', 'reader'],
+      ['/reader/publications', 'reader'],
+    ]);
+  });
+
+  it('filters the Reader group like any other', () => {
+    expect(buildDestinations('archiv', [], []).reader.map((d) => d.label)).toEqual(['Archive']);
+    expect(buildDestinations('zzz', [], []).reader).toHaveLength(0);
   });
 
   it('emits correct hrefs for the static go-to destinations', () => {
@@ -158,13 +173,14 @@ describe('buildDestinations', () => {
     const grouped = buildDestinations('priority', [makeFolder()], [makeProject()]);
     expect(grouped.go.map((d) => d.label)).toEqual(['Priority']);
     expect(grouped.comms).toHaveLength(0);
+    expect(grouped.reader).toHaveLength(0);
     expect(grouped.folders).toHaveLength(0);
     expect(grouped.projects).toHaveLength(0);
   });
 });
 
 describe('flattenDestinations', () => {
-  it('concatenates go → comms → folders → projects in order', () => {
+  it('concatenates go → comms → reader → folders → projects in order', () => {
     const grouped = buildDestinations(
       '',
       [makeFolder({ id: 'fa', name: 'Software' })],
@@ -174,6 +190,7 @@ describe('flattenDestinations', () => {
     expect(flat.map((d) => d.group)).toEqual([
       ...Array.from({ length: 11 }, () => 'go'),
       ...Array.from({ length: 4 }, () => 'comms'),
+      ...Array.from({ length: 3 }, () => 'reader'),
       'folders',
       'projects',
     ]);

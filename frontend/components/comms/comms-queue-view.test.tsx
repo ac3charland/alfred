@@ -99,6 +99,39 @@ describe('CommsQueueView — the three counted tiers', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('says how many newsletters went to the Reader, with a link, and keeps them off the shelf', () => {
+    renderView([
+      ...badDay(),
+      row({
+        tier: 'fyi',
+        judged_by: 'filter',
+        filtered_reason: 'newsletter',
+        subject: 'Import AI 412',
+        reader_claimed_at: NOW.toISOString(),
+      }),
+      row({
+        tier: 'fyi',
+        judged_by: 'filter',
+        filtered_reason: 'newsletter',
+        subject: 'Second Thoughts',
+        reader_claimed_at: NOW.toISOString(),
+      }),
+    ]);
+
+    // The two claimed rows are not counted on the shelf's own line…
+    expect(screen.getByRole('button', { name: /FYI · 1 message · no reply owed/ })).toBeVisible();
+    // …but they are named beneath it, with the way there.
+    const link = screen.getByRole('link', { name: /Reader/ });
+    expect(link).toHaveAttribute('href', '/reader');
+    expect(link.closest('p')).toHaveTextContent('2 newsletters went to the Reader');
+  });
+
+  it('draws no Reader line when nothing has been claimed', () => {
+    renderView(badDay());
+
+    expect(screen.queryByText(/went to the Reader/)).not.toBeInTheDocument();
+  });
+
   it('opens the shelf on request', async () => {
     const user = userEvent.setup();
     renderView(badDay());
@@ -269,6 +302,9 @@ describe('CommsQueueView — a tab that has been away', () => {
   it('re-reads the sources on return, so an hour away does not read as an outage', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(OPENED);
+    // The Reader store the providers mount refreshes on the same signal, so the automocked
+    // client has to answer it too — otherwise its `undefined` return is awaited as a promise.
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     // What the poller has been doing the whole hour the tab was away.
     jest.mocked(api).fetchCommsHealth.mockResolvedValue({
       accounts: [

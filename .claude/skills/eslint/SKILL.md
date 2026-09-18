@@ -198,6 +198,29 @@ for (const item of items) {
 
 This creates a new array (satisfies `.sort()` mutation concern) using a loop (not `.reduce()`) and works in ES2022 (no `toSorted` needed).
 
+The same `lib: ["ES2022"]` gap makes a plain, unqualified `Array#toSorted` call fail typecheck
+too — `Unsafe call of a type that could not be resolved` — wherever order doesn't actually
+matter. When the goal is only "do these two lists have the same elements" (e.g. pinning a
+column-name constant against a fixture's keys), skip sorting entirely and compare key **sets**
+with `toStrictEqual`: `expect(new Set(listedColumns)).toStrictEqual(new Set(fixtureColumns))`
+(`frontend/lib/data/reader.test.ts`).
+
+**Two rules make a charset name and an invisible-character class unwritable as spelled**
+
+`unicorn/text-encoding-identifier-case` rejects the string `'utf-8'` anywhere — including as a
+`Record` KEY, where it is the wire's spelling rather than a `TextDecoder` label. Key the map on the
+charset with its punctuation stripped instead (`utf8`, `iso88591`) and normalise the incoming name
+with `.toLowerCase().replaceAll(/\W|_/g, '')`; `new TextDecoder('utf8')` is a valid label, so
+nothing is lost. Separately, `no-misleading-character-class` refuses a combining mark inside `[…]`,
+so an invisible-character pattern has to be an alternation: `/\u034F|\u00AD|[\u200B-\u200D]/g`,
+not one class. (Both hit while decoding RFC 2047 headers in `workers/src/comms/email-text.ts`.)
+
+**`--fix` upper-cases hex escapes, so a literal source match made after linting misses**
+
+`unicorn/escape-case` rewrites `\u00ad` to `\u00AD` in place. A script that edits a file by exact
+string match will silently find nothing on the second pass — read the file back after a lint run
+rather than matching what you wrote.
+
 **`unicorn/prefer-includes-over-repeated-comparisons` fires across *different* variables**
 
 Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.)
@@ -236,9 +259,35 @@ const captured: string[] = [];
 const log = createLogger({ out: (line) => captured.push(line), err: (line) => captured.push(line) });
 ```
 
+The same trap catches `jest.spyOn(console, 'error').mockImplementation(() => {})` — silencing a
+spy has no array to capture into, and `--fix` turns any `() => undefined` you write there right
+back into the banned `() => {}`. A named function passes, since it isn't the arrow-with-empty-body
+shape either rule targets:
+
+```ts
+function NOTHING(): void {
+  return undefined;
+}
+jest.spyOn(console, 'error').mockImplementation(NOTHING);
+```
+
 **`unicorn/consistent-function-scoping` forbids a helper defined inside a `describe`**
 
 A test helper that closes over nothing (a fixture builder, a date-offset formatter) errors with *"Move function 'x' to the outer scope"* when it sits inside a `describe` block — the natural place to put a helper only that block uses. Define it at module scope alongside the file's other fixtures. Only a helper that genuinely closes over a `describe`-local binding may stay nested.
+
+The same error fires on the placeholder arrow in `let settle: (v: T) => void = () => {};`, the usual
+way to hold one request in flight and settle it by hand. A module-scope deferred helper keeps the
+rule happy, because its arrow assigns a closed-over binding:
+
+```ts
+function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
+  let settle!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+}
+```
 
 **`unicorn/prefer-ternary` on `if/else` with `await`**
 

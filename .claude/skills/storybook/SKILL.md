@@ -178,6 +178,13 @@ cleanup (the returned function) always runs when navigating away — use this fo
   (more rows/whitespace) even while a tighter crop of the same fixture fails — grep sibling stories
   for the same near-term literal and fix them together.
 
+- **A component that reads `new Date()` in its own render is unsnapshottable — give it an optional
+  `now?: Date | undefined` prop** that defaults to the live clock and that stories and tests pin
+  (`CommsQueueView`, `ReadingListView`). Same for a fixture builder that anchors its timestamps to
+  the wall clock (`makeReaderPost`'s `received_at`): a `visualTest` story of it bakes the capture
+  day into the committed PNG, and the daily drift then hides under the 1% threshold exactly as
+  above — the gate stays green over a baseline nobody can reproduce.
+
 - **Always import from `'storybook/test'`, never from `'@storybook/test'`.** The scoped package
   (`@storybook/test`) was the correct import in Storybook 8; it was consolidated into the core
   `storybook` package for v9+. Storybook 9+ requires `import { ... } from 'storybook/test'`.

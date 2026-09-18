@@ -302,6 +302,13 @@ export type Database = {
             referencedRelation: "comm_messages"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "comm_corrections_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "v_reader_worklist"
+            referencedColumns: ["comm_message_id"]
+          },
         ]
       }
       comm_handles: {
@@ -357,6 +364,7 @@ export type Database = {
           inbox_item_id: string | null
           judged_by: string | null
           participants: string[]
+          reader_claimed_at: string | null
           received_at: string
           reclassify_requested_at: string | null
           references_ids: string[]
@@ -389,6 +397,7 @@ export type Database = {
           inbox_item_id?: string | null
           judged_by?: string | null
           participants?: string[]
+          reader_claimed_at?: string | null
           received_at: string
           reclassify_requested_at?: string | null
           references_ids?: string[]
@@ -421,6 +430,7 @@ export type Database = {
           inbox_item_id?: string | null
           judged_by?: string | null
           participants?: string[]
+          reader_claimed_at?: string | null
           received_at?: string
           reclassify_requested_at?: string | null
           references_ids?: string[]
@@ -562,6 +572,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "comm_messages"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comm_verdicts_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "v_reader_worklist"
+            referencedColumns: ["comm_message_id"]
           },
           {
             foreignKeyName: "comm_verdicts_person_id_fkey"
@@ -898,6 +915,185 @@ export type Database = {
         }
         Relationships: []
       }
+      reader_health: {
+        Row: {
+          id: number
+          last_error: string | null
+          last_error_at: string | null
+          last_run_at: string | null
+          last_success_at: string | null
+        }
+        Insert: {
+          id?: number
+          last_error?: string | null
+          last_error_at?: string | null
+          last_run_at?: string | null
+          last_success_at?: string | null
+        }
+        Update: {
+          id?: number
+          last_error?: string | null
+          last_error_at?: string | null
+          last_run_at?: string | null
+          last_success_at?: string | null
+        }
+        Relationships: []
+      }
+      reader_posts: {
+        Row: {
+          account_key: string
+          archived_at: string | null
+          author: string | null
+          canonical_url: string | null
+          comm_message_id: string | null
+          created_at: string
+          gist: string | null
+          gmail_message_id: string
+          headline: string | null
+          html_extracted: boolean
+          id: string
+          last_error: string | null
+          model: string | null
+          model_called_at: string | null
+          opened_at: string | null
+          overview: Json | null
+          prompt_version: number | null
+          publication_id: string
+          received_at: string
+          rfc822_message_id: string | null
+          summarize_attempts: number
+          summarized_at: string | null
+          summarizing_since: string | null
+          summary_state: string
+          text: string | null
+          title: string
+          word_count: number
+        }
+        Insert: {
+          account_key: string
+          archived_at?: string | null
+          author?: string | null
+          canonical_url?: string | null
+          comm_message_id?: string | null
+          created_at?: string
+          gist?: string | null
+          gmail_message_id: string
+          headline?: string | null
+          html_extracted?: boolean
+          id?: string
+          last_error?: string | null
+          model?: string | null
+          model_called_at?: string | null
+          opened_at?: string | null
+          overview?: Json | null
+          prompt_version?: number | null
+          publication_id: string
+          received_at: string
+          rfc822_message_id?: string | null
+          summarize_attempts?: number
+          summarized_at?: string | null
+          summarizing_since?: string | null
+          summary_state?: string
+          text?: string | null
+          title: string
+          word_count?: number
+        }
+        Update: {
+          account_key?: string
+          archived_at?: string | null
+          author?: string | null
+          canonical_url?: string | null
+          comm_message_id?: string | null
+          created_at?: string
+          gist?: string | null
+          gmail_message_id?: string
+          headline?: string | null
+          html_extracted?: boolean
+          id?: string
+          last_error?: string | null
+          model?: string | null
+          model_called_at?: string | null
+          opened_at?: string | null
+          overview?: Json | null
+          prompt_version?: number | null
+          publication_id?: string
+          received_at?: string
+          rfc822_message_id?: string | null
+          summarize_attempts?: number
+          summarized_at?: string | null
+          summarizing_since?: string | null
+          summary_state?: string
+          text?: string | null
+          title?: string
+          word_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reader_posts_comm_message_id_fkey"
+            columns: ["comm_message_id"]
+            isOneToOne: false
+            referencedRelation: "comm_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reader_posts_comm_message_id_fkey"
+            columns: ["comm_message_id"]
+            isOneToOne: false
+            referencedRelation: "v_reader_worklist"
+            referencedColumns: ["comm_message_id"]
+          },
+          {
+            foreignKeyName: "reader_posts_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "reader_publications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reader_posts_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "v_reader_worklist"
+            referencedColumns: ["publication_id"]
+          },
+        ]
+      }
+      reader_publications: {
+        Row: {
+          created_at: string
+          domain: string | null
+          enabled: boolean
+          first_seen_at: string
+          handle: string
+          id: string
+          name: string
+          notes: string | null
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          domain?: string | null
+          enabled?: boolean
+          first_seen_at?: string
+          handle: string
+          id?: string
+          name: string
+          notes?: string | null
+          source: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string | null
+          enabled?: boolean
+          first_seen_at?: string
+          handle?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          source?: string
+        }
+        Relationships: []
+      }
       weekly_plans: {
         Row: {
           html: string
@@ -1116,6 +1312,29 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      v_reader_discovery: {
+        Row: {
+          first_seen_at: string | null
+          handle: string | null
+          message_count: number | null
+          name: string | null
+        }
+        Relationships: []
+      }
+      v_reader_worklist: {
+        Row: {
+          account_key: string | null
+          comm_message_id: string | null
+          gmail_message_id: string | null
+          publication_id: string | null
+          received_at: string | null
+          rfc822_message_id: string | null
+          sender_handle: string | null
+          sender_name: string | null
+          subject: string | null
+        }
+        Relationships: []
       }
     }
     Functions: {

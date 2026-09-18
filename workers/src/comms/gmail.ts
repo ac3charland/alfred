@@ -74,6 +74,7 @@
  */
 import { type SupabaseEnv } from '../supabase';
 import {
+  decodeEncodedWords,
   extractText,
   headerValue,
   parseAddress,
@@ -730,6 +731,9 @@ function normalize(message: GmailMessage, now: Date): NormalizedMessage {
   const headers = message.payload?.headers;
   const from = parseAddress(headerValue(headers, 'From'));
   const extracted = extractText(message.payload);
+  // The stored subject is read by a person and prompted with; `parseAddress` decodes the display
+  // name on its own, so this is the one header left carrying raw `=?UTF-8?q?…?=`.
+  const subject = headerValue(headers, 'Subject');
 
   const participants = new Set<string>();
   for (const address of parseAddressList(headerValue(headers, 'To'))) {
@@ -749,7 +753,7 @@ function normalize(message: GmailMessage, now: Date): NormalizedMessage {
     sender_handle: from?.handle ?? '',
     sender_name: from?.name,
     participants: [...participants],
-    subject: headerValue(headers, 'Subject'),
+    subject: subject === undefined ? undefined : decodeEncodedWords(subject),
     body: extracted.body,
     received_at: receivedAt(message.internalDate, now),
     body_extracted: extracted.extracted,

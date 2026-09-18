@@ -397,6 +397,17 @@ and deletes the `.webm`:
 npm run demo -- video docs/demos/<doc>.md "$(find test-results -name '*.webm' | head -1)" "inbox reveal fade"
 ```
 
+**Every recording opens on ~0.3s of blank `about:blank`.** Playwright starts video
+recording at context creation, before `page.goto()` ever runs, so `video` keeps that
+blank flash at the head of the GIF. There's no trim option — accept it, or keep the
+clip long enough that the flash is a small fraction of it.
+
+**The Read tool renders only frame 0 of an animated GIF — i.e. that blank flash.** To
+inspect a real frame, load the GIF as a `data:` URI `<img>` in the suite's own
+Playwright Chromium from a small `.mjs` placed INSIDE `frontend/` (Node resolves
+`@playwright/test` from the script's directory), run it with plain `node`,
+`waitForTimeout` to the moment you want, then screenshot the `<img>`.
+
 Minimise the GIF by keeping the recording small at the source: a small viewport
 **and** matching `video.size`, a test body containing **only** the animation (no
 unrelated steps inflating the clip), and triggering the animation immediately so

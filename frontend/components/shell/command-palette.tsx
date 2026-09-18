@@ -2,6 +2,7 @@
 
 import {
   BookMarked,
+  BookOpen,
   CalendarRange,
   Check,
   Code2,
@@ -56,6 +57,7 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   people: Users,
   rubric: ScrollText,
   examples: BookMarked,
+  reader: BookOpen,
   folder: FolderOpen,
   project: GitBranch,
 };
@@ -63,6 +65,7 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
 const GROUP_LABELS = {
   go: 'Go to',
   comms: 'Comms',
+  reader: 'Reader',
   folders: 'Folders',
   projects: 'Projects',
 } as const;
@@ -294,9 +297,17 @@ export function CommandPalette() {
               onHover={setActiveIndex}
             />
             <DestinationGroup
+              label={GROUP_LABELS.reader}
+              destinations={grouped.reader}
+              baseIndex={grouped.go.length + grouped.comms.length}
+              activeIndex={clampedIndex}
+              onSelect={select}
+              onHover={setActiveIndex}
+            />
+            <DestinationGroup
               label={GROUP_LABELS.folders}
               destinations={grouped.folders}
-              baseIndex={grouped.go.length + grouped.comms.length}
+              baseIndex={grouped.go.length + grouped.comms.length + grouped.reader.length}
               activeIndex={clampedIndex}
               onSelect={select}
               onHover={setActiveIndex}
@@ -304,7 +315,12 @@ export function CommandPalette() {
             <DestinationGroup
               label={GROUP_LABELS.projects}
               destinations={grouped.projects}
-              baseIndex={grouped.go.length + grouped.comms.length + grouped.folders.length}
+              baseIndex={
+                grouped.go.length +
+                grouped.comms.length +
+                grouped.reader.length +
+                grouped.folders.length
+              }
               activeIndex={clampedIndex}
               onSelect={select}
               onHover={setActiveIndex}
