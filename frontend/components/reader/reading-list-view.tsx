@@ -15,10 +15,20 @@ import { useActiveCount, useReaderPosts } from '@/lib/stores/reader-store';
  * `now` is read once per render, like Comms' own view — every row is handed the SAME instant,
  * so a list can't render two different "now"s down its own length.
  */
-export function ReadingListView() {
+
+interface ReadingListViewProperties {
+  /**
+   * The instant every row's arrival date is read against. Left off in the app, where the view
+   * ticks its own clock; pinned by stories and tests, since a surface whose every date is read
+   * against today is otherwise unassertable and unsnapshottable.
+   */
+  now?: Date | undefined;
+}
+
+export function ReadingListView({ now: pinnedNow }: ReadingListViewProperties) {
   const posts = useReaderPosts();
   const activeCount = useActiveCount();
-  const now = new Date();
+  const now = pinnedNow ?? new Date();
 
   return (
     <div className="flex flex-1 flex-col gap-6">

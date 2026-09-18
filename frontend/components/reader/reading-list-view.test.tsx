@@ -125,3 +125,32 @@ describe('ReadingListView — rows', () => {
     expect(screen.queryByText('Going away')).not.toBeInTheDocument();
   });
 });
+
+describe('ReadingListView — the clock', () => {
+  it('dates every row against the `now` it is handed, not the wall clock', () => {
+    const { publication } = readerFixtureSet();
+    const thisYear = withoutText(
+      makeReaderPost(publication.id, {
+        id: 'p-this-year',
+        title: 'Arrived in the pinned year',
+        received_at: '2030-09-16T14:00:00.000Z',
+      }),
+    );
+    const lastYear = withoutText(
+      makeReaderPost(publication.id, {
+        id: 'p-last-year',
+        title: 'Arrived the year before',
+        received_at: '2029-09-14T14:00:00.000Z',
+      }),
+    );
+    renderReader(<ReadingListView now={new Date('2030-09-18T09:00:00.000Z')} />, [
+      thisYear,
+      lastYear,
+    ]);
+
+    // The year is spelled out only for a post that did not arrive in `now`'s year, so a row
+    // reading a bare "Sep 16" proves the pinned instant reached it rather than the wall clock.
+    expect(screen.getByText(/^Sep 16 ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^Sep 14, 2029 ·/)).toBeInTheDocument();
+  });
+});
