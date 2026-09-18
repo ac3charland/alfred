@@ -101,3 +101,6 @@ once the scope is clear do you write the spec below.
   restate.** When the spec pins the demo or verification evidence for a user-visible change,
   follow the `showboat` skill's evidence-matching rather than inventing your own. Point it at the showboat rules and let those stay the source of truth.
 - **Iterate via PR comments.** Refinement back-and-forth happens in review comments on this PR.
+- **Don't proactively schedule a check-in on the PR.** CLAUDE.md's "No scheduled
+  check-ins" rule applies here — once the spec PR is open, respond to CI failures or
+  comments that reach you, but don't poll for them on a timer.

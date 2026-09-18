@@ -70,6 +70,9 @@ phase: implementation
   PR — nothing is git-moved into `docs/specs/archive/`, and the `alfred-frontmatter` check has no
   archive rule to satisfy here.
 - **One story per bug PR.** Iteration happens in review comments on that PR.
+- **Don't proactively schedule a check-in on the PR.** CLAUDE.md's "No scheduled
+  check-ins" rule applies here — once the PR is open, respond to CI failures or comments
+  that reach you, but don't poll for them on a timer.
 - **Say so when it isn't a bug.** If the behaviour turns out to be correct, already fixed, or a
   feature request wearing a `Bug:` prefix, stop and tell the human. Closing a story as
   "not a bug" is a real outcome; inventing a defect to justify the session is not.
