@@ -40,16 +40,19 @@ export interface ReaderActions {
    */
   markOpened: (id: string) => void;
   /**
-   * Re-read the active list and replace it wholesale. A failed read changes nothing and says
-   * nothing — the stale list it would have replaced is still better than a blanked one, and the
-   * next trigger tries again (mirrors Comms' `reconcileHealth`).
+   * Re-read the active list and replace it wholesale, EXCEPT for rows with a mutation still in
+   * flight — the read left the server before that write arrived, so its answer is stale for
+   * exactly those rows and would put a just-archived post back on screen. A failed read changes
+   * nothing and says nothing — the stale list it would have replaced is still better than a
+   * blanked one, and the next trigger tries again (mirrors Comms' `reconcileHealth`).
    */
   refresh: () => void;
 }
 
 type ReaderAction =
   | { type: 'posts'; action: SimpleAction<ReaderPostListItem> }
-  | { type: 'replaceAll'; posts: ReaderPostListItem[] };
+  /** `keep` names the ids whose LOCAL row wins: a row this tab is mid-write on. */
+  | { type: 'replaceAll'; posts: ReaderPostListItem[]; keep: string[] };
 
 /** Pure reducer. The single row list delegates to the shared flat-list reducer. */
 export function readerReducer(state: ReaderState, action: ReaderAction): ReaderState {
@@ -58,7 +61,15 @@ export function readerReducer(state: ReaderState, action: ReaderAction): ReaderS
       return { posts: simpleReducer(state.posts, action.action, 'reader post') };
     }
     case 'replaceAll': {
-      return { posts: action.posts };
+      if (action.keep.length === 0) return { posts: action.posts };
+      const keep = new Set(action.keep);
+      const local = new Map(
+        state.posts.filter((post) => keep.has(post.id)).map((post) => [post.id, post] as const),
+      );
+      // Mapped over the SERVER list rather than merged into it: a kept row the read no longer
+      // lists is gone for a reason (it was archived on another tab), and re-adding it would be
+      // the same resurrection in the other direction.
+      return { posts: action.posts.map((post) => local.get(post.id) ?? post) };
     }
     default: {
       return assertNever(action, 'reader action');
@@ -99,13 +110,18 @@ export function ReaderProvider({
    * the tab is hidden is skipped outright — there is no owner looking at the result.
    */
   const refreshingRef = React.useRef(false);
+  /**
+   * Ids with a write still in flight. A read that left before the write arrived cannot answer for
+   * them, so `replaceAll` keeps this tab's own row for each one.
+   */
+  const mutatingRef = React.useRef(new Set<string>());
   const refresh = React.useCallback(() => {
     if (refreshingRef.current || document.hidden) return;
     refreshingRef.current = true;
     void api
       .fetchReaderPosts({ scope: 'active' })
       .then((posts) => {
-        dispatch({ type: 'replaceAll', posts });
+        dispatch({ type: 'replaceAll', posts, keep: [...mutatingRef.current] });
       })
       .catch(() => {
         // Deliberately silent — see the doc comment above.
@@ -138,21 +154,26 @@ export function ReaderProvider({
         // Selective-field capture: only the key this write touches, so a rollback can't clobber
         // a field `refresh()` moved meanwhile.
         const captured = current === undefined ? {} : capturedFields(current, patch);
-        return runOptimisticMutation({
-          optimistic: () => {
-            dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch } });
-          },
-          apiCall: () => api.patchReaderPost(id, { archived: true }),
-          reconcile: (saved) => {
-            dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
-          },
-          rollback: () => {
-            dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch: captured } });
-          },
-          onError: () => {
-            showToastRef.current("Couldn't archive that post");
-          },
-        });
+        mutatingRef.current.add(id);
+        try {
+          return await runOptimisticMutation({
+            optimistic: () => {
+              dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch } });
+            },
+            apiCall: () => api.patchReaderPost(id, { archived: true }),
+            reconcile: (saved) => {
+              dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
+            },
+            rollback: () => {
+              dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch: captured } });
+            },
+            onError: () => {
+              showToastRef.current("Couldn't archive that post");
+            },
+          });
+        } finally {
+          mutatingRef.current.delete(id);
+        }
       },
       markOpened(id) {
         dispatch({
@@ -161,7 +182,12 @@ export function ReaderProvider({
         });
         void api.patchReaderPost(id, { opened: true }).then(
           (saved) => {
-            dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
+            // Only the column this write owns. The answer describes the row as it was when the
+            // PATCH was served, so taking it whole would undo an archive sent a moment later.
+            dispatch({
+              type: 'posts',
+              action: { type: 'patch', ids: [id], patch: { opened_at: saved.opened_at } },
+            });
           },
           () => {
             // Deliberately silent — see the doc comment above.

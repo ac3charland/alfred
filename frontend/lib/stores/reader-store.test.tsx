@@ -47,6 +47,15 @@ function useStore() {
   };
 }
 
+/** A promise the test settles by hand, so one request can be held in flight. */
+function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
+  let settle!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+}
+
 function makeWrapper(posts: ReaderPostListItem[]) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return <ReaderProvider initialPosts={posts}>{children}</ReaderProvider>;
@@ -81,8 +90,28 @@ describe('readerReducer', () => {
   it('replaces the whole list on replaceAll', () => {
     const state = { posts: [post({ id: 'p-1' }), post({ id: 'p-2' })] };
     const replacement = [post({ id: 'p-3' })];
-    const next = readerReducer(state, { type: 'replaceAll', posts: replacement });
+    const next = readerReducer(state, { type: 'replaceAll', posts: replacement, keep: [] });
     expect(next.posts).toEqual(replacement);
+  });
+
+  it('keeps the local row for every id replaceAll is told to keep', () => {
+    const local = post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' });
+    const fromServer = post({ id: 'p-1', archived_at: null });
+    const next = readerReducer(
+      { posts: [local] },
+      { type: 'replaceAll', posts: [fromServer, post({ id: 'p-2' })], keep: ['p-1'] },
+    );
+    expect(next.posts[0]).toBe(local);
+    expect(next.posts).toHaveLength(2);
+  });
+
+  it('does not re-add a kept row the server no longer lists', () => {
+    const local = post({ id: 'p-1' });
+    const next = readerReducer(
+      { posts: [local] },
+      { type: 'replaceAll', posts: [], keep: ['p-1'] },
+    );
+    expect(next.posts).toEqual([]);
   });
 });
 
@@ -199,6 +228,34 @@ describe('markOpened', () => {
     expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { opened: true });
   });
 
+  it('reconciles opened_at alone, so a late answer cannot un-archive the row', async () => {
+    // The Open PATCH was sent first and answers with the row as it was then — unarchived. Taking
+    // that whole row would undo the archive the owner asked for a moment later.
+    const row = post({ id: 'p-1', opened_at: null });
+    const openCall = deferred<ReaderPostListItem>();
+    const archiveCall = deferred<ReaderPostListItem>();
+    mockApi.patchReaderPost.mockImplementation((_id, body) =>
+      'opened' in body ? openCall.promise : archiveCall.promise,
+    );
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.markOpened('p-1');
+    });
+    act(() => {
+      void result.current.actions.archive('p-1');
+    });
+
+    await act(async () => {
+      openCall.settle({ ...row, opened_at: '2026-09-18T09:05:00.000Z' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.posts).toHaveLength(0);
+    expect(result.current.count).toBe(0);
+  });
+
   it('neither rolls back nor toasts when the write fails', async () => {
     const row = post({ id: 'p-1', opened_at: null });
     mockApi.patchReaderPost.mockRejectedValue(new Error('boom'));
@@ -276,6 +333,37 @@ describe('refresh', () => {
     await waitFor(() => {
       expect(mockApi.fetchReaderPosts).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('does not resurrect a row whose archive is still in flight', async () => {
+    // The refresh's answer was read on the server BEFORE the archive reached it, so replacing the
+    // list wholesale would put the row the owner just archived back on screen.
+    const row = post({ id: 'p-1' });
+    const archiveCall = deferred<ReaderPostListItem>();
+    mockApi.patchReaderPost.mockReturnValue(archiveCall.promise);
+    mockApi.fetchReaderPosts.mockResolvedValue([row]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let archiving: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      archiving = result.current.actions.archive('p-1');
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    // Let the read's answer land while the archive is STILL in flight.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockApi.fetchReaderPosts).toHaveBeenCalledTimes(1);
+    expect(result.current.posts).toHaveLength(0);
+
+    await act(async () => {
+      archiveCall.settle({ ...row, archived_at: '2026-09-18T09:00:00.000Z' });
+      await archiving;
+    });
+    expect(result.current.posts).toHaveLength(0);
   });
 
   it('keeps the last known list when the re-read fails, and stays silent about it', async () => {
