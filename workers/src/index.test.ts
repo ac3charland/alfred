@@ -4,7 +4,8 @@ import path from 'node:path';
 import * as commsScheduled from './comms/scheduled';
 import { spyOnFetch } from './fetch-stub';
 import { hmacSha256Hex } from './hmac';
-import worker, { type Env, POLL_CRON, RETENTION_CRON, TICK_CRON } from './index';
+import worker, { type Env, POLL_CRON, READER_CRON, RETENTION_CRON, TICK_CRON } from './index';
+import * as readerScheduled from './reader/scheduled';
 
 const env: Env = {
   GITHUB_WEBHOOK_SECRET: 'webhook-secret',
@@ -14,6 +15,8 @@ const env: Env = {
   ANTHROPIC_API_KEY: 'sk-ant-test',
   CLASSIFIER_MODEL: 'claude-haiku-4-5',
   CLASSIFIER_TIMEZONE: 'America/Chicago',
+  READER_MODEL: 'claude-sonnet-5',
+  READER_DAILY_CAP: '30',
 };
 
 type FetchArgs = Parameters<typeof worker.fetch>;
@@ -141,7 +144,7 @@ describe('worker.fetch', () => {
     });
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured)',
+      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30)',
     );
   });
 
@@ -151,7 +154,7 @@ describe('worker.fetch', () => {
     const { response } = await invoke(new Request('https://worker.dev/'));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured)',
+      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30)',
     );
   });
 
@@ -166,7 +169,7 @@ describe('worker.fetch', () => {
       CLASSIFIER_TIMEZONE: 'Europe/London',
     });
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured)',
+      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30)',
     );
   });
 
@@ -619,26 +622,28 @@ describe('worker.scheduled', () => {
     // string, so the Gmail poll became unreachable and every tick silently took the fall-through
     // branch. Any `<nonzero>-<end>/<step>` field can collapse onto another schedule the same way.
     const offsetStep = /(?:^|\s)([1-9]\d*)-\d+\/\d+(?=\s|$)/;
-    for (const cron of [TICK_CRON, POLL_CRON, RETENTION_CRON]) {
+    for (const cron of [TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON]) {
       expect(cron).not.toMatch(offsetStep);
     }
   });
 
   it('dispatches on expressions that are all distinct, so no two schedules collide', () => {
-    const crons = [TICK_CRON, POLL_CRON, RETENTION_CRON];
+    const crons = [TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON];
     expect(new Set(crons).size).toBe(crons.length);
   });
 
   it('dispatches on exactly the expressions wrangler.toml registers', () => {
-    // The constants and the config are two copies of the same three strings; a schedule renamed
+    // The constants and the config are two copies of the same four strings; a schedule renamed
     // in one and not the other deploys a cron nothing handles.
     const toml = readFileSync(path.join(__dirname, '..', 'wrangler.toml'), 'utf8');
     const declared = /^crons = \[(.+)\]$/m.exec(toml)?.[1] ?? '';
     const registered = [...declared.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? '');
 
-    // Compared as sets: which three schedules exist is the contract, their order in the file
+    // Compared as sets: which four schedules exist is the contract, their order in the file
     // is not.
-    expect(new Set(registered)).toEqual(new Set([TICK_CRON, POLL_CRON, RETENTION_CRON]));
+    expect(new Set(registered)).toEqual(
+      new Set([TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON]),
+    );
   });
 
   it('names an unrecognised cron in the log rather than taking the tick path in silence', async () => {
@@ -698,6 +703,66 @@ describe('worker.scheduled', () => {
       'comms classifier sweep: did not run',
     ]);
     expect(errors).toEqual(['comms: comms sweep: Supabase GET comm_messages failed: 500']);
+  });
+
+  it('runs only the reader tick on the reader cron, with the tick instant and nothing else', async () => {
+    // The reader tick spends up to ~45 of an invocation's 50 subrequests, so it can share with
+    // nothing: not the classifier sweep, not the judge pass, not the poll.
+    const fetchSpy = spyOnFetch().mockResolvedValue(Response.json([]));
+    const reader = jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
+      discovered: 0,
+      intake: 0,
+      summarized: 0,
+      refused: 0,
+      countedFailures: 0,
+      uncountedFailures: 0,
+      skippedForCap: 0,
+      skippedForBudget: 0,
+      failures: [],
+    });
+    const judge = jest.spyOn(commsScheduled, 'runCommsJudge');
+    const poll = jest.spyOn(commsScheduled, 'runCommsPoll');
+    const retention = jest.spyOn(commsScheduled, 'runCommsRetention');
+
+    await worker.scheduled(controllerFor(READER_CRON), env, ctx);
+
+    expect(reader).toHaveBeenCalledTimes(1);
+    expect(reader.mock.calls[0]?.[0]).toBe(env);
+    expect(reader.mock.calls[0]?.[1]).toBeInstanceOf(Date);
+    expect(judge).not.toHaveBeenCalled();
+    expect(poll).not.toHaveBeenCalled();
+    expect(retention).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs the reader tick as one line of counts plus one error per failure', async () => {
+    jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
+      discovered: 1,
+      intake: 3,
+      summarized: 2,
+      refused: 0,
+      countedFailures: 1,
+      uncountedFailures: 0,
+      skippedForCap: 0,
+      skippedForBudget: 0,
+      failures: ['gmail: 503 upstream'],
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(READER_CRON), env, ctx);
+
+    expect(logged).toEqual([
+      'reader tick: 1 discovered, 3 taken in, 2 summarised, 0 refused, 1 counted failures, ' +
+        '0 uncounted, 0 waiting on the cap, 0 left for the budget',
+    ]);
+    expect(errors).toEqual(['reader: gmail: 503 upstream']);
   });
 
   it('logs what the retention sweep deleted', async () => {
