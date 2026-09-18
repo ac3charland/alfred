@@ -144,21 +144,30 @@ function readerPostUpdate(patch: PatchReaderPostInput, now: Date): ReaderPostUpd
 }
 
 /**
- * What the re-summarise verb has to know before it queues anything: whether the row still holds
- * the text the tick would summarise, and whether the retention sweep is why it doesn't.
+ * What the re-summarise verb has to know before it queues anything: whether the retention sweep
+ * took the row's body, whether there was ever a body to take, and whether the tick is already
+ * holding the row.
  *
- * Its own read rather than a column on the list payload, because `text` is a whole post body and
- * the list is explicitly built never to carry one. `.maybeSingle()`, so a missing row is the
- * route's 404 rather than a 500 the shared error mapper has no case for.
+ * Never selects `text`. The body is tens of KB and nothing here reads it — `word_count` is the
+ * same presence signal the row's own verb is drawn from, so the route and the UI cannot disagree
+ * about whether there is anything to summarise, and a stored empty string (which the sweep's
+ * predicate treats as no body) counts as none on both sides. A row whose body was nulled by hand
+ * while the count stayed positive is queued and then filed `failed` by the tick — the right end
+ * for a state nothing writes. `.maybeSingle()`, so a missing row is the route's 404 rather than a
+ * 500 the shared error mapper has no case for.
  */
-export async function getReaderPostText(
+export async function getReaderPostResummarizeState(
   supabase: SupabaseClient<Database>,
   id: string,
 ): Promise<{
-  data: { text: string | null; text_swept_at: string | null } | null;
+  data: { text_swept_at: string | null; word_count: number; summary_state: string } | null;
   error: PostgrestError | null;
 }> {
-  return supabase.from('reader_posts').select('text,text_swept_at').eq('id', id).maybeSingle();
+  return supabase
+    .from('reader_posts')
+    .select('text_swept_at,word_count,summary_state')
+    .eq('id', id)
+    .maybeSingle();
 }
 
 /**

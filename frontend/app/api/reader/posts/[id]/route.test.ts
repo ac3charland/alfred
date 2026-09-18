@@ -131,13 +131,16 @@ describe('PATCH /api/reader/posts/[id]', () => {
   });
 });
 
+/** The row as the re-summarise pre-read sees it: a summarised post that still has its body. */
+const SUMMARISED = { text_swept_at: null, word_count: 3220, summary_state: 'done' };
+
 /**
  * The re-summarise verb reads the row and then writes it, both through `.maybeSingle()` on the
- * same table, so the two answers are queued in the order the handler asks for them: the stored
- * text first, the patched row second.
+ * same table, so the two answers are queued in the order the handler asks for them: what the
+ * pre-read sees first, the patched row second.
  */
-function withStoredText(
-  stored: { text: string | null; text_swept_at: string | null } | null,
+function withStoredState(
+  stored: { text_swept_at: string | null; word_count: number; summary_state: string } | null,
 ): ReturnType<typeof makeSupabaseDouble> {
   const supabase = signedIn();
   supabase.table('reader_posts').maybeSingle.mockResolvedValueOnce({ data: stored });
@@ -146,7 +149,7 @@ function withStoredText(
 
 describe('PATCH /api/reader/posts/[id] — re-summarise', () => {
   it('puts the row back on the worklist, keeping the summary it already has', async () => {
-    const supabase = withStoredText({ text: 'the whole post', text_swept_at: null });
+    const supabase = withStoredState(SUMMARISED);
 
     const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
 
@@ -159,16 +162,19 @@ describe('PATCH /api/reader/posts/[id] — re-summarise', () => {
     });
   });
 
-  it('reads the stored body before queueing anything', async () => {
-    const supabase = withStoredText({ text: 'the whole post', text_swept_at: null });
+  it('reads the row’s state before queueing anything, and never its body', async () => {
+    const supabase = withStoredState(SUMMARISED);
 
     await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
 
-    expect(supabase.table('reader_posts').select).toHaveBeenNthCalledWith(1, 'text,text_swept_at');
+    expect(supabase.table('reader_posts').select).toHaveBeenNthCalledWith(
+      1,
+      'text_swept_at,word_count,summary_state',
+    );
   });
 
   it('404s for a post that is not there', async () => {
-    withStoredText(null);
+    withStoredState(null);
 
     const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
 
@@ -177,7 +183,7 @@ describe('PATCH /api/reader/posts/[id] — re-summarise', () => {
   });
 
   it('409s with the sweep date when the retention sweep took the text', async () => {
-    withStoredText({ text: null, text_swept_at: '2026-09-08T03:00:00.000Z' });
+    withStoredState({ ...SUMMARISED, word_count: 0, text_swept_at: '2026-09-08T03:00:00.000Z' });
 
     const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
 
@@ -187,10 +193,10 @@ describe('PATCH /api/reader/posts/[id] — re-summarise', () => {
     });
   });
 
-  it('names the sweep even when the row somehow still holds a body', async () => {
+  it('names the sweep even when the row somehow still counts a body', async () => {
     // The stamp is the audit trail for what happened to the row; a body present beside it is a
     // state nothing writes, and answering "no stored text" would be the wrong story.
-    withStoredText({ text: 'somehow still here', text_swept_at: '2026-09-08T03:00:00.000Z' });
+    withStoredState({ ...SUMMARISED, text_swept_at: '2026-09-08T03:00:00.000Z' });
 
     const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
 
@@ -200,11 +206,35 @@ describe('PATCH /api/reader/posts/[id] — re-summarise', () => {
   });
 
   it('409s when extraction never produced a body to summarise', async () => {
-    withStoredText({ text: null, text_swept_at: null });
+    // `word_count` is the presence signal, so a row stored with an empty string for a body —
+    // which the sweep's own predicate treats as none — is refused here too.
+    withStoredState({ ...SUMMARISED, word_count: 0, summary_state: 'failed' });
 
     const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
 
     expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Post has no stored text to summarise',
+    });
+  });
+
+  it('409s when the tick already holds the row, rather than clearing its lease', async () => {
+    const supabase = withStoredState({ ...SUMMARISED, summary_state: 'pending' });
+
+    const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: 'That post is already queued for a summary',
+    });
+    expect(supabase.table('reader_posts').update).not.toHaveBeenCalled();
+  });
+
+  it('answers with the body’s reason, not the queue’s, when both would apply', async () => {
+    withStoredState({ text_swept_at: null, word_count: 0, summary_state: 'pending' });
+
+    const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
+
     await expect(response.json()).resolves.toEqual({
       error: 'Post has no stored text to summarise',
     });

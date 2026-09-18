@@ -4,7 +4,7 @@ import { parseRequestBody } from '@/lib/api/parsing';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { patchReaderPostSchema } from '@/lib/api/schemas';
 import { mapSupabaseError } from '@/lib/api/supabase-errors';
-import { getReaderPostText, patchReaderPost } from '@/lib/data/reader';
+import { getReaderPostResummarizeState, patchReaderPost } from '@/lib/data/reader';
 
 // ---------------------------------------------------------------------------
 // PATCH /api/reader/posts/[id] — the row's verbs
@@ -18,9 +18,13 @@ import { getReaderPostText, patchReaderPost } from '@/lib/data/reader';
 //
 // Re-summarising reads the row first, because the tick summarises from the STORED text and the
 // retention sweep eventually takes it: queueing a post whose body is gone would burn three
-// attempts and file the row failed all over again. The list payload carries `text_swept_at` so
-// the UI hides the verb in that case — the refusals below are what a stale tab gets, and they
-// say which of the two reasons applies rather than a bare "no".
+// attempts and file the row failed all over again. That pre-read never asks for `text` itself —
+// `word_count` says whether there is a body just as well, without pulling tens of KB across the
+// wire to null-check it. The list payload carries `text_swept_at` and `word_count` so the UI
+// hides the verb in those cases — the refusals below are what a stale tab gets, and they say
+// which of the three reasons applies rather than a bare "no". The third is the row already being
+// on the worklist: re-queueing a post the tick has leased would clear that lease and reset its
+// attempts mid-run, so the same post is summarised twice.
 // ---------------------------------------------------------------------------
 
 const MONTH_DAY_YEAR: Intl.DateTimeFormatOptions = {
@@ -42,7 +46,10 @@ export const PATCH = withSession(
     if (input instanceof Response) return input;
 
     if ('resummarize' in input) {
-      const { data: stored, error: readError } = await getReaderPostText(session.supabase, id);
+      const { data: stored, error: readError } = await getReaderPostResummarizeState(
+        session.supabase,
+        id,
+      );
       if (readError) {
         const { status, message } = mapSupabaseError(readError);
         return jsonError(status, message);
@@ -55,7 +62,14 @@ export const PATCH = withSession(
         const swept = new Date(stored.text_swept_at).toLocaleDateString('en-US', MONTH_DAY_YEAR);
         return jsonError(409, `Post text was swept on ${swept}`);
       }
-      if (stored.text === null) return jsonError(409, 'Post has no stored text to summarise');
+      if (stored.word_count === 0) {
+        return jsonError(409, 'Post has no stored text to summarise');
+      }
+      // Last, because a row that cannot be summarised at all should hear that rather than
+      // "wait a moment".
+      if (stored.summary_state === 'pending') {
+        return jsonError(409, 'That post is already queued for a summary');
+      }
     }
 
     const { data, error } = await patchReaderPost(session.supabase, id, input, new Date());

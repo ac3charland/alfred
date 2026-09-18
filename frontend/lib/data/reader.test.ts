@@ -13,7 +13,7 @@ import {
   READER_POST_LIST_COLUMNS,
   getReaderHealthSeed,
   getReaderHealthSnapshot,
-  getReaderPostText,
+  getReaderPostResummarizeState,
   getReaderPosts,
   getReaderSeed,
   patchReaderPost,
@@ -317,23 +317,34 @@ describe('getReaderHealthSeed', () => {
   });
 });
 
-describe('getReaderPostText', () => {
-  it('reads only the body and its sweep stamp, for the row asked for', async () => {
-    const supabase = makeSupabaseDouble({
-      reader_posts: { maybeSingle: { data: { text: 'the whole post', text_swept_at: null } } },
-    });
+describe('getReaderPostResummarizeState', () => {
+  const STORED = { text_swept_at: null, word_count: 3220, summary_state: 'done' };
 
-    const { data } = await getReaderPostText(supabase as never, POST_ID);
+  it('reads the sweep stamp, the word count and the state, for the row asked for', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: STORED } } });
 
-    expect(data).toEqual({ text: 'the whole post', text_swept_at: null });
-    expect(supabase.table('reader_posts').select).toHaveBeenCalledWith('text,text_swept_at');
+    const { data } = await getReaderPostResummarizeState(supabase as never, POST_ID);
+
+    expect(data).toEqual(STORED);
     expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+  });
+
+  it('never asks for the body — the count is the presence signal', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: STORED } } });
+
+    await getReaderPostResummarizeState(supabase as never, POST_ID);
+
+    // Compared as COLUMNS rather than as a substring: `text_swept_at` is a column this read does
+    // want, and a substring match on "text" would read it as the body coming back.
+    const [columns] = supabase.table('reader_posts').select.mock.calls[0] as [string];
+    expect(columns.split(',')).not.toContain('text');
+    expect(columns.split(',')).toStrictEqual(['text_swept_at', 'word_count', 'summary_state']);
   });
 
   it('resolves null data for a row that is not there — the route handles the 404', async () => {
     const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
 
-    const { data } = await getReaderPostText(supabase as never, POST_ID);
+    const { data } = await getReaderPostResummarizeState(supabase as never, POST_ID);
 
     expect(data).toBeNull();
   });
@@ -343,7 +354,7 @@ describe('getReaderPostText', () => {
       reader_posts: { maybeSingle: { data: null, error: { message: 'boom' } } },
     });
 
-    const { error } = await getReaderPostText(supabase as never, POST_ID);
+    const { error } = await getReaderPostResummarizeState(supabase as never, POST_ID);
 
     expect(error).toEqual({ message: 'boom' });
   });
