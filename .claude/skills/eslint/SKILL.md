@@ -259,6 +259,20 @@ jest.spyOn(console, 'error').mockImplementation(NOTHING);
 
 A test helper that closes over nothing (a fixture builder, a date-offset formatter) errors with *"Move function 'x' to the outer scope"* when it sits inside a `describe` block — the natural place to put a helper only that block uses. Define it at module scope alongside the file's other fixtures. Only a helper that genuinely closes over a `describe`-local binding may stay nested.
 
+The same error fires on the placeholder arrow in `let settle: (v: T) => void = () => {};`, the usual
+way to hold one request in flight and settle it by hand. A module-scope deferred helper keeps the
+rule happy, because its arrow assigns a closed-over binding:
+
+```ts
+function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
+  let settle!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+}
+```
+
 **`unicorn/prefer-ternary` on `if/else` with `await`**
 
 When a function has an `if/else` where both branches `await` different things, ESLint's `unicorn/prefer-ternary` wants them collapsed to `await (condition ? a() : b())`. This is valid TypeScript and works:
