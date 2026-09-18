@@ -198,6 +198,13 @@ for (const item of items) {
 
 This creates a new array (satisfies `.sort()` mutation concern) using a loop (not `.reduce()`) and works in ES2022 (no `toSorted` needed).
 
+The same `lib: ["ES2022"]` gap makes a plain, unqualified `Array#toSorted` call fail typecheck
+too — `Unsafe call of a type that could not be resolved` — wherever order doesn't actually
+matter. When the goal is only "do these two lists have the same elements" (e.g. pinning a
+column-name constant against a fixture's keys), skip sorting entirely and compare key **sets**
+with `toStrictEqual`: `expect(new Set(listedColumns)).toStrictEqual(new Set(fixtureColumns))`
+(`frontend/lib/data/reader.test.ts`).
+
 **`unicorn/prefer-includes-over-repeated-comparisons` fires across *different* variables**
 
 Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.)
@@ -234,6 +241,18 @@ nothing asserts on):
 ```ts
 const captured: string[] = [];
 const log = createLogger({ out: (line) => captured.push(line), err: (line) => captured.push(line) });
+```
+
+The same trap catches `jest.spyOn(console, 'error').mockImplementation(() => {})` — silencing a
+spy has no array to capture into, and `--fix` turns any `() => undefined` you write there right
+back into the banned `() => {}`. A named function passes, since it isn't the arrow-with-empty-body
+shape either rule targets:
+
+```ts
+function NOTHING(): void {
+  return undefined;
+}
+jest.spyOn(console, 'error').mockImplementation(NOTHING);
 ```
 
 **`unicorn/consistent-function-scoping` forbids a helper defined inside a `describe`**

@@ -236,6 +236,14 @@ It returns a 400. Use `output_config.format` instead.
 A classification task needs no reasoning budget anyway, so omit it — a copied-in
 `effort` from an Opus example is the failure mode to watch for.
 
+**On Sonnet 5, omitting `thinking` runs ADAPTIVE thinking — billed as output and counted
+against `max_tokens`.** A structured-output call that copies the classifier's omission (safe
+on Haiku, which never thinks unasked) can truncate silently once reasoning eats the budget.
+Send `thinking: { type: 'disabled' }` explicitly for a call that wants a plain structured
+answer and nothing else. `@anthropic-ai/sdk` ≥ 0.116 types this as `ThinkingConfigDisabled`
+and types `output_config.effort` as a first-class field, and an `as const` JSON-schema literal
+assigns straight into `output_config.format.schema` with no cast needed. (`workers/src/reader/summarize.ts`.)
+
 **Haiku 4.5's minimum cacheable prefix is 4096 tokens**, so a compact prompt silently
 never caches: `cache_read_input_tokens: 0` is the expected reading, not a bug. Never pad
 a prompt to reach the floor — crossing it only makes caching *possible*, and a write
@@ -296,8 +304,6 @@ GitHub anthropics/anthropic-sdk-typescript, issue #392.
   alfred's synchronous Worker use case.
 - **Server-executed tools** (`web_search`, `web_fetch`, `code_execution`) — Anthropic
   runs these; alfred's tools are all user-defined client tools against Supabase.
-- **Extended thinking / `effort` parameter** — advanced reasoning mode; not needed
-  for text cleanup and item classification at alfred's scope.
 - **Prompt caching (`cache_control`)** — alfred's live prompts sit below their model's
   minimum cacheable prefix, so there is nothing to cache; see the pitfall above before
   reaching for it.
