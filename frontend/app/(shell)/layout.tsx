@@ -8,6 +8,7 @@ import { getCommsSeed, getCommsSettingsSeed } from '@/lib/data/comms';
 import { getFolders } from '@/lib/data/folders';
 import { getHabitSeed } from '@/lib/data/habits';
 import { getAllItems } from '@/lib/data/items';
+import { getReaderSeed } from '@/lib/data/reader';
 import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans';
 import { todayIn } from '@/lib/habits';
 import { getInstanceConfig } from '@/lib/instance';
@@ -22,15 +23,16 @@ import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
+import { ReaderProvider } from '@/lib/stores/reader-store';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import { WeeklyPlanProvider } from '@/lib/stores/weekly-plan-store';
 
 /**
- * Shared shell layout (Server Component) — the single parent of BOTH modules' route groups
- * (`(tasks)` and `(code)`), introduced by ALF-27 so switching modules is a client-side URL
- * change with no SSR / RSC round-trip.
+ * Shared shell layout (Server Component) — the single parent of every module's route group
+ * (`(tasks)`, `(code)`, `(firewall)` and `(reader)`), introduced by ALF-27 so switching modules
+ * is a client-side URL change with no SSR / RSC round-trip.
  *
  * It absorbs everything the two old per-module layouts duplicated:
  * - `requireUser()` — the single auth gate (middleware is defense-in-depth only). An
@@ -60,6 +62,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     habitSeed,
     commsSeed,
     commsSettingsSeed,
+    readerSeed,
   ] = await Promise.all([
     getFolders(),
     getAllItems(),
@@ -76,6 +79,8 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     // subscription, while the roster and the rubric change only when the owner edits them.
     getCommsSeed(),
     getCommsSettingsSeed(),
+    // The reading list, without post bodies: the row opens the original rather than showing them.
+    getReaderSeed(),
   ]);
 
   return (
@@ -126,12 +131,14 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                                     initialRubrics={commsSettingsSeed.rubrics}
                                     initialCorrections={commsSettingsSeed.corrections}
                                   >
-                                    <AppShell
-                                      email={user.email ?? null}
-                                      instance={getInstanceConfig()}
-                                    >
-                                      {children}
-                                    </AppShell>
+                                    <ReaderProvider initialPosts={readerSeed.posts}>
+                                      <AppShell
+                                        email={user.email ?? null}
+                                        instance={getInstanceConfig()}
+                                      >
+                                        {children}
+                                      </AppShell>
+                                    </ReaderProvider>
                                   </CommsSettingsProvider>
                                 </CommsProvider>
                               </HabitsProvider>
