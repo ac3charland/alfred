@@ -238,8 +238,14 @@ a line this story depends on in a way that would change the design if it turned 
     <code>last_success_at</code> at a clean end, <code>last_error</code>/<code>last_error_at</code> on a systemic failure, and <code>calls_today</code>/<code>calls_day</code>
     for the ceiling. Its worklist takes <b>pending rows with <code>summarize_attempts &lt; 3</code>, oldest first, ahead of new ones</b>, and
     summarises a pending row <b>from its stored <code>text</code> without a Gmail fetch</b> (the comms row may be gone — the 60-day sweep — by the
-    time a post is re-summarised). <code>READER_DAILY_CAP</code>, <code>READER_MODEL</code> and <code>READER_CRON</code> exist; <code>index.ts</code>
-    dispatches on <code>READER_CRON</code> and <code>RETENTION_CRON</code>.</td></tr>
+    time a post is re-summarised; if the retry path re-fetches instead, S2-3's verb fails on any post older than 60 days and the 409 rule in §5
+    has to grow a third case). <b>Intake continues past the daily ceiling</b> — epic D9 says "past it, intake continues and posts sit pending" —
+    so a post past the cap is inserted <code>pending</code> and only the model call is skipped. The epic's §3.2 pseudo-code gates the whole loop body
+    on the cap, which contradicts D9; if Story 1 built §3.2 literally, posts past the cap never become rows, §8's <code>waitingPosts</code> counts
+    zero while a real backlog sits in <code>comm_messages</code>, and the ceiling banner's count must instead come from a server-side worklist count
+    (<code>v_reader_worklist</code>) — re-cut §8 in that case. <code>last_run_at</code> is written at the <b>start</b> of every tick, so a health row
+    exists after the first cron fire even when nothing has ever succeeded. <code>READER_DAILY_CAP</code>, <code>READER_MODEL</code> and
+    <code>READER_CRON</code> exist; <code>index.ts</code> dispatches on <code>READER_CRON</code> and <code>RETENTION_CRON</code>.</td></tr>
   <tr><td>Routes</td><td><code>GET /api/reader/posts?scope=active|archived&amp;limit=N</code> → <code>ReaderPost[]</code> <b>without <code>text</code></b>;
     <code>PATCH /api/reader/posts/[id]</code> with <code>{ archived: boolean } | { opened: true }</code>. Zod in <code>frontend/lib/api/reader-schemas.ts</code>,
     re-exported from <code>schemas.ts</code>; client wrappers in <code>api-client.ts</code>. Session-gated with <code>withSession</code>, errors through <code>mapSupabaseError</code>.</td></tr>
@@ -252,11 +258,20 @@ a line this story depends on in a way that would change the design if it turned 
     rendering one <code>ReaderView</code> client router; <code>ReaderNav</code> with three links; <code>components/reader/</code> holds the row (with its
     <code>*.styles.ts</code>), the overview panel, the list view, the done / pending / failed / refused markers, the exit collapse, and "Open ↗" as a real
     link with the Gmail-permalink fallback. <b>The row's verbs live in one place</b> (a <code>RowVerbs</code>-style component or the row's meta line) that
-    this story extends. Archive and Publications segments render an empty state.</td></tr>
+    this story extends. <b>Selection and overview-expansion are distinct row states</b> (the epic's §4 draws the selected row expanded in place; if
+    Story 1 made selected == expanded, §10's overview key is a deselect and the "Hide overview" hint is wrong — re-cut §10). <b>The pending marker
+    keys on <code>summary_state === 'pending'</code></b>, not on <code>gist === null</code> — S2-3's "old summary visible under the pending marker"
+    needs that. A post whose extraction produced no text (<code>html_extracted = false</code>, <code>text</code> null) carries a Story 1 marker of its own;
+    §5's second 409 and §9.2's hiding rule name it. Archive and Publications segments render an empty state.</td></tr>
   <tr><td>Comms</td><td>Both shelf predicates exclude claimed rows; the shelf's summary line carries the "went to the Reader" count. <b>This story makes no further
     comms edit</b> — the epic's D14 caps comms changes at Story 1's two.</td></tr>
-  <tr><td>E2E</td><td><code>frontend/e2e/support/constants.ts</code>'s <code>SeedState</code> has <code>readerPosts</code> (and probably <code>readerPublications</code>) and
-    the seed harness writes them; a <code>reader-list.spec.ts</code> or similar exists to model new specs on.</td></tr>
+  <tr><td>E2E ✎</td><td>The Playwright seed does not touch Postgres: <code>frontend/e2e/support/fixtures.ts</code> POSTs <code>SeedState</code> to
+    <code>frontend/scripts/mock-supabase.mjs</code>, an in-process mock PostgREST whose table list, computed views (<code>task_items</code>,
+    <code>v_code_stories</code>) and RPC stubs are hand-written. Story 1 will have added <code>reader_posts</code>, <code>reader_publications</code> and
+    <code>reader_health</code> there with <code>SeedState</code> keys and <code>makeReader*</code> builders. <b>This story adds <code>v_reader_candidates</code>
+    to the mock as a computed view</b> that mirrors the real view's semantics (30-day window, anti-join on the roster, count-desc rank) — otherwise
+    the candidates E2E asserts nothing real. The mock needs no <code>reader_sweep_text</code> stub (nothing in E2E calls it). A
+    <code>reader-list.spec.ts</code> or similar exists to model new specs on.</td></tr>
   <tr><td>Checkpoint</td><td>The owner ran <code>npm run eval:reader -w workers</code> over five real posts and either accepted the prompt or noted what was wrong.
     <b>If the note says the prompt is wanting, fixing <code>workers/src/reader/prompt.ts</code> (bumping <code>READER_PROMPT_VERSION</code>) is this story's first commit</b> —
     before any slice dispatches — so the re-summarise verb built here is what carries the fix to existing rows.</td></tr>
@@ -289,7 +304,9 @@ description names each one.</p>
   <p><code>PATCH /api/reader/posts/[id] { resummarize: true }</code> sets <code>summary_state = 'pending'</code>, <code>summarize_attempts = 0</code>,
   <code>last_error = null</code> and <b>keeps</b> the existing headline / gist / overview until the tick overwrites them. The row shows Story 1's
   pending marker over the old summary. The label is <b>Retry summary</b> on a failed or refused row and <b>Re-summarise</b> on a done row (a ghost
-  verb under the overview, where comms puts "Re-run classifier").</p>
+  verb under the overview, where comms puts "Re-run classifier"). The verb is hidden when <code>text_swept_at</code> is set <i>or</i> when Story 1's
+  no-text marker applies; the route refuses both cases with a 409 whose message says which (§5), so a verb that would always fail is never offered
+  and a stale tab that offers it anyway gets a truthful answer.</p>
   <p class="why"><b>Why on done rows:</b> the checkpoint's whole point is that a prompt fix must be able to reach existing rows, and a "failed only"
   verb couldn't. <b>Why keep the old summary:</b> blanking it would show a judgment that has not happened yet — the same reason the comms
   reclassify verb runs no exit animation. <b>Why reset attempts:</b> a refused row is "no retry" by D10; the owner asking is the one thing that
@@ -297,9 +314,14 @@ description names each one.</p>
   any other pending row, which the ceiling banner's count includes.</p></div>
 
 <div class="dec"><h3><span class="n">S2-4</span>One banner at a time, in a fixed precedence; the header carries two dots.</h3>
-  <p>The header shows a <b>summariser</b> dot and the <b>Gmail (personal)</b> dot, each with a sentence beneath when not live. At most one
+  <p>The header shows a <b>summariser</b> dot and a <b>Gmail (personal)</b> dot, each with a sentence beneath when not live. At most one
   banner renders, the first that applies: <b>Gmail dead</b> (red — needs a person) → <b>summariser stalled</b> (amber) → <b>daily ceiling
-  reached</b> (amber, informational). §8 has the derivations.</p>
+  reached</b> (amber, informational). §8 has the derivations. The dots are a <b>new <code>StatusDot</code> atom</b> in <code>components/atoms/</code>
+  (state ∈ live / stale / erroring, a label, a title, an optional elapsed suffix) — not the comms <code>AccountDot</code>, which renders the account's
+  own label (<code>personal</code>, not "Gmail (personal)") and lives under <code>components/comms/</code>, where the frontend-architecture skill says
+  a shared primitive must not be imported from. The Gmail dot's <i>state</i> still comes from the comms <code>accountHealth</code> (a pure function in
+  the <code>@/lib/comms</code> barrel) and its elapsed text from <code>formatElapsed</code> in <code>@/components/comms/comms-format</code> — pure
+  functions imported read-only, named as such in S2-B's brief. Folding <code>AccountDot</code> onto the atom is a follow-up (§14), not a comms edit here.</p>
   <p class="why"><b>Why one banner:</b> three stacked banners on a phone push the list off screen, and the states are not equally actionable —
   a dead mailbox makes the other two moot (nothing new arrives), and a stall makes the ceiling moot (nothing is being summarised). The dots
   keep the suppressed states visible. <b>Why red for Gmail:</b> it is the one state the owner must act on (re-authorize) — the comms header
@@ -307,10 +329,15 @@ description names each one.</p>
   reads as "fine", and neither is.</p></div>
 
 <div class="dec"><h3><span class="n">S2-5</span>"Stalled" mirrors <code>classifierStalled</code>, with the ceiling as a third rule.</h3>
-  <p>Two signals, either sufficient: the health row's <code>last_error_at</code> is newer than <code>last_success_at</code>; or a pending, retryable
-  post has been waiting longer than <code>READER_STALL_MINUTES = 15</code> (three tick cadences) while no post has <code>summarized_at</code> inside
-  that window — <b>unless the ceiling is reached</b>, in which case waiting is by design. A health row that has never been written is a distinct
-  <b>never ran</b> state (amber dot, "The summariser has never run").</p>
+  <p>Checked in this order. <b>No health row at all → <code>never</code></b> (amber dot, "The summariser has never run — check the Worker's cron";
+  no banner), before either signal is consulted — a pending post with no row is the cron not firing, not a stall. Then two signals, either
+  sufficient: the row's <code>last_error_at</code> is newer than <code>last_success_at</code>; or a pending, retryable post has been waiting longer
+  than <code>READER_STALL_MINUTES = 15</code> (three tick cadences) while no post has <code>summarized_at</code> inside that window — <b>unless the
+  ceiling is reached</b>, in which case waiting is by design. A row with <code>last_run_at</code> set and both <code>last_success_at</code> and
+  <code>last_error_at</code> null is exactly what signal 2 exists to read. The ceiling itself is "reached" while <code>calls_today ≥ daily_cap</code>
+  and either <code>calls_day</code> is today (UTC) <i>or</i> the tick has not yet run today (<code>last_run_at</code> before 00:00 UTC) — without the
+  second clause, every capped day would show a false "stalled" banner from midnight UTC (19:00 Chicago, skim time) until the first tick of the new day
+  summarises something.</p>
   <p class="why"><b>Why:</b> the comms module learned both rules the hard way (its docstring says so) and they transfer exactly: a backlog under a
   per-tick cap is draining, not stalled, and the proof of life is the last summary. The ceiling rule is the Reader's own: past the cap, pending
   rows waiting is the correct behaviour, and a banner calling it a stall would train the owner to ignore the banner.</p></div>
@@ -339,10 +366,14 @@ description names each one.</p>
   <p class="why"><b>Why:</b> "paused" is the honest word for what the toggle does, and a pause that deleted or hid history would be a
   destructive verb dressed as a switch. The one thing to say in the UI is the horizon, and the toggle's title says it.</p></div>
 
-<div class="dec"><h3><span class="n">S2-9</span>Keyboard: the reader's own key map, the comms blocked-target rule imported, hints on the selected row only. <span class="dep">departure</span></h3>
+<div class="dec"><h3><span class="n">S2-9</span>Keyboard: the reader's own key map, the comms blocked-target rule imported, letters only, hints on the selected row only. <span class="dep">departure</span></h3>
   <p><code>frontend/lib/reader/hotkeys.ts</code> exports <code>readerHotkeyAction(event)</code> with its own <code>KEYS</code> map (§10) and imports
-  <code>isHotkeyBlocked</code> from <code>@/lib/comms/hotkeys</code> unchanged. <code>&lt;kbd&gt;</code> hints render beside the verbs of the
-  <b>selected</b> row, <code>hidden md:inline-flex</code>, styled as the search box's ⌘P hint.</p>
+  <code>isHotkeyBlocked</code> from <code>@/lib/comms/hotkeys</code> unchanged (a known bypass of the <code>@/lib/comms</code> barrel, which does not
+  re-export it; <code>message-row.tsx</code> already imports the same way). <b>The overview toggle is <code>v</code>, not Enter</b>: the row's card is a
+  <code>&lt;button&gt;</code> and its verbs are buttons and an anchor, none of which <code>isHotkeyBlocked</code> blocks, so a document-level Enter would
+  fire alongside the focused control's native click — toggling selection and the overview on one keypress, or archiving and expanding at once. Comms has no
+  Enter binding for the same reason. <code>&lt;kbd&gt;</code> hints render beside the verbs of the <b>selected</b> row, styled as the search box's ⌘P hint
+  but shown from <code>md</code> (<code>hidden md:inline-flex</code>) rather than its <code>sm</code>: a phone in landscape clears <code>sm</code> and still has no keyboard.</p>
   <p class="why"><b>Why import rather than mirror or extract:</b> the epic allows a shared helper "if one extracts cleanly without editing the comms
   files"; it doesn't (the blocked-target check sits in a comms file), but it is exported, and importing a pure function is not a comms edit.
   Copying fifteen lines would fork the one rule that keeps hotkeys from eating keystrokes in a dialog. <b>Why the selected row only:</b> the
@@ -351,13 +382,17 @@ description names each one.</p>
   all, is the other reason to be sparing.</p></div>
 
 <div class="dec"><h3><span class="n">S2-10</span>The archive view reads its own scope on first visit, newest-received first.</h3>
-  <p><code>/reader/archive</code> asks <code>GET /api/reader/posts?scope=archived&amp;limit=200</code> when first shown and holds the result in the
-  reader store beside the active list. Rows are ordered by <code>received_at</code> desc (the list's order and index), offer <b>Open ↗</b> and
-  <b>Unarchive</b>, and expand into the overview like the list. Unarchive is optimistic: the row leaves the archive and joins the active list.
-  If 200 come back, a muted line beneath says "Showing the latest 200".</p>
-  <p class="why"><b>Why not seeded by the shell:</b> the archive is unbounded — every post ever skimmed — and the shell seeds every module on
-  every page load. A lazy read on first visit is the comms shelf's own trade (it mounts nothing until opened). <b>Why 200 and no paging:</b>
-  the archive is browsed, not searched; a "load more" is a follow-up if the owner asks.</p></div>
+  <p><code>/reader/archive</code> asks <code>GET /api/reader/posts?scope=archived&amp;limit=200</code> when first shown and <b>upserts</b> the rows
+  into the store's one <code>posts</code> array (<code>simpleReducer</code>'s <code>upsert</code>), flipping an <code>archiveLoaded</code> flag so the read
+  runs once. <code>useReaderPosts()</code> and <code>useArchivedPosts()</code> both derive from that one array by <code>archived_at</code>. Rows are ordered
+  by <code>received_at</code> desc (the list's order and index), offer <b>Open ↗</b> and <b>Unarchive</b>, and expand into the overview like the list.
+  Archive and unarchive stay what Story 1 made them — a patch to <code>archived_at</code> on a row the store already holds — so a post archived in this
+  session and then listed by the archive read is one row, never two. If 200 come back, a muted line beneath says "Showing the latest 200".</p>
+  <p class="why"><b>Why one array:</b> a separate <code>archived</code> slice would hold a second copy of any post archived in-session once the archive
+  read lands, and unarchive would leave the stale copy behind. <b>Why a second read rather than seeding the archive with the shell:</b> the archive is
+  unbounded — every post ever skimmed — while the app's fetch-all default assumes a bounded table; 200 newest archived is a bounded second scope of the
+  same read, pulled on demand the way the weekly-plan store pulls an older week's document. <b>Why 200 and no paging:</b> the archive is browsed, not
+  searched; a "load more" is a follow-up if the owner asks.</p></div>
 
 <div class="dec"><h3><span class="n">S2-11</span>Realtime on <code>reader_posts</code> is built last and dropped first.</h3>
   <p>If the story is not running long: the migration adds <code>reader_posts</code> to <code>supabase_realtime</code>, and the store subscribes to
@@ -387,7 +422,7 @@ alter table reader_posts add column text_swept_at timestamptz;
 create view v_reader_candidates with (security_invoker = true) as
   select
     m.sender_handle                                        as handle,
-    (array_agg(m.sender_name order by m.received_at desc))[1] as name,
+    (array_agg(m.sender_name order by m.received_at desc) filter (where m.sender_name is not null))[1] as name,
     count(*)::int                                          as message_count,
     max(m.received_at)                                     as last_seen_at
   from comm_messages m
@@ -401,25 +436,22 @@ create view v_reader_candidates with (security_invoker = true) as
 
 grant select on v_reader_candidates to anon, authenticated, service_role;
 
--- 4. The D13 sweep: null the text of every post past the window, batched like comm_sweep_expired so a
---    catch-up run past a statement_timeout keeps the batches it finished. Cutoff computed here, never
---    from the Worker's clock.
-create or replace function reader_sweep_text(p_days int default 90)
+-- 4. The D13 sweep: null the text of ONE batch of posts past the window and report how many. The
+--    Worker loops until it returns 0, so each batch is its own transaction and a catch-up run that
+--    trips statement_timeout keeps every batch it finished — a plpgsql loop inside one call would not
+--    (the whole statement rolls back). Cutoff computed here, never from the Worker's clock.
+create or replace function reader_sweep_text(p_days int default 90, p_limit int default 5000)
 returns int language plpgsql security invoker as $$
-declare v_count int := 0; v_batch int; v_cutoff timestamptz := now() - make_interval(days =&gt; p_days);
+declare v_count int;
 begin
-  loop
-    update reader_posts set text = null, text_swept_at = now()
-    where id in (select id from reader_posts
-                 where received_at &lt; v_cutoff and text is not null
-                 order by id limit 5000);
-    get diagnostics v_batch = row_count;
-    v_count := v_count + v_batch;
-    exit when v_batch = 0;
-  end loop;
+  update reader_posts set text = null, text_swept_at = now()
+  where id in (select id from reader_posts
+               where received_at &lt; now() - make_interval(days =&gt; p_days) and text is not null
+               order by id limit p_limit);
+  get diagnostics v_count = row_count;
   return v_count;
 end; $$;
-grant execute on function reader_sweep_text(int) to anon, authenticated, service_role;
+grant execute on function reader_sweep_text(int, int) to anon, authenticated, service_role;
 
 -- 5. Only if S2-11 (realtime) is built — otherwise leave this line out.
 -- alter publication supabase_realtime add table reader_posts;</code></pre>
@@ -432,7 +464,8 @@ cap to the health row under another name, use that column and skip item 1.</p>
 <ul>
   <li><code>ReaderHealth</code> and <code>ReaderPost</code> pick up the new columns from the regenerated <code>Database</code> type.</li>
   <li><code>ReaderCandidate = Database['public']['Views']['v_reader_candidates']['Row']</code>, read with <code>.overrideTypes&lt;ReaderCandidate[]&gt;()</code>
-    (view columns generate as nullable — see the <code>supabase</code> skill).</li>
+    (view columns generate as nullable — see the <code>supabase</code> skill). <code>name</code> stays genuinely nullable (a sender with no display name
+    on any message); the UI falls back to the handle.</li>
   <li><code>ReaderHealthSnapshot { health: ReaderHealth | undefined; account: CommAccount | undefined }</code> — the health route's payload.</li>
   <li><code>workers/src/reader/types.ts</code> mirrors the two new columns.</li>
   <li>Fixtures: <code>frontend/lib/reader/fixtures.ts</code> gains <code>makeReaderPublication</code>, <code>makeReaderCandidate</code>,
@@ -461,8 +494,9 @@ cap to the health row under another name, use that column and skip item 1.</p>
       <td><code>200 { health, account }</code>: the singleton row (or <code>undefined</code> before the tick has ever run) and the <code>comm_accounts</code> row whose key
       is <code>gmail-personal</code> (or <code>undefined</code> if none). A failed read is a 4xx/5xx, never a partial body — the store replaces its surface with this.</td></tr>
   <tr><td><code>PATCH /api/reader/posts/[id]</code> <span class="small">(extends Story 1's)</span></td>
-      <td>Body union gains <code>{ resummarize: true }</code>. Reads the row first; <code>409 "Post text was swept; nothing to re-summarise"</code> when
-      <code>text</code> is null. Otherwise updates <code>summary_state='pending', summarize_attempts=0, last_error=null</code>.</td>
+      <td>Body union gains <code>{ resummarize: true }</code>. Reads the row first: <code>409 "Post text was swept on &lt;date&gt;"</code> when
+      <code>text_swept_at</code> is set; <code>409 "Post has no stored text to summarise"</code> when <code>text</code> is null for any other reason
+      (extraction produced nothing). Otherwise updates <code>summary_state='pending', summarize_attempts=0, last_error=null</code>.</td>
       <td><code>200 ReaderPost</code> without <code>text</code>; <code>404</code>.</td></tr>
 </table></div>
 
@@ -537,12 +571,13 @@ cap to the health row under another name, use that column and skip item 1.</p>
 <div class="scroll"><table>
   <tr><th style="width:26%">Store</th><th>Shape</th></tr>
   <tr><td><code>reader-store.tsx</code> <span class="small">(Story 1's, extended)</span></td>
-      <td>State gains <code>archived: ReaderPost[] | undefined</code> (undefined until first read) and <code>health: ReaderHealthSnapshot</code>. Actions gain
-      <code>loadArchive()</code> (idempotent; sets the slice), <code>resummarize(id)</code> (optimistic: patch the row to pending with attempts 0, call the route,
-      reconcile with the returned row, roll back and toast "Couldn't queue that summary" on failure — a 409 toasts "That post's text was swept"), and
+      <td>State gains <code>archiveLoaded: boolean</code> and <code>health: ReaderHealthSnapshot</code>; <code>posts</code> stays the one array and now holds
+      archived rows too once loaded (S2-10). Actions gain <code>loadArchive()</code> (idempotent; upserts the archived read into <code>posts</code> and sets
+      the flag), <code>resummarize(id)</code> (optimistic: patch the row to pending with attempts 0, call the route,
+      reconcile with the returned row, roll back and toast "Couldn't queue that summary" on failure — a 409 toasts the route's message), and
       <code>reconcileHealth()</code> — called from the existing focus / visibility handler alongside the posts refetch, so a returning tab replaces a
-      health surface that decayed against a ticking clock (the same recovery the comms store runs). <code>unarchive</code> moves the row from
-      <code>archived</code> into the active list. Hooks: <code>useArchivedPosts()</code>, <code>useReaderHealth()</code>.</td></tr>
+      health surface that decayed against a ticking clock (the same recovery the comms store runs). <code>archive</code> / <code>unarchive</code> stay
+      Story 1's patch to <code>archived_at</code>. Hooks: <code>useArchivedPosts()</code> (derived, newest-received first), <code>useReaderHealth()</code>.</td></tr>
   <tr><td><code>reader-settings-store.tsx</code> <span class="small">(new)</span></td>
       <td>Modelled line for line on <code>comms-settings-store.tsx</code>: <code>ReaderSettingsProvider({ initialPublications, initialCandidates })</code>,
       a pure reducer over the two lists (<code>simpleReducer</code> from <code>reducer-actions.ts</code>), a shared <code>writePublication</code> optimistic helper
@@ -557,8 +592,11 @@ cap to the health row under another name, use that column and skip item 1.</p>
 <ul>
   <li><b>Ceiling stamp (S2-1).</b> In Story 1's health write (wherever <code>calls_today</code>/<code>calls_day</code> are upserted), add <code>daily_cap: cap</code>
     where <code>cap</code> is the resolved <code>READER_DAILY_CAP</code>. One line; the existing tick test asserts the payload carries it.</li>
-  <li><b><code>workers/src/reader/retention.ts</code>.</b> <code>READER_TEXT_RETENTION_DAYS = 90</code>; <code>runReaderRetention(env: SupabaseEnv, now)</code> →
-    <code>{ swept: number }</code> by <code>POST rpc/reader_sweep_text { p_days: 90 }</code> through the shared <code>fetchJson</code>/<code>rpcUrl</code>. The
+  <li><b><code>workers/src/reader/retention.ts</code>.</b> <code>READER_TEXT_RETENTION_DAYS = 90</code>, <code>SWEEP_BATCH = 5000</code>;
+    <code>runReaderRetention(env: SupabaseEnv, _now)</code> → <code>{ swept: number }</code>: loop <code>POST rpc/reader_sweep_text { p_days: 90, p_limit: 5000 }</code>
+    until it returns 0, summing the counts — each call its own transaction (§4). Built on <code>fetchJson</code> and <code>restQueryUrl</code> from
+    <code>workers/src/supabase.ts</code> (both exported); the comms <code>rpcUrl</code> is module-private and stays so — a private helper in
+    <code>workers/src/reader/store.ts</code> if the reader wants one. <code>_now</code> is unused, as in the comms sweep: the cutoff is the database's. The
     doc comment carries D13's arithmetic (≈1.5 MB/day, ≈135 MB steady state) and the reason summaries are never swept.</li>
   <li><b>Dispatch.</b> On <code>RETENTION_CRON</code>, <code>index.ts</code> runs the comms retention (unchanged) and then the reader retention, each in its own
     try/catch — a comms failure must not skip the reader sweep and vice versa. Log one line per unit in the existing style:
@@ -577,19 +615,29 @@ export const RETRYABLE_ATTEMPTS = 3;      // mirrors the tick's "attempts &lt; 3
 
 export type SummariserState = 'live' | 'stalled' | 'never';
 
-/** Ceiling: the tick has spent today's calls. Read off the row the tick writes, never off a UI constant. */
+/**
+ * Ceiling: the tick has spent today's calls. Read off the row the tick writes, never off a UI constant.
+ * "Reached" holds across the UTC rollover until the tick has RUN in the new day: between 00:00 UTC and
+ * the first tick, calls_day is yesterday but nothing has been reset, and without this clause signal 2
+ * below would call every capped day "stalled" from midnight UTC (19:00 Chicago) until that tick.
+ */
 export function ceilingReached(health: ReaderHealth | undefined, now: Date): boolean {
   if (health?.daily_cap == null || health.calls_day === null) return false;
-  return health.calls_day === now.toISOString().slice(0, 10) &amp;&amp; health.calls_today &gt;= health.daily_cap;
+  if (health.calls_today &lt; health.daily_cap) return false;
+  const today = now.toISOString().slice(0, 10);
+  const ranToday = health.last_run_at !== null &amp;&amp; health.last_run_at.slice(0, 10) === today;
+  return health.calls_day === today || !ranToday;
 }
 
-/** Pending rows the tick will still try — what the ceiling banner counts as "wait for tomorrow". */
+/** Pending rows the tick will still try — the CLAIMED posts the ceiling banner counts as "wait for tomorrow" (§2 ✎). */
 export function waitingPosts(posts: ReaderPost[]): ReaderPost[] {
   return posts.filter(p =&gt; p.summary_state === 'pending' &amp;&amp; p.summarize_attempts &lt; RETRYABLE_ATTEMPTS &amp;&amp; p.text_swept_at === null);
 }
 
 /**
- * Stalled? Two signals, either sufficient (the comms classifier's rules, transplanted):
+ * Never / live / stalled. No row at all is `never` — checked FIRST, before either signal, because a
+ * pending post with no row means the cron has not fired, not that summarising stopped. Then two signals,
+ * either sufficient (the comms classifier's rules, transplanted):
  *  1. the tick recorded a systemic failure more recently than a success;
  *  2. a retryable pending post has waited past the cadence while NO post was summarised inside it —
  *     unless the ceiling is reached, in which case waiting is by design.
@@ -597,7 +645,10 @@ export function waitingPosts(posts: ReaderPost[]): ReaderPost[] {
  */
 export function summariserStalled(
   health: ReaderHealth | undefined, posts: ReaderPost[], now: Date,
-): { state: SummariserState; since: string | null } { /* … */ }
+): { state: SummariserState; since: string | null } {
+  if (health === undefined) return { state: 'never', since: null };
+  /* … signals 1 and 2, with ceilingReached(health, now) suppressing signal 2 … */
+}
 
 /** Which banner, if any — the S2-4 precedence, in one place so header and stories agree. */
 export type ReaderBanner =
@@ -616,7 +667,8 @@ export function readerBanner(snapshot: ReaderHealthSnapshot, posts: ReaderPost[]
 <p class="small">Sketch, not final code — non-null assertions are shown for brevity and the build narrows properly. The comms
 <code>accountHealth</code> already encodes "erroring beats stale" and "the expected interval is the account's own"; import it rather than restate it.
 The "never" state (no health row) renders the amber summariser dot and the sentence "The summariser has never run — check the Worker's cron"
-but no banner: before the first tick there is nothing to be stalled from.</p>
+but no banner: before the first tick there is nothing to be stalled from, and since the tick writes <code>last_run_at</code> first, a row exists
+from the first cron fire onward — "never" really does mean the cron never fired.</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="s9">9 · What it looks like</h2>
@@ -657,7 +709,7 @@ requirement, and nothing this story puts on screen is missing from a picture bel
       <div class="dots"><span class="live"><span class="dot on"></span>summariser · live</span><span class="live"><span class="dot on"></span>Gmail (personal)</span></div>
     </div>
   </div>
-  <div class="banner amber"><span class="ico">◔</span><div><b>Daily summary ceiling reached (30)</b> — 4 posts wait for tomorrow. They are listed below with their titles and links; their summaries land after the UTC day rolls over.</div></div>
+  <div class="banner amber"><span class="ico">◔</span><div><b>Daily summary ceiling reached (30)</b> — 4 claimed posts wait for tomorrow. Their titles and links are in the list; their summaries land after the UTC day rolls over.</div></div>
 
   <div class="app-head" style="margin-top:1rem">
     <div class="heading"><div class="glyph">▤</div><div><h5>Reading list</h5><p>What arrived, summarised. Skim the gist; open what's worth it; archive the rest.</p></div></div>
@@ -670,10 +722,12 @@ requirement, and nothing this story puts on screen is missing from a picture bel
 </div>
 <p class="mockcap">Five header states, top to bottom: healthy; Gmail dead (the red banner wins over everything); summariser stalled (amber);
 ceiling reached (amber, informational, with the waiting count); never ran (dot + sentence only). The status block sits to the right of the
-<code>ViewHeading</code> on desktop and wraps beneath it on a phone. Dots are <code>AccountDot</code>-shaped: the state is in the accessible label,
-never colour alone. The Gmail dot IS the comms <code>AccountDot</code> rendered over the <code>gmail-personal</code> account — reused, not
-redrawn. The sentences read in the module's voice and always say what to do. Banner chrome is <code>ClassifierBanner</code>'s
-(<code>rounded-xl border-accent-*/50 bg-accent-*/[0.06] glow-*</code>, 15px lucide icon, 13px text) in amber or red.</p>
+<code>ViewHeading</code> on desktop and wraps beneath it on a phone. Dots are the new <code>StatusDot</code> atom (S2-4): <code>h-2 w-2 rounded-full</code>,
+<code>text-xs text-muted-foreground</code> label, the state in the accessible label never colour alone, an elapsed suffix at 70% — the comms
+<code>AccountDot</code>'s treatment, drawn by an atom the Reader can label "Gmail (personal)". The sentences read in the module's voice and always
+say what to do. Banner chrome is <code>ClassifierBanner</code>'s (<code>rounded-xl border-accent-*/50 bg-accent-*/[0.06] glow-*</code>, 15px lucide
+icon, 13px text) in amber or red; the icons are lucide's <code>Mail</code> (Gmail dead), <code>CircleAlert</code> (stalled) and <code>Gauge</code>
+(ceiling) — named here so the build does not invent them.</p>
 
 <h3>9.2 The row: re-summarise, and the keyboard hints</h3>
 <div class="app">
@@ -681,7 +735,7 @@ redrawn. The sentences read in the module's voice and always say what to do. Ban
     <div class="row-top"><span class="pub">Import AI</span><span class="meta">Sep 16 · 9 min</span></div>
     <div class="title">Import AI 412: three new evals, and a robot that folds</div>
     <div class="gist">Roundup issue. Most of it restates last week's benchmark releases; the one new item is a robotics dexterity eval with a surprising sim-to-real gap. Not worth reading in full unless you track robotics evals.</div>
-    <div class="meta"><span class="verb primary">Open ↗ <span class="kbd">o</span></span><span class="verb">Hide overview <span class="kbd">↵</span></span><span class="verb">Archive <span class="kbd">e</span></span></div>
+    <div class="meta"><span class="verb primary">Open ↗ <span class="kbd">o</span></span><span class="verb">Hide overview <span class="kbd">v</span></span><span class="verb">Archive <span class="kbd">e</span></span></div>
     <div class="detail">
       <div><div class="sect">Novel ideas</div><ul><li>Dexterity evals show a 30–40 point sim-to-real gap that scaling the simulator does not close.</li></ul></div>
       <div><div class="sect">Evidence</div><ul><li>Three eval releases with links; the robotics one includes raw per-task numbers.</li></ul></div>
@@ -713,7 +767,8 @@ redrawn. The sentences read in the module's voice and always say what to do. Ban
   </div>
 </div>
 <p class="mockcap">Top to bottom: a <b>selected done row</b> carrying the three <code>&lt;kbd&gt;</code> hints (desktop only) and, under the overview, the ghost
-<b>Re-summarise</b> verb beside the model / prompt-version / summarised-at stamp Story 1 stores; a row <b>mid re-summarise</b> — Story 1's pending marker
+<b>Re-summarise</b> verb beside a <b>new</b> muted stamp line — model, prompt version, summarised-at, from columns Story 1 stores but never drew; it is
+this story's (S2-B's), and it exists so a re-summarised row visibly changes version; a row <b>mid re-summarise</b> — Story 1's pending marker
 over the previous summary at 60% opacity, no re-summarise verb; a <b>failed row</b> with <b>Retry summary</b>; and a <b>refused, swept row</b> whose
 italic line says why the verb is absent. Hints appear on the selected row only and never on a phone. The exit collapse, the verbs' order and "Open ↗"
 are Story 1's and unchanged.</p>
@@ -727,7 +782,7 @@ are Story 1's and unchanged.</p>
     <div class="row-top"><span class="pub">Second Thoughts</span><span class="meta">Sep 12 · 11 min</span></div>
     <div class="title">Why every forecasting tournament converges on the same three people</div>
     <div class="gist">A selection-effects argument: the tournaments reward calibration on questions with short resolution windows…</div>
-    <div class="meta"><span class="verb primary">Open ↗ <span class="kbd">o</span></span><span class="verb">Hide overview <span class="kbd">↵</span></span><span class="verb">Unarchive <span class="kbd">e</span></span></div>
+    <div class="meta"><span class="verb primary">Open ↗ <span class="kbd">o</span></span><span class="verb">Hide overview <span class="kbd">v</span></span><span class="verb">Unarchive <span class="kbd">e</span></span></div>
     <div class="detail"><div><div class="sect">Novel ideas</div><ul><li>Resolution-window length, not question domain, predicts who wins.</li></ul></div></div>
   </div>
   <div class="row">
@@ -761,11 +816,13 @@ when nothing has ever been archived (the mockup shows both so each is drawn — 
     <div class="handle">email@stratechery.com · last post Sep 15</div>
     <div class="note">Daily update is paywalled; the email carries the whole post.</div>
   </div>
-  <div class="scard" style="opacity:.7">
+  <div class="scard" style="opacity:.55">
     <div class="scard-top"><span class="name">Some Substack I stopped reading</span><span class="chip c-muted">auto</span><span class="toggle">Paused</span></div>
     <div class="handle">quietletter@substack.com · last post Aug 2</div>
     <div class="note empty-note">Add a note</div>
   </div>
+
+  <div class="empty" style="padding:.6rem 0 .2rem;font-size:1rem">No publications yet.<small>Substack senders are added automatically once their mail arrives; promote anyone else from the candidates.</small></div>
 
   <div class="sect" style="margin:1rem 0 .4rem">Candidates — bulk senders not on the roster · last 30 days</div>
   <div class="scard">
@@ -782,11 +839,12 @@ when nothing has ever been archived (the mockup shows both so each is drawn — 
 <p class="mockcap"><code>/reader/publications</code>. Roster cards on <code>SETTINGS_CARD</code>: the name is an <code>EditableTextField</code> (click to rename),
 the provenance chip is a muted <code>Badge</code> (<code>auto</code> / <code>owner</code>), the toggle is the <code>ToggleButton</code> atom (pressed = teal,
 its own colour — the atom is reused, not restyled) whose title reads "Paused publications are not claimed; posts already here stay", and the note is an
-<code>InlineNoteField</code>. A paused card is dimmed like a shelved comms row. The handle line carries <code>last_post_at</code>. Candidates show the
-most recent display name, the handle, the 30-day count and last-seen, and an accent <b>Add</b> that promotes the sender as <code>owner</code> and moves it
+<code>InlineNoteField</code>. A paused card wears <code>PRUNED_CARD</code> (<code>opacity-55</code>) — the same-surface precedent, a pruned example card, not the
+shelved row's <code>opacity-70</code>. The handle line carries <code>last_post_at</code>. Candidates show the most recent display name (the handle when
+none), the handle, the 30-day count and last-seen, and an accent <b>Add</b> that promotes the sender as <code>owner</code> and moves it
 into the roster. The count line under the heading says how many are enabled and paused. The header button is disabled with a title when no publication
-is enabled; the toast confirms a copy. The empty states (both drawn; each renders only when its list is empty): "No publications yet" on the roster
-(text: "Substack senders are added automatically once their mail arrives; promote anyone else from the candidates.") and the one shown for candidates.</p>
+is enabled; the toast confirms a copy. Both empty states are drawn (<code>EmptyState</code> atom: serif title, muted description); each renders only when its
+list is empty.</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="s10">10 · Keyboard</h2>
@@ -799,12 +857,12 @@ view's (they must work with nothing selected); the verbs are the selected row's,
   <tr><td><code>k</code> / <code>↑</code></td><td><code>previous</code></td><td colspan="2">Select the previous row.</td></tr>
   <tr><td><code>o</code></td><td><code>open</code></td><td colspan="2">Click the row's "Open ↗" anchor (the same element — so the D12 fallback and <code>opened_at</code> stamping are shared).</td></tr>
   <tr><td><code>e</code></td><td><code>archive</code></td><td>Archive the selected row (with the exit collapse); selection moves to the next row.</td><td>Unarchive it; same motion.</td></tr>
-  <tr><td><code>Enter</code></td><td><code>overview</code></td><td colspan="2">Toggle the selected row's overview panel.</td></tr>
+  <tr><td><code>v</code></td><td><code>overview</code></td><td colspan="2">Toggle the selected row's overview panel. A letter, never Enter or Space: the card and the verbs are focusable buttons that Enter activates natively (S2-9).</td></tr>
   <tr><td><code>Esc</code></td><td><code>deselect</code></td><td colspan="2">Drop the selection.</td></tr>
 </table></div>
 <p>Hints: a <code>&lt;kbd&gt;</code> after each of the three verb labels on the selected row, class
 <code>hidden md:inline-flex rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-muted-foreground</code> (the search box's
-⌘P hint). Re-summarise has no key. Mobile keeps every verb by touch and shows no hints.</p>
+⌘P hint's treatment, from <code>md</code> rather than its <code>sm</code> — deliberate, per S2-9). Re-summarise has no key. Mobile keeps every verb by touch and shows no hints.</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="s11">11 · Tests &amp; demo evidence</h2>
@@ -812,15 +870,17 @@ view's (they must work with nothing selected); the verbs are the selected row's,
 <div class="scroll"><table>
   <tr><th style="width:22%">Layer</th><th>What is pinned</th></tr>
   <tr><td>Migration</td><td><code>migration-lint</code> green (the view's grant sits in the same file). The <code>database</code> integration suite (<code>check:slow</code>,
-    <code>database/src/assertions.ts</code>) gains: <code>reader_sweep_text(90)</code> nulls <code>text</code> and stamps <code>text_swept_at</code> on a 91-day-old post and
-    leaves its title, gist, overview and timestamps intact; an 89-day-old post is untouched; a second run sweeps zero. <code>v_reader_candidates</code> excludes a
+    <code>database/src/assertions.ts</code>) gains: <code>reader_sweep_text(90, 5000)</code> nulls <code>text</code> and stamps <code>text_swept_at</code> on a 91-day-old post and
+    leaves its title, gist, overview and timestamps intact; an 89-day-old post is untouched; with <code>p_limit = 1</code> and two eligible rows it returns 1 then 1 then 0. <code>v_reader_candidates</code> excludes a
     roster handle, excludes a 31-day-old sender, counts a 30-day one, and ranks by count.</td></tr>
-  <tr><td>Worker (jest)</td><td><code>retention.test.ts</code>: the RPC name and <code>p_days: 90</code>. <code>index.test.ts</code>: on <code>RETENTION_CRON</code> both sweeps run, a comms
+  <tr><td>Worker (jest)</td><td><code>retention.test.ts</code>: the RPC name and <code>p_days: 90</code>, and the loop (mocked counts 2, 1, 0 → three calls, <code>swept: 3</code>). <code>index.test.ts</code>: on <code>RETENTION_CRON</code> both sweeps run, a comms
     throw does not skip the reader sweep, and the two log lines appear. The tick test asserts the health write carries <code>daily_cap</code>.</td></tr>
-  <tr><td>Health lib (jest)</td><td><code>health.test.ts</code>: every branch of <code>ceilingReached</code> (other day, same day under cap, at cap, missing cap), <code>summariserStalled</code>
-    (error newer than success; pending past cadence with no recent summary; pending past cadence WITH a recent summary = live; pending under the ceiling = live;
-    no row = never), and <code>readerBanner</code>'s precedence with all three states true.</td></tr>
-  <tr><td>Routes</td><td>A test per route in §5: happy path, the 404s, the 409s (duplicate handle; swept text), handle normalisation, the health route's partial-failure
+  <tr><td>Health lib (jest)</td><td><code>health.test.ts</code>: every branch of <code>ceilingReached</code> (other day, same day under cap, at cap, missing cap, <b>the rollover</b>:
+    calls_day yesterday at cap and no tick today = reached, and the same after today's first tick = not), <code>summariserStalled</code> (error newer than success;
+    pending past cadence with no recent summary; pending past cadence WITH a recent summary = live; pending under the ceiling = live; <b>no row with a pending
+    post past the cadence = never, not stalled</b>; a row with last_run_at only and a pending post past the cadence = stalled), and <code>readerBanner</code>'s
+    precedence with all three states true.</td></tr>
+  <tr><td>Routes</td><td>A test per route in §5: happy path, the 404s, the 409s (duplicate handle; swept text; no text), handle normalisation, the health route's partial-failure
     shape (a failed read is a 5xx, not <code>{ health: undefined }</code>).</td></tr>
   <tr><td>Stores (RTL)</td><td><code>reader-settings-store.test.tsx</code>: toggle rolls back and toasts on a failed PATCH; add-candidate moves the row from candidates to
     publications on success and toasts on 409; <code>copyFilterQuery</code> emits the sorted enabled-only term and toasts on both outcomes (clipboard mocked).
@@ -829,7 +889,8 @@ view's (they must work with nothing selected); the verbs are the selected row's,
     re-summarising row, the failed row with Retry, the swept refused row; the archive view (rows, the "latest 200" line, empty); the publications view (roster with
     a paused card, candidates, both empty states). RTL: hints hidden at a phone width / shown at desktop; the toggle's title; the disabled copy button.
     Visual baselines committed per the <code>storybook</code> skill.</td></tr>
-  <tr><td>E2E (Playwright)</td><td><code>reader-publications.spec.ts</code>: pause a publication (server state flips), rename, promote a candidate (it appears in the roster with
+  <tr><td>E2E (Playwright)</td><td>All against <code>mock-supabase.mjs</code> extended per §2's E2E row (the computed <code>v_reader_candidates</code> is what makes the candidates
+    assertions real). <code>reader-publications.spec.ts</code>: pause a publication (server state flips), rename, promote a candidate (it appears in the roster with
     <code>owner</code>, disappears from candidates), copy the query (clipboard read back in Chromium). <code>reader-archive.spec.ts</code>: archive from the list →
     it is in the archive → unarchive → it is back; one hotkey round trip (<code>j</code> selects, <code>e</code> archives). <code>reader-health.spec.ts</code>: seed a
     ceiling-reached health row and assert the banner text; seed an erroring <code>gmail-personal</code> account and assert the red banner wins. Seeds through
@@ -838,8 +899,9 @@ view's (they must work with nothing selected); the verbs are the selected row's,
 <p><b>Demo doc</b> at <code>docs/demos/alf-234-reader-operability/&lt;name&gt;.md</code>, built with the <code>showboat</code> skill's evidence rules — <b>that skill is
 the source of truth for what counts</b>; this list only names the surfaces: the publications journeys (pause, rename, promote, copy → toast) as live
 before / action / after screenshots; the three banners and the never-ran header from seeded states; the archive round trip; the hotkey round trip;
-the retention sweep as a request / query-result <code>exec</code> (a row before and after), never test output. Moving Storybook baselines embed the
-diff image and the approved baseline.</p>
+the retention sweep as a query-result <code>exec</code> (a row before and after) against a real Postgres — the integration suite's bootstrapped cluster
+(<code>database/src/migrate.ts</code>) or a local Supabase, since the E2E mock has no <code>reader_sweep_text</code> — never test output. Moving Storybook
+baselines embed the diff image and the approved baseline.</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="s12">12 · Subagent cut</h2>
@@ -851,24 +913,35 @@ Every brief carries the slice's acceptance in the session's words, its files, th
   <tr><th style="width:12%">Slice</th><th style="width:48%">Behaviour &amp; acceptance</th><th style="width:28%">Files it owns</th><th>Batch</th></tr>
   <tr><td><b>S2-A0</b> Foundations</td>
       <td><b>The session's own work.</b> Step 0 (the handoff diff). The prompt fix if the checkpoint asked. §4's migration; types regenerated; the Worker's
-      <code>daily_cap</code> line; fixtures extended (publications, candidates, a health row per state, a swept post). <code>migration-lint</code> and
-      <code>check:fast</code> green before anything dispatches.</td>
-      <td>the migration, <code>database/README.md</code>, both type files, <code>lib/reader/fixtures.ts</code>, the tick's health write, <code>reader/prompt.ts</code></td>
+      <code>daily_cap</code> line; fixtures extended (publications, candidates, a health row per state, a swept post). <b>Every shared seam, so batch 2 is
+      genuinely disjoint:</b> the Zod schemas and <code>api-client.ts</code> wrappers for all of §5 (pure contract, no behaviour); the two new seed readers and the
+      provider seeding in <code>(shell)/layout.tsx</code> with empty defaults; <code>ReaderSettingsProvider</code>'s skeleton (state, reducer, hooks — no
+      actions yet); the archive and publications segment stubs in <code>reader-view.tsx</code>; the <code>StatusDot</code> atom with its test and story; and the
+      E2E harness — <code>SeedState</code> keys, <code>makeReader*</code> re-exports, and <code>mock-supabase.mjs</code>'s reader tables, the computed
+      <code>v_reader_candidates</code> (30-day window, anti-join, count-desc rank) and the <code>reader_publications</code> unique-handle 409.
+      <code>migration-lint</code> and <code>check:fast</code> green before anything dispatches.</td>
+      <td>the migration, <code>database/README.md</code>, both type files, <code>lib/reader/fixtures.ts</code>, the tick's health write, <code>reader/prompt.ts</code>,
+      <code>lib/api/reader-schemas.ts</code> (+ <code>schemas.ts</code> re-export), <code>lib/api-client.ts</code>, <code>lib/data/reader.ts</code> (seed readers),
+      <code>app/(shell)/layout.tsx</code>, <code>components/reader/reader-view.tsx</code>, <code>components/atoms/status-dot.tsx</code>, <code>e2e/support/constants.ts</code>,
+      <code>e2e/support/fixtures.ts</code>, <code>scripts/mock-supabase.mjs</code></td>
       <td>1 — alone</td></tr>
   <tr><td><b>S2-A</b> Publications</td>
-      <td>§9.4 whole: the settings store, the four publication routes, the data seed, the roster card, the candidates list, the filter helper, stories, RTL,
+      <td>§9.4 whole: the settings store's actions, the four publication routes, the roster card, the candidates list, the filter helper, stories, RTL,
       its E2E. Skills: <code>data-flow</code>, <code>nextjs</code>, <code>react-testing-library</code>, <code>storybook</code>, <code>frontend-architecture</code>.</td>
       <td><code>app/api/reader/publications/**</code>, <code>lib/data/reader-publications.ts</code>, <code>lib/stores/reader-settings-store.tsx</code>,
       <code>components/reader/publications-*</code>, <code>lib/reader/gmail-filter.ts</code>, <code>e2e/reader-publications.spec.ts</code></td>
-      <td rowspan="3">2 — A ∥ B ∥ C, disjoint: A is frontend-only and touches no Story 1 file; B owns the health route, the row's verbs and the store's
-      new actions; C touches only the retention path and the entrypoint.</td></tr>
+      <td rowspan="3">2 — A ∥ B ∥ C, disjoint once A0 owns the seams: A touches no Story 1 file and no shared file; B owns the health route, the post
+      route's new branch, <code>lib/reader/health.ts</code>, the reader store's new actions, the header, the banner and the row's verbs; C touches only the
+      retention path and the entrypoint. Any file two briefs would both name goes back to A0.</td></tr>
   <tr><td><b>S2-B</b> Health &amp; re-summarise</td>
-      <td>§8, §9.1, §9.2's re-summarise: the health route and seed, <code>lib/reader/health.ts</code>, the header (dots, sentences) and banner, the store's
-      <code>health</code> slice + <code>reconcileHealth</code> + <code>resummarize</code>, the row's Retry / Re-summarise verbs and the swept line, the post route's
-      <code>resummarize</code> branch. Stories per state. Skills: <code>data-flow</code>, <code>react</code>, <code>storybook</code>.</td>
+      <td>§8, §9.1, §9.2's re-summarise: the health route, <code>lib/reader/health.ts</code>, the header (two <code>StatusDot</code>s, sentences) and banner,
+      the store's <code>health</code> slice + <code>reconcileHealth</code> + <code>resummarize</code>, the row's Retry / Re-summarise verbs, the swept and no-text
+      lines, the new stamp line under the overview, the post route's <code>resummarize</code> branch with both 409s. Stories per state. Reads
+      <code>accountHealth</code> from <code>@/lib/comms</code> and <code>formatElapsed</code> from <code>@/components/comms/comms-format</code> — named read-only
+      cross-module imports; edits nothing under <code>comms/</code>. Skills: <code>data-flow</code>, <code>react</code>, <code>storybook</code>.</td>
       <td><code>app/api/reader/health/**</code>, the resummarize branch of <code>app/api/reader/posts/[id]/route.ts</code>, <code>lib/reader/health.ts</code>,
-      <code>lib/data/reader.ts</code> (health seed), <code>lib/stores/reader-store.tsx</code>, <code>components/reader/{reader-header,reader-banner}.tsx</code>,
-      the row's verbs component</td></tr>
+      <code>lib/stores/reader-store.tsx</code>, <code>components/reader/{reader-header,reader-banner}.tsx</code>, the row's verbs component and the
+      overview panel's stamp line</td></tr>
   <tr><td><b>S2-C</b> Retention</td>
       <td>§7: <code>runReaderRetention</code>, the dispatch after the comms sweep in its own try/catch, its log line, tests. Skills: <code>cloudflare-workers</code>, <code>jest</code>.</td>
       <td><code>workers/src/reader/retention.ts</code> (+test), the reader lines in <code>workers/src/reader/scheduled.ts</code>, <code>workers/src/index.ts</code> (+test)</td></tr>
@@ -876,7 +949,8 @@ Every brief carries the slice's acceptance in the session's words, its files, th
       <td>§9.3 and §10: the archive view with lazy load and the "latest 200" line, <code>readerHotkeyAction</code>, navigation in both views, the verb keys in the
       row, the hints, its E2E. Skills: <code>react</code>, <code>playwright</code>, <code>motion</code> (the archive exit).</td>
       <td><code>components/reader/archive-view.tsx</code>, <code>lib/reader/hotkeys.ts</code> (+test), the hotkey effect and hint markup in the row, the
-      <code>archived</code> slice + <code>loadArchive</code> in the store, <code>e2e/reader-archive.spec.ts</code></td>
+      <code>archiveLoaded</code> flag + <code>loadArchive</code> + <code>useArchivedPosts</code> in the store, the archive segment's wiring in
+      <code>reader-view.tsx</code>, <code>e2e/reader-archive.spec.ts</code></td>
       <td>3 — after B is read and integrated, because both edit the row and the store.</td></tr>
   <tr><td><b>S2-E</b> Live updates</td>
       <td>S2-11, by appetite. The realtime subscription with the summary-columns guard; a test that a <code>text</code>-carrying payload never reaches the store's row.</td>
@@ -907,7 +981,7 @@ Every brief carries the slice's acceptance in the session's words, its files, th
 <ul>
   <li>☐ The header shows a summariser dot and the Gmail (personal) dot with the state in the accessible label, and a sentence per non-live state.</li>
   <li>☐ Exactly one banner renders, in the order Gmail dead → summariser stalled → ceiling reached; each is a distinct story with pinned <code>now</code>.</li>
-  <li>☐ Ceiling reached reads the cap off <code>reader_health.daily_cap</code> and counts the pending, retryable posts as "wait for tomorrow".</li>
+  <li>☐ Ceiling reached reads the cap off <code>reader_health.daily_cap</code>, holds across the UTC rollover until the tick has run in the new day, and counts the pending, retryable posts as "wait for tomorrow".</li>
   <li>☐ A pending backlog under the ceiling is <i>not</i> a stall; a health row with an error newer than its last success <i>is</i>; no health row is "never ran".</li>
   <li>☐ A returning tab (focus / visibility) re-reads health and posts.</li>
 </ul>
@@ -915,22 +989,22 @@ Every brief carries the slice's acceptance in the session's words, its files, th
 <ul>
   <li>☐ Retry summary on failed and refused rows, Re-summarise under a done row's overview; neither on a pending row nor on a swept row (whose line says why).</li>
   <li>☐ The verb sets pending with attempts 0, keeps the old summary visible under the pending marker, and the next tick's retry order picks the row up; past the ceiling it waits and is counted.</li>
-  <li>☐ <code>PATCH { resummarize: true }</code> on a swept post is a 409.</li>
+  <li>☐ <code>PATCH { resummarize: true }</code> on a swept post, or on a post with no stored text, is a 409 whose message says which.</li>
 </ul>
 <h4>Archive &amp; keyboard (D11)</h4>
 <ul>
   <li>☐ <code>/reader/archive</code> lists archived posts newest-received first with Open and Unarchive; it is read on first visit, not seeded; 200-row cap with its line.</li>
   <li>☐ Unarchive is optimistic with rollback and the row reappears in the list.</li>
-  <li>☐ <code>j</code>/<code>k</code>/<code>↑</code>/<code>↓</code>, <code>o</code>, <code>e</code>, <code>Enter</code>, <code>Esc</code> work per §10 in both views; never inside a text field, dialog or menu; never with a modifier.</li>
+  <li>☐ <code>j</code>/<code>k</code>/<code>↑</code>/<code>↓</code>, <code>o</code>, <code>e</code>, <code>v</code>, <code>Esc</code> work per §10 in both views; never inside a text field, dialog or menu; never with a modifier; Enter and Space are not bound.</li>
   <li>☐ Hints render on the selected row on desktop and nowhere on a phone; every verb stays tappable on a phone.</li>
 </ul>
 <h4>Retention (D13)</h4>
 <ul>
-  <li>☐ The daily cron runs the reader sweep after the comms sweep, each isolated; a 91-day-old post loses <code>text</code> and gains <code>text_swept_at</code> and keeps everything else; an 89-day-old post is untouched; its own log line.</li>
+  <li>☐ The daily cron runs the reader sweep after the comms sweep, each isolated; the Worker loops the single-batch RPC until it returns 0; a 91-day-old post loses <code>text</code> and gains <code>text_swept_at</code> and keeps everything else; an 89-day-old post is untouched; its own log line.</li>
 </ul>
 <h4>Whole story</h4>
 <ul>
-  <li>☐ No comms file edited; no live model call in any suite; <code>check</code> green; migration-lint green; every visual state has a story and a committed baseline.</li>
+  <li>☐ No comms file edited (the two pure-function imports from comms are named in the PR); no live model call in any suite; <code>check</code> green; migration-lint green; every visual state has a story and a committed baseline.</li>
   <li>☐ The Story 1 handoff was read and every divergence from §2 is named in the PR description, as is every §3 departure and whether S2-E shipped.</li>
   <li>☐ Demo doc verified with <code>npm run demo -- verify</code> and linked live from the PR; the spec archived in the same PR.</li>
 </ul>
@@ -945,6 +1019,8 @@ Every brief carries the slice's acceptance in the session's words, its files, th
     the next tick anyway.</li>
   <li><b>Archive paging / search.</b> 200 newest and a line saying so.</li>
   <li><b>A hotkey for re-summarise</b>, and any hint on unselected rows.</li>
+  <li><b>Folding the comms <code>AccountDot</code> onto the new <code>StatusDot</code> atom.</b> A pure refactor of comms files, which this epic caps; it is
+    the obvious next DRY step and is named here so it isn't forgotten.</li>
   <li><b>Auto-enabling non-Substack platforms</b> (epic Q1) — see below.</li>
   <li><b>Any comms change</b>, any prompt UI, any change to the summariser's schema or model.</li>
 </ul>
