@@ -36,6 +36,12 @@ describe('PostOverview', () => {
     ).toBeInTheDocument();
   });
 
+  it('states the honest empty answer when evidence is empty', () => {
+    render(<PostOverview overview={makeReaderOverview({ evidence: [] })} />);
+
+    expect(screen.getByText('None — the post rests on assertion alone.')).toBeInTheDocument();
+  });
+
   it('renders the argument and who-should-read paragraphs', () => {
     render(
       <PostOverview

@@ -4,9 +4,10 @@ import type { ReaderOverview } from '@/lib/types';
 
 /**
  * The four sections of a `done` post's structured take, in the order the model returns them and
- * the list draws them. An empty `novel_ideas` is a valid, and honest, answer — the post
- * restates what a well-read reader already knows — so it renders as a stated line rather than a
- * blank section, which would read as a bug rather than a verdict.
+ * the list draws them. An empty list is a valid, and honest, answer in both sections that have
+ * one — the post restates what a well-read reader already knows, or argues with nothing to
+ * point at — so each renders as a stated line rather than a blank section, which would read as
+ * a bug rather than a verdict.
  */
 
 const SECTION_HEADING_CLASS =
@@ -16,6 +17,8 @@ const PARAGRAPH_CLASS = 'mt-1 text-sm text-foreground';
 
 const EMPTY_NOVEL_IDEAS_LINE =
   'Nothing new — the post restates what a well-read reader already knows.';
+
+const EMPTY_EVIDENCE_LINE = 'None — the post rests on assertion alone.';
 
 export interface PostOverviewProperties {
   overview: ReaderOverview;
@@ -39,11 +42,15 @@ export function PostOverview({ overview }: PostOverviewProperties) {
 
       <section>
         <h3 className={SECTION_HEADING_CLASS}>Evidence</h3>
-        <ul className={BULLET_LIST_CLASS}>
-          {overview.evidence.map((item, index) => (
-            <li key={index}>{item}</li>
-          ))}
-        </ul>
+        {overview.evidence.length === 0 ? (
+          <p className={PARAGRAPH_CLASS}>{EMPTY_EVIDENCE_LINE}</p>
+        ) : (
+          <ul className={BULLET_LIST_CLASS}>
+            {overview.evidence.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>

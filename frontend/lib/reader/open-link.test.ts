@@ -40,6 +40,27 @@ describe('postOpenLink', () => {
     expect(link.unavailable).toBe('No link in the post and no Message-ID captured for it.');
   });
 
+  it('refuses a canonical_url that is not http(s), and falls back', () => {
+    // Whatever the extractor pulled out of an email, only a web address may become an href.
+    const post = makeReaderPost(PUBLICATION_ID, {
+      canonical_url: 'javascript:alert(1)',
+      rfc822_message_id: '<script@mail.substack.com>',
+    });
+
+    expect(postOpenLink(post).kind).toBe('mailbox');
+  });
+
+  it('refuses a non-web scheme even with no mailbox fallback to take', () => {
+    const post = makeReaderPost(PUBLICATION_ID, {
+      canonical_url: 'data:text/html,<script>alert(1)</script>',
+      rfc822_message_id: null,
+    });
+
+    const link = postOpenLink(post);
+    expect(link.href).toBeUndefined();
+    expect(link.unavailable).toBe('No link in the post and no Message-ID captured for it.');
+  });
+
   it('treats a blank canonical_url as absent and falls back', () => {
     const post = makeReaderPost(PUBLICATION_ID, {
       canonical_url: ' '.repeat(3),
