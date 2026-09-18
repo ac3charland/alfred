@@ -86,7 +86,11 @@
   .dec ul { font-size: .93rem; margin: .35rem 0; }
   .dec .why { color: var(--muted); font-size: .89rem; }
   .dec .why b { color: var(--fg); }
-  /* ── Half markers ─────────────────────────────────────────────── */
+  .dec.rev { border-left-color: var(--partial); }
+  .revtag { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+            text-transform: uppercase; color: var(--partial); border: 1px solid var(--partial);
+            border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+  /* ── Story markers ─────────────────────────────────────────────── */
   .half { display: inline-block; font-size: .66rem; font-weight: 700; letter-spacing: .05em;
           text-transform: uppercase; border-radius: 999px; padding: .05rem .5rem; border: 1px solid; white-space: nowrap; }
   .h1 { color: var(--accent); border-color: var(--accent); }
@@ -148,8 +152,16 @@
 <p class="sub">
   <span class="pill">Epic spec</span>
   Durable context for the Reader epic: the problem space, the decisions taken and why, the
-  architecture later stories build against, and how the work cuts into <b>two implementation
-  halves</b> with a code-review checkpoint between them. Revised 2026-09-17 (first version).
+  architecture later stories build against, and how the work cuts into <b>two stories</b> with a
+  code-review checkpoint between them.
+</p>
+<p class="sub">
+  <b>Revised 2026-09-18, second round.</b> Four things changed, each marked <span class="revtag">revised</span>
+  where it sits. <b>D14</b> flipped: a newsletter the Reader claims now leaves the Comms shelf instead of
+  staying on it. <b>D15</b> and §7 changed lane: the epic becomes two ordinary stories, each refined into its
+  own spec and built in its own session, rather than two epic-implementation one-shots. <b>D9</b>'s daily
+  ceiling dropped to 30, against a measured heavy day of eight to ten. And <b>D5</b> now says outright that
+  alfred never reads the owner's Gmail label, so the filter's shape is theirs to choose.
 </p>
 
 <div class="card">
@@ -171,7 +183,7 @@
   <li><a href="#s4">4 · What the Reader looks like</a></li>
   <li><a href="#s5">5 · Constraints &amp; non-goals</a></li>
   <li><a href="#s6">6 · What it costs to run</a></li>
-  <li><a href="#s7">7 · How the work splits: two halves, and the subagent plan for each</a></li>
+  <li><a href="#s7">7 · How the work splits into stories</a></li>
   <li><a href="#s8">8 · Open questions</a></li>
   <li><a href="#s9">9 · Related reading</a></li>
 </ul>
@@ -235,13 +247,13 @@ list (<b>D4</b>).</p>
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="s2">2 · Decisions</h2>
 <p class="small">Each with its <i>why</i>, because a decision without one gets re-litigated by the first
-story session that finds it inconvenient. The half that carries each decision is marked
-<span class="half h1">H1</span> / <span class="half h2">H2</span>.</p>
+story session that finds it inconvenient. The story that carries each decision is marked
+<span class="half h1">S1</span> / <span class="half h2">S2</span>.</p>
 
 <h3>What the module is</h3>
 
 <div class="dec">
-  <h3><span class="n">D1</span>The Reader is alfred's fourth module, with its own tables. A post is never an <code>item</code>. <span class="half h1">H1</span></h3>
+  <h3><span class="n">D1</span>The Reader is alfred's fourth module, with its own tables. A post is never an <code>item</code>. <span class="half h1">S1</span></h3>
   <p>New route group <code>(shell)/(reader)/reader</code>, a fourth <code>ModuleId</code> in
     <code>frontend/lib/modules.ts</code>, a fourth switcher segment, its own sidebar nav, its own
     Supabase tables (<code>reader_*</code>). Posts never enter the generic-item core and nothing
@@ -259,7 +271,7 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D2</span>The source is the comms pipe. No interceptor, no forwarding address, no POST. <span class="half h1">H1</span></h3>
+  <h3><span class="n">D2</span>The source is the comms pipe. No interceptor, no forwarding address, no POST. <span class="half h1">S1</span></h3>
   <p>The Reader's intake worklist is <b>rows already in <code>comm_messages</code></b>: inbound, on the
     <code>gmail-personal</code> account, whose <code>sender_handle</code> matches an <b>enabled
     publication</b> (D4), and that no <code>reader_posts</code> row claims yet. The Reader adds no
@@ -276,7 +288,7 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D3</span>The Reader re-fetches each message and keeps its own copy of the post. <span class="half h1">H1</span></h3>
+  <h3><span class="n">D3</span>The Reader re-fetches each message and keeps its own copy of the post. <span class="half h1">S1</span></h3>
   <p>For each worklist row the intake calls Gmail <code>messages.get?format=full</code> by the row's
     <code>source_id</code>, keeps the <code>text/html</code> part, and extracts what a reading list
     needs: the <b>title</b>, the <b>canonical post URL</b>, the <b>author</b>, the <b>publication
@@ -295,7 +307,7 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D4</span>"Newsletter" means <i>a sender on the publications roster</i> — not what the comms filter shelved. <span class="half h1">H1</span> roster · <span class="half h2">H2</span> UI</h3>
+  <h3><span class="n">D4</span>"Newsletter" means <i>a sender on the publications roster</i> — not what the comms filter shelved. <span class="half h1">S1</span> roster · <span class="half h2">S2</span> UI</h3>
   <p>A <code>reader_publications</code> table keyed on the sender handle (lower-cased address), with a
     display name, an <code>enabled</code> flag and a <code>source</code> of <code>auto</code> or
     <code>owner</code>. Two ways in:</p>
@@ -306,11 +318,11 @@ story session that finds it inconvenient. The half that carries each decision is
       step (§3.2, step 0) sees it. The two extra conditions are what keep Substack's <i>platform</i> mail
       — comment and like notifications, digests, "Substack Reads" — from becoming "publications" at
       $0.03 a summary. (The owner's words: <i>"all my substacks"</i>. Other platforms — beehiiv,
-      Buttondown, Ghost — are <b>candidates</b>, not auto-enabled, until §8 Q2 says otherwise.)</li>
+      Buttondown, Ghost — are <b>candidates</b>, not auto-enabled, until §8 Q1 says otherwise.)</li>
     <li><b>Candidates:</b> every other bulk sender (<code>has_list_header = true</code> in
       <code>comm_messages</code>, not on the roster) is listed with its message count, and the owner
-      promotes one with a click. Half 1 seeds the roster by SQL / the route handler; the candidates
-      list and the toggles are Half 2's publications view.</li>
+      promotes one with a click. Story 1 seeds the roster by SQL / the route handler; the candidates
+      list and the toggles are Story 2's publications view.</li>
   </ul>
   <p>The worklist match (D2) is on the roster, <b>regardless of the header</b>: a publication whose
     mail happens to lack <code>List-Unsubscribe</code> still counts, and a sender on the comms
@@ -326,20 +338,26 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D5</span>alfred never writes to Gmail. Inbox hygiene is one Gmail filter the owner sets — the lowest-lift way to keep newsletters out of the inbox. <span class="half h1">H1</span> recipe · <span class="half h2">H2</span> helper</h3>
+  <h3><span class="n">D5</span>alfred never writes to Gmail. Inbox hygiene is one Gmail filter the owner sets — the lowest-lift way to keep newsletters out of the inbox. <span class="half h1">S1</span> recipe · <span class="half h2">S2</span> helper</h3>
   <p>The Gmail token is <code>gmail.readonly</code> and stays so. To keep newsletters out of the inbox
     the owner creates <b>one Gmail filter</b>: <i>From</i> <code>substack.com</code> (Gmail's
     <code>from:</code> matches on domain) → <b>Skip the Inbox (Archive it)</b> + <b>Apply the label
     "Newsletters"</b>, ticking <i>"Also apply filter to matching conversations"</i> for the backlog.
     Other publications are added as <code>OR</code> terms. <b>Never "Delete it"</b>: the poll skips
     <code>TRASH</code>, so a deleted-on-arrival message never reaches alfred at all.</p>
-  <p>This is compatible with the comms poll as built: the first-run search is a bare
-    <code>newer_than:7d</code> and the history walk uses <code>historyTypes=messageAdded</code>, neither
-    of which is restricted to <code>INBOX</code>; the only labels the poller skips are
-    <code>SPAM</code>, <code>TRASH</code> and <code>DRAFT</code>. An archived-on-arrival message is
-    still mirrored, still shelved as FYI in Comms, and still summarised here. Half 1's intake story
-    <b>verifies this against a real filtered message</b> rather than trusting this paragraph.</p>
-  <p>In Half 2 the publications view grows a <b>"copy Gmail filter query"</b> button that emits the
+  <p><b>Nothing in alfred reads that label, and the filter's shape is the owner's to choose.</b> The poll
+    is mailbox-wide and label-agnostic: its first-run search is a bare <code>newer_than:7d</code>, its
+    steady-state search is a plain date range, its history walk is <code>historyTypes=messageAdded</code>,
+    and none of the three carries a <code>label:</code> or <code>in:inbox</code> term. The only labels it
+    acts on are <code>SPAM</code>, <code>TRASH</code> and <code>DRAFT</code>, all of which it skips. So an
+    archived-on-arrival message is still mirrored and still summarised; the label may be called anything,
+    or nothing at all; and the owner can reorganise their filters later without telling alfred. <b>The one
+    filter action that would break it is "Delete it"</b> — a message trashed on arrival is skipped and the
+    Reader never sees it. "Mark as read", "Never send it to Spam" and any label are all harmless.</p>
+  <p>Story 1 <b>verifies this against a real filtered message</b> rather than trusting this paragraph: that
+    Gmail still emits a <code>messageAdded</code> history record for a message its own filter archived on
+    arrival is the load-bearing claim, and it is cheaper to confirm than to assume.</p>
+  <p>In Story 2 the publications view grows a <b>"copy Gmail filter query"</b> button that emits the
     <code>from:(a OR b OR c)</code> term for every enabled publication, so the two lists stay in step
     without alfred ever holding a write scope.</p>
   <p class="why"><b>Why:</b> ALF-7 D18 — alfred never writes to Gmail — together with D2 (alfred mirrors, it is
@@ -352,7 +370,7 @@ story session that finds it inconvenient. The half that carries each decision is
 <h3>The summary</h3>
 
 <div class="dec">
-  <h3><span class="n">D6</span>One model call per post produces both layers, as structured output. <span class="half h1">H1</span></h3>
+  <h3><span class="n">D6</span>One model call per post produces both layers, as structured output. <span class="half h1">S1</span></h3>
   <p>The summariser makes <b>one</b> request per post with <code>output_config.format</code> set to a
     JSON schema (the same shape <code>workers/src/classifier.ts</code> uses), and stores the result as
     columns plus one <code>overview</code> JSON document:</p>
@@ -375,11 +393,11 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D7</span>The prompt is static, versioned in code, and never re-run silently. <span class="half h1">H1</span> · re-run verb <span class="half h2">H2</span></h3>
+  <h3><span class="n">D7</span>The prompt is static, versioned in code, and never re-run silently. <span class="half h1">S1</span> · re-run verb <span class="half h2">S2</span></h3>
   <p>No personalisation context, no "what I've already read", no owner-editable rubric. The prompt
     lives in <code>workers/src/reader/prompt.ts</code> with a <code>READER_PROMPT_VERSION</code> stamped
     on every summary alongside the model id. Editing the prompt re-summarises nothing; an explicit
-    per-post <b>re-summarise</b> verb (Half 2) is the only way an existing summary changes.</p>
+    per-post <b>re-summarise</b> verb (Story 2) is the only way an existing summary changes.</p>
   <p class="why"><b>Why:</b> Steve tried to want the smarter version and found he didn't:
     <i>"I didn't bother with that in the first iteration and I haven't been motivated to do anything
     about it."</i> A
@@ -390,7 +408,7 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D8</span>The model is Sonnet 5, as a deploy var. <span class="half h1">H1</span></h3>
+  <h3><span class="n">D8</span>The model is Sonnet 5, as a deploy var. <span class="half h1">S1</span></h3>
   <p><code>READER_MODEL = "claude-sonnet-5"</code> in <code>wrangler.toml</code>'s <code>[vars]</code>,
     next to <code>CLASSIFIER_MODEL</code>, reported by <code>GET /</code>. The call goes through
     <code>@anthropic-ai/sdk</code> with the same stop-reason handling <code>classifier.ts</code> has
@@ -412,7 +430,7 @@ story session that finds it inconvenient. The half that carries each decision is
 <h3>Running it</h3>
 
 <div class="dec">
-  <h3><span class="n">D9</span>Its own cron trigger, a per-tick cap, a daily ceiling, and a seven-day intake horizon. <span class="half h1">H1</span></h3>
+  <h3><span class="n">D9</span>Its own cron trigger, a per-tick cap, a daily ceiling, and a seven-day intake horizon. <span class="half h1">S1</span></h3>
   <p>A fourth trigger, <code>READER_CRON = '*/5 * * * *'</code>, written <b>offset-free</b>: the
     <code>cloudflare-workers</code> skill records that a stepped range with a nonzero start
     (<code>4-59/5</code>) is normalised by the scheduler and reported in <code>event.cron</code> as its
@@ -424,7 +442,7 @@ story session that finds it inconvenient. The half that carries each decision is
     call) <b>sequentially</b>, writing the <code>reader_posts</code> row <i>before</i> the model call so a
     stalled summariser still yields a list. The worklist only considers messages <code>received_at</code>
     within the last <b>seven days</b>. A <b>daily model-call ceiling</b>, <code>READER_DAILY_CAP</code>
-    (default 60, a var), is enforced from Half 1: past it, intake continues and posts sit
+    (default <b>30</b>, a var), is enforced from Story 1: past it, intake continues and posts sit
     <code>pending</code> until the UTC day rolls over.</p>
   <p class="why"><b>Why its own trigger:</b> the Workers runtime allows 50 outbound fetches per invocation
     on the Free plan, it throws part-way rather than degrading, and ALF-7 already split polling from
@@ -437,13 +455,16 @@ story session that finds it inconvenient. The half that carries each decision is
     cut to two, re-doing this arithmetic against the shared budget. <b>Why the horizon:</b> without it,
     the first tick's worklist is the entire 60-day comms mirror — hundreds of posts and tens of dollars
     in one afternoon, most of them stale. Seven days mirrors the comms first-run window. <b>Why the
-    ceiling is Half 1:</b> the per-tick cap alone allows 1 700 summaries a day; a roster mistake — a
+    ceiling is 30:</b> the owner's heavy day is eight to ten posts, so 30 is three times a bad day and still
+    under a dollar — close enough to normal that a runaway trips it the same day, far enough above it that
+    an unusually busy week never does. The per-tick cap alone would allow 1 700 summaries a day, which is
+    the number this ceiling exists to make unreachable. <b>Why it ships in Story 1:</b> a roster mistake — a
     sender that mails forty times a day — must cost a capped amount from the first deploy, not from the
-    second PR. Its banner is Half 2's; the protection is not.</p>
+    second PR. Its banner is Story 2's; the protection is not.</p>
 </div>
 
 <div class="dec">
-  <h3><span class="n">D10</span>Failures are counted the comms way, and the module has a health row. <span class="half h1">H1</span> mechanics · <span class="half h2">H2</span> surface</h3>
+  <h3><span class="n">D10</span>Failures are counted the comms way, and the module has a health row. <span class="half h1">S1</span> mechanics · <span class="half h2">S2</span> surface</h3>
   <p>Per post: <code>summary_state</code> of <code>pending | done | refused | failed</code>,
     <code>summarize_attempts</code> counting <b>content-shaped</b> failures only (unparseable output, a
     schema miss, <code>max_tokens</code>), <code>last_error</code>. Transport failures are not counted
@@ -462,10 +483,10 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D11</span>Two verbs, two timestamps: <b>open original</b> and <b>archive</b>. <span class="half h1">H1</span></h3>
+  <h3><span class="n">D11</span>Two verbs, two timestamps: <b>open original</b> and <b>archive</b>. <span class="half h1">S1</span></h3>
   <p><code>opened_at</code> is stamped when the owner opens the original; <code>archived_at</code> when
     they archive. The list shows unarchived posts newest first; an <code>/reader/archive</code> view
-    (Half 2) shows the rest. No stars, no read-later, no tags. Archiving is optimistic with rollback,
+    (Story 2) shows the rest. No stars, no read-later, no tags. Archiving is optimistic with rollback,
     through the existing <code>optimistic-mutation.ts</code> helper, and a row leaves with the same
     grid-rows collapse the comms row uses.</p>
   <p class="why"><b>Why:</b> Steve: <i>"I can either click on it and that'll just open the original or
@@ -475,7 +496,7 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D12</span>"Open original" is the canonical post URL, with the mailbox as fallback. <span class="half h1">H1</span></h3>
+  <h3><span class="n">D12</span>"Open original" is the canonical post URL, with the mailbox as fallback. <span class="half h1">S1</span></h3>
   <p>Intake extracts the canonical URL from the HTML: the first link whose host is the publication's
     domain and whose path starts with <code>/p/</code> (Substack's post path), else the "view in
     browser" link, else nothing. A post with no URL falls back to the <b>Gmail web permalink</b>,
@@ -490,42 +511,67 @@ story session that finds it inconvenient. The half that carries each decision is
 </div>
 
 <div class="dec">
-  <h3><span class="n">D13</span>Summaries are kept forever; full text for 90 days. <span class="half h2">H2</span></h3>
+  <h3><span class="n">D13</span>Summaries are kept forever; full text for 90 days. <span class="half h2">S2</span></h3>
   <p>A retention step on the existing daily retention cron nulls <code>reader_posts.text</code> once a
     post is 90 days old. Title, URL, gist, overview, and the timestamps are never swept.</p>
   <p class="why"><b>Why:</b> at fifty posts a day of ~30 KB each, the text column grows about 1.5 MB a
     day — 135 MB at the 90-day mark, steady thereafter, which is inside the Supabase tier and far from
     it after a year. The summaries are the knowledge-base feed (SPEC §13) and are small; the text is
-    only there to re-summarise from (D7) and nobody re-summarises a season-old post. Half 2, because
+    only there to re-summarise from (D7) and nobody re-summarises a season-old post. Story 2, because
     nothing is 90 days old before then.</p>
 </div>
 
-<div class="dec">
-  <h3><span class="n">D14</span>Comms is left exactly as it is. <span class="half h1">H1</span></h3>
-  <p>A newsletter the Reader claims still sits on the Comms FYI shelf, still counts on the comms
-    health strip, and is still swept by comms retention. No comms table, filter, view or store
-    changes in this epic. <b>One exception, and only the orchestrator makes it:</b> an <i>export-only</i>
-    change to <code>workers/src/comms/email-text.ts</code> — its MIME part walk, decoder and HTML
-    stripper are module-private today — so the Reader's extractor imports them rather than copying
-    forty lines. Behaviour unchanged, comms tests green, done in Half 1's foundations batch.</p>
-  <p class="why"><b>Why:</b> the shelf is collapsed by default and is an archive being spot-checked,
-    not a list of obligations; hiding rows from it would couple two modules' lifecycles for a gain
-    nobody has asked for, and would make the comms "did the filter shelve this?" audit lie. If the
-    shelf becomes noise once the Reader exists, that is a one-line Comms story later.</p>
+<div class="dec rev">
+  <h3><span class="n">D14</span>A newsletter the Reader claims leaves the Comms shelf — but never the Comms queue.<span class="revtag">revised</span> <span class="half h1">S1</span></h3>
+  <p>Intake stamps <code>reader_claimed_at</code> on the <code>comm_messages</code> row in the same act
+    that creates the post, and the Comms <b>shelf</b> excludes stamped rows. The shelf is derived in two
+    places that the read layer's own docstring says must mirror each other exactly — <code>isShelved</code>
+    in <code>frontend/lib/comms/queue.ts</code> and the shelf branch of the scoped read in
+    <code>frontend/lib/data/comms-messages.ts</code> — so both change together, or the client and the server
+    disagree about which side a row is on.</p>
+  <p><b>The queue is deliberately untouched.</b> <code>isQueued</code> never learns about this column. A
+    publication that is also on the comms people roster is never filtered as bulk mail, gets classified
+    normally, and can land in a counted tier — and a message in the queue is an obligation the owner has
+    not answered. The Reader hides an archive; it must never hide an obligation.</p>
+  <p><b>Nothing vanishes silently.</b> The shelf's summary line says how many went to the Reader and links
+    there (§4). The count is free: the module already seeds every message in the retention window, so the
+    rows are in the store and merely filtered out of the shelf list.</p>
+  <p><b>Otherwise the row is untouched</b> — it keeps <code>filtered_reason</code> and
+    <code>has_list_header</code>, still counts on the comms health strip, and is still swept by comms
+    retention at 60 days. The Reader's own copy is independent of all of it.</p>
+  <p>The other comms edit this epic makes is unrelated and <i>export-only</i>:
+    <code>workers/src/comms/email-text.ts</code>'s MIME part walk, decoder and HTML stripper are
+    module-private today, so the Reader's extractor imports them rather than copying forty lines. Both
+    edits are the implementation session's own work, never a subagent's (§7).</p>
+  <p class="why"><b>Why (this reverses the first round, which kept claimed rows on the shelf):</b> the owner
+    asked for it, and the reason is the premise of both modules — <i>it's less noise</i>. The earlier
+    objection was that hiding would make the comms "did the filter shelve this?" audit lie. It would have,
+    had the row been changed or dropped; it isn't. The evidence stays on the row, the shelf keeps the count,
+    and what is hidden is a list entry the owner has a better home for. Two consequences worth naming: a
+    claimed newsletter can no longer be promoted back into the queue from the shelf's tier picker, which is
+    the right trade for mail whose purpose is to be read rather than answered; and because comms shelves
+    within about three minutes while the Reader claims up to five minutes later, a newsletter can appear on
+    the shelf briefly before it goes — harmless, since the shelf is collapsed by default.</p>
 </div>
 
-<div class="dec">
-  <h3><span class="n">D15</span>Two implementation halves, each one orchestrator session and one PR, with a code review between. <span class="half h1">H1</span><span class="half h2" style="margin-left:.3rem">H2</span></h3>
-  <p>The epic ships in two <code>phase: epic-implementation</code> PRs. <b>Half 1</b> proves the pipe end
-    to end and gives the owner a usable list on the phone. <b>Half 2</b> makes it operable: the
-    publications UI, the health surface, the cost guardrails, the archive, the keyboard. The review
-    between them is a real checkpoint: Half 2 starts from <code>main</code> after Half 1 has merged,
-    never from Half 1's branch. §7 is the plan for each half, including which subagents build what.</p>
-  <p class="why"><b>Why:</b> the owner asked for it, and the cut is where the risk changes shape. Half 1's
-    risk is <i>"does this extraction and this prompt work on real Substack mail?"</i> — a question best
-    answered with a week of real posts before the operability layer is built on top of the answer.
-    Half 2's risk is integration polish, which is cheap to review when the pipe underneath it is already
-    trusted.</p>
+<div class="dec rev">
+  <h3><span class="n">D15</span>Two ordinary stories, each refined into its own spec and built in its own session, with a code review between.<span class="revtag">revised</span> <span class="half h1">S1</span><span class="half h2" style="margin-left:.3rem">S2</span></h3>
+  <p>The epic is <b>not</b> one-shot by an epic-implementation orchestrator. It becomes two tickets, each
+    taking the normal path — a refinement session that writes <code>docs/specs/&lt;REF&gt;.html</code>, then
+    an implementation session that builds it and archives that spec in its own PR. Two
+    <code>phase: implementation</code> PRs, not two <code>phase: epic-implementation</code> ones.
+    <b>Story 1</b> proves the pipe end to end and gives the owner a usable list on the phone; <b>Story 2</b>
+    makes it operable. The checkpoint is real: Story 2 is <i>refined</i> only after Story 1 has been reviewed
+    and merged, so its spec is written against code that exists and against what a week of real mail taught.
+    §7 is the lane in full, plus the subagent cut each implementation session should start from.</p>
+  <p class="why"><b>Why (this reverses the first round, which proposed two epic-implementation one-shots):</b>
+    the one-shot lane exists so an epic can ship <i>without</i> being split into stories by hand — it trades
+    a written, reviewable spec for speed, and nobody refines the slices. That trade is wrong here twice over.
+    This epic's first story turns on a question a spec should state and a human should sign off before code
+    is written (what a summary must contain to be worth reading), and its second should be specced against
+    what the first one learned rather than against a guess made today. The story lane also keeps the
+    reviewable artifact: two specs the owner reads before either build starts. The cut between them stays
+    where the risk changes shape.</p>
 </div>
 
 <!-- ───────────────────────────────────────────────────────────── -->
@@ -615,18 +661,23 @@ with the service role. <code>migration-lint</code> wants explicit sequence and v
   <tr><td><code>reader_health</code></td>
       <td>Singleton (<code>id int primary key default 1</code>, check <code>id = 1</code>): <code>last_run_at</code> · <code>last_success_at</code> ·
           <code>last_error</code> · <code>last_error_at</code> · <code>calls_today int</code> · <code>calls_day date</code> (the D9 ceiling)</td></tr>
+  <tr><td><code>comm_messages</code><br><span class="small">(the one comms column)</span></td>
+      <td>Gains <code>reader_claimed_at timestamptz</code> — NULL for everything that is not a claimed newsletter.
+          Written by the Reader's intake with the service role in the same act that inserts the post; read by the two
+          Comms shelf predicates, which exclude a stamped row (D14). Nothing else in Comms reads it, and
+          <code>isQueued</code> must never learn about it.</td></tr>
   <tr><td>Indexes</td>
       <td><code>reader_posts (received_at desc) where archived_at is null</code> — the list ·
           <code>reader_posts (created_at) where summary_state = 'pending'</code> — the summariser's worklist ·
           <code>reader_publications (enabled)</code></td></tr>
   <tr><td>Views</td>
-      <td><span class="half h1">H1</span> <code>v_reader_worklist</code>: inbound <code>comm_messages</code> on the account whose
+      <td><span class="half h1">S1</span> <code>v_reader_worklist</code>: inbound <code>comm_messages</code> on the account whose
           <code>comm_accounts.key</code> is <code>gmail-personal</code>, joined to enabled <code>reader_publications</code> on
           <code>sender_handle</code>, <b>left-joined</b> to <code>reader_posts</code> on <code>comm_message_id</code> and kept where
           that side is null, within the seven-day horizon, oldest first. A view because PostgREST cannot express the anti-join,
           and because <code>not in (…)</code> against a column that is <code>on delete set null</code> returns nothing once a
           single null exists. <code>security_invoker</code>, granted per migration-lint.<br>
-          <span class="half h2">H2</span> <code>v_reader_candidates</code>: bulk senders in <code>comm_messages</code> (<code>has_list_header</code>, gmail-personal,
+          <span class="half h2">S2</span> <code>v_reader_candidates</code>: bulk senders in <code>comm_messages</code> (<code>has_list_header</code>, gmail-personal,
           inbound) not on the roster, with count and last seen — <code>security_invoker</code>, granted per migration-lint.</td></tr>
 </table></div>
 
@@ -647,6 +698,8 @@ with the service role. <code>migration-lint</code> wants explicit sequence and v
                                                                             nothing is advanced, the row is retried next tick)
      post   = extract(full) → title, author, canonical_url, html→text, word_count
      row    = insert reader_posts (summary_state = 'pending')            (1; dedupe on account_key + gmail_message_id)
+              + stamp comm_messages.reader_claimed_at — same claim, so the row
+                leaves the Comms shelf the moment the Reader owns it (D14)
      result = summarizePost(row)                                          (1, +1 on the single retry; D6 schema, D8 model)
      patch  = done | refused | counted failure | uncounted failure        (1; D10)
      calls_today += 1
@@ -672,19 +725,19 @@ dispatch time, and the build's names win — this document does not chase them (
 data function per read, a list payload that never carries <code>text</code>, one dedupe key.</p>
 <div class="scroll"><table>
   <tr><th>Seam</th><th>Contract</th></tr>
-  <tr><td>Route handlers <span class="half h1">H1</span></td>
+  <tr><td>Route handlers <span class="half h1">S1</span></td>
       <td><code>GET /api/reader/posts?scope=active|archived&amp;limit=N</code> → <code>ReaderPost[]</code> <b>without</b> <code>text</code>
           (the UI never ships the body; it opens the original) ·
           <code>PATCH /api/reader/posts/[id]</code> with body <code>{ archived: boolean } | { opened: true }</code> → the patched row.
           Session-gated through <code>withSession</code>; Zod schemas in <code>frontend/lib/api/reader-schemas.ts</code>.</td></tr>
-  <tr><td>Route handlers <span class="half h2">H2</span></td>
+  <tr><td>Route handlers <span class="half h2">S2</span></td>
       <td><code>GET|POST /api/reader/publications</code>, <code>PATCH /api/reader/publications/[id]</code> (<code>enabled</code>, <code>name</code>, <code>notes</code>),
           <code>GET /api/reader/publications/candidates</code>, <code>GET /api/reader/health</code> (the reader row composed with the
           <code>gmail-personal</code> account's freshness from <code>comm_accounts</code>),
           <code>PATCH /api/reader/posts/[id]</code> also accepts <code>{ resummarize: true }</code> (sets <code>summary_state = 'pending'</code>, resets attempts).</td></tr>
   <tr><td>Data layer</td>
       <td><code>frontend/lib/data/reader.ts</code>: <code>getReaderPosts(supabase, { scope, limit })</code>,
-          <code>patchReaderPost(supabase, id, patch)</code>; Half 2 adds the publications and health readers. The shell layout seeds the store from <code>getReaderPosts(…, { scope: 'active', limit: 200 })</code>.</td></tr>
+          <code>patchReaderPost(supabase, id, patch)</code>; Story 2 adds the publications and health readers. The shell layout seeds the store from <code>getReaderPosts(…, { scope: 'active', limit: 200 })</code>.</td></tr>
   <tr><td>Store</td>
       <td><code>frontend/lib/stores/reader-store.tsx</code>: <code>ReaderProvider({ initialPosts, children })</code>;
           hooks <code>useReaderPosts()</code> (unarchived, newest first), <code>useActiveCount()</code>,
@@ -699,6 +752,12 @@ data function per read, a list payload that never carries <code>text</code>, one
           calls and that the owner-run eval script (§7, H1-C) calls the same way. <code>ReaderEnv</code> extends
           <code>SupabaseEnv &amp; GmailEnv</code> with <code>ANTHROPIC_API_KEY</code>, <code>READER_MODEL</code> and <code>READER_DAILY_CAP</code>.
           <code>index.ts</code> dispatches on <code>READER_CRON</code> and logs one line per unit, like <code>logCommsTick</code>.</td></tr>
+  <tr><td>Comms shelf <span class="half h1">S1</span></td>
+      <td>Two predicates that must agree, and the read layer's own docstring says so: <code>isShelved</code> in
+          <code>frontend/lib/comms/queue.ts</code> and the <code>scope === 'shelf'</code> branch of
+          <code>getCommMessagesByScope</code>. Both gain "and <code>reader_claimed_at</code> is null".
+          <code>isQueued</code> changes in neither. The shelf's summary line gains the count of claimed rows, which
+          the store can already derive from the messages it holds — no new query.</td></tr>
   <tr><td>Module</td>
       <td><code>ModuleId</code> gains <code>'reader'</code>; <code>activeModule</code> owns <code>/reader</code> and beneath;
           <code>MODULE_ACCENT.reader</code> is the green set; <code>ReaderView</code> is the module's client view router
@@ -708,8 +767,8 @@ data function per read, a list payload that never carries <code>text</code>, one
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="s4">4 · What the Reader looks like</h2>
 <p>Drawn in the app's own tokens (<code>frontend/app/globals.css</code>; row chrome from
-<code>message-row.styles.ts</code>). Elements tagged <b>H2</b> in the first mockup, and the whole of the
-second, are Half 2's; Half 1 ships the rest.</p>
+<code>message-row.styles.ts</code>). Elements tagged <b>S2</b> in the first mockup, and the whole of the
+second, are Story 2's; Story 1 ships the rest.</p>
 
 <div class="app">
   <div class="app-head">
@@ -718,19 +777,19 @@ second, are Half 2's; Half 1 ships the rest.</p>
       <div style="font-size:1.05rem;font-weight:600">Reading list <span class="count-muted">· 7</span></div>
     </div>
     <div style="display:flex;gap:.5rem;align-items:center">
-      <span class="live"><span class="dot on"></span>summariser live · Gmail 2 min ago <span class="h2tag">H2</span></span>
+      <span class="live"><span class="dot on"></span>summariser live · Gmail 2 min ago <span class="h2tag">S2</span></span>
       <span class="ghostbtn">Archive</span>
       <span class="ghostbtn">Publications</span>
     </div>
   </div>
 
-  <div class="banner">Daily summary ceiling reached (60) — 4 posts wait for tomorrow. <span class="h2tag">H2</span></div>
+  <div class="banner">Daily summary ceiling reached (30) — 4 posts wait for tomorrow. <span class="h2tag">S2</span></div>
 
   <div class="row">
     <div class="row-top"><span class="pub">Second Thoughts</span><span class="meta">Sep 16 · 14 min</span></div>
     <div class="title">How near is the intelligence explosion, really?</div>
     <div class="gist">Argues the "recursive self-improvement" debate conflates three different feedback loops and that only one of them (automated ML research) has any evidence behind it. A genuinely new framing — worth reading if you follow the RSI argument; skip if you only want the conclusion.</div>
-    <div class="meta"><span class="verb primary">Open ↗</span><span class="verb">Overview</span><span class="verb">Archive</span><span class="kbd">o</span><span class="kbd">e</span><span class="h2tag">H2</span></div>
+    <div class="meta"><span class="verb primary">Open ↗</span><span class="verb">Overview</span><span class="verb">Archive</span><span class="kbd">o</span><span class="kbd">e</span><span class="h2tag">S2</span></div>
   </div>
 
   <div class="row selected">
@@ -750,7 +809,7 @@ second, are Half 2's; Half 1 ships the rest.</p>
     <div class="row-top"><span class="pub">Astral Codex Ten</span><span class="meta">Sep 15 · 31 min</span><span class="chip c-warn">summary failed</span></div>
     <div class="title">Open Thread 348</div>
     <div class="gist" style="font-style:italic">No summary — the model's output didn't fit the schema three times. The post is still here; open it or archive it.</div>
-    <div class="meta"><span class="verb primary">Open ↗</span><span class="verb">Retry summary <span class="h2tag">H2</span></span><span class="verb">Archive</span></div>
+    <div class="meta"><span class="verb primary">Open ↗</span><span class="verb">Retry summary <span class="h2tag">S2</span></span><span class="verb">Archive</span></div>
   </div>
 
   <div class="empty">Nothing new to read.</div>
@@ -760,8 +819,8 @@ content, not a label — unlike the comms ask, which truncates), and a meta line
 the overview toggle. Rows are transparent with a hover wash, exactly as <code>rowShellClass</code> draws
 the comms row; the selected row takes the green border and the secondary wash and expands in place into
 the four overview sections. The third row is D10's floor: a post whose summary failed keeps its title and
-its link. Everything tagged <b>H2</b> is Half 2's — the header health status, the ceiling banner, the
-keyboard hints, the retry verb; Half 1 ships the rest. The serif empty state is the module's resting state.</p>
+its link. Everything tagged <b>S2</b> is Story 2's — the header health status, the ceiling banner, the
+keyboard hints, the retry verb; Story 1 ships the rest. The serif empty state is the module's resting state.</p>
 
 <div class="app">
   <div class="app-head">
@@ -779,10 +838,27 @@ keyboard hints, the retry verb; Half 1 ships the rest. The serif empty state is 
   <div class="settings-row"><span><b>Ben's Bites</b> <span class="count-muted">hello@bensbites.beehiiv.com · 9 in 30 days</span></span><span class="ghostbtn">Add</span></div>
   <div class="settings-row"><span><b>Amazon.com</b> <span class="count-muted">store-news@amazon.com · 22 in 30 days</span></span><span class="ghostbtn">Add</span></div>
 </div>
-<p class="mockcap">Half 2's publications view: the roster with enable toggles and its <code>auto</code>/<code>owner</code>
+
+<p class="mockcap">Story 2's publications view: the roster with enable toggles and its <code>auto</code>/<code>owner</code>
 provenance, the candidates list built from comms' bulk-sender signal (D4), and the one button that keeps the
 owner's Gmail filter in step with the roster (D5). The Amazon row is the point: it is a candidate, and it stays
 one.</p>
+
+<div class="app">
+  <div class="app-head">
+    <div><div class="eyebrow" style="color:var(--a-blue)">Comms</div>
+    <div style="font-size:1.05rem;font-weight:600">Queue <span class="count-muted">· 3</span></div></div>
+  </div>
+  <div style="border:1px solid color-mix(in srgb, var(--a-border) 60%, transparent);border-radius:12px;padding:.75rem">
+    <div style="color:var(--a-muted);font-size:.78rem">▸ FYI · 1,284 messages · no reply owed — open to review</div>
+    <div style="color:var(--a-muted);font-size:.72rem;margin-top:.3rem;padding-left:.85rem">
+      12 newsletters went to the <span style="color:var(--a-green)">Reader</span> →</div>
+  </div>
+</div>
+<p class="mockcap">The only change this epic makes to a Comms surface (D14). The collapsed FYI shelf keeps its own
+summary line exactly as it reads today; beneath it, a muted second line says how many newsletters the Reader claimed
+and links there. The shelf stays unbadged and collapsed — the count is a sentence, not a number to clear — and the
+Comms queue above it is untouched.</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="s5">5 · Constraints &amp; non-goals</h2>
@@ -799,7 +875,9 @@ one.</p>
   <li><b>No "open in Claude with the post in context".</b> Steve built it and forgot it existed.</li>
   <li><b>No knowledge base.</b> The overview is stored in the shape a knowledge module would index
     (D6) and nothing indexes it.</li>
-  <li><b>No Comms changes</b> (D14).</li>
+  <li><b>Comms changes are limited to two</b> (D14): claimed newsletters leave the FYI shelf, and the shelf
+    says how many went to the Reader. The comms queue, filter, classifier, schema semantics and retention
+    are untouched.</li>
   <li><b>No backfill beyond seven days</b> (D9). If the owner wants a month of history summarised, that
     is a deliberate, separately budgeted act.</li>
   <li><b>No push, no notifications, no daily digest email.</b> The list is pulled when the owner has
@@ -814,162 +892,191 @@ tokens per post (thinking is off, D8, so output is the schema and nothing else) 
 at the time of writing (Sonnet 5 $2 / $10 per million,
 Opus 5 $5 / $25, Haiku 4.5 $1 / $5); the static system prompt is cached and is a rounding error.</p>
 <div class="scroll"><table>
-  <tr><th>Model</th><th>Per post</th><th>20 posts / day</th><th>50 posts / day</th></tr>
-  <tr><td><b>Sonnet 5 (D8)</b></td><td>≈ $0.031</td><td>≈ $19 / month</td><td>≈ $47 / month</td></tr>
-  <tr><td>Opus 5</td><td>≈ $0.078</td><td>≈ $47 / month</td><td>≈ $117 / month</td></tr>
-  <tr><td>Haiku 4.5</td><td>≈ $0.016</td><td>≈ $9 / month</td><td>≈ $23 / month</td></tr>
+  <tr><th>Model</th><th>Per post</th><th>10 / day <span class="small">(the owner's heavy day)</span></th><th>30 / day <span class="small">(the D9 ceiling, every day)</span></th></tr>
+  <tr><td><b>Sonnet 5 (D8)</b></td><td>≈ $0.031</td><td>≈ <b>$9 / month</b></td><td>≈ $28 / month</td></tr>
+  <tr><td>Opus 5</td><td>≈ $0.078</td><td>≈ $24 / month</td><td>≈ $71 / month</td></tr>
+  <tr><td>Haiku 4.5</td><td>≈ $0.016</td><td>≈ $5 / month</td><td>≈ $14 / month</td></tr>
 </table></div>
-<p>The number that matters is the daily volume, which nobody has measured (§8 Q1) — the comms mirror can
-answer it with one query before Half 1 starts, and the daily ceiling (D9) is what makes the bill a chosen
-number rather than a discovered one. Gmail and Supabase are inside their free quotas at any
+<p>The owner puts a heavy day at eight to ten posts, so <b>the expected bill is about nine dollars a month</b>
+and the D9 ceiling caps a catastrophe at roughly three times that. That is also what makes the model choice easy:
+Opus at this volume is $24 rather than $9, a gap small enough that fit decides it, and Haiku saves four dollars a
+month for a worse read on what is actually new. Story 1 confirms the volume against the mirror with one query,
+since it is a minute's work and the whole table leans on it. Gmail and Supabase are inside their free quotas at any
 plausible volume; the Worker's cost is the subrequest budget, not money.</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
-<h2 id="s7">7 · How the work splits: two halves, and the subagent plan for each</h2>
+<h2 id="s7">7 · How the work splits into stories</h2>
 
 <div class="callout">
-  <b>Which half am I building?</b> Each half is <b>one</b> <code>implement-epic</code> orchestrator session
-  and <b>one</b> PR carrying <code>phase: epic-implementation</code> for <code>ALF-232</code>. The launch prompt
-  names the half; if it doesn't, ask before dispatching anything. Half 2 starts from <code>main</code> after
-  Half 1's PR has been <b>reviewed and merged</b> — the review is the checkpoint, and it is where the
-  extraction and the prompt get judged against a week of real posts before anything is built on them.
-  The <code>implement-epic</code> skill says "the whole spec is in scope"; this section narrows that to the
-  half you were given. Do not pull Half 2 slices into Half 1 because they look small.
+  <b>The lane, because it is not the one an epic usually takes.</b> This epic is <b>not</b> one-shot by an
+  epic-implementation orchestrator. It becomes <b>two ordinary stories</b>, each of which goes through the
+  normal two-session lifecycle — a <b>refinement</b> session that writes its own spec, then an
+  <b>implementation</b> session that builds it — and each of which ships <b>one ordinary implementation
+  PR</b>. The epic spec you are reading is the shared context both of those refinement sessions read; it is
+  not the thing anyone implements from.
 </div>
 
-<p>The orchestration rules are the <code>implement-epic</code> skill's — foundations first and alone,
-vertical slices, one file boundary per subagent, parallel only when disjoint, the orchestrator owns
-integration and runs the <b>full</b> <code>check</code> — applied here to a concrete plan. The seams in
-§3.4 are what let the batches run in parallel: every subagent builds to the pinned contract rather than
-to a neighbour's unfinished file.</p>
-<p class="small">The <code>epic-refinement</code> skill says an epic spec is not a per-file plan, and it is
-right in general; the owner asked for this level of detail so two orchestrator sessions cut the same
-way. Read the tables below as <b>the orchestrator's starting cut, made against the code as it was when
-this was written</b>: re-cut against the code in front of you, keep the batch boundaries and the
-ownership rule, and treat every filename as a suggestion the build may rename. The build's names win;
-this document is not updated to match them.</p>
+<div class="scroll"><table>
+  <tr><th>Step</th><th>Session</th><th>Produces</th><th>The <code>alfred</code> block</th></tr>
+  <tr><td>1</td><td>This one</td><td><code>docs/specs/epics/ALF-232.html</code> — never archived, never edited by a build</td><td><code>phase: epic-refinement</code> + <code>spec-path</code></td></tr>
+  <tr><td>2</td><td>Story 1 refinement</td><td><code>docs/specs/&lt;S1-REF&gt;.html</code> — the buildable spec, written against §2's decisions and §7's sketch</td><td><code>phase: refinement</code> + <code>spec-path</code></td></tr>
+  <tr><td>3</td><td>Story 1 implementation</td><td>The PR. Git-moves its own spec to <code>docs/specs/archive/</code> in the same PR (the <code>alfred-frontmatter</code> check fails it otherwise); the <b>epic</b> spec stays exactly where it is</td><td><code>phase: implementation</code> + the spec's <b>original active</b> <code>spec-path</code></td></tr>
+  <tr><td>4</td><td colspan="3"><b>The code-review checkpoint.</b> Story 1's PR is reviewed and merged — and merging is deploying, so this is also where the pipe first meets real mail. See <i>What the checkpoint is for</i> below.</td></tr>
+  <tr><td>5</td><td>Story 2 refinement</td><td><code>docs/specs/&lt;S2-REF&gt;.html</code>, written <b>after</b> step 4 so it specs against the code that exists and against what the checkpoint learned</td><td><code>phase: refinement</code> + <code>spec-path</code></td></tr>
+  <tr><td>6</td><td>Story 2 implementation</td><td>The second PR, archiving its own spec the same way</td><td><code>phase: implementation</code> + <code>spec-path</code></td></tr>
+</table></div>
 
-<h3>What every subagent brief carries</h3>
+<p><b>The two tickets do not exist yet and this session cannot create them.</b> Their refs are assigned when
+the owner creates them, so this document never names one — <code>&lt;S1-REF&gt;</code> and
+<code>&lt;S2-REF&gt;</code> above are placeholders, and nothing downstream should invent a number to fill
+them.</p>
+
+<div class="scroll"><table>
+  <tr><th>Story</th><th>Title</th><th>What it delivers</th><th>Why the cut lands here</th></tr>
+  <tr><td><b>1</b></td><td>Reader module — the pipe and the reading list</td>
+      <td>The schema, the module shell, intake and extraction, the summariser, the list with its two verbs, the daily ceiling. A usable reading list on the phone.</td>
+      <td>Its risk is a single question — <i>does this extraction and this prompt work on real Substack mail?</i> — and the honest way to answer it is a week of real posts, not a review of the code that fetches them.</td></tr>
+  <tr><td><b>2</b></td><td>Reader module — publications, health and retention</td>
+      <td>The publications view and candidates, the Gmail-filter helper, the health surface, re-summarise, the archive view, the keyboard, the 90-day text sweep.</td>
+      <td>Every row of it is operability layered on a pipe that by then is known to work. Reviewing it is cheap for the same reason.</td></tr>
+</table></div>
+
+<h3>What the checkpoint is for</h3>
+<p>Not the diff — that is what the PR review covers either way. The checkpoint exists to answer the one
+question no test can: <b>does the summary tell the owner whether to read the post?</b> Story 1's PR
+description asks the owner for three things, all of which need a deployed Worker and a mailbox:</p>
 <ul>
-  <li>The path of this spec and the decision numbers its slice implements.</li>
-  <li>The slice's behaviour and acceptance criteria in the orchestrator's own words — not a pointer.</li>
-  <li>The files it <b>owns</b>, the files it <b>may read</b>, and the neighbours it must <b>not touch</b>.</li>
-  <li>The conventions that bite: CLAUDE.md's hard rules (no config edits, no disable directives, run checks
-    via <code>npm run</code>), Red/Green TDD, the relevant skills to read first (named per slice below),
-    <code>exactOptionalPropertyTypes</code>, the co-located <code>*.test.ts</code> convention, Storybook
-    stories for any new component with visual states.</li>
-  <li>The §3.4 contract for any seam the slice sits on, verbatim.</li>
-  <li>"Do not commit, push, or open a PR" — the orchestrator does that once.</li>
-  <li>Model tier: mid-tier for implementation slices; the orchestrator (lead) on the strongest model, per
-    CLAUDE.md's assignment rules. The prompt-iteration slice (H1-C) is the one implementation slice worth
-    the strong model, because its output is judged by a human on quality.</li>
+  <li>Create the D5 Gmail filter and confirm a filtered message still arrives in the Reader.</li>
+  <li>Run <code>npm run eval:reader -w workers</code> with a local key over five real posts of different
+    kinds — an essay, a roundup, an open thread, a paywalled teaser, and a post that restates the week's
+    consensus (that last one must come back with an <b>empty</b> novel-ideas list; if it invents three,
+    the prompt is flattering the post and Story 2 starts by fixing it).</li>
+  <li>Confirm the real volume against the mirror — one query, and the owner's own estimate of eight to ten
+    on a heavy day is what D9's ceiling and D8's model choice are sized against.</li>
 </ul>
+<p>A prompt the owner finds wanting is fixed at the <b>top</b> of Story 2, before its operability slices
+begin, because Story 2's re-summarise verb is the only way a prompt fix reaches rows that already exist
+and it should not be the first thing the owner has to use.</p>
 
-<!-- ── Half 1 ── -->
-<h3 id="half1"><span class="half h1">Half 1</span> — the pipe works, and the list is usable on the phone</h3>
-<p><b>PR done means</b> (everything a session can prove without a deploy or a key): the tick runs end
-to end against the committed Substack fixtures with the SDK mocked; the list renders seeded posts and the
-owner can open the original and archive them, on desktop and phone viewports; a post whose summary failed
-still appears with its link; the roster is seeded by SQL or route handler (no UI); the daily ceiling holds
-at its boundary in a unit test; the full <code>check</code> is green; a demo doc under
-<code>docs/demos/alf-232-reader-half-1/</code> shows the tick against the fixtures and the list rendering.</p>
-<p><b>Checkpoint done means</b> (the owner, after the PR merges and therefore deploys): a real Substack
-post arriving in the personal Gmail appears in <code>/reader</code> within ten minutes with its gist and
-overview; the D5 Gmail filter has been created and one filtered message still arrived; and
-<code>npm run eval:reader -w workers</code> (H1-C, run with a local key exactly like <code>eval:comms</code>
-— the Worker's key is a Cloudflare secret by policy and no session or suite may make a live call) has been
-run over at least five real posts of different kinds and its output pasted into the review. The prompt is
-judged there, not in the PR.</p>
+<h3>Dividing each story across subagents</h3>
+<p>Each story is large for one session, which is why both are written to fan out. The tables below are the
+<b>cut this epic recommends</b>: they are input to each story's refinement session and to the implementer
+that follows it, not a spec — the story's own spec is written in its own session and wins wherever the two
+disagree, and both were cut against the code as it stood when this was written. Re-cut against the code in
+front of you; keep the batch boundaries and the one-owner-per-file rule; treat every filename as a
+suggestion the build may rename. Nothing updates this document to match what gets built.</p>
+
+<p>Four rules make the fan-out safe, and all four are the ones that fail when ignored:</p>
+<ul>
+  <li><b>Foundations first, and alone.</b> The migration, the shared types and the fixtures land before
+    anything else dispatches. Two agents inventing the same type is the default failure.</li>
+  <li><b>Slice by vertical behaviour, never by layer.</b> "The list renders and archives" beats "all the
+    route handlers" — a layer slice cannot be tested on its own and lands half-working.</li>
+  <li><b>One owner per file.</b> Two subagents editing one file is the other default failure: the second
+    one's write lands on a file it never read. Where two slices genuinely want the same file, they go in
+    different batches, and the tables below say so.</li>
+  <li><b>The session owns integration.</b> Read every subagent's diff, reconcile the seams, and run the
+    <b>full</b> <code>check</code> — not the slice's tests. A green subagent report is not a green repo.</li>
+</ul>
+<p>Every brief carries: the slice's behaviour and acceptance criteria in the session's own words; the files
+it owns, the files it may read, and the neighbours it must not touch; the §3.4 contract for any seam it
+sits on; the conventions that bite (CLAUDE.md's hard rules, Red/Green TDD, the skills named per slice,
+<code>exactOptionalPropertyTypes</code>, co-located tests, a Storybook story for any component with visual
+states); and <b>"do not commit, push, or open a PR"</b> — the session does that once, at the end. Mid-tier
+model for implementation slices; the prompt slice (S1-C) is the one worth the strong model, because a human
+judges its output on quality.</p>
+
+<h3 id="story1">Story 1 — the pipe and the reading list</h3>
+<p><b>Done, in the PR:</b> the tick runs end to end against committed Substack fixtures with the SDK mocked;
+the list renders seeded posts and the owner can open the original and archive them, on desktop and phone
+viewports; a post whose summary failed still appears with its link; a Reader-claimed newsletter no longer
+shows on the Comms shelf, which says how many went to the Reader (D14); the roster is seeded by SQL or route
+handler, no UI; the daily ceiling holds at its boundary in a unit test; the full <code>check</code> is green;
+a demo doc under <code>docs/demos/</code> shows the tick against the fixtures and the list rendering; and the
+spec is archived. <b>Done, at the checkpoint:</b> the three owner-run items above.</p>
 
 <div class="scroll"><table class="plan">
   <tr><th>Slice</th><th>Behaviour &amp; acceptance</th><th>Files it owns</th><th>Batch</th></tr>
-  <tr><td><b>H1-A0</b> Comms export</td>
-      <td><b>Orchestrator's own work:</b> the D14 exception — export <code>email-text.ts</code>'s MIME part walk, decoder and HTML stripper (today module-private) so H1-B imports them; no behaviour change, comms suites green, one small commit of its own.</td>
-      <td><code>workers/src/comms/email-text.ts</code> (exports only)</td></tr>
-  <tr><td><b>H1-A1</b> Schema &amp; types</td>
-      <td>The §3.1 migration for the three tables, <code>v_reader_worklist</code>, indexes, RLS, grants; <code>database.types.ts</code> regenerated; <code>ReaderPost</code> / <code>ReaderPublication</code> / <code>ReaderOverview</code> / <code>ReaderHealth</code> in <code>frontend/lib/types.ts</code> and <code>workers/src/reader/types.ts</code>; fixtures in <code>frontend/lib/reader/fixtures.ts</code> (three posts: done, pending, failed). <code>migration-lint</code> green. Skills: <code>supabase</code>, <code>migration-lint</code>.</td>
-      <td><code>database/migrations/&lt;next&gt;_reader.sql</code>, <code>database/README.md</code> (schema summary), <code>frontend/lib/database.types.ts</code>, <code>frontend/lib/types.ts</code>, <code>frontend/lib/reader/fixtures.ts</code>, <code>workers/src/reader/types.ts</code></td>
-      <td rowspan="3"><b>1</b> — A0 by the orchestrator, then A1 ∥ A2, disjoint. Foundations; nothing else dispatches until all three land and <code>check:fast</code> is green.</td></tr>
-  <tr><td><b>H1-A2</b> Module shell</td>
-      <td><code>'reader'</code> in <code>ModuleId</code>, <code>activeModule</code> owns <code>/reader</code>, green <code>MODULE_ACCENT</code>; route group <code>(shell)/(reader)/reader/page.tsx</code> (+ <code>archive</code>, <code>publications</code> pages rendering the same router); fourth switcher segment, mobile drawer entry, command-palette destination; <code>ReaderView</code> with an empty state and a <code>ReaderNav</code> with the three links. Existing module tests extended (<code>modules.test.ts</code>, <code>view-switcher</code>, <code>command-destinations</code>). E2E <code>reader-shell.spec.ts</code> modelled on <code>comms-shell.spec.ts</code>. Skills: <code>nextjs</code>, <code>frontend-architecture</code>, <code>playwright</code>.</td>
-      <td><code>frontend/lib/modules.ts</code> (+test); <code>frontend/app/(shell)/(reader)/**</code>; the six files that enumerate the module set — <code>components/shell/view-switcher.tsx</code>, <code>shell-nav.tsx</code>, <code>shell-mobile-nav.tsx</code>, <code>module-router.tsx</code>, <code>command-destinations.ts</code>, <code>components/atoms/view-heading.tsx</code> (+ their tests and stories); <code>components/reader/reader-view.tsx</code> (segment router, every segment rendering the empty state for now — H1-F wires <code>''</code> to E's list view), <code>reader-nav.tsx</code>; <code>frontend/e2e/reader-shell.spec.ts</code></td></tr>
-  <tr><td><b>H1-B</b> Worker intake &amp; extraction</td>
-      <td>D2, D3, D4 (roster half), D9, D10 (mechanics), D12. <b>Owns the tick</b>: <code>scheduled.ts</code> (<code>runReaderTick</code>, the §3.2 loop, the pending-retry order, the per-tick cap with its arithmetic in the doc comment, the daily ceiling, transport failure ending the tick without advancing anything), <code>health.ts</code> (the two health writes), <code>discovery.ts</code> (§3.2 step 0 — auto-enable per D4's three conditions), <code>worklist.ts</code> (reads <code>v_reader_worklist</code>), <code>extract.ts</code> (HTML part → text without truncation, title, author, canonical URL, word count; imports the part walk and decoder A0 exported from <code>email-text.ts</code>), <code>store.ts</code> (inserts, dedupe on the unique key, patches). Calls C's <code>summarizePost</code> through the §3.4 seam and mocks it in tests. <b>A sanitised real Substack email fixture</b> is committed and the extractor is tested against it; a second fixture with no <code>/p/</code> link proves the "view in browser" and "no URL" paths; a third from <code>no-reply@substack.com</code> proves discovery ignores it. Skills: <code>cloudflare-workers</code>, <code>jest</code>; read <code>gmail.ts</code>'s module doc first.</td>
+  <tr><td><b>S1-A0</b> Comms export</td>
+      <td><b>The session's own work, not a subagent's:</b> the first of D14's two sanctioned comms edits — export <code>email-text.ts</code>'s MIME part walk, decoder and HTML stripper, which are module-private today, so the Reader's extractor imports them instead of copying forty lines. No behaviour change; the comms suites stay green; its own small commit.</td>
+      <td><code>workers/src/comms/email-text.ts</code> (exports only)</td>
+      <td rowspan="3"><b>1</b> — A0 by the session, then A1 ∥ A2, which are disjoint. Foundations: nothing else dispatches until all three land and <code>check:fast</code> is green.</td></tr>
+  <tr><td><b>S1-A1</b> Schema &amp; types</td>
+      <td>The §3.1 migration — three tables, <code>v_reader_worklist</code>, the <code>comm_messages.reader_claimed_at</code> column D14 needs, indexes, RLS, grants; <code>database.types.ts</code> regenerated; the four types in <code>frontend/lib/types.ts</code> and their Worker mirror; fixtures (three posts: done, pending, failed). <code>migration-lint</code> green. Skills: <code>supabase</code>, <code>migration-lint</code>.</td>
+      <td>the migration, <code>database/README.md</code> (schema summary), <code>frontend/lib/database.types.ts</code>, <code>frontend/lib/types.ts</code>, <code>frontend/lib/reader/fixtures.ts</code>, <code>workers/src/reader/types.ts</code></td></tr>
+  <tr><td><b>S1-A2</b> Module shell</td>
+      <td><code>'reader'</code> in <code>ModuleId</code>, <code>activeModule</code> owning <code>/reader</code> and beneath, the green accent; the route group with its three pages rendering one client view router; the fourth switcher segment, the mobile drawer entry, the command-palette destination; a nav with three links; an empty state on every segment for now. Existing module tests extended. E2E modelled on <code>comms-shell.spec.ts</code>. Skills: <code>nextjs</code>, <code>frontend-architecture</code>, <code>playwright</code>.</td>
+      <td><code>frontend/lib/modules.ts</code> (+test); <code>frontend/app/(shell)/(reader)/**</code>; the six files that enumerate the module set — <code>components/shell/view-switcher.tsx</code>, <code>shell-nav.tsx</code>, <code>shell-mobile-nav.tsx</code>, <code>module-router.tsx</code>, <code>command-destinations.ts</code>, <code>components/atoms/view-heading.tsx</code> (+ their tests and stories); <code>components/reader/reader-view.tsx</code>, <code>reader-nav.tsx</code>; the shell E2E spec</td></tr>
+  <tr><td><b>S1-B</b> The tick: intake &amp; extraction</td>
+      <td>D2, D3, D4's roster half, D9, D10's mechanics, D12, and D14's write. <b>Owns the loop</b>: <code>runReaderTick</code> (the §3.2 sequence, the pending-retry order, the per-tick cap with its subrequest arithmetic in the doc comment, the daily ceiling, a transport failure ending the tick without advancing anything), the health writes, discovery (§3.2 step 0, D4's three conditions), the worklist read, extraction (HTML part → text without truncation, title, author, canonical URL, word count, importing what A0 exported), and the store writes — including stamping <code>reader_claimed_at</code> on the comms row in the same claim. Calls C's <code>summarizePost</code> through the §3.4 seam and mocks it in tests. <b>A sanitised real Substack email fixture</b> is committed and the extractor tested against it; a second with no <code>/p/</code> link proves the "view in browser" and "no URL" paths; a third from <code>no-reply@substack.com</code> proves discovery ignores it. Skills: <code>cloudflare-workers</code>, <code>jest</code>; read <code>gmail.ts</code>'s module doc first.</td>
       <td><code>workers/src/reader/{scheduled,health,discovery,worklist,extract,store,intake}.ts</code> + tests + <code>fixtures/</code></td>
-      <td rowspan="3"><b>2</b> — B ∥ C ∥ D ∥ E, disjoint by construction: B and C share only <code>types.ts</code> (A1's, read-only); D and E meet at the §3.4 store/data contract.</td></tr>
-  <tr><td><b>H1-C</b> Worker summariser &amp; prompt</td>
-      <td>D6, D7, D8, D10 (the outcome split). <code>schema.ts</code> (the D6 JSON schema), <code>prompt.ts</code> (system prompt + <code>READER_PROMPT_VERSION</code>), <code>summarize.ts</code> (the pure <code>summarizePost</code> of §3.4: the SDK call mirroring <code>classifier.ts</code>'s shape with thinking off — <b>do not edit <code>classifier.ts</code></b>; duplicate the twenty lines rather than couple two modules — returning <code>done | refused | counted | uncounted</code> and never touching the database). Plus the owner-run eval: <code>workers/scripts/reader-eval.ts</code> and an <code>eval:reader</code> npm script modelled on <code>eval:comms</code>, which takes a folder of <code>.eml</code> files and a local key and prints each post's gist and overview — the instrument the checkpoint uses to judge the prompt on real posts (essay, roundup, open thread, paywalled teaser, and a post that restates consensus, which must yield an empty <code>novel_ideas</code>). No live model call in any test: the SDK is mocked as <code>classifier.test.ts</code> does. Skills: <code>anthropic-api</code>, <code>jest</code>, the cloudflare-workers skill's note on Node-side scripts under <code>workers/</code>.</td>
+      <td rowspan="4"><b>2</b> — B ∥ C ∥ D ∥ E, disjoint by construction: B and C meet only at the §3.4 summarise seam and C never touches the database; D and E meet at the store/data contract; E owns every component except A2's two.</td></tr>
+  <tr><td><b>S1-C</b> Summariser &amp; prompt</td>
+      <td>D6, D7, D8, and D10's outcome split. The D6 JSON schema; the system prompt with its version constant; and the <b>pure</b> <code>summarizePost</code> of §3.4 — the SDK call mirroring <code>classifier.ts</code>'s shape with thinking off (<b>do not edit <code>classifier.ts</code></b>; duplicate the twenty lines rather than couple two modules), returning <code>done | refused | counted | uncounted</code> and never touching the database. Plus the instrument the checkpoint runs: a <code>reader-eval</code> script and an <code>eval:reader</code> npm script modelled on <code>eval:comms</code>, taking a folder of <code>.eml</code> files and a local key and printing each post's gist and overview. No live model call in any test — the SDK is mocked as <code>classifier.test.ts</code> does. Skills: <code>anthropic-api</code>, <code>jest</code>, and the cloudflare-workers skill's note on Node-side scripts under <code>workers/</code>.</td>
       <td><code>workers/src/reader/{schema,prompt,summarize}.ts</code> + tests, <code>workers/scripts/reader-eval.ts</code>, the <code>eval:reader</code> line in <code>workers/package.json</code></td></tr>
-  <tr><td><b>H1-D</b> Frontend API &amp; data layer</td>
-      <td>The §3.4 Half-1 route handlers and data functions, Zod schemas, error mapping through <code>mapSupabaseError</code>, route tests with <code>supabase-route-double.ts</code>. <code>text</code> is never selected into the list payload. Skills: <code>nextjs</code>, <code>data-flow</code>, <code>supabase</code>.</td>
+  <tr><td><b>S1-D</b> API &amp; data layer</td>
+      <td>§3.4's Story-1 route handlers and data functions, Zod schemas, error mapping through the shared mapper, route tests with the Supabase route double. The list payload never selects <code>text</code>. Skills: <code>nextjs</code>, <code>data-flow</code>, <code>supabase</code>.</td>
       <td><code>frontend/app/api/reader/**</code>, <code>frontend/lib/data/reader.ts</code> (+test), <code>frontend/lib/api/reader-schemas.ts</code></td></tr>
-  <tr><td><b>H1-E</b> Store &amp; list UI</td>
-      <td>D11, D12, and the first mockup minus its H2-tagged elements. <code>reader-store.tsx</code> per §3.4 with optimistic archive + rollback and the focus / visibility refetch; <code>post-row.tsx</code> (+ <code>post-row.styles.ts</code>), <code>post-overview.tsx</code>, <code>reader-list-view.tsx</code>, the failed/refused/pending markers, the grid-rows exit collapse (skill: <code>motion</code>), "open original" as a real link with the deep-link fallback. Storybook stories for every row state (done / pending / failed / refused / selected), RTL tests for archive-with-rollback and open-stamps-<code>opened_at</code>, all against A1's fixtures. Skills: <code>react</code>, <code>react-testing-library</code>, <code>storybook</code>, <code>frontend-architecture</code>, <code>data-flow</code>, <code>motion</code>.</td>
+  <tr><td><b>S1-E</b> Store &amp; list UI</td>
+      <td>D11, D12, and the first mockup minus its S2-tagged elements. The store per §3.4 with optimistic archive and rollback and the focus / visibility refetch; the row and its styles, the overview panel, the list view, the failed / refused / pending markers, the grid-rows exit collapse, "open original" as a real link with the D12 fallback. A Storybook story per row state (done, pending, failed, refused, selected) and RTL tests for archive-with-rollback and open-stamps-<code>opened_at</code>, all against A1's fixtures. Skills: <code>react</code>, <code>react-testing-library</code>, <code>storybook</code>, <code>frontend-architecture</code>, <code>data-flow</code>, <code>motion</code>.</td>
       <td><code>frontend/lib/stores/reader-store.tsx</code> (+test), <code>frontend/components/reader/*</code> except A2's two files, <code>frontend/lib/reader/*</code> except fixtures</td></tr>
-  <tr><td><b>H1-F</b> Wiring, integration, E2E, demo</td>
-      <td><b>The orchestrator's own work, never a subagent's:</b> verify the account's cron-trigger cap (D9), then <code>READER_CRON</code>, <code>READER_MODEL</code> and <code>READER_DAILY_CAP</code> in <code>wrangler.toml</code> and <code>index.ts</code> (dispatch + one log line per unit + <code>GET /</code> reporting model and cap); <code>ReaderProvider</code> seeded in <code>(shell)/layout.tsx</code> from D's data function; A2's <code>reader-view.tsx</code> wired to E's list view; reconcile the seams (a type two slices spelled differently, a duplicated helper); <code>frontend/e2e/reader.spec.ts</code> (list renders seeded posts, archive removes a row, open original has the right href); the full <code>check</code>; the demo doc; then the batch-commit, the push, and the PR — whose description tells the owner what the checkpoint needs from them (the filter, the eval run).</td>
-      <td><code>workers/wrangler.toml</code>, <code>workers/src/index.ts</code> (+test), <code>frontend/app/(shell)/layout.tsx</code>, the one-line wiring in <code>reader-view.tsx</code>, <code>frontend/e2e/reader.spec.ts</code>, <code>docs/demos/alf-232-reader-half-1/</code></td>
+  <tr><td><b>S1-F</b> Comms shelf, wiring, E2E, demo</td>
+      <td><b>The session's own work, never a subagent's:</b> D14's second sanctioned comms edit — <code>isShelved</code> and the shelf branch of the scoped read both excluding claimed rows (they must change together; the read's own docstring is why), <code>isQueued</code> deliberately untouched, the shelf's summary line carrying the count, and a test on each side. Then: verify the account's cron-trigger cap (D9) and add the three vars and the dispatch, with <code>GET /</code> reporting the model and the cap; seed the provider in the shell layout; wire A2's view router to E's list; reconcile the seams; the Reader E2E; the full <code>check</code>; the demo doc; the spec archived; then the batch-commit, the push, and the PR — whose description tells the owner what the checkpoint needs from them.</td>
+      <td><code>frontend/lib/comms/queue.ts</code> (+test), <code>frontend/lib/data/comms-messages.ts</code> (+test), <code>frontend/components/comms/{fyi-shelf,comms-queue-view}.tsx</code> (+tests), <code>workers/wrangler.toml</code>, <code>workers/src/index.ts</code> (+test), <code>frontend/app/(shell)/layout.tsx</code>, the one-line wiring in <code>reader-view.tsx</code>, the Reader E2E spec, the demo folder</td>
       <td><b>3</b> — serial, after batch 2 is read and integrated.</td></tr>
 </table></div>
 
-<p><b>What the review between halves looks at.</b> Not the diff alone: the reviewer opens the demo doc's
-five real-post summaries and asks Steve's question of each — <i>would this have told me whether to read
-it?</i> — and checks that the consensus-restating post produced an empty novel-ideas list. A prompt that
-fails that test is fixed <i>before</i> Half 2, because Half 2's re-summarise verb is the only way to apply
-a prompt fix to existing rows and it shouldn't be the first thing the owner has to use.</p>
-
-<!-- ── Half 2 ── -->
-<h3 id="half2"><span class="half h2">Half 2</span> — operable: publications, health, guardrails, archive, keyboard</h3>
-<p><b>Done means:</b> the owner can manage the roster and promote candidates without SQL; a dead
-summariser, a dead Gmail token and an exhausted daily ceiling each show as a distinct state in the
-module; a post can be re-summarised on demand; archived posts are browsable; the list is driven from the
-keyboard on desktop; the text sweep runs; <code>check</code> is green; demo doc under
-<code>docs/demos/alf-232-reader-half-2/</code>. Half 2 begins by reading Half 1's review and the
-checkpoint's eval output: a prompt the owner found wanting is fixed <i>first</i>, in C's files, before
-the operability slices dispatch.</p>
+<h3 id="story2">Story 2 — publications, health and retention</h3>
+<p><b>Done:</b> the owner manages the roster and promotes candidates without SQL; a dead summariser, a dead
+Gmail token and an exhausted ceiling each read as a distinct state; a post can be re-summarised on demand;
+archived posts are browsable; the list is driven from the keyboard on desktop; the text sweep runs;
+<code>check</code> is green; a demo doc; the spec archived. It <b>starts</b> by reading the checkpoint's eval
+output and fixing the prompt if the owner found it wanting.</p>
 
 <div class="scroll"><table class="plan">
   <tr><th>Slice</th><th>Behaviour &amp; acceptance</th><th>Files it owns</th><th>Batch</th></tr>
-  <tr><td><b>H2-A0</b> Foundations</td>
-      <td><b>Orchestrator's own work:</b> the <code>&lt;next&gt;_reader_operability.sql</code> migration — <code>v_reader_candidates</code> (§3.1), the realtime publication line if H2-E is in, any constraint Half 1's review asked for; types regenerated; fixtures extended (a publication list, a candidates list, a health row in each state).</td>
-      <td>migration, <code>database.types.ts</code>, <code>types.ts</code> (both), <code>frontend/lib/reader/fixtures.ts</code></td>
+  <tr><td><b>S2-A0</b> Foundations</td>
+      <td><b>The session's own work:</b> the prompt fix the checkpoint asked for, if any, in C's files; then the second migration — <code>v_reader_candidates</code> (§3.1), the realtime publication line if E is in, and any constraint Story 1's review asked for; types regenerated; fixtures extended (a publication list, a candidates list, a health row in each state).</td>
+      <td>the migration, both type files, the reader fixtures, <code>workers/src/reader/prompt.ts</code></td>
       <td><b>1</b> — alone.</td></tr>
-  <tr><td><b>H2-A</b> Publications view</td>
-      <td>D4 (UI half), D5 (helper). The second mockup: roster with enable toggle, rename, notes, provenance chip; candidates from the view with count and last-seen; "Add" promotes with <code>source = 'owner'</code>; "copy Gmail filter query" builds <code>from:(…)</code> from enabled handles and uses <code>lib/clipboard.ts</code>. Routes per §3.4, a <code>reader-settings-store</code> modelled on <code>comms-settings-store</code>, stories, RTL tests, E2E <code>reader-publications.spec.ts</code>.</td>
-      <td><code>frontend/app/api/reader/publications/**</code>, <code>frontend/lib/data/reader-publications.ts</code>, <code>frontend/lib/stores/reader-settings-store.tsx</code>, <code>frontend/components/reader/publications-*</code>, <code>frontend/lib/reader/gmail-filter.ts</code>, <code>frontend/e2e/reader-publications.spec.ts</code></td>
-      <td rowspan="3"><b>2</b> — A ∥ B ∥ C, disjoint: A is frontend-only, B touches the health route, the banner and <code>post-row.tsx</code>'s verbs, C touches only the retention path and the Worker entrypoint. <b>D waits for B</b> — both edit <code>post-row.tsx</code>.</td></tr>
-  <tr><td><b>H2-B</b> Health surface &amp; re-summarise</td>
-      <td>D10 (surface), D7 (re-run). <code>GET /api/reader/health</code> composes the <code>reader_health</code> row Half 1's tick already writes with the <code>gmail-personal</code> account's freshness from <code>comm_accounts</code>; a module-level banner distinguishes <i>summariser stalled</i> / <i>Gmail dead</i> / <i>ceiling reached</i> (all three read columns that exist since Half 1); the header dot; the per-post <b>Retry summary</b> verb (<code>PATCH { resummarize: true }</code>, which sets <code>summary_state = 'pending'</code> and resets the attempts — the tick's retry order already picks it up) with the row returning to <code>pending</code> optimistically. Stories for each banner state. No Worker changes.</td>
-      <td><code>frontend/app/api/reader/health/**</code>, <code>frontend/lib/reader/health.ts</code>, <code>frontend/components/reader/{reader-banner,reader-header}.tsx</code>, the verbs in <code>post-row.tsx</code>, the <code>resummarize</code> branch in <code>app/api/reader/posts/[id]/route.ts</code></td></tr>
-  <tr><td><b>H2-D</b> Archive view &amp; keyboard</td>
-      <td>D11. <code>/reader/archive</code> lists archived posts newest first with <b>Unarchive</b>; the list gets a row-level hotkey convention matching comms' (<code>frontend/lib/comms/hotkeys.ts</code> is the reference — reuse its mechanism through a shared helper if one can be extracted <i>without editing the comms files</i>, otherwise mirror it): <code>j</code>/<code>k</code> move, <code>o</code> open original, <code>e</code> archive, <code>enter</code> toggle overview; the hints render on desktop only; mobile gets the same verbs by touch and nothing lost. E2E for the archive round-trip and one hotkey.</td>
-      <td><code>frontend/components/reader/archive-view.tsx</code>, <code>frontend/lib/reader/hotkeys.ts</code>, the hint markup in <code>post-row.tsx</code>'s meta line, <code>frontend/e2e/reader-archive.spec.ts</code></td>
-      <td><b>3</b> — after B lands, because both edit <code>post-row.tsx</code>.</td></tr>
-  <tr><td><b>H2-C</b> Cost &amp; retention guardrails</td>
-      <td>D13. The 90-day <code>text</code> sweep on the existing retention cron (<code>runReaderRetention</code> dispatched beside <code>runCommsRetention</code>), reported in its own log line; a test that a 91-day-old post loses its text and keeps everything else, and that an 89-day-old one is untouched.</td>
+  <tr><td><b>S2-A</b> Publications view</td>
+      <td>D4's UI half and D5's helper. The second mockup: the roster with its enable toggle, rename, notes and provenance chip; candidates from the view with count and last-seen; "Add" promoting one as <code>owner</code>; and the button that builds the <code>from:(…)</code> Gmail-filter query from every enabled handle, through the existing clipboard helper. Routes per §3.4, a settings store modelled on the comms one, stories, RTL tests, E2E.</td>
+      <td><code>frontend/app/api/reader/publications/**</code>, <code>frontend/lib/data/reader-publications.ts</code>, <code>frontend/lib/stores/reader-settings-store.tsx</code>, <code>frontend/components/reader/publications-*</code>, <code>frontend/lib/reader/gmail-filter.ts</code>, its E2E spec</td>
+      <td rowspan="3"><b>2</b> — A ∥ B ∥ C, disjoint: A is frontend-only, B owns the health route and the row's verbs, C touches only the retention path and the Worker entrypoint. <b>D waits for B</b> — both edit the row.</td></tr>
+  <tr><td><b>S2-B</b> Health surface &amp; re-summarise</td>
+      <td>D10's surface and D7's re-run. The health read composing the reader row Story 1's tick already writes with the <code>gmail-personal</code> account's freshness from <code>comm_accounts</code>; a module banner distinguishing <i>summariser stalled</i> / <i>Gmail dead</i> / <i>ceiling reached</i>, all three reading columns that exist since Story 1; the header dot; and the per-post <b>Retry summary</b> verb, which returns the row to <code>pending</code> and resets its attempts so the tick's own retry order picks it up. A story per banner state. No Worker changes.</td>
+      <td><code>frontend/app/api/reader/health/**</code>, <code>frontend/lib/reader/health.ts</code>, <code>frontend/components/reader/{reader-banner,reader-header}.tsx</code>, the verbs in the row, the <code>resummarize</code> branch of the post route</td></tr>
+  <tr><td><b>S2-C</b> Retention</td>
+      <td>D13. The 90-day <code>text</code> sweep on the existing retention cron, reported in its own log line; a test that a 91-day-old post loses its text and keeps everything else, and an 89-day-old one is untouched.</td>
       <td><code>workers/src/reader/retention.ts</code> (+test), the dispatch line in <code>workers/src/index.ts</code> (+test)</td></tr>
-  <tr><td><b>H2-E</b> Live updates <span class="small">(optional, by appetite)</span></td>
-      <td>Supabase realtime on <code>reader_posts</code> so a summary landing while the tab is open fills its row without a reload — the comms store's <code>messageStreamAction</code> pattern. Skip if the batch is already large; the list is pulled on demand and refreshes on focus anyway.</td>
-      <td>edits to <code>reader-store.tsx</code>, a migration line enabling realtime on the table</td>
-      <td><b>4</b> or dropped.</td></tr>
-  <tr><td><b>H2-F</b> Integration, E2E, demo</td>
-      <td><b>Orchestrator:</b> reconcile, full <code>check</code>, demo doc (banner states via fixtures, the candidates list, the cap boundary from a unit test's output, the filter-query button), batch-commit, push, PR; tell the human to archive the epic once merged (the skill's note: merging advances nothing).</td>
-      <td><code>docs/demos/alf-232-reader-half-2/</code>, anything the seams need</td>
+  <tr><td><b>S2-D</b> Archive view &amp; keyboard</td>
+      <td>D11. <code>/reader/archive</code> listing archived posts newest first with <b>Unarchive</b>; and the row-level hotkey convention matching comms' (<code>frontend/lib/comms/hotkeys.ts</code> is the reference — reuse its mechanism through a shared helper if one extracts cleanly <i>without editing the comms files</i>, otherwise mirror it): <code>j</code>/<code>k</code> move, <code>o</code> open, <code>e</code> archive, <code>enter</code> toggles the overview. Hints render on desktop only; mobile keeps every verb by touch. E2E for the archive round-trip and one hotkey.</td>
+      <td><code>frontend/components/reader/archive-view.tsx</code>, <code>frontend/lib/reader/hotkeys.ts</code>, the hint markup in the row's meta line, its E2E spec</td>
+      <td><b>3</b> — after B lands, because both edit the row.</td></tr>
+  <tr><td><b>S2-E</b> Live updates <span class="small">(by appetite)</span></td>
+      <td>Supabase realtime on <code>reader_posts</code> so a summary landing while the tab is open fills its row without a reload — the comms store's stream-action pattern. Story 1's focus refetch already covers the common case, so this is polish and the first thing to drop if the story is running long.</td>
+      <td>the store, and A0's realtime migration line</td>
+      <td><b>4</b>, or dropped.</td></tr>
+  <tr><td><b>S2-F</b> Integration, demo</td>
+      <td><b>The session:</b> reconcile, the full <code>check</code>, the demo doc (banner states from fixtures, the candidates list, the cap boundary from a unit test's output, the filter-query button), the spec archived, batch-commit, push, PR.</td>
+      <td>the demo folder, anything the seams need</td>
       <td><b>last</b></td></tr>
 </table></div>
 
-<h3>Rules that hold in both halves</h3>
+<h3>Rules that hold in both stories</h3>
 <ul>
   <li><b>No subagent edits a comms file</b> (D14). Import from <code>workers/src/comms/email-text.ts</code>,
-    <code>gmail-api.ts</code>, <code>gmail-oauth.ts</code>. The one sanctioned change is H1-A0's export-only
-    edit, made by the orchestrator with the comms tests still green and named in the PR.</li>
-  <li><b>No live model call in any suite</b> — the SDK is mocked, as everywhere else in <code>workers/</code>.
-    The prompt's quality is judged by a human from the demo doc, not by a test.</li>
-  <li><b>Every behaviour lands with a test</b> (CLAUDE.md): unit for the Worker, RTL + Storybook for
+    <code>gmail-api.ts</code> and <code>gmail-oauth.ts</code> freely. The only two comms changes in this epic
+    are S1-A0's export and S1-F's shelf exclusion, both made by the session itself, with the comms suites
+    still green, and both named in the PR.</li>
+  <li><b>No live model call in any suite</b> — the SDK is mocked, as everywhere else under
+    <code>workers/</code>. The prompt's quality is judged by the owner from the eval script, never by a test.</li>
+  <li><b>Every behaviour lands with a test</b> (CLAUDE.md): unit for the Worker, RTL and Storybook for
     components, Playwright for the flows. A slice whose tests only prove it compiles is sent back.</li>
-  <li><b>The epic spec is not edited by the build.</b> If the build diverges, the orchestrator tells the
-    human, who decides whether the spec or the build is wrong.</li>
-  <li><b>Anything left out is named in the PR description</b>, because the session cannot create tickets.</li>
+  <li><b>The epic spec is not edited by either build</b>, and not archived by either. Only the story's own
+    spec is archived, by its own implementation PR. If the build diverges from this document, say so in the
+    PR — the owner decides whether the epic spec is now wrong or the build is.</li>
+  <li><b>Scope that falls out is named in the PR description</b>, because neither session can create a ticket.</li>
 </ul>
 
 <!-- ───────────────────────────────────────────────────────────── -->
@@ -977,36 +1084,19 @@ the operability slices dispatch.</p>
 <p class="small">Genuinely open. Everything that could be settled in refinement was, above.</p>
 
 <div class="card">
-  <h3 id="q1" style="margin-top:0">Q1 — What is the actual daily volume?</h3>
-  <p>Every cost and cap number above assumes 20–50 posts a day, which is Steve's number, not the owner's.
-  The comms mirror can answer this before Half 1 starts:
-  <code>select sender_handle, count(*) from comm_messages where sender_handle like '%@substack.com' and has_list_header and received_at &gt; now() - interval '30 days' group by 1 order by 2 desc</code>
-  — the roster's population, not the comms filter's (which is D4's complaint: it includes Amazon). If the answer is 5, the daily ceiling and the per-tick cap are generous and could be
-  dropped; if it is 100, Sonnet's bill is ~$95 a month and D8 deserves a second look. <b>Owner:</b> the
-  Half 1 orchestrator, first thing, recorded in the demo doc.</p>
-</div>
-
-<div class="card">
-  <h3 id="q2">Q2 — Which platforms auto-enable besides Substack?</h3>
+  <h3 id="q1" style="margin-top:0">Q1 — Which platforms auto-enable besides Substack?</h3>
   <p>D4 auto-enables <code>substack.com</code> only. beehiiv (<code>*.beehiiv.com</code>), Buttondown,
   Ghost and Kit senders are candidates the owner promotes. If the owner's list turns out to be mostly
-  Substack this stays; if half the reading is elsewhere, the auto-enable domain list grows in Half 2's
+  Substack this stays; if half the reading is elsewhere, the auto-enable domain list grows in Story 2's
   publications story. Nothing is blocked on it.</p>
 </div>
 
 <div class="card">
-  <h3 id="q3">Q3 — Does the Gmail filter's <code>from:</code> match every Substack?</h3>
+  <h3 id="q2">Q2 — Does the Gmail filter's <code>from:</code> match every Substack?</h3>
   <p>Substack mails from <code>&lt;publication&gt;@substack.com</code>, which <code>from:substack.com</code>
   catches. Some publications on custom domains (Stratechery, some Ghost sites) need their own term — which
-  is what Half 2's "copy filter query" button is for. Open only in the sense that the owner should look at
+  is what Story 2's "copy filter query" button is for. Open only in the sense that the owner should look at
   the roster after a week and add the stragglers.</p>
-</div>
-
-<div class="card">
-  <h3 id="q4">Q4 — Should the FYI shelf hide reader-claimed posts eventually?</h3>
-  <p>D14 says no for this epic. The owner will know within a month whether the shelf became noise; if so
-  it is a one-line Comms story ("shelf excludes rows with a <code>reader_posts</code> match"), not a reason
-  to reopen D14 here.</p>
 </div>
 
 <!-- ───────────────────────────────────────────────────────────── -->
