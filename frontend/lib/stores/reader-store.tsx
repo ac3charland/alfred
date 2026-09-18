@@ -40,12 +40,13 @@ export interface ReaderActions {
    */
   markOpened: (id: string) => void;
   /**
-   * Re-read the active list and replace it wholesale, EXCEPT for rows this tab mutated after the
-   * read was ISSUED — the read left the server before that write arrived, so its answer is stale
-   * for exactly those rows and would put a just-archived post back on screen. Whether the write
-   * has since answered is beside the point: what decides is which of the two left first. A failed
-   * read changes nothing and says nothing — the stale list it would have replaced is still better
-   * than a blanked one, and the next trigger tries again (mirrors Comms' `reconcileHealth`).
+   * Re-read the active list and replace it wholesale, EXCEPT for every write not completed
+   * before the read was ISSUED — the read left the server before that write arrived, whether it
+   * was still pending at that instant or had not even started, so its answer is stale for exactly
+   * those rows and would put a just-archived post back on screen. Whether the write has since
+   * answered is beside the point: what decides is which of the two left first. A failed read
+   * changes nothing and says nothing — the stale list it would have replaced is still better than
+   * a blanked one, and the next trigger tries again (mirrors Comms' `reconcileHealth`).
    */
   refresh: () => void;
 }
@@ -118,19 +119,20 @@ export function ReaderProvider({
    */
   const mutatingRef = React.useRef(new Set<string>());
   /**
-   * Ids this tab has written since the in-progress read was ISSUED — emptied at the moment the
-   * request goes out and never pruned before the next one, so a write that both started and
-   * finished while the read was in the air is still held back. Together with `mutatingRef` this
-   * covers every write the read cannot answer for: started earlier and still pending, or started
-   * after the read left at all.
+   * Ids of every write NOT COMPLETED before the in-progress read was ISSUED. Seeded at that
+   * instant from `mutatingRef` (whatever was still pending right then) and then added to for
+   * each write that starts while the read is in the air, so it is never pruned before the next
+   * read goes out — a write that settles and reconciles while this read is still in flight stays
+   * held back too, which `mutatingRef` alone would have forgotten by the time the read answers.
    */
   const mutatedSinceReadRef = React.useRef(new Set<string>());
   const refresh = React.useCallback(() => {
     if (refreshingRef.current || document.hidden) return;
     refreshingRef.current = true;
-    // Cleared as the request is ISSUED, not when its answer lands: everything written from here
-    // on is something this read left too early to know about.
-    mutatedSinceReadRef.current = new Set<string>();
+    // Seeded as the request is ISSUED, not cleared: a write already pending at this instant
+    // (mutatingRef.current) is one this read left too early to know about, same as anything
+    // written from here on.
+    mutatedSinceReadRef.current = new Set(mutatingRef.current);
     void api
       .fetchReaderPosts({ scope: 'active' })
       .then((posts) => {

@@ -119,9 +119,10 @@ One line each, with the file that now holds the truth.
 - `frontend/lib/test-utils.tsx`'s `renderWithProviders` gained a `reader` seed option
   (`initialPosts`), alongside the other modules' seeds.
 - `refresh()` keeps the local row for any post this tab wrote that its read cannot answer for
-  (`replaceAll`'s `keep`): two sets, one of writes still in flight and one of every write started
-  since the read was ISSUED, cleared as the request goes out. `markOpened` reconciles only
-  `opened_at`. A realtime channel must respect both sets. — `frontend/lib/stores/reader-store.tsx`
+  (`replaceAll`'s `keep`): two sets, one of writes still in flight and one of every write not
+  completed before the read was ISSUED, seeded from the first at that instant and added to as the
+  read stays in flight. `markOpened` reconciles only `opened_at`. A realtime channel must respect
+  both sets. — `frontend/lib/stores/reader-store.tsx`
 
 ## Subrequest arithmetic as built
 
@@ -157,6 +158,11 @@ Cost against this table before adding a retention step or any new per-post write
   see the checkpoint below.
 - No `intake.test.ts`: its branches (404, binned, conflict, empty body) are pinned end-to-end
   through `scheduled.test.ts` instead of their own unit suite.
+- RFC 2047 encoded-word subjects (`=?UTF-8?Q?…?=`) are stored verbatim as the row title —
+  inherited from the comms mirror, which stores `subject` the same way; the fixtures are ASCII so
+  nothing here shows it. The checkpoint's eval over real mail is the confirmation; a real-mail
+  fixture and the decode belong at the top of Story 2. — `workers/src/reader/extract.ts`,
+  `workers/src/comms/email-text.ts`
 
 ## Checkpoint results
 

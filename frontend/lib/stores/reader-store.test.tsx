@@ -373,6 +373,39 @@ describe('refresh', () => {
     expect(result.current.posts).toHaveLength(0);
   });
 
+  it('holds back a row whose write finishes while the read is in flight, if it started earlier', async () => {
+    // The archive PATCH started BEFORE the read was issued and was still pending at that
+    // instant — so even though it settles and reconciles while the read is still in the air,
+    // the read's answer (taken before the archive reached the server) cannot speak for this row.
+    const row = post({ id: 'p-1' });
+    const archiveCall = deferred<ReaderPostListItem>();
+    const read = deferred<ReaderPostListItem[]>();
+    mockApi.patchReaderPost.mockReturnValue(archiveCall.promise);
+    mockApi.fetchReaderPosts.mockReturnValue(read.promise);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let archiving: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      archiving = result.current.actions.archive('p-1');
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      archiveCall.settle({ ...row, archived_at: '2026-09-18T09:00:00.000Z' });
+      await archiving;
+    });
+    expect(result.current.posts).toHaveLength(0);
+
+    // The read's answer lands last, with the pre-archive list — stale for this row.
+    await act(async () => {
+      read.settle([row]);
+      await flush();
+    });
+
+    expect(result.current.posts).toHaveLength(0);
+  });
+
   it('does not resurrect a row archived after the read was issued', async () => {
     // The mirror image of the case above: the archive's PATCH has already ANSWERED by the time
     // the read's answer lands, so nothing is in flight any more — but the read left the server
