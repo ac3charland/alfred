@@ -1,3 +1,5 @@
+import type { CommMessage } from '@/lib/types';
+
 import { makeCommMessage, resetCommFixtureClock } from './fixtures';
 import { groupByTier, isQueued, isShelved, queueCount, readerClaimedCount, shelved } from './queue';
 
@@ -206,4 +208,53 @@ describe('readerClaimedCount', () => {
 
     expect(readerClaimedCount([unjudged])).toBe(0);
   });
+});
+
+describe('the shelf rule', () => {
+  /** One row per shape the two shelf predicates have to agree about. */
+  const SHAPES: { name: string; overrides: Partial<CommMessage>; eligible: boolean }[] = [
+    {
+      name: 'a judged FYI message',
+      overrides: { tier: 'fyi', judged_by: 'model' },
+      eligible: true,
+    },
+    {
+      name: 'a message cleared out of the queue',
+      overrides: {
+        tier: 'today',
+        judged_by: 'model',
+        cleared_at: '2026-02-01T09:00:00.000Z',
+        cleared_by: 'reply',
+      },
+      eligible: true,
+    },
+    {
+      name: 'a cleared message nothing ever tiered',
+      overrides: { cleared_at: '2026-02-01T09:00:00.000Z', cleared_by: 'nothing_to_answer' },
+      eligible: true,
+    },
+    { name: 'a queued message', overrides: { tier: 'asap', judged_by: 'model' }, eligible: false },
+    { name: 'an unjudged message', overrides: {}, eligible: false },
+    {
+      name: 'an outbound message',
+      overrides: { direction: 'outbound', tier: 'fyi', judged_by: 'model' },
+      eligible: false,
+    },
+  ];
+
+  it.each(SHAPES)(
+    'draws or counts $name exactly as the other predicate does not',
+    ({ overrides, eligible }) => {
+      for (const claimedAt of [null, '2026-02-01T09:05:00.000Z']) {
+        const message = makeCommMessage(ACCOUNT, { ...overrides, reader_claimed_at: claimedAt });
+        const drawn = isShelved(message);
+        const counted = readerClaimedCount([message]) === 1;
+
+        // Every eligible row lands on exactly one side of the claim; an ineligible row on neither.
+        expect(drawn && counted).toBe(false);
+        expect(drawn || counted).toBe(eligible);
+        expect(counted).toBe(eligible && claimedAt !== null);
+      }
+    },
+  );
 });
