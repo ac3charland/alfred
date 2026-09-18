@@ -2,7 +2,7 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 import { userEvent, within } from 'storybook/test';
 
-import { makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
+import { NO_READER_HEALTH, makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
 import { ReaderProvider } from '@/lib/stores/reader-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
@@ -38,7 +38,7 @@ const withProviders: Decorator = (Story, context) => {
   const row = context.args['post'] as ReaderPostListItem;
   return (
     <ToastProvider>
-      <ReaderProvider initialPosts={[row]}>
+      <ReaderProvider initialPosts={[row]} initialHealth={NO_READER_HEALTH}>
         <Story />
       </ReaderProvider>
     </ToastProvider>
@@ -67,7 +67,8 @@ const meta = {
         'conclusion.',
       overview: makeReaderOverview(),
       model: 'claude-sonnet-5',
-      prompt_version: 1,
+      prompt_version: 2,
+      summarized_at: '2026-09-16T14:05:00.000Z',
     }),
   },
 } satisfies Meta<typeof PostRow>;
@@ -157,6 +158,94 @@ export const NoLink: Story = {
         'A short piece distinguishing arguments you disagree with from ones you cannot ' +
         'immediately locate the flaw in.',
       overview: makeReaderOverview(),
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** Mid re-summarise: the pending marker over the previous summary, dimmed, and no retry verb. */
+export const Resummarising: Story = {
+  args: {
+    post: post({
+      id: 'p-resummarising',
+      author: 'Second Thoughts',
+      title: 'How near is the intelligence explosion, really?',
+      received_at: '2026-09-16T14:00:00.000Z',
+      word_count: 3220,
+      canonical_url: 'https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion',
+      summary_state: 'pending',
+      gist:
+        'Argues the "recursive self-improvement" debate conflates three different feedback loops ' +
+        '… (the previous summary, being replaced)',
+      overview: makeReaderOverview(),
+      model: 'claude-sonnet-5',
+      prompt_version: 1,
+      summarized_at: '2026-09-16T14:05:00.000Z',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/**
+ * The row the keyboard is pointing at: the ring, and a key hint beside each of the three verbs
+ * it can run. Collapsed — selection and the overview are separate states.
+ */
+export const SelectedCollapsed: Story = {
+  args: { selected: true },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** The same selected row with its overview open: the ring and the wash at once. */
+export const SelectedExpanded: Story = {
+  args: { selected: true },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Overview' }));
+  },
+};
+
+/** The archive's row: everything the list's row is, with Unarchive in Archive's slot. */
+export const ArchivedAndSelected: Story = {
+  args: {
+    variant: 'archive',
+    selected: true,
+    post: post({
+      id: 'p-archived',
+      author: 'Second Thoughts',
+      title: 'Why every forecasting tournament converges on the same three people',
+      received_at: '2026-09-12T14:00:00.000Z',
+      word_count: 2400,
+      html_extracted: true,
+      canonical_url: 'https://secondthoughts.substack.com/p/forecasting-tournaments',
+      summary_state: 'done',
+      gist:
+        'A selection-effects argument: the tournaments reward calibration on questions with ' +
+        'short resolution windows, and the same three forecasters specialise in exactly those.',
+      overview: makeReaderOverview(),
+      model: 'claude-sonnet-5',
+      prompt_version: 2,
+      summarized_at: '2026-09-12T14:05:00.000Z',
+      archived_at: '2026-09-17T09:00:00.000Z',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** Refused, and its body swept: the line says why, and there is no verb that could work. */
+export const RefusedAndSwept: Story = {
+  args: {
+    post: post({
+      id: 'p-refused-swept',
+      author: 'Stratechery',
+      title: 'An Interview with…',
+      received_at: '2026-06-09T14:00:00.000Z',
+      word_count: 5060,
+      canonical_url: 'https://stratechery.com/2026/an-interview-with/',
+      summary_state: 'refused',
+      text_swept_at: '2026-09-08T03:00:00.000Z',
+      model: 'claude-sonnet-5',
+      prompt_version: 1,
     }),
   },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
