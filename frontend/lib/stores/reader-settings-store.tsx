@@ -208,11 +208,15 @@ export function ReaderSettingsProvider({
             ...(candidate.name === null ? {} : { name: candidate.name }),
           });
         } catch (error) {
-          showToastRef.current(
-            error instanceof ApiError && error.status === 409
-              ? 'That sender is already a publication'
-              : "Couldn't add that publication",
-          );
+          if (error instanceof ApiError && error.status === 409) {
+            showToastRef.current('That sender is already a publication');
+            // The server just said this handle is already on the roster — the local candidates
+            // list is stale (some other tab, or a prior request that actually landed, promoted
+            // it), so drop it here too rather than leaving a row whose own Add will 409 forever.
+            dispatch({ type: 'candidates', action: { type: 'remove', ids: [handle] } });
+          } else {
+            showToastRef.current("Couldn't add that publication");
+          }
           throw error;
         }
 

@@ -8,9 +8,13 @@
  * the write still runs, and the promise is accounted for.
  *
  * A small copy of comms' own `settle` helper (`components/comms/settle.ts`) rather than an
- * import from it: `components/comms/` is off limits to this module (CLAUDE.md), and the
- * frontend-architecture skill's shared layer lives in `components/atoms/`, not in another
- * feature module's own directory.
+ * import from it: this story touches nothing under `components/comms/`, and the
+ * frontend-architecture skill's shared layer for cross-module reuse is `components/atoms/`, not
+ * another feature module's own directory — importing from `components/comms/` here would be
+ * exactly the kind of cross-feature reach that skill says not to take. Folding this helper (and
+ * the settings-card strings in `publications.styles.ts`) up into `components/atoms/`, alongside
+ * comms' own `AccountDot` → `StatusDot` consolidation, is a named follow-up rather than something
+ * this change takes on.
  */
 export async function settle(promise: Promise<unknown>): Promise<void> {
   try {

@@ -309,7 +309,7 @@ describe('ReaderSettingsProvider', () => {
       ]);
     });
 
-    it('toasts a friendly message on a duplicate handle (409) and leaves the candidate in place', async () => {
+    it('toasts a friendly message on a duplicate handle (409) and drops the stale candidate', async () => {
       const error = new apiClient.ApiError('API POST failed: 409', 409, 'duplicate key');
       mockCreateReaderPublication.mockRejectedValue(error);
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], [CANDIDATE]) });
@@ -319,7 +319,10 @@ describe('ReaderSettingsProvider', () => {
       });
 
       expect(mockShowToast).toHaveBeenCalledWith('That sender is already a publication');
-      expect(result.current.candidates).toEqual([CANDIDATE]);
+      // The server just said this handle is already a publication, so the stale row in the
+      // local candidates list — the roster read just hasn't caught up yet — is dropped rather
+      // than left to 409 again on a second click.
+      expect(result.current.candidates).toEqual([]);
       expect(result.current.publications).toEqual([]);
     });
 

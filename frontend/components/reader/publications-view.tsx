@@ -71,6 +71,11 @@ export function PublicationsView({ now: pinnedNow }: PublicationsViewProperties)
 
       <p className="text-sm text-muted-foreground">
         {String(enabledCount)} enabled · {String(pausedCount)} paused
+        {nothingEnabled && (
+          <span className="ml-2 text-muted-foreground/70">
+            — nothing to copy: no publication is enabled
+          </span>
+        )}
       </p>
 
       {publications.length === 0 ? (

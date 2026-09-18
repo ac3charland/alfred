@@ -6,6 +6,7 @@ import * as React from 'react';
 import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
 import { settle } from '@/components/reader/publications-settle';
+import { PUBLICATION_CAPTION } from '@/components/reader/publications.styles';
 import { formatPostDate } from '@/components/reader/reader-format';
 import { useReaderSettingsActions } from '@/lib/stores/reader-settings-store';
 import type { ReaderCandidate } from '@/lib/types';
@@ -24,10 +25,15 @@ export function PublicationsCandidates({
   now: Date;
 }) {
   const { addCandidate } = useReaderSettingsActions();
+  // Which handles have an Add in flight — a promoted candidate leaves this list on success, but
+  // a 500 (or a slow network) leaves the row in place, and a second click before the first
+  // settles would fire a second POST for the same handle. Local, not store state: nothing else
+  // reads it, and it clears itself in the `finally` regardless of outcome.
+  const [pending, setPending] = React.useState<ReadonlySet<string>>(new Set());
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+      <p className={PUBLICATION_CAPTION}>
         Candidates — bulk senders not on the roster · last 30 days
       </p>
 
@@ -49,15 +55,25 @@ export function PublicationsCandidates({
                 </span>
                 <span className="text-xs text-muted-foreground">{candidate.handle}</span>
                 <span className="text-xs text-muted-foreground">
-                  {String(candidate.message_count)} messages · last{' '}
+                  {String(candidate.message_count)} message
+                  {candidate.message_count === 1 ? '' : 's'} · last{' '}
                   {formatPostDate(candidate.last_seen_at, now)}
                 </span>
               </div>
               <Button
                 variant="accent"
                 size="sm"
+                disabled={pending.has(candidate.handle)}
                 onClick={() => {
-                  void settle(addCandidate(candidate.handle));
+                  const { handle } = candidate;
+                  setPending((current) => new Set(current).add(handle));
+                  void settle(addCandidate(handle)).finally(() => {
+                    setPending((current) => {
+                      const next = new Set(current);
+                      next.delete(handle);
+                      return next;
+                    });
+                  });
                 }}
               >
                 <Plus size={14} />

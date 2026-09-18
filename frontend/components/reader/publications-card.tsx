@@ -43,19 +43,16 @@ export function PublicationCard({
 
         <Badge variant="muted">{publication.source}</Badge>
 
-        <span
+        <ToggleButton
           className="ml-auto"
-          title="Paused publications are not claimed; posts already here stay"
+          pressed={publication.enabled}
+          onToggle={() => {
+            void settle(setEnabled(publication.id, !publication.enabled));
+          }}
+          title="Paused publications are not claimed; posts already here stay. Re-enabling claims only mail from the last seven days."
         >
-          <ToggleButton
-            pressed={publication.enabled}
-            onToggle={() => {
-              void settle(setEnabled(publication.id, !publication.enabled));
-            }}
-          >
-            {publication.enabled ? 'Enabled' : 'Paused'}
-          </ToggleButton>
-        </span>
+          {publication.enabled ? 'Enabled' : 'Paused'}
+        </ToggleButton>
       </div>
 
       <p className="text-xs text-muted-foreground">

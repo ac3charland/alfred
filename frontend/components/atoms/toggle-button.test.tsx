@@ -60,6 +60,29 @@ describe('ToggleButton', () => {
     expect(screen.getByRole('button', { name: 'Show archived' })).toHaveClass('h-8');
   });
 
+  it('passes a title through to the button', () => {
+    render(
+      <ToggleButton pressed={false} onToggle={() => {}} title="Explains what this does">
+        Show archived
+      </ToggleButton>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Show archived' })).toHaveAttribute(
+      'title',
+      'Explains what this does',
+    );
+  });
+
+  it('has no title when none is given', () => {
+    render(
+      <ToggleButton pressed={false} onToggle={() => {}}>
+        Show archived
+      </ToggleButton>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Show archived' })).not.toHaveAttribute('title');
+  });
+
   it('calls onToggle when clicked', async () => {
     const onToggle = jest.fn();
     const user = userEvent.setup();

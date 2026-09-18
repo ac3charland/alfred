@@ -5,6 +5,7 @@ import * as React from 'react';
 import * as apiClient from '@/lib/api-client';
 import { makeReaderCandidate, makeReaderPublicationListItem } from '@/lib/reader/fixtures';
 import { renderWithProviders } from '@/lib/test-utils';
+import type { ReaderPublication } from '@/lib/types';
 
 import { PublicationsView } from './publications-view';
 
@@ -17,6 +18,15 @@ jest.mock('@/lib/api-client', () => ({
 }));
 
 const NOW = new Date('2026-09-18T12:00:00.000Z');
+
+/** A promise the test settles by hand, so a request can be held in flight. */
+function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
+  let settle!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+}
 
 describe('PublicationsView', () => {
   it('renders a roster card with its name, handle, provenance chip, last post and note', () => {
@@ -56,15 +66,16 @@ describe('PublicationsView', () => {
     expect(screen.getByRole('button', { name: 'Paused' })).toBeInTheDocument();
   });
 
-  it('gives the toggle a title explaining what pausing does', () => {
+  it('gives the toggle button itself a title explaining what pausing and resuming do', () => {
     const publication = makeReaderPublicationListItem('Second Thoughts');
     renderWithProviders(<PublicationsView now={NOW} />, {
       readerSettings: { publications: [publication] },
     });
 
-    expect(
-      screen.getByTitle('Paused publications are not claimed; posts already here stay'),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enabled' })).toHaveAttribute(
+      'title',
+      'Paused publications are not claimed; posts already here stay. Re-enabling claims only mail from the last seven days.',
+    );
   });
 
   it('counts enabled and paused publications', () => {
@@ -89,6 +100,22 @@ describe('PublicationsView', () => {
     const button = screen.getByRole('button', { name: /copy gmail filter query/i });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute('title', 'Nothing to copy — no publication is enabled');
+  });
+
+  it('also renders the reason as visible text, since a disabled button’s title is unreachable', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: [makeReaderPublicationListItem('A', { enabled: false })] },
+    });
+
+    expect(screen.getByText(/nothing to copy: no publication is enabled/)).toBeInTheDocument();
+  });
+
+  it('does not render the reason when at least one publication is enabled', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: [makeReaderPublicationListItem('A', { enabled: true })] },
+    });
+
+    expect(screen.queryByText(/nothing to copy/)).not.toBeInTheDocument();
   });
 
   it('enables the copy button when at least one publication is enabled', () => {
@@ -126,6 +153,15 @@ describe('PublicationsView', () => {
     expect(screen.getByText(/9 messages · last Sep 17/)).toBeInTheDocument();
   });
 
+  it('singularises the message count for a candidate seen once', () => {
+    const candidate = makeReaderCandidate('hello@bensbites.beehiiv.com', { message_count: 1 });
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { candidates: [candidate] },
+    });
+
+    expect(screen.getByText(/1 message ·/)).toBeInTheDocument();
+  });
+
   it('falls back to the handle when a candidate has no display name', () => {
     const candidate = makeReaderCandidate('hello@bensbites.beehiiv.com', { name: null });
     renderWithProviders(<PublicationsView now={NOW} />, {
@@ -160,5 +196,34 @@ describe('PublicationsView', () => {
     expect(mockCreate).toHaveBeenCalledWith({ handle: candidate.handle, name: "Ben's Bites" });
     await screen.findByText('No candidates.');
     expect(screen.getByText("Ben's Bites")).toBeInTheDocument();
+  });
+
+  it('disables Add for a handle while its promotion is still in flight', async () => {
+    const candidate = makeReaderCandidate('hello@bensbites.beehiiv.com', { name: "Ben's Bites" });
+    const mockCreate = jest.mocked(apiClient.createReaderPublication);
+    const created = deferred<ReaderPublication>();
+    mockCreate.mockReturnValue(created.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { candidates: [candidate] },
+    });
+
+    const button = screen.getByRole('button', { name: /add/i });
+    await user.click(button);
+
+    expect(button).toBeDisabled();
+
+    created.settle({
+      id: 'new-id',
+      handle: candidate.handle,
+      name: "Ben's Bites",
+      domain: 'bensbites.beehiiv.com',
+      enabled: true,
+      source: 'owner',
+      notes: null,
+      first_seen_at: '2026-09-17T00:00:00.000Z',
+      created_at: '2026-09-17T00:00:00.000Z',
+    });
+    await screen.findByText('No candidates.');
   });
 });
