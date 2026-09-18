@@ -413,6 +413,12 @@ explains hover/focus. Two hard-won rules:
   won't render. Press Tab instead: `await page.keyboard.press('Tab')`. Each focus story
   must render a **single** focusable control so the first Tab lands on it.
 
+- **A play function's FIRST `userEvent.keyboard` never reaches a `document`-level listener.**
+  Nothing inside the story iframe holds focus yet, so the keystroke goes nowhere and a story
+  whose state a hotkey drives (the Comms queue's / Reader list's `j`-to-select) screenshots the
+  resting state — silently, like the portal case below. Any `userEvent.click` inside the canvas
+  first, and every later keystroke lands. Prefer driving the state through a click the component
+  already honours and leaving the keys to the RTL and Playwright suites.
 - **An open Radix menu, dialog or popover is invisible to a snapshot unless the story targets
   `body`.** `DropdownMenuContent` and `DropdownMenuSubContent` both render through
   `DropdownMenuPrimitive.Portal` — outside `#storybook-root`, which is `visualTest.target`'s
