@@ -204,20 +204,25 @@ Being told to skip a step implies skipping all later steps as well:
 - Skip opening a PR → does **not** imply skipping committing or pushing.
 - Skip the demo doc → still commit / push / open the PR as normal, just without it.
 
-### No scheduled check-ins
+### No scheduled check-ins (once the PR is open)
 
 A session's job ends when its deliverable — a PR — is pushed and described; it does not
-keep running to watch what happens next. **Never schedule a wakeup, timer, or recurring
-job** (e.g. `ScheduleWakeup`, `send_later`, a cron trigger) to poll a PR, CI run, or deploy
-for status after your work is out the door. A scheduled check-in burns tokens on a poll
-that almost always finds nothing new. If you genuinely need forward visibility into PR
-activity, subscribe to the event stream (e.g. `subscribe_pr_activity`) so activity finds
-you instead of you polling for it — that is push-driven, not a standing timer, and stays
-allowed. Otherwise, what happens after the PR is open is the human's call, not a task this
-session keeps for itself.
+keep running to watch what happens next. **Once a PR is open, never schedule a wakeup,
+timer, or recurring job** (e.g. `ScheduleWakeup`, `send_later`, a cron trigger) to poll
+that PR, its CI run, or its deploy for status. A scheduled check-in there burns tokens on
+a poll that almost always finds nothing new. If you genuinely need forward visibility into
+PR activity, subscribe to the event stream (e.g. `subscribe_pr_activity`) so activity
+finds you instead of you polling for it — that is push-driven, not a standing timer, and
+stays allowed. Otherwise, what happens after the PR is open is the human's call, not a
+task this session keeps for itself.
+
+This is about the PR's lifecycle, not your own pace: scheduling a wakeup to wait out a
+long-running task in your **own** still-in-progress work — a slow `check:slow` run, a
+build, a deploy you're actively driving before the PR exists — is a normal, allowed use of
+the same tools. The line is whether the PR is already open, not whether the tool was used.
 
 This holds everywhere in the SDLC cycle: refinement, spike, bug-fix, epic-refinement, and
-implementation sessions alike all stop at "PR opened," never "PR merged."
+implementation sessions alike stop watching once "PR opened," never before.
 
 ---
 

@@ -99,7 +99,7 @@ the board won't move when the epic ships: tell the human to archive the epic the
 merged.
 
 **Don't schedule a check-in on it.** CLAUDE.md's "No scheduled check-ins" rule applies
-here — your job as orchestrator ends once the PR is pushed, not once it merges.
+here — your job as orchestrator ends once the PR is open, not once it merges.
 
 ## When to stop and ask
 

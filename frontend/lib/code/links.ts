@@ -193,10 +193,12 @@ function htmlPreviewStep(project: Project): string {
  * scheduled check-ins" rule (and each SDLC skill's cross-reference to it) is the source of truth
  * for *why* — this is the one place that rule is deliberately duplicated into the prompt itself
  * rather than only linked, because by the time a session is tempted to schedule a wakeup after
- * opening its PR, it has already stopped reading further files.
+ * opening its PR, it has already stopped reading further files. Scoped to AFTER the PR exists —
+ * scheduling a wakeup to pace this session's own still-in-progress work (waiting out a slow
+ * check, a build) is unaffected and stays fine.
  */
 function noScheduledCheckInsStep(): string {
-  return `Don't schedule a check-in on this PR once it's open — no wakeup, timer, or recurring job to poll it for status. CLAUDE.md forbids this; what happens after the PR is open is not this session's job.`;
+  return `Once this PR is open, don't schedule a check-in on it — no wakeup, timer, or recurring job to poll it, its CI, or its deploy for status. CLAUDE.md forbids that; what happens after the PR is open is not this session's job. (Scheduling one to pace your own work before that — waiting out a slow check, say — is unaffected and fine.)`;
 }
 
 /** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */
