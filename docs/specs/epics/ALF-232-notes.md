@@ -137,10 +137,11 @@ One line each, with the file that now holds the truth.
   `<Author> from <Publication>` — the last of which `extract.ts` now unpicks), so the byline anchor
   is the steadier source for `author` and the natural input to an authors/publications surface.
 - `refresh()` keeps the local row for any post this tab wrote that its read cannot answer for
-  (`replaceAll`'s `keep`): two sets, one of writes still in flight and one of every write not
-  completed before the read was ISSUED, seeded from the first at that instant and added to as the
-  read stays in flight. `markOpened` reconciles only `opened_at`. A realtime channel must respect
-  both sets. — `frontend/lib/stores/reader-store.tsx`
+  (`replaceAll`'s `keep`): one REFCOUNT map of writes still in flight (two writes can overlap on
+  one row, and the last of them is what releases it) plus one set per read still in the air,
+  opened by `beginRead()` and seeded at that instant with whatever was pending, then added to for
+  every later write. `markOpened` is a write like any other and reconciles only `opened_at`. A
+  realtime channel must open a read the same way. — `frontend/lib/stores/reader-store.tsx`
 
 ## Subrequest arithmetic as built
 
@@ -225,8 +226,12 @@ what a reader who wasn't here needs.
   `replaceAll`'s keep-rule grew an archive-aware clause: a row the active read does not name
   survives when it is archived or when this tab wrote it, and is dropped otherwise.
 - **There is no "no-text marker" to key off.** Story 1 never shipped one, so the row hides the
-  re-summarise verb on `word_count === 0` and the route is what tells a stale tab which of the two
-  refusals applies. — `components/reader/post-row.tsx`, `app/api/reader/posts/[id]/route.ts`
+  re-summarise verb on `word_count === 0` and the route is what tells a stale tab which of its
+  three refusals applies — swept, never had a body, or already queued. Its pre-read asks for
+  `text_swept_at`, `word_count` and `summary_state`, never `text`: the presence signal the UI
+  draws the verb from is the one the route refuses on, so the two cannot disagree, and no post
+  body crosses the wire to be null-checked.
+  — `components/reader/post-row.tsx`, `app/api/reader/posts/[id]/route.ts`
 - **The reading list's heading kept Story 1's words** ("Reader", "N to read") rather than the
   spec's mockup wording; the health block sits beside it and the banner above it.
 - **Hints are verified by their class, not by a media query.** jsdom has no layout, so
@@ -243,9 +248,12 @@ what a reader who wasn't here needs.
   from `@/lib/comms/hotkeys` as Story 1's `message-row.tsx` already does. The one exception is a
   test: `renderWithProviders` mounts every module's provider, so the Reader store's new health
   refetch had to be stubbed in `comms-queue-view.test.tsx`.
-- **`settle()` is duplicated, deliberately.** The Reader needs comms' promise-swallowing helper but
-  may not import from `components/comms/`, and the shared layer is `components/atoms/` — so
-  `components/reader/publications-settle.ts` is its own copy. Folding both onto a shared atom is a
-  follow-up, next to folding comms' `AccountDot` onto the new `StatusDot`.
+- **`settle()` is duplicated, deliberately.** The Reader needs comms' promise-swallowing helper,
+  and the frontend-architecture skill's shared layer for cross-module reuse is
+  `components/atoms/`, not another feature module's own directory — so reaching into
+  `components/comms/` for it would be exactly the cross-feature import that skill rules out, and
+  `components/reader/publications-settle.ts` is its own copy until the fold-up happens. Folding it
+  (and `publications.styles.ts`'s card strings) onto an atom is a follow-up, next to folding
+  comms' `AccountDot` onto the new `StatusDot`.
 - **The paywalled-teaser marker from Story 1's handoff was not built** — nothing detects the cut,
   and `headline` is still stored and unrendered.
