@@ -163,6 +163,9 @@ export function PostRow({
   const [overviewOpen, setOverviewOpen] = React.useState(false);
   const shellRef = React.useRef<HTMLDivElement>(null);
   const linkRef = React.useRef<HTMLAnchorElement>(null);
+  // What the card and the Overview verb say they control, so a screen reader can follow the
+  // disclosure to the region it opens rather than being told a state with no referent.
+  const panelId = React.useId();
 
   // The mutation the exit is playing for — archive is the row's only exit-animated verb.
   const commitRef = React.useRef<(() => Promise<unknown>) | null>(null);
@@ -205,10 +208,19 @@ export function PostRow({
   const rerunnable = state === 'done' && canResummarize(post);
   const hasFooter = stamp !== null || rerunnable;
   const hasOverview = overview !== undefined;
+  /**
+   * Whether there is anything to disclose at all. The panel holds the overview AND the summary's
+   * stamp with its re-run verb, so a done row whose overview failed the guard still has one —
+   * and the verb, the `v` key and the card's own disclosure all key off this single question, so
+   * none of them can offer to open something that isn't there or hide something that is.
+   */
+  const hasPanel = hasOverview || hasFooter;
+  const panelOpen = hasPanel && overviewOpen;
 
   const toggleOverview = React.useCallback(() => {
+    if (!hasPanel) return;
     setOverviewOpen((open) => !open);
-  }, []);
+  }, [hasPanel]);
 
   // Bring the selected row into view when the keyboard walks onto it. `nearest` scrolls the
   // least that makes the row visible, so a row already on screen doesn't jump under the owner.
@@ -244,7 +256,7 @@ export function PostRow({
           break;
         }
         case 'overview': {
-          if (!hasOverview) break;
+          if (!hasPanel) break;
           event.preventDefault();
           toggleOverview();
           break;
@@ -260,7 +272,7 @@ export function PostRow({
     return () => {
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [selected, hasOverview, beginArchive, toggleOverview]);
+  }, [selected, hasPanel, beginArchive, toggleOverview]);
 
   /** The key that runs a verb, beside its label — on the selected row only, desktop only. */
   const hint = (key: string) =>
@@ -280,12 +292,16 @@ export function PostRow({
         <div className={cn(rowFadeClass, exit.isExiting && 'opacity-0')}>
           <div
             ref={shellRef}
-            className={rowShellClass({ selected, expanded: overviewOpen, dimmed })}
+            className={rowShellClass({ selected, expanded: panelOpen, dimmed })}
             data-testid="reader-row"
             data-selected={String(selected)}
           >
             <ClickableCard
-              aria-expanded={overviewOpen}
+              // Only a card that actually discloses something claims to: on a row with no panel
+              // the click still selects, and an `aria-expanded` there would promise a region
+              // that never appears.
+              aria-expanded={hasPanel ? panelOpen : undefined}
+              aria-controls={hasPanel ? panelId : undefined}
               onClick={() => {
                 // One gesture, two effects: the click points the keyboard here AND toggles the
                 // overview, so a mouse and a keyboard owner never disagree about which row is
@@ -308,8 +324,8 @@ export function PostRow({
             <div className={verbRowClass}>
               {link.href === undefined ? (
                 <Button variant="outline" size="sm" type="button" disabled title={link.unavailable}>
+                  {/* No keycap: `o` runs the anchor, and there is no anchor to run. */}
                   Open
-                  {hint('o')}
                 </Button>
               ) : (
                 <Button variant="outline" size="sm" asChild>
@@ -319,6 +335,7 @@ export function PostRow({
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => {
+                      onSelect?.(post.id);
                       actions.markOpened(post.id);
                     }}
                   >
@@ -328,17 +345,21 @@ export function PostRow({
                 </Button>
               )}
 
-              {hasOverview && (
+              {hasPanel && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-expanded={overviewOpen}
-                  onClick={(event) => {
-                    event.stopPropagation();
+                  aria-expanded={panelOpen}
+                  aria-controls={panelId}
+                  onClick={() => {
+                    // Every verb points the keyboard at its own row first, so the key that acts
+                    // on the selected row acts on the one just clicked — `v` on the panel this
+                    // click opened, not on whichever row the keyboard was left on.
+                    onSelect?.(post.id);
                     toggleOverview();
                   }}
                 >
-                  {overviewOpen ? 'Hide overview' : 'Overview'}
+                  {panelOpen ? 'Hide overview' : 'Overview'}
                   {hint('v')}
                 </Button>
               )}
@@ -348,8 +369,8 @@ export function PostRow({
                   variant="outline"
                   size="sm"
                   className="gap-1.5"
-                  onClick={(event) => {
-                    event.stopPropagation();
+                  onClick={() => {
+                    onSelect?.(post.id);
                     resummarize();
                   }}
                 >
@@ -361,8 +382,8 @@ export function PostRow({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
+                onClick={() => {
+                  onSelect?.(post.id);
                   beginArchive();
                 }}
               >
@@ -371,31 +392,35 @@ export function PostRow({
               </Button>
             </div>
 
-            {(hasOverview || hasFooter) && (
-              <AnimatedHeightCollapse open={overviewOpen} testId="reader-row-overview">
-                {overview !== undefined && <PostOverview overview={overview} />}
-                {hasFooter && (
-                  <div className={overviewFooterClass}>
-                    {rerunnable ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          resummarize();
-                        }}
-                      >
-                        <RotateCw size={14} />
-                        Re-summarise
-                      </Button>
-                    ) : (
-                      <span />
-                    )}
-                    {stamp !== null && <span className={summaryStampClass}>{stamp}</span>}
-                  </div>
-                )}
-              </AnimatedHeightCollapse>
+            {/* The id the card and the Overview verb point at sits on a plain wrapper rather than
+                on the collapse itself, so the shared atom keeps its own small prop surface. */}
+            {hasPanel && (
+              <div id={panelId}>
+                <AnimatedHeightCollapse open={panelOpen} testId="reader-row-overview">
+                  {overview !== undefined && <PostOverview overview={overview} />}
+                  {hasFooter && (
+                    <div className={overviewFooterClass}>
+                      {rerunnable ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => {
+                            onSelect?.(post.id);
+                            resummarize();
+                          }}
+                        >
+                          <RotateCw size={14} />
+                          Re-summarise
+                        </Button>
+                      ) : (
+                        <span />
+                      )}
+                      {stamp !== null && <span className={summaryStampClass}>{stamp}</span>}
+                    </div>
+                  )}
+                </AnimatedHeightCollapse>
+              </div>
             )}
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -164,9 +164,9 @@ describe('PostRow — Open', () => {
     );
   });
 
-  it('is disabled with a title when neither exists', () => {
+  it('is disabled with a title when neither exists, and wears no keycap', () => {
     renderReader(
-      <PostRow post={post({ canonical_url: null, rfc822_message_id: null })} now={NOW} />,
+      <PostRow post={post({ canonical_url: null, rfc822_message_id: null })} now={NOW} selected />,
     );
 
     const button = screen.getByRole('button', { name: 'Open' });
@@ -175,6 +175,8 @@ describe('PostRow — Open', () => {
       'title',
       'No link in the post and no Message-ID captured for it.',
     );
+    // `o` runs the row's anchor, and there is no anchor to run — a hint here points at nothing.
+    expect(within(button).queryByText('o')).not.toBeInTheDocument();
   });
 
   it('stamps opened on click, without calling preventDefault', () => {
@@ -249,6 +251,126 @@ describe('PostRow — Overview', () => {
 
     expect(screen.getByRole('button', { name: 'Hide overview' })).toBeInTheDocument();
     expect(screen.getByTestId('reader-row')).toHaveClass('border-accent-green/60');
+  });
+});
+
+describe('PostRow — the disclosure', () => {
+  const PANEL_ROW = {
+    id: 'p-1',
+    summary_state: 'done',
+    gist: 'the row’s own gist',
+    word_count: 3220,
+  } as const;
+
+  /** The card itself — a button whose accessible name is the content it wraps. */
+  function card(): HTMLElement {
+    return screen.getByRole('button', { name: /the row’s own gist/ });
+  }
+
+  it('says what it controls, and that it is shut, when there is a panel', () => {
+    renderReader(
+      <PostRow post={post({ ...PANEL_ROW, overview: makeReaderOverview() })} now={NOW} />,
+    );
+
+    const panel = screen.getByTestId('reader-row-overview').parentElement;
+    expect(card()).toHaveAttribute('aria-expanded', 'false');
+    expect(card()).toHaveAttribute('aria-controls', panel?.id ?? '');
+    expect(screen.getByRole('button', { name: 'Overview' })).toHaveAttribute(
+      'aria-controls',
+      panel?.id ?? '',
+    );
+  });
+
+  it('claims no disclosure at all on a row with nothing to disclose', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={post({ ...PANEL_ROW, summary_state: 'pending' })} now={NOW} />);
+
+    expect(card()).not.toHaveAttribute('aria-expanded');
+    expect(card()).not.toHaveAttribute('aria-controls');
+
+    // The click still points the keyboard here; it just has nothing to open.
+    await user.click(card());
+
+    expect(card()).not.toHaveAttribute('aria-expanded');
+    expect(screen.getByTestId('reader-row').className).not.toContain('bg-secondary/40');
+  });
+
+  it('reaches the panel of a done row whose overview failed the guard', async () => {
+    const user = userEvent.setup();
+    const row = post({
+      ...PANEL_ROW,
+      overview: { broken: true } as unknown as ReaderOverview,
+      model: 'claude-sonnet-5',
+      prompt_version: 2,
+      summarized_at: '2026-09-16T14:05:00.000Z',
+    });
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getByText('claude-sonnet-5 · prompt v2 · Sep 16')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Re-summarise' })).toBeInTheDocument();
+  });
+
+  it('answers v on a done row whose only panel content is the stamp', async () => {
+    const user = userEvent.setup();
+    const row = post({
+      ...PANEL_ROW,
+      overview: { broken: true } as unknown as ReaderOverview,
+      word_count: 0,
+      model: 'claude-sonnet-5',
+      prompt_version: 2,
+      summarized_at: '2026-09-16T14:05:00.000Z',
+    });
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    await user.keyboard('v');
+
+    expect(screen.getByRole('button', { name: 'Hide overview' })).toBeInTheDocument();
+    expect(screen.getByText('claude-sonnet-5 · prompt v2 · Sep 16')).toBeInTheDocument();
+  });
+});
+
+describe('PostRow — every verb points the keyboard at its own row', () => {
+  const ROW = {
+    id: 'p-1',
+    canonical_url: 'https://example.test/alpha',
+    word_count: 900,
+    gist: 'a gist',
+  } as const;
+
+  it.each([
+    ['Open', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
+    ['Overview', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
+    ['Retry summary', post({ ...ROW, summary_state: 'failed' })],
+    ['Archive', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
+  ])('%s', async (name, row) => {
+    const user = userEvent.setup();
+    const onSelect = jest.fn();
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    renderReader(<PostRow post={row} now={NOW} onSelect={onSelect} />, [row]);
+
+    await user.click(screen.getByRole(name === 'Open' ? 'link' : 'button', { name }));
+
+    expect(onSelect).toHaveBeenCalledWith('p-1');
+  });
+
+  it('Re-summarise, from inside the panel', async () => {
+    const user = userEvent.setup();
+    const onSelect = jest.fn();
+    const row = post({
+      ...ROW,
+      summary_state: 'done',
+      overview: makeReaderOverview(),
+      model: 'claude-sonnet-5',
+    });
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    renderReader(<PostRow post={row} now={NOW} onSelect={onSelect} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    await user.click(screen.getByRole('button', { name: 'Re-summarise' }));
+
+    expect(onSelect).toHaveBeenNthCalledWith(2, 'p-1');
   });
 });
 
