@@ -52,13 +52,20 @@ describe('getReaderPublications', () => {
 });
 
 describe('getReaderCandidates', () => {
-  it('reads the candidates view and leaves the ranking to it', async () => {
+  it('ranks by volume then recency — restating the order PostgREST does not guarantee', async () => {
     const supabase = makeSupabaseDouble({ v_reader_candidates: { list: { data: [] } } });
 
     await getReaderCandidates(supabase as never);
 
     expect(supabase.from).toHaveBeenCalledWith('v_reader_candidates');
-    expect(supabase.table('v_reader_candidates').order).not.toHaveBeenCalled();
+    expect(supabase.table('v_reader_candidates').order).toHaveBeenNthCalledWith(
+      1,
+      'message_count',
+      { ascending: false },
+    );
+    expect(supabase.table('v_reader_candidates').order).toHaveBeenNthCalledWith(2, 'last_seen_at', {
+      ascending: false,
+    });
   });
 });
 
@@ -77,16 +84,17 @@ describe('getReaderSettingsSeed', () => {
     });
   });
 
-  it('degrades to two empty lists when the roster read fails — the shell must render', async () => {
+  it('still reads candidates when the roster read fails, degrading only that one slice', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const candidates = [makeReaderCandidate('news@example.com')];
     const supabase = makeSupabaseDouble({
       v_reader_publications: { list: { data: null, error: { message: 'boom' } } },
-      v_reader_candidates: { list: { data: [makeReaderCandidate('news@example.com')] } },
+      v_reader_candidates: { list: { data: candidates } },
     });
 
     await expect(getReaderSettingsSeed(supabase as never)).resolves.toEqual({
       publications: [],
-      candidates: [],
+      candidates,
     });
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();

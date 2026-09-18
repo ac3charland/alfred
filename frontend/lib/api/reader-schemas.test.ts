@@ -23,6 +23,15 @@ describe('createReaderPublicationSchema', () => {
     expect(createReaderPublicationSchema.safeParse({ handle: ' '.repeat(3) }).success).toBe(false);
   });
 
+  it.each([
+    ['no @ at all', 'newsatexample.com'],
+    ['nothing before the @', '@example.com'],
+    ['nothing after the @', 'news@'],
+    ['more than one @', 'news@example@com'],
+  ])('rejects a handle that is not local@domain — %s', (_name, handle) => {
+    expect(createReaderPublicationSchema.safeParse({ handle }).success).toBe(false);
+  });
+
   it('keeps a name when one is given', () => {
     const parsed = createReaderPublicationSchema.safeParse({
       handle: 'news@example.com',

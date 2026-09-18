@@ -123,6 +123,12 @@ describe('POST /api/reader/publications', () => {
     expect(response.status).toBe(400);
   });
 
+  it('400s on a handle that is not local@domain', async () => {
+    signedIn();
+    const response = await POST(post({ handle: 'not-an-email' }), STUB_CONTEXT);
+    expect(response.status).toBe(400);
+  });
+
   it('returns 401 without a session', async () => {
     signedOut();
     const response = await POST(post({ handle: 'news@example.com' }), STUB_CONTEXT);

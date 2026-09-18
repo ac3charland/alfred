@@ -17,7 +17,7 @@ function read(): Request {
 }
 
 describe('GET /api/reader/publications/candidates', () => {
-  it("returns the candidates in the view's own rank", async () => {
+  it('returns the candidates ranked by volume then recency', async () => {
     const candidate = makeReaderCandidate('news@example.com');
     const supabase = makeSupabaseDouble({ v_reader_candidates: { list: { data: [candidate] } } });
     mockCreateClient.mockResolvedValue(supabase as never);
@@ -26,7 +26,14 @@ describe('GET /api/reader/publications/candidates', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual([candidate]);
-    expect(supabase.table('v_reader_candidates').order).not.toHaveBeenCalled();
+    expect(supabase.table('v_reader_candidates').order).toHaveBeenNthCalledWith(
+      1,
+      'message_count',
+      { ascending: false },
+    );
+    expect(supabase.table('v_reader_candidates').order).toHaveBeenNthCalledWith(2, 'last_seen_at', {
+      ascending: false,
+    });
   });
 
   it('returns 401 without a session', async () => {

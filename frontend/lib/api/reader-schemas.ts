@@ -39,13 +39,20 @@ export const patchReaderPostSchema = z.union([
 export type PatchReaderPostInput = z.infer<typeof patchReaderPostSchema>;
 
 /**
+ * A bare `local@domain` shape with both parts non-empty — just enough to reject a handle that
+ * can't be an email address at all (no `@`, or nothing on one side of it). `createReaderPublication`
+ * still does the real work of deriving the local part and domain from whatever passes this.
+ */
+const HANDLE_PATTERN = /^[^\s@]+@[^\s@]+$/;
+
+/**
  * Body for POST /api/reader/publications — putting a sender on the roster by hand, either from
  * the candidates list or typed in. Only the handle is required: it is the join key every match
  * is made on, so it is trimmed here and normalised further server-side, while the display name
  * falls back to something derived from the handle rather than being demanded of the owner.
  */
 export const createReaderPublicationSchema = z.object({
-  handle: z.string().trim().min(1),
+  handle: z.string().trim().min(1).regex(HANDLE_PATTERN, 'Not an email address'),
   name: z.string().trim().min(1).optional(),
 });
 

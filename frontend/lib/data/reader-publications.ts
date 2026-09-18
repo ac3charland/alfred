@@ -55,20 +55,27 @@ export async function getReaderPublications(
 }
 
 /**
- * Bulk senders not on the roster, in the view's own rank: how much they send, then how recently.
- * No `.order()` here on purpose — the ranking is the view's, and restating it in the client
- * would let the two drift apart.
+ * Bulk senders not on the roster, ranked by volume then recency. Restated here rather than left
+ * to the view's own `ORDER BY`, because PostgREST gives no ordering guarantee for a request that
+ * doesn't ask for one — a view's own sort is not part of the wire contract, so the client has to
+ * ask for the order it wants.
  */
 export async function getReaderCandidates(
   supabase: SupabaseClient<Database>,
 ): Promise<{ data: ReaderCandidate[] | null; error: PostgrestError | null }> {
-  return supabase.from('v_reader_candidates').select('*').overrideTypes<ReaderCandidate[]>();
+  return supabase
+    .from('v_reader_candidates')
+    .select('*')
+    .order('message_count', { ascending: false })
+    .order('last_seen_at', { ascending: false })
+    .overrideTypes<ReaderCandidate[]>();
 }
 
 /**
- * The publications seed: two sequenced reads, each checked before the next runs, each degrading
- * to an empty slice on failure. A broken read takes out one panel — an empty roster, still
- * navigable — rather than white-screening the shell, exactly as the Comms settings seed does.
+ * The publications seed: two independent reads, each degrading to an empty slice on its OWN
+ * failure. The candidates read still runs even when the roster read fails (and vice versa) — a
+ * broken roster must not also blank the candidates panel it has nothing to do with — exactly as
+ * the Comms settings seed treats its three slices independently.
  */
 export async function getReaderSettingsSeed(
   client?: SupabaseClient<Database>,
@@ -78,16 +85,17 @@ export async function getReaderSettingsSeed(
   const { data: publications, error: publicationsError } = await getReaderPublications(supabase);
   if (publicationsError) {
     console.error('reader settings seed: could not read the roster', publicationsError);
-    return { publications: [], candidates: [] };
   }
 
   const { data: candidates, error: candidatesError } = await getReaderCandidates(supabase);
   if (candidatesError) {
     console.error('reader settings seed: could not read the candidates', candidatesError);
-    return { publications: publications ?? [], candidates: [] };
   }
 
-  return { publications: publications ?? [], candidates: candidates ?? [] };
+  return {
+    publications: publicationsError ? [] : (publications ?? []),
+    candidates: candidatesError ? [] : (candidates ?? []),
+  };
 }
 
 /**
@@ -95,9 +103,12 @@ export async function getReaderSettingsSeed(
  * handle is normalised HERE, trimmed and lower-cased, because it is the roster's join key: every
  * post is matched against it, so two callers spelling the same sender differently must land on
  * the same row. The display name falls back to the handle's local part (before the `@`) rather
- * than demanding one of the caller, and the domain is derived from the handle the same way
- * discovery derives one for an auto row — so a hand-added publication reads no differently once
- * it is on the roster. Always `source: 'owner'`: this route is never how an auto row is created.
+ * than demanding one of the caller, and the domain is simply everything after the `@` — the
+ * handle's mail host, e.g. `bensbites.beehiiv.com` for `hello@bensbites.beehiiv.com`. That is
+ * NOT how discovery derives a domain for an auto row (`workers/src/reader/discovery.ts` builds a
+ * Substack-specific `<publication>.substack.com`, stripping any `+section` tag first) — the two
+ * derivations differ on purpose, since a hand-typed handle carries no such convention to parse.
+ * Always `source: 'owner'`: this route is never how an auto row is created.
  */
 export async function createReaderPublication(
   supabase: SupabaseClient<Database>,
