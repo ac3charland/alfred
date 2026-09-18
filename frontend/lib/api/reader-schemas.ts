@@ -33,6 +33,37 @@ export type ReaderPostsQuery = z.infer<typeof readerPostsQuerySchema>;
 export const patchReaderPostSchema = z.union([
   z.object({ archived: z.boolean() }).strict(),
   z.object({ opened: z.literal(true) }).strict(),
+  z.object({ resummarize: z.literal(true) }).strict(),
 ]);
 
 export type PatchReaderPostInput = z.infer<typeof patchReaderPostSchema>;
+
+/**
+ * Body for POST /api/reader/publications — putting a sender on the roster by hand, either from
+ * the candidates list or typed in. Only the handle is required: it is the join key every match
+ * is made on, so it is trimmed here and normalised further server-side, while the display name
+ * falls back to something derived from the handle rather than being demanded of the owner.
+ */
+export const createReaderPublicationSchema = z.object({
+  handle: z.string().trim().min(1),
+  name: z.string().trim().min(1).optional(),
+});
+
+export type CreateReaderPublicationInput = z.infer<typeof createReaderPublicationSchema>;
+
+/**
+ * Body for PATCH /api/reader/publications/[id] — every field optional, at least one required
+ * (an empty PATCH has nothing to apply). The handle is NOT editable: it is what every post is
+ * matched on, so changing it would orphan a publication's history rather than rename it. A note
+ * is nullable because clearing one is a real edit; a name is not, because a card with no name
+ * has nothing to render.
+ */
+export const updateReaderPublicationSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    name: z.string().trim().min(1).optional(),
+    notes: z.string().nullable().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'No fields to update' });
+
+export type UpdateReaderPublicationInput = z.infer<typeof updateReaderPublicationSchema>;

@@ -17,6 +17,7 @@ import type {
   CreateItemInput,
   CreatePersonInput,
   CreateProjectInput,
+  CreateReaderPublicationInput,
   CreateRubricVersionInput,
   ListItemsQuery,
   PatchReaderPostInput,
@@ -28,6 +29,7 @@ import type {
   UpdateItemInput,
   UpdatePersonInput,
   UpdateProjectInput,
+  UpdateReaderPublicationInput,
   UpsertHabitEntryInput,
 } from '@/lib/api/schemas';
 import type {
@@ -48,7 +50,11 @@ import type {
   LocVelocityResponse,
   PrRatioResponse,
   Project,
+  ReaderCandidate,
+  ReaderHealthSnapshot,
   ReaderPostListItem,
+  ReaderPublication,
+  ReaderPublicationListItem,
   WeeklyPlan,
 } from '@/lib/types';
 
@@ -749,6 +755,54 @@ export function patchReaderPost(
   });
 }
 
+/**
+ * The roster, ordered by name, each row carrying the arrival of its newest post. Read from the
+ * view rather than the table: "last post" is derived, so nothing writes it back to the roster.
+ */
+export function fetchReaderPublications(): Promise<ReaderPublicationListItem[]> {
+  return apiRequest<ReaderPublicationListItem[]>('/api/reader/publications');
+}
+
+/**
+ * Put a sender on the roster. Returns the stored TABLE row — a publication created a moment ago
+ * has no posts, so there is no derived last-post date to report and the caller supplies null.
+ */
+export function createReaderPublication(
+  body: CreateReaderPublicationInput,
+): Promise<ReaderPublication> {
+  return apiRequest<ReaderPublication>('/api/reader/publications', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Pause, rename or annotate one publication. Returns the stored table row, as the create does. */
+export function updateReaderPublication(
+  id: string,
+  body: UpdateReaderPublicationInput,
+): Promise<ReaderPublication> {
+  return apiRequest<ReaderPublication>(`/api/reader/publications/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Bulk senders not on the roster, in the view's own rank (volume, then recency). */
+export function fetchReaderCandidates(): Promise<ReaderCandidate[]> {
+  return apiRequest<ReaderCandidate[]>('/api/reader/publications/candidates');
+}
+
+/**
+ * Everything the health surface is derived from, in one request: the tick's singleton row and
+ * the Gmail account the mail arrives on. Either may be absent (the tick has never run; the
+ * account was never provisioned) — but a FAILED read throws rather than resolving half a
+ * snapshot, because a surface that renders "all clear" from a broken read is the one failure
+ * this module exists to prevent.
+ */
+export function fetchReaderHealth(): Promise<ReaderHealthSnapshot> {
+  return apiRequest<ReaderHealthSnapshot>('/api/reader/health');
+}
+
 export {
   type AddHandleInput,
   type ChangeTierInput,
@@ -758,6 +812,7 @@ export {
   type CreateItemInput,
   type CreatePersonInput,
   type CreateProjectInput,
+  type CreateReaderPublicationInput,
   type CreateRubricVersionInput,
   type ListItemsQuery,
   type PatchReaderPostInput,
@@ -769,5 +824,6 @@ export {
   type UpdateItemInput,
   type UpdatePersonInput,
   type UpdateProjectInput,
+  type UpdateReaderPublicationInput,
   type UpsertHabitEntryInput,
 } from '@/lib/api/schemas';

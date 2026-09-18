@@ -205,6 +205,43 @@ export type ReaderHealth = Database['public']['Tables']['reader_health']['Row'];
 export type ReaderPostListItem = Omit<ReaderPost, 'text'>;
 
 /**
+ * A roster row with the date of its newest post — what `v_reader_publications` returns and what
+ * the roster renders. Derived rather than stored: nothing writes back to the roster per post, so
+ * "last post" is a `max(received_at)` over that publication's posts, null for one with none.
+ */
+export type ReaderPublicationListItem = ReaderPublication & { last_post_at: string | null };
+
+/**
+ * A bulk sender not on the roster, as `v_reader_candidates` ranks them: how much they send,
+ * when they last did, and the display name they last used.
+ *
+ * Spelled out rather than taken from `Views['v_reader_candidates']['Row']`, because Postgres
+ * views carry no NOT NULL metadata and the generated Row types EVERY column nullable — including
+ * `handle` and `message_count`, which the view's own `group by` and `count(*)` make impossible to
+ * be null. Reads override the query result with `.overrideTypes<ReaderCandidate[]>()`; this is
+ * the shape they override to. `name` stays genuinely nullable: a sender whose every message
+ * arrived with no display name has none, and the UI falls back to the handle.
+ */
+export interface ReaderCandidate {
+  handle: string;
+  name: string | null;
+  message_count: number;
+  last_seen_at: string;
+}
+
+/**
+ * Everything the Reader's health surface is derived from, read together: the tick's singleton
+ * row and the Gmail account its mail arrives on. A dead summariser and a dead mailbox are
+ * different failures with different fixes, so the surface needs both or it can only guess.
+ */
+export interface ReaderHealthSnapshot {
+  /** Absent until the tick has run at least once — that state means the cron has never fired. */
+  health: ReaderHealth | undefined;
+  /** Absent if the personal Gmail account has never been provisioned. */
+  account: CommAccount | undefined;
+}
+
+/**
  * The four summary states `reader_posts.summary_state` is CHECKed down to. The column is a plain
  * `text` in the generated Row type (Postgres CHECKs, unlike enums, carry no type-level metadata),
  * so the union is declared by hand here rather than read off `Database`.
