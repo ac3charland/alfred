@@ -19,7 +19,7 @@ const story = {
 const epic = { ref: 'ALF-12', name: 'Communication Firewall', notes: null, spec_path: null };
 
 const guardrailLine = (prompt) =>
-  prompt.split('\n').find((line) => /schedule a check-in/i.test(line)) ?? '(missing)';
+  prompt.split('\n').find((line) => /proactively schedule a check-in/i.test(line)) ?? '(missing)';
 
 const promptOf = (url) => new URL(url).searchParams.get('q') ?? '';
 

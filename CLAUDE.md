@@ -206,23 +206,25 @@ Being told to skip a step implies skipping all later steps as well:
 
 ### No scheduled check-ins (once the PR is open)
 
-A session's job ends when its deliverable — a PR — is pushed and described; it does not
-keep running to watch what happens next. **Once a PR is open, never schedule a wakeup,
-timer, or recurring job** (e.g. `ScheduleWakeup`, `send_later`, a cron trigger) to poll
-that PR, its CI run, or its deploy for status. A scheduled check-in there burns tokens on
-a poll that almost always finds nothing new. If you genuinely need forward visibility into
-PR activity, subscribe to the event stream (e.g. `subscribe_pr_activity`) so activity
-finds you instead of you polling for it — that is push-driven, not a standing timer, and
-stays allowed. Otherwise, what happens after the PR is open is the human's call, not a
-task this session keeps for itself.
+A session's job is to ship the PR, not to keep initiating checks on it afterward. **Once a
+PR is open, never proactively schedule a wakeup, timer, or recurring job** (e.g.
+`ScheduleWakeup`, `send_later`, a cron trigger) to poll it, its CI run, or its deploy for
+status — left running (overnight, say) that's tokens spent on repeated polls that almost
+always find nothing new. This is **not** license to ignore the PR: when a CI failure or a
+comment actually arrives, respond to it. Get that forward visibility from an event
+subscription (e.g. `subscribe_pr_activity`) instead of a timer — it's push-driven, so
+activity finds you rather than you asking on a schedule. The line is proactive vs.
+reactive: initiating a check yourself is forbidden; answering one that reaches you is not
+just allowed, it's expected.
 
-This is about the PR's lifecycle, not your own pace: scheduling a wakeup to wait out a
-long-running task in your **own** still-in-progress work — a slow `check:slow` run, a
-build, a deploy you're actively driving before the PR exists — is a normal, allowed use of
-the same tools. The line is whether the PR is already open, not whether the tool was used.
+This doesn't restrict pacing your **own** still-in-progress work: scheduling a wakeup to
+wait out a long-running task — a slow `check:slow` run, a build, a deploy you're actively
+driving before the PR exists — is a normal, allowed use of the same tools. The line is
+whether the PR is already open, not whether the tool was used.
 
 This holds everywhere in the SDLC cycle: refinement, spike, bug-fix, epic-refinement, and
-implementation sessions alike stop watching once "PR opened," never before.
+implementation sessions alike stop proactively polling once "PR opened," never before —
+though all of them keep responding to whatever activity an event subscription delivers.
 
 ---
 

@@ -732,20 +732,29 @@ describe('the no-scheduled-check-ins guardrail', () => {
     ['buildBugUrl', buildBugUrl],
     ['buildImplementationUrl', buildImplementationUrl],
     ['buildBypassUrl', buildBypassUrl],
-  ] as const)('%s tells Claude not to schedule a check-in on the PR', (_name, build) => {
-    const prompt = parse(build(makeProject(), makeStory())).prompt ?? '';
-    expect(prompt).toMatch(/don't schedule a check-in/i);
-    expect(prompt).toMatch(/CLAUDE\.md/);
-  });
+  ] as const)(
+    '%s tells Claude not to proactively schedule a check-in on the PR',
+    (_name, build) => {
+      const prompt = parse(build(makeProject(), makeStory())).prompt ?? '';
+      expect(prompt).toMatch(/don't proactively schedule a check-in/i);
+      // Responding to real activity must not be discouraged — only the proactive poll is.
+      expect(prompt).toMatch(/respond when a CI failure or comment actually reaches you/i);
+      expect(prompt).toMatch(/CLAUDE\.md/);
+    },
+  );
 
   it.each([
     ['buildEpicRefinementUrl', buildEpicRefinementUrl],
     ['buildEpicImplementationUrl', buildEpicImplementationUrl],
-  ] as const)('%s tells Claude not to schedule a check-in on the PR', (_name, build) => {
-    const prompt = parse(build(makeProject(), makeEpic())).prompt ?? '';
-    expect(prompt).toMatch(/don't schedule a check-in/i);
-    expect(prompt).toMatch(/CLAUDE\.md/);
-  });
+  ] as const)(
+    '%s tells Claude not to proactively schedule a check-in on the PR',
+    (_name, build) => {
+      const prompt = parse(build(makeProject(), makeEpic())).prompt ?? '';
+      expect(prompt).toMatch(/don't proactively schedule a check-in/i);
+      expect(prompt).toMatch(/respond when a CI failure or comment actually reaches you/i);
+      expect(prompt).toMatch(/CLAUDE\.md/);
+    },
+  );
 });
 
 describe('promptFromLaunchUrl', () => {

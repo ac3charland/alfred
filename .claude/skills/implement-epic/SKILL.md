@@ -98,8 +98,9 @@ phase: epic-implementation
 the board won't move when the epic ships: tell the human to archive the epic themselves once it's
 merged.
 
-**Don't schedule a check-in on it.** CLAUDE.md's "No scheduled check-ins" rule applies
-here — your job as orchestrator ends once the PR is open, not once it merges.
+**Don't proactively schedule a check-in on it.** CLAUDE.md's "No scheduled check-ins"
+rule applies here — once the PR is open, respond to CI failures or comments that reach
+you, but don't poll for them on a timer.
 
 ## When to stop and ask
 
