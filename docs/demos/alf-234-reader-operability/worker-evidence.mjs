@@ -69,9 +69,15 @@ async function main() {
 
     console.log('1 · The ceiling the tick stamps on reader_health');
     const stamps = stubFetch([{}, {}]);
-    // At the start of a run the tick knows the cap and nothing else; by the end it also knows
-    // how much of it the UTC day has spent.
-    await worker.recordRunStart(ENV, NOW, { daily_cap: 30 });
+    // The tick counts the day's model calls BEFORE it stamps the run's start, so BOTH writes
+    // carry the whole ceiling: the first with the spend as the tick found it, the last with its
+    // own calls added. A start stamp that moved `last_run_at` into a new day while the row still
+    // held the previous day's count would read as a budget already spent.
+    await worker.recordRunStart(ENV, NOW, {
+      daily_cap: 30,
+      calls_today: 24,
+      calls_day: '2026-09-18',
+    });
     await worker.recordRunSuccess(ENV, NOW, {
       daily_cap: 30,
       calls_today: 30,
