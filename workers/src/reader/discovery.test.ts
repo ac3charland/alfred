@@ -111,6 +111,59 @@ describe('discoverPublications', () => {
     expect(upsertCall(calls)).toBeUndefined();
   });
 
+  it('derives the domain from the local part with its section tag removed', async () => {
+    // One publication mails from several section handles — `harborline+the-ledger@substack.com` and
+    // `harborline+the-rota@substack.com` are both Harborline. The tag belongs to the section, never
+    // to the host, so `<local>+<tag>.substack.com` would be a domain that resolves to nothing. The
+    // HANDLE keeps the tag: matching a message to a roster row is on the handle.
+    const calls = harness([
+      {
+        handle: 'harborline+the-ledger@substack.com',
+        name: 'Harborline',
+        first_seen_at: '2026-09-12T00:00:00.000Z',
+        message_count: 2,
+      },
+    ]);
+
+    await discoverPublications(env, NOW);
+
+    expect(upsertCall(calls)?.rows[0]).toMatchObject({
+      handle: 'harborline+the-ledger@substack.com',
+      domain: 'harborline.substack.com',
+    });
+  });
+
+  it('never upserts a notification sender, on its local part or on its host', async () => {
+    // `reaction@mg1.substack.com` is the like/reaction notifier: it carries a list header, it is
+    // a substack.com subdomain, and it links to somebody ELSE's post. The view's
+    // `like '%@substack.com'` already excludes the `mg1.` host; both halves are refused again here
+    // because a roster row is hard to notice and harder to remove once the list has filled with
+    // "X liked Y".
+    const calls = harness([
+      {
+        handle: 'reaction@mg1.substack.com',
+        name: 'Some Reader',
+        first_seen_at: '2026-09-12T00:00:00.000Z',
+        message_count: 12,
+      },
+      {
+        handle: 'reaction@substack.com',
+        name: 'Some Reader',
+        first_seen_at: '2026-09-12T00:00:00.000Z',
+        message_count: 3,
+      },
+      {
+        handle: 'no-reply@mg1.substack.com',
+        name: 'Substack',
+        first_seen_at: '2026-09-12T00:00:00.000Z',
+        message_count: 4,
+      },
+    ]);
+
+    await expect(discoverPublications(env, NOW)).resolves.toBe(0);
+    expect(upsertCall(calls)).toBeUndefined();
+  });
+
   it('sends no POST at all when the view found nothing', async () => {
     const calls = harness([]);
 
@@ -125,13 +178,13 @@ describe('discoverPublications', () => {
     const calls = harness(
       [
         {
-          handle: 'a@one.substack.com',
+          handle: 'one@substack.com',
           name: 'One',
           first_seen_at: '2026-09-12T00:00:00.000Z',
           message_count: 1,
         },
         {
-          handle: 'b@two.substack.com',
+          handle: 'two@substack.com',
           name: 'Two',
           first_seen_at: '2026-09-12T00:00:00.000Z',
           message_count: 1,
@@ -149,7 +202,7 @@ describe('discoverPublications', () => {
     harness(
       [
         {
-          handle: 'a@one.substack.com',
+          handle: 'one@substack.com',
           name: 'One',
           first_seen_at: '2026-09-12T00:00:00.000Z',
           message_count: 1,
@@ -168,13 +221,13 @@ describe('discoverPublications', () => {
     // odd row would lose every publication beside it.
     const calls = harness([
       {
-        handle: 'a@one.substack.com',
+        handle: 'one@substack.com',
         name: 'One',
         first_seen_at: '2026-09-12T00:00:00.000Z',
         message_count: 1,
       },
       {
-        handle: 'b@two.substack.com',
+        handle: 'two@substack.com',
         name: WIRE_NULL,
         first_seen_at: '2026-09-12T00:00:00.000Z',
         message_count: 1,
