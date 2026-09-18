@@ -87,6 +87,11 @@ create table reader_posts (
   unique (account_key, gmail_message_id),
   constraint reader_posts_summary_state_valid
     check (summary_state in ('pending', 'done', 'refused', 'failed')),
+  -- Both counts are written by the tick and read back as arithmetic — the attempt ceiling
+  -- compare-and-sets on one, the model's input carries the other — so a negative value is a bug
+  -- the database can refuse outright rather than a number some later query quietly believes.
+  constraint reader_posts_word_count_not_negative check (word_count >= 0),
+  constraint reader_posts_summarize_attempts_not_negative check (summarize_attempts >= 0),
   -- A row that claims to be done without a gist is a row nothing can render — the list draws the
   -- gist unclipped as the row's content, never a placeholder for a summary that isn't there.
   constraint reader_posts_done_has_summary

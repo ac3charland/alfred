@@ -3458,6 +3458,33 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const readerCountsNotNegativeResult = await attempt(
+    'reader_posts_word_count_not_negative rejects a negative word count (ALF-233)',
+    async () => {
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('count-test@example.com', 'Count Test', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      let rejected = false;
+      try {
+        await client.query(
+          `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                      received_at, word_count)
+             values ($1, 'gmail-personal', 'count-test-msg', 'Negative', now(), -1)`,
+          [publicationId],
+        );
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error('a post with a negative word count was accepted');
+
+      return 'a negative word_count was rejected';
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -3523,5 +3550,6 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     readerWorklistResult,
     readerDiscoveryResult,
     readerDoneHasSummaryResult,
+    readerCountsNotNegativeResult,
   ];
 }
