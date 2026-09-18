@@ -14,6 +14,7 @@ import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
+import { ReaderProvider } from '@/lib/stores/reader-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import { WeeklyPlanProvider } from '@/lib/stores/weekly-plan-store';
@@ -32,6 +33,7 @@ import type {
   HabitEntry,
   Item,
   Project,
+  ReaderPostListItem,
   WeeklyPlan,
   WeeklyPlanSummary,
 } from '@/lib/types';
@@ -77,6 +79,10 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
     rubrics?: CommRubric[];
     corrections?: CommCorrection[];
   };
+  /** The Reader's list seed: the unarchived posts, bodies omitted. */
+  reader?: {
+    posts?: ReaderPostListItem[];
+  };
 }
 
 export function renderWithProviders(
@@ -91,6 +97,7 @@ export function renderWithProviders(
     habits = { habits: [], entries: [], today: '2026-07-28' },
     comms = {},
     commsSettings = {},
+    reader = {},
     ...options
   }: ProviderRenderOptions = {},
 ) {
@@ -133,7 +140,9 @@ export function renderWithProviders(
                                   initialRubrics={commsSettings.rubrics ?? []}
                                   initialCorrections={commsSettings.corrections ?? []}
                                 >
-                                  {children}
+                                  <ReaderProvider initialPosts={reader.posts ?? []}>
+                                    {children}
+                                  </ReaderProvider>
                                 </CommsSettingsProvider>
                               </CommsProvider>
                             </HabitsProvider>
