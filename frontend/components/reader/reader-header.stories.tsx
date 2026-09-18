@@ -2,12 +2,7 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 
 import { makeCommAccount } from '@/lib/comms/fixtures';
-import {
-  NO_READER_HEALTH,
-  READER_HEALTH_FIXTURE_NOW,
-  makeReaderHealth,
-  makeReaderPost,
-} from '@/lib/reader/fixtures';
+import { READER_HEALTH_FIXTURE_NOW, makeReaderHealth, makeReaderPost } from '@/lib/reader/fixtures';
 import type { ReaderPostListItem } from '@/lib/types';
 
 import { ReaderHeader } from './reader-header';
@@ -112,10 +107,10 @@ export const CeilingReached: Story = {
   },
 };
 
-/** No health row at all — the cron has never fired, which is not the same as a stall. */
+/** The seeded row with nothing stamped on it — the cron has never fired, which is not a stall. */
 export const NeverRan: Story = {
   args: {
     posts: [waiting(90)],
-    snapshot: { ...NO_READER_HEALTH, account: LIVE_ACCOUNT },
+    snapshot: { health: makeReaderHealth('never', {}, NOW), account: LIVE_ACCOUNT },
   },
 };

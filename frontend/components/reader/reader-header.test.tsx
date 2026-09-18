@@ -70,7 +70,7 @@ describe('ReaderHeader — the dots', () => {
   it('reads both sources as live, and says nothing more', () => {
     renderHeader({ health: liveHealth(), account: LIVE_ACCOUNT });
 
-    expect(screen.getByRole('img', { name: /^summariser · live/ })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'summariser · live' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /^Gmail \(personal\) ·/ })).toBeInTheDocument();
     expect(screen.queryByTestId('reader-health-notes')).not.toBeInTheDocument();
   });
@@ -78,13 +78,24 @@ describe('ReaderHeader — the dots', () => {
   it('names the summariser stalled, in the label rather than in the colour', () => {
     renderHeader({ health: makeReaderHealth('stalled', {}, NOW), account: LIVE_ACCOUNT });
 
-    expect(screen.getByRole('img', { name: 'summariser · stalled · stale' })).toBeInTheDocument();
+    // The summariser's own word, not the dot's tone word — amber covers two states here.
+    expect(screen.getByRole('img', { name: 'summariser · stalled' })).toBeInTheDocument();
+    // And drawn as well as spoken: the line beside the dot says which of the two amber means.
+    expect(screen.getByText('summariser · stalled')).toBeInTheDocument();
   });
 
-  it('names a summariser that has never run — no health row is not a stall', () => {
-    renderHeader({ health: undefined, account: LIVE_ACCOUNT }, [waiting(90)]);
+  it('names a summariser that has never run — an unstamped row is not a stall', () => {
+    renderHeader({ health: makeReaderHealth('never', {}, NOW), account: LIVE_ACCOUNT }, [
+      waiting(90),
+    ]);
 
-    expect(screen.getByRole('img', { name: 'summariser · never ran · stale' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'summariser · never ran' })).toBeInTheDocument();
+  });
+
+  it('reads a database with no health row at all the same way', () => {
+    renderHeader({ ...NO_READER_HEALTH, account: LIVE_ACCOUNT }, [waiting(90)]);
+
+    expect(screen.getByRole('img', { name: 'summariser · never ran' })).toBeInTheDocument();
   });
 
   it('carries the mailbox state and how long it has been silent', () => {
@@ -132,7 +143,7 @@ describe('ReaderHeader — the sentences', () => {
   });
 
   it('sends the owner to the cron when the summariser has never run', () => {
-    renderHeader(NO_READER_HEALTH);
+    renderHeader({ health: makeReaderHealth('never', {}, NOW), account: undefined });
 
     expect(
       screen.getByText("The summariser has never run — check the Worker's cron."),

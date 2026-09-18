@@ -20,6 +20,40 @@ describe('StatusDot', () => {
     expect(screen.getByTitle('The token was rejected')).toBeInTheDocument();
   });
 
+  it('lets the caller name the state in its own words, in place of the tone word', () => {
+    render(
+      <StatusDot
+        state="stale"
+        label="summariser"
+        stateLabel="never ran"
+        title="The summariser has never run"
+      />,
+    );
+
+    expect(screen.getByRole('img', { name: 'summariser · never ran' })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'summariser · stale' })).not.toBeInTheDocument();
+  });
+
+  it('draws the named state too, so the line reads the way it is spoken', () => {
+    render(
+      <StatusDot
+        state="stale"
+        label="summariser"
+        stateLabel="never ran"
+        title="The summariser has never run"
+      />,
+    );
+
+    expect(screen.getByText('summariser · never ran')).toBeInTheDocument();
+  });
+
+  it('draws the bare label when the caller names no state — the tone carries it', () => {
+    render(<StatusDot state="stale" label="Personal" title="Last synced 4h ago" />);
+
+    expect(screen.getByText('Personal')).toBeInTheDocument();
+    expect(screen.queryByText('Personal · stale')).not.toBeInTheDocument();
+  });
+
   it('shows the elapsed suffix only when one is given', () => {
     const { rerender } = render(
       <StatusDot state="stale" label="Personal" title="Last synced 2h ago" />,

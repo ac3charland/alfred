@@ -30,8 +30,11 @@ import { cn } from '@/lib/utils';
  * says it louder, sits above this block and is the view's to render.
  */
 
-/** The Reader's name for the mailbox, which the account calls something shorter of its own. */
-const GMAIL_LABEL = 'Gmail (personal)';
+/**
+ * The Reader's name for the mailbox, which the account calls something shorter of its own. Shared
+ * with the banner, so the two surfaces cannot end up calling the same mailbox different things.
+ */
+export const GMAIL_LABEL = 'Gmail (personal)';
 
 /** The summariser's state in the words the header uses, so the dot and the sentence agree. */
 const SUMMARISER_WORD: Record<SummariserState, string> = {
@@ -101,7 +104,7 @@ function summariserReason(
   stall: { state: SummariserState; since: string | null },
   now: Date,
 ): string {
-  if (stall.state === 'never') return 'The summariser has never run — no health row exists yet';
+  if (stall.state === 'never') return 'The summariser has never run — the tick has never fired';
   if (stall.state === 'stalled') {
     const when = stall.since === null ? '' : ` (${formatElapsed(stall.since, now)})`;
     return `${reason(health?.last_error ?? null, 'No summary has landed')}${when}`;
@@ -164,9 +167,10 @@ export function ReaderHeader({ snapshot, posts, now, description }: ReaderHeader
         <div className="flex flex-wrap items-center gap-3" data-testid="reader-health-dots">
           <StatusDot
             state={SUMMARISER_TONE[stall.state]}
-            // The state rides the LABEL as well as the atom's own accessible suffix: "summariser"
-            // alone would leave the whole claim to the colour, and amber has two meanings here.
-            label={`summariser · ${SUMMARISER_WORD[stall.state]}`}
+            label="summariser"
+            // The summariser's own three words, not the dot's three tones: amber covers both
+            // "stalled" and "never ran" here, so the tone word alone would not say which.
+            stateLabel={SUMMARISER_WORD[stall.state]}
             title={summariserReason(health, stall, now)}
           />
           {/* No account row means the mailbox was never provisioned — there is no dot to draw. */}

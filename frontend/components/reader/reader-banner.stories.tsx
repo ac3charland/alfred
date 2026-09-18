@@ -7,7 +7,7 @@ import { READER_HEALTH_FIXTURE_NOW } from '@/lib/reader/fixtures';
 import { ReaderBanner } from './reader-banner';
 
 /**
- * The three things that can be wrong with the Reader, each drawn on its own. Only one ever
+ * The four things that can be wrong with the Reader, each drawn on its own. Only one ever
  * renders in the app — which one is `readerBanner`'s call — so each state gets a story here
  * rather than a stacked sample.
  */
@@ -53,6 +53,11 @@ export const GmailDead: Story = {
       account: { ...ACCOUNT, last_error_at: ago(120), last_error: 'invalid_grant' },
     },
   },
+};
+
+/** The same mailbox merely gone quiet — amber, because nothing was refused and nothing is lost. */
+export const GmailQuiet: Story = {
+  args: { banner: { kind: 'gmail', state: 'stale', account: ACCOUNT } },
 };
 
 /** Posts arrive and sit: the tick recorded a systemic failure and nothing is being summarised. */

@@ -27,3 +27,16 @@ export const Stale: Story = {
 export const Erroring: Story = {
   args: { state: 'erroring', title: 'The refresh token was rejected (12m)', elapsed: '12m' },
 };
+
+/**
+ * A source whose states have names of its own — the dot's three tones only separate fine from
+ * not fine, so the accessible name carries the word the caller would say out loud.
+ */
+export const NamedState: Story = {
+  args: {
+    state: 'stale',
+    label: 'summariser',
+    stateLabel: 'never ran',
+    title: 'The summariser has never run — the tick has never fired',
+  },
+};

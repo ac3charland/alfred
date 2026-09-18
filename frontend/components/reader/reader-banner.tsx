@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { formatElapsed } from '@/components/comms/comms-format';
+import { GMAIL_LABEL } from '@/components/reader/reader-header';
 import type { ReaderBanner as ReaderBannerState } from '@/lib/reader/health';
 import { cn } from '@/lib/utils';
 
@@ -17,9 +18,10 @@ import { cn } from '@/lib/utils';
  * reading it is different in all three cases, and "something is broken" alone would only teach
  * them to skim past it.
  *
- * Red is reserved for the dead mailbox, the one state that needs a person (re-authorize). The
- * other two are amber: nothing is being lost, and spending the alarm on them would spend it on
- * the one that matters.
+ * Red is reserved for the REFUSED mailbox, the one state that needs a person (re-authorize).
+ * Everything else is amber: a mailbox merely gone quiet, a stalled summariser and a spent
+ * ceiling all leave what has already arrived intact, and spending the alarm on them would spend
+ * it on the one that matters.
  */
 
 /** The two tones, written out in full — Tailwind scans source text, not runtime strings. */
@@ -64,29 +66,37 @@ function ceilingTail(count: number): string {
   );
 }
 
-/** What each banner says. Pure, so a story pins it with an instant rather than staging one. */
-export function readerBannerContent(banner: ReaderBannerState, now: Date): BannerContent {
+/** What each banner says, in one place: the component below only lays it out. */
+function readerBannerContent(banner: ReaderBannerState, now: Date): BannerContent {
   switch (banner.kind) {
     case 'gmail': {
       const { account } = banner;
+      if (banner.state === 'erroring') {
+        const when =
+          account.last_error_at === null ? 'recently' : formatElapsed(account.last_error_at, now);
+        return {
+          tone: 'red',
+          icon: Mail,
+          lead: 'Gmail is not delivering.',
+          rest:
+            `The personal mailbox stopped polling ${when} (${reason(account.last_error, 'the poll was refused')}). ` +
+            'Posts already here are still summarised; nothing new arrives until it is ' +
+            're-authorized — see the Comms header.',
+        };
+      }
+      // Amber, and measured rather than alarmed: a poll that has gone quiet has refused nothing
+      // and lost nothing, and reads exactly like a machine that was asleep.
       const silence =
         account.last_seen_at === null
           ? 'has never synced'
           : `last synced ${formatElapsed(account.last_seen_at, now)}`;
-      const when =
-        account.last_error_at === null ? 'recently' : formatElapsed(account.last_error_at, now);
       return {
-        tone: 'red',
+        tone: 'amber',
         icon: Mail,
-        lead: 'Gmail is not delivering.',
+        lead: `${GMAIL_LABEL} ${silence}`,
         rest:
-          banner.state === 'erroring'
-            ? `The personal mailbox stopped polling ${when} (${reason(account.last_error, 'the poll was refused')}). ` +
-              'Posts already here are still summarised; nothing new arrives until it is ' +
-              're-authorized — see the Comms header.'
-            : `The personal mailbox ${silence}; the poll has stopped running. Posts already ` +
-              'here are still summarised; nothing new arrives until it starts again — see the ' +
-              'Comms header.',
+          '— the poll has stopped running. Posts already here are still summarised; nothing new ' +
+          'arrives until it starts again — see the Comms header.',
       };
     }
     case 'stalled': {
@@ -121,6 +131,9 @@ export function ReaderBanner({ banner, now }: ReaderBannerProperties) {
   return (
     <div
       role="status"
+      // Announced once, when it appears, and not again: the elapsed readings inside re-word
+      // themselves every minute, and a live region would read the whole banner out each time.
+      aria-live="off"
       className={cn('flex items-start gap-2.5 rounded-xl px-3 py-2.5', TONE[tone].shell)}
     >
       <Icon size={15} className={cn('mt-0.5 shrink-0', TONE[tone].icon)} />

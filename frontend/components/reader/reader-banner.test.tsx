@@ -15,7 +15,7 @@ function hoursAgo(hours: number): string {
 
 const ACCOUNT = makeCommAccount('Personal', { key: 'gmail-personal' });
 
-describe('ReaderBanner — the dead mailbox', () => {
+describe('ReaderBanner — the refused mailbox', () => {
   it('quotes the refusal, says what still works, and points at the fix', () => {
     render(
       <ReaderBanner
@@ -51,6 +51,16 @@ describe('ReaderBanner — the dead mailbox', () => {
     expect(screen.getByRole('status')).toHaveClass('border-accent-red/50', 'glow-red');
   });
 
+  it('is announced once rather than re-read every time the elapsed reading re-words itself', () => {
+    render(
+      <ReaderBanner banner={{ kind: 'gmail', state: 'erroring', account: ACCOUNT }} now={NOW} />,
+    );
+
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'off');
+  });
+});
+
+describe('ReaderBanner — the mailbox gone quiet', () => {
   it('measures a silent mailbox by its last sync rather than by an error it never recorded', () => {
     render(
       <ReaderBanner
@@ -64,15 +74,32 @@ describe('ReaderBanner — the dead mailbox', () => {
     );
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      'The personal mailbox last synced 9h ago; the poll has stopped running.',
+      'Gmail (personal) last synced 9h ago — the poll has stopped running.',
     );
-    expect(screen.getByRole('status')).toHaveTextContent('until it starts again');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Posts already here are still summarised; nothing new arrives until it starts again',
+    );
+  });
+
+  it('wears amber, not red — nothing has been refused and nothing is being lost', () => {
+    render(
+      <ReaderBanner
+        banner={{
+          kind: 'gmail',
+          state: 'stale',
+          account: { ...ACCOUNT, last_seen_at: hoursAgo(9) },
+        }}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveClass('border-accent-amber/50', 'glow-amber');
   });
 
   it('says so plainly when the mailbox has never synced at all', () => {
     render(<ReaderBanner banner={{ kind: 'gmail', state: 'stale', account: ACCOUNT }} now={NOW} />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('The personal mailbox has never synced;');
+    expect(screen.getByRole('status')).toHaveTextContent('Gmail (personal) has never synced —');
   });
 });
 

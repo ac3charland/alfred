@@ -30,19 +30,30 @@ interface StatusDotProperties {
   title: string;
   /** How long it has been this way, when that is worth saying beside the label. */
   elapsed?: string | undefined;
+  /**
+   * The state in the caller's own words — "never ran" where the tone is merely `stale`. A source
+   * whose states have names of their own says them both on screen and aloud: the tone words are
+   * a palette of three, and naming the state twice in two vocabularies reads as two claims.
+   */
+  stateLabel?: string | undefined;
 }
 
-export function StatusDot({ state, label, title, elapsed }: StatusDotProperties) {
+export function StatusDot({ state, label, title, elapsed, stateLabel }: StatusDotProperties) {
+  // One string, drawn and spoken: a dot whose visible text and accessible name disagree is two
+  // different claims about the same source.
+  const claim = `${label} · ${stateLabel ?? state}`;
+
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={title}>
       <span
         // The state rides the LABEL, not the colour alone: a red dot and an amber dot are the
         // same dot to a screen reader, and to plenty of eyes.
-        aria-label={`${label} · ${state}`}
+        aria-label={claim}
         role="img"
         className={cn('h-2 w-2 shrink-0 rounded-full', DOT_TONE[state])}
       />
-      <span>{label}</span>
+      {/* Without a state word of its own, the tone carries the state and the text is the name. */}
+      <span>{stateLabel === undefined ? label : claim}</span>
       {elapsed !== undefined && <span className="text-muted-foreground/70">· {elapsed}</span>}
     </span>
   );
