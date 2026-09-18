@@ -657,6 +657,34 @@ describe('pollGmail', () => {
     });
   });
 
+  it('decodes an RFC 2047 subject and display name before storing them', async () => {
+    // Substack encodes every non-ASCII subject and byline this way, and a long one arrives as two
+    // ADJACENT encoded words split mid-word — the mirror stored the raw `=?UTF-8?q?…?=` before.
+    const calls = harness({
+      mailbox: {
+        listIds: ['m1'],
+        messages: [
+          gmailMessage('m1', {
+            headers: [
+              { name: 'From', value: '=?UTF-8?q?Mira_Vant=C3=A9?= <mira@example.com>' },
+              {
+                name: 'Subject',
+                value: '=?UTF-8?q?Let=E2=80=99s_talk_about_bert?= =?UTF-8?q?hing_fees?=',
+              },
+            ],
+          }),
+        ],
+      },
+    });
+
+    await pollGmail(personalOnly, DAY_17);
+
+    expect(insertedRows(calls)[0]).toMatchObject({
+      sender_name: 'Mira Vant\u00E9',
+      subject: 'Let\u2019s talk about berthing fees',
+    });
+  });
+
   it('stores a newsletter and then shelves it, flagged as the filter’s doing', async () => {
     const calls = harness({
       mailbox: {

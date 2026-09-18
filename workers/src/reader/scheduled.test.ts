@@ -1,11 +1,7 @@
 import type { GmailMessage } from '../comms/gmail-api';
 import { type FetchInit, type FetchInput, spyOnFetch } from '../fetch-stub';
 import { READER_DEFAULT_DAILY_CAP } from './config';
-import {
-  ESSAY_MESSAGE,
-  PLAIN_TEXT_ONLY_MESSAGE,
-  ROUNDUP_VIEW_IN_BROWSER_MESSAGE,
-} from './fixtures';
+import { ESSAY_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE, READ_IN_APP_MESSAGE } from './fixtures';
 import { READER_TICK_BUDGET_MS, runReaderTick } from './scheduled';
 import * as summarize from './summarize';
 import type { ReaderEnv, ReaderSummary, SummaryInput, SummaryOutcome } from './types';
@@ -319,7 +315,10 @@ describe('runReaderTick — ordering', () => {
 
     await runReaderTick(env, NOW);
 
-    expect(summarizedTitles(summarized)).toEqual(['An earlier post', 'The Grain Ledger']);
+    expect(summarizedTitles(summarized)).toEqual([
+      'An earlier post',
+      'Harborline\u2019s Grain Ledger \u{1F91D} the berth telemetry',
+    ]);
   });
 
   it('falls back to a retry’s author, never to the post’s own title, for the publication', async () => {
@@ -814,7 +813,7 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
         worklistRow(),
         worklistRow({
           comm_message_id: 'comm-roundup',
-          gmail_message_id: ROUNDUP_VIEW_IN_BROWSER_MESSAGE.id,
+          gmail_message_id: READ_IN_APP_MESSAGE.id,
           publication_id: 'pub-cadence',
           sender_handle: 'cadence@substack.com',
         }),
@@ -825,7 +824,7 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
           sender_handle: 'tallowfield@substack.com',
         }),
       ],
-      messages: [ESSAY_MESSAGE, ROUNDUP_VIEW_IN_BROWSER_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE],
+      messages: [ESSAY_MESSAGE, READ_IN_APP_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE],
     });
     const summarized = mockSummarize(DONE, DONE, DONE);
 
@@ -841,7 +840,7 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
     expect(inserts[2]).toMatchObject({ html_extracted: false, title: 'Notes from the third week' });
     expect(inserts[0]).toMatchObject({
       html_extracted: true,
-      canonical_url: 'https://harborline.substack.com/p/the-grain-ledger',
+      canonical_url: 'https://open.substack.com/pub/harborline/p/the-grain-ledger',
     });
 
     expect(restCalls(calls, 'comm_messages')).toHaveLength(3);

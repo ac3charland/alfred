@@ -13,21 +13,24 @@
  * subject line; the `<h1>` markup changes between templates and a wrong pick puts a nav label on
  * the row where the title should be.
  *
- * The CANONICAL URL is the first `/p/<slug>` path on ANY host. A custom-domain publication mails
- * from `news@example.com` and links to `example.substack.com/p/…` or `www.example.com/p/…`, and
- * older templates wrap the link in a tracking host — so the path is the Substack-specific signal
- * and the host is not. The scheme filter in front of it is a SECURITY rule rather than tidiness:
- * this value is rendered as an `href` the owner clicks, so a `javascript:` bookmarklet or a
- * `mailto:` share link sitting ahead of the real post link (both of which Substack's own template
- * puts there) must be refused, not merely deprioritised.
+ * The CANONICAL URL is the first `/p/<slug>` path on ANY host, with an optional `/pub/<name>`
+ * in front of it. A custom-domain publication mails from `news@example.com` and links to
+ * `example.substack.com/p/…` or `www.example.com/p/…`, and the live template links to
+ * `open.substack.com/pub/<name>/p/<slug>` — so the path is the Substack-specific signal and the
+ * host is not. The scheme filter in front of it is a SECURITY rule rather than tidiness: this
+ * value is rendered as an `href` the owner clicks, so a `javascript:` bookmarklet or a `mailto:`
+ * share link sitting ahead of the real post link must be refused, not merely deprioritised.
  *
  * `html_extracted` records WHICH body produced the text, and is the opposite preference from
  * `extractText`'s. The classifier wants the sender's own plain text; the summariser wants the
- * post, and a newsletter's plain part is routinely a two-line stub pointing at the web version.
+ * post. The plain part is NOT a stub — Substack ships a complete text alternative, and a cleaner
+ * one than the markup — but it is the markup that carries the structure and the links this file
+ * reads, and taking the body from the same place as the URL keeps the two describing one artefact.
  * So HTML wins here and the plain part is the fallback, and the flag says which one it was so a
  * disappointing summary can be traced to the body it was made from.
  */
 import {
+  decodeEncodedWords,
   decodePart,
   flatten,
   headerValue,
@@ -73,19 +76,27 @@ const ANCHOR = /<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))[^>]*>(
 /** `<title>…</title>`, the fallback source for a post whose subject line was empty. */
 const HTML_TITLE = /<title[^>]*>([\S\s]*?)<\/title>/i;
 
-/** A Substack post path: `/p/<slug>`, whatever follows it. Query and fragment are not in a path. */
-const POST_PATH = /^\/p\/[^/?#]+/;
+/**
+ * A Substack post path: `/p/<slug>` with an optional `/pub/<name>` in front, whatever follows it.
+ * Query and fragment are not in a path.
+ *
+ * The `/pub/<name>` prefix is what `open.substack.com` uses, and the live template links the post
+ * only that way — a publication-hosted `<pub>.substack.com/p/<slug>` anchor appears in no post
+ * mail at all any more, though a reaction notification still carries one (to somebody ELSE's post).
+ */
+const POST_PATH = /^(?:\/pub\/[^/?#]+)?\/p\/[^/?#]+/;
 
 /**
- * The anchor text Substack's templates use for the link to the post's own web version.
+ * The anchor text a template uses for the link to the post's own web version.
  *
- * The one word this pattern carries beyond the obvious is `post`, because the plain wording does
- * not match what Substack actually ships — "View this post in your browser".
- * Without it the fallback would never fire on real mail, which is the only thing it exists for: a
- * roundup has no `/p/` link, so this anchor is the ONLY route from the row to the post. The
- * addition is a strict widening — every string the pinned pattern matched still matches.
+ * This is the fallback for mail that carries NO slug link at all, and nothing more. The live
+ * template's `READ IN APP` sits on the `/pub/…/p/…` link, which the path rule takes first and
+ * without needing to read any anchor text; the wordings kept here are the ones older and
+ * hand-rolled templates use, where the anchor text is the only route from the row to the post.
+ * Each addition is a strict widening — every string the previous pattern matched still matches.
  */
-const VIEW_IN_BROWSER = /view (this )?(post )?(in|on) (your )?browser|read online|view online/i;
+const VIEW_IN_BROWSER =
+  /view (this )?(post )?(in|on) (your )?browser|read online|view online|read in app/i;
 
 /** The entities worth decoding by name inside an `href`. Everything else arrives numerically. */
 const NAMED_ENTITIES: Record<string, string> = {
@@ -185,6 +196,13 @@ function canonicalUrl(html: string | undefined): string | undefined {
   // Query and fragment are stripped from the post link on purpose: what Substack appends there is
   // the campaign that delivered this copy of the email, and it has no business in a stored URL
   // the owner may open months later.
+  //
+  // First in DOCUMENT ORDER wins, full stop — including when a publication-hosted `/p/<slug>` and
+  // an `open.substack.com/pub/…/p/…` both appear. They address the same post, so a preference
+  // between the two hosts would buy nothing and leave a second rule to keep true of a template
+  // that changes without telling us. A `substack.com/redirect/…` wrapper is never unwrapped: the
+  // post's URL is in its base64 payload, but the wrapper is an EXPIRING tracker, so the link the
+  // owner opens months from now has to be one that still resolves.
   const post = found.find((anchor) => POST_PATH.test(anchor.url.pathname));
   if (post !== undefined) return `${post.url.origin}${post.url.pathname}`;
 
@@ -199,6 +217,26 @@ function htmlTitle(html: string | undefined): string {
   if (html === undefined) return '';
   const match = HTML_TITLE.exec(html);
   return collapse(decodeEntities((match?.[1] ?? '').replaceAll(/<[^>]*>/g, ' ')));
+}
+
+/**
+ * The person on the byline.
+ *
+ * Substack writes a `From` display name three ways: the publication's name, the author's name, and
+ * `<Author> from <Publication>`. The third is the one worth undoing — the row already shows the
+ * publication, so leaving the suffix on prints it twice and pushes the name that matters left.
+ * The match is against the ROSTER's name for the publication, so an author whose own name happens
+ * to end in "from something" keeps it.
+ */
+function authorName(displayName: string | undefined, publication: string): string {
+  if (displayName === undefined) return publication;
+
+  const suffix = ` from ${publication}`;
+  if (!displayName.toLowerCase().endsWith(suffix.toLowerCase())) return displayName;
+
+  const person = displayName.slice(0, -suffix.length).trim();
+  // A display name that is ONLY the suffix leaves no person behind it; keep what was written.
+  return person === '' ? displayName : person;
 }
 
 /** `internalDate` is milliseconds since the epoch AS A STRING — the time the message ARRIVED. */
@@ -240,13 +278,15 @@ export function extractPost(
   );
 
   const headers = payload?.headers;
-  const subject = collapse(headerValue(headers, 'Subject') ?? '');
+  // Every non-ASCII subject arrives RFC 2047 encoded, and a long one as two adjacent encoded
+  // words split mid-word — the row's title is read by a person, so it is decoded before it is one.
+  const subject = collapse(decodeEncodedWords(headerValue(headers, 'Subject') ?? ''));
   const from = parseAddress(headerValue(headers, 'From'));
   const fallbackTitle = htmlTitle(html);
 
   return {
     title: subject === '' ? (fallbackTitle === '' ? UNTITLED : fallbackTitle) : subject,
-    author: from?.name ?? publication.name,
+    author: authorName(from?.name, publication.name),
     canonical_url: canonicalUrl(html),
     received_at: receivedAt(message, fallback),
     // Brackets kept, as comms stores them: `<abc@mail.example>` is the id, brackets included.

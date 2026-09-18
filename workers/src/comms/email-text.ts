@@ -19,6 +19,11 @@
  * the `Message-ID`, `In-Reply-To` and `References` headers alike — and the drain matches a reply's
  * references against the stored ids verbatim, so stripping them on one side and not the other
  * would quietly break every reply detection.
+ *
+ * Headers are RFC 2047 decoded on the way OUT of a header, not inside `headerValue`. A header's
+ * raw value is what a signature covers and what a comparison against another header has to use,
+ * so the decode belongs to the callers that show a header to a person — a subject line, a display
+ * name — and `decodeEncodedWords` is what they call.
  */
 import type { GmailHeader, GmailPayload } from './gmail-api';
 
@@ -66,6 +71,40 @@ const MAX_CODE_POINT = 0x10_ff_ff;
  */
 const MAX_BMP_CODE_POINT = 0xff_ff;
 
+/**
+ * `=?charset?encoding?text?=` — one RFC 2047 encoded word. The encoded text may not contain `?`
+ * (RFC 2047 §2), which is what makes the non-greedy-free `[^?]*` safe here.
+ */
+const ENCODED_WORD = /=\?([^\s?]+)\?([^\s?]+)\?([^?]*)\?=/g;
+
+/**
+ * The charsets a header is decoded from, mapped to the label `TextDecoder` is built with.
+ *
+ * Keyed on the charset with its punctuation removed, so `UTF-8`, `utf8` and `UTF_8` are one entry.
+ * Deliberately a short list rather than "whatever `TextDecoder` accepts": the Workers runtime's
+ * decoder does not carry the whole encoding registry, so a permissive version would decode a
+ * charset locally and throw in production. Anything else leaves the word exactly as it arrived,
+ * which is readable-ish and honest, where a mis-decode is neither.
+ */
+const HEADER_CHARSETS: Record<string, string> = {
+  utf8: 'utf8',
+  usascii: 'utf8',
+  iso88591: 'iso-8859-1',
+  latin1: 'iso-8859-1',
+};
+
+/**
+ * Characters that occupy a position and show nothing: the padding run Substack's second preheader
+ * is built from (U+034F, U+00AD) plus the zero-width family. They survive entity decoding, so a
+ * token made only of them is counted as a word by anything splitting on whitespace — 201 of them
+ * ahead of the first real sentence of every post.
+ *
+ * U+00A0 and U+2007 are deliberately absent: both are whitespace to JavaScript's `\s`, so
+ * `collapse` folds them into the surrounding space on its own. An alternation rather than one
+ * character class because U+034F is a combining mark, which a class may not carry.
+ */
+const INVISIBLE = /\u034F|\u00AD|[\u200B-\u200D]|\u2060|\uFEFF/g;
+
 /** A header's value, matched case-insensitively. A present-but-empty header reads as absent. */
 export function headerValue(headers: GmailHeader[] | undefined, name: string): string | undefined {
   const wanted = name.toLowerCase();
@@ -75,6 +114,97 @@ export function headerValue(headers: GmailHeader[] | undefined, name: string): s
     if (value !== '') return value;
   }
   return undefined;
+}
+
+/**
+ * A header value with its RFC 2047 encoded words decoded — `=?UTF-8?q?Let=E2=80=99s_go?=` into
+ * `Let\u2019s go`.
+ *
+ * Every non-ASCII subject and display name Substack sends arrives this way, and a long one arrives
+ * as two ADJACENT encoded words split mid-word. RFC 2047 §6.2 makes the whitespace between two
+ * encoded words folding rather than content, so it is dropped — keep it and `Inter` + `pretability`
+ * come back as two words. Whitespace next to ordinary text is content and stays.
+ *
+ * A word this cannot read — an unknown charset, an encoding letter that is neither Q nor B, a
+ * truncated hex escape — is left exactly as it arrived. A reader shown `=?Shift_JIS?B?…?=` can
+ * still tell what happened; a reader shown a plausible mis-decode cannot.
+ */
+export function decodeEncodedWords(value: string): string {
+  let decoded = '';
+  let cursor = 0;
+  let afterWord = false;
+
+  for (const match of value.matchAll(ENCODED_WORD)) {
+    const word = decodeWord(match[1] ?? '', match[2] ?? '', match[3] ?? '');
+    if (word === undefined) continue;
+
+    const between = value.slice(cursor, match.index);
+    // Whitespace, and only whitespace, BETWEEN two encoded words is the fold. Anything else —
+    // including the text of a word that could not be decoded — is the sender's own.
+    if (!(afterWord && between !== '' && between.trim() === '')) decoded += between;
+
+    decoded += word;
+    cursor = match.index + match[0].length;
+    afterWord = true;
+  }
+  return decoded + value.slice(cursor);
+}
+
+/** One encoded word's text, or undefined when nothing here could be trusted to decode it. */
+function decodeWord(charset: string, encoding: string, text: string): string | undefined {
+  // `=?utf-8*en?q?…?=` — RFC 2231 hangs a language tag off the charset, which changes nothing here.
+  const bare = (charset.split('*', 1)[0] ?? '').toLowerCase().replaceAll(/\W|_/g, '');
+  const label = HEADER_CHARSETS[bare];
+  if (label === undefined) return undefined;
+
+  const letter = encoding.toLowerCase();
+  if (letter !== 'q' && letter !== 'b') return undefined;
+  const bytes = letter === 'q' ? quotedPrintableBytes(text) : base64Bytes(text);
+  if (bytes === undefined) return undefined;
+
+  try {
+    return new TextDecoder(label).decode(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The bytes behind a Q-encoded word. `_` is a space (RFC 2047 §4.2), `=XX` is one hex byte.
+ *
+ * A `=` that is not followed by two hex digits, and any character above U+00FF, mean this is not
+ * the Q encoding it claims to be — undefined rather than a guess.
+ */
+function quotedPrintableBytes(text: string): Uint8Array | undefined {
+  const bytes: number[] = [];
+  for (const token of text.matchAll(/=([\da-f]{2})|([\S\s])/gi)) {
+    const hex = token[1];
+    if (hex !== undefined) {
+      bytes.push(Number.parseInt(hex, 16));
+      continue;
+    }
+    const char = token[2] ?? '';
+    if (char === '=') return undefined;
+    const code = char === '_' ? 0x20 : (char.codePointAt(0) ?? 0);
+    if (code > 0xff) return undefined;
+    bytes.push(code);
+  }
+  return Uint8Array.from(bytes);
+}
+
+/** The bytes behind a base64 run, padded back to a multiple of four. Undefined when it is not base64. */
+function base64Bytes(text: string): Uint8Array | undefined {
+  const compact = text.replaceAll(/\s/g, '');
+  const padded = compact + '='.repeat((4 - (compact.length % 4)) % 4);
+
+  let binary: string;
+  try {
+    binary = atob(padded);
+  } catch {
+    return undefined;
+  }
+  // `atob` yields one latin-1 character per byte; what those bytes mean is the charset's business.
+  return Uint8Array.from(binary, (char) => char.codePointAt(0) ?? 0);
 }
 
 /** One address from a header value. Undefined when there was no address in it to find. */
@@ -168,10 +298,13 @@ export function extractText(payload?: GmailPayload): ExtractedBody {
   return { body: '', extracted: onlyAttachments, hasAttachments };
 }
 
-/** The display name of an address, unquoted, or undefined when there wasn't one. */
+/**
+ * The display name of an address, unquoted and RFC 2047 decoded, or undefined when there wasn't
+ * one. Substack encodes a byline the same way it encodes a subject, so a name with an apostrophe
+ * or an accent in it reaches the mirror as `=?UTF-8?q?…?=` unless it is decoded here.
+ */
 function displayName(raw: string): string | undefined {
-  const trimmed = raw
-    .trim()
+  const trimmed = decodeEncodedWords(raw.trim())
     .replace(/^"(.*)"$/s, '$1')
     .trim();
   return trimmed === '' ? undefined : trimmed;
@@ -212,29 +345,32 @@ export function decodePart(part: GmailPayload): string | undefined {
   return decodeBase64Url(data);
 }
 
-/** Gmail encodes every part body as base64url, unpadded. */
+/** Gmail encodes every part body as base64url, unpadded. The bytes themselves are UTF-8. */
 function decodeBase64Url(data: string): string | undefined {
-  const base64 = data.replaceAll('-', '+').replaceAll('_', '/');
-  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-
-  let binary: string;
-  try {
-    binary = atob(padded);
-  } catch {
-    return undefined;
-  }
-  // `atob` yields one latin-1 character per byte; the bytes themselves are UTF-8.
-  const bytes = Uint8Array.from(binary, (char) => char.codePointAt(0) ?? 0);
-  return new TextDecoder().decode(bytes);
+  const bytes = base64Bytes(data.replaceAll('-', '+').replaceAll('_', '/'));
+  return bytes === undefined ? undefined : new TextDecoder().decode(bytes);
 }
 
-/** Markup reduced to the words in it. Crude on purpose — the classifier reads prose, not layout. */
+/**
+ * Markup reduced to the words in it. Crude on purpose — the classifier reads prose, not layout.
+ *
+ * `display:none` elements go the same way `<script>` and `<style>` do, content and all: what the
+ * sender hid is not what the reader read. Substack's own preheaders are the case that matters —
+ * a preview line repeating the subject, then ~400 characters of invisible padding that reaches a
+ * word count as some 200 empty words. The known limit is the same as the script/style strip's:
+ * a `<div style="display:none">` holding another `<div>` ends at the INNER closing tag, so the
+ * outer element's tail survives. Real mail nests a table in the preheader, never another div.
+ */
 export function htmlToText(html: string): string {
-  const visible = html.replaceAll(/<(script|style)[^>]*>[\S\s]*?<\/\1>/gi, ' ');
+  const visible = html
+    .replaceAll(/<(script|style)[^>]*>[\S\s]*?<\/\1>/gi, ' ')
+    .replaceAll(/<(\w+)[^>]*style\s*=\s*"[^"]*display\s*:\s*none[^"]*"[^>]*>[\S\s]*?<\/\1>/gi, ' ');
   const broken = visible
     .replaceAll(/<br[^>]*>/gi, '\n')
     .replaceAll(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, '\n');
-  return collapse(decodeEntities(broken.replaceAll(/<[^>]*>/g, ' ')));
+  // The invisible strip runs AFTER the entities are decoded: the padding is written `&#173;`, so
+  // there is nothing to strip until it is a character.
+  return collapse(decodeEntities(broken.replaceAll(/<[^>]*>/g, ' ')).replaceAll(INVISIBLE, ''));
 }
 
 /** The named and numeric entities that survive into a stripped body. */

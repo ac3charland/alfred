@@ -1,7 +1,9 @@
 import {
   MAX_BODY_CHARS,
+  decodeEncodedWords,
   extractText,
   headerValue,
+  htmlToText,
   parseAddress,
   parseAddressList,
   parseMessageIdList,
@@ -100,6 +102,85 @@ describe('parseMessageIdList', () => {
 
   it('has nothing to report for a missing header', () => {
     expect(parseMessageIdList()).toEqual([]);
+  });
+});
+
+describe('decodeEncodedWords', () => {
+  it('leaves a header that carries no encoded word exactly as written', () => {
+    expect(decodeEncodedWords('Open Thread 451')).toBe('Open Thread 451');
+  });
+
+  it('decodes a Q word, with `_` standing for a space', () => {
+    expect(decodeEncodedWords('=?UTF-8?q?Let=E2=80=99s_try_again?=')).toBe('Let\u2019s try again');
+  });
+
+  it('decodes a B word', () => {
+    expect(decodeEncodedWords('=?UTF-8?B?VGhlIEdyYWluIExlZGdlcg==?=')).toBe('The Grain Ledger');
+  });
+
+  it('joins two adjacent encoded words with NO space, as RFC 2047 requires', () => {
+    // Substack splits a long subject mid-word, so the whitespace between the two encoded words is
+    // folding rather than content — keeping it would put a space inside "Ledger".
+    expect(decodeEncodedWords('=?UTF-8?q?The_Grain_Led?= =?UTF-8?q?ger_in_full?=')).toBe(
+      'The Grain Ledger in full',
+    );
+  });
+
+  it('keeps ordinary text sitting between and around encoded words', () => {
+    expect(decodeEncodedWords('Re: =?UTF-8?q?caf=C3=A9?= hours')).toBe('Re: caf\u00E9 hours');
+  });
+
+  it('decodes an emoji, which arrives as three Q-encoded bytes', () => {
+    expect(decodeEncodedWords('=?UTF-8?q?ship_=F0=9F=A4=9D_it?=')).toBe('ship \u{1F91D} it');
+  });
+
+  it('decodes latin1 as well as UTF-8', () => {
+    expect(decodeEncodedWords('=?ISO-8859-1?Q?caf=E9?=')).toBe('caf\u00E9');
+  });
+
+  it('leaves a word whose charset it cannot decode exactly as written', () => {
+    const raw = '=?Shift_JIS?B?grCCsA==?=';
+    expect(decodeEncodedWords(raw)).toBe(raw);
+  });
+
+  it('leaves a malformed word verbatim rather than inventing text for it', () => {
+    // An unknown encoding letter and a truncated hex escape are both "we do not know what this
+    // says" — a header alfred cannot read is shown as it arrived, never guessed at.
+    expect(decodeEncodedWords('=?UTF-8?x?whatever?=')).toBe('=?UTF-8?x?whatever?=');
+    expect(decodeEncodedWords('=?UTF-8?q?broken=E2=8?=')).toBe('=?UTF-8?q?broken=E2=8?=');
+  });
+});
+
+describe('htmlToText', () => {
+  it('drops a display:none preheader together with everything inside it', () => {
+    // Substack opens every post with two hidden divs: the preview line, then a padding run of
+    // invisible characters that would otherwise arrive as hundreds of empty "words".
+    const html =
+      '<div class="preview" style="display:none;font-size:1px;">Not for the reader</div>' +
+      '<p>The post itself</p>';
+    expect(htmlToText(html)).toBe('The post itself');
+  });
+
+  it('drops the hidden element however the style attribute spells it', () => {
+    const html =
+      '<div style="DISPLAY: NONE;max-height:0">hidden</div><span style="display: none">also</span>' +
+      '<p>visible</p>';
+    expect(htmlToText(html)).toBe('visible');
+  });
+
+  it('strips the invisible code points the padding run is built from', () => {
+    // U+034F and U+00AD survive entity decoding and read as words to anything counting tokens;
+    // U+00A0 and U+2007 are whitespace to `\s`, so collapsing folds them away on its own.
+    const html = '<p>&#847;&nbsp;&#8199;&#173;&#847;&nbsp;&#8199;&#173; real words</p>';
+    expect(htmlToText(html)).toBe('real words');
+  });
+
+  it('removes a soft hyphen from inside a word rather than splitting it', () => {
+    expect(htmlToText('<p>inter&#173;pretability</p>')).toBe('interpretability');
+  });
+
+  it('keeps a visible element that merely mentions display in its text', () => {
+    expect(htmlToText('<p>display: none is a CSS rule</p>')).toBe('display: none is a CSS rule');
   });
 });
 

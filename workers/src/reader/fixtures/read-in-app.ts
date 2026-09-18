@@ -1,29 +1,39 @@
 /**
- * A link roundup with no `/p/` link anywhere — the fallback path.
+ * A link roundup with no slug link anywhere — the anchor-text fallback.
  *
- * Roundups are mostly outbound links to other people's writing, and Substack's roundup template
- * points at the post itself only through the "View this post in your browser" line at the top.
- * So the `^/p/<slug>` rule finds nothing here and the anchor TEXT is what identifies the post,
- * which is exactly the branch this fixture exists to pin — which also means NO anchor in here may
- * carry a `/p/` path, not even one belonging to somebody else's publication: the first-`/p/`-link
- * rule would take it and this branch would never run.
+ * Roundups are mostly outbound links to other people's writing, and this template points at the
+ * post itself only through the button at the top. So neither `/p/<slug>` nor `/pub/<name>/p/<slug>`
+ * matches anything here and the anchor TEXT is what identifies the post, which is exactly the
+ * branch this fixture exists to pin — which also means NO anchor in here may carry a post path,
+ * not even one belonging to somebody else's publication: the first-slug-link rule would take it
+ * and this branch would never run.
  *
- * The view-in-browser link is on the publication's own `substack.com` host while several outbound
- * links are not, so a host-based rule would still find the right one here; the extractor keys on the PATH
- * because the essay fixture is where a host-based rule breaks, and one rule serves both.
+ * The button's URL keeps its query on purpose: `/i/<id>/<token>` is an opaque per-email permalink,
+ * and stripping the query leaves a URL that resolves to nothing.
+ *
+ * The publication, the slug-less permalink and every line of prose are invented.
  */
 import type { GmailMessage } from '../../comms/gmail-api';
 import { encodeBody } from './encode';
 
+/** The invisible padding run, as on every other post mail. */
+const PREHEADER_PADDING = '&#847; &nbsp; &#8199; &#173;'.repeat(100);
+
+/** `display:none`, exactly as the template spells it on both preheaders. */
+const HIDDEN =
+  'display:none;font-size:1px;color:#333333;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;';
+
 const HTML = `<!doctype html>
-<html>
-  <head><title>Ten links, one argument</title></head>
-  <body>
+<html lang="en" dir="ltr">
+  <head><meta charset="utf-8"><title>Ten links, one argument</title></head>
+  <body class="email-body">
+    <div class="preview" style="${HIDDEN}">Everything I read this week was, somehow, about scheduling</div>
+    <div class="preview" style="${HIDDEN}">${PREHEADER_PADDING}</div>
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
       <tr><td align="center">
         <table width="600" cellpadding="0" cellspacing="0" role="presentation">
           <tr><td style="padding:12px 24px;font-size:12px;color:#888;">
-            <a href="https://cadence.substack.com/i/149023188/9f2a?utm_source=email">View this post in your browser</a>
+            <a href="https://cadence.substack.com/i/149023188/9f2a?utm_source=email">READ IN APP</a>
           </td></tr>
           <tr><td style="padding:0 24px;">
             <h1>Ten links, one argument</h1>
@@ -51,8 +61,8 @@ const HTML = `<!doctype html>
   </body>
 </html>`;
 
-/** No `/p/` link at all; the post is reachable only through the "view in browser" anchor. */
-export const ROUNDUP_VIEW_IN_BROWSER_MESSAGE: GmailMessage = {
+/** No post path at all; the post is reachable only through the `READ IN APP` anchor's text. */
+export const READ_IN_APP_MESSAGE: GmailMessage = {
   id: 'gmail-roundup-1',
   threadId: 'thread-roundup-1',
   labelIds: ['INBOX', 'CATEGORY_UPDATES'],
@@ -64,12 +74,16 @@ export const ROUNDUP_VIEW_IN_BROWSER_MESSAGE: GmailMessage = {
       { name: 'To', value: 'reader@example.com' },
       { name: 'Subject', value: 'Ten links, one argument' },
       { name: 'Date', value: 'Tue, 16 Sep 2026 12:06:40 +0000' },
-      { name: 'Message-ID', value: '<roundup-1@mail.cadence.substack.com>' },
+      { name: 'Message-Id', value: '<roundup-1@mail.cadence.substack.com>' },
       { name: 'List-Unsubscribe', value: '<https://cadence.substack.com/action/disable_email>' },
     ],
     parts: [
       {
-        mimeType: 'text/html; charset="UTF-8"',
+        mimeType: 'text/html',
+        headers: [
+          { name: 'Content-Type', value: 'text/html; charset="utf-8"' },
+          { name: 'Content-Transfer-Encoding', value: 'quoted-printable' },
+        ],
         body: { size: HTML.length, data: encodeBody(HTML) },
       },
     ],
