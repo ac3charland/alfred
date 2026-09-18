@@ -65,3 +65,8 @@ step.
 - [ ] `frontend/components/comms/comms-people-view.tsx` — the roster's alphabetical order goes
       through `stableSorted(people, …)` because `[...people].toSorted(…)` doesn't type-check; the
       shared helper is fine to keep, but `toSorted` says it directly.
+- [ ] `frontend/lib/reader/gmail-filter.ts` — the enabled handles go through `stableSorted(…)`
+      because `.toSorted((a, b) => a.localeCompare(b))` doesn't type-check; `toSorted` is the
+      direct form.
+- [ ] `frontend/lib/stores/reader-settings-store.tsx` — `useReaderPublications()` keeps the roster
+      in name order with `stableSorted(publications, …)` for the same reason.
