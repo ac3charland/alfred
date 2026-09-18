@@ -201,3 +201,51 @@ _Filled in by the owner after the deploy._
   empty `novel_ideas`?
 - The measured volume: inbound `has_list_header` Substack messages per day over the last two weeks.
 - The Worker's CPU-time and subrequest readings from the Cloudflare dashboard after the first full day.
+
+## Story 2 build notes
+
+What the second story's build learned that its own spec does not say. Same rule as above: only
+what a reader who wasn't here needs.
+
+- **The ceiling columns did not pre-exist.** Story 1 kept `reader_health` to
+  `last_run_at`/`last_success_at`/`last_error`/`last_error_at` and derived the ceiling from a count
+  over `reader_posts.model_called_at`, so `daily_cap`, `calls_today` and `calls_day` are ALL new
+  here and all three are stamped by the tick on the health writes it was already making — the
+  run-start write carries the cap, the terminal write carries the cap and the count.
+  — `0036_reader_operability.sql`, `workers/src/reader/health.ts`
+- **`last_post_at` is a view, not a column.** `v_reader_publications` is the roster plus
+  `max(received_at)` over its posts; the store reconciles a publication PATCH as a shallow patch,
+  never a replace, so the server's table row cannot overwrite the derived column with `undefined`.
+  — `lib/data/reader-publications.ts`, `lib/stores/reader-settings-store.tsx`
+- **Selection did not exist on a row; the card click now does both.** Story 1's row had only an
+  expansion state, so `PostList` owns the selection and a card click selects AND toggles the
+  overview — one gesture, so a mouse and a keyboard owner never disagree about which row is live.
+  Escape drops the selection only; it leaves an open panel open.
+- **`unarchive` is new** (Story 1 shipped three store actions and no caller for the fourth), and
+  `replaceAll`'s keep-rule grew an archive-aware clause: a row the active read does not name
+  survives when it is archived or when this tab wrote it, and is dropped otherwise.
+- **There is no "no-text marker" to key off.** Story 1 never shipped one, so the row hides the
+  re-summarise verb on `word_count === 0` and the route is what tells a stale tab which of the two
+  refusals applies. — `components/reader/post-row.tsx`, `app/api/reader/posts/[id]/route.ts`
+- **The reading list's heading kept Story 1's words** ("Reader", "N to read") rather than the
+  spec's mockup wording; the health block sits beside it and the banner above it.
+- **Hints are verified by their class, not by a media query.** jsdom has no layout, so
+  `post-row.styles.test.ts` pins `hidden md:inline-flex` (and the absence of `sm:`) and the
+  Storybook baselines carry the desktop rendering.
+- **Live updates (realtime) were dropped**, per the story's own S2-11 escape hatch: a Postgres
+  change payload carries the whole row, so every `reader_posts` UPDATE would stream up to 400 000
+  characters of `text` and Supabase drops payloads over its size limit — the posts most worth
+  summarising are exactly the ones that would never arrive. The migration carries no
+  `supabase_realtime` line and the store has no subscription; the focus/visibility refetch covers
+  the common case. Still the obvious next step if a surface needs it.
+- **Comms was not edited.** Two pure functions are imported read-only (`accountHealth` from
+  `@/lib/comms`, `formatElapsed` from `@/components/comms/comms-format`), plus `isHotkeyBlocked`
+  from `@/lib/comms/hotkeys` as Story 1's `message-row.tsx` already does. The one exception is a
+  test: `renderWithProviders` mounts every module's provider, so the Reader store's new health
+  refetch had to be stubbed in `comms-queue-view.test.tsx`.
+- **`settle()` is duplicated, deliberately.** The Reader needs comms' promise-swallowing helper but
+  may not import from `components/comms/`, and the shared layer is `components/atoms/` — so
+  `components/reader/publications-settle.ts` is its own copy. Folding both onto a shared atom is a
+  follow-up, next to folding comms' `AccountDot` onto the new `StatusDot`.
+- **The paywalled-teaser marker from Story 1's handoff was not built** — nothing detects the cut,
+  and `headline` is still stored and unrendered.
