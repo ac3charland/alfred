@@ -178,14 +178,14 @@ function displayName(raw: string): string | undefined {
 }
 
 /** Every leaf of the MIME tree, in order. A `multipart/*` node contributes only its parts. */
-function flatten(payload: GmailPayload): GmailPayload[] {
+export function flatten(payload: GmailPayload): GmailPayload[] {
   const parts = payload.parts ?? [];
   if (parts.length === 0) return [payload];
   return parts.flatMap((part) => flatten(part));
 }
 
 /** A part the owner would call an attachment: it has a filename, so it is a file and not prose. */
-function isAttachment(part: GmailPayload): boolean {
+export function isAttachment(part: GmailPayload): boolean {
   return (part.filename ?? '') !== '';
 }
 
@@ -205,7 +205,7 @@ function firstDecodable(leaves: GmailPayload[], mimeType: string): string | unde
 }
 
 /** One part's text, or undefined when there was nothing readable there. */
-function decodePart(part: GmailPayload): string | undefined {
+export function decodePart(part: GmailPayload): string | undefined {
   const data = part.body?.data;
   // A genuinely empty body arrives as a size with no data — empty is not the same as unreadable.
   if (data === undefined) return part.body?.size === 0 ? '' : undefined;
@@ -229,7 +229,7 @@ function decodeBase64Url(data: string): string | undefined {
 }
 
 /** Markup reduced to the words in it. Crude on purpose — the classifier reads prose, not layout. */
-function htmlToText(html: string): string {
+export function htmlToText(html: string): string {
   const visible = html.replaceAll(/<(script|style)[^>]*>[\S\s]*?<\/\1>/gi, ' ');
   const broken = visible
     .replaceAll(/<br[^>]*>/gi, '\n')
