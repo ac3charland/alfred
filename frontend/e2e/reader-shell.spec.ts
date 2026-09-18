@@ -269,7 +269,9 @@ test.describe('the reading list — the journeys', () => {
         return state.readerPosts.find((post) => post.id === '55555555-5555-4555-8555-555555555551')
           ?.opened_at;
       })
-      .not.toBeNull();
+      // A string, not merely "not null": `.not.toBeNull()` also passes on the `undefined` a row
+      // the mock never held would return, which is the failure this poll exists to catch.
+      .toEqual(expect.any(String));
   });
 
   test('the overview expands in place, one row at a time is not enforced', async ({

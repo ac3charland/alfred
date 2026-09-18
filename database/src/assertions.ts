@@ -3459,7 +3459,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
   );
 
   const readerCountsNotNegativeResult = await attempt(
-    'reader_posts_word_count_not_negative rejects a negative word count (ALF-233)',
+    'reader_posts_word_count_not_negative and _summarize_attempts_not_negative each reject a ' +
+      'negative count (ALF-233)',
     async () => {
       const publication = await client.query<{ id: string }>(
         `insert into reader_publications (handle, name, source)
@@ -3468,20 +3469,27 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       const publicationId = publication.rows[0]?.id;
       if (!publicationId) throw new Error('could not seed the publication');
 
-      let rejected = false;
-      try {
-        await client.query(
-          `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
-                                      received_at, word_count)
-             values ($1, 'gmail-personal', 'count-test-msg', 'Negative', now(), -1)`,
-          [publicationId],
-        );
-      } catch {
-        rejected = true;
+      // Both counters, because one CHECK holding says nothing about the other: a migration that
+      // dropped either would otherwise leave this assertion green.
+      for (const [column, value] of [
+        ['word_count', -1],
+        ['summarize_attempts', -1],
+      ] as const) {
+        let rejected = false;
+        try {
+          await client.query(
+            `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                        received_at, ${column})
+               values ($1, 'gmail-personal', 'count-test-msg-${column}', 'Negative', now(), $2)`,
+            [publicationId, value],
+          );
+        } catch {
+          rejected = true;
+        }
+        if (!rejected) throw new Error(`a post with a negative ${column} was accepted`);
       }
-      if (!rejected) throw new Error('a post with a negative word count was accepted');
 
-      return 'a negative word_count was rejected';
+      return 'a negative word_count and a negative summarize_attempts were both rejected';
     },
   );
 
