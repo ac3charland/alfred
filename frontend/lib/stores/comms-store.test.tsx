@@ -211,7 +211,20 @@ describe('messageStreamAction', () => {
         filtered_reason: judged.filtered_reason,
         classify_attempts: judged.classify_attempts,
         reclassify_requested_at: judged.reclassify_requested_at,
+        reader_claimed_at: judged.reader_claimed_at,
       },
+    });
+  });
+
+  it('carries the Reader claim stamp onto the patch, so a claimed newsletter leaves the shelf live', () => {
+    const claimed = makeCommMessage(ACCOUNT, {
+      tier: 'fyi',
+      judged_by: 'filter',
+      reader_claimed_at: '2026-09-16T10:05:00.000Z',
+    });
+    const action = messageStreamAction(payload<CommMessage>('UPDATE', claimed));
+    expect(action && 'patch' in action ? action.patch : undefined).toMatchObject({
+      reader_claimed_at: '2026-09-16T10:05:00.000Z',
     });
   });
 

@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
+import { ViewLink } from '@/components/tasks/view-link';
 import { cn } from '@/lib/utils';
 
 /**
@@ -19,17 +20,23 @@ import { cn } from '@/lib/utils';
  * shelved is here, and can be promoted back into the queue from its own tier picker. What it
  * does NOT buy is the recovery happening — nothing forces this open, which is the honest limit
  * of storing everything.
+ *
+ * Newsletters the Reader has claimed are not on the shelf at all — they have a better home —
+ * but nothing vanishes silently: a muted second line says how many went to the Reader and
+ * links there. A sentence rather than a badge, for the same reason the shelf itself is unbadged.
  */
 
 interface FyiShelfProperties {
   /** How many rows are on the shelf — read in the summary line, never as a badge. */
   count: number;
+  /** How many newsletters the Reader claimed off the shelf. The second line renders only above zero. */
+  claimedCount?: number;
   /** Told to the view, which walks shelf rows with `j`/`k` only while they are visible. */
   onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }
 
-export function FyiShelf({ count, onOpenChange, children }: FyiShelfProperties) {
+export function FyiShelf({ count, claimedCount = 0, onOpenChange, children }: FyiShelfProperties) {
   const [open, setOpen] = React.useState(false);
   // The shelf is thousands of rows by design, so they are not mounted until it is first
   // opened — a collapsed region still renders its children, and this one would be the most
@@ -63,6 +70,16 @@ export function FyiShelf({ count, onOpenChange, children }: FyiShelfProperties) 
           owed — open to review
         </span>
       </DisclosureToggle>
+
+      {claimedCount > 0 && (
+        <p className="pl-5 text-xs text-muted-foreground/70">
+          {claimedCount.toLocaleString('en-US')} {claimedCount === 1 ? 'newsletter' : 'newsletters'}{' '}
+          went to the{' '}
+          <ViewLink href="/reader" className="underline underline-offset-2 hover:text-foreground">
+            Reader →
+          </ViewLink>
+        </p>
+      )}
 
       <AnimatedHeightCollapse open={open} testId="fyi-shelf-collapse">
         <div id={regionId} className="flex flex-col pt-1">

@@ -40,11 +40,30 @@ export function isQueued(message: CommMessage): boolean {
  * Is this message on the FYI shelf? Everything inbound that has been judged (or cleared) and is
  * not in the queue: the `fyi` tier itself, plus every row that left the queue by one of its
  * exits. Unjudged rows are excluded — nothing is shelved until something decides to shelve it.
+ *
+ * A newsletter the Reader has claimed (`reader_claimed_at` set) is excluded too: it has a better
+ * home in the reading list, and the shelf says how many went there rather than listing them
+ * twice. The row itself is untouched — it keeps its tier and its filter flag, still counts on
+ * the health strip, and is still swept at 60 days. This predicate and the shelf branch of the
+ * server read (`getCommMessagesByScope`) must agree exactly; `isQueued` deliberately never
+ * reads the column, because a claimed message that owes a reply is still an obligation.
  */
 export function isShelved(message: CommMessage): boolean {
   if (message.direction !== 'inbound') return false;
   if (isQueued(message)) return false;
+  if (message.reader_claimed_at !== null) return false;
   return message.tier !== null || message.cleared_at !== null;
+}
+
+/**
+ * How many inbound messages the Reader has claimed — the number the shelf's second line reads
+ * out, so nothing leaves the shelf silently. Derived from the messages the store already holds;
+ * no separate query.
+ */
+export function readerClaimedCount(messages: CommMessage[]): number {
+  return messages.filter(
+    (message) => message.direction === 'inbound' && message.reader_claimed_at !== null,
+  ).length;
 }
 
 /** Newest first — the order every tier and the shelf read in. */

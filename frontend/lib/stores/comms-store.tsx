@@ -146,7 +146,8 @@ export function commsReducer(state: CommsState, action: CommsAction): CommsState
  * writer: the owner's three row-verb routes (tier / clear / reclassify), the
  * `comm_create_inbox_item` RPC, and the ingestion Worker's newsletter filter and classifier
  * sweep (`gmail.ts`/`ingest.ts`'s `shelveNewsletters`, `sweep.ts`'s `file`/`countAttempt`/
- * `writeVerdict`, `sweep-store.ts`'s `clearReclassifyRequest`). None of them ever touches `body`,
+ * `writeVerdict`, `sweep-store.ts`'s `clearReclassifyRequest`), and the Reader intake's claim
+ * stamp (`workers/src/reader/`, `reader_claimed_at`). None of them ever touches `body`,
  * `subject`, `participants`, or any other ingest-only column — see {@link messageUpdatePatch}.
  */
 type MessageUpdateColumns = Pick<
@@ -162,6 +163,7 @@ type MessageUpdateColumns = Pick<
   | 'filtered_reason'
   | 'classify_attempts'
   | 'reclassify_requested_at'
+  | 'reader_claimed_at'
 >;
 
 /**
@@ -201,6 +203,9 @@ function messageUpdatePatch(row: CommMessage): MessageUpdateColumns {
     filtered_reason: row.filtered_reason,
     classify_attempts: row.classify_attempts,
     reclassify_requested_at: row.reclassify_requested_at,
+    // The Reader's claim, so a newsletter leaves the shelf in an open tab the moment the Worker
+    // stamps it — the shelf count beneath it would otherwise be wrong for the life of the tab.
+    reader_claimed_at: row.reader_claimed_at,
   };
 }
 

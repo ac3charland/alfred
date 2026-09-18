@@ -1,5 +1,5 @@
 import { makeCommMessage, resetCommFixtureClock } from './fixtures';
-import { groupByTier, isQueued, isShelved, queueCount, shelved } from './queue';
+import { groupByTier, isQueued, isShelved, queueCount, readerClaimedCount, shelved } from './queue';
 
 const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
 
@@ -63,6 +63,27 @@ describe('isShelved', () => {
     const waiting = makeCommMessage(ACCOUNT);
     expect(isQueued(waiting)).toBe(false);
     expect(isShelved(waiting)).toBe(false);
+  });
+
+  it('does not shelve a newsletter the Reader has claimed — it has a better home', () => {
+    const claimed = makeCommMessage(ACCOUNT, {
+      tier: 'fyi',
+      judged_by: 'filter',
+      filtered_reason: 'newsletter',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+    expect(isShelved(claimed)).toBe(false);
+    expect(shelved([claimed])).toEqual([]);
+  });
+
+  it('still queues a claimed message that owes a reply — the Reader hides an archive, never an obligation', () => {
+    const claimedButQueued = makeCommMessage(ACCOUNT, {
+      tier: 'today',
+      judged_by: 'model',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+    expect(isQueued(claimedButQueued)).toBe(true);
+    expect(queueCount([claimedButQueued])).toBe(1);
   });
 
   it('does not shelve a queued message, or anything outbound', () => {
@@ -147,5 +168,22 @@ describe('queueCount', () => {
 
   it('is zero for an empty module — the resting state', () => {
     expect(queueCount([])).toBe(0);
+  });
+});
+
+describe('readerClaimedCount', () => {
+  it('counts inbound messages the Reader claimed and nothing else', () => {
+    const claimed = makeCommMessage(ACCOUNT, {
+      tier: 'fyi',
+      judged_by: 'filter',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+    const unclaimed = makeCommMessage(ACCOUNT, { tier: 'fyi', judged_by: 'filter' });
+    const outbound = makeCommMessage(ACCOUNT, {
+      direction: 'outbound',
+      reader_claimed_at: '2026-02-01T09:05:00.000Z',
+    });
+    expect(readerClaimedCount([claimed, unclaimed, outbound])).toBe(1);
+    expect(readerClaimedCount([])).toBe(0);
   });
 });

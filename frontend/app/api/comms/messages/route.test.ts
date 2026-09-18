@@ -51,6 +51,16 @@ describe('GET /api/comms/messages', () => {
     expect(supabase.table('comm_messages').or).toHaveBeenCalledWith(
       'tier.eq.fyi,cleared_at.not.is.null',
     );
+    // Minus anything the Reader claimed — the server predicate mirrors `isShelved` exactly.
+    expect(supabase.table('comm_messages').is).toHaveBeenCalledWith('reader_claimed_at', null);
+  });
+
+  it('never filters the queue on the Reader claim — an obligation is never hidden', async () => {
+    const supabase = signedIn();
+
+    await GET(read('scope=queue'), STUB_CONTEXT);
+
+    expect(supabase.table('comm_messages').is).not.toHaveBeenCalledWith('reader_claimed_at', null);
   });
 
   it('orders newest first, whichever side is asked for', async () => {

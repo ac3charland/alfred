@@ -6,6 +6,7 @@ import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
 import { QUEUED_TIERS } from '@/lib/comms';
 import { rowHotkeyAction } from '@/lib/comms/hotkeys';
+import { readerClaimedCount } from '@/lib/comms/queue';
 import { useNow } from '@/lib/hooks/use-now';
 import { useCommsPeople } from '@/lib/stores/comms-settings-store';
 import {
@@ -162,7 +163,11 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
             </TierSection>
           ))}
 
-          <FyiShelf count={shelf.length} onOpenChange={setShelfOpen}>
+          <FyiShelf
+            count={shelf.length}
+            claimedCount={readerClaimedCount(messages)}
+            onOpenChange={setShelfOpen}
+          >
             {visibleShelf.map((message) => renderRow(message, true))}
             {shelf.length > visibleShelf.length && (
               <Button
