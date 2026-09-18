@@ -3,11 +3,19 @@
  *
  * The ordering is the whole module and every step of it is load-bearing:
  *
- *   config → health start → discovery → roster → ceiling → worklist → token → the loop → health end
+ *   config → credentials → health start → discovery → roster → ceiling → worklist → token →
+ *   the loop → health end
  *
- * CONFIG FIRST, and fail closed. The daily ceiling is the money guard, and the one failure
- * it must not have is an unparsable value silently becoming "unlimited" — so a bad var stamps the
- * health row and returns before anything reaches Gmail, let alone the model.
+ * CONFIG AND CREDENTIALS FIRST, and fail closed. The daily ceiling is the money guard, and the
+ * one failure it must not have is an unparsable value silently becoming "unlimited" — so a bad
+ * var stamps the health row and returns before anything reaches Gmail, let alone the model. The
+ * Gmail bindings are checked in the same breath and for the same reason: `env` already holds the
+ * answer, so learning it from four wasted reads would be a bill for nothing.
+ *
+ * EVERYTHING ELSE IS INSIDE ONE try/catch. Every store and discovery helper throws on a non-2xx,
+ * and a throw that escapes `scheduled()` is recorded by the runtime and by nothing else — no log
+ * line, no health stamp, so a module whose every write is being rejected still reads as merely
+ * quiet. The catch turns that into the failure the health row is for.
  *
  * THE CEILING IS DERIVED, not counted on the health row: it is `countRows` over the
  * `model_called_at` stamp that every terminal patch writes anyway. A counter on a singleton would
@@ -31,7 +39,7 @@
 import { type GmailClient, gmailClient } from '../comms/gmail-api';
 import { fetchAccessToken } from '../comms/gmail-oauth';
 import { fetchJson, restQueryUrl } from '../supabase';
-import { readReaderConfig } from './config';
+import { type ReaderConfig, readReaderConfig } from './config';
 import { discoverPublications } from './discovery';
 import { recordRunError, recordRunStart, recordRunSuccess } from './health';
 import { type IntakeResult, NO_READABLE_BODY, intakePost } from './intake';
@@ -260,7 +268,13 @@ async function prepareRetry(
   return {
     kind: 'summarize',
     id: row.id,
-    input: toSummaryInput({ ...row, text }, roster.get(row.publication_id) ?? row.title),
+    // The post's own TITLE is never the fallback: it is not the name of anything that publishes.
+    // A roster row that has gone (a renamed handle, a deleted publication) leaves the author, and
+    // then the same 'unknown' the eval script prints for a message with no usable `From` name.
+    input: toSummaryInput(
+      { ...row, text },
+      roster.get(row.publication_id) ?? row.author ?? 'unknown',
+    ),
     attempts: row.summarize_attempts,
   };
 }
@@ -353,24 +367,51 @@ async function applyOutcome(
   }
 }
 
+/** Whatever was thrown, as a line the health row can carry — as `comms/scheduled.ts` spells it. */
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Run one tick. Resolves only when the tick is finished: a scheduled invocation is torn down the
  * moment the promise it returns settles, so anything not awaited here is killed part-way through.
+ *
+ * Nothing thrown gets out. Every store and discovery helper throws on a non-2xx, and a throw that
+ * reaches `scheduled()` is invisible everywhere the health row is read — so it is recorded there
+ * instead, with whatever the tick had already counted kept.
  */
 export async function runReaderTick(
   env: ReaderEnv,
   now: Date,
   clock: () => number = () => Date.now(),
 ): Promise<ReaderTickSummary> {
-  const start = clock();
-  const nowIso = now.toISOString();
-
   const parsed = readReaderConfig(env);
   if (!parsed.ok) {
     await recordRunError(env, now, parsed.error);
     return emptySummary([parsed.error]);
   }
-  const config = parsed.config;
+
+  const summary = emptySummary();
+  try {
+    return await tick(env, now, clock, parsed.config, summary);
+  } catch (error) {
+    const message = describe(error);
+    await recordRunError(env, now, message);
+    summary.failures.push(message);
+    return summary;
+  }
+}
+
+/** The tick itself, tallying into the `summary` its caller holds so a throw keeps what it earned. */
+async function tick(
+  env: ReaderEnv,
+  now: Date,
+  clock: () => number,
+  config: ReaderConfig,
+  summary: ReaderTickSummary,
+): Promise<ReaderTickSummary> {
+  const start = clock();
+  const nowIso = now.toISOString();
 
   // The credential carve-out, checked before anything costs a request. An unset key is otherwise
   // indistinguishable from an outage, and every post would take the transport path forever.
@@ -378,10 +419,21 @@ export async function runReaderTick(
   if (apiKey === '') {
     const error = 'ANTHROPIC_API_KEY is not set';
     await recordRunError(env, now, error);
-    return emptySummary([error]);
+    summary.failures.push(error);
+    return summary;
   }
 
-  const summary = emptySummary();
+  // Every Gmail binding is declared optional, because a binding is only as real as the deploy
+  // makes it — so an absent one is a systemic failure the health row names, not a crash. Checked
+  // here, beside the other credential, rather than after four reads that `env` already answers.
+  const missing = MISSING_GMAIL_BINDINGS.find((name) => (env[name] ?? '') === '');
+  if (missing !== undefined) {
+    const error = `${missing} is not set`;
+    await recordRunError(env, now, error);
+    summary.failures.push(error);
+    return summary;
+  }
+
   await recordRunStart(env, now);
 
   summary.discovered = await discoverPublications(env, now);
@@ -404,16 +456,6 @@ export async function runReaderTick(
     ...fresh.map((row): WorkItem => ({ kind: 'fresh', row })),
   ].slice(0, READER_TICK_LIMIT);
 
-  // Every Gmail binding is declared optional, because a binding is only as real as the deploy
-  // makes it — so an absent one is a systemic failure the health row names, not a crash.
-  const missing = MISSING_GMAIL_BINDINGS.find((name) => (env[name] ?? '') === '');
-  if (missing !== undefined) {
-    const error = `${missing} is not set`;
-    await recordRunError(env, now, error);
-    summary.failures.push(error);
-    return summary;
-  }
-
   const token = await fetchAccessToken(
     {
       GMAIL_OAUTH_CLIENT_ID: env.GMAIL_OAUTH_CLIENT_ID ?? '',
@@ -434,6 +476,14 @@ export async function runReaderTick(
   for (const item of work) {
     if (clock() - start >= READER_TICK_BUDGET_MS) {
       summary.skippedForBudget += 1;
+      continue;
+    }
+
+    // A capped retry is not even prepared. Its preparation IS the lease, and claiming a row this
+    // tick will not summarise strands it until the staleness bound releases it a quarter of an
+    // hour later — where a fresh post's insert-as-claim simply leaves the lease free.
+    if (item.kind === 'retry' && capped()) {
+      summary.skippedForCap += 1;
       continue;
     }
 

@@ -38,7 +38,9 @@ const env: ReaderEnv = {
  * optionals as `key?: string` without `| undefined`, and under `exactOptionalPropertyTypes` the
  * two are different things: the key may be missing, but it may not be present and empty.
  */
-function without(key: 'READER_MODEL' | 'READER_DAILY_CAP' | 'ANTHROPIC_API_KEY'): ReaderEnv {
+function without(
+  key: 'READER_MODEL' | 'READER_DAILY_CAP' | 'ANTHROPIC_API_KEY' | 'GMAIL_OAUTH_CLIENT_ID',
+): ReaderEnv {
   const entries = Object.entries(env).filter(([name]) => name !== key);
   return Object.fromEntries(entries) as unknown as ReaderEnv;
 }
@@ -84,6 +86,8 @@ interface Scenario {
   inserted?: { id: string }[];
   /** Rows the lease CAS reports as matched. Defaults to one. */
   leased?: number;
+  /** A status to answer every `reader_posts` PATCH with, instead of the matched rows. */
+  postPatchStatus?: number;
 }
 
 /** One worklist row, in the view's shape. */
@@ -163,6 +167,10 @@ function harness(scenario: Scenario = {}): Call[] {
         );
       }
       if (method === 'PATCH') {
+        if (scenario.postPatchStatus !== undefined)
+          return Promise.resolve(
+            new Response('postgrest said no', { status: scenario.postPatchStatus }),
+          );
         const matched = url.includes('summary_state=eq.pending') ? (scenario.leased ?? 1) : 1;
         return Promise.resolve(
           Response.json(Array.from({ length: matched }, () => ({ id: 'row' }))),
@@ -260,6 +268,20 @@ describe('runReaderTick — failing closed', () => {
     expect(summarized).not.toHaveBeenCalled();
   });
 
+  it('names a missing Gmail binding before spending a read on it', async () => {
+    // The check is fail-closed, and `env` already says the answer — so it runs ahead of
+    // discovery, the roster, the ceiling and the worklist rather than after four wasted fetches.
+    const calls = harness();
+
+    const summary = await runReaderTick(without('GMAIL_OAUTH_CLIENT_ID'), NOW);
+
+    expect(summary.failures).toEqual(['GMAIL_OAUTH_CLIENT_ID is not set']);
+    expect(calls.filter((call) => !call.url.includes('reader_health'))).toEqual([]);
+    expect(payload(restCalls(calls, 'reader_health').at(-1))).toMatchObject({
+      last_error: 'GMAIL_OAUTH_CLIENT_ID is not set',
+    });
+  });
+
   it('defaults the ceiling when the var is absent rather than running uncapped', async () => {
     harness({
       callsToday: READER_DEFAULT_DAILY_CAP,
@@ -300,8 +322,28 @@ describe('runReaderTick — ordering', () => {
     expect(summarizedTitles(summarized)).toEqual(['An earlier post', 'The Grain Ledger']);
   });
 
+  it('falls back to a retry’s author, never to the post’s own title, for the publication', async () => {
+    // A publication whose roster row has gone (renamed handle, deleted publication) must not be
+    // announced to the model as the post's own title — the eval script calls that case 'unknown'.
+    harness({
+      retries: [
+        retryRow(),
+        retryRow({ id: 'post-retry-2', title: 'A later post', author: WIRE_NULL }),
+      ],
+      roster: [],
+    });
+    const summarized = mockSummarize(DONE, DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized).map((input) => input.publication)).toEqual([
+      'Mira Vantz',
+      'unknown',
+    ]);
+  });
+
   it('inserts the post and stamps the comms row BEFORE the model is called', async () => {
-    // D9: title and link are the floor. A tick that dies leaves a pending row the next tick picks
+    // Title and link are the floor. A tick that dies leaves a pending row the next tick picks
     // up, never a half-written summary — and an unclaimed message is another Gmail read forever.
     const calls = harness({ fresh: [worklistRow()], messages: [ESSAY_MESSAGE] });
     const summarized = mockSummarize(DONE);
@@ -381,7 +423,7 @@ describe('runReaderTick — the mailbox', () => {
     'claims and inserts nothing for a %s-labelled message',
     async (label) => {
       // Gmail keeps serving a binned message; only a hard delete 404s. Putting mail the owner threw
-      // away into their reading list is the one outcome D5 says must not happen.
+      // away into their reading list is the one outcome that must not happen.
       const calls = harness({
         fresh: [worklistRow()],
         messages: [{ ...ESSAY_MESSAGE, labelIds: ['INBOX', label] }],
@@ -492,6 +534,25 @@ describe('runReaderTick — the ceiling', () => {
       summary_state: 'pending',
       summarizing_since: WIRE_NULL,
     });
+  });
+
+  it('leaves the second retry unleased when the ceiling falls between the two', async () => {
+    // Claiming a row this tick will not summarise strands it until the staleness bound releases
+    // it — so the cap is checked BEFORE the lease, not after.
+    const calls = harness({
+      callsToday: 29,
+      retries: [retryRow(), retryRow({ id: 'post-retry-2', title: 'A later post' })],
+    });
+    const summarized = mockSummarize(DONE, DONE);
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(summarizedTitles(summarized)).toEqual(['An earlier post']);
+    // Exactly the first row's two writes: its lease CAS and its terminal patch.
+    const patches = restCalls(calls, 'reader_posts', 'PATCH');
+    expect(patches).toHaveLength(2);
+    expect(patches.some((call) => call.url.includes('post-retry-2'))).toBe(false);
+    expect(summary.skippedForCap).toBe(1);
   });
 
   it('does not even send the retry read on a capped day', async () => {
@@ -686,6 +747,43 @@ describe('runReaderTick — the terminal patch', () => {
     expect(summarized).not.toHaveBeenCalled();
     expect(restCalls(calls, 'reader_posts', 'PATCH')).toHaveLength(1);
     expect(summary.summarized).toBe(0);
+  });
+});
+
+describe('runReaderTick — a write that fails outright', () => {
+  it('records the throw on the health row instead of escaping the scheduled handler', async () => {
+    // Every store helper throws on a non-2xx. Nothing below this catch would log the throw or
+    // stamp the health row, and the runtime would simply record a failed invocation.
+    const calls = harness({
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+      postPatchStatus: 500,
+    });
+    mockSummarize(DONE);
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(summary.failures).toEqual([expect.stringContaining('PATCH reader_posts')]);
+    const health = restCalls(calls, 'reader_health');
+    expect(payload(health.at(-1))).toMatchObject({
+      last_error: expect.stringContaining('PATCH reader_posts') as unknown,
+    });
+    // The tick did not get through, so it does not read as healthy.
+    expect(health.some((call) => 'last_success_at' in payload(call))).toBe(false);
+  });
+
+  it('keeps the counts the tick had already earned', async () => {
+    const calls = harness({
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+      postPatchStatus: 500,
+    });
+    mockSummarize(DONE);
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(summary.intake).toBe(1);
+    expect(restCalls(calls, 'reader_posts', 'POST')).toHaveLength(1);
   });
 });
 

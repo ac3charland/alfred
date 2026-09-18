@@ -50,7 +50,7 @@ compatibility_flags = ["nodejs_compat"]
 # Exercise it locally without waiting: `npx wrangler dev --test-scheduled`, then curl the
 # `/__scheduled` endpoint it serves.
 #
-# Two schedules now, dispatched in src/index.ts on the expression the runtime hands the handler —
+# Four schedules now, dispatched in src/index.ts on the expression the runtime hands the handler —
 # so these strings and the constants there must stay in step.
 #   */2 * * * *  the frequent tick: the Inbox classifier sweep, then the Comms JUDGE pass.
 #   */3 * * * *  the Gmail poll. It has its own trigger for one reason: the Workers runtime allows
@@ -91,7 +91,9 @@ crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *"]
 #   still runs and posts wait, unsummarised, for the UTC day to roll over. Sized at three times
 #   the owner's heavy day (eight to ten posts) so a roster mistake trips it the same day and a
 #   busy week never does. A string, like every var; the tick refuses to run on a value that is
-#   not a positive integer rather than treat an unparsable ceiling as "unlimited".
+#   not a positive integer rather than treat an unparsable ceiling as "unlimited". It counts model
+#   CALLS, not HTTP requests: the SDK retries a transport failure once, so a day of bad luck can
+#   reach twice the cap in requests. 30 is sized with that headroom already in it.
 [vars]
 CLASSIFIER_MODEL = "claude-haiku-4-5"
 CLASSIFIER_TIMEZONE = "America/Chicago"

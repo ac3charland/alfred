@@ -10,7 +10,14 @@
  */
 import type { ReaderEnv } from './types';
 
-/** The daily model-call ceiling when `READER_DAILY_CAP` is absent: three times a heavy day. */
+/**
+ * The daily ceiling when `READER_DAILY_CAP` is absent: three times a heavy day (eight to ten
+ * posts).
+ *
+ * It counts model CALLS — one per post the tick attempts — and not HTTP requests to the API: the
+ * SDK retries a transport failure once by itself, so a day where every call fails that way costs
+ * up to twice the cap in requests. 30 is sized with that headroom in it.
+ */
 export const READER_DEFAULT_DAILY_CAP = 30;
 
 /** The parsed vars the tick and the summariser build from. */
