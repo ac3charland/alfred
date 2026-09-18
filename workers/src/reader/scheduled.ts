@@ -20,11 +20,14 @@
  * deliberately leaves that lease to the staleness bound in `worklist.ts`
  * (`READER_LEASE_STALE_MS`), which is what that bound is for.
  *
- * THE CEILING IS DERIVED, not counted on the health row: it is `countRows` over the
+ * THE CEILING IS STAMPED BUT DERIVED, not counted on the health row: it is `countRows` over the
  * `model_called_at` stamp that every terminal patch writes anyway. A counter on a singleton would
  * need a write per model call — a subrequest the budget cannot spare — plus its own compare-and-set
  * against overlapping ticks, and it would still lose exactly one count when a tick died between
- * the call and the patch, which is the same crash window the stamp has.
+ * the call and the patch, which is the same crash window the stamp has. What the tick DOES write
+ * to the health row is the cap it enforced and, once it has the count, how much of it was spent —
+ * on the writes it was making anyway, so a reader of that row alone can tell a quiet day from a
+ * day that hit its ceiling by noon.
  *
  * RETRIES GO AHEAD OF FRESH POSTS, so a post that failed once is never starved by a busy morning.
  * On a capped day the retry read is not even sent: it exists only to feed model calls.
@@ -41,15 +44,16 @@
  */
 import { type GmailClient, gmailClient } from '../comms/gmail-api';
 import { fetchAccessToken } from '../comms/gmail-oauth';
-import { fetchJson, restQueryUrl } from '../supabase';
+import { type SupabaseEnv, fetchJson, restQueryUrl } from '../supabase';
 import { type ReaderConfig, readReaderConfig } from './config';
 import { discoverPublications } from './discovery';
 import { recordRunError, recordRunStart, recordRunSuccess } from './health';
 import { type IntakeResult, NO_READABLE_BODY, intakePost } from './intake';
 import { READER_PROMPT_VERSION } from './prompt';
+import { runReaderRetention as sweepReaderText } from './retention';
 import { JSON_NULL, countRows, leasePost, patchPost } from './store';
 import { summarizePost } from './summarize';
-import type { ReaderEnv, SummaryInput, SummaryOutcome, WorklistRow } from './types';
+import type { ReaderCeiling, ReaderEnv, SummaryInput, SummaryOutcome, WorklistRow } from './types';
 import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
 
 /**
@@ -421,7 +425,7 @@ async function tick(
   const apiKey = env.ANTHROPIC_API_KEY ?? '';
   if (apiKey === '') {
     const error = 'ANTHROPIC_API_KEY is not set';
-    await recordRunError(env, now, error);
+    await recordRunError(env, now, error, { daily_cap: config.dailyCap });
     summary.failures.push(error);
     return summary;
   }
@@ -432,12 +436,12 @@ async function tick(
   const missing = MISSING_GMAIL_BINDINGS.find((name) => (env[name] ?? '') === '');
   if (missing !== undefined) {
     const error = `${missing} is not set`;
-    await recordRunError(env, now, error);
+    await recordRunError(env, now, error, { daily_cap: config.dailyCap });
     summary.failures.push(error);
     return summary;
   }
 
-  await recordRunStart(env, now);
+  await recordRunStart(env, now, { daily_cap: config.dailyCap });
 
   summary.discovered = await discoverPublications(env, now);
   const roster = await readRoster(env);
@@ -448,6 +452,17 @@ async function tick(
     model_called_at: `gte.${utcMidnight(now).toISOString()}`,
   });
   const capped = (): boolean => calls >= config.dailyCap;
+  /**
+   * What the tick has spent, as of right now — read at the moment a health write happens, so a
+   * terminal stamp reports the count INCLUDING the calls this tick made rather than the one it
+   * started from. The day is the UTC date the count was taken over, the same window `calls` is
+   * counted in.
+   */
+  const ceiling = (): ReaderCeiling => ({
+    daily_cap: config.dailyCap,
+    calls_today: calls,
+    calls_day: now.toISOString().slice(0, 10),
+  });
 
   // Skipped entirely on a capped day: the retry list exists only to feed model calls, while a
   // fresh post's intake is still worth running because the row is the floor whether or not it is
@@ -470,7 +485,7 @@ async function tick(
     // A rejected refresh token needs a human, so it is stamped on the health row. A transport
     // failure is not: Google having a bad minute must not read as a broken module, and the next
     // tick is the retry. Neither stamps success — the work did not happen.
-    if (token.reason === 'rejected') await recordRunError(env, now, token.detail);
+    if (token.reason === 'rejected') await recordRunError(env, now, token.detail, ceiling());
     summary.failures.push(token.detail);
     return summary;
   }
@@ -496,7 +511,7 @@ async function tick(
         : await prepareRetry(env, item.row, roster, now);
 
     if (prepared.kind === 'stop') {
-      if (prepared.systemic) await recordRunError(env, now, prepared.error);
+      if (prepared.systemic) await recordRunError(env, now, prepared.error, ceiling());
       summary.failures.push(prepared.error);
       return summary;
     }
@@ -516,7 +531,7 @@ async function tick(
       summary,
     });
     if (systemic !== undefined) {
-      await recordRunError(env, now, systemic);
+      await recordRunError(env, now, systemic, ceiling());
       summary.failures.push(systemic);
       return summary;
     }
@@ -524,6 +539,39 @@ async function tick(
 
   // Only on a clean pass. A Gmail outage that kept stamping success would read as healthy forever,
   // which is the one thing the health row exists to prevent.
-  if (summary.failures.length === 0) await recordRunSuccess(env, now);
+  if (summary.failures.length === 0) await recordRunSuccess(env, now, ceiling());
   return summary;
+}
+
+// ── Retention ────────────────────────────────────────────────────────────────
+
+/** What one retention run did. The same failure convention as `CommsRetentionSummary`: the unit
+ *  that threw reports `swept: undefined` and names itself in `failures`, so "did not run" and
+ *  "broke" stay distinguishable in the log. */
+export interface ReaderRetentionSummary {
+  swept: number | undefined;
+  failures: string[];
+}
+
+/**
+ * Run the text sweep, on its own schedule and its own try/catch — mirrors `runCommsRetention`
+ * in `comms/scheduled.ts`. A throw here must never stop the comms retention sweep `index.ts` runs
+ * alongside it, and vice versa, so each wrapper owns its own failure handling rather than sharing
+ * one try/catch across both units.
+ */
+export async function runReaderRetention(
+  env: SupabaseEnv,
+  now: Date,
+): Promise<ReaderRetentionSummary> {
+  const failures: string[] = [];
+
+  let swept: number | undefined;
+  try {
+    const result = await sweepReaderText(env, now);
+    swept = result.swept;
+  } catch (error) {
+    failures.push(`reader retention: ${describe(error)}`);
+  }
+
+  return { swept, failures };
 }

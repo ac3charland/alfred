@@ -95,3 +95,54 @@ describe('the reader health writers', () => {
     expect(logged).toHaveBeenCalled();
   });
 });
+
+describe('the ceiling stamp', () => {
+  it('rides the run-start write as the cap alone', async () => {
+    const calls = harness(() => Response.json([{ id: 1 }]));
+
+    await recordRunStart(env, NOW, { daily_cap: 30 });
+
+    expect(calls[0]?.body).toEqual({ last_run_at: NOW.toISOString(), daily_cap: 30 });
+  });
+
+  it('rides the success write as the cap, the count and the day it was counted over', async () => {
+    const calls = harness(() => Response.json([{ id: 1 }]));
+
+    await recordRunSuccess(env, NOW, { daily_cap: 30, calls_today: 9, calls_day: '2026-09-18' });
+
+    expect(calls[0]?.body).toEqual({
+      last_success_at: NOW.toISOString(),
+      daily_cap: 30,
+      calls_today: 9,
+      calls_day: '2026-09-18',
+    });
+  });
+
+  it('rides the error write too, so a failed run still reports what it spent', async () => {
+    const calls = harness(() => Response.json([{ id: 1 }]));
+
+    await recordRunError(env, NOW, 'gmail is down', {
+      daily_cap: 30,
+      calls_today: 4,
+      calls_day: '2026-09-18',
+    });
+
+    expect(calls[0]?.body).toEqual({
+      last_error: 'gmail is down',
+      last_error_at: NOW.toISOString(),
+      daily_cap: 30,
+      calls_today: 4,
+      calls_day: '2026-09-18',
+    });
+  });
+
+  it('leaves the count out of the body when the caller has not read it yet', async () => {
+    // A column absent from the PATCH keeps whatever the row holds; a null would wipe a true
+    // count with a guess.
+    const calls = harness(() => Response.json([{ id: 1 }]));
+
+    await recordRunError(env, NOW, 'READER_MODEL is not set', { daily_cap: 30 });
+
+    expect(Object.keys(calls[0]?.body ?? {})).toEqual(['last_error', 'last_error_at', 'daily_cap']);
+  });
+});
