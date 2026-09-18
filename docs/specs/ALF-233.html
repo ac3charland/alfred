@@ -296,9 +296,10 @@
       <code>output_config: { effort: 'medium', format: { type: 'json_schema', schema } }</code>,
       <code>max_tokens: 4096</code>. <code>summarize.test.ts</code> asserts all three on the sent
       params.</p>
-    <p class="why"><b>Why:</b> the epic says "like <code>classifier.ts</code>, no extended thinking"
-      — but <code>classifier.ts</code> gets that by <i>omitting</i> the key, and its test asserts the
-      key is absent. That works on Haiku 4.5, which has no thinking unless asked. On Sonnet 5, omitting
+    <p class="why"><b>Why:</b> the epic's D8 already names <code>thinking: { type: 'disabled' }</code>
+      and adds "like <code>classifier.ts</code>, no extended thinking" — but <code>classifier.ts</code>
+      gets that by <i>omitting</i> the key, and its test asserts the key is absent, so a builder copying
+      the classifier would drop the one line that matters. That works on Haiku 4.5, which has no thinking unless asked. On Sonnet 5, omitting
       <code>thinking</code> runs <i>adaptive</i> thinking (the Claude API reference is explicit), billed as
       output and counted against <code>max_tokens</code> — exactly the truncation-that-signals-nothing
       the epic's D8 exists to avoid. So the reader's call cannot copy the classifier's omission; it
@@ -340,8 +341,11 @@
     <p><code>reader_posts.model_called_at timestamptz</code> is stamped in the same terminal patch that
       records the outcome of <i>every</i> model attempt (done, refused, counted, transport). The tick
       reads <code>calls_today</code> once at its start —
-      <code>GET reader_posts?model_called_at=gte.&lt;UTC midnight&gt;&amp;select=id</code> with
-      <code>Prefer: count=exact</code> and <code>Range: 0-0</code> — and adds the calls it makes itself.
+      <code>countRows(env, 'reader_posts', { model_called_at: 'gte.&lt;UTC midnight&gt;' })</code>, a
+      <code>store.ts</code> helper that sends <code>GET …?select=id</code> with <code>Prefer: count=exact</code>
+      (overriding the <code>return=representation</code> that <code>headers(env)</code> sets) and
+      <code>Range: 0-0</code>, ignores the body, and parses the total from
+      <code>Content-Range: 0-0/29</code> (<code>*/0</code> → 0) — and adds the calls it makes itself.
       <code>reader_health</code> keeps only <code>last_run_at</code>, <code>last_success_at</code>,
       <code>last_error</code>, <code>last_error_at</code>.</p>
     <p class="why"><b>Why:</b> a counter on the singleton needs a write per model call (a subrequest
@@ -373,16 +377,21 @@
 
   <div class="dec div">
     <h3><span class="n">B6</span>Fixtures are Gmail <code>messages.get</code> JSON, not <code>.eml</code>. <span class="diverge">diverges from the epic's S1-B/S1-C wording</span></h3>
-    <p>Committed under <code>workers/src/reader/fixtures/*.json</code> in the <code>GmailMessage</code>
-      shape <code>gmail-api.ts</code> already types (headers, MIME parts, base64url bodies). Four of
-      them, hand-built in the Substack shape and free of anything personal:</p>
+    <p>Committed under <code>workers/src/reader/fixtures/</code> as TypeScript modules — each file
+      exports one <code>GmailMessage</code> object in the shape <code>gmail-api.ts</code> already types
+      (headers, MIME parts, base64url bodies), and <code>fixtures/index.ts</code> exports the set as
+      <code>READER_FIXTURES: readonly { name: string; message: GmailMessage }[]</code>. Modules rather
+      than <code>.json</code> because the Worker's <code>tsconfig</code> has no <code>resolveJsonModule</code>
+      and no Node types, and enabling either to make a test pass is the config change CLAUDE.md
+      forbids. Four fixtures, hand-built in the Substack shape and free of anything personal:</p>
     <ul>
-      <li><code>essay.json</code> — multipart/alternative, a long <code>text/html</code> part whose
-        first <code>/p/</code> link is the post, an author in <code>From</code>, a list header.</li>
-      <li><code>roundup-view-in-browser.json</code> — no <code>/p/</code> link; a "View in browser" anchor.</li>
-      <li><code>plain-text-only.json</code> — a <code>text/plain</code> body and no link at all
+      <li><code>essay.ts</code> — multipart/alternative, a long <code>text/html</code> part whose
+        first <code>/p/</code> link is the post, an author in <code>From</code>, a list header, and one
+        <code>javascript:</code> anchor ahead of it that the scheme filter (B8) must skip.</li>
+      <li><code>roundup-view-in-browser.ts</code> — no <code>/p/</code> link; a "View in browser" anchor.</li>
+      <li><code>plain-text-only.ts</code> — a <code>text/plain</code> body and no link at all
         (the Gmail-permalink path; <code>html_extracted = false</code>).</li>
-      <li><code>platform-mail.json</code> — from <code>no-reply@substack.com</code> with a list header,
+      <li><code>platform-mail.ts</code> — from <code>no-reply@substack.com</code> with a list header,
         which discovery must ignore.</li>
     </ul>
     <p class="why"><b>Why:</b> the repo has no <code>.eml</code> anywhere, and nothing in the Worker
@@ -397,8 +406,8 @@
     <h3><span class="n">B7</span>The eval script reads real mail from the mailbox, or replays fixtures. <span class="diverge">not "a folder of .eml files"</span></h3>
     <pre><code>npm run eval:reader -w workers -- --query "from:substack.com newer_than:14d" --limit 5
 npm run eval:reader -w workers -- --ids 18f3a…,18f3b…
-npm run eval:reader -w workers -- --fixtures src/reader/fixtures            # replay, still billed
-npm run eval:reader -w workers -- --fixtures src/reader/fixtures --dry-run  # extraction only, no key, no bill
+npm run eval:reader -w workers -- --fixtures            # replay the committed set, still billed
+npm run eval:reader -w workers -- --fixtures --dry-run  # extraction only, no key, no bill, no results file
 npm run eval:reader -w workers -- --query … --model claude-opus-5           # try another model</code></pre>
     <p><code>workers/scripts/reader-eval.ts</code>, modelled on <code>comms-eval.ts</code>: reads
       <code>workers/.dev.vars</code> for <code>GMAIL_OAUTH_CLIENT_ID</code>,
@@ -407,9 +416,12 @@ npm run eval:reader -w workers -- --query … --model claude-opus-5           # 
       <code>fetchAccessToken</code>, lists and fetches with <code>gmailClient</code>, runs the
       <i>same</i> <code>extractPost</code> and <code>summarizePost</code> the tick runs, and prints per
       post: title, canonical URL (or "none → mailbox"), author, word count, then headline, gist and the
-      four overview sections, then <code>usage</code> and an estimated cost. Writes the run to
-      <code>workers/eval-results/&lt;timestamp&gt;.json</code> (gitignored). <code>--dry-run</code>
-      stops after extraction and needs no key — it is also the demo's Worker-side evidence (§9).</p>
+      four overview sections, then <code>usage</code> and an estimated cost. A billed run is written to
+      <code>workers/eval-results/&lt;timestamp&gt;.json</code> (gitignored) and prints the path.
+      <code>--dry-run</code> stops after extraction, needs no key, writes no file and prints no path —
+      its stdout is a pure function of the fixtures, which is what lets it be the demo's Worker-side
+      evidence under <code>verify</code> (§9). <code>--fixtures</code> imports
+      <code>READER_FIXTURES</code>; no directory argument.</p>
     <p class="why"><b>Why:</b> the checkpoint asks the owner for "five real posts of different kinds";
       pointing the script at the mailbox makes that a one-line command instead of an export chore, and
       every credential it needs is already in <code>.dev.vars</code> for <code>gmail-probe</code>. It lives
@@ -423,10 +435,14 @@ npm run eval:reader -w workers -- --query … --model claude-opus-5           # 
         <code>&lt;title&gt;</code>; empty → <code>(untitled)</code>. Never the row's gist.</li>
       <li><b>author</b> — the <code>From</code> display name (<code>parseAddress</code>), else the
         publication name.</li>
-      <li><b>canonical_url</b> — the first <code>&lt;a href&gt;</code> whose URL path matches
-        <code>^/p/[^/?#]+</code>, with query and fragment stripped; else the first anchor whose text
-        matches <code>/view (this )?(in|on) (your )?browser|read online|view online/i</code>;
-        else <code>undefined</code>. Anchors are read from the raw HTML <i>before</i> stripping.</li>
+      <li><b>canonical_url</b> — among anchors whose href parses as a URL with an <code>http:</code>
+        or <code>https:</code> scheme (anything else — <code>javascript:</code>, <code>mailto:</code>,
+        a relative path — is treated as no link), the first whose path matches
+        <code>^/p/[^/?#]+</code>, with query and fragment stripped; else the first whose text matches
+        <code>/view (this )?(in|on) (your )?browser|read online|view online/i</code>;
+        else <code>undefined</code>. Anchors are read from the raw HTML <i>before</i> stripping. The
+        value is rendered as an <code>href</code>, so the scheme filter is a security rule, not a
+        nicety.</li>
       <li><b>publication name</b> — the roster row's <code>name</code>.</li>
     </ul>
     <p class="why"><b>Why:</b> Substack puts the post title in the subject line; the HTML's
@@ -467,6 +483,10 @@ npm run eval:reader -w workers -- --query … --model claude-opus-5           # 
       before touching Gmail. A missing <code>READER_DAILY_CAP</code> defaults to <code>30</code>;
       a missing <code>ANTHROPIC_API_KEY</code> is the classifier's <code>credentials</code> outcome
       and is systemic too.</p>
+    <p><code>READER_MODEL</code> may name any model that accepts <code>thinking: { type: 'disabled' }</code>
+      — Sonnet 5, Opus 5 at effort <code>medium</code>, Haiku 4.5 only if <code>effort</code> is also
+      dropped. Fable 5/5.1 reject <code>disabled</code> with a 400, which the tick would file as a
+      systemic <code>bad_request</code> on every post; the var's comment in <code>wrangler.toml</code> says so.</p>
     <p class="why"><b>Why:</b> the ceiling is the money guard; an unparsable ceiling silently
       becoming "unlimited" is the one failure it must not have. <code>wrangler.toml</code>'s own
       comments warn that a CLI <code>--var</code> can shadow a <code>[vars]</code> entry, so the
@@ -475,10 +495,14 @@ npm run eval:reader -w workers -- --query … --model claude-opus-5           # 
 
   <div class="dec">
     <h3><span class="n">B12</span>A lost mailbox message claims the comms row and inserts nothing.</h3>
-    <p>A Gmail <code>404</code> on <code>messages.get</code> (the owner trashed or deleted it between
-      the poll and this tick) stamps <code>comm_messages.reader_claimed_at</code>, logs one line, and
-      moves on. The worklist view excludes claimed rows as well as rows with a post (§4), so it is
-      never re-tried.</p>
+    <p>A Gmail <code>404</code> on <code>messages.get</code> (the owner deleted it for good between the
+      poll and this tick) — and equally a <code>200</code> whose <code>labelIds</code> carry
+      <code>TRASH</code> or <code>SPAM</code>, because Gmail keeps serving a binned message and only a
+      hard delete 404s, which is why the comms poll checks labels <i>after</i> the fetch — stamps
+      <code>comm_messages.reader_claimed_at</code>, logs one line, and moves on. The worklist view
+      excludes claimed rows as well as rows with a post (§4), so it is never re-tried. The 404 is
+      detected on <code>status</code> before the <code>rejected</code>/<code>transport</code> split,
+      since <code>gmail-api.ts</code> files it under <code>transport</code>.</p>
     <p class="why"><b>Why:</b> the alternative — a permanently failed post with no text — puts mail
       the owner deleted on purpose into their reading list, which D5 says must not happen. And without
       the claim, the anti-join returns the message every tick forever and burns a Gmail read each time.
@@ -495,8 +519,8 @@ npm run eval:reader -w workers -- --query … --model claude-opus-5           # 
       UI never shows (the verb opens the original). One constant, so the three reads can't drift.</p>
   </div>
 
-  <div class="dec">
-    <h3><span class="n">B14</span>Two store actions, not four; "opened" stamps the latest open, silently.</h3>
+  <div class="dec div">
+    <h3><span class="n">B14</span>Three store actions, not four; "opened" stamps the latest open, silently. <span class="diverge">drops unarchive from §3.4</span></h3>
     <p><code>useReaderActions()</code> → <code>{ archive(id), markOpened(id), refresh() }</code>.
       <code>archive</code> is optimistic with rollback and a toast on failure.
       <code>markOpened</code> fires on the "Open" link's click without preventing navigation, sets
@@ -533,12 +557,24 @@ npm run eval:reader -w workers -- --query … --model claude-opus-5           # 
       is 41 + 37 + 53 + 50 = <b>181 px</b> of text; the sidebar offers 224 − 32 padding − 2 border −
       8 inner padding − 6 gaps = <b>176 px</b> for all four segments <i>before</i> any segment padding.
       No padding change fits it, and ALF-219 pinned that fitting by truncation is its own bug. At
-      256 px the budget is 208 px; 13 px labels measure 161 px and <code>px-1</code> adds 32, leaving
+      256 px the budget is 208 px; 13 px labels measure 161 px (37 + 33 + 46 + 45 — measured in a
+      browser with the bundled font, not scaled from 14 px) and <code>px-1</code> adds 32, leaving
       15 px of slack — enough that a font hinting difference can't tip it. The alternative that keeps
       <code>w-56</code> — 12 px labels in a row with 8 px side padding — fits with 2 px to spare, which
       is a regression waiting for a browser update; it is the escape hatch in §14 if the owner would
       rather not move the sidebar.</p>
   </div>
+
+  <div class="dec div">
+    <h3><span class="n">B17</span><code>headline</code> is stored, not rendered, in this story. <span class="diverge">diverges from D6's "shown as the row's second line"</span></h3>
+    <p>The model still produces it and the row stores it; the row draws eyebrow, meta, title, gist
+      and verbs — no headline. Story 2 decides whether to show it and under what rule.</p>
+    <p class="why"><b>Why:</b> D6 shows it "when the title is a teaser", and nobody has defined a
+      teaser: "Open Thread 348" isn't one, "You won't believe what happened next" is, and the honest
+      rule needs a week of real subjects to write. Drawing it now under a guessed rule would ship a
+      second line the owner has never seen; storing it costs nothing and keeps the schema stable.</p>
+  </div>
+
 
   <!-- ───────────────────────────────────────────────────────────── -->
   <h2 id="s4">4 · Data model</h2>
@@ -617,9 +653,15 @@ npm run eval:reader -w workers -- --query … --model claude-opus-5           # 
         <code>reader_posts (received_at desc) where archived_at is null</code> — the list ·
         <code>reader_posts (created_at) where summary_state = 'pending'</code> — the retry worklist ·
         <code>reader_posts (model_called_at) where model_called_at is not null</code> — the ceiling count ·
-        <code>comm_messages (received_at) where reader_claimed_at is null and has_list_header</code> is
-        <i>not</i> added: the worklist view scans seven days of one account and the comms table is
-        swept at 60 days.
+        <code>reader_posts (account_key, gmail_message_id)</code> — the unique key, which also backs the
+        worklist anti-join ·
+        <code>reader_posts (comm_message_id)</code> — the FK, so the comms retention sweep's
+        <code>on delete set null</code> doesn't scan the posts once per deleted row ·
+        <code>reader_posts (publication_id)</code> — the FK join ·
+        the epic's <code>reader_publications (enabled)</code> is <i>not</i> added (a table of tens of rows
+        the planner will seq-scan regardless) <span class="diverge">diverges</span> · nor is anything on
+        <code>comm_messages</code>: the worklist view scans seven days of one account and the comms table
+        is swept at 60 days.
       </td>
     </tr>
   </table></div>
@@ -634,9 +676,11 @@ npm run eval:reader -w workers -- --query … --model claude-opus-5           # 
     from comm_messages m
     join comm_accounts a on a.id = m.account_id and a.key = 'gmail-personal'
     join reader_publications p on p.handle = m.sender_handle and p.enabled
-    left join reader_posts r on r.comm_message_id = m.id
+    left join reader_posts r on r.account_key = a.key and r.gmail_message_id = m.source_id
+                                              -- the dedupe key, not comm_message_id: a purged and
+                                              -- re-mirrored comms row gets a new id but the same source_id
    where m.direction = 'inbound'
-     and m.reader_claimed_at is null          -- B12: a 404 claims without a post
+     and m.reader_claimed_at is null          -- B12: a binned message claims without a post
      and r.id is null                         -- the anti-join PostgREST cannot express
      and m.received_at &gt;= now() - interval '7 days';   -- D9's horizon
 -- the tick orders by received_at asc and limits itself
@@ -675,7 +719,23 @@ grant select on v_reader_worklist, v_reader_discovery to anon, authenticated, se
       <code>ReaderOverview { novel_ideas: string[]; evidence: string[]; argument: string; who_should_read: string }</code>.</li>
     <li><code>workers/src/reader/types.ts</code>: the Worker's mirror (hand-written, <code>undefined</code>
       never <code>null</code>, as <code>comms/types.ts</code> does), including
-      <code>ReaderEnv extends SupabaseEnv &amp; GmailEnv { ANTHROPIC_API_KEY?: string; READER_MODEL?: string; READER_DAILY_CAP?: string }</code>.</li>
+      <code>ReaderEnv extends SupabaseEnv &amp; GmailEnv { ANTHROPIC_API_KEY?: string; READER_MODEL?: string; READER_DAILY_CAP?: string }</code>
+      — <b>and the seam S1-B and S1-C build to, verbatim, so two parallel slices cannot invent two</b>:
+<pre><code>export interface SummaryInput {          // what the tick hands the summariser (and the eval prints)
+  publication: string; author?: string; title: string;
+  receivedAt: string;                    // ISO, for the metadata block
+  wordCount: number; text: string;       // text already capped at READER_TEXT_CHARS; the summariser applies READER_MODEL_INPUT_CHARS
+}
+export interface SummaryConfig { apiKey: string; model: string }
+export interface ReaderSummary { headline: string; gist: string; overview: ReaderOverview }
+export interface SummaryUsage { inputTokens: number; outputTokens: number }
+export type SummaryOutcome =
+  | { kind: 'done'; summary: ReaderSummary; usage?: SummaryUsage }
+  | { kind: 'refused'; usage?: SummaryUsage }
+  | { kind: 'counted'; error: 'max_tokens' | 'unparseable' | 'schema'; usage?: SummaryUsage }
+  | { kind: 'uncounted'; error: string }
+  | { kind: 'systemic'; reason: 'credentials' | 'bad_request'; error: string };</code></pre>
+      A1 owns these lines; B and C import them and neither edits the file.</li>
     <li><code>database/README.md</code> gains a schema-summary entry for the migration in the existing
       style, ending with the B10 SQL recipe.</li>
   </ul>
@@ -685,10 +745,12 @@ grant select on v_reader_worklist, v_reader_discovery to anon, authenticated, se
 
   <p>
     <code>workers/src/reader/scheduled.ts</code> exports
-    <code>runReaderTick(env: ReaderEnv, now: Date): Promise&lt;ReaderTickSummary&gt;</code>. It owns the
-    loop, the health writes, the ceiling and the budget; it never logs — <code>index.ts</code>'s
-    <code>logReaderTick</code> prints one line per unit plus one <code>console.error</code> per failure,
-    like <code>logCommsTick</code>. <code>now</code> is injected; nothing inside calls <code>new Date()</code>.
+    <code>runReaderTick(env: ReaderEnv, now: Date, clock: () =&gt; number = () =&gt; Date.now()): Promise&lt;ReaderTickSummary&gt;</code>.
+    It owns the loop, the health writes, the ceiling and the budget; it never logs —
+    <code>index.ts</code>'s <code>logReaderTick</code> prints one line per unit plus one
+    <code>console.error</code> per failure, like <code>logCommsTick</code>. <code>now</code> is the tick's
+    instant for every timestamp it writes; <code>clock</code> exists only to measure elapsed time for
+    the budget (B2) and is what the budget test injects. Nothing inside calls <code>new Date()</code>.
   </p>
 
   <pre><code>runReaderTick(env, now):
@@ -699,31 +761,38 @@ grant select on v_reader_worklist, v_reader_discovery to anon, authenticated, se
                        Prefer: resolution=ignore-duplicates
                        {handle, name: name ?? local part, domain: local + '.substack.com',
                         source: 'auto', enabled: true}
-  1 worklist: retries = GET reader_posts?summary_state=eq.pending                 (1)
+  1 ceiling:  calls   = countRows(reader_posts, model_called_at &gt;= utcMidnight(now))     (1)
+              capped  = calls &gt;= cap          // intake still runs; no lease, no model call, no retries
+  2 worklist: retries = capped ? [] : GET reader_posts?summary_state=eq.pending  (0–1)
                         &amp;summarize_attempts=lt.3&amp;or=(lease free per B3)&amp;order=created_at.asc&amp;limit=6
               fresh   = GET v_reader_worklist?order=received_at.asc&amp;limit=6       (1)
               work    = [...retries, ...fresh].slice(0, READER_TICK_LIMIT)
-  2 ceiling:  calls   = count(reader_posts where model_called_at &gt;= utcMidnight(now))   (1)
   3 token   = fetchAccessToken(env, GMAIL_PERSONAL_REFRESH_TOKEN)                  (1)
               rejected → systemic (health error, return); transport → failure, return
-  4 for each item, sequentially, while elapsed &lt; READER_TICK_BUDGET_MS:
+  4 for each item, sequentially, while clock() − start &lt; READER_TICK_BUDGET_MS:
        if fresh:
          full = gmail.getMessage(gmail_message_id)                                 (1)
-                404       → stamp comms row claimed, log, continue (B12)          (1, instead of the rest)
+                status 404 (tested first — gmail-api reports it as transport+status)
+                          → stamp comms row claimed, log, continue (B12)          (1, instead of the rest)
                 rejected  → systemic, break
                 transport → failure, break     // nothing advanced; retried next tick
+                labelIds has TRASH or SPAM → stamp comms row claimed, log, continue   (1; B12 — the owner
+                          binned it after the poll mirrored it; Gmail still serves it)
          post = extractPost(full, publication)             // §5.1
-         row  = POST reader_posts {…post, summary_state:'pending', summarizing_since: now}   (1)
-                409 → another tick owns it, continue
+         row  = POST reader_posts {…post, summary_state:'pending',
+                                   summarizing_since: capped ? null : now}          (1)
+                409 → a post already exists (another tick, or a re-mirrored comms row):
+                      still stamp the comms row below, then continue
          PATCH comm_messages?id=eq.X {reader_claimed_at: now}                      (1)
          if post.text is empty: PATCH row {summary_state:'failed', last_error:'no readable body', lease null}; continue
+         if capped: skippedForCap++; continue        // the row waits, unleased, for tomorrow
        else (retry): PATCH lease per B3; 0 rows → continue                         (1)
-       if calls &gt;= cap: PATCH row {lease null}; skippedForCap++; continue          (1)
        outcome = summarizePost(post, config)                                       (1–2)
        calls++
        PATCH row per the outcome table below                                       (1)
        systemic outcome → break
-  health.last_success_at = now   (only when no systemic failure)                   (1)
+  health.last_success_at = now   (only when failures is empty — a Gmail transport break is not
+                                  success, or an outage would read as healthy forever)      (1)
   return { discovered, intake, summarized, refused, countedFailures, uncountedFailures,
            skippedForCap, skippedForBudget, failures: string[] }</code></pre>
 
@@ -777,9 +846,12 @@ grant select on v_reader_worklist, v_reader_discovery to anon, authenticated, se
     <li><code>GET /</code> appends <code>; reader &lt;model&gt; cap &lt;n&gt;</code> to its line.</li>
     <li><b>Cron-trigger cap (D9).</b> Before adding the fourth trigger the session checks the plan's
       per-Worker limit in the Cloudflare dashboard or a <code>wrangler deploy --dry-run</code>. If the
-      account refuses a fourth, the fallback is fixed here so no one improvises: the reader tick runs on
-      the <code>*/2</code> path <i>after</i> the comms judge with <code>READER_TICK_LIMIT = 2</code>
-      (2 × 6 + 8 = 20, plus the judge's ~41, still under 50), and the PR says so.</li>
+      account refuses a fourth, <b>there is no shared-invocation fallback that fits</b>: the
+      <code>*/2</code> tick already spends ~41 of its 50 (the Inbox classifier and the comms judge share
+      it — <code>comms/sweep.ts</code>'s cap comment carries the arithmetic) and the <code>*/3</code> poll
+      ~44 at its cap, so even a reader limit of one (8 + 6) overflows either. The session stops and
+      reports; the owner picks between the Paid plan and re-cutting the comms caps, and the PR says which.
+      <span class="diverge">diverges from the epic's D9 fallback</span></li>
   </ul>
 
   <!-- ───────────────────────────────────────────────────────────── -->
@@ -788,7 +860,9 @@ grant select on v_reader_worklist, v_reader_discovery to anon, authenticated, se
   <p>
     <code>workers/src/reader/summarize.ts</code> exports the pure
     <code>summarizePost(post: SummaryInput, config: SummaryConfig): Promise&lt;SummaryOutcome&gt;</code>
-    — one call, the schema below, the outcome split of §5.2, and no database access. It is the only
+    — one call, the schema below, the outcome split of §5.2, and no database access (the epic wrote
+    <code>summarizePost(post, env)</code>; it takes the parsed <code>SummaryConfig</code> instead, so the
+    eval script and the tick build it the same way <span class="diverge">diverges</span>). It is the only
     reader file that imports <code>@anthropic-ai/sdk</code>, and it duplicates the classifier's
     twenty lines of stop-reason and error mapping rather than importing them (the two modules must
     not couple; do not edit <code>classifier.ts</code>).
@@ -868,10 +942,10 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
     <tr><td><code>components/shell/view-switcher.tsx</code> (+test, +stories), <code>app-shell.tsx</code></td><td>Fourth segment <code>{ module: 'reader', label: 'Reader', href: '/reader' }</code>; the segment class to <code>text-[13px] px-1</code> and the sidebar to <code>md:w-64</code> (B16). The stories' framing container follows the sidebar (<code>w-64 px-4</code>); the E2E "no label is truncated" assertion in <code>e2e/module-switcher.spec.ts</code> holds over four labels and the right-edge check uses the new border.</td></tr>
     <tr><td><code>components/shell/shell-nav.tsx</code>, <code>shell-mobile-nav.tsx</code> (+tests)</td><td><code>if (current === 'reader') return &lt;ReaderNav … /&gt;</code> in both; <code>ReaderNav</code> takes the same optional <code>onClose</code>.</td></tr>
     <tr><td><code>components/shell/module-router.tsx</code></td><td>Reader joins the centred <code>max-w-3xl</code> branch beside Comms: <code>current === 'reader' ? &lt;ReaderView /&gt; : …</code>.</td></tr>
-    <tr><td><code>components/shell/command-destinations.ts</code> (+test)</td><td><code>DestinationGroup</code> gains <code>'reader'</code>; <code>READER_DESTINATIONS</code>: Reading list (<code>/reader</code>), Archive (<code>/reader/archive</code>), Publications (<code>/reader/publications</code>); icon <code>'reader'</code> → lucide <code>BookOpen</code>; spliced into <code>flattenDestinations</code> after comms.</td></tr>
+    <tr><td><code>components/shell/command-destinations.ts</code>, <code>command-palette.tsx</code> (+tests)</td><td><code>DestinationGroup</code> and <code>GroupedDestinations</code> gain <code>'reader'</code>; <code>READER_DESTINATIONS</code>: Reading list (<code>/reader</code>), Archive (<code>/reader/archive</code>), Publications (<code>/reader/publications</code>); icon <code>'reader'</code> → lucide <code>BookOpen</code>; spliced into <code>flattenDestinations</code> after comms. The palette itself has an exhaustive <code>ICONS</code> map, a <code>GROUP_LABELS</code> table and four hard-coded <code>&lt;Group&gt;</code> blocks with cumulative <code>baseIndex</code> arithmetic — it gains a fifth group in the same order the flattener uses.</td></tr>
     <tr><td><code>app/(shell)/(reader)/reader/page.tsx</code>, <code>archive/page.tsx</code>, <code>publications/page.tsx</code></td><td>One-liners rendering <code>&lt;ModuleRouter /&gt;</code>, as every comms page does.</td></tr>
-    <tr><td><code>components/reader/reader-view.tsx</code></td><td><code>READER_PREFIX = '/reader'</code>; segment <code>''</code> → <code>ReadingListView</code>; <code>archive</code> and <code>publications</code> → an <code>EmptyState</code> each ("Archived posts land here." / "Publications are managed by SQL for now.") with the description saying the next story fills it; unknown → the list.</td></tr>
-    <tr><td><code>components/reader/reader-nav.tsx</code></td><td><code>&lt;nav aria-label="Reader"&gt;</code> with three <code>ViewLink</code>s through <code>navLinkClass</code>; Reading list carries a <code>FolderCountBadge</code> from <code>useActiveCount()</code>. The aria-label is what the E2E keys on, distinct from "Comms".</td></tr>
+    <tr><td><code>components/reader/reader-view.tsx</code></td><td><code>READER_PREFIX = '/reader'</code>; segment <code>''</code> → <code>ReadingListView</code>; <code>archive</code> and <code>publications</code> → a <code>ViewHeading</code> (title "Archive" / "Publications", description "Reader", <code>accent="reader"</code>) over an <code>EmptyState</code> ("Archived posts land here." / "Publications are managed by SQL for now.") whose description says the next story fills it — as the sidebar mockup draws; unknown → the list.</td></tr>
+    <tr><td><code>components/reader/reader-nav.tsx</code></td><td><code>&lt;nav aria-label="Reader"&gt;</code> with three <code>ViewLink</code>s through <code>navLinkClass</code>. Reading list carries a <code>FolderCountBadge tone="attention" label={(n) =&gt; `${n} to read`}</code> from <code>useActiveCount()</code> — the badge line is added by S1-F when the provider exists (A2 ships the nav without it, since the store is batch 2). The aria-label is what the E2E keys on, distinct from "Comms".</td></tr>
     <tr><td><code>app/(shell)/layout.tsx</code></td><td><code>getReaderSeed()</code> joins the <code>Promise.all</code>; <code>&lt;ReaderProvider initialPosts={readerSeed.posts}&gt;</code> wraps <code>AppShell</code> inside the comms providers; the layout's comment block names the fourth module.</td></tr>
     <tr><td>Every reader <code>ViewHeading</code></td><td>passes <code>accent="reader"</code> explicitly — the default is Tasks and silent (ALF-219).</td></tr>
   </table></div>
@@ -899,7 +973,9 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
       <code>posts</code>; wired to <code>visibilitychange</code> and <code>focus</code> exactly as
       <code>reconcileHealth</code> is in <code>comms-store.tsx</code> (in-flight ref, skip while hidden,
       a failed read changes nothing and toasts nothing). No realtime channel in this story.</li>
-    <li>Fetch calls live in <code>lib/reader/api.ts</code>, so the store test mocks one module.</li>
+    <li>Fetch wrappers (<code>fetchReaderPosts</code>, <code>patchReaderPost</code>) live in the shared
+      <code>lib/api-client.ts</code>, which every store imports as <code>api</code> — owned by S1-E for
+      this story, since no other slice touches it.</li>
   </ul>
 
   <h3>7.4 The list</h3>
@@ -913,13 +989,16 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
     a deterministic and a now-anchored timestamp helper, <code>resetReaderFixtureClock()</code>),
     <code>open-link.ts</code> (<code>postOpenLink(post)</code> → <code>{ href, kind: 'canonical' | 'mailbox' } | { href: undefined, unavailable }</code>;
     the mailbox href is <code>https://mail.google.com/mail/u/0/#search/rfc822msgid:&lt;id without brackets, URL-encoded&gt;</code>),
-    <code>list.ts</code> (<code>isActive</code>, <code>byReceivedDescending</code>).
+    <code>list.ts</code> (<code>isActive</code>, <code>byReceivedDescending</code>),
+    <code>overview.ts</code> (<code>isReaderOverview(value: Json | null): value is ReaderOverview</code>
+    — the generated row types <code>overview</code> as <code>Json</code>; a <code>done</code> row whose
+    overview fails the guard renders its gist with no Overview verb, never a crash).
   </p>
 
   <div class="app">
     <div class="app-head">
       <div class="app-icon">▤</div>
-      <div><div class="app-title">Reader</div><div class="app-desc">3 to read</div></div>
+      <div><div class="app-title">Reader</div><div class="app-desc">5 to read</div></div>
     </div>
 
     <div class="row">
@@ -965,7 +1044,9 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
   </div>
   <p class="mockcap">
     <b>The list, every Story-1 row state.</b> Heading is a <code>ViewHeading</code> (icon
-    <code>BookOpen</code>, <code>accent="reader"</code>, description "<i>N</i> to read"). Each row:
+    <code>BookOpen</code>, <code>accent="reader"</code>, description "<i>N</i> to read", where
+    <i>N</i> is <code>useActiveCount()</code> — every unarchived post, whatever its summary state; the
+    nav badge shows the same number). Each row:
     publication eyebrow in the module green, the "Sep 16 · 14 min read" meta line, the title, the
     gist <i>unclipped</i> (it is the content, not a label), then the verbs: <b>Open</b> — an outline
     button that is a real <code>&lt;a href&gt;</code> to the canonical URL (B8) or the Gmail permalink,
@@ -993,7 +1074,7 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
     <div class="side">
       <div>
         <div class="switch"><span>Tasks</span><span>Code</span><span>Comms</span><span class="on">Reader</span></div>
-        <div class="nav"><a class="active">Reading list <span style="float:right;font-size:.7rem;opacity:.7">3</span></a><a>Archive</a><a>Publications</a></div>
+        <div class="nav"><a class="active">Reading list <span style="float:right;font-size:.7rem;padding:0 6px;border:1px solid color-mix(in srgb,var(--a-amber) 50%,transparent);border-radius:999px;color:var(--a-amber)">5</span></a><a>Archive</a><a>Publications</a></div>
       </div>
       <div>
         <div class="app-head" style="margin-bottom:.5rem"><div><div class="app-title">Archive</div><div class="app-desc">Reader</div></div></div>
@@ -1023,15 +1104,17 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
     </div>
   </div>
   <p class="mockcap">
-    <b>Phone (390 px).</b> Same row, same verbs, all by touch: the verbs wrap onto a second line,
-    the gist wraps freely, the overview stacks. The module is reached through the existing drawer
+    <b>Phone (390 px), abridged.</b> Same row, same verbs, all by touch: the verbs wrap onto a second
+    line, the gist wraps freely, and all four overview sections stack in the desktop order (two are
+    drawn here for height). The module is reached through the existing drawer
     and switcher; nothing is desktop-only in this story.
   </p>
 
   <h3>7.5 Row behaviour, pinned</h3>
   <ul class="tight">
-    <li>Open: an anchor with <code>target="_blank" rel="noopener"</code>; its click calls
-      <code>markOpened(id)</code> and does not prevent default.</li>
+    <li>Open: an anchor with <code>target="_blank" rel="noreferrer"</code> (the house pattern in
+      <code>review-pr-chip.tsx</code>; it implies <code>noopener</code> and doesn't hand alfred's URL to
+      the publication); its click calls <code>markOpened(id)</code> and does not prevent default.</li>
     <li>Archive: begins the exit animation; the store's <code>archive</code> runs on
       <code>onCollapseEnd</code>; on failure the row reappears and a toast says the archive didn't
       stick.</li>
@@ -1068,9 +1151,9 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
 
   <div class="scroll"><table>
     <tr><th style="width:26%">Where</th><th>What is pinned</th></tr>
-    <tr><td><code>workers/src/reader/extract.test.ts</code></td><td>Against the four fixtures (B6): title from subject; author; the <code>/p/</code> link with its query stripped; the view-in-browser fallback; no link → <code>canonical_url</code> undefined; <code>html_extracted</code> both ways; word count; the 400 000 truncation on a synthetic body; a body of only attachments → empty text.</td></tr>
+    <tr><td><code>workers/src/reader/extract.test.ts</code></td><td>Against the four fixtures (B6): title from subject; author; the <code>/p/</code> link with its query stripped; the view-in-browser fallback; no link → <code>canonical_url</code> undefined; <code>html_extracted</code> both ways; word count; the 400 000 truncation on a synthetic body; a body of only attachments → empty text; a <code>javascript:</code> and a <code>mailto:</code> anchor never become the URL.</td></tr>
     <tr><td><code>discovery.test.ts</code>, <code>worklist.test.ts</code>, <code>store.test.ts</code></td><td>The upsert body and <code>on_conflict</code>/<code>Prefer</code> headers; the platform-mail fixture's sender is never upserted (the view does the filtering, but the upsert helper also refuses <code>no-reply</code> defensively); the lease CAS filter string (B3); the ceiling count request (B4); every terminal patch of §5.2 including the CAS on attempts; health writers never throw.</td></tr>
-    <tr><td><code>scheduled.test.ts</code></td><td>The whole tick with fetch stubbed by URL and <code>summarizePost</code> mocked: retries ahead of fresh; the insert precedes the model call; the comms stamp precedes the model call; 409 on insert skips; Gmail transport failure ends the tick with nothing advanced and no health error; Gmail 404 claims and inserts nothing; Gmail <code>rejected</code> is systemic; the ceiling <b>at its boundary</b> — cap 30, 29 calls today: one post summarised, the next skipped for cap and left pending with the lease released; the budget — a clock injected past 8 minutes stops the loop; empty text → failed without a call; systemic outcome → health error and <code>last_success_at</code> untouched; the summary counts.</td></tr>
+    <tr><td><code>scheduled.test.ts</code></td><td>The whole tick with fetch stubbed by URL and <code>summarizePost</code> mocked: retries ahead of fresh; the insert precedes the model call; the comms stamp precedes the model call; 409 on insert still stamps the claim, then skips; Gmail transport failure ends the tick with nothing advanced, no health error and no success stamp; Gmail 404 and a TRASH/SPAM-labelled 200 each claim and insert nothing; Gmail <code>rejected</code> is systemic; the ceiling <b>at its boundary</b> — cap 30, 29 calls today: one post summarised, the next skipped for cap and left pending with the lease released; the budget — the injected <code>clock</code> advanced past 8 minutes stops the loop; a capped day skips the retry read and inserts fresh rows unleased; empty text → failed without a call; systemic outcome → health error and <code>last_success_at</code> untouched; the summary counts.</td></tr>
     <tr><td><code>summarize.test.ts</code></td><td>The exact params sent (model, <code>max_tokens</code>, <code>thinking</code>, <code>output_config</code>, schema); every stop reason and thrown error to its outcome; the schema guard — a missing key, a non-string bullet, more than six bullets trimmed; usage passed through; no request when the key is missing.</td></tr>
     <tr><td><code>index.test.ts</code></td><td>The reader cron dispatches exactly <code>runReaderTick</code>; the wrangler set cross-check includes it; the stepped-range guard; <code>GET /</code> names the model and the cap.</td></tr>
     <tr><td><code>workers/src/comms/email-text.test.ts</code></td><td>Unchanged and green after the exports (S1-A0 is export-only).</td></tr>
@@ -1094,7 +1177,7 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
     with <code>npm run demo -- pr-link</code>. What it must capture, in order:
   </p>
   <ol class="tight">
-    <li><b>Extraction, as CLI output:</b> <code>npm run eval:reader -w workers -- --fixtures src/reader/fixtures --dry-run</code>
+    <li><b>Extraction, as CLI output:</b> <code>npm run eval:reader -w workers -- --fixtures --dry-run</code>
       — one block per fixture showing title, author, canonical URL or "none → mailbox", word count and
       <code>html_extracted</code>. Deterministic, no key, no bill. (The summariser itself cannot be
       demonstrated without a key; the checkpoint owns that, §12.)</li>
@@ -1137,13 +1220,13 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
     </tr>
     <tr>
       <td><b>S1-A1</b> Schema &amp; types</td>
-      <td>§4 in full: the migration, both views, the comms column, indexes, RLS, grants, the health seed row; types regenerated; <code>lib/types.ts</code> aliases and <code>ReaderOverview</code>; the Worker type mirror; <code>lib/reader/fixtures.ts</code> with posts in every state and one publication; the README entry with the B10 recipe. migration-lint and <code>gen-types --check</code> green. Skills: supabase, migration-lint.</td>
-      <td>the migration, <code>database/README.md</code>, <code>frontend/lib/database.types.ts</code>, <code>frontend/lib/types.ts</code>, <code>frontend/lib/reader/fixtures.ts</code>, <code>workers/src/reader/types.ts</code></td>
+      <td>§4 in full: the migration, both views, the comms column, indexes, RLS, grants, the health seed row; types regenerated and the regen's one-line ripple into the comms fixtures and the E2E mock defaults (a full-literal <code>CommMessage</code> fails typecheck without the new column); the Worker type mirror including the S1-B/S1-C seam types; <code>lib/reader/fixtures.ts</code> with posts in every state and one publication; the E2E mock tables and seed keys for the reader rows; the view integration checks; the README entry with the B10 recipe. migration-lint, <code>gen-types --check</code> and <code>check:fast</code> green across every package. Skills: supabase, migration-lint, playwright (the mock backend).</td>
+      <td>the migration, <code>database/README.md</code>, <code>database/src/assertions.ts</code> (the view integration checks), <code>frontend/lib/database.types.ts</code>, <code>frontend/lib/types.ts</code>, <code>frontend/lib/reader/fixtures.ts</code>, <code>workers/src/reader/types.ts</code>; <b>plus, by explicit exception to the no-comms-files rule, the one-line ripple of the regenerated type</b>: <code>reader_claimed_at: null</code> in <code>frontend/lib/comms/fixtures.ts</code>'s <code>makeCommMessage</code> and in <code>frontend/scripts/mock-supabase.mjs</code>'s comms defaults; and the E2E seed plumbing the reader rows need — <code>reader_posts</code> / <code>reader_publications</code> tables in <code>mock-supabase.mjs</code>, <code>readerPosts</code> / <code>readerPublications</code> in <code>SeedState</code> (<code>e2e/support/constants.ts</code>, re-exporting the builders) and the seed POST's table list</td>
     </tr>
     <tr>
       <td><b>S1-A2</b> Module shell</td>
       <td>§7.1 minus the layout seed: <code>ModuleId</code>, accent, the six enumerating files, the sidebar and switcher sizing (B16) with the switcher baselines re-approved, the route group, <code>ReaderView</code> with three segments rendering empty states, <code>ReaderNav</code>; existing tests and stories extended; <code>e2e/reader-shell.spec.ts</code>'s shell half. Skills: nextjs, frontend-architecture, playwright, storybook.</td>
-      <td><code>frontend/lib/modules.ts</code> (+test); <code>frontend/app/(shell)/(reader)/**</code>; the six shell files (+tests, +stories); the sidebar width in <code>components/shell/app-shell.tsx</code>; <code>e2e/module-switcher.spec.ts</code>; <code>components/reader/reader-view.tsx</code>, <code>reader-nav.tsx</code>; <code>e2e/reader-shell.spec.ts</code></td>
+      <td><code>frontend/lib/modules.ts</code> (+test); <code>frontend/app/(shell)/(reader)/**</code>; the six shell files and <code>command-palette.tsx</code> (+tests, +stories); the sidebar width in <code>components/shell/app-shell.tsx</code>; <code>e2e/module-switcher.spec.ts</code>; <code>components/reader/reader-view.tsx</code>, <code>reader-nav.tsx</code>; <code>e2e/reader-shell.spec.ts</code></td>
     </tr>
     <tr>
       <td><b>S1-B</b> The tick: intake &amp; extraction</td>
@@ -1164,12 +1247,12 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
     <tr>
       <td><b>S1-E</b> Store &amp; list</td>
       <td>§7.3–7.5: the store, the api module, the row and its styles, the overview, markers, format, open-link, the list view, stories per state, RTL tests. Skills: react, react-testing-library, storybook, frontend-architecture, data-flow, motion.</td>
-      <td><code>frontend/lib/stores/reader-store.tsx</code> (+test), <code>frontend/lib/reader/*</code> except fixtures, <code>frontend/components/reader/*</code> except A2's two</td>
+      <td><code>frontend/lib/stores/reader-store.tsx</code> (+test), the reader functions in <code>frontend/lib/api-client.ts</code>, <code>frontend/lib/reader/*</code> except fixtures, <code>frontend/components/reader/*</code> except A2's two</td>
     </tr>
     <tr>
       <td><b>S1-F</b> Comms shelf, wiring, E2E, demo, notes</td>
-      <td>The session's own work: the three comms edits (B15) with their tests; the cron cap check and the trigger, vars, dispatch and <code>GET /</code>; the layout seed; wiring <code>ReaderView</code>'s list segment to E's view; reconciling seams; the full <code>check</code>; the demo (§9); the Story 2 notes file (§11); the spec archived; batch-commit, push, the PR (§12).</td>
-      <td><code>frontend/lib/comms/queue.ts</code>, <code>lib/data/comms-messages.ts</code>, <code>lib/stores/comms-store.tsx</code>, <code>components/comms/{fyi-shelf,comms-queue-view}.tsx</code> (+tests); <code>workers/wrangler.toml</code>, <code>workers/src/index.ts</code> (+test); <code>frontend/app/(shell)/layout.tsx</code>; the one line in <code>reader-view.tsx</code>; the E2E journeys; the demo folder; the notes file</td>
+      <td>The session's own work: the three comms edits (B15) with their tests; the cron cap check and the trigger, vars, dispatch and <code>GET /</code>; the layout seed; wiring <code>ReaderView</code>'s list segment to E's view and the nav's count badge to the store; <i>appending</i> the open/archive/shelf journeys to A2's E2E spec; reconciling seams; the full <code>check</code>; the demo (§9); the Story 2 notes file (§11); the spec archived; batch-commit, push, the PR (§12).</td>
+      <td><code>frontend/lib/comms/queue.ts</code>, <code>lib/data/comms-messages.ts</code>, <code>lib/stores/comms-store.tsx</code>, <code>components/comms/{fyi-shelf,comms-queue-view}.tsx</code> (+tests); <code>workers/wrangler.toml</code>, <code>workers/src/index.ts</code> (+test); <code>frontend/app/(shell)/layout.tsx</code>; the one line each in <code>reader-view.tsx</code> and <code>reader-nav.tsx</code>; the journeys appended to <code>e2e/reader-shell.spec.ts</code>; the demo folder; the notes file</td>
       <td>3 — serial, after batch 2 is read and integrated.</td>
     </tr>
   </table></div>
@@ -1206,7 +1289,8 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
           PATCH route already accepting <code>archived: false</code>, the <code>reader_health</code>
           columns nothing reads yet, <code>hotkeys.ts</code> in <code>lib/comms/</code> that the reader
           can import as-is, the derived "last post" note (B5), the eval's <code>--fixtures</code> mode
-          for turning real mail into fixtures.</li>
+          for turning real mail into fixtures, the stored-but-unrendered <code>headline</code> (B17) and the
+          "teaser" rule it waits on.</li>
         <li><b>Subrequest arithmetic as built</b> — the final table from B5, so Story 2's retention
           step and any new per-post write are costed against the real number.</li>
         <li><b>Scope that fell out</b> — anything this story dropped or deferred, since neither session
@@ -1264,22 +1348,27 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
     <li>☐ The Worker's <code>scheduled</code> dispatches <code>*/5 * * * *</code> to the reader tick
       only; <code>wrangler.toml</code> carries the same literal and the two vars; <code>GET /</code>
       names the model and the cap.</li>
-    <li>☐ Against the four fixtures with the SDK mocked, one tick: discovers the essay's sender,
-      inserts three posts, claims three comms rows, summarises all three (the plain-text-only one
-      with <code>html_extracted = false</code>), and never touches the platform-mail sender.</li>
+    <li>☐ With the discovery and worklist reads stubbed to rows built from the four fixtures and the
+      SDK mocked, one tick: upserts the essay's sender, inserts three posts, claims three comms rows,
+      summarises all three (the plain-text-only one with <code>html_extracted = false</code>), and never
+      upserts the platform-mail sender.</li>
     <li>☐ The insert precedes the model call; a Gmail transport failure ends the tick with no row
-      written and no health error; a 404 claims and inserts nothing; a 409 skips; the lease CAS is
-      sent for retried rows and released on every terminal patch.</li>
-    <li>☐ At 29 calls on a cap of 30, exactly one more post is summarised and the rest stay pending
-      with the lease released; the count comes from <code>model_called_at</code>, and transport
-      failures are stamped too.</li>
+      written, no health error and no <code>last_success_at</code>; a 404 or a TRASH/SPAM label claims
+      and inserts nothing; a 409 still claims and then skips; the lease CAS is sent for retried rows
+      and released on every terminal patch; the budget stops the loop when the injected clock passes
+      eight minutes.</li>
+    <li>☐ At 29 calls on a cap of 30, exactly one more post is summarised and the rest stay pending,
+      unleased; at 30 the retry read is not even sent; the count comes from <code>countRows</code> over
+      <code>model_called_at</code> (parsed from <code>Content-Range</code>), and transport failures are
+      stamped too.</li>
     <li>☐ The sent params carry <code>thinking: { type: 'disabled' }</code>,
       <code>output_config.effort: 'medium'</code>, the schema and <code>max_tokens: 4096</code>; every
       stop reason and SDK error maps to the §5.2 row; three counted failures → <code>failed</code>;
       a refusal → <code>refused</code> with no retry.</li>
-    <li>☐ <code>npm run eval:reader -w workers -- --fixtures src/reader/fixtures --dry-run</code>
-      prints all four extractions with no key present; with a key, <code>--query</code> and
-      <code>--ids</code> fetch from the mailbox and print gist and overview per post plus usage.</li>
+    <li>☐ <code>npm run eval:reader -w workers -- --fixtures --dry-run</code> prints all four
+      extractions with no key present, writes nothing and is byte-identical run to run; with a key,
+      <code>--query</code> and <code>--ids</code> fetch from the mailbox and print gist and overview per
+      post plus usage.</li>
     <li>☐ <code>/reader</code> renders the heading, the nav with three links and the count, and the
       list newest first; <code>/reader/archive</code> and <code>/reader/publications</code> render
       their empty states; the desktop sidebar is 256 px and the switcher shows four untruncated
@@ -1320,8 +1409,9 @@ if (message.stop_reason === 'max_tokens') return { kind: 'counted', error: 'max_
       rather keep <code>w-56</code>, the alternative is 12 px switcher labels with <code>px-1</code> in a
       row padded <code>px-2</code> instead of <code>px-4</code> — measured 190 px in a 192 px budget.
       Say so on the PR and the build takes that instead; the mockup above is drawn for 256 px.</li>
-    <li><b>The per-Worker cron-trigger cap.</b> Checked in §5.3 before adding the fourth trigger; the
-      fallback (ride <code>*/2</code> after the judge, limit 2) is fixed here.</li>
+    <li><b>The per-Worker cron-trigger cap.</b> Checked in §5.3 before adding the fourth trigger. If
+      refused there is no in-budget fallback (§5.3 has the arithmetic), so the build stops and reports
+      rather than guessing — the one place this story can block on the owner.</li>
     <li><b>Gmail's <code>messageAdded</code> for filter-archived mail</b> and <b>the Free plan's CPU
       time</b> on long HTML — both checkpoint items (§12), both recorded in the notes file (§11).</li>
   </ul>
