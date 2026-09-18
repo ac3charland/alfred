@@ -27,9 +27,18 @@ One line each, with the file that now holds the truth.
   tsconfig has no `resolveJsonModule` and nothing parses RFC 822. — `workers/src/reader/fixtures/`
 - **The eval script reads the mailbox** (`--query`, `--ids`) **or replays the fixtures** (`--fixtures`,
   `--dry-run`); there is no folder-of-`.eml` mode. — `workers/scripts/reader-eval.ts`
-- **Title comes from the Subject; the canonical URL is the first `/p/<slug>` link on any host**
-  (custom-domain publications and tracking hosts broke the "host is the publication's domain" rule);
-  only `http:`/`https:` anchors count. — `workers/src/reader/extract.ts`
+- **Title comes from the Subject; the canonical URL is the first `/p/<slug>` link on any host, with
+  an optional `/pub/<name>` in front of it.** The 2026 template links the post only as
+  `open.substack.com/pub/<name>/p/<slug>` (twice, the second carrying `READ IN APP`) and carries no
+  bare `<pub>.substack.com/p/<slug>` anchor at all; a custom-domain publication still might, so both
+  shapes count and first-in-document-order decides between them. A `substack.com/redirect/…` link is
+  never unwrapped — its base64 payload does hold the post's URL, but the wrapper expires, so the
+  stored link has to be the one that still resolves. Only `http:`/`https:` anchors count.
+  — `workers/src/reader/extract.ts`
+- **A publication's domain drops the section tag.** One publication mails from several section
+  handles (`<pub>+<section>@substack.com`); the tag names the section and never appears in a host,
+  so the domain is `<pub>.substack.com` while the handle keeps the tag (matching is on the handle).
+  — `workers/src/reader/discovery.ts`
 - **Model input is capped at 150 000 characters, stored text at 400 000**; read minutes are derived
   in the UI as `max(1, ceil(word_count / 230))`. — `prompt.ts`, `extract.ts`, `reader-format.ts`
 - **No publications route in this story**: discovery seeds Substack senders; anything else is an
@@ -118,6 +127,15 @@ One line each, with the file that now holds the truth.
   archive-scope query's `.not('archived_at', 'is', null)`.
 - `frontend/lib/test-utils.tsx`'s `renderWithProviders` gained a `reader` seed option
   (`initialPosts`), alongside the other modules' seeds.
+- **A paywalled post's stored text is the teaser, not the post.** The review's podcast/video post
+  stops after ~430 words with an `Upgrade to paid` call in its last 250 characters, and nothing on
+  the row says the body was cut — the summariser reads the teaser as if it were the whole piece.
+  Detecting the cut and marking the row is Story 2's.
+- **The byline is in the markup as well as in `From`.** Every post mail carries a
+  `https://substack.com/@<handle>` anchor whose text is the author's name, sitting ahead of the post
+  link. `From` arrives in three shapes (the publication's name, the author's name, and
+  `<Author> from <Publication>` — the last of which `extract.ts` now unpicks), so the byline anchor
+  is the steadier source for `author` and the natural input to an authors/publications surface.
 - `refresh()` keeps the local row for any post this tab wrote that its read cannot answer for
   (`replaceAll`'s `keep`): two sets, one of writes still in flight and one of every write not
   completed before the read was ISSUED, seeded from the first at that instant and added to as the
@@ -140,11 +158,12 @@ Cost against this table before adding a retention step or any new per-post write
 
 ## Scope that fell out
 
-- The "View in browser" regex (`workers/src/reader/extract.ts` `VIEW_IN_BROWSER`) was widened
-  with `(post )?` — Substack's real wording is "View this post in your browser", not the plain
-  "view in browser" a narrower pattern would only match.
-- The `roundup-view-in-browser` fixture carries no `/p/` link, so it's what exercises the
-  `VIEW_IN_BROWSER` fallback rather than the `/p/` path.
+- The anchor-text fallback (`workers/src/reader/extract.ts` `VIEW_IN_BROWSER`) exists only for
+  templates that carry no post path at all; the live template's `READ IN APP` sits ON the
+  `/pub/…/p/…` link, which the path rule takes first. `read in app` is in the alternation anyway,
+  for the mail that has the words and not the link.
+- The `read-in-app` fixture carries no post path of any shape, so it's what exercises that fallback
+  rather than the path rule.
 - A retried pending post whose stored text has gone empty (a retention sweep nulled it) is
   filed `failed` with no model call — `prepareRetry` in `workers/src/reader/scheduled.ts`.
 - Missing Gmail bindings (`GMAIL_OAUTH_CLIENT_ID` / `_SECRET` / `GMAIL_PERSONAL_REFRESH_TOKEN`)
@@ -158,10 +177,18 @@ Cost against this table before adding a retention step or any new per-post write
   see the checkpoint below.
 - No `intake.test.ts`: its branches (404, binned, conflict, empty body) are pinned end-to-end
   through `scheduled.test.ts` instead of their own unit suite.
-- RFC 2047 encoded-word subjects (`=?UTF-8?Q?…?=`) are stored verbatim as the row title —
-  inherited from the comms mirror, which stores `subject` the same way; the fixtures are ASCII so
-  nothing here shows it. The checkpoint's eval over real mail is the confirmation; a real-mail
-  fixture and the decode belong at the top of Story 2. — `workers/src/reader/extract.ts`,
+- RFC 2047 encoded words are decoded now, not stored verbatim — `decodeEncodedWords` in
+  `workers/src/comms/email-text.ts`, wired into the reader's title and into the comms mirror's
+  `subject` and `sender_name`. Q and B, UTF-8 and latin1, two ADJACENT words joined with no space
+  between them (Substack splits a long subject mid-word), anything unreadable left as it arrived.
+  One question stays open: whether Gmail's API ever hands a header already decoded. The owner's
+  captured `messages.get?format=full` did not — every non-ASCII subject arrived encoded — and the
+  decoder is a no-op on a header that is already plain, so the cost of being wrong about it is nil.
+- Substack's HTML opens with two `display:none` preheaders, the second ~400 characters of
+  `&#847;&nbsp;&#8199;&#173;`. `htmlToText` drops `display:none` elements with their content and
+  strips the invisible code points that survive entity decoding; without it every post's
+  `word_count` carried some 200 empty words. Known limit: the strip ends at the first matching
+  close tag, so a `display:none` div holding another div loses only its head. —
   `workers/src/comms/email-text.ts`
 
 ## Checkpoint results
