@@ -1,0 +1,8 @@
+The Open verb, as it renders in the live list — read off each row’s anchor.
+
+How near is the intelligence explosion, really?   (canonical_url set)
+  href = https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion
+
+Import AI 412: three new evals, and a robot that folds   (canonical_url null,
+  rfc822_message_id <import-ai-412@mail.substack.com>) -> the Gmail permalink
+  href = https://mail.google.com/mail/u/0/#search/rfc822msgid:import-ai-412%40mail.substack.com
