@@ -27,6 +27,11 @@ const EPIC = '22222222-2222-2222-2222-222222222222';
 const PROJECT_2 = '55555555-5555-5555-5555-555555555555';
 const EPIC_2 = '66666666-6666-6666-6666-666666666666';
 
+// The one gmail-personal comm_accounts row the Reader views key their join on — both the
+// worklist and the discovery view hardcode `a.key = 'gmail-personal'`, so every Reader assertion
+// shares this one account rather than each minting its own.
+const READER_ACCOUNT = 'facade00-0000-4000-8000-000000000001';
+
 /**
  * Run `fn` with the connection's role temporarily switched, then restore it. RLS and table
  * GRANTs apply as `role` (not the superuser session), so this is what exercises the real
@@ -48,6 +53,21 @@ export async function attempt(name: string, fn: () => Promise<string>): Promise<
   } catch (error) {
     return { name, ok: false, detail: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * Insert the shared `gmail-personal` comm_accounts row the Reader views join on, if it isn't
+ * there yet — idempotent, so the worklist and discovery checks can each call it regardless of
+ * which runs first. Returns its id.
+ */
+async function ensureReaderAccount(client: Client): Promise<string> {
+  await client.query(
+    `insert into comm_accounts (id, key, kind, label, home)
+       values ($1, 'gmail-personal', 'gmail', 'Personal', 'worker')
+       on conflict (id) do nothing`,
+    [READER_ACCOUNT],
+  );
+  return READER_ACCOUNT;
 }
 
 /** Seed the one project + epic the code-story assertions create stories under. */
@@ -3168,6 +3188,276 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // ── Reader (ALF-233) ────────────────────────────────────────────────────────
+
+  const readerGrantsResult = await attempt(
+    'reader: authenticated can insert/select/update reader_publications, reader_posts and ' +
+      'reader_health, and anon is denied on all three (ALF-233)',
+    async () => {
+      let publicationId = '';
+      let postId = '';
+      await asRole(client, 'authenticated', async () => {
+        const inserted = await client.query<{ id: string }>(
+          `insert into reader_publications (handle, name, source)
+             values ('grant-test@example.com', 'Grant Test', 'owner') returning id`,
+        );
+        publicationId = inserted.rows[0]?.id ?? '';
+        if (!publicationId) throw new Error('authenticated could not insert a publication');
+        await client.query(`update reader_publications set name = 'Renamed' where id = $1`, [
+          publicationId,
+        ]);
+        const { rows: pubRows } = await client.query<{ name: string }>(
+          `select name from reader_publications where id = $1`,
+          [publicationId],
+        );
+        if (pubRows[0]?.name !== 'Renamed')
+          throw new Error('authenticated could not read back its own publication update');
+
+        const insertedPost = await client.query<{ id: string }>(
+          `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+             values ($1, 'gmail-personal', 'grant-test-msg', 'Grant Test Post', now()) returning id`,
+          [publicationId],
+        );
+        postId = insertedPost.rows[0]?.id ?? '';
+        if (!postId) throw new Error('authenticated could not insert a post');
+        await client.query(`update reader_posts set title = 'Renamed Post' where id = $1`, [
+          postId,
+        ]);
+        const { rows: postRows } = await client.query<{ title: string }>(
+          `select title from reader_posts where id = $1`,
+          [postId],
+        );
+        if (postRows[0]?.title !== 'Renamed Post')
+          throw new Error('authenticated could not read back its own post update');
+
+        await client.query(`update reader_health set last_run_at = now() where id = 1`);
+        const { rows: healthRows } = await client.query<{ last_run_at: string | null }>(
+          `select last_run_at from reader_health where id = 1`,
+        );
+        if (healthRows[0]?.last_run_at === null)
+          throw new Error('authenticated could not write reader_health');
+      });
+      await asRole(client, 'anon', async () => {
+        const { rows: pubRows } = await client.query<{ n: string }>(
+          `select count(*)::text as n from reader_publications`,
+        );
+        if (pubRows[0]?.n !== '0') throw new Error('anon can read reader_publications');
+        const { rows: postRows } = await client.query<{ n: string }>(
+          `select count(*)::text as n from reader_posts`,
+        );
+        if (postRows[0]?.n !== '0') throw new Error('anon can read reader_posts');
+        const { rows: healthRows } = await client.query<{ n: string }>(
+          `select count(*)::text as n from reader_health`,
+        );
+        if (healthRows[0]?.n !== '0') throw new Error('anon can read reader_health');
+      });
+      return 'authenticated wrote and read back all three tables; anon sees none of them';
+    },
+  );
+
+  const readerHealthSeededResult = await attempt(
+    'reader: reader_health has a seeded row 1, so the tick only ever patches it (ALF-233)',
+    async () => {
+      const { rows } = await client.query<{ id: number }>(
+        `select id from reader_health where id = 1`,
+      );
+      if (rows.length !== 1) throw new Error('reader_health has no row 1');
+      return 'row 1 present';
+    },
+  );
+
+  const readerWorklistResult = await attempt(
+    'v_reader_worklist: matches an enabled publication’s inbound mail exactly once, and stops ' +
+      'once a post exists, once the message is claimed, when the publication is disabled, or when ' +
+      'the mail is older than 7 days (ALF-233)',
+    async () => {
+      const account = await ensureReaderAccount(client);
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('worklist-test@example.com', 'Worklist Test', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      const message = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'reader-msg-fresh', 'reader-thread-fresh', 'worklist-test@example.com',
+                   now() - interval '1 day')
+           returning id`,
+        [account],
+      );
+      const messageId = message.rows[0]?.id;
+      if (!messageId) throw new Error('could not seed the message');
+
+      const matchedOnce = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_worklist where comm_message_id = $1`,
+        [messageId],
+      );
+      if (matchedOnce.rows[0]?.n !== '1')
+        throw new Error(`matched ${String(matchedOnce.rows[0]?.n)} times, expected exactly 1`);
+
+      // A disabled publication's mail never appears.
+      const disabledPublication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source, enabled)
+           values ('worklist-disabled@example.com', 'Disabled Test', 'owner', false) returning id`,
+      );
+      if (!disabledPublication.rows[0]?.id)
+        throw new Error('could not seed the disabled publication');
+      await client.query(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'reader-msg-disabled', 'reader-thread-disabled', 'worklist-disabled@example.com',
+                   now() - interval '1 day')`,
+        [account],
+      );
+      const disabledMatch = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_worklist where gmail_message_id = 'reader-msg-disabled'`,
+      );
+      if (disabledMatch.rows[0]?.n !== '0')
+        throw new Error("a disabled publication's mail was returned by the worklist");
+
+      // Mail older than 7 days never appears.
+      await client.query(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'reader-msg-old', 'reader-thread-old', 'worklist-test@example.com',
+                   now() - interval '8 days')`,
+        [account],
+      );
+      const oldMatch = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_worklist where gmail_message_id = 'reader-msg-old'`,
+      );
+      if (oldMatch.rows[0]?.n !== '0')
+        throw new Error('mail older than 7 days was returned by the worklist');
+
+      // Once a reader_posts row exists on the same (account_key, gmail_message_id), the anti-join
+      // excludes it.
+      await client.query(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+           values ($1, 'gmail-personal', 'reader-msg-fresh', 'Worklist Test Post', now())`,
+        [publicationId],
+      );
+      const postedMatch = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_worklist where comm_message_id = $1`,
+        [messageId],
+      );
+      if (postedMatch.rows[0]?.n !== '0')
+        throw new Error('a message with an existing post was still returned by the worklist');
+
+      // A second, otherwise-eligible message that gets claimed instead of posted also drops out.
+      const claimed = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'reader-msg-claim', 'reader-thread-claim', 'worklist-test@example.com',
+                   now() - interval '1 day')
+           returning id`,
+        [account],
+      );
+      const claimedId = claimed.rows[0]?.id;
+      if (!claimedId) throw new Error('could not seed the claim-test message');
+      const beforeClaim = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_worklist where comm_message_id = $1`,
+        [claimedId],
+      );
+      if (beforeClaim.rows[0]?.n !== '1')
+        throw new Error('the claim-test message did not initially appear in the worklist');
+      await client.query(`update comm_messages set reader_claimed_at = now() where id = $1`, [
+        claimedId,
+      ]);
+      const afterClaim = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_worklist where comm_message_id = $1`,
+        [claimedId],
+      );
+      if (afterClaim.rows[0]?.n !== '0')
+        throw new Error('a claimed message was still returned by the worklist');
+
+      return 'matched once; excluded once posted, once claimed, when disabled, and when older than 7 days';
+    },
+  );
+
+  const readerDiscoveryResult = await attempt(
+    'v_reader_discovery: lists an off-roster Substack list-header sender, never substack’s own ' +
+      'no-reply senders, and drops a sender once it joins the roster (ALF-233)',
+    async () => {
+      const account = await ensureReaderAccount(client);
+
+      await client.query(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, sender_name,
+                                     has_list_header, received_at)
+           values ($1, 'discovery-msg-1', 'discovery-thread-1', 'discovery-test@substack.com',
+                   'Discovery Test', true, now() - interval '1 day')`,
+        [account],
+      );
+      const discovered = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_discovery where handle = 'discovery-test@substack.com'`,
+      );
+      if (discovered.rows[0]?.n !== '1')
+        throw new Error('an off-roster substack sender with a list header was not discovered');
+
+      // Substack's own platform senders never appear, regardless of the list header.
+      await client.query(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, has_list_header, received_at)
+           values ($1, 'discovery-msg-noreply-1', 'discovery-thread-noreply-1', 'no-reply@substack.com',
+                   true, now() - interval '1 day'),
+                  ($1, 'discovery-msg-noreply-2', 'discovery-thread-noreply-2', 'noreply@substack.com',
+                   true, now() - interval '1 day')`,
+        [account],
+      );
+      const platformSenders = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_discovery
+          where handle in ('no-reply@substack.com', 'noreply@substack.com')`,
+      );
+      if (platformSenders.rows[0]?.n !== '0')
+        throw new Error("substack's own platform senders were discovered");
+
+      // Once the sender joins the roster, discovery drops it.
+      await client.query(
+        `insert into reader_publications (handle, name, source)
+           values ('discovery-test@substack.com', 'Discovery Test', 'auto')`,
+      );
+      const afterRoster = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_discovery where handle = 'discovery-test@substack.com'`,
+      );
+      if (afterRoster.rows[0]?.n !== '0')
+        throw new Error('a rostered sender is still listed by discovery');
+
+      return 'off-roster sender discovered once; substack platform senders excluded; drops once rostered';
+    },
+  );
+
+  const readerDoneHasSummaryResult = await attempt(
+    'reader_posts_done_has_summary rejects a done row missing a gist, and accepts one with a ' +
+      'full summary (ALF-233)',
+    async () => {
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('check-test@example.com', 'Check Test', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      let rejected = false;
+      try {
+        await client.query(
+          `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                      received_at, summary_state)
+             values ($1, 'gmail-personal', 'check-test-msg-bad', 'No Summary', now(), 'done')`,
+          [publicationId],
+        );
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error('a done row with no headline/gist/overview was accepted');
+
+      await client.query(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                    received_at, summary_state, headline, gist, overview)
+           values ($1, 'gmail-personal', 'check-test-msg-good', 'Has Summary', now(), 'done',
+                   'A headline', 'A gist', '{}'::jsonb)`,
+        [publicationId],
+      );
+
+      return 'a done row missing its summary was rejected; a fully summarised one was accepted';
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -3228,5 +3518,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     commsInboxItemAtomicResult,
     commsInboxItemConcurrencyResult,
     commsRealtimeResult,
+    readerGrantsResult,
+    readerHealthSeededResult,
+    readerWorklistResult,
+    readerDiscoveryResult,
+    readerDoneHasSummaryResult,
   ];
 }
