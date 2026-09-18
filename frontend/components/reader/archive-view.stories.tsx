@@ -148,10 +148,15 @@ export const Populated: Story = {
   },
 };
 
-/** The read came back at its ceiling, so the view says what it is showing. */
+/**
+ * The read came back at its ceiling, so the view says what it is showing.
+ *
+ * Documented but not captured: two hundred rows make a crop tall enough that the one line under
+ * test is a rounding error against the 1% threshold, so the snapshot could never fail on it.
+ * `archive-view.test.tsx` pins the line instead.
+ */
 export const LatestTwoHundred: Story = {
   decorators: [withArchiveRead(ARCHIVED_FULL)],
-  parameters: { visualTest: { target: '[data-testid="archive-frame"]' } },
 };
 
 /** Nothing has ever been archived — the view's resting state, once the read has landed. */
