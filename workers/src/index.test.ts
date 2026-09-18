@@ -828,6 +828,34 @@ describe('worker.scheduled', () => {
     ]);
     expect(errors).toEqual(['reader: reader retention: permission denied']);
   });
+
+  it('says how far a half-run sweep got as well as that it broke', async () => {
+    // Each batch is its own transaction, so a run that died on its third batch really did sweep
+    // the first two — the log says both, rather than filing durable work under "did not run".
+    jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: 12, failures: [] });
+    jest.spyOn(readerScheduled, 'runReaderRetention').mockResolvedValue({
+      swept: 2,
+      failures: ['reader retention: permission denied'],
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    expect(logged).toEqual([
+      'comms retention: 12 messages deleted',
+      'reader retention: 2 posts swept',
+    ]);
+    expect(errors).toEqual(['reader: reader retention: permission denied']);
+  });
 });
 
 describe('worker.fetch — the comms ingest route', () => {

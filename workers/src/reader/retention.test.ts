@@ -1,6 +1,11 @@
 import { spyOnFetch } from '../fetch-stub';
 import type { SupabaseEnv } from '../supabase';
-import { READER_TEXT_RETENTION_DAYS, SWEEP_BATCH, runReaderRetention } from './retention';
+import {
+  READER_TEXT_RETENTION_DAYS,
+  ReaderSweepError,
+  SWEEP_BATCH,
+  runReaderRetention,
+} from './retention';
 
 const env: SupabaseEnv = {
   SUPABASE_URL: 'https://proj.supabase.co',
@@ -43,7 +48,7 @@ describe('runReaderRetention', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  it('throws on a non-2xx response, via fetchJson', async () => {
+  it('throws on a non-2xx response, keeping fetchJson’s own message', async () => {
     spyOnFetch().mockResolvedValue(new Response('boom', { status: 500 }));
 
     await expect(runReaderRetention(env, NOW)).rejects.toThrow(
@@ -51,16 +56,43 @@ describe('runReaderRetention', () => {
     );
   });
 
+  it('reports the rows earlier batches committed on the batch that breaks', async () => {
+    // Each batch is its own transaction, so two rows really were swept before the 500 — losing
+    // that count to a bare throw would have the run read as "did not run".
+    let call = 0;
+    spyOnFetch().mockImplementation(() => {
+      call += 1;
+      return Promise.resolve(call === 1 ? Response.json(2) : new Response('boom', { status: 500 }));
+    });
+
+    await expect(runReaderRetention(env, NOW)).rejects.toBeInstanceOf(ReaderSweepError);
+    call = 0;
+    await expect(runReaderRetention(env, NOW)).rejects.toMatchObject({ swept: 2 });
+  });
+
+  it('reports nothing swept when the very first batch breaks', async () => {
+    spyOnFetch().mockResolvedValue(new Response('boom', { status: 500 }));
+
+    await expect(runReaderRetention(env, NOW)).rejects.toMatchObject({ swept: 0 });
+  });
+
   it('throws rather than loop forever when a batch never reaches zero', async () => {
     // Every call returns a full batch — the runaway guard, not a real table size. A fresh
-    // Response per call: `Response.json` can only be read once, and this path reads over a
-    // hundred of them.
+    // Response per call: `Response.json` can only be read once, and this path reads dozens.
     const spy = spyOnFetch().mockImplementation(() => Promise.resolve(Response.json(SWEEP_BATCH)));
 
     await expect(runReaderRetention(env, NOW)).rejects.toThrow(
-      /reader_sweep_text did not reach 0 after 100 batches/,
+      /reader_sweep_text did not reach 0 after 40 batches/,
     );
-    expect(spy).toHaveBeenCalledTimes(100);
+    expect(spy).toHaveBeenCalledTimes(40);
+  });
+
+  it('carries what the runaway guard had already swept, so the run is not lost either', async () => {
+    spyOnFetch().mockImplementation(() => Promise.resolve(Response.json(SWEEP_BATCH)));
+
+    await expect(runReaderRetention(env, NOW)).rejects.toMatchObject({
+      swept: 40 * SWEEP_BATCH,
+    });
   });
 
   it('keeps the retention window at ninety days', () => {

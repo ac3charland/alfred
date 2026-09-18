@@ -31,13 +31,37 @@ export const READER_TEXT_RETENTION_DAYS = 90;
 export const SWEEP_BATCH = 5000;
 
 /**
- * A hard ceiling on how many batches one run will ask for. At `SWEEP_BATCH` rows a batch, this
- * is 500,000 rows — an order of magnitude past anything the arithmetic above predicts even for a
- * long-neglected sweep. A loop that never reaches 0 within it is a bug (an RPC whose `where`
- * clause isn't actually narrowing, say), not evidence of a bigger table, so it throws rather than
- * spend the rest of the invocation's budget chasing it.
+ * A hard ceiling on how many batches one run will ask for, set by the same **subrequest budget**
+ * that bounds the tick: 50 outbound fetches per invocation, shared on this schedule with the
+ * comms sweep's own call. Forty leaves that call its slot and nine more for whatever the
+ * invocation still has to do, and a loop allowed to ask for a hundred would simply throw
+ * `Too many subrequests` part-way instead of ever reaching its own guard.
+ *
+ * At `SWEEP_BATCH` rows a batch that is 200,000 rows — still an order of magnitude past anything
+ * the arithmetic above predicts even for a long-neglected sweep, and a run that does hit it keeps
+ * every batch it committed (see `ReaderSweepError`) and finishes the backlog on the next one. A
+ * loop that never reaches 0 within it is a bug (an RPC whose `where` clause isn't actually
+ * narrowing, say), not evidence of a bigger table.
  */
-const MAX_BATCHES = 100;
+const MAX_BATCHES = 40;
+
+/**
+ * A sweep that broke part-way, carrying the rows the batches BEFORE it had already committed.
+ *
+ * Each batch is its own transaction, so those rows are swept whatever happens next — reporting
+ * the run as simply "did not run" would throw away a true, already-durable count. The wrapper in
+ * `scheduled.ts` reads `swept` off this and puts it in the summary beside the failure.
+ */
+export class ReaderSweepError extends Error {
+  /** Rows committed by the batches that succeeded before the failure. */
+  readonly swept: number;
+
+  constructor(message: string, swept: number) {
+    super(message);
+    this.name = 'ReaderSweepError';
+    this.swept = swept;
+  }
+}
 
 /** Build the `rpc/<name>` POST URL — a private helper, the reader's own copy of comms' `rpcUrl`. */
 function rpcUrl(env: SupabaseEnv, name: string): string {
@@ -55,18 +79,27 @@ export async function runReaderRetention(env: SupabaseEnv, _now: Date): Promise<
   let swept = 0;
   for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
     // Each batch is its own transaction (see the module comment), so the loop is deliberately
-    // serial rather than fired concurrently.
-    const count = await fetchJson<number>(
-      env,
-      rpcUrl(env, 'reader_sweep_text'),
-      {
-        method: 'POST',
-        body: JSON.stringify({ p_days: READER_TEXT_RETENTION_DAYS, p_limit: SWEEP_BATCH }),
-      },
-      'POST rpc/reader_sweep_text',
-    );
+    // serial rather than fired concurrently — and a failure part-way keeps, and reports, whatever
+    // the batches before it committed.
+    let count: number;
+    try {
+      count = await fetchJson<number>(
+        env,
+        rpcUrl(env, 'reader_sweep_text'),
+        {
+          method: 'POST',
+          body: JSON.stringify({ p_days: READER_TEXT_RETENTION_DAYS, p_limit: SWEEP_BATCH }),
+        },
+        'POST rpc/reader_sweep_text',
+      );
+    } catch (error) {
+      throw new ReaderSweepError(error instanceof Error ? error.message : String(error), swept);
+    }
     swept += count;
     if (count === 0) return { swept };
   }
-  throw new Error(`reader_sweep_text did not reach 0 after ${String(MAX_BATCHES)} batches`);
+  throw new ReaderSweepError(
+    `reader_sweep_text did not reach 0 after ${String(MAX_BATCHES)} batches`,
+    swept,
+  );
 }
