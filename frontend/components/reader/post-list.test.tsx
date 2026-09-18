@@ -69,18 +69,33 @@ describe('PostList', () => {
     expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
   });
 
-  it('leaves the selection alone when an unselected row is archived with the mouse', async () => {
+  it('follows a row archived with the mouse: the click selects it, its exit moves on', async () => {
     const user = userEvent.setup();
     mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
     renderReader(<PostList posts={POSTS} now={NOW} />, POSTS);
 
-    // Point the keyboard at the first row, then archive the SECOND with a click.
+    // Every verb points the keyboard at the row it acts on, so a mouse archive leaves the
+    // selection where the list moved to — on the row taking the archived one's place, not on
+    // whichever row the keyboard happened to be left on.
+    await user.click(within(rowFor('Alpha')).getByRole('button', { name: 'Archive' }));
+
+    expect(selectedTitle()).toBe('Beta');
+  });
+
+  it('never walks back onto a row that is on its way out', async () => {
+    const user = userEvent.setup();
+    // The write is held in flight, so the archived row stays drawn through its collapse — the
+    // window in which `k` could otherwise point the keyboard at a row that is leaving.
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    renderReader(<PostList posts={POSTS} now={NOW} />, POSTS);
+
     await user.keyboard('j');
-    expect(selectedTitle()).toBe('Alpha');
+    await user.keyboard('e');
+    expect(selectedTitle()).toBe('Beta');
 
-    await user.click(within(rowFor('Beta')).getByRole('button', { name: 'Archive' }));
+    await user.keyboard('k');
 
-    expect(selectedTitle()).toBe('Alpha');
+    expect(selectedTitle()).toBe('Beta');
   });
 
   it('holds the selection on the last row rather than wrapping round', async () => {

@@ -25,12 +25,33 @@ interface PostListProperties {
   variant?: PostRowVariant;
 }
 
+/** No row is leaving — the shared empty set, so the derivation below allocates nothing. */
+const NO_EXITS: ReadonlySet<string> = new Set();
+
 export function PostList({ posts, now, variant = 'list' }: PostListProperties) {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  /**
+   * Rows whose exit has begun, and the list they began leaving. They are still drawn — that is
+   * what the collapse is for — but the keyboard must not be able to walk back onto one: the row
+   * is on its way out, and its verbs would act on a post the list has already moved past.
+   *
+   * The flags are scoped to the exact list they were raised in, and read back only while the
+   * store is still handing that same list down. So they need no pruning: a new list means the
+   * write either committed (the row is gone) or rolled back (the row is here to stay, and
+   * navigable again), and either way what was exiting no longer is.
+   */
+  const [exits, setExits] = React.useState<{
+    from: readonly ReaderPostListItem[];
+    ids: ReadonlySet<string>;
+  }>({ from: posts, ids: NO_EXITS });
+  const exitingIds = exits.from === posts ? exits.ids : NO_EXITS;
 
-  // The order `j`/`k` walk, built from the same list the rows are drawn from, so navigation can
-  // never disagree with the page.
-  const orderedIds = React.useMemo(() => posts.map((post) => post.id), [posts]);
+  // The order `j`/`k` walk: the drawn rows minus the ones on their way out, so navigation can
+  // never disagree with the page and never lands on a row that is leaving.
+  const orderedIds = React.useMemo(
+    () => posts.map((post) => post.id).filter((id) => !exitingIds.has(id)),
+    [posts, exitingIds],
+  );
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -48,7 +69,9 @@ export function PostList({ posts, now, variant = 'list' }: PostListProperties) {
         if (orderedIds.length === 0) return current;
         const index = current === null ? -1 : orderedIds.indexOf(current);
         // A first press lands on the top row whichever direction it was; after that the ends
-        // hold rather than wrap, so a held key can't cycle the list forever.
+        // hold rather than wrap, so a held key can't cycle the list forever. A selection that
+        // is not in the navigable list — nothing selected, or a row part-way out — is the same
+        // case: the next press starts again from the top.
         if (index === -1) return orderedIds[0] ?? null;
         const step = action === 'next' ? 1 : -1;
         const next = Math.min(Math.max(index + step, 0), orderedIds.length - 1);
@@ -69,13 +92,17 @@ export function PostList({ posts, now, variant = 'list' }: PostListProperties) {
    */
   const onExit = React.useCallback(
     (id: string) => {
+      setExits((current) => ({
+        from: posts,
+        ids: new Set(current.from === posts ? current.ids : []).add(id),
+      }));
       setSelectedId((current) => {
         if (current !== id) return current;
         const index = orderedIds.indexOf(id);
         return orderedIds[index + 1] ?? null;
       });
     },
-    [orderedIds],
+    [orderedIds, posts],
   );
 
   return (
