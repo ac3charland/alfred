@@ -4,13 +4,14 @@
  * the module switcher. Keeping one rule here is what guarantees URL, main content, sidebar,
  * and switcher highlight never disagree mid-switch (ALF-27).
  *
- * There are three modules now, so module resolution is a real router rather than a boolean:
+ * There are four modules now, so module resolution is a real router rather than a boolean:
  * Code owns `/code` and everything beneath it, Comms owns `/comms` and everything beneath it,
- * and every other path is Tasks (inbox, a folder, completed, the cross-cutting views).
+ * Reader owns `/reader` and everything beneath it, and every other path is Tasks (inbox, a
+ * folder, completed, the cross-cutting views).
  */
 
-/** The three top-level modules the shell can be showing. */
-export type ModuleId = 'tasks' | 'code' | 'comms';
+/** The four top-level modules the shell can be showing. */
+export type ModuleId = 'tasks' | 'code' | 'comms' | 'reader';
 
 /** True when `pathname` is the module's root or lives beneath it. */
 function ownsPath(pathname: string, root: string): boolean {
@@ -24,6 +25,7 @@ function ownsPath(pathname: string, root: string): boolean {
 export function activeModule(pathname: string): ModuleId {
   if (ownsPath(pathname, '/code')) return 'code';
   if (ownsPath(pathname, '/comms')) return 'comms';
+  if (ownsPath(pathname, '/reader')) return 'reader';
   return 'tasks';
 }
 
@@ -35,6 +37,11 @@ export function isCodePath(pathname: string): boolean {
 /** True on the Comms module's own routes. A thin wrapper over {@link activeModule}. */
 export function isCommsPath(pathname: string): boolean {
   return activeModule(pathname) === 'comms';
+}
+
+/** True on the Reader module's own routes. A thin wrapper over {@link activeModule}. */
+export function isReaderPath(pathname: string): boolean {
+  return activeModule(pathname) === 'reader';
 }
 
 /** The accent utility classes one module wears. Every field is a complete class string. */
@@ -58,10 +65,11 @@ export interface ModuleAccent {
  * colour tables follow.)
  *
  * One hue per module, and no two alike: Tasks is amber, Code the app's teal, Comms the blue the
- * product spec reserved for the communication firewall. Tasks and Code both wore teal until
- * ALF-219, which made two of the three switcher segments indistinguishable once highlighted —
- * the highlight told you a module was active but not which one. Anything reading a module's
- * colour reads it from here, so a recolour lands everywhere at once.
+ * product spec reserved for the communication firewall, and Reader the green the epic
+ * (ALF-232) settled on. Tasks and Code both wore teal until ALF-219, which made two of the
+ * three switcher segments indistinguishable once highlighted — the highlight told you a module
+ * was active but not which one. Anything reading a module's colour reads it from here, so a
+ * recolour lands everywhere at once.
  */
 export const MODULE_ACCENT: Record<ModuleId, ModuleAccent> = {
   tasks: {
@@ -84,5 +92,12 @@ export const MODULE_ACCENT: Record<ModuleId, ModuleAccent> = {
     dot: 'bg-accent-blue',
     border: 'border-accent-blue',
     glow: 'glow-blue',
+  },
+  reader: {
+    text: 'text-accent-green',
+    ring: 'ring-accent-green',
+    dot: 'bg-accent-green',
+    border: 'border-accent-green',
+    glow: 'glow-green',
   },
 };

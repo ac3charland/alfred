@@ -50,7 +50,7 @@ test.describe('the desktop module switcher', () => {
 
     // And every segment with it: a segment clipped at the border is unreadable even when
     // the group's own box happens to fit.
-    for (const label of ['Tasks', 'Code', 'Comms']) {
+    for (const label of ['Tasks', 'Code', 'Comms', 'Reader']) {
       const segment = page.getByRole('link', { name: label, exact: true });
       expect(
         await rightEdge(segment),
@@ -85,5 +85,20 @@ test.describe('the desktop module switcher', () => {
     await expect(page).toHaveURL(/\/code$/);
     await expect(code).toHaveCSS('color', 'rgb(79, 209, 224)');
     await expect(tasks).toHaveCSS('color', restingCode);
+  });
+
+  test('highlights Reader in green (ALF-233)', async ({ page, seed }) => {
+    await seed(SEED);
+    await page.goto('/priority');
+
+    const reader = page.getByRole('link', { name: 'Reader', exact: true });
+
+    // Resting (inactive) segments don't carry the module's own colour.
+    await expect(reader).not.toHaveCSS('color', 'rgb(52, 211, 153)');
+
+    await reader.click();
+    await expect(page).toHaveURL(/\/reader$/);
+    // #34d399 — the accent-green token in globals.css.
+    await expect(reader).toHaveCSS('color', 'rgb(52, 211, 153)');
   });
 });

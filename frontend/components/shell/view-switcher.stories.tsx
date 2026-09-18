@@ -4,16 +4,17 @@ import * as React from 'react';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 
 /**
- * Frame the switcher in the desktop sidebar's real geometry — `w-56` with the `px-4` its
+ * Frame the switcher in the desktop sidebar's real geometry — `w-64` with the `px-4` its
  * header block carries (see `app-shell.tsx`) — because the control now sizes itself from its
  * container rather than from its labels. Captured on the canvas it would simply stretch to the
- * canvas width, and the snapshot would stop showing the thing that matters: that three
- * segments fit the sidebar without clipping or spilling over its border (ALF-219).
+ * canvas width, and the snapshot would stop showing the thing that matters: that the segments
+ * fit the sidebar without clipping or spilling over its border (ALF-219). The sidebar widened
+ * from `w-56` to `w-64` for the fourth (Reader) segment (ALF-233) — this frame follows it.
  */
 const withSidebarFrame: Decorator = (Story) => (
   <div
     data-testid="sidebar-frame"
-    className="w-56 border-r border-border bg-surface px-4 py-3 text-foreground"
+    className="w-64 border-r border-border bg-surface px-4 py-3 text-foreground"
   >
     <Story />
   </div>
@@ -56,6 +57,16 @@ export const CommsActive: Story = {
     nextjs: {
       appDirectory: true,
       navigation: { pathname: '/comms' },
+    },
+  },
+};
+
+/** Reader active — /reader route, the module that wears the green accent (ALF-233). */
+export const ReaderActive: Story = {
+  parameters: {
+    nextjs: {
+      appDirectory: true,
+      navigation: { pathname: '/reader' },
     },
   },
 };

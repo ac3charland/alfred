@@ -108,6 +108,18 @@ describe('ShellMobileNav', () => {
     expect(screen.queryByRole('navigation', { name: 'Navigation' })).not.toBeInTheDocument();
   });
 
+  it('swaps in ReaderNav when the switcher moves to Reader', async () => {
+    const user = userEvent.setup();
+    renderMobileNav();
+
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await user.click(screen.getByRole('link', { name: 'Reader' }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Reader' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Navigation' })).not.toBeInTheDocument();
+  });
+
   it('stays open on a switcher tap that lands back on the module already showing', async () => {
     const user = userEvent.setup();
     renderMobileNav();

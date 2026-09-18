@@ -88,9 +88,30 @@ describe('CommandPalette', () => {
     ]) {
       expect(within(listbox).getByText(label)).toBeInTheDocument();
     }
+    // The static Reader destinations, always present regardless of seed.
+    for (const label of ['Reading list', 'Archive', 'Publications']) {
+      expect(within(listbox).getByText(label)).toBeInTheDocument();
+    }
     expect(within(listbox).getByText('Software')).toBeInTheDocument();
     expect(within(listbox).getByText('Alfred')).toBeInTheDocument();
     expect(within(listbox).getByText('ALF')).toBeInTheDocument();
+  });
+
+  it('reaches the Reader destinations, grouped under their own "Reader" header', async () => {
+    const user = userEvent.setup();
+    const pushState = jest.spyOn(globalThis.history, 'pushState');
+    renderPalette();
+
+    pressCmdK();
+    await user.keyboard('Publications');
+
+    const listbox = screen.getByRole('listbox');
+    expect(within(listbox).getByText('Reader')).toBeInTheDocument();
+    expect(within(listbox).getByText('Publications')).toBeInTheDocument();
+    expect(within(listbox).queryByText('Reading list')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('option', { name: 'Publications' }));
+    expect(pushState).toHaveBeenCalledWith(null, '', '/reader/publications');
   });
 
   it('toggles closed when ⌘K is pressed again while open', async () => {
