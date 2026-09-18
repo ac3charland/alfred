@@ -33,6 +33,7 @@ export const RETRYABLE_ATTEMPTS = 3;
 export type SummariserState = 'live' | 'stalled' | 'never';
 
 const MS_PER_MINUTE = 60 * 1000;
+const DAY_MS = 24 * 60 * MS_PER_MINUTE;
 
 /** The UTC calendar day an instant falls in, in the shape the health row's `calls_day` holds. */
 function utcDay(iso: string | Date): string {
@@ -49,6 +50,10 @@ function utcDay(iso: string | Date): string {
  * reset the count, so the posts sitting pending are waiting by design. Without that clause every
  * capped day would show a false stall from midnight UTC (early evening in Chicago, which is
  * exactly when the list gets read) until the first tick of the new day summarised something.
+ *
+ * That second clause only BRIDGES midnight: the spent count has to belong to yesterday, so a
+ * cron that dies the moment a capped day ends reads as "reached" for that one day and no longer.
+ * From the day after, the count is stale rather than current and the stall rules take it over.
  */
 export function ceilingReached(health: ReaderHealth | undefined, now: Date): boolean {
   if (health === undefined) return false;
@@ -57,8 +62,9 @@ export function ceilingReached(health: ReaderHealth | undefined, now: Date): boo
   if (spent < cap) return false;
 
   const today = utcDay(now);
+  const yesterday = utcDay(new Date(now.getTime() - DAY_MS));
   const ranToday = health.last_run_at !== null && utcDay(health.last_run_at) === today;
-  return day === today || !ranToday;
+  return day === today || (day === yesterday && !ranToday);
 }
 
 /**
@@ -80,17 +86,25 @@ export function waitingPosts(posts: ReaderPostListItem[]): ReaderPostListItem[] 
 /**
  * Has summarising stopped, and when did it stop?
  *
- * No health row at all is `never`, checked before either signal: the tick stamps `last_run_at`
- * before it does anything else, so no row means the cron has never fired — which is a different
- * fault, with a different fix, from a summariser that ran and then stopped.
+ * An unrun tick is `never`, checked before either signal: the migration seeds row 1, so the row
+ * is always there and its emptiness is what says the cron has never fired — `last_run_at` null,
+ * which the tick stamps before it does anything else. (A missing row reads the same way, for a
+ * database that predates the seed.) That is a different fault, with a different fix, from a
+ * summariser that ran and then stopped.
  *
  * Then two independent signals, either sufficient:
  *
  *  1. the tick recorded a systemic failure more recently than a success (a missing binding, a
  *     rejected key) — something it knew about and wrote down; and
- *  2. a claimed post has waited past the cadence while NO post was summarised inside it, which
- *     catches an outage the tick never got far enough to record. Suppressed while the daily
- *     ceiling is reached, because then waiting is the designed behaviour.
+ *  2. a claimed post has waited past the cadence while NO post was summarised inside it AND the
+ *     tick itself recorded no clean pass inside it, which catches an outage the tick never got
+ *     far enough to record. Suppressed while the daily ceiling is reached, because then waiting
+ *     is the designed behaviour.
+ *
+ * The tick's own proof of life is part of the second signal because a claim is not always fresh:
+ * re-summarising a post re-queues a row that keeps its original `created_at`, so a post claimed
+ * months ago can be pending a second later. A tick that passed cleanly inside the window is
+ * working whatever the claims say — the next one will pick that row up.
  *
  * A waiting post is dated by `created_at` — the instant the tick claimed it — and never by
  * `received_at`, which for a backfilled post is a much older moment and would report an outage
@@ -104,7 +118,10 @@ export function summariserStalled(
   posts: ReaderPostListItem[],
   now: Date,
 ): { state: SummariserState; since: string | null } {
+  // Two statements rather than one condition: the row's absence and its emptiness are the same
+  // state read off different databases, and either one alone says the cron has never fired.
   if (health === undefined) return { state: 'never', since: null };
+  if (health.last_run_at === null) return { state: 'never', since: null };
 
   const signals: string[] = [];
 
@@ -137,7 +154,11 @@ export function summariserStalled(
     }
 
     const summarisingStill = lastSummary !== undefined && Date.parse(lastSummary) > cutoff;
-    if (claimedSince !== undefined && !summarisingStill) signals.push(lastSummary ?? claimedSince);
+    const tickPassedInside =
+      health.last_success_at !== null && Date.parse(health.last_success_at) > cutoff;
+    if (claimedSince !== undefined && !summarisingStill && !tickPassedInside) {
+      signals.push(lastSummary ?? claimedSince);
+    }
   }
 
   // Walked rather than sorted: ISO timestamps only compare correctly as strings when they share
@@ -161,10 +182,11 @@ export type ReaderBanner =
  * Which banner, if any — one at a time, in a fixed precedence, so the header and the stories
  * cannot disagree about it.
  *
- * Gmail dead wins because a mailbox that has stopped delivering makes the other two moot:
- * nothing new is arriving to summarise or to spend the budget on, and it is the one state that
- * needs a person. A stall in turn beats the ceiling, because nothing is being summarised either
- * way and only one of the two is a fault. Three stacked banners would push the list off a phone
+ * A REFUSED mailbox wins outright: it is the one state that needs a person, and nothing new is
+ * arriving to summarise or to spend the budget on anyway. A stall comes next, because a
+ * summariser that has stopped is a fault where the two states under it are not: a mailbox merely
+ * gone quiet loses nothing that has already arrived, and a spent ceiling is the design working.
+ * The ceiling is last for the same reason. Three stacked banners would push the list off a phone
  * screen; the header's dots keep the suppressed states visible.
  */
 export function readerBanner(
@@ -173,10 +195,10 @@ export function readerBanner(
   now: Date,
 ): ReaderBanner | null {
   const { account, health } = snapshot;
+  const gmail = account === undefined ? undefined : accountHealth(account, now);
 
-  if (account !== undefined) {
-    const gmail = accountHealth(account, now);
-    if (gmail !== 'live') return { kind: 'gmail', state: gmail, account };
+  if (account !== undefined && gmail === 'erroring') {
+    return { kind: 'gmail', state: 'erroring', account };
   }
 
   const stall = summariserStalled(health, posts, now);
@@ -184,8 +206,13 @@ export function readerBanner(
     return { kind: 'stalled', since: stall.since, error: health?.last_error ?? null };
   }
 
-  if (health?.daily_cap !== undefined && health.daily_cap !== null && ceilingReached(health, now)) {
-    return { kind: 'ceiling', cap: health.daily_cap, waiting: waitingPosts(posts).length };
+  if (account !== undefined && gmail === 'stale') {
+    return { kind: 'gmail', state: 'stale', account };
+  }
+
+  const cap = health?.daily_cap ?? null;
+  if (cap !== null && ceilingReached(health, now)) {
+    return { kind: 'ceiling', cap, waiting: waitingPosts(posts).length };
   }
 
   return null;

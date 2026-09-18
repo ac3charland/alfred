@@ -153,11 +153,12 @@ export const READER_HEALTH_FIXTURE_NOW = '2026-09-18T12:00:00.000Z';
 export const NO_READER_HEALTH: ReaderHealthSnapshot = { health: undefined, account: undefined };
 
 /**
- * The states the health row can be in, as the surfaces that read it name them. There is no
- * `never` preset: "the tick has never run" is the ABSENCE of a row (`undefined`), because the
- * tick stamps `last_run_at` before anything else it does.
+ * The states the health row can be in, as the surfaces that read it name them. `never` is the
+ * row as the migration seeds it — row 1 with every other column still null — which is what "the
+ * tick has never run" looks like in a live database; {@link NO_READER_HEALTH} covers the older
+ * shape of the same state, a database with no row at all.
  */
-export type ReaderHealthPreset = 'live' | 'stalled' | 'ceiling' | 'error';
+export type ReaderHealthPreset = 'live' | 'stalled' | 'ceiling' | 'error' | 'never';
 
 const MINUTE_MS = 60 * 1000;
 
@@ -190,6 +191,11 @@ export function makeReaderHealth(
   const recently = new Date(now.getTime() - MINUTE_MS).toISOString();
   const today = now.toISOString().slice(0, 10);
   const errored = preset === 'stalled' || preset === 'error';
+  // The seeded row: the migration writes row 1 and nothing else, and the tick fills it in from
+  // `last_run_at` outwards, so every other column is still null until it first fires.
+  const seeded = preset === 'never';
+  const succeeded = errored ? new Date(now.getTime() - 120 * MINUTE_MS).toISOString() : recently;
+  const spent = preset === 'ceiling' ? 30 : 3;
 
   // Each column reads through `stated`, not `??`, so an override of `null` is a value the caller
   // CHOSE rather than an absent one: every column here is genuinely nullable — "the tick has
@@ -197,16 +203,13 @@ export function makeReaderHealth(
   // would make each such test spread over its own result to get there.
   return {
     id: stated(overrides.id, 1),
-    last_run_at: stated(overrides.last_run_at, recently),
-    last_success_at: stated(
-      overrides.last_success_at,
-      errored ? new Date(now.getTime() - 120 * MINUTE_MS).toISOString() : recently,
-    ),
+    last_run_at: stated(overrides.last_run_at, seeded ? null : recently),
+    last_success_at: stated(overrides.last_success_at, seeded ? null : succeeded),
     last_error: stated(overrides.last_error, errored ? 'ANTHROPIC_API_KEY is not set' : null),
     last_error_at: stated(overrides.last_error_at, errored ? recently : null),
-    daily_cap: stated(overrides.daily_cap, 30),
-    calls_today: stated(overrides.calls_today, preset === 'ceiling' ? 30 : 3),
-    calls_day: stated(overrides.calls_day, today),
+    daily_cap: stated(overrides.daily_cap, seeded ? null : 30),
+    calls_today: stated(overrides.calls_today, seeded ? null : spent),
+    calls_day: stated(overrides.calls_day, seeded ? null : today),
   };
 }
 

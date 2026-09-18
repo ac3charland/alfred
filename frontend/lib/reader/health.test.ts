@@ -47,6 +47,28 @@ function liveRow() {
   return makeReaderHealth('live', {}, NOW);
 }
 
+/**
+ * A row the tick is still stamping but has not passed cleanly inside the stall window — the
+ * state where the waiting posts are the only thing left to read the summariser by.
+ */
+function quietRow() {
+  return makeReaderHealth('live', { last_success_at: ago(120) }, NOW);
+}
+
+/** A row left by a cron that spent 2026-09-17's budget and then never fired again. */
+function deadAfterCap() {
+  return makeReaderHealth(
+    'ceiling',
+    {
+      calls_day: '2026-09-17',
+      calls_today: 30,
+      daily_cap: 30,
+      last_run_at: '2026-09-17T23:50:00.000Z',
+    },
+    NOW,
+  );
+}
+
 beforeEach(() => {
   resetReaderFixtureClock();
 });
@@ -128,6 +150,20 @@ describe('ceilingReached', () => {
     );
     expect(ceilingReached(health, NOW)).toBe(true);
   });
+
+  it('still holds the morning after a capped day whose cron then died', () => {
+    // 08:00 on the day after the cap was spent, with no tick since: the count is yesterday's and
+    // nothing has reset it, so the posts waiting are still waiting by design.
+    const health = deadAfterCap();
+    expect(ceilingReached(health, new Date('2026-09-18T08:00:00.000Z'))).toBe(true);
+  });
+
+  it('stops holding the day after that, however dead the cron is', () => {
+    // Two days on, "the count is yesterday's" is no longer true of anything — a count that old
+    // says nothing about today's budget, and the stall rules own the silence from here.
+    const health = deadAfterCap();
+    expect(ceilingReached(health, new Date('2026-09-19T08:00:00.000Z'))).toBe(false);
+  });
 });
 
 describe('waitingPosts', () => {
@@ -161,6 +197,13 @@ describe('summariserStalled', () => {
     });
   });
 
+  it('is "never" when the seeded row has no run stamped on it — the cron has not fired', () => {
+    expect(summariserStalled(makeReaderHealth('never', {}, NOW), [waiting(60)], NOW)).toEqual({
+      state: 'never',
+      since: null,
+    });
+  });
+
   it('is stalled when the tick recorded a failure more recently than a success', () => {
     const health = makeReaderHealth(
       'live',
@@ -186,7 +229,7 @@ describe('summariserStalled', () => {
   });
 
   it('is stalled when a claimed post has waited past the cadence and nothing was summarised in it', () => {
-    const health = liveRow();
+    const health = quietRow();
     const claimed = waiting(READER_STALL_MINUTES + 25);
 
     expect(summariserStalled(health, [claimed], NOW)).toEqual({
@@ -196,7 +239,7 @@ describe('summariserStalled', () => {
   });
 
   it('dates that stall from the last summary that did land, not from the claim', () => {
-    const health = liveRow();
+    const health = quietRow();
     const summarised = post({ summary_state: 'done', summarized_at: ago(30) });
 
     expect(summariserStalled(health, [waiting(90), summarised], NOW)).toEqual({
@@ -206,7 +249,7 @@ describe('summariserStalled', () => {
   });
 
   it('is live when a summary landed inside the cadence — the backlog is draining', () => {
-    const health = liveRow();
+    const health = quietRow();
     const summarised = post({ summary_state: 'done', summarized_at: ago(2) });
 
     expect(summariserStalled(health, [waiting(90), summarised], NOW)).toEqual({
@@ -216,7 +259,7 @@ describe('summariserStalled', () => {
   });
 
   it('is live when the backlog is waiting because the daily ceiling is spent', () => {
-    const health = makeReaderHealth('ceiling', { last_success_at: ago(1) }, NOW);
+    const health = makeReaderHealth('ceiling', { last_success_at: ago(200) }, NOW);
 
     expect(summariserStalled(health, [waiting(90)], NOW)).toEqual({ state: 'live', since: null });
   });
@@ -245,11 +288,59 @@ describe('summariserStalled', () => {
   });
 
   it('ignores a claimed post still inside the cadence', () => {
-    const health = liveRow();
+    const health = quietRow();
 
     expect(summariserStalled(health, [waiting(READER_STALL_MINUTES - 1)], NOW)).toEqual({
       state: 'live',
       since: null,
+    });
+  });
+
+  it('is live when the tick passed cleanly inside the window, however old the claim', () => {
+    // A re-summarised post is re-queued with the `created_at` it was first claimed under, so an
+    // ancient claim says nothing on its own — the tick's own clean pass is what answers it.
+    const requeued = waiting(3 * 24 * 60);
+
+    expect(summariserStalled(liveRow(), [requeued], NOW)).toEqual({ state: 'live', since: null });
+  });
+
+  it('is stalled when the tick has not passed cleanly inside the window either', () => {
+    const health = makeReaderHealth('live', { last_success_at: ago(20) }, NOW);
+    const claimed = waiting(20);
+
+    expect(summariserStalled(health, [claimed], NOW)).toEqual({
+      state: 'stalled',
+      since: claimed.created_at,
+    });
+  });
+
+  it('counts a post claimed exactly at the cutoff as having waited past it', () => {
+    const health = quietRow();
+    const claimed = waiting(READER_STALL_MINUTES);
+
+    expect(summariserStalled(health, [claimed], NOW)).toEqual({
+      state: 'stalled',
+      since: claimed.created_at,
+    });
+  });
+
+  it('does not take a summary that landed exactly at the cutoff as proof of life', () => {
+    const health = quietRow();
+    const summarised = post({ summary_state: 'done', summarized_at: ago(READER_STALL_MINUTES) });
+
+    expect(summariserStalled(health, [waiting(90), summarised], NOW)).toEqual({
+      state: 'stalled',
+      since: ago(READER_STALL_MINUTES),
+    });
+  });
+
+  it('does not take a clean tick pass at exactly the cutoff as proof of life either', () => {
+    const health = makeReaderHealth('live', { last_success_at: ago(READER_STALL_MINUTES) }, NOW);
+    const claimed = waiting(90);
+
+    expect(summariserStalled(health, [claimed], NOW)).toEqual({
+      state: 'stalled',
+      since: claimed.created_at,
     });
   });
 });
@@ -276,7 +367,7 @@ describe('readerBanner', () => {
     };
     const health = makeReaderHealth(
       'ceiling',
-      { last_error_at: ago(48), last_error: 'the key was rejected' },
+      { last_success_at: ago(200), last_error_at: ago(48), last_error: 'the key was rejected' },
       NOW,
     );
 
@@ -325,7 +416,51 @@ describe('readerBanner', () => {
     });
   });
 
+  it('puts the stall ahead of a mailbox that has merely gone quiet', () => {
+    const quiet = { ...account, last_seen_at: ago(600) };
+    const health = makeReaderHealth(
+      'stalled',
+      { last_success_at: ago(200), last_error_at: ago(48), last_error: 'the key was rejected' },
+      NOW,
+    );
+
+    expect(readerBanner({ health, account: quiet }, [], NOW)).toEqual({
+      kind: 'stalled',
+      since: ago(48),
+      error: 'the key was rejected',
+    });
+  });
+
+  it('puts a refused mailbox ahead of the stall — only one of the two needs a person', () => {
+    const dead = { ...account, last_seen_at: ago(600), last_error_at: ago(1), last_error: 'nope' };
+    const health = makeReaderHealth('stalled', { last_error_at: ago(48) }, NOW);
+
+    expect(readerBanner({ health, account: dead }, [], NOW)).toEqual({
+      kind: 'gmail',
+      state: 'erroring',
+      account: dead,
+    });
+  });
+
+  it('puts a quiet mailbox ahead of the ceiling — one is a fault and the other is the design', () => {
+    const quiet = { ...account, last_seen_at: ago(600) };
+    const health = makeReaderHealth('ceiling', {}, NOW);
+
+    expect(readerBanner({ health, account: quiet }, [waiting(90)], NOW)).toEqual({
+      kind: 'gmail',
+      state: 'stale',
+      account: quiet,
+    });
+  });
+
   it('says nothing about a summariser that has never run — there is nothing to be stalled from', () => {
     expect(readerBanner({ health: undefined, account: undefined }, [waiting(90)], NOW)).toBeNull();
+    expect(
+      readerBanner(
+        { health: makeReaderHealth('never', {}, NOW), account: undefined },
+        [waiting(90)],
+        NOW,
+      ),
+    ).toBeNull();
   });
 });
