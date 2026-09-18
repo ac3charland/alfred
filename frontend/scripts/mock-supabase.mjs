@@ -21,9 +21,10 @@
  *                                     habits,habit_entries,comm_accounts,comm_messages,
  *                                     comm_verdicts,comm_people,comm_handles,comm_rubrics,
  *                                     comm_corrections,comm_classifier_health,
- *                                     reader_publications,reader_posts}
+ *                                     reader_publications,reader_posts,reader_health}
  *                                                             → CRUD + filters
- *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
+ *     GET  /rest/v1/{task_items,v_code_stories,v_reader_candidates,v_reader_publications}
+ *                                                             → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
  *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,create_code_story,
  *                         convert_to_code_epic,swap_code_priority,move_code_priority,
@@ -105,6 +106,11 @@ let commHealth = [];
 let readerPublications = [];
 /** @type {Record<string, unknown>[]} */
 let readerPosts = [];
+// The singleton tick-health row, held as a list of 0 or 1 rows: an EMPTY table is the state
+// before the tick has ever run, which the health surface reads differently from a row with no
+// success on it. So it is never auto-seeded — a test that wants a tick's history says so.
+/** @type {Record<string, unknown>[]} */
+let readerHealth = [];
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
@@ -356,6 +362,7 @@ function tableFor(name) {
   if (name === 'comm_classifier_health') return commHealth;
   if (name === 'reader_publications') return readerPublications;
   if (name === 'reader_posts') return readerPosts;
+  if (name === 'reader_health') return readerHealth;
   return;
 }
 
@@ -671,7 +678,23 @@ function newReaderPost(input) {
     summarized_at: input.summarized_at ?? null,
     opened_at: input.opened_at ?? null,
     archived_at: input.archived_at ?? null,
+    // When the retention sweep took the body (migration 0036). Null = it still holds its text.
+    text_swept_at: input.text_swept_at ?? null,
     created_at: input.created_at ?? receivedAt,
+  };
+}
+
+/** The singleton tick-health row, including the ceiling the tick stamps (migration 0036). */
+function newReaderHealth(input) {
+  return {
+    id: input.id ?? 1,
+    last_run_at: input.last_run_at ?? null,
+    last_success_at: input.last_success_at ?? null,
+    last_error: input.last_error ?? null,
+    last_error_at: input.last_error_at ?? null,
+    daily_cap: input.daily_cap ?? null,
+    calls_today: input.calls_today ?? null,
+    calls_day: input.calls_day ?? null,
   };
 }
 
@@ -807,6 +830,7 @@ function rowConstructorFor(name) {
   if (name === 'comm_classifier_health') return newCommHealth;
   if (name === 'reader_publications') return newReaderPublication;
   if (name === 'reader_posts') return newReaderPost;
+  if (name === 'reader_health') return newReaderHealth;
   return;
 }
 
@@ -893,10 +917,73 @@ function codeStoryRows() {
   return rows;
 }
 
+/**
+ * The `v_reader_candidates` view (migration 0036): inbound bulk senders on the personal Gmail
+ * account, inside 30 days, that are NOT on the roster — grouped by handle, ranked by volume then
+ * recency, named by the most recent message that carried a display name.
+ */
+function readerCandidateRows() {
+  const personal = commAccounts.find((account) => account.key === 'gmail-personal');
+  if (personal === undefined) return [];
+  const rostered = new Set(readerPublications.map((publication) => publication.handle));
+  const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+  /** @type {Map<string, Record<string, unknown>[]>} */
+  const byHandle = new Map();
+  for (const message of commMessages) {
+    if (String(message.account_id) !== String(personal.id)) continue;
+    if (message.direction !== 'inbound') continue;
+    if (message.has_list_header !== true) continue;
+    if (new Date(String(message.received_at)).getTime() < since) continue;
+    if (rostered.has(message.sender_handle)) continue;
+    const handle = String(message.sender_handle);
+    byHandle.set(handle, [...(byHandle.get(handle) ?? []), message]);
+  }
+
+  const rows = [];
+  for (const [handle, messages] of byHandle) {
+    // Newest first, so "the most recent name" and "last seen" are both read off the head.
+    const newestFirst = messages.toSorted((a, b) =>
+      String(b.received_at).localeCompare(String(a.received_at)),
+    );
+    const named = newestFirst.find((message) => message.sender_name != null);
+    rows.push({
+      handle,
+      name: named?.sender_name ?? null,
+      message_count: messages.length,
+      last_seen_at: newestFirst[0]?.received_at ?? null,
+    });
+  }
+
+  return rows.toSorted(
+    (a, b) =>
+      b.message_count - a.message_count ||
+      String(b.last_seen_at).localeCompare(String(a.last_seen_at)),
+  );
+}
+
+/**
+ * The `v_reader_publications` view (migration 0036): every roster row plus `last_post_at`, the
+ * newest `received_at` across its posts — null for a publication with none.
+ */
+function readerPublicationRows() {
+  return readerPublications.map((publication) => {
+    const arrivals = readerPosts
+      .filter((post) => String(post.publication_id) === String(publication.id))
+      .map((post) => String(post.received_at));
+    return {
+      ...publication,
+      last_post_at: arrivals.length === 0 ? null : arrivals.toSorted().at(-1),
+    };
+  });
+}
+
 /** Resolve a computed view name to its derived rows, or undefined if not a view. */
 function viewRows(name) {
   if (name === 'task_items') return taskItemsRows();
   if (name === 'v_code_stories') return codeStoryRows();
+  if (name === 'v_reader_candidates') return readerCandidateRows();
+  if (name === 'v_reader_publications') return readerPublicationRows();
   return;
 }
 
@@ -1425,6 +1512,24 @@ function handleRest(req, res, url, body) {
   if (req.method === 'POST') {
     const construct = rowConstructorFor(rest);
     const inputs = Array.isArray(body) ? body : [body];
+    // `reader_publications.handle` is UNIQUE (migration 0035), and the roster route's whole 409
+    // case rests on it — so the mock refuses a duplicate with the PostgREST body the real index
+    // produces, rather than quietly storing a second row.
+    const duplicate =
+      rest === 'reader_publications'
+        ? inputs.find((input) =>
+            readerPublications.some((row) => String(row.handle) === String(input?.handle)),
+          )
+        : undefined;
+    if (duplicate !== undefined) {
+      sendJson(res, 409, {
+        code: '23505',
+        details: `Key (handle)=(${String(duplicate.handle)}) already exists.`,
+        hint: null,
+        message: 'duplicate key value violates unique constraint "reader_publications_handle_key"',
+      });
+      return;
+    }
     // An upsert arrives as a POST carrying `Prefer: resolution=merge-duplicates` and the
     // conflict target in `on_conflict` — that is how supabase-js sends `.upsert()`, and it is
     // the entries route's entire write path (log a day, correct a day: same call).
@@ -1665,6 +1770,7 @@ function handleControl(req, res, url, body) {
     commHealth = [];
     readerPublications = [];
     readerPosts = [];
+    readerHealth = [];
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
@@ -1720,6 +1826,10 @@ function handleControl(req, res, url, body) {
     readerPosts = Array.isArray(body?.readerPosts)
       ? body.readerPosts.map((p) => newReaderPost(p))
       : [];
+    // Deliberately not defaulted to one row: an empty table is "the tick has never run".
+    readerHealth = Array.isArray(body?.readerHealth)
+      ? body.readerHealth.map((h) => newReaderHealth(h))
+      : [];
     // Park the sequence above every seeded rank so gate-created stories append at the bottom.
     syncPrioritySequence();
     sendJson(res, 200, {
@@ -1741,6 +1851,7 @@ function handleControl(req, res, url, body) {
       commHealth,
       readerPublications,
       readerPosts,
+      readerHealth,
     });
     return;
   }
@@ -1764,6 +1875,7 @@ function handleControl(req, res, url, body) {
       commHealth,
       readerPublications,
       readerPosts,
+      readerHealth,
     });
     return;
   }

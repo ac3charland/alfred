@@ -1,0 +1,141 @@
+import type { Page } from '@playwright/test';
+
+import {
+  makeCommAccount,
+  makeReaderHealth,
+  makeReaderPost,
+  makeReaderPublication,
+} from './support/constants';
+import { expect, test } from './support/fixtures';
+
+/**
+ * The reading list's health surface (`/reader`): the one banner the module may show, which of
+ * the three states wins when several are true at once, and what a Reader whose tick has never
+ * fired says instead.
+ *
+ * End-to-end rather than in jsdom because the whole surface is derived from rows the shell reads
+ * at request time — the singleton health row and the `gmail-personal` account — so the states
+ * below are seeded as rows and left to travel the real read path into the real view.
+ *
+ * Every seeded row is shaped against `NOW` rather than a calendar date: "the ceiling is reached"
+ * is `calls_day` being TODAY in UTC and the tick having run recently, so a fixture pinned to a
+ * fixed day would stop meaning anything the morning after it was written.
+ */
+
+const NOW = new Date();
+
+/**
+ * The module's banner. Scoped to the live regions that actually SAY something, because the
+ * shell also mounts dnd-kit's own empty `role="status"` region — which would otherwise make
+ * "exactly one banner renders" unassertable.
+ */
+function readerBanner(page: Page) {
+  return page.getByRole('status').filter({ hasText: /\S/ });
+}
+
+const PUBLICATION = makeReaderPublication('Second Thoughts', {
+  id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+});
+
+/** The mailbox, polling happily — so the Gmail banner never wins by accident. */
+function liveAccount() {
+  return makeCommAccount('Gmail personal', {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+    key: 'gmail-personal',
+    last_seen_at: new Date(NOW.getTime() - 60 * 1000).toISOString(),
+  });
+}
+
+/** The same mailbox, refusing the poll — the one state that needs a person. */
+function deadAccount() {
+  return makeCommAccount('Gmail personal', {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+    key: 'gmail-personal',
+    last_seen_at: new Date(NOW.getTime() - 6 * 60 * 60 * 1000).toISOString(),
+    last_error: 'invalid_grant',
+    last_error_at: new Date(NOW.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+  });
+}
+
+/**
+ * Two claimed posts the tick has not summarised: pending, retries unspent, a body to work from.
+ * These are what the ceiling banner counts as waiting for tomorrow.
+ */
+function pendingPosts() {
+  return [
+    makeReaderPost(PUBLICATION.id, {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+      title: 'The AI capex question',
+      author: 'Stratechery',
+      word_count: 2640,
+      summary_state: 'pending',
+    }),
+    makeReaderPost(PUBLICATION.id, {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc2',
+      title: 'Open Thread 348',
+      author: 'Astral Codex Ten',
+      word_count: 6500,
+      summary_state: 'pending',
+    }),
+  ];
+}
+
+test.describe('the Reader health surface', () => {
+  test('says the daily ceiling is reached, with the cap and how many posts wait', async ({
+    page,
+    seed,
+  }) => {
+    await seed({
+      commAccounts: [liveAccount()],
+      readerPublications: [PUBLICATION],
+      readerPosts: pendingPosts(),
+      readerHealth: [makeReaderHealth('ceiling', {}, NOW)],
+    });
+    await page.goto('/reader');
+
+    const banner = readerBanner(page);
+    await expect(banner).toHaveCount(1);
+    await expect(banner).toContainText('Daily summary ceiling reached (30)');
+    await expect(banner).toContainText('2 claimed posts wait for tomorrow');
+    // Nothing is broken, so the summariser dot stays green and says so in words.
+    await expect(page.getByLabel(/summariser · live/)).toBeVisible();
+  });
+
+  test('lets the dead mailbox win over the ceiling — nothing new is arriving to summarise', async ({
+    page,
+    seed,
+  }) => {
+    await seed({
+      commAccounts: [deadAccount()],
+      readerPublications: [PUBLICATION],
+      readerPosts: pendingPosts(),
+      readerHealth: [makeReaderHealth('ceiling', {}, NOW)],
+    });
+    await page.goto('/reader');
+
+    const banner = readerBanner(page);
+    await expect(banner).toHaveCount(1);
+    await expect(banner).toContainText('Gmail is not delivering.');
+    await expect(banner).toContainText('invalid_grant');
+    await expect(banner).not.toContainText('Daily summary ceiling reached');
+  });
+
+  test('says the summariser has never run when no health row exists, and shows no banner', async ({
+    page,
+    seed,
+  }) => {
+    await seed({
+      commAccounts: [liveAccount()],
+      readerPublications: [PUBLICATION],
+      readerPosts: pendingPosts(),
+    });
+    await page.goto('/reader');
+
+    await expect(
+      page.getByText("The summariser has never run — check the Worker's cron."),
+    ).toBeVisible();
+    await expect(page.getByLabel(/summariser · never ran/)).toBeVisible();
+    // Before the first tick there is nothing to be stalled from, so the module owes no banner.
+    await expect(readerBanner(page)).toHaveCount(0);
+  });
+});
