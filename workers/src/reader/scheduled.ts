@@ -3,7 +3,7 @@
  *
  * The ordering is the whole module and every step of it is load-bearing:
  *
- *   config → credentials → health start → discovery → roster → ceiling → worklist → token →
+ *   config → credentials → ceiling → health start → discovery → roster → worklist → token →
  *   the loop → health end
  *
  * CONFIG AND CREDENTIALS FIRST, and fail closed. The daily ceiling is the money guard, and the
@@ -25,9 +25,18 @@
  * need a write per model call — a subrequest the budget cannot spare — plus its own compare-and-set
  * against overlapping ticks, and it would still lose exactly one count when a tick died between
  * the call and the patch, which is the same crash window the stamp has. What the tick DOES write
- * to the health row is the cap it enforced and, once it has the count, how much of it was spent —
- * on the writes it was making anyway, so a reader of that row alone can tell a quiet day from a
- * day that hit its ceiling by noon.
+ * to the health row is the cap it enforced and how much of it was spent — on the writes it was
+ * making anyway, so a reader of that row alone can tell a quiet day from a day that hit its
+ * ceiling by noon.
+ *
+ * THAT COUNT IS READ BEFORE THE RUN-START STAMP, which is why the ceiling sits ahead of the
+ * health write in the order above. `last_run_at` and `calls_day` are read together — "the cap is
+ * spent" is `calls_today >= daily_cap` for a `calls_day` the reader trusts — so a start stamp
+ * that moved `last_run_at` to today while the row still carried YESTERDAY's count would, for the
+ * length of the first tick after midnight, describe a day that had already spent a budget it had
+ * just been given. Reading first costs nothing: it is the same one fetch either way. The count
+ * the tick keeps in step with its own calls then rides every later write, including the one in
+ * `runReaderTick`'s catch — a throw must not lose the spend it had already made.
  *
  * RETRIES GO AHEAD OF FRESH POSTS, so a post that failed once is never starved by a busy morning.
  * On a capped day the retry read is not even sent: it exists only to feed model calls.
@@ -50,7 +59,7 @@ import { discoverPublications } from './discovery';
 import { recordRunError, recordRunStart, recordRunSuccess } from './health';
 import { type IntakeResult, NO_READABLE_BODY, intakePost } from './intake';
 import { READER_PROMPT_VERSION } from './prompt';
-import { runReaderRetention as sweepReaderText } from './retention';
+import { ReaderSweepError, runReaderRetention as sweepReaderText } from './retention';
 import { JSON_NULL, countRows, leasePost, patchPost } from './store';
 import { summarizePost } from './summarize';
 import type { ReaderCeiling, ReaderEnv, SummaryInput, SummaryOutcome, WorklistRow } from './types';
@@ -62,7 +71,7 @@ import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
  *
  * | Unit | Fetches | Count |
  * |---|---|---|
- * | Per tick | token mint · discovery read · discovery upsert · roster read · worklist read · pending-retry read · ceiling count · health start · health end | 9 |
+ * | Per tick | ceiling count · health start · discovery read · discovery upsert · roster read · pending-retry read · worklist read · token mint · health end | 9 |
  * | Per fresh post | Gmail `messages.get` · insert post · stamp comms row · Anthropic ×2 (one SDK retry) · terminal patch | 6 |
  * | Per retried pending post | lease CAS · Anthropic ×2 · terminal patch | 4 |
  * | Worst tick (six fresh) | 9 + 6 × 6 | **45** |
@@ -119,6 +128,19 @@ export interface ReaderTickSummary {
    * day with one awkward newsletter.
    */
   failures: string[];
+}
+
+/**
+ * What `runReaderTick`'s catch can still say about the ceiling, sharpened as the tick learns it.
+ *
+ * A throw is exactly the moment the spend matters most, and the catch has none of the locals that
+ * knew it — so the caller holds a READER rather than a value, called once at the instant of the
+ * failure so the count it reports includes every model call the tick had already made. It starts
+ * as the cap alone, which is all the config can say, and `tick` replaces it with the live count
+ * the moment there is one.
+ */
+interface CeilingHolder {
+  read: () => ReaderCeiling;
 }
 
 /** The roster, as the one read per tick returns it. */
@@ -399,11 +421,15 @@ export async function runReaderTick(
   }
 
   const summary = emptySummary();
+  // The cap is known here and the count is not, which is exactly what the catch below would
+  // otherwise have to guess. `tick` replaces this reader once it has counted.
+  const config = parsed.config;
+  const holder: CeilingHolder = { read: () => ({ daily_cap: config.dailyCap }) };
   try {
-    return await tick(env, now, clock, parsed.config, summary);
+    return await tick(env, now, clock, config, summary, holder);
   } catch (error) {
     const message = describe(error);
-    await recordRunError(env, now, message);
+    await recordRunError(env, now, message, holder.read());
     summary.failures.push(message);
     return summary;
   }
@@ -416,6 +442,7 @@ async function tick(
   clock: () => number,
   config: ReaderConfig,
   summary: ReaderTickSummary,
+  holder: CeilingHolder,
 ): Promise<ReaderTickSummary> {
   const start = clock();
   const nowIso = now.toISOString();
@@ -441,13 +468,11 @@ async function tick(
     return summary;
   }
 
-  await recordRunStart(env, now, { daily_cap: config.dailyCap });
-
-  summary.discovered = await discoverPublications(env, now);
-  const roster = await readRoster(env);
-
-  // Read once, then kept in step by the tick's own calls. The crash window — a tick dying
-  // between a call and its patch — loses one count, which is the same in every design.
+  // Read once — BEFORE the run-start stamp, so `last_run_at` never moves to today while the row
+  // still carries yesterday's count (see the module comment) — then kept in step by the tick's
+  // own calls. The crash window — a tick dying between a call and its patch — loses one count,
+  // which is the same in every design. A throw here is caught by `runReaderTick`, which stamps
+  // the error with the cap alone: the count is precisely what could not be read.
   let calls = await countRows(env, 'reader_posts', {
     model_called_at: `gte.${utcMidnight(now).toISOString()}`,
   });
@@ -463,6 +488,12 @@ async function tick(
     calls_today: calls,
     calls_day: now.toISOString().slice(0, 10),
   });
+  holder.read = ceiling;
+
+  await recordRunStart(env, now, ceiling());
+
+  summary.discovered = await discoverPublications(env, now);
+  const roster = await readRoster(env);
 
   // Skipped entirely on a capped day: the retry list exists only to feed model calls, while a
   // fresh post's intake is still worth running because the row is the floor whether or not it is
@@ -545,9 +576,19 @@ async function tick(
 
 // ── Retention ────────────────────────────────────────────────────────────────
 
-/** What one retention run did. The same failure convention as `CommsRetentionSummary`: the unit
- *  that threw reports `swept: undefined` and names itself in `failures`, so "did not run" and
- *  "broke" stay distinguishable in the log. */
+/**
+ * What one retention run did.
+ *
+ * The same failure convention as `CommsRetentionSummary`: a unit that threw names itself in
+ * `failures`, and `swept: undefined` reads as "did not run", so a sweep that never got going
+ * stays distinguishable from a clean one that had nothing to do.
+ *
+ * With one refinement the comms sweep has no use for: every batch is its OWN transaction, so a
+ * run that broke on its fourth batch really did sweep the first three, and those rows are
+ * durable. `swept` therefore carries that PARTIAL count alongside the failure — a broken run
+ * reports "did not run" only when it broke before any batch committed, which is the one case
+ * where nothing was in fact swept.
+ */
 export interface ReaderRetentionSummary {
   swept: number | undefined;
   failures: string[];
@@ -570,6 +611,12 @@ export async function runReaderRetention(
     const result = await sweepReaderText(env, now);
     swept = result.swept;
   } catch (error) {
+    // Whatever the batches before the failure committed is already durable, so it is reported
+    // beside the failure rather than thrown away — the log then says both how far the sweep got
+    // and that it broke. Nothing committed (or a throw that is not the sweep's own) leaves
+    // `swept` undefined, which is the "did not run" line.
+    const partial = error instanceof ReaderSweepError ? error.swept : 0;
+    if (partial > 0) swept = partial;
     failures.push(`reader retention: ${describe(error)}`);
   }
 
