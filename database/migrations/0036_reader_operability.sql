@@ -32,22 +32,28 @@ comment on column reader_health.daily_cap is
 
 comment on column reader_health.calls_today is
   'Model calls the tick had made for calls_day when it last wrote this row: the count it read at
-   the start of the run plus the calls it made during it. Null before the first tick that counted.';
+   the start of the run plus the calls it made during it. Null before the first tick that counted.
+   The count is read BEFORE the run-start stamp, so last_run_at never moves to a new day while
+   this column still holds the previous day''s spend.';
 
 comment on column reader_health.calls_day is
   'The UTC date calls_today belongs to — the same UTC window the tick counts model calls over.
-   "The ceiling is reached" is calls_today >= daily_cap AND (calls_day is today OR the tick has
-   not run yet today): between midnight UTC and the day''s first tick nothing has been reset, so a
-   capped yesterday still reads as capped rather than as a stalled summariser.';
+   "The ceiling is reached" is calls_today >= daily_cap AND calls_day is either today, or
+   yesterday with no tick having run yet today: between midnight UTC and the day''s first tick
+   nothing has been reset, so a capped yesterday still reads as capped rather than as a stalled
+   summariser. That rollover is deliberately bounded to one day — a cron that dies right after a
+   capped day would otherwise keep the banner up forever instead of reading as stopped.';
 
 -- ── 2. reader_posts — when the body was swept ─────────────────────────────────
 alter table reader_posts add column text_swept_at timestamptz;
 
 comment on column reader_posts.text_swept_at is
   'Stamped by the retention sweep in the same UPDATE that nulls `text`. Null = the post still
-   holds its body. A swept post can never be re-summarised — there is nothing left to send the
-   model — and that is a different sentence for the owner than "this post never had a body",
-   which is why the stamp exists rather than being inferred from a null `text`.';
+   holds its body, OR never had one: the sweep skips a post whose text is null or empty, so a
+   newsletter that arrived with nothing readable in it is never stamped. A swept post can never be
+   re-summarised — there is nothing left to send the model — and that is a different sentence for
+   the owner than "this post never had a body", which is why the stamp exists rather than being
+   inferred from a null `text`.';
 
 -- ── 3. v_reader_candidates — bulk senders not on the roster ───────────────────
 -- The roster's own discovery view (`v_reader_discovery`) is narrow on purpose: Substack senders
@@ -92,10 +98,22 @@ create or replace function reader_sweep_text(p_days int default 90, p_limit int 
 returns int language plpgsql security invoker as $$
 declare v_count int;
 begin
+  -- The arguments are the whole of this function's blast radius, and it runs as the CALLER —
+  -- which on this database includes `authenticated`, i.e. anything holding the anon key and a
+  -- session. `p_days => 0` would null every body in the table in one call, so the floor is a
+  -- hard error rather than a clamp: a caller asking for that is wrong, and should hear so.
+  if p_days < 1 then
+    raise exception 'reader_sweep_text: p_days must be at least 1, got %', p_days;
+  end if;
+  if p_limit < 1 then
+    raise exception 'reader_sweep_text: p_limit must be at least 1, got %', p_limit;
+  end if;
+
   update reader_posts set text = null, text_swept_at = now()
    where id in (select id from reader_posts
                  where received_at < now() - make_interval(days => p_days)
                    and text is not null
+                   and text <> ''
                  order by id limit p_limit);
   get diagnostics v_count = row_count;
   return v_count;
@@ -106,9 +124,11 @@ comment on function reader_sweep_text(int, int) is
    (the Worker''s retention run) loops until it gets 0, so each batch is its own transaction: a
    catch-up run that trips statement_timeout keeps every batch it finished, where a plpgsql loop
    inside a single call would roll the whole statement back. The cutoff is computed from the
-   DATABASE''s clock, never the caller''s, so a Worker with a skewed idea of now cannot widen it.
-   Summaries are never swept — only the full text, which is kept solely so a post can be
-   re-summarised.';
+   DATABASE''s clock, never the caller''s, so a Worker with a skewed idea of now cannot widen it,
+   and p_days below 1 raises rather than sweeping the whole table. A post with no body (null or
+   empty text) is skipped entirely, so it is never stamped text_swept_at — "swept" and "never had
+   one" are different answers and the app says different things about them. Summaries are never
+   swept — only the full text, which is kept solely so a post can be re-summarised.';
 
 grant execute on function reader_sweep_text(int, int) to anon, authenticated, service_role;
 
