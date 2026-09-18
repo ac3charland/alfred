@@ -81,7 +81,7 @@ const NO_HEALTH: ReaderHealthSnapshot = { health: undefined, account: undefined 
 
 /** A reducer state at rest: the posts under test, no health read and no archive read. */
 function state(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HEALTH): ReaderState {
-  return { posts, health, archiveLoaded: false, archiveFull: false };
+  return { posts, health, archiveStatus: 'idle', archiveFull: false };
 }
 
 function makeWrapper(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HEALTH) {
@@ -189,11 +189,42 @@ describe('readerReducer', () => {
         post({ id: 'p-new' }),
       ],
       full: true,
+      keep: [],
     });
     expect(next.posts).toHaveLength(2);
     expect(next.posts[0]?.archived_at).toBe('2026-09-18T09:00:00.000Z');
-    expect(next.archiveLoaded).toBe(true);
+    expect(next.archiveStatus).toBe('loaded');
     expect(next.archiveFull).toBe(true);
+  });
+
+  it('keeps the local row for every id the archive read is told to keep', () => {
+    const local = post({ id: 'p-1', archived_at: null });
+    const next = readerReducer(state([local]), {
+      type: 'archiveRead',
+      posts: [post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' })],
+      full: false,
+      keep: ['p-1'],
+    });
+    expect(next.posts[0]).toBe(local);
+    expect(next.archiveStatus).toBe('loaded');
+  });
+
+  it('takes a kept row the store no longer holds from the read — there is nothing to defend', () => {
+    const fromServer = post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' });
+    const next = readerReducer(state([]), {
+      type: 'archiveRead',
+      posts: [fromServer],
+      full: false,
+      keep: ['p-1'],
+    });
+    expect(next.posts).toEqual([fromServer]);
+  });
+
+  it('records a failed archive read without touching the list', () => {
+    const held = post({ id: 'p-1' });
+    const next = readerReducer(state([held]), { type: 'archiveStatus', status: 'failed' });
+    expect(next.archiveStatus).toBe('failed');
+    expect(next.posts).toEqual([held]);
   });
 });
 
@@ -336,6 +367,28 @@ describe('markOpened', () => {
 
     expect(result.current.posts).toHaveLength(0);
     expect(result.current.count).toBe(0);
+  });
+
+  it('is not un-stamped by a read the write left too late to be in', async () => {
+    // The read was issued while the Open PATCH was still in flight, so its answer describes the
+    // row as it was before the stamp — taking it would rub the stamp out.
+    const row = post({ id: 'p-1', opened_at: null });
+    const openCall = deferred<ReaderPostListItem>();
+    mockApi.patchReaderPost.mockReturnValue(openCall.promise);
+    mockApi.fetchReaderPosts.mockResolvedValue([row]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.markOpened('p-1');
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.posts[0]?.opened_at).not.toBeNull();
   });
 
   it('neither rolls back nor toasts when the write fails', async () => {
@@ -533,6 +586,47 @@ describe('refresh', () => {
     await waitFor(() => {
       expect(result.current.posts.map((p) => p.id)).toEqual(['p-1']);
     });
+  });
+
+  it('holds a row back until the LAST of two overlapping writes on it has settled', async () => {
+    // An Open stamp and an archive in flight on one row. The stamp answers first; the archive
+    // has still not reached the server, so a read issued now cannot speak for the row — a
+    // protection keyed on "is anything in flight" rather than "how many" would have dropped it
+    // when the first of the two settled.
+    const row = post({ id: 'p-1', opened_at: null });
+    const openCall = deferred<ReaderPostListItem>();
+    const archiveCall = deferred<ReaderPostListItem>();
+    mockApi.patchReaderPost.mockImplementation((_id, body) =>
+      'opened' in body ? openCall.promise : archiveCall.promise,
+    );
+    mockApi.fetchReaderPosts.mockResolvedValue([row]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.markOpened('p-1');
+    });
+    let archiving: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      archiving = result.current.actions.archive('p-1');
+    });
+    await act(async () => {
+      openCall.settle({ ...row, opened_at: '2026-09-18T09:05:00.000Z' });
+      await flush();
+    });
+
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await flush();
+    });
+    expect(result.current.posts).toHaveLength(0);
+
+    await act(async () => {
+      archiveCall.settle({ ...row, archived_at: '2026-09-18T09:06:00.000Z' });
+      await archiving;
+    });
+    expect(result.current.posts).toHaveLength(0);
   });
 
   it('keeps the last known list when the re-read fails, and stays silent about it', async () => {
@@ -896,7 +990,7 @@ describe('loadArchive', () => {
       scope: 'archived',
       limit: ARCHIVE_READ_LIMIT,
     });
-    expect(result.current.status.loaded).toBe(true);
+    expect(result.current.status.status).toBe('loaded');
   });
 
   it('upserts the read into the one post list rather than beside it', async () => {
@@ -944,10 +1038,10 @@ describe('loadArchive', () => {
     });
 
     expect(result.current.status.full).toBe(false);
-    expect(result.current.status.loaded).toBe(true);
+    expect(result.current.status.status).toBe('loaded');
   });
 
-  it('stays unloaded after a failed read, so the next visit can try again', async () => {
+  it('records the failure rather than reading as an empty archive, and retries', async () => {
     mockApi.fetchReaderPosts.mockRejectedValueOnce(new Error('boom')).mockResolvedValue([]);
     const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([]) });
 
@@ -955,7 +1049,7 @@ describe('loadArchive', () => {
       result.current.actions.loadArchive();
       await flush();
     });
-    expect(result.current.status.loaded).toBe(false);
+    expect(result.current.status.status).toBe('failed');
     expect(mockShowToast).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -963,6 +1057,94 @@ describe('loadArchive', () => {
       await flush();
     });
     expect(mockApi.fetchReaderPosts).toHaveBeenCalledTimes(2);
-    expect(result.current.status.loaded).toBe(true);
+    expect(result.current.status.status).toBe('loaded');
+  });
+
+  it('is reading while the request is in the air, neither loaded nor failed', () => {
+    mockApi.fetchReaderPosts.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([]) });
+
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+
+    expect(result.current.status.status).toBe('loading');
+  });
+
+  it('does not undo an unarchive that landed while its read was in flight', async () => {
+    // The archive read was served before the PATCH reached the server, so its answer still has
+    // the row filed away — folding that in would put a post the owner just recovered straight
+    // back into the archive.
+    const row = post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' });
+    const read = deferred<ReaderPostListItem[]>();
+    mockApi.fetchReaderPosts.mockReturnValue(read.promise);
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, archived_at: null });
+    const { result } = renderHook(() => ({ ...useArchive(), posts: useReaderPosts() }), {
+      wrapper: makeWrapper([row]),
+    });
+
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+    await act(async () => {
+      await result.current.actions.unarchive('p-1');
+    });
+
+    await act(async () => {
+      read.settle([row]);
+      await flush();
+    });
+
+    expect(result.current.posts.map((p) => p.id)).toEqual(['p-1']);
+    expect(result.current.archived).toHaveLength(0);
+  });
+
+  it('does not undo a re-summarise that landed while its read was in flight', async () => {
+    const row = post({
+      id: 'p-1',
+      archived_at: '2026-09-18T09:00:00.000Z',
+      summary_state: 'done',
+      gist: 'the summary it already has',
+    });
+    const read = deferred<ReaderPostListItem[]>();
+    mockApi.fetchReaderPosts.mockReturnValue(read.promise);
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, summary_state: 'pending' });
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+    await act(async () => {
+      await result.current.actions.resummarize('p-1');
+    });
+
+    await act(async () => {
+      read.settle([row]);
+      await flush();
+    });
+
+    expect(result.current.archived[0]?.summary_state).toBe('pending');
+  });
+
+  it('still takes the read’s copy of a row this tab never wrote', async () => {
+    const held = post({ id: 'p-held', archived_at: '2026-09-18T09:00:00.000Z', title: 'Held' });
+    const written = post({ id: 'p-written', archived_at: '2026-09-18T09:00:00.000Z' });
+    const read = deferred<ReaderPostListItem[]>();
+    mockApi.fetchReaderPosts.mockReturnValue(read.promise);
+    mockApi.patchReaderPost.mockResolvedValue({ ...written, archived_at: null });
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([held, written]) });
+
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+    await act(async () => {
+      await result.current.actions.unarchive('p-written');
+    });
+    await act(async () => {
+      read.settle([{ ...held, title: 'Held, as the server has it' }, written]);
+      await flush();
+    });
+
+    expect(result.current.archived.map((p) => p.title)).toEqual(['Held, as the server has it']);
   });
 });

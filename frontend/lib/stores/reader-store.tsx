@@ -40,6 +40,13 @@ function refusal(error: unknown): string | undefined {
  */
 export const ARCHIVE_READ_LIMIT = 200;
 
+/**
+ * How far the archive's own read has got. `loaded` is what lets the empty state claim the
+ * archive is empty rather than not here yet, and `failed` is what lets the view say so and offer
+ * the read again — a blank page is the one answer that tells the owner nothing.
+ */
+export type ReaderArchiveStatus = 'idle' | 'loading' | 'loaded' | 'failed';
+
 export interface ReaderState {
   posts: ReaderPostListItem[];
   /**
@@ -48,8 +55,8 @@ export interface ReaderState {
    * describes a state that never existed.
    */
   health: ReaderHealthSnapshot;
-  /** Whether the archive's own read has landed — what the archive's empty state waits for. */
-  archiveLoaded: boolean;
+  /** How far the archive's own read has got. */
+  archiveStatus: ReaderArchiveStatus;
   /** Whether that read came back at its ceiling, so the archive says it is showing a slice. */
   archiveFull: boolean;
 }
@@ -68,10 +75,13 @@ export interface ReaderActions {
    */
   unarchive: (id: string) => Promise<ReaderPostListItem>;
   /**
-   * Read the archived scope once and fold it into the one post list. Idempotent: the archive is
-   * browsed rather than watched, so a second visit re-renders what is already held instead of
-   * re-reading it, and a read already in the air is never doubled. Silent on failure, like
-   * `refresh()` — the next visit tries again.
+   * Read the archived scope once and fold it into the one post list, holding back every row this
+   * tab wrote that the read left too early to know about — the same rule `refresh()` applies to
+   * the active list, so an unarchive landing mid-read is not silently undone. Idempotent: the
+   * archive is browsed rather than watched, so a second visit re-renders what is already held
+   * instead of re-reading it, and a read already in the air is never doubled. A failure is
+   * recorded rather than toasted, and releases the guard, so the view's own "Try again" (or the
+   * next visit) re-reads.
    */
   loadArchive: () => void;
   /**
@@ -114,8 +124,14 @@ type ReaderAction =
   | { type: 'replaceAll'; posts: ReaderPostListItem[]; keep: string[] }
   /** A freshly read snapshot, replacing the held one whole. */
   | { type: 'health'; snapshot: ReaderHealthSnapshot }
-  /** The archive read's answer, folded into the one post list. */
-  | { type: 'archiveRead'; posts: ReaderPostListItem[]; full: boolean };
+  /** The archive read has been issued, or came back with nothing to fold in. */
+  | { type: 'archiveStatus'; status: 'loading' | 'failed' }
+  /**
+   * The archive read's answer, folded into the one post list. `keep` carries the same rule
+   * `replaceAll` does: an id this tab wrote that the read left too early to know about keeps its
+   * local row.
+   */
+  | { type: 'archiveRead'; posts: ReaderPostListItem[]; full: boolean; keep: string[] };
 
 /** Pure reducer. The single row list delegates to the shared flat-list reducer. */
 export function readerReducer(state: ReaderState, action: ReaderAction): ReaderState {
@@ -145,11 +161,21 @@ export function readerReducer(state: ReaderState, action: ReaderAction): ReaderS
       );
       return { ...state, posts: [...answered, ...unanswered] };
     }
+    case 'archiveStatus': {
+      return { ...state, archiveStatus: action.status };
+    }
     case 'archiveRead': {
+      const keep = new Set(action.keep);
+      const held = new Set(state.posts.map((post) => post.id));
+      // A kept row this tab still holds wins over the answer, exactly as in `replaceAll`: the
+      // archive read left the server before that write arrived, so folding its row in would put
+      // a just-unarchived post back in the archive. A kept id the store no longer holds has no
+      // local row to defend, so the server's stands.
+      const fresh = action.posts.filter((post) => !(keep.has(post.id) && held.has(post.id)));
       return {
         ...state,
-        posts: simpleReducer(state.posts, { type: 'upsert', items: action.posts }, 'reader post'),
-        archiveLoaded: true,
+        posts: simpleReducer(state.posts, { type: 'upsert', items: fresh }, 'reader post'),
+        archiveStatus: 'loaded',
         archiveFull: action.full,
       };
     }
@@ -176,7 +202,7 @@ export function ReaderProvider({
   const [state, dispatch] = React.useReducer(readerReducer, {
     posts: initialPosts,
     health: initialHealth,
-    archiveLoaded: false,
+    archiveStatus: 'idle',
     archiveFull: false,
   });
 
@@ -194,48 +220,74 @@ export function ReaderProvider({
   }, [showToast]);
 
   /**
+   * Ids with a write in flight, as a REFCOUNT rather than a flag: two writes can overlap on one
+   * row (an Open stamp and an archive), and a read's answer must stay held back until the LAST
+   * of them settles, not the first.
+   */
+  const mutatingRef = React.useRef(new Map<string, number>());
+  /**
+   * One set per read currently in the air — the list refresh's and the archive's alike. Each is
+   * seeded, at the instant its read is ISSUED, with whatever was pending right then, and every
+   * write started afterwards is added to all of them. So each answer is held back for exactly
+   * the writes IT left too early to know about, and a write that settles and reconciles while a
+   * read is still out stays held back for that read (which `mutatingRef` alone would have
+   * forgotten by the time the answer landed) without holding back the next one.
+   */
+  const openReadsRef = React.useRef(new Set<Set<string>>());
+
+  /** Register a write: protected from every read already in the air, and from every later one. */
+  const beginWrite = React.useCallback((id: string) => {
+    const counts = mutatingRef.current;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const since of openReadsRef.current) since.add(id);
+  }, []);
+
+  /** The write has answered — one fewer reason to hold a read's row back. */
+  const endWrite = React.useCallback((id: string) => {
+    const counts = mutatingRef.current;
+    const left = (counts.get(id) ?? 1) - 1;
+    if (left > 0) counts.set(id, left);
+    else counts.delete(id);
+  }, []);
+
+  /**
+   * Issue a read: `keep()` names the ids whose local row wins over its answer, and `close()`
+   * stops it collecting once it has answered (or failed).
+   */
+  const beginRead = React.useCallback((): { keep: () => string[]; close: () => void } => {
+    const since = new Set(mutatingRef.current.keys());
+    openReadsRef.current.add(since);
+    return {
+      keep: () => [...new Set([...mutatingRef.current.keys(), ...since])],
+      close: () => {
+        openReadsRef.current.delete(since);
+      },
+    };
+  }, []);
+
+  /**
    * Re-read the active list and replace it wholesale. `refreshingRef` collapses concurrent
    * triggers (a focus and a visibilitychange landing together) into one request; a read while
    * the tab is hidden is skipped outright — there is no owner looking at the result.
    */
   const refreshingRef = React.useRef(false);
-  /**
-   * Ids with a write still in flight. A write that started BEFORE the in-progress read was issued
-   * and has not answered yet is still unknown to the server's copy, so `replaceAll` keeps this
-   * tab's own row for each one.
-   */
-  const mutatingRef = React.useRef(new Set<string>());
-  /**
-   * Ids of every write NOT COMPLETED before the in-progress read was ISSUED. Seeded at that
-   * instant from `mutatingRef` (whatever was still pending right then) and then added to for
-   * each write that starts while the read is in the air, so it is never pruned before the next
-   * read goes out — a write that settles and reconciles while this read is still in flight stays
-   * held back too, which `mutatingRef` alone would have forgotten by the time the read answers.
-   */
-  const mutatedSinceReadRef = React.useRef(new Set<string>());
   const refresh = React.useCallback(() => {
     if (refreshingRef.current || document.hidden) return;
     refreshingRef.current = true;
-    // Seeded as the request is ISSUED, not cleared: a write already pending at this instant
-    // (mutatingRef.current) is one this read left too early to know about, same as anything
-    // written from here on.
-    mutatedSinceReadRef.current = new Set(mutatingRef.current);
+    const read = beginRead();
     void api
       .fetchReaderPosts({ scope: 'active' })
       .then((posts) => {
-        dispatch({
-          type: 'replaceAll',
-          posts,
-          keep: [...new Set([...mutatingRef.current, ...mutatedSinceReadRef.current])],
-        });
+        dispatch({ type: 'replaceAll', posts, keep: read.keep() });
       })
       .catch(() => {
         // Deliberately silent — see the doc comment above.
       })
       .finally(() => {
+        read.close();
         refreshingRef.current = false;
       });
-  }, []);
+  }, [beginRead]);
 
   /**
    * Re-read the health snapshot. Its own in-flight guard rather than `refreshingRef`'s, so a
@@ -270,18 +322,30 @@ export function ReaderProvider({
   const loadArchive = React.useCallback(() => {
     if (archiveReadRef.current) return;
     archiveReadRef.current = true;
+    dispatch({ type: 'archiveStatus', status: 'loading' });
+    const read = beginRead();
     void api
       .fetchReaderPosts({ scope: 'archived', limit: ARCHIVE_READ_LIMIT })
       .then((posts) => {
         // Upserted into the ONE post list rather than kept beside it: a post archived in this
         // session and then named by this read is one row, so unarchiving it cannot leave a stale
         // second copy behind in the archive.
-        dispatch({ type: 'archiveRead', posts, full: posts.length === ARCHIVE_READ_LIMIT });
+        dispatch({
+          type: 'archiveRead',
+          posts,
+          full: posts.length === ARCHIVE_READ_LIMIT,
+          keep: read.keep(),
+        });
       })
       .catch(() => {
+        // Released, so the view's "Try again" is a real retry rather than a no-op.
         archiveReadRef.current = false;
+        dispatch({ type: 'archiveStatus', status: 'failed' });
+      })
+      .finally(() => {
+        read.close();
       });
-  }, []);
+  }, [beginRead]);
 
   // The tab returning to the foreground is the one signal this story wires — no realtime
   // channel exists yet to also catch a rejoin (see the module doc comment). Both surfaces are
@@ -316,10 +380,7 @@ export function ReaderProvider({
       // Selective-field capture: only the key this write touches, so a rollback can't clobber
       // a field `refresh()` moved meanwhile.
       const captured = current === undefined ? {} : capturedFields(current, patch);
-      mutatingRef.current.add(id);
-      // Never removed here — only a NEWER read clears it, since that is the first read whose
-      // answer can have this write in it.
-      mutatedSinceReadRef.current.add(id);
+      beginWrite(id);
       try {
         return await runOptimisticMutation({
           optimistic: () => {
@@ -339,10 +400,10 @@ export function ReaderProvider({
           },
         });
       } finally {
-        mutatingRef.current.delete(id);
+        endWrite(id);
       }
     },
-    [],
+    [beginWrite, endWrite],
   );
 
   const actions = React.useMemo<ReaderActions>(
@@ -364,11 +425,9 @@ export function ReaderProvider({
         // Only the keys this write touches — the headline, gist and overview stay put, so the
         // row shows its previous summary under the pending marker instead of blanking.
         const captured = current === undefined ? {} : capturedFields(current, patch);
-        mutatingRef.current.add(id);
-        // Never removed here — only a NEWER read clears it, since that is the first read whose
-        // answer can have this write in it. Without it a focus refetch already in the air would
+        // Registered as a write in flight: without it a focus refetch already in the air would
         // hand back the row's old `done` state and undo the queueing.
-        mutatedSinceReadRef.current.add(id);
+        beginWrite(id);
         try {
           return await runOptimisticMutation({
             optimistic: () => {
@@ -386,7 +445,7 @@ export function ReaderProvider({
             },
           });
         } finally {
-          mutatingRef.current.delete(id);
+          endWrite(id);
         }
       },
       markOpened(id) {
@@ -394,24 +453,32 @@ export function ReaderProvider({
           type: 'posts',
           action: { type: 'patch', ids: [id], patch: { opened_at: new Date().toISOString() } },
         });
-        void api.patchReaderPost(id, { opened: true }).then(
-          (saved) => {
-            // Only the column this write owns. The answer describes the row as it was when the
-            // PATCH was served, so taking it whole would undo an archive sent a moment later.
-            dispatch({
-              type: 'posts',
-              action: { type: 'patch', ids: [id], patch: { opened_at: saved.opened_at } },
-            });
-          },
-          () => {
-            // Deliberately silent — see the doc comment above.
-          },
-        );
+        // A write like any other, fire-and-forget or not: a read issued before it reached the
+        // server answers with an unstamped row, and taking that answer would rub the stamp out.
+        beginWrite(id);
+        void api
+          .patchReaderPost(id, { opened: true })
+          .then(
+            (saved) => {
+              // Only the column this write owns. The answer describes the row as it was when the
+              // PATCH was served, so taking it whole would undo an archive sent a moment later.
+              dispatch({
+                type: 'posts',
+                action: { type: 'patch', ids: [id], patch: { opened_at: saved.opened_at } },
+              });
+            },
+            () => {
+              // Deliberately silent — see the doc comment above.
+            },
+          )
+          .finally(() => {
+            endWrite(id);
+          });
       },
       refresh,
       reconcileHealth,
     }),
-    [refresh, reconcileHealth, loadArchive, setArchived],
+    [refresh, reconcileHealth, loadArchive, setArchived, beginWrite, endWrite],
   );
 
   return (
@@ -434,15 +501,16 @@ export function useArchivedPosts(): ReaderPostListItem[] {
 }
 
 /**
- * Where the archive's own read has got to: whether it has landed (so an empty archive is a fact
- * rather than a list that has not arrived yet) and whether it came back at its ceiling (so the
- * view can say it is showing a slice of a longer history).
+ * Where the archive's own read has got to: how far it is (so an empty archive is a fact rather
+ * than a list that has not arrived yet, and a failed read can be said out loud and offered
+ * again) and whether it came back at its ceiling (so the view can say it is showing a slice of a
+ * longer history).
  */
-export function useArchiveStatus(): { loaded: boolean; full: boolean } {
-  const { archiveLoaded, archiveFull } = useStateValue('useArchiveStatus');
+export function useArchiveStatus(): { status: ReaderArchiveStatus; full: boolean } {
+  const { archiveStatus, archiveFull } = useStateValue('useArchiveStatus');
   return React.useMemo(
-    () => ({ loaded: archiveLoaded, full: archiveFull }),
-    [archiveLoaded, archiveFull],
+    () => ({ status: archiveStatus, full: archiveFull }),
+    [archiveStatus, archiveFull],
   );
 }
 
