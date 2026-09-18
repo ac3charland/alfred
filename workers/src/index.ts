@@ -193,7 +193,7 @@ export default {
   },
 
   /**
-   * The cron triggers' entrypoint, shared by all three schedules — the runtime hands over which
+   * The cron triggers' entrypoint, shared by all four schedules — the runtime hands over which
    * one fired and nothing else, so `event.cron` is the whole dispatch. An unrecognised expression
    * takes the frequent path: a schedule that was renamed in wrangler.toml and not here should
    * keep triaging rather than silently do nothing.
@@ -278,8 +278,8 @@ function logRetention(summary: CommsRetentionSummary): void {
 }
 
 /**
- * The reader tick, one line per unit, so `wrangler tail` can say which half of a tick ran. The
- * counts are the tick's own summary; a failure that ended it is an error line beneath them.
+ * The reader tick, as ONE line of counts, so `wrangler tail` can say how much of a tick ran. The
+ * counts are the tick's own summary; each failure that ended a unit is an error line beneath them.
  */
 function logReaderTick(summary: ReaderTickSummary): void {
   console.log(

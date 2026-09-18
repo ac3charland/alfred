@@ -81,16 +81,24 @@ function credential(name: string): string {
   return readDevVar(name) ?? process.env[name] ?? '';
 }
 
+/** Every flag this script knows, so a value can be told from the next flag by name. */
+const FLAGS = new Set(['--query', '--limit', '--ids', '--fixtures', '--dry-run', '--model']);
+
 /**
- * The value after a flag, or undefined when the flag is absent, trailing, or followed by another
- * flag: `--ids --dry-run` asks for no ids, not for an id called `--dry-run`. Swallowing the next
- * flag would otherwise turn a typo into a run that quietly reads the whole mailbox.
+ * The value after a flag, or undefined when the flag is absent, trailing, or followed by one of
+ * this script's OWN flags: `--ids --dry-run` asks for no ids, not for an id called `--dry-run`.
+ * Swallowing the next flag would otherwise turn a typo into a run that quietly reads the whole
+ * mailbox.
+ *
+ * Anything else is a value, however it is spelled. A leading `-` is not the test: `-from:x` is a
+ * legitimate Gmail negation, and `--limit -1` has to REACH the positive-integer check rather than
+ * read as a missing limit and fall back to the default.
  */
 function flagValue(name: string): string | undefined {
   const at = process.argv.indexOf(name);
   if (at === -1) return undefined;
   const value = process.argv[at + 1];
-  return value === undefined || value.startsWith('-') ? undefined : value;
+  return value === undefined || FLAGS.has(value) ? undefined : value;
 }
 
 function hasFlag(name: string): boolean {

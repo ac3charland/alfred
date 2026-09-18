@@ -15,7 +15,10 @@
  * EVERYTHING ELSE IS INSIDE ONE try/catch. Every store and discovery helper throws on a non-2xx,
  * and a throw that escapes `scheduled()` is recorded by the runtime and by nothing else — no log
  * line, no health stamp, so a module whose every write is being rejected still reads as merely
- * quiet. The catch turns that into the failure the health row is for.
+ * quiet. The catch turns that into the failure the health row is for. It does NOT release the row
+ * the tick was on: it has no id to release, and a throw between a lease and its terminal patch
+ * deliberately leaves that lease to the staleness bound in `worklist.ts`
+ * (`READER_LEASE_STALE_MS`), which is what that bound is for.
  *
  * THE CEILING IS DERIVED, not counted on the health row: it is `countRows` over the
  * `model_called_at` stamp that every terminal patch writes anyway. A counter on a singleton would
@@ -30,8 +33,8 @@
  * `READER_TICK_BUDGET_MS` (the wall clock). Rows the budget stops are simply still pending next
  * tick, which is what a cron whose backlog drains over several ticks is for.
  *
- * It never LOGS. `index.ts`'s `logReaderTick` prints one line per unit and one `console.error` per
- * failure, exactly as `logCommsTick` does — the schedule is wiring, and wiring should not decide
+ * It never LOGS. `index.ts`'s `logReaderTick` prints one line of counts and one `console.error`
+ * per failure, as `logCommsTick` does — the schedule is wiring, and wiring should not decide
  * how anything is reported. And nothing inside calls `new Date()` except to derive UTC midnight
  * from `now`: `now` is the tick's instant for every timestamp it writes, and `clock` exists only
  * to measure ELAPSED time for the budget, which is what lets the budget test inject one.
