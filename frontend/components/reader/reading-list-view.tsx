@@ -19,8 +19,9 @@ import { useActiveCount, useReaderPosts } from '@/lib/stores/reader-store';
 interface ReadingListViewProperties {
   /**
    * The instant every row's arrival date is read against. Left off in the app, where the view
-   * ticks its own clock; pinned by stories and tests, since a surface whose every date is read
-   * against today is otherwise unassertable and unsnapshottable.
+   * reads the clock once per render — it does not tick on its own between renders; pinned by
+   * stories and tests, since a surface whose every date is read against today is otherwise
+   * unassertable and unsnapshottable.
    */
   now?: Date | undefined;
 }

@@ -16,6 +16,11 @@ import { ReadingListView } from './reading-list-view';
 /** The instant every row's date is read against, as `post-row.stories.tsx` pins its own. */
 const NOW = new Date(2026, 8, 18, 9, 0);
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The earliest pinned arrival — every later fixture lands `index` days after it. */
+const BASE_RECEIVED_AT = new Date(Date.UTC(2026, 8, 12, 14, 0, 0));
+
 function withoutText({ text: _text, ...listItem }: ReaderPost) {
   return listItem;
 }
@@ -23,13 +28,16 @@ function withoutText({ text: _text, ...listItem }: ReaderPost) {
 /**
  * The fixture set as the list read hands it over — no `text`, and an arrival that never moves.
  * The set anchors `received_at` to the wall clock, so a snapshot of it would otherwise carry the
- * date it was taken on. One day apart, oldest first, so the drawn order is the set's own.
+ * date it was taken on. One day apart, in the same relative order the wall-clock fixtures already
+ * arrived in — the view itself renders newest first; pinning only swaps each post's real arrival
+ * instant for a deterministic one at that same relative position, via `Date` math rather than a
+ * calendar-day string so a longer fixture set can't roll past the end of the month.
  */
 function pinnedPosts(): ReaderPostListItem[] {
   const { posts } = readerFixtureSet();
   return posts.map((post, index) => ({
     ...withoutText(post),
-    received_at: `2026-09-${String(12 + index)}T14:00:00.000Z`,
+    received_at: new Date(BASE_RECEIVED_AT.getTime() + index * DAY_MS).toISOString(),
   }));
 }
 

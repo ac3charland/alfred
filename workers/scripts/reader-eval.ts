@@ -105,6 +105,11 @@ function hasFlag(name: string): boolean {
   return process.argv.includes(name);
 }
 
+/** True when a value-taking flag was given but its value is absent or shaped like another flag. */
+function missingValue(name: string): boolean {
+  return hasFlag(name) && flagValue(name) === undefined;
+}
+
 /** `--model <id>`, else `READER_MODEL` from `.dev.vars` or the environment, else the shipped default. */
 function chosenModel(): string {
   const flag = flagValue('--model') ?? '';
@@ -126,18 +131,32 @@ interface Options {
 /** A positive integer written in decimal digits and nothing else — as `config.ts` parses the cap. */
 const POSITIVE_INTEGER = /^\d+$/;
 
-/** The options, or `undefined` when one was given a value the run must not guess at. */
+/**
+ * The options, or `undefined` — after printing why — when a flag was given a value the run must
+ * not guess at.
+ */
 function readOptions(): Options | undefined {
+  const rawLimit = flagValue('--limit');
+  // A silent fallback to the default here reads a different mailbox slice than the one asked
+  // for, and on a billed run that is real money spent on the wrong posts.
+  if (
+    rawLimit !== undefined &&
+    (!POSITIVE_INTEGER.test(rawLimit) || Number.parseInt(rawLimit, 10) < 1)
+  ) {
+    console.error('--limit takes a positive integer, e.g. --limit 5.');
+    return undefined;
+  }
+  // A trailing or flag-shaped value here would otherwise read as the flag being simply absent —
+  // silently running the wrong query, ids or model instead of refusing the run.
+  if (missingValue('--query') || missingValue('--ids') || missingValue('--model')) {
+    console.error('--query, --ids and --model each take a value.');
+    return undefined;
+  }
   const ids = (flagValue('--ids') ?? '')
     .split(',')
     .map((id) => id.trim())
     .filter((id) => id !== '');
-  const rawLimit = flagValue('--limit');
-  // A silent fallback to the default here reads a different mailbox slice than the one asked
-  // for, and on a billed run that is real money spent on the wrong posts.
-  if (rawLimit !== undefined && !POSITIVE_INTEGER.test(rawLimit)) return undefined;
   const limit = rawLimit === undefined ? DEFAULT_LIMIT : Number.parseInt(rawLimit, 10);
-  if (limit < 1) return undefined;
   const query = flagValue('--query');
   return {
     fixtures: hasFlag('--fixtures'),
@@ -320,7 +339,7 @@ interface ResultRow {
 async function main(): Promise<void> {
   const options = readOptions();
   if (options === undefined) {
-    console.error('--limit takes a positive integer, e.g. --limit 5.');
+    // readOptions() already named the offending flag.
     process.exitCode = 1;
     return;
   }
