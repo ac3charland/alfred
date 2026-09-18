@@ -12,7 +12,7 @@ The summariser itself needs a key and a real mailbox, so it belongs to the check
 
 ## 1 · Extraction, from real newsletter mail
 
-The eval script replays four committed Gmail `messages.get` fixtures through the same extractor the tick uses. Each block is what the pipe would write to `reader_posts`: title from the Subject, author from the From display name, the canonical URL by B8's rule (first `/p/` link on any host, else a "view in browser" anchor, else the mailbox fallback), the word count off the stored text, and whether HTML was found at all.
+The eval script replays five committed Gmail `messages.get` fixtures through the same extractor the tick uses. Their SHAPE is taken from the owner's own Substack mail — the anchor order, the two hidden preheaders, the RFC 2047 subjects, the MIME layout — and every word inside that shape is invented. Each block is what the pipe would write to `reader_posts`: title from the Subject (decoded — the first one arrives as two adjacent encoded words split mid-word, carrying a curly apostrophe and an emoji), author from the From display name, the canonical URL by B8's rule (the first `/p/<slug>` link on any host, with an optional `/pub/<name>` in front of it, else an anchor whose text offers the web version, else the mailbox fallback), the word count off the stored text — with the preheaders' invisible padding already dropped — and whether HTML was found at all.
 
 ```bash
 npm run eval:reader -w workers -- --fixtures --dry-run 2>/dev/null
@@ -23,22 +23,22 @@ npm run eval:reader -w workers -- --fixtures --dry-run 2>/dev/null
 > workers@0.0.0 eval:reader
 > node --import ./scripts/ts-resolve.mjs scripts/reader-eval.ts --fixtures --dry-run
 
-reader eval — 4 fixtures, extraction only
+reader eval — 5 fixtures, extraction only
 
 essay
-  publication    Mira Vantz
-  title          The Grain Ledger
-  author         Mira Vantz
-  canonical URL  https://harborline.substack.com/p/the-grain-ledger
-  word count     278
+  publication    Mira Vantz from Harborline
+  title          Harborline’s Grain Ledger 🤝 the berth telemetry
+  author         Mira Vantz from Harborline
+  canonical URL  https://open.substack.com/pub/harborline/p/the-grain-ledger
+  word count     268
   html_extracted true
 
-roundup-view-in-browser
+read-in-app
   publication    The Cadence Weekly
   title          Ten links, one argument
   author         The Cadence Weekly
   canonical URL  https://cadence.substack.com/i/149023188/9f2a?utm_source=email
-  word count     98
+  word count     95
   html_extracted true
 
 plain-text-only
@@ -56,9 +56,19 @@ platform-mail
   canonical URL  none → mailbox
   word count     33
   html_extracted true
+
+reaction-notification
+  publication    Pell Marrow
+  title          Pell Marrow liked Berth 9 at midnight
+  author         Pell Marrow
+  canonical URL  https://tidewrack.substack.com/p/berth-9-at-midnight
+  word count     19
+  html_extracted true
 ```
 
-The third fixture is plain-text-only mail — no HTML part, so `html_extracted` is false and there is no anchor to take a canonical URL from; it falls back to the mailbox permalink. The second is an older template whose only post link is behind a tracking host, reached through the "view in browser" anchor.
+The first fixture is the template Substack ships today: the post's own address appears only as `open.substack.com/pub/<name>/p/<slug>`, sitting behind two `substack.com/redirect/2/<base64>` wrappers that are never unwrapped — the second wrapper does carry the post's URL in its payload, but it expires. `publication` and `author` read alike here only because the eval has no roster: it takes the publication from the `From` display name, so there is no roster name for the `<Author> from <Publication>` strip to match against; the tick, which does hold the roster row, stores `Mira Vantz`.
+
+The second fixture carries no post path of any shape, so it is reached through its button's text instead. The third is plain-text-only mail — no HTML part, so `html_extracted` is false and there is no anchor to take a canonical URL from; it falls back to the mailbox permalink. The last is a like notification — the one Substack mail that still carries a bare `/p/<slug>`, pointing at a post it is not about, which is why its sender must never reach the roster.
 
 ## 2 · The reading list, populated
 
