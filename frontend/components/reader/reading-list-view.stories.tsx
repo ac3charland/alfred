@@ -10,7 +10,7 @@ import { ReadingListView } from './reading-list-view';
 
 /**
  * The reading list itself: populated with every Story-1 row state at once (the fixture set), and
- * the resting empty state (§7.4).
+ * the resting empty state.
  */
 
 function withoutText({ text: _text, ...listItem }: ReaderPost) {

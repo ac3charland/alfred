@@ -12,7 +12,7 @@ import { renderReader } from './test-helpers';
 jest.mock('@/lib/api-client');
 const mockApi = jest.mocked(api);
 
-/** The list read's own shape (B13) — every fixture post has to drop `text` before rendering. */
+/** The list read's own shape — every fixture post has to drop `text` before rendering. */
 function withoutText(post: ReaderPost): ReaderPostListItem {
   const { text: _text, ...listItem } = post;
   return listItem;

@@ -10,7 +10,7 @@ import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 import { PostRow } from './post-row';
 
 /**
- * One story per row state the reading list can show (§7.4): a finished summary (collapsed and
+ * One story per row state the reading list can show: a finished summary (collapsed and
  * expanded), the three floor states, and a post with nowhere for "Open" to point. Each is its
  * own `ReaderProvider` seed (rather than the shared shell seed) so its archive/open verbs have
  * something real to act on in an isolated story.

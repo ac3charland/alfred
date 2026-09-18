@@ -9,7 +9,7 @@ import { z } from 'zod';
 
 /**
  * Query for GET /api/reader/posts. `scope` defaults to `active` — the list the owner reads is
- * the whole point of the endpoint, and the archive is a S2 surface nobody calls this for yet —
+ * the whole point of the endpoint, and the archive is a later surface nobody calls this for yet —
  * so an absent `scope` should not turn into an accidental 400 or an accidental archive read.
  * `limit` mirrors the list's own hard cap (500) rather than Comms' 1000: the seed reads 200 and
  * this is the same table.

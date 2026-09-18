@@ -11,7 +11,7 @@ import { patchReaderPost } from '@/lib/data/reader';
 //
 // `{ archived: boolean }` stamps or clears `archived_at`; `{ opened: true }` stamps
 // `opened_at`. The schema accepts `{ archived: false }` even though no UI sends it yet — the
-// store has no unarchive action until the archive view exists (S2) — because the column is a
+// store has no unarchive action until the archive view exists — because the column is a
 // plain boolean and there's no reason the route should refuse a direction the data model
 // already supports. The row comes back through `READER_POST_LIST_COLUMNS`, so a patch response
 // carries no `text` either, matching the seed and the GET route.

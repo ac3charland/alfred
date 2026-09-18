@@ -73,7 +73,8 @@ export async function getReaderSeed(
 
 /**
  * The reading list, either side: `active` (not archived — the default view) or `archived` (the
- * S2 archive view). Ordered newest-received first, the same order the list renders in.
+ * archive view, still to be built). Ordered newest-received first, the same order the list
+ * renders in.
  *
  * Supabase-js types a string column list (rather than a generated `select('*')` overload)
  * loosely — the result comes back as a row shaped by the wildcard `Row` type minus nothing, not

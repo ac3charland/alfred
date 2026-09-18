@@ -81,10 +81,16 @@ function credential(name: string): string {
   return readDevVar(name) ?? process.env[name] ?? '';
 }
 
-/** The value after a flag, or undefined when the flag is absent or trailing. */
+/**
+ * The value after a flag, or undefined when the flag is absent, trailing, or followed by another
+ * flag: `--ids --dry-run` asks for no ids, not for an id called `--dry-run`. Swallowing the next
+ * flag would otherwise turn a typo into a run that quietly reads the whole mailbox.
+ */
 function flagValue(name: string): string | undefined {
   const at = process.argv.indexOf(name);
-  return at === -1 ? undefined : process.argv[at + 1];
+  if (at === -1) return undefined;
+  const value = process.argv[at + 1];
+  return value === undefined || value.startsWith('-') ? undefined : value;
 }
 
 function hasFlag(name: string): boolean {
@@ -109,12 +115,21 @@ interface Options {
   limit: number;
 }
 
-function readOptions(): Options {
+/** A positive integer written in decimal digits and nothing else — as `config.ts` parses the cap. */
+const POSITIVE_INTEGER = /^\d+$/;
+
+/** The options, or `undefined` when one was given a value the run must not guess at. */
+function readOptions(): Options | undefined {
   const ids = (flagValue('--ids') ?? '')
     .split(',')
     .map((id) => id.trim())
     .filter((id) => id !== '');
-  const limit = Number.parseInt(flagValue('--limit') ?? '', 10);
+  const rawLimit = flagValue('--limit');
+  // A silent fallback to the default here reads a different mailbox slice than the one asked
+  // for, and on a billed run that is real money spent on the wrong posts.
+  if (rawLimit !== undefined && !POSITIVE_INTEGER.test(rawLimit)) return undefined;
+  const limit = rawLimit === undefined ? DEFAULT_LIMIT : Number.parseInt(rawLimit, 10);
+  if (limit < 1) return undefined;
   const query = flagValue('--query');
   return {
     fixtures: hasFlag('--fixtures'),
@@ -122,7 +137,7 @@ function readOptions(): Options {
     model: chosenModel(),
     ...(query === undefined ? {} : { query }),
     ids,
-    limit: Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_LIMIT,
+    limit,
   };
 }
 
@@ -296,6 +311,11 @@ interface ResultRow {
 
 async function main(): Promise<void> {
   const options = readOptions();
+  if (options === undefined) {
+    console.error('--limit takes a positive integer, e.g. --limit 5.');
+    process.exitCode = 1;
+    return;
+  }
 
   if (!options.fixtures && options.ids.length === 0 && options.query === undefined) {
     console.error('Nothing to read. Pass --fixtures, or --query "<gmail search>", or --ids a,b,c.');
