@@ -51,3 +51,5 @@ False confidence creeps in here — smaller models especially plough ahead rathe
   unwind than a question up front.
 - **Pin every requirement with a test**, so the spec's intent survives as executable
   back-pressure once the document is gone. (CLAUDE.md owns the TDD + demo-doc workflow.)
+- **Don't schedule a check-in after pushing.** CLAUDE.md's "No scheduled check-ins" rule
+  applies here — the session's job ends once the PR is open, not once it merges.

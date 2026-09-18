@@ -122,3 +122,5 @@ where it is, forever. Nothing archives it, and no later session should move it �
   wearing one name, stop and tell the human — propose the split instead of forcing one document to
   cover both.
 - **Iterate via PR comments**, like story refinement.
+- **Don't schedule a check-in on the PR.** CLAUDE.md's "No scheduled check-ins" rule
+  applies here — this session's job ends once the epic-spec PR is open.

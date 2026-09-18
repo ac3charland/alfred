@@ -72,6 +72,8 @@ spec-path: docs/spikes/<REF>-<short-slug>.html
   reading. Unlike a spec (scaffolding its implementation PR retires into `docs/specs/archive/`),
   a findings document stays exactly where you wrote it, and never goes in the specs directory.
 - **One story per spike PR.** Iteration happens in review comments on that PR.
+- **Don't schedule a check-in on the PR.** CLAUDE.md's "No scheduled check-ins" rule
+  applies here — this session's job ends once the findings PR is open.
 - **The `alfred` block is required** and enforced by the `alfred-frontmatter` check — a PR missing
   it, malforming it, or omitting `spec-path` fails CI. Fix the description if the check is red.
 - **Follow-up work is a new story.** A merged spike lands the story at `done`; turning its
