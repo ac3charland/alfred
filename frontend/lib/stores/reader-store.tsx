@@ -40,18 +40,19 @@ export interface ReaderActions {
    */
   markOpened: (id: string) => void;
   /**
-   * Re-read the active list and replace it wholesale, EXCEPT for rows with a mutation still in
-   * flight — the read left the server before that write arrived, so its answer is stale for
-   * exactly those rows and would put a just-archived post back on screen. A failed read changes
-   * nothing and says nothing — the stale list it would have replaced is still better than a
-   * blanked one, and the next trigger tries again (mirrors Comms' `reconcileHealth`).
+   * Re-read the active list and replace it wholesale, EXCEPT for rows this tab mutated after the
+   * read was ISSUED — the read left the server before that write arrived, so its answer is stale
+   * for exactly those rows and would put a just-archived post back on screen. Whether the write
+   * has since answered is beside the point: what decides is which of the two left first. A failed
+   * read changes nothing and says nothing — the stale list it would have replaced is still better
+   * than a blanked one, and the next trigger tries again (mirrors Comms' `reconcileHealth`).
    */
   refresh: () => void;
 }
 
 type ReaderAction =
   | { type: 'posts'; action: SimpleAction<ReaderPostListItem> }
-  /** `keep` names the ids whose LOCAL row wins: a row this tab is mid-write on. */
+  /** `keep` names the ids whose LOCAL row wins: a row this tab wrote the read cannot know of. */
   | { type: 'replaceAll'; posts: ReaderPostListItem[]; keep: string[] };
 
 /** Pure reducer. The single row list delegates to the shared flat-list reducer. */
@@ -111,17 +112,33 @@ export function ReaderProvider({
    */
   const refreshingRef = React.useRef(false);
   /**
-   * Ids with a write still in flight. A read that left before the write arrived cannot answer for
-   * them, so `replaceAll` keeps this tab's own row for each one.
+   * Ids with a write still in flight. A write that started BEFORE the in-progress read was issued
+   * and has not answered yet is still unknown to the server's copy, so `replaceAll` keeps this
+   * tab's own row for each one.
    */
   const mutatingRef = React.useRef(new Set<string>());
+  /**
+   * Ids this tab has written since the in-progress read was ISSUED — emptied at the moment the
+   * request goes out and never pruned before the next one, so a write that both started and
+   * finished while the read was in the air is still held back. Together with `mutatingRef` this
+   * covers every write the read cannot answer for: started earlier and still pending, or started
+   * after the read left at all.
+   */
+  const mutatedSinceReadRef = React.useRef(new Set<string>());
   const refresh = React.useCallback(() => {
     if (refreshingRef.current || document.hidden) return;
     refreshingRef.current = true;
+    // Cleared as the request is ISSUED, not when its answer lands: everything written from here
+    // on is something this read left too early to know about.
+    mutatedSinceReadRef.current = new Set<string>();
     void api
       .fetchReaderPosts({ scope: 'active' })
       .then((posts) => {
-        dispatch({ type: 'replaceAll', posts, keep: [...mutatingRef.current] });
+        dispatch({
+          type: 'replaceAll',
+          posts,
+          keep: [...new Set([...mutatingRef.current, ...mutatedSinceReadRef.current])],
+        });
       })
       .catch(() => {
         // Deliberately silent — see the doc comment above.
@@ -155,6 +172,9 @@ export function ReaderProvider({
         // a field `refresh()` moved meanwhile.
         const captured = current === undefined ? {} : capturedFields(current, patch);
         mutatingRef.current.add(id);
+        // Never removed here — only a NEWER read clears it, since that is the first read whose
+        // answer can have this write in it.
+        mutatedSinceReadRef.current.add(id);
         try {
           return await runOptimisticMutation({
             optimistic: () => {

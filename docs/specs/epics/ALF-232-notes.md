@@ -118,9 +118,10 @@ One line each, with the file that now holds the truth.
   archive-scope query's `.not('archived_at', 'is', null)`.
 - `frontend/lib/test-utils.tsx`'s `renderWithProviders` gained a `reader` seed option
   (`initialPosts`), alongside the other modules' seeds.
-- `refresh()` keeps the local row for any post with an archive in flight (`replaceAll`'s `keep`),
-  and `markOpened` reconciles only `opened_at` — a realtime channel must respect the same in-flight
-  set. — `frontend/lib/stores/reader-store.tsx`
+- `refresh()` keeps the local row for any post this tab wrote that its read cannot answer for
+  (`replaceAll`'s `keep`): two sets, one of writes still in flight and one of every write started
+  since the read was ISSUED, cleared as the request goes out. `markOpened` reconciles only
+  `opened_at`. A realtime channel must respect both sets. — `frontend/lib/stores/reader-store.tsx`
 
 ## Subrequest arithmetic as built
 

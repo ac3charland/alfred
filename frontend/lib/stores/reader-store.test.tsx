@@ -47,6 +47,13 @@ function useStore() {
   };
 }
 
+/** Drain every pending microtask — a settled request's whole `.then`/`.catch`/`.finally` chain. */
+async function flush(): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 /** A promise the test settles by hand, so one request can be held in flight. */
 function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
   let settle!: (value: T) => void;
@@ -364,6 +371,60 @@ describe('refresh', () => {
       await archiving;
     });
     expect(result.current.posts).toHaveLength(0);
+  });
+
+  it('does not resurrect a row archived after the read was issued', async () => {
+    // The mirror image of the case above: the archive's PATCH has already ANSWERED by the time
+    // the read's answer lands, so nothing is in flight any more — but the read left the server
+    // before the archive reached it, so its list is just as stale for that row.
+    const row = post({ id: 'p-1' });
+    const read = deferred<ReaderPostListItem[]>();
+    mockApi.fetchReaderPosts.mockReturnValue(read.promise);
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, archived_at: '2026-09-18T09:00:00.000Z' });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await result.current.actions.archive('p-1');
+    });
+    expect(result.current.posts).toHaveLength(0);
+
+    await act(async () => {
+      read.settle([row]);
+      await flush();
+    });
+
+    expect(result.current.posts).toHaveLength(0);
+  });
+
+  it('takes the server list verbatim once a later read has been issued', async () => {
+    // The guard is scoped to ONE read: a mutation the next request was issued after is a
+    // mutation that request can answer for, so its row stops being held back.
+    const row = post({ id: 'p-1' });
+    const firstRead = deferred<ReaderPostListItem[]>();
+    mockApi.fetchReaderPosts.mockReturnValueOnce(firstRead.promise).mockResolvedValue([row]);
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, archived_at: '2026-09-18T09:00:00.000Z' });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await result.current.actions.archive('p-1');
+      firstRead.settle([row]);
+      await flush();
+    });
+    expect(result.current.posts).toHaveLength(0);
+
+    act(() => {
+      result.current.actions.refresh();
+    });
+
+    await waitFor(() => {
+      expect(result.current.posts.map((p) => p.id)).toEqual(['p-1']);
+    });
   });
 
   it('keeps the last known list when the re-read fails, and stays silent about it', async () => {
