@@ -1,3 +1,5 @@
+import type { Locator, Page } from '@playwright/test';
+
 import {
   MOCK_URL,
   makeReaderOverview,
@@ -48,6 +50,19 @@ function seededPosts() {
       received_at: '2026-09-16T11:00:00.000Z',
     }),
   ];
+}
+
+/**
+ * Point the keyboard at `row` with `j`. The hotkeys are a client listener, so a press that lands
+ * before the page has hydrated is swallowed with nothing to catch it — press until the selection
+ * takes rather than once and hope. Idempotent in practice: each attempt waits out a real
+ * selection before pressing again, so the retry only fires while nothing is listening yet.
+ */
+async function selectWithJ(page: Page, row: Locator): Promise<void> {
+  await expect(async () => {
+    await page.keyboard.press('j');
+    await expect(row).toHaveAttribute('data-selected', 'true', { timeout: 1000 });
+  }).toPass();
 }
 
 /** What the mock holds for a post's `archived_at` right now. */
@@ -127,12 +142,11 @@ test.describe('the reading list keyboard', () => {
     await page.goto('/reader');
     await expect(page.getByTestId('reader-row')).toHaveCount(2);
 
-    await page.keyboard.press('j');
-
     const alpha = page
       .getByTestId('reader-row')
       .filter({ hasText: 'How near is the intelligence explosion' });
-    await expect(alpha).toHaveAttribute('data-selected', 'true');
+    await selectWithJ(page, alpha);
+
     // The hints ride on the selected row and nowhere else.
     await expect(alpha.getByText('e', { exact: true })).toBeVisible();
 
@@ -162,7 +176,7 @@ test.describe('the reading list keyboard', () => {
     // "closed" is read off the accessibility tree rather than off a text locator.
     await expect(alpha.getByRole('heading', { name: 'Novel ideas' })).toBeHidden();
 
-    await page.keyboard.press('j');
+    await selectWithJ(page, alpha);
     await page.keyboard.press('v');
 
     await expect(alpha.getByRole('heading', { name: 'Novel ideas' })).toBeVisible();

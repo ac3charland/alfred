@@ -2,6 +2,7 @@ import {
   MOCK_URL,
   makeCommAccount,
   makeCommMessage,
+  makeReaderPost,
   makeReaderPublication,
 } from './support/constants';
 import { expect, test } from './support/fixtures';
@@ -31,12 +32,13 @@ const PAUSED = makeReaderPublication('Some Substack I stopped reading', {
 });
 
 /** A bulk sender on the personal mailbox, inbound with a list header, not on the roster. */
-function candidateMessage() {
+function candidateMessage(overrides: Parameters<typeof makeCommMessage>[1] = {}) {
   return makeCommMessage(ACCOUNT.id, {
     direction: 'inbound',
     has_list_header: true,
     sender_handle: 'hello@bensbites.beehiiv.com',
     sender_name: "Ben's Bites",
+    ...overrides,
   });
 }
 
@@ -93,7 +95,7 @@ test.describe('the publications roster', () => {
     await expect(page.getByText("Ben's Bites")).toBeVisible();
     await expect(page.getByText('No publications yet.')).toBeVisible();
 
-    await page.getByRole('button', { name: /add/i }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
 
     await expect(page.getByText('No candidates.')).toBeVisible();
     const card = page.getByRole('listitem').filter({ hasText: 'hello@bensbites.beehiiv.com' });
@@ -114,6 +116,54 @@ test.describe('the publications roster', () => {
           row.name === "Ben's Bites",
       ),
     ).toBe(true);
+  });
+
+  test('ranks candidates by message volume, the loudest sender first', async ({ page, seed }) => {
+    await seed({
+      commAccounts: [ACCOUNT],
+      commMessages: [
+        // Ben's Bites: three messages — the louder sender.
+        candidateMessage(),
+        candidateMessage(),
+        candidateMessage(),
+        // Amazon: one message — quieter, so it must rank below Ben's Bites regardless of the
+        // mock's own row order, exercising the view's `.order(message_count).order(last_seen_at)`.
+        candidateMessage({ sender_handle: 'store-news@amazon.com', sender_name: 'Amazon.com' }),
+      ],
+    });
+    await page.goto('/reader/publications');
+
+    const candidateRows = page.getByRole('listitem').filter({ hasText: /message/ });
+    await expect(candidateRows).toHaveCount(2);
+    await expect(candidateRows.first()).toContainText("Ben's Bites");
+    await expect(candidateRows.first()).toContainText('3 messages');
+    await expect(candidateRows.last()).toContainText('Amazon.com');
+    await expect(candidateRows.last()).toContainText('1 message ·');
+  });
+
+  test('shows a publication’s last post date, or that it has none yet', async ({ page, seed }) => {
+    const withPost = makeReaderPublication('Second Thoughts', {
+      id: '88888888-8888-4888-8888-888888888883',
+      handle: 'secondthoughts@substack.com',
+      source: 'auto',
+    });
+    const withoutPost = makeReaderPublication('Fresh Letter', {
+      id: '88888888-8888-4888-8888-888888888884',
+      handle: 'fresh@substack.com',
+      source: 'auto',
+    });
+    await seed({
+      commAccounts: [ACCOUNT],
+      readerPublications: [withPost, withoutPost],
+      readerPosts: [makeReaderPost(withPost.id, { received_at: '2026-09-16T00:00:00.000Z' })],
+    });
+    await page.goto('/reader/publications');
+
+    const withPostCard = page.getByRole('listitem').filter({ hasText: 'Second Thoughts' });
+    await expect(withPostCard.getByText(/last post/)).toBeVisible();
+
+    const withoutPostCard = page.getByRole('listitem').filter({ hasText: 'Fresh Letter' });
+    await expect(withoutPostCard.getByText('no posts yet')).toBeVisible();
   });
 
   test('copies the Gmail filter query over the enabled, sorted handles', async ({

@@ -49,12 +49,10 @@ export {
 
 /** Likewise the Reader seed builders — the same ones the unit tests and stories use. */
 export {
-  makeReaderCandidate,
   makeReaderHealth,
   makeReaderOverview,
   makeReaderPost,
   makeReaderPublication,
-  makeReaderPublicationListItem,
   readerFixtureSet,
 } from '@/lib/reader/fixtures';
 

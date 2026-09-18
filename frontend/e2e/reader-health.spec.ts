@@ -120,7 +120,7 @@ test.describe('the Reader health surface', () => {
     await expect(banner).not.toContainText('Daily summary ceiling reached');
   });
 
-  test('says the summariser has never run when no health row exists, and shows no banner', async ({
+  test('says the summariser has never run when the tick has never stamped the seeded row', async ({
     page,
     seed,
   }) => {
@@ -128,6 +128,9 @@ test.describe('the Reader health surface', () => {
       commAccounts: [liveAccount()],
       readerPublications: [PUBLICATION],
       readerPosts: pendingPosts(),
+      // The row the migration seeds and nothing has filled in yet — what a Reader whose cron has
+      // never fired actually looks like in the database, rather than a table with no row at all.
+      readerHealth: [makeReaderHealth('never', {}, NOW)],
     });
     await page.goto('/reader');
 
