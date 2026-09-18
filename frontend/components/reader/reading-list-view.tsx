@@ -8,7 +8,12 @@ import { ReaderBanner } from '@/components/reader/reader-banner';
 import { ReaderHeader } from '@/components/reader/reader-header';
 import { useNow } from '@/lib/hooks/use-now';
 import { readerBanner } from '@/lib/reader/health';
-import { useActiveCount, useReaderHealth, useReaderPosts } from '@/lib/stores/reader-store';
+import {
+  useActiveCount,
+  useArchivedPosts,
+  useReaderHealth,
+  useReaderPosts,
+} from '@/lib/stores/reader-store';
 
 /**
  * The reading list — the Reader module's home view: the module's one banner when something is
@@ -30,6 +35,7 @@ interface ReadingListViewProperties {
 
 export function ReadingListView({ now: pinnedNow }: ReadingListViewProperties) {
   const posts = useReaderPosts();
+  const archived = useArchivedPosts();
   const activeCount = useActiveCount();
   const health = useReaderHealth();
 
@@ -38,7 +44,13 @@ export function ReadingListView({ now: pinnedNow }: ReadingListViewProperties) {
   const ticking = useNow();
   const now = pinnedNow ?? ticking;
 
-  const banner = readerBanner(health, posts, now);
+  // The health rules read EVERY post the store holds, not just the ones this view draws: the
+  // summariser works the whole table, so a summary that landed on an archived post is still
+  // proof of life and an archived post still pending is still claimed. Reading the list alone
+  // would report a stall the moment the owner archived the last thing that was summarised.
+  const allPosts = React.useMemo(() => [...posts, ...archived], [posts, archived]);
+
+  const banner = readerBanner(health, allPosts, now);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -49,7 +61,7 @@ export function ReadingListView({ now: pinnedNow }: ReadingListViewProperties) {
 
         <ReaderHeader
           snapshot={health}
-          posts={posts}
+          posts={allPosts}
           now={now}
           description={activeCount === 0 ? 'Nothing to read' : `${String(activeCount)} to read`}
         />

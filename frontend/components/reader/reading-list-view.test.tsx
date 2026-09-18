@@ -191,7 +191,11 @@ describe('ReadingListView — the health surface', () => {
 
   it('renders exactly one banner, above the heading, when several states are bad at once', () => {
     renderReader(<ReadingListView now={HEALTH_NOW} />, [], {
-      health: makeReaderHealth('ceiling', { last_error_at: ago(48) }, HEALTH_NOW),
+      health: makeReaderHealth(
+        'ceiling',
+        { last_success_at: ago(200), last_error_at: ago(48) },
+        HEALTH_NOW,
+      ),
       account: {
         ...LIVE_ACCOUNT,
         last_seen_at: ago(600),
@@ -221,6 +225,57 @@ describe('ReadingListView — the health surface', () => {
     );
 
     renderReader(<ReadingListView now={HEALTH_NOW} />, [claimed], {
+      health: makeReaderHealth('ceiling', {}, HEALTH_NOW),
+      account: LIVE_ACCOUNT,
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent('— 1 claimed post waits for tomorrow.');
+  });
+
+  it('reads the summariser off every post the store holds, archived ones included', () => {
+    const { publication } = readerFixtureSet();
+    // The only summary that has landed is on a post the owner has already archived — the
+    // summariser is working, and a stall read off the visible list alone would miss it.
+    const archivedSummary = withoutText(
+      makeReaderPost(publication.id, {
+        id: 'p-archived-done',
+        summary_state: 'done',
+        word_count: 900,
+        summarized_at: ago(2),
+        archived_at: ago(1),
+      }),
+    );
+    const claimed = withoutText(
+      makeReaderPost(publication.id, {
+        id: 'p-waiting',
+        summary_state: 'pending',
+        word_count: 900,
+        created_at: ago(90),
+      }),
+    );
+
+    renderReader(<ReadingListView now={HEALTH_NOW} />, [claimed, archivedSummary], {
+      health: makeReaderHealth('live', { last_success_at: ago(200) }, HEALTH_NOW),
+      account: LIVE_ACCOUNT,
+    });
+
+    expect(screen.getByRole('img', { name: 'summariser · live' })).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('counts an archived post that is still claimed among the ones the ceiling holds', () => {
+    const { publication } = readerFixtureSet();
+    const archivedClaim = withoutText(
+      makeReaderPost(publication.id, {
+        id: 'p-archived-pending',
+        summary_state: 'pending',
+        word_count: 900,
+        created_at: ago(200),
+        archived_at: ago(1),
+      }),
+    );
+
+    renderReader(<ReadingListView now={HEALTH_NOW} />, [archivedClaim], {
       health: makeReaderHealth('ceiling', {}, HEALTH_NOW),
       account: LIVE_ACCOUNT,
     });
@@ -408,7 +463,9 @@ describe('ReadingListView — the verb keys', () => {
 
   it('leaves a row with no panel alone on v', async () => {
     const user = userEvent.setup();
-    renderReader(<ReadingListView now={NOW} />, oneRow({ overview: null }));
+    // No overview AND nothing to put in a footer: an unsummarised body means no stamp and no
+    // re-run verb, so there is genuinely no panel for the key to open.
+    renderReader(<ReadingListView now={NOW} />, oneRow({ overview: null, word_count: 0 }));
 
     await user.keyboard('j');
     await user.keyboard('v');
