@@ -166,6 +166,8 @@ await waitFor(() => {
 
 - **`readerFixtureSet()` (`frontend/lib/reader/fixtures.ts`) rows render newest-first and `makeReaderPost` stamps increasing `received_at`, so `.nth(0)` is the LAST-built fixture** (the no-link row), not the first. Address rows by title with `.filter({ hasText })` instead of position.
 
+- **Don't index a `getAllBy*` result and cast the element — there is no spelling that lints.** `rows[1] as HTMLElement` is autofixed to `rows[1]!`, which `no-non-null-assertion` then errors on (the rule pair is in the `eslint` skill). RTL's answer is not the `defined()` helper but not indexing at all: write a `rowFor(title)` helper that `.find()`s the row by its text and throws when it is missing, then scope with `within(rowFor('Alpha'))`; iterate with `for (const row of rows)` when you really mean all of them. Either way the element is already `HTMLElement` (`components/reader/post-list.test.tsx`).
+
 ---
 
 ## Version Gotchas (user-event v14)
