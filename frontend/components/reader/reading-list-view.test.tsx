@@ -259,7 +259,7 @@ describe('ReadingListView — the health surface', () => {
       account: LIVE_ACCOUNT,
     });
 
-    expect(screen.getByRole('img', { name: 'summariser · live' })).toBeInTheDocument();
+    expect(screen.getByText('summariser · live')).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 

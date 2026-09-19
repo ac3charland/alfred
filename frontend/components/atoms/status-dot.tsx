@@ -32,27 +32,30 @@ interface StatusDotProperties {
   elapsed?: string | undefined;
   /**
    * The state in the caller's own words — "never ran" where the tone is merely `stale`. A source
-   * whose states have names of their own says them both on screen and aloud: the tone words are
-   * a palette of three, and naming the state twice in two vocabularies reads as two claims.
+   * whose states have names of their own draws that word beside the dot, and the dot then goes
+   * silent: the tone words are a palette of three, and naming the state twice in two
+   * vocabularies reads as two claims.
    */
   stateLabel?: string | undefined;
 }
 
 export function StatusDot({ state, label, title, elapsed, stateLabel }: StatusDotProperties) {
-  // One string, drawn and spoken: a dot whose visible text and accessible name disagree is two
+  // One string, drawn or spoken: a dot whose visible text and accessible name disagree is two
   // different claims about the same source.
   const claim = `${label} · ${stateLabel ?? state}`;
+  const marker = cn('h-2 w-2 shrink-0 rounded-full', DOT_TONE[state]);
 
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={title}>
-      <span
-        // The state rides the LABEL, not the colour alone: a red dot and an amber dot are the
-        // same dot to a screen reader, and to plenty of eyes.
-        aria-label={claim}
-        role="img"
-        className={cn('h-2 w-2 shrink-0 rounded-full', DOT_TONE[state])}
-      />
-      {/* Without a state word of its own, the tone carries the state and the text is the name. */}
+      {/* Exactly one of the two carries the claim. Where the caller named the state, the line
+          beside the dot says it in words and a labelled dot would announce it a second time;
+          where it did not, the state rides the dot's LABEL rather than the colour alone — a red
+          dot and an amber dot are the same dot to a screen reader, and to plenty of eyes. */}
+      {stateLabel === undefined ? (
+        <span aria-label={claim} role="img" className={marker} />
+      ) : (
+        <span aria-hidden="true" className={marker} />
+      )}
       <span>{stateLabel === undefined ? label : claim}</span>
       {elapsed !== undefined && <span className="text-muted-foreground/70">· {elapsed}</span>}
     </span>

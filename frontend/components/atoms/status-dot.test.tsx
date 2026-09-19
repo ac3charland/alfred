@@ -30,11 +30,11 @@ describe('StatusDot', () => {
       />,
     );
 
-    expect(screen.getByRole('img', { name: 'summariser · never ran' })).toBeInTheDocument();
-    expect(screen.queryByRole('img', { name: 'summariser · stale' })).not.toBeInTheDocument();
+    expect(screen.getByText('summariser · never ran')).toBeInTheDocument();
+    expect(screen.queryByText('summariser · stale')).not.toBeInTheDocument();
   });
 
-  it('draws the named state too, so the line reads the way it is spoken', () => {
+  it('leaves the claim to the visible text once the caller names the state — announced once', () => {
     render(
       <StatusDot
         state="stale"
@@ -44,7 +44,8 @@ describe('StatusDot', () => {
       />,
     );
 
-    expect(screen.getByText('summariser · never ran')).toBeInTheDocument();
+    // The words are on the line beside the dot, so a labelled dot would say them a second time.
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
   it('draws the bare label when the caller names no state — the tone carries it', () => {
