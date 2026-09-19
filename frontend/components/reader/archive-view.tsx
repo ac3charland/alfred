@@ -74,10 +74,14 @@ export function ArchiveView({ now: pinnedNow }: ArchiveViewProperties) {
         </div>
       )}
 
-      {/* Beside the rows it qualifies, never on its own: an archive emptied by unarchiving
-          everything would otherwise claim to be showing 200 of nothing. */}
+      {/* What the read returned, rather than "the latest 200" — the archive may hold exactly
+          200, in which case none is being withheld. Beside the rows it qualifies, never on its
+          own: an archive emptied by unarchiving everything would otherwise claim to be showing
+          200 of nothing. */}
       {full && posts.length > 0 && (
-        <p className="text-sm text-muted-foreground">Showing the latest 200</p>
+        <p className="text-sm text-muted-foreground">
+          Showing the 200 most recent posts the archive read returned
+        </p>
       )}
     </div>
   );

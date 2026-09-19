@@ -14,6 +14,8 @@ jest.mock('@/lib/api-client');
 const mockApi = jest.mocked(api);
 
 const NOW = new Date(2026, 8, 18, 9, 0);
+/** The line the view draws under a read that came back at its ceiling. */
+const SLICE_LINE = 'Showing the 200 most recent posts the archive read returned';
 const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
 
 /** An archived post as the list read hands it over — no `text`, and an `archived_at` stamp. */
@@ -51,9 +53,9 @@ function rowFor(title: string): HTMLElement {
 }
 
 /**
- * A test-only control that empties the archive in one gesture. The "latest 200" line only ever
- * appears over a read that came back at its ceiling, so reaching an archive that is both full
- * and empty means putting two hundred posts back — which through the rows' own verb is two
+ * A test-only control that empties the archive in one gesture. The slice line only ever appears
+ * over a read that came back at its ceiling, so reaching an archive that is both full and empty
+ * means putting two hundred posts back — which through the rows' own verb is two
  * hundred clicks, and through the store is this.
  */
 function UnarchiveEverything() {
@@ -122,7 +124,7 @@ describe('ArchiveView — the read', () => {
     );
     renderReader(<ArchiveView now={NOW} />);
 
-    expect(await screen.findByText('Showing the latest 200')).toBeInTheDocument();
+    expect(await screen.findByText(SLICE_LINE)).toBeInTheDocument();
   });
 
   it('says nothing about a slice when the archive fits', async () => {
@@ -130,7 +132,7 @@ describe('ArchiveView — the read', () => {
     renderReader(<ArchiveView now={NOW} />);
 
     expect(await screen.findByText('The only one')).toBeInTheDocument();
-    expect(screen.queryByText('Showing the latest 200')).not.toBeInTheDocument();
+    expect(screen.queryByText(SLICE_LINE)).not.toBeInTheDocument();
   });
 
   it('drops the slice line once the rows it described have all been put back', async () => {
@@ -150,14 +152,14 @@ describe('ArchiveView — the read', () => {
         <UnarchiveEverything />
       </>,
     );
-    expect(await screen.findByText('Showing the latest 200')).toBeInTheDocument();
+    expect(await screen.findByText(SLICE_LINE)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'unarchive everything' }));
 
     // The line describes rows; with none left it would be claiming to show 200 of nothing,
     // right beside the empty state.
     await waitFor(() => {
-      expect(screen.queryByText('Showing the latest 200')).not.toBeInTheDocument();
+      expect(screen.queryByText(SLICE_LINE)).not.toBeInTheDocument();
     });
     expect(screen.getByText('Nothing archived yet.')).toBeInTheDocument();
   });

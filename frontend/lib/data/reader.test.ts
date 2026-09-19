@@ -197,6 +197,30 @@ describe('patchReaderPost', () => {
     expect(supabase.table('reader_posts').select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
   });
 
+  it('re-summarising refuses a row the tick has queued, in the WHERE clause', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await patchReaderPost(supabase as never, POST_ID, { resummarize: true }, NOW);
+
+    // The route's pre-read can only see the state a moment ago; the filter is what makes the
+    // same rule hold at the instant of the write.
+    expect(supabase.table('reader_posts').neq).toHaveBeenCalledWith('summary_state', 'pending');
+  });
+
+  it.each([
+    ['archiving', { archived: true }],
+    ['opening', { opened: true }],
+  ] as const)(
+    '%s carries no state guard — those verbs apply whatever the tick is doing',
+    async (_name, patch) => {
+      const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+      await patchReaderPost(supabase as never, POST_ID, patch, NOW);
+
+      expect(supabase.table('reader_posts').neq).not.toHaveBeenCalled();
+    },
+  );
+
   it('resolves null data for a row that is not there — the route handles the 404', async () => {
     const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
 

@@ -235,8 +235,23 @@ describe('PATCH /api/reader/posts/[id] — re-summarise', () => {
 
     const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
 
+    expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: 'Post has no stored text to summarise',
+    });
+  });
+
+  it('409s when the tick queued the row between the pre-read and the write', async () => {
+    // The pre-read saw a summarised row, so the post exists; the write's own guard then matched
+    // nothing, which for this verb means only one thing — the tick got there first.
+    const supabase = withStoredState(SUMMARISED);
+    supabase.table('reader_posts').maybeSingle.mockResolvedValueOnce({ data: null });
+
+    const response = await PATCH(patch(POST_ID, { resummarize: true }), context(POST_ID));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: 'That post is already queued for a summary',
     });
   });
 

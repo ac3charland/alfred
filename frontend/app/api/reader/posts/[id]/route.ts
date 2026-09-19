@@ -24,7 +24,9 @@ import { getReaderPostResummarizeState, patchReaderPost } from '@/lib/data/reade
 // hides the verb in those cases — the refusals below are what a stale tab gets, and they say
 // which of the three reasons applies rather than a bare "no". The third is the row already being
 // on the worklist: re-queueing a post the tick has leased would clear that lease and reset its
-// attempts mid-run, so the same post is summarised twice.
+// attempts mid-run, so the same post is summarised twice. That third rule rides in the write's
+// own WHERE clause as well, so a lease taken in the gap between the two statements is refused
+// rather than trampled.
 // ---------------------------------------------------------------------------
 
 const MONTH_DAY_YEAR: Intl.DateTimeFormatOptions = {
@@ -45,7 +47,8 @@ export const PATCH = withSession(
     const input = await parseRequestBody(request, patchReaderPostSchema);
     if (input instanceof Response) return input;
 
-    if ('resummarize' in input) {
+    const resummarizing = 'resummarize' in input;
+    if (resummarizing) {
       const { data: stored, error: readError } = await getReaderPostResummarizeState(
         session.supabase,
         id,
@@ -77,7 +80,14 @@ export const PATCH = withSession(
       const { status, message } = mapSupabaseError(error);
       return jsonError(status, message);
     }
-    if (data === null) return jsonError(404, 'Post not found');
+    // The write carries the queue rule too, so for a re-summarise whose pre-read DID find the
+    // row, nothing coming back means the tick leased it in between — the row is there, the verb
+    // is refused, and that is the same answer the pre-read would have given a moment later.
+    if (data === null) {
+      return resummarizing
+        ? jsonError(409, 'That post is already queued for a summary')
+        : jsonError(404, 'Post not found');
+    }
 
     return jsonOk(data);
   },

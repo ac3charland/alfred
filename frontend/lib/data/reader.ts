@@ -103,8 +103,14 @@ export async function getReaderPosts(
  * tick's worklist. `now` is a parameter rather than read from the clock in here, so a route's
  * test can pin the timestamp it asserts on without faking `Date` globally.
  *
- * `.maybeSingle()`, not `.single()`: a missing row is the route's 404, not a 500 the shared
- * error mapper has no case for.
+ * Re-summarising carries its "not already queued" rule in the WHERE clause as well as in the
+ * route's pre-read. The pre-read can only describe the row a moment ago; the filter is what
+ * makes the rule hold at the instant of the write, so a tick that leases the row in between
+ * matches nothing here rather than having its lease cleared and its attempts reset mid-run.
+ *
+ * `.maybeSingle()`, not `.single()`: no row came back either because there is none (the route's
+ * 404) or because that guard held (its 409), and neither is a 500 the shared error mapper has a
+ * case for.
  */
 export async function patchReaderPost(
   supabase: SupabaseClient<Database>,
@@ -112,12 +118,10 @@ export async function patchReaderPost(
   patch: PatchReaderPostInput,
   now: Date,
 ): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
-  return supabase
-    .from('reader_posts')
-    .update(readerPostUpdate(patch, now))
-    .eq('id', id)
-    .select(READER_POST_LIST_COLUMNS)
-    .maybeSingle();
+  const write = supabase.from('reader_posts').update(readerPostUpdate(patch, now)).eq('id', id);
+  const guarded = 'resummarize' in patch ? write.neq('summary_state', 'pending') : write;
+
+  return guarded.select(READER_POST_LIST_COLUMNS).maybeSingle();
 }
 
 /**
