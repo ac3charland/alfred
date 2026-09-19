@@ -7,7 +7,7 @@ import { StatusDot, type StatusDotState } from '@/components/atoms/status-dot';
 import { ViewHeading } from '@/components/atoms/view-heading';
 import { formatElapsed } from '@/components/comms/comms-format';
 import { accountHealth } from '@/lib/comms';
-import { type SummariserState, summariserStalled } from '@/lib/reader/health';
+import { type SummariserState, summariserStalled, tickStopped } from '@/lib/reader/health';
 import type {
   CommAccount,
   ReaderHealth,
@@ -60,6 +60,20 @@ function reason(error: string | null, fallback: string): string {
   return written === undefined || written === '' ? fallback : written;
 }
 
+/**
+ * What a stall the tick recorded no words for is put down to. A run of its own that has gone
+ * missing is a different fault from a tick that keeps running and summarises nothing, and it is
+ * the one the owner can act on — so it is named rather than left to the generic silence.
+ */
+function stallFallback(
+  health: ReaderHealth | undefined,
+  now: Date,
+): { title: string; line: string } {
+  return tickStopped(health, now)
+    ? { title: 'The tick has stopped running', line: 'the tick has stopped running' }
+    : { title: 'No summary has landed', line: 'no summary has landed since' };
+}
+
 /** Why the mailbox is in the state it is — the dot's hover/focus title, in the Comms treatment. */
 function gmailReason(account: CommAccount, now: Date): string {
   if (accountHealth(account, now) === 'erroring') {
@@ -107,7 +121,7 @@ function summariserReason(
   if (stall.state === 'never') return 'The summariser has never run — the tick has never fired';
   if (stall.state === 'stalled') {
     const when = stall.since === null ? '' : ` (${formatElapsed(stall.since, now)})`;
-    return `${reason(health?.last_error ?? null, 'No summary has landed')}${when}`;
+    return `${reason(health?.last_error ?? null, stallFallback(health, now).title)}${when}`;
   }
   const success = health?.last_success_at ?? null;
   return success === null
@@ -126,14 +140,14 @@ function summariserSentence(
 
   const when = stall.since === null ? 'recently' : formatElapsed(stall.since, now);
   return (
-    `Summariser stalled ${when} — ${reason(health?.last_error ?? null, 'no summary has landed since')}. ` +
+    `Summariser stalled ${when} — ${reason(health?.last_error ?? null, stallFallback(health, now).line)}. ` +
     'Posts are still arriving; none are being summarised.'
   );
 }
 
 export interface ReaderHeaderProperties {
   snapshot: ReaderHealthSnapshot;
-  /** The posts the stall rules read — a claimed post waiting is one of the two signals. */
+  /** The posts the stall rules read — a claimed post waiting is one of the three signals. */
   posts: ReaderPostListItem[];
   now: Date;
   /** The view's own count line, phrased by the view that owns the list. */

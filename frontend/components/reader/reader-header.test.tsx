@@ -70,7 +70,9 @@ describe('ReaderHeader — the dots', () => {
   it('reads both sources as live, and says nothing more', () => {
     renderHeader({ health: liveHealth(), account: LIVE_ACCOUNT });
 
-    expect(screen.getByRole('img', { name: 'summariser · live' })).toBeInTheDocument();
+    // The summariser names its own state, so the line beside its dot carries the claim; the
+    // mailbox takes the tone words, and its dot is what says them.
+    expect(screen.getByText('summariser · live')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /^Gmail \(personal\) ·/ })).toBeInTheDocument();
     expect(screen.queryByTestId('reader-health-notes')).not.toBeInTheDocument();
   });
@@ -78,9 +80,8 @@ describe('ReaderHeader — the dots', () => {
   it('names the summariser stalled, in the label rather than in the colour', () => {
     renderHeader({ health: makeReaderHealth('stalled', {}, NOW), account: LIVE_ACCOUNT });
 
-    // The summariser's own word, not the dot's tone word — amber covers two states here.
-    expect(screen.getByRole('img', { name: 'summariser · stalled' })).toBeInTheDocument();
-    // And drawn as well as spoken: the line beside the dot says which of the two amber means.
+    // The summariser's own word, not the dot's tone word — amber covers two states here, and the
+    // line beside the dot is where it is both drawn and announced.
     expect(screen.getByText('summariser · stalled')).toBeInTheDocument();
   });
 
@@ -89,13 +90,13 @@ describe('ReaderHeader — the dots', () => {
       waiting(90),
     ]);
 
-    expect(screen.getByRole('img', { name: 'summariser · never ran' })).toBeInTheDocument();
+    expect(screen.getByText('summariser · never ran')).toBeInTheDocument();
   });
 
   it('reads a database with no health row at all the same way', () => {
     renderHeader({ ...NO_READER_HEALTH, account: LIVE_ACCOUNT }, [waiting(90)]);
 
-    expect(screen.getByRole('img', { name: 'summariser · never ran' })).toBeInTheDocument();
+    expect(screen.getByText('summariser · never ran')).toBeInTheDocument();
   });
 
   it('carries the mailbox state and how long it has been silent', () => {
@@ -122,7 +123,7 @@ describe('ReaderHeader — the dots', () => {
     renderHeader({ health: liveHealth(), account: undefined });
 
     expect(screen.queryByRole('img', { name: /^Gmail/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /^summariser/ })).toBeInTheDocument();
+    expect(screen.getByText(/^summariser/)).toBeInTheDocument();
   });
 });
 
@@ -140,6 +141,35 @@ describe('ReaderHeader — the sentences', () => {
         'Summariser stalled 48m ago — ANTHROPIC_API_KEY is not set. Posts are still arriving; none are being summarised.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('quotes the pre-flight failure the tick stamped before it could record a run', () => {
+    // No run and an error is a misconfigured deploy, not a cron that never fired — the sentence
+    // owes the owner the words the tick wrote rather than pointing them at the schedule.
+    const health = makeReaderHealth(
+      'preflight',
+      { last_error_at: ago(2), last_error: 'ANTHROPIC_API_KEY is not set' },
+      NOW,
+    );
+    renderHeader({ health, account: LIVE_ACCOUNT });
+
+    expect(
+      screen.getByText(
+        'Summariser stalled 2m ago — ANTHROPIC_API_KEY is not set. Posts are still arriving; none are being summarised.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('blames the cron itself when the tick has stopped running and recorded nothing', () => {
+    const health = liveHealth({ last_run_at: ago(20), last_success_at: ago(20) });
+    renderHeader({ health, account: LIVE_ACCOUNT });
+
+    expect(
+      screen.getByText(
+        'Summariser stalled 20m ago — the tick has stopped running. Posts are still arriving; none are being summarised.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTitle('The tick has stopped running (20m ago)')).toBeInTheDocument();
   });
 
   it('sends the owner to the cron when the summariser has never run', () => {
