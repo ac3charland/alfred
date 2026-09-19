@@ -203,7 +203,7 @@ The other four moved by less than the gate's 1% threshold, so it passed them and
 
 ![](reader-operability-image-27.png)
 
-Twenty-five further baselines are NEW — no committed version to move: four `StatusDot` states, five `ReaderHeader` states, four `ReaderBanner` states, two `ArchiveView` states, three `PublicationsView` states, five more `PostRow` states (selected collapsed/expanded, archived-and-selected, re-summarising, refused-and-swept) and two `ReadingListView` selection states.
+Twenty-six further baselines are NEW — no committed version to move: four `StatusDot` states, five `ReaderHeader` states, four `ReaderBanner` states, three `ArchiveView` states (populated, empty, and the read that never answered), three `PublicationsView` states, five more `PostRow` states (selected collapsed/expanded, archived-and-selected, re-summarising, refused-and-swept) and two `ReadingListView` selection states.
 
 One baseline was dropped rather than added: `ArchiveView`'s two-hundred-row story is no longer a visual test. Two hundred rows make a crop tall enough that the single line it exists to check is a rounding error against the gate's 1% threshold, so its 2.87 MB PNG could never have failed on the thing it was guarding; `archive-view.test.tsx` pins the line instead.
 
