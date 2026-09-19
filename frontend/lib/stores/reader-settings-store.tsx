@@ -2,7 +2,12 @@
 
 import * as React from 'react';
 
-import { ApiError, createReaderPublication, updateReaderPublication } from '@/lib/api-client';
+import {
+  ApiError,
+  createReaderPublication,
+  fetchReaderPublications,
+  updateReaderPublication,
+} from '@/lib/api-client';
 import { copyToClipboard } from '@/lib/clipboard';
 import { gmailFilterQuery } from '@/lib/reader/gmail-filter';
 import { stableSorted } from '@/lib/sort';
@@ -214,6 +219,21 @@ export function ReaderSettingsProvider({
             // list is stale (some other tab, or a prior request that actually landed, promoted
             // it), so drop it here too rather than leaving a row whose own Add will 409 forever.
             dispatch({ type: 'candidates', action: { type: 'remove', ids: [handle] } });
+            // Dropping the candidate above still leaves the sender in NEITHER list — the
+            // publication that already exists for this handle was never inserted into local
+            // state, only the row this rejected attempt would have created. Refetch the roster
+            // once so that already-existing row lands where it belongs; `upsert` (rather than
+            // `insert`) is safe against a race with another write to the same publication, and
+            // `useReaderPublications` re-sorts on render regardless of the order this returns.
+            // A failed refresh is left silent — the user already has the "already a
+            // publication" toast, and this is a background reconciliation, not the operation
+            // they asked for.
+            try {
+              const refreshed = await fetchReaderPublications();
+              dispatch({ type: 'publications', action: { type: 'upsert', items: refreshed } });
+            } catch {
+              // Silent — see comment above.
+            }
           } else {
             showToastRef.current("Couldn't add that publication");
           }

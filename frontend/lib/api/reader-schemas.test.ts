@@ -28,6 +28,7 @@ describe('createReaderPublicationSchema', () => {
     ['nothing before the @', '@example.com'],
     ['nothing after the @', 'news@'],
     ['more than one @', 'news@example@com'],
+    ['wrapped in angle brackets, pasted from a mail client', '<news@example.com>'],
   ])('rejects a handle that is not local@domain — %s', (_name, handle) => {
     expect(createReaderPublicationSchema.safeParse({ handle }).success).toBe(false);
   });

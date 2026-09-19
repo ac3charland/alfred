@@ -40,10 +40,13 @@ export type PatchReaderPostInput = z.infer<typeof patchReaderPostSchema>;
 
 /**
  * A bare `local@domain` shape with both parts non-empty — just enough to reject a handle that
- * can't be an email address at all (no `@`, or nothing on one side of it). `createReaderPublication`
- * still does the real work of deriving the local part and domain from whatever passes this.
+ * can't be an email address at all (no `@`, or nothing on one side of it). `<` and `>` are also
+ * rejected so a display-name-wrapped address pasted straight from a mail client
+ * (`<news@example.com>`) fails here instead of silently becoming part of the local or domain
+ * part. `createReaderPublication` still does the real work of deriving the local part and domain
+ * from whatever passes this.
  */
-const HANDLE_PATTERN = /^[^\s@]+@[^\s@]+$/;
+const HANDLE_PATTERN = /^[^\s@<>]+@[^\s@<>]+$/;
 
 /**
  * Body for POST /api/reader/publications — putting a sender on the roster by hand, either from

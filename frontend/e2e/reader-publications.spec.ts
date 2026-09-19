@@ -122,13 +122,16 @@ test.describe('the publications roster', () => {
     await seed({
       commAccounts: [ACCOUNT],
       commMessages: [
-        // Ben's Bites: three messages — the louder sender.
-        candidateMessage(),
-        candidateMessage(),
-        candidateMessage(),
-        // Amazon: one message — quieter, so it must rank below Ben's Bites regardless of the
-        // mock's own row order, exercising the view's `.order(message_count).order(last_seen_at)`.
+        // Amazon is seeded FIRST — if the view served rows in insertion order rather than
+        // ranking them, the quieter sender would come out on top and this assertion would
+        // catch it. Seeding the louder sender first would let the test pass even with the
+        // `.order()` chain deleted, since insertion order and rank order would coincide.
         candidateMessage({ sender_handle: 'store-news@amazon.com', sender_name: 'Amazon.com' }),
+        // Ben's Bites: three messages — the louder sender — seeded after, so it must still rank
+        // above Amazon, exercising the view's `.order(message_count).order(last_seen_at)`.
+        candidateMessage(),
+        candidateMessage(),
+        candidateMessage(),
       ],
     });
     await page.goto('/reader/publications');
@@ -160,7 +163,10 @@ test.describe('the publications roster', () => {
     await page.goto('/reader/publications');
 
     const withPostCard = page.getByRole('listitem').filter({ hasText: 'Second Thoughts' });
-    await expect(withPostCard.getByText(/last post/)).toBeVisible();
+    // Pins the actual date the card renders, not merely that SOME "last post" text is there —
+    // the seeded `received_at` is Sep 16, and the card's formatter drops the year while it
+    // matches "now"'s, so this also holds however many years this test keeps running.
+    await expect(withPostCard.getByText(/last post Sep 16(, \d{4})?/)).toBeVisible();
 
     const withoutPostCard = page.getByRole('listitem').filter({ hasText: 'Fresh Letter' });
     await expect(withoutPostCard.getByText('no posts yet')).toBeVisible();

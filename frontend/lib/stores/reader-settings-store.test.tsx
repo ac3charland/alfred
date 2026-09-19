@@ -27,11 +27,13 @@ jest.mock('@/lib/api-client', () => ({
   ...jest.requireActual<typeof import('@/lib/api-client')>('@/lib/api-client'),
   createReaderPublication: jest.fn(),
   updateReaderPublication: jest.fn(),
+  fetchReaderPublications: jest.fn(),
 }));
 jest.mock('@/lib/clipboard');
 
 const mockCreateReaderPublication = jest.mocked(apiClient.createReaderPublication);
 const mockUpdateReaderPublication = jest.mocked(apiClient.updateReaderPublication);
+const mockFetchReaderPublications = jest.mocked(apiClient.fetchReaderPublications);
 const mockCopyToClipboard = jest.mocked(copyToClipboard);
 
 // Capture showToast so a rollback/failure test can assert the message a failed write surfaces.
@@ -309,9 +311,16 @@ describe('ReaderSettingsProvider', () => {
       ]);
     });
 
-    it('toasts a friendly message on a duplicate handle (409) and drops the stale candidate', async () => {
+    it('toasts a friendly message on a duplicate handle (409), drops the stale candidate, and refreshes the roster so the sender lands there', async () => {
       const error = new apiClient.ApiError('API POST failed: 409', 409, 'duplicate key');
       mockCreateReaderPublication.mockRejectedValue(error);
+      // The row this rejected attempt would have created already exists server-side (that is
+      // what the 409 means) — the refetch is what surfaces it locally.
+      const existing = makeReaderPublicationListItem('Example Weekly', {
+        id: '00000000-0000-4000-8000-0000000000aa',
+        handle: CANDIDATE.handle,
+      });
+      mockFetchReaderPublications.mockResolvedValue([existing]);
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], [CANDIDATE]) });
 
       await act(async () => {
@@ -322,6 +331,26 @@ describe('ReaderSettingsProvider', () => {
       // The server just said this handle is already a publication, so the stale row in the
       // local candidates list — the roster read just hasn't caught up yet — is dropped rather
       // than left to 409 again on a second click.
+      expect(result.current.candidates).toEqual([]);
+      // …and the sender is not simply dropped on the floor: the roster refetch upserts the row
+      // that already exists for it, so it appears in the roster rather than in neither list.
+      expect(result.current.publications).toEqual([existing]);
+    });
+
+    it('leaves the roster untouched, silently, when the post-409 refresh itself fails', async () => {
+      const error = new apiClient.ApiError('API POST failed: 409', 409, 'duplicate key');
+      mockCreateReaderPublication.mockRejectedValue(error);
+      mockFetchReaderPublications.mockRejectedValue(new Error('network down'));
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], [CANDIDATE]) });
+
+      await act(async () => {
+        await expect(result.current.actions.addCandidate(CANDIDATE.handle)).rejects.toThrow();
+      });
+
+      // The 409 toast is still the only message shown — a failed background refresh gets no
+      // toast of its own, since the user already has the answer to what they asked for.
+      expect(mockShowToast).toHaveBeenCalledTimes(1);
+      expect(mockShowToast).toHaveBeenCalledWith('That sender is already a publication');
       expect(result.current.candidates).toEqual([]);
       expect(result.current.publications).toEqual([]);
     });

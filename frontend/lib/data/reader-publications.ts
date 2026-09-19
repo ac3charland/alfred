@@ -72,22 +72,25 @@ export async function getReaderCandidates(
 }
 
 /**
- * The publications seed: two independent reads, each degrading to an empty slice on its OWN
- * failure. The candidates read still runs even when the roster read fails (and vice versa) — a
- * broken roster must not also blank the candidates panel it has nothing to do with — exactly as
- * the Comms settings seed treats its three slices independently.
+ * The publications seed: two independent reads, run concurrently with `Promise.all` (neither
+ * query depends on the other's result), each still degrading to an empty slice on its OWN
+ * failure. The candidates read still resolves even when the roster read fails (and vice versa) —
+ * a broken roster must not also blank the candidates panel it has nothing to do with — exactly
+ * as the Comms settings seed treats its slices independently.
  */
 export async function getReaderSettingsSeed(
   client?: SupabaseClient<Database>,
 ): Promise<ReaderSettingsSeed> {
   const supabase = client ?? (await createClient());
 
-  const { data: publications, error: publicationsError } = await getReaderPublications(supabase);
+  const [
+    { data: publications, error: publicationsError },
+    { data: candidates, error: candidatesError },
+  ] = await Promise.all([getReaderPublications(supabase), getReaderCandidates(supabase)]);
+
   if (publicationsError) {
     console.error('reader settings seed: could not read the roster', publicationsError);
   }
-
-  const { data: candidates, error: candidatesError } = await getReaderCandidates(supabase);
   if (candidatesError) {
     console.error('reader settings seed: could not read the candidates', candidatesError);
   }
