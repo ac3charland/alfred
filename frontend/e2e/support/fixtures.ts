@@ -45,6 +45,7 @@ export const test = base.extend<Fixtures>({
           commHealth: state.commHealth ?? [],
           readerPublications: state.readerPublications ?? [],
           readerPosts: state.readerPosts ?? [],
+          readerHealth: state.readerHealth ?? [],
         },
       });
       expect(response.ok()).toBeTruthy();

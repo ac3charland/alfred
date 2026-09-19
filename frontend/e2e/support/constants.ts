@@ -26,6 +26,7 @@ import type {
   HabitEntry,
   Item,
   Project,
+  ReaderHealth,
   ReaderPost,
   ReaderPublication,
   WeeklyPlan,
@@ -48,6 +49,7 @@ export {
 
 /** Likewise the Reader seed builders — the same ones the unit tests and stories use. */
 export {
+  makeReaderHealth,
   makeReaderOverview,
   makeReaderPost,
   makeReaderPublication,
@@ -90,6 +92,11 @@ export interface SeedState {
   commHealth?: CommClassifierHealth[];
   readerPublications?: ReaderPublication[];
   readerPosts?: ReaderPost[];
+  /**
+   * The singleton tick-health row, as a list so the seed shape stays uniform — and because an
+   * EMPTY list is a state of its own: the tick has never run.
+   */
+  readerHealth?: ReaderHealth[];
 }
 
 let sequence = 0;

@@ -1,4 +1,4 @@
-import { type SimpleAction, insertAt, simpleReducer } from './reducer-actions';
+import { type SimpleAction, insertAt, keyedReducer, simpleReducer } from './reducer-actions';
 
 interface Row {
   id: string;
@@ -65,5 +65,55 @@ describe('insertAt', () => {
 
   it('clamps out-of-bounds indices to the array length', () => {
     expect(insertAt([A, B], C, 99)).toStrictEqual([A, B, C]);
+  });
+});
+
+describe('keyedReducer', () => {
+  interface Keyed {
+    handle: string;
+    count: number;
+  }
+
+  const LOUD: Keyed = { handle: 'loud@example.com', count: 3 };
+  const QUIET: Keyed = { handle: 'quiet@example.com', count: 1 };
+  const keyOf = (row: Keyed): string => row.handle;
+
+  it('patches by the key it was given rather than by an id column', () => {
+    expect(
+      keyedReducer(
+        [LOUD, QUIET],
+        { type: 'patch', ids: ['loud@example.com'], patch: { count: 9 } },
+        'candidate',
+        keyOf,
+      ),
+    ).toStrictEqual([{ handle: 'loud@example.com', count: 9 }, QUIET]);
+  });
+
+  it('removes and replaces by that same key', () => {
+    expect(
+      keyedReducer(
+        [LOUD, QUIET],
+        { type: 'remove', ids: ['quiet@example.com'] },
+        'candidate',
+        keyOf,
+      ),
+    ).toStrictEqual([LOUD]);
+
+    const renamed = { handle: 'loud@example.com', count: 4 };
+    expect(
+      keyedReducer(
+        [LOUD],
+        { type: 'replace', id: 'loud@example.com', item: renamed },
+        'candidate',
+        keyOf,
+      ),
+    ).toStrictEqual([renamed]);
+  });
+
+  it('upserts on the key, replacing a match and appending the rest', () => {
+    const louder = { handle: 'loud@example.com', count: 12 };
+    expect(
+      keyedReducer([LOUD], { type: 'upsert', items: [louder, QUIET] }, 'candidate', keyOf),
+    ).toStrictEqual([louder, QUIET]);
   });
 });

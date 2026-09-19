@@ -32,6 +32,10 @@ const EPIC_2 = '66666666-6666-6666-6666-666666666666';
 // shares this one account rather than each minting its own.
 const READER_ACCOUNT = 'facade00-0000-4000-8000-000000000001';
 
+// A second mailbox for the candidates view's account-scoping check — fixed, like READER_ACCOUNT,
+// so re-seeding is idempotent regardless of which assertion runs first.
+const READER_CANDIDATES_OTHER_ACCOUNT = 'facade00-0000-4000-8000-000000000002';
+
 /**
  * Run `fn` with the connection's role temporarily switched, then restore it. RLS and table
  * GRANTs apply as `role` (not the superuser session), so this is what exercises the real
@@ -3493,6 +3497,356 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const readerSweepTextResult = await attempt(
+    'reader_sweep_text nulls the body of a post past the window, stamps text_swept_at, leaves ' +
+      'the summary, a post inside the window and a post that never had a body alone, and ' +
+      'refuses a p_days below one (ALF-234)',
+    async () => {
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('sweep-test@example.com', 'Sweep Test', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      // 91 days back is past the window; 89 is inside it, one day either side of the boundary
+      // so a cutoff computed off the wrong unit fails here rather than months later in production.
+      // `sweep-bodiless` is the third case: old enough to sweep, but it never had a body. An
+      // empty string is not a body the sweep can take, and stamping it would tell the app "this
+      // was swept" about a post that simply arrived empty.
+      await client.query(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                    received_at, text, summary_state, headline, gist, overview,
+                                    summarized_at)
+           values ($1, 'gmail-personal', 'sweep-old', 'Old Post', now() - interval '91 days',
+                   'the stored body', 'done', 'A headline', 'A gist', '{}'::jsonb, now()),
+                  ($1, 'gmail-personal', 'sweep-recent', 'Recent Post', now() - interval '89 days',
+                   'the stored body', 'done', 'A headline', 'A gist', '{}'::jsonb, now()),
+                  ($1, 'gmail-personal', 'sweep-bodiless', 'Bodiless Post',
+                   now() - interval '91 days', '', 'failed', null, null, null, null)`,
+        [publicationId],
+      );
+
+      const swept = await client.query<{ swept: number }>(
+        `select reader_sweep_text(90, 5000) as swept`,
+      );
+      if (swept.rows[0]?.swept !== 1)
+        throw new Error(`swept ${String(swept.rows[0]?.swept)} posts, expected exactly 1`);
+
+      const { rows: oldRows } = await client.query<{
+        text: string | null;
+        stamped: boolean;
+        title: string;
+        gist: string | null;
+        overview: unknown;
+        summarized: boolean;
+        received: boolean;
+      }>(
+        `select text,
+                text_swept_at is not null as stamped,
+                title,
+                gist,
+                overview,
+                summarized_at is not null as summarized,
+                received_at < now() - interval '90 days' as received
+           from reader_posts where gmail_message_id = 'sweep-old'`,
+      );
+      const old = oldRows[0];
+      if (old === undefined) throw new Error('the swept post is gone');
+      if (old.text !== null) throw new Error('the swept post still holds its text');
+      if (!old.stamped) throw new Error('the swept post has no text_swept_at stamp');
+      if (old.title !== 'Old Post' || old.gist !== 'A gist' || old.overview === null)
+        throw new Error('the sweep took part of the summary with it');
+      if (!old.summarized || !old.received)
+        throw new Error('the sweep moved summarized_at or received_at');
+
+      const { rows: recentRows } = await client.query<{ text: string | null; stamped: boolean }>(
+        `select text, text_swept_at is not null as stamped
+           from reader_posts where gmail_message_id = 'sweep-recent'`,
+      );
+      if (recentRows[0]?.text === null || recentRows[0]?.stamped === true)
+        throw new Error('a post inside the window was swept');
+
+      const { rows: bodilessRows } = await client.query<{ text: string | null; stamped: boolean }>(
+        `select text, text_swept_at is not null as stamped
+           from reader_posts where gmail_message_id = 'sweep-bodiless'`,
+      );
+      // Bound once: the throw above narrows the row to non-nullish, so a second `?.` on it is
+      // an "unnecessary optional chain" to the linter.
+      const bodiless = bodilessRows[0];
+      if (bodiless?.text !== '')
+        throw new Error('the sweep nulled the empty body of a post that never had one');
+      if (bodiless.stamped)
+        throw new Error('a post that never had a body was stamped text_swept_at');
+
+      // The function runs as the CALLER, and that includes `authenticated`. A p_days of 0 would
+      // null every body in the table, so the floor is an error rather than a clamp.
+      let refused = false;
+      try {
+        await client.query(`select reader_sweep_text(0, 5000)`);
+      } catch {
+        refused = true;
+      }
+      if (!refused) throw new Error('reader_sweep_text accepted p_days = 0');
+
+      let refusedLimit = false;
+      try {
+        await client.query(`select reader_sweep_text(90, 0)`);
+      } catch {
+        refusedLimit = true;
+      }
+      if (!refusedLimit) throw new Error('reader_sweep_text accepted p_limit = 0');
+
+      return (
+        'the old post lost only its text and gained a stamp; the recent one, the bodiless one ' +
+        'and a caller asking for p_days = 0 were all turned away'
+      );
+    },
+  );
+
+  const readerSweepBatchResult = await attempt(
+    'reader_sweep_text sweeps at most p_limit posts per call and reports 0 once the backlog is ' +
+      'drained, which is what lets the caller loop (ALF-234)',
+    async () => {
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('batch-test@example.com', 'Batch Test', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      // Drain first. The RPC sweeps every eligible row in the table, not just this assertion's,
+      // so counting exactly 1,1,0 only means anything from a known-empty backlog — otherwise this
+      // check silently depends on which assertions ran before it.
+      let drained = false;
+      for (let call = 0; call < 20 && !drained; call += 1) {
+        const { rows } = await client.query<{ swept: number }>(
+          `select reader_sweep_text(90, 5000) as swept`,
+        );
+        drained = rows[0]?.swept === 0;
+      }
+      if (!drained) throw new Error('the backlog would not drain, so 1,1,0 would prove nothing');
+
+      await client.query(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                    received_at, text)
+           values ($1, 'gmail-personal', 'batch-1', 'Batch One', now() - interval '120 days',
+                   'body one'),
+                  ($1, 'gmail-personal', 'batch-2', 'Batch Two', now() - interval '120 days',
+                   'body two')`,
+        [publicationId],
+      );
+
+      const counts: number[] = [];
+      for (let call = 0; call < 3; call += 1) {
+        const { rows } = await client.query<{ swept: number }>(
+          `select reader_sweep_text(90, 1) as swept`,
+        );
+        counts.push(rows[0]?.swept ?? -1);
+      }
+      if (counts.join(',') !== '1,1,0')
+        throw new Error(`three calls swept ${counts.join(',')}, expected 1,1,0`);
+
+      return 'from a drained backlog, two eligible posts took two batches of one and the third call reported nothing left';
+    },
+  );
+
+  const readerCandidatesResult = await attempt(
+    'v_reader_candidates offers off-roster inbound bulk senders on the personal account inside ' +
+      '30 days, ranked by volume then recency, with the sender’s most recent display name, and ' +
+      'excludes outbound mail, mail with no list header, another account’s mail and a handle ' +
+      'once it joins the roster (ALF-234)',
+    async () => {
+      const account = await ensureReaderAccount(client);
+      // A second mailbox, because the view's join names `gmail-personal` explicitly: a bulk
+      // sender seen only on the work account is not a candidate for the personal reading list.
+      // Seeded like `ensureReaderAccount` — a fixed id, `on conflict (id) do nothing` — so this
+      // assertion stays idempotent regardless of run order too.
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'gmail-candidates-other', 'gmail', 'Other Mailbox', 'worker')
+           on conflict (id) do nothing`,
+        [READER_CANDIDATES_OTHER_ACCOUNT],
+      );
+
+      // Three messages from the loud candidate, the newest carrying the name the view should
+      // report; one from the quiet one — deliberately the MOST RECENT message of the batch, an
+      // hour ago, so a recency-only `ORDER BY` (dropping the volume-first sort) would float this
+      // one-message sender above loud's three and this assertion would go red; one 31 days old
+      // from a sender that must not appear. Then one row per exclusion the view's WHERE clause
+      // claims, each otherwise perfectly eligible, so a clause that got dropped fails here rather
+      // than filling the picker with the inbox.
+      await client.query(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, sender_name,
+                                     direction, has_list_header, received_at)
+           values ($1, 'cand-loud-1', 'cand-loud-1', 'loud@news.example', 'Loud Weekly',
+                   'inbound', true, now() - interval '20 days'),
+                  ($1, 'cand-loud-2', 'cand-loud-2', 'loud@news.example', null,
+                   'inbound', true, now() - interval '10 days'),
+                  ($1, 'cand-loud-3', 'cand-loud-3', 'loud@news.example', 'Loud Daily',
+                   'inbound', true, now() - interval '2 days'),
+                  ($1, 'cand-quiet-1', 'cand-quiet-1', 'quiet@news.example', 'Quiet Monthly',
+                   'inbound', true, now() - interval '1 hour'),
+                  ($1, 'cand-stale-1', 'cand-stale-1', 'stale@news.example', 'Stale Letter',
+                   'inbound', true, now() - interval '31 days'),
+                  ($1, 'cand-out-1', 'cand-out-1', 'sent@news.example', 'Sent Mail',
+                   'outbound', true, now() - interval '3 days'),
+                  ($1, 'cand-plain-1', 'cand-plain-1', 'cand-plain@example.com', 'A Person',
+                   'inbound', false, now() - interval '3 days'),
+                  ($2, 'cand-other-1', 'cand-other-1', 'work@news.example', 'Work Letter',
+                   'inbound', true, now() - interval '3 days'),
+                  ($1, 'cand-tie-new-1', 'cand-tie-new-1', 'tie-new@news.example', 'Tie Newer',
+                   'inbound', true, now() - interval '9 days'),
+                  ($1, 'cand-tie-new-2', 'cand-tie-new-2', 'tie-new@news.example', 'Tie Newer',
+                   'inbound', true, now() - interval '1 day'),
+                  ($1, 'cand-tie-old-1', 'cand-tie-old-1', 'tie-old@news.example', 'Tie Older',
+                   'inbound', true, now() - interval '9 days'),
+                  ($1, 'cand-tie-old-2', 'cand-tie-old-2', 'tie-old@news.example', 'Tie Older',
+                   'inbound', true, now() - interval '4 days')`,
+        [account, READER_CANDIDATES_OTHER_ACCOUNT],
+      );
+
+      const { rows: loud } = await client.query<{
+        name: string | null;
+        message_count: number;
+      }>(`select name, message_count from v_reader_candidates where handle = 'loud@news.example'`);
+      const louder = loud[0];
+      if (louder?.message_count !== 3)
+        throw new Error(`counted ${String(louder?.message_count)} messages, expected 3`);
+      if (louder.name !== 'Loud Daily')
+        throw new Error(`named the sender ${String(louder.name)}, expected the newest name`);
+
+      // Every sender the view must NOT offer, each excluded by a different clause.
+      for (const [handle, why] of [
+        ['stale@news.example', 'a sender last seen 31 days ago'],
+        ['sent@news.example', 'the owner’s own outbound mail'],
+        ['cand-plain@example.com', 'a message with no list header'],
+        ['work@news.example', 'a sender seen only on another account'],
+      ] as const) {
+        const { rows: excluded } = await client.query<{ n: string }>(
+          `select count(*)::text as n from v_reader_candidates where handle = $1`,
+          [handle],
+        );
+        if (excluded[0]?.n !== '0') throw new Error(`${why} is still offered`);
+      }
+
+      // The view's own order, as a caller with no order of their own receives it. Volume is the
+      // PRIMARY key: loud (3 messages) beats both 2-message ties, which beat quiet (1 message)
+      // even though quiet's one message is the most recent of the whole batch — a recency-only
+      // sort would put quiet first, and a volume-only sort with no recency tie-break would leave
+      // tie-new and tie-old in an arbitrary order, so this checks the full, exact order rather
+      // than pairwise positions that pass on a stray -1 (indexOf finding neither handle).
+      const expectedOrder = [
+        'loud@news.example',
+        'tie-new@news.example',
+        'tie-old@news.example',
+        'quiet@news.example',
+      ];
+      const { rows: ordered } = await client.query<{ handle: string }>(
+        `select handle from v_reader_candidates`,
+      );
+      const positions = ordered
+        .map((row) => row.handle)
+        .filter((handle) => expectedOrder.includes(handle));
+      if (JSON.stringify(positions) !== JSON.stringify(expectedOrder))
+        throw new Error(`expected order ${expectedOrder.join(', ')}, got ${positions.join(', ')}`);
+
+      // A handle on the roster is somebody's publication, not a candidate.
+      await client.query(
+        `insert into reader_publications (handle, name, source)
+           values ('loud@news.example', 'Loud Weekly', 'owner')`,
+      );
+      const { rows: afterRoster } = await client.query<{ n: string }>(
+        `select count(*)::text as n from v_reader_candidates where handle = 'loud@news.example'`,
+      );
+      if (afterRoster[0]?.n !== '0') throw new Error('a rostered handle is still offered');
+
+      return (
+        'the loud sender ranked first with its newest name, equal counts broke towards the newer ' +
+        'sender, and the stale, outbound, header-less, other-account and rostered senders were all excluded'
+      );
+    },
+  );
+
+  const readerPublicationsViewResult = await attempt(
+    'v_reader_publications carries every roster column plus last_post_at — the newest post, or ' +
+      'null for a publication with none (ALF-234)',
+    async () => {
+      const withPosts = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source, notes)
+           values ('view-test@example.com', 'View Test', 'owner', 'a note') returning id`,
+      );
+      const withPostsId = withPosts.rows[0]?.id;
+      if (!withPostsId) throw new Error('could not seed the publication');
+      await client.query(
+        `insert into reader_publications (handle, name, source)
+           values ('view-empty@example.com', 'View Empty', 'owner')`,
+      );
+
+      await client.query(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+           values ($1, 'gmail-personal', 'view-old', 'Older', now() - interval '3 days'),
+                  ($1, 'gmail-personal', 'view-new', 'Newer', now() - interval '1 day')`,
+        [withPostsId],
+      );
+
+      const { rows } = await client.query<{
+        handle: string;
+        notes: string | null;
+        enabled: boolean;
+        newest: boolean;
+      }>(
+        `select handle, notes, enabled,
+                last_post_at = (select max(received_at) from reader_posts where publication_id = $1)
+                  as newest
+           from v_reader_publications where id = $1`,
+        [withPostsId],
+      );
+      const view = rows[0];
+      if (view?.handle !== 'view-test@example.com' || view.notes !== 'a note')
+        throw new Error('the view dropped a roster column');
+      if (!view.enabled) throw new Error('the view dropped the enabled flag');
+      if (!view.newest) throw new Error('last_post_at is not the newest post of that publication');
+
+      const { rows: empty } = await client.query<{ last_post_at: string | null }>(
+        `select last_post_at from v_reader_publications where handle = 'view-empty@example.com'`,
+      );
+      if (empty.length !== 1) throw new Error('a publication with no posts fell out of the view');
+      if (empty[0]?.last_post_at !== null)
+        throw new Error('a publication with no posts reports a last post');
+
+      return 'the roster columns survived the join; last_post_at is the newest post, null with none';
+    },
+  );
+
+  const readerHealthCeilingColumnsResult = await attempt(
+    'reader_health accepts the ceiling stamp (daily_cap, calls_today, calls_day) as ' +
+      'authenticated and reads it back (ALF-234)',
+    async () => {
+      await asRole(client, 'authenticated', async () => {
+        await client.query(
+          `update reader_health
+              set daily_cap = 30, calls_today = 12, calls_day = '2026-09-18'::date
+            where id = 1`,
+        );
+        const { rows } = await client.query<{
+          daily_cap: number | null;
+          calls_today: number | null;
+          calls_day: string | null;
+        }>(
+          `select daily_cap, calls_today, calls_day::text as calls_day
+             from reader_health where id = 1`,
+        );
+        const stamped = rows[0];
+        if (stamped?.daily_cap !== 30 || stamped.calls_today !== 12)
+          throw new Error('the ceiling stamp did not read back');
+        if (stamped.calls_day !== '2026-09-18')
+          throw new Error(`calls_day read back as ${String(stamped.calls_day)}`);
+      });
+      return 'authenticated wrote and read back the cap, the count and the day';
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -3559,5 +3913,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     readerDiscoveryResult,
     readerDoneHasSummaryResult,
     readerCountsNotNegativeResult,
+    readerSweepTextResult,
+    readerSweepBatchResult,
+    readerCandidatesResult,
+    readerPublicationsViewResult,
+    readerHealthCeilingColumnsResult,
   ];
 }

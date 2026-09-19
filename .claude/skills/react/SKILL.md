@@ -144,6 +144,7 @@ Does a deep subtree need shared data without prop drilling?
 - Never put logic in an effect that belongs in an event handler. If the code answers "what did the user just do?", it is an event handler. If it answers "what must stay in sync while this component is displayed?", it is an effect.
 - Never use an effect to derive state from other state or props. Calculate the derived value during render instead. The classic violation: `useEffect(() => setFullName(first + ' ' + last), [first, last])`.
 - Never chain effects (effect A sets state, triggering effect B). Collapse the logic into a single event handler or a single effect.
+- Transient state can't be *pruned* in an effect either: `react-hooks/set-state-in-effect` errors on `useEffect(() => setExiting(new Set()), [posts])`. Store the prop identity the state was derived from beside it (`{ from: posts, ids }`) and derive during render — `exits.from === posts ? exits.ids : EMPTY` — so a new prop makes the stale value unreadable instead of needing to be cleared (`components/reader/post-list.tsx`).
 - Never pass an effect a dependency array of `[]` just to suppress "runs too often." If the effect reads a reactive value, that value belongs in the array. Fix the code, not the array.
 - Always write the cleanup function for any subscription, interval, or event listener created inside an effect. Without it, Strict Mode double-invoke will surface the bug during development.
 

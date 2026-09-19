@@ -86,6 +86,12 @@ npm run uninstall:launchd -w daemon                           # bootout + remove
   as it checks. Type-aware `strictTypeChecked` + `unicorn` are on. The package gate is
   `npm run check:fast -w daemon`; Jest runs as ESM
   (`NODE_OPTIONS=--experimental-vm-modules`, `ts-jest/presets/default-esm`).
+- **The suite needs a Node whose `module.builtinModules` LISTS `sqlite`** — Node 24, where
+  `node:sqlite` is stable. On Node 22 the module loads fine (`node -e "require('node:sqlite')"`
+  works, flag or no flag) but it is absent from `builtinModules`, so Jest's resolver reports
+  `Cannot find module 'sqlite' from 'src/sources/imessage/chat-db.ts'` and every suite that
+  reaches chat.db fails. That failure takes the **root** `check:fast` down with it, so on an
+  older-Node machine check a red gate against a clean tree before treating it as yours.
 
 ## chat.db and iMessage
 

@@ -1,5 +1,13 @@
 import type { Json } from '@/lib/database.types';
-import type { ReaderOverview, ReaderPost, ReaderPublication } from '@/lib/types';
+import type {
+  ReaderCandidate,
+  ReaderHealth,
+  ReaderHealthSnapshot,
+  ReaderOverview,
+  ReaderPost,
+  ReaderPublication,
+  ReaderPublicationListItem,
+} from '@/lib/types';
 
 /**
  * Seed builders for the Reader module's two tables — one home, shared by the unit tests, the
@@ -98,7 +106,121 @@ export function makeReaderPost(
     summarized_at: overrides.summarized_at ?? null,
     opened_at: overrides.opened_at ?? null,
     archived_at: overrides.archived_at ?? null,
+    text_swept_at: overrides.text_swept_at ?? null,
     created_at: overrides.created_at ?? receivedAt,
+  };
+}
+
+/**
+ * A roster row as the publications surface reads it — the table row plus the newest post's
+ * arrival, which is derived by the view rather than stored. Defaults to a publication that has
+ * not had a post yet.
+ */
+export function makeReaderPublicationListItem(
+  name: string,
+  overrides: Partial<ReaderPublicationListItem> = {},
+): ReaderPublicationListItem {
+  return {
+    ...makeReaderPublication(name, overrides),
+    last_post_at: overrides.last_post_at ?? null,
+  };
+}
+
+/** An off-roster bulk sender, as the candidates view ranks them. */
+export function makeReaderCandidate(
+  handle: string,
+  overrides: Partial<ReaderCandidate> = {},
+): ReaderCandidate {
+  return {
+    handle,
+    name: overrides.name ?? null,
+    message_count: overrides.message_count ?? 1,
+    last_seen_at: overrides.last_seen_at ?? nextRecentTimestamp(),
+  };
+}
+
+/**
+ * The instant `makeReaderHealth` shapes its presets around when the caller names none — fixed,
+ * so a snapshot test of a health surface does not drift with the wall clock.
+ */
+export const READER_HEALTH_FIXTURE_NOW = '2026-09-18T12:00:00.000Z';
+
+/**
+ * The snapshot before anything has been read or has ever run: no health row, no account. What
+ * the shell hands the provider when both reads come back empty, and what a surface that is not
+ * about health seeds itself with.
+ */
+export const NO_READER_HEALTH: ReaderHealthSnapshot = { health: undefined, account: undefined };
+
+/**
+ * The states the health row can be in, as the surfaces that read it name them. `never` is the
+ * row as the migration seeds it — row 1 with every other column still null — which is what "the
+ * tick has never run" looks like in a live database; {@link NO_READER_HEALTH} covers the older
+ * shape of the same state, a database with no row at all.
+ *
+ * `preflight` is the misconfigured deploy, and is deliberately close to `never`: the tick fires,
+ * fails on its credentials BEFORE it can stamp a run, and writes that error to a row it has
+ * otherwise only stamped the cap on — the cap is parsed first, so both the missing-key and the
+ * missing-binding failures carry it into the error write. Only the unparsable-config failure has
+ * no cap to stamp and leaves that column null too. The two shapes differ by the columns the
+ * failure reached and mean opposite things — no cron versus a cron shouting — which is exactly
+ * why the preset exists.
+ */
+export type ReaderHealthPreset = 'live' | 'stalled' | 'ceiling' | 'error' | 'never' | 'preflight';
+
+const MINUTE_MS = 60 * 1000;
+
+/**
+ * An override the caller actually stated, or the preset's own value. Distinguishes `null` (a
+ * chosen value — every health column is nullable) from `undefined` (not overridden at all),
+ * which `??` cannot.
+ */
+function stated<T>(override: T | undefined, fallback: T): T {
+  // A statement, not a ternary: `??` would collapse a deliberate `null` into the fallback, and a
+  // conditional EXPRESSION here reads to the linter as exactly that `??`.
+  if (override === undefined) return fallback;
+  return override;
+}
+
+/**
+ * The singleton health row in one of its states, shaped relative to `now` — a row read against
+ * the clock ("stalled since…", "the cap is spent for today") only means anything relative to an
+ * instant, so the same instant the caller renders with is the one it is built from.
+ *
+ * `stalled` and `error` are the same row: the summariser being stalled IS the tick having
+ * recorded a systemic failure more recently than a success. Both names are kept because the two
+ * surfaces that read it call the state different things.
+ */
+export function makeReaderHealth(
+  preset: ReaderHealthPreset,
+  overrides: Partial<ReaderHealth> = {},
+  now: Date = new Date(READER_HEALTH_FIXTURE_NOW),
+): ReaderHealth {
+  const recently = new Date(now.getTime() - MINUTE_MS).toISOString();
+  const today = now.toISOString().slice(0, 10);
+  const errored = ['stalled', 'error', 'preflight'].includes(preset);
+  // The seeded row: the migration writes row 1 and nothing else, and the tick fills it in from
+  // `last_run_at` outwards, so every other column is still null until it first fires — and a
+  // pre-flight failure lands on that same untouched row, its error column apart.
+  const seeded = preset === 'never' || preset === 'preflight';
+  const succeeded = errored ? new Date(now.getTime() - 120 * MINUTE_MS).toISOString() : recently;
+  const spent = preset === 'ceiling' ? 30 : 3;
+
+  // Each column reads through `stated`, not `??`, so an override of `null` is a value the caller
+  // CHOSE rather than an absent one: every column here is genuinely nullable — "the tick has
+  // never succeeded", "no cap has been stamped" — and a builder that could not express them
+  // would make each such test spread over its own result to get there.
+  return {
+    id: stated(overrides.id, 1),
+    last_run_at: stated(overrides.last_run_at, seeded ? null : recently),
+    last_success_at: stated(overrides.last_success_at, seeded ? null : succeeded),
+    last_error: stated(overrides.last_error, errored ? 'ANTHROPIC_API_KEY is not set' : null),
+    last_error_at: stated(overrides.last_error_at, errored ? recently : null),
+    // The pre-flight row is seeded in every column but this one: its error write carries the cap
+    // it had already parsed, which is why a misconfigured deploy can still name the ceiling.
+    daily_cap: stated(overrides.daily_cap, preset === 'never' ? null : 30),
+    calls_today: stated(overrides.calls_today, seeded ? null : spent),
+    calls_day: stated(overrides.calls_day, seeded ? null : today),
   };
 }
 

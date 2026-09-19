@@ -81,13 +81,19 @@ test.describe('the Reader module shell', () => {
 
     await page.goto('/reader/archive');
     await expect(page.getByRole('heading', { level: 2, name: 'Archive' })).toBeVisible();
-    await expect(page.getByText('Archived posts land here.')).toBeVisible();
-    await expect(page.getByText('Browsing them arrives with the next story.')).toBeVisible();
+    await expect(page.getByText('Nothing archived yet.')).toBeVisible();
+    await expect(
+      page.getByText('Archive a post from the reading list and it lands here.'),
+    ).toBeVisible();
 
     await page.goto('/reader/publications');
     await expect(page.getByRole('heading', { level: 2, name: 'Publications' })).toBeVisible();
-    await expect(page.getByText('Publications are managed by SQL for now.')).toBeVisible();
-    await expect(page.getByText('A roster view arrives with the next story.')).toBeVisible();
+    await expect(page.getByText('No publications yet.')).toBeVisible();
+    await expect(
+      page.getByText(
+        'Substack senders are added automatically once their mail arrives; promote anyone else from the candidates.',
+      ),
+    ).toBeVisible();
   });
 
   test('switches between all four modules from the switcher without a reload', async ({

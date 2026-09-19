@@ -305,6 +305,7 @@ describe('CommsQueueView — a tab that has been away', () => {
     // The Reader store the providers mount refreshes on the same signal, so the automocked
     // client has to answer it too — otherwise its `undefined` return is awaited as a promise.
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
     // What the poller has been doing the whole hour the tab was away.
     jest.mocked(api).fetchCommsHealth.mockResolvedValue({
       accounts: [

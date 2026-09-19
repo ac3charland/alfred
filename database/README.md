@@ -109,6 +109,34 @@ Pause one:
 update reader_publications set enabled = false where handle = 'news@example.com';
 ```
 
+### `0036_reader_operability.sql` — running the Reader without SQL (ALF-234)
+
+`0035` built the pipe; this makes it legible and bounded from the app.
+
+- **`reader_health.daily_cap` / `calls_today` / `calls_day`** — the ceiling the tick enforced and
+  the model calls it had made for that UTC day, stamped at the start of each run (the count as it
+  stood then) and again at the end. The UI reads "the ceiling is reached" off these rather than
+  knowing the Worker's deploy vars.
+- **`reader_posts.text_swept_at`** — when the retention sweep took the body. Null = the post
+  still holds its text, or never had any; a swept post can never be re-summarised.
+- **`v_reader_candidates`** — inbound bulk senders on the personal account inside 30 days that
+  are NOT on the roster, ranked by volume then recency, carrying the most recent display name.
+  Wider than `v_reader_discovery` (any domain, 30 days) because a human decides what to do with
+  each row rather than it being auto-added.
+- **`v_reader_publications`** — every roster row plus `last_post_at`, the newest `received_at`
+  across its posts (null for a publication with none). Derived rather than denormalised: a
+  per-post write back to the roster would cost the tick a subrequest it doesn't have.
+- **`reader_sweep_text(p_days, p_limit)`** — nulls the body of one batch of posts past the
+  window and returns how many. The Worker loops until it returns 0, so each batch is its own
+  transaction and a timed-out catch-up run keeps every batch it finished. A post with no body
+  (null or empty `text`) is skipped, so it is never stamped `text_swept_at` — "swept" and "never
+  had one" stay different answers. `security invoker`, so it runs as whoever calls it: both
+  arguments floor at 1 and raise below it, so an obviously-wrong `p_days => 0` (which would null
+  every body in the table) is loud rather than silent — that floor is not what stops an
+  authenticated session from sweeping everything older than a day, since a legal `p_days => 1`
+  call still can. The actual guard is that `anon` has no RLS policy on `reader_posts` and
+  `authenticated` is the owner's own session, not an arbitrary caller.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`
