@@ -122,12 +122,12 @@ export function waitingPosts(posts: ReaderPostListItem[]): ReaderPostListItem[] 
  * older than the stall window is the cron having stopped rather than a slow one — three cadences
  * is well past "the next one will do it".
  *
- * Its own predicate because two surfaces need it: the stall rules take it as a signal, and the
- * header words a stall the tick recorded nothing about ("the tick has stopped running" rather
- * than "no summary has landed since"). A row with no run at all is not this state — nothing has
- * stopped that never started, and {@link summariserStalled} reads that row by its error.
+ * Its own predicate because the stall rules read it as one of three signals, and the boundary
+ * must agree with every other comparison against the window. A row with no run at all is not
+ * this state — nothing has stopped that never started, and {@link summariserStalled} reads that
+ * row by its error.
  */
-export function tickStopped(health: ReaderHealth | undefined, now: Date): boolean {
+function tickStopped(health: ReaderHealth | undefined, now: Date): boolean {
   const run = health?.last_run_at ?? null;
   if (run === null) return false;
   // `<=`, as every other comparison against this cutoff is: an instant exactly at the boundary
