@@ -51,7 +51,7 @@ describe('ReaderBanner — the refused mailbox', () => {
     expect(screen.getByRole('status')).toHaveClass('border-accent-red/50', 'glow-red');
   });
 
-  it('is announced once rather than re-read every time the elapsed reading re-words itself', () => {
+  it('is never announced — the header carries the state without re-reading it every minute', () => {
     render(
       <ReaderBanner banner={{ kind: 'gmail', state: 'erroring', account: ACCOUNT }} now={NOW} />,
     );
@@ -144,7 +144,7 @@ describe('ReaderBanner — the daily ceiling', () => {
     expect(banner).toHaveTextContent('Daily summary ceiling reached (30)');
     expect(banner).toHaveTextContent('— 4 claimed posts wait for tomorrow.');
     expect(banner).toHaveTextContent(
-      'Their titles and links are in the list; their summaries land after the UTC day rolls over.',
+      'Their titles and links are already stored; their summaries land after the UTC day rolls over.',
     );
     expect(banner).toHaveClass('border-accent-amber/50', 'glow-amber');
   });

@@ -60,8 +60,10 @@ function ceilingTail(count: number): string {
     );
   }
   const posts = count === 1 ? '1 claimed post waits' : `${String(count)} claimed posts wait`;
+  // "Already stored" rather than "in the list": a claimed post the owner has archived is still
+  // waiting on tomorrow's budget and is still counted here, and it is no longer in any list.
   return (
-    `— ${posts} for tomorrow. Their titles and links are in the list; their summaries land ` +
+    `— ${posts} for tomorrow. Their titles and links are already stored; their summaries land ` +
     'after the UTC day rolls over.'
   );
 }
@@ -131,8 +133,10 @@ export function ReaderBanner({ banner, now }: ReaderBannerProperties) {
   return (
     <div
       role="status"
-      // Announced once, when it appears, and not again: the elapsed readings inside re-word
-      // themselves every minute, and a live region would read the whole banner out each time.
+      // Never announced, this one included: the elapsed readings inside re-word themselves every
+      // minute, and a live region would read the whole banner out again at each of them. The
+      // header's own sentence carries the same state to a reader who goes looking for it, which
+      // is a better deal than the banner interrupting on the minute for the length of an outage.
       aria-live="off"
       className={cn('flex items-start gap-2.5 rounded-xl px-3 py-2.5', TONE[tone].shell)}
     >
