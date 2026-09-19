@@ -158,14 +158,16 @@ test.describe('the publications roster', () => {
     await seed({
       commAccounts: [ACCOUNT],
       readerPublications: [withPost, withoutPost],
-      readerPosts: [makeReaderPost(withPost.id, { received_at: '2026-09-16T00:00:00.000Z' })],
+      readerPosts: [makeReaderPost(withPost.id, { received_at: '2026-09-16T12:00:00.000Z' })],
     });
     await page.goto('/reader/publications');
 
     const withPostCard = page.getByRole('listitem').filter({ hasText: 'Second Thoughts' });
-    // Pins the actual date the card renders, not merely that SOME "last post" text is there —
-    // the seeded `received_at` is Sep 16, and the card's formatter drops the year while it
-    // matches "now"'s, so this also holds however many years this test keeps running.
+    // Pins the actual date the card renders, not merely that SOME "last post" text is there.
+    // The instant is seeded at MIDDAY UTC because the formatter reads it in LOCAL time: midnight
+    // UTC is Sep 15 in the Americas and the assertion would fail by a day wherever the suite
+    // runs west of Greenwich. The formatter drops the year while it matches "now"'s, so the
+    // optional year keeps this holding however many years this test keeps running.
     await expect(withPostCard.getByText(/last post Sep 16(, \d{4})?/)).toBeVisible();
 
     const withoutPostCard = page.getByRole('listitem').filter({ hasText: 'Fresh Letter' });
