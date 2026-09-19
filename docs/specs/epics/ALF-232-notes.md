@@ -260,9 +260,12 @@ what a reader who wasn't here needs.
   the common case. Still the obvious next step if a surface needs it.
 - **Comms was not edited.** Two pure functions are imported read-only (`accountHealth` from
   `@/lib/comms`, `formatElapsed` from `@/components/comms/comms-format`), plus `isHotkeyBlocked`
-  from `@/lib/comms/hotkeys` as Story 1's `message-row.tsx` already does. The one exception is a
-  test: `renderWithProviders` mounts every module's provider, so the Reader store's new health
-  refetch had to be stubbed in `comms-queue-view.test.tsx`.
+  from `@/lib/comms/hotkeys` as Story 1's `message-row.tsx` already does. Test-side there is a
+  fourth import, `makeCommAccount` from `@/lib/comms/fixtures`, which seeds the mailbox the
+  health surface reads in eleven files — the three Reader stories, six unit tests and two E2E
+  specs. The one exception that writes to comms is a test: `renderWithProviders` mounts every
+  module's provider, so the Reader store's new health refetch had to be stubbed in
+  `comms-queue-view.test.tsx`.
 - **`settle()` is duplicated, and that is a debt rather than a design.** The Reader needs comms'
   promise-swallowing helper, and the honest fix is one shared `lib/` helper both callers import —
   a behaviour helper's place under the frontend-architecture skill, which names "defined
