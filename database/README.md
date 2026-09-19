@@ -114,8 +114,9 @@ update reader_publications set enabled = false where handle = 'news@example.com'
 `0035` built the pipe; this makes it legible and bounded from the app.
 
 - **`reader_health.daily_cap` / `calls_today` / `calls_day`** — the ceiling the tick enforced and
-  the model calls it had made for that UTC day, stamped at the end of each run. The UI reads
-  "the ceiling is reached" off these rather than knowing the Worker's deploy vars.
+  the model calls it had made for that UTC day, stamped at the start of each run (the count as it
+  stood then) and again at the end. The UI reads "the ceiling is reached" off these rather than
+  knowing the Worker's deploy vars.
 - **`reader_posts.text_swept_at`** — when the retention sweep took the body. Null = the post
   still holds its text, or never had any; a swept post can never be re-summarised.
 - **`v_reader_candidates`** — inbound bulk senders on the personal account inside 30 days that
@@ -130,8 +131,11 @@ update reader_publications set enabled = false where handle = 'news@example.com'
   transaction and a timed-out catch-up run keeps every batch it finished. A post with no body
   (null or empty `text`) is skipped, so it is never stamped `text_swept_at` — "swept" and "never
   had one" stay different answers. `security invoker`, so it runs as whoever calls it: both
-  arguments have a floor of 1 and raise below it, because `p_days => 0` from an authenticated
-  session would otherwise null every body in the table.
+  arguments floor at 1 and raise below it, so an obviously-wrong `p_days => 0` (which would null
+  every body in the table) is loud rather than silent — that floor is not what stops an
+  authenticated session from sweeping everything older than a day, since a legal `p_days => 1`
+  call still can. The actual guard is that `anon` has no RLS policy on `reader_posts` and
+  `authenticated` is the owner's own session, not an arbitrary caller.
 
 ## Applying on merge (the default path)
 

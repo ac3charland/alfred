@@ -18,8 +18,9 @@
 -- 0035's health row says whether the tick RAN and whether it got through. It says nothing about
 -- the money guard, and the guard is derived (a count over `reader_posts.model_called_at`) rather
 -- than kept on a counter — so a reader of the health row alone could not tell an idle day from a
--- day that spent its budget by noon. The tick already knows both numbers at the end of its run;
--- these three columns are it writing them down, at no extra subrequest.
+-- day that spent its budget by noon. The tick reads that count once, before it stamps even the run
+-- start, and keeps it in step with its own calls from there — so both the start and the end write
+-- carry it, at no extra subrequest.
 alter table reader_health
   add column daily_cap  int,
   add column calls_today int,
@@ -98,10 +99,13 @@ create or replace function reader_sweep_text(p_days int default 90, p_limit int 
 returns int language plpgsql security invoker as $$
 declare v_count int;
 begin
-  -- The arguments are the whole of this function's blast radius, and it runs as the CALLER —
-  -- which on this database includes `authenticated`, i.e. anything holding the anon key and a
-  -- session. `p_days => 0` would null every body in the table in one call, so the floor is a
-  -- hard error rather than a clamp: a caller asking for that is wrong, and should hear so.
+  -- The floor makes an obviously-wrong call loud rather than silent: `p_days => 0` would null
+  -- every body in the table in one call, so it is a hard error rather than a clamp. It is NOT
+  -- what stops an authenticated session from sweeping everything older than a day — `p_days => 1`
+  -- is a legal call and would still do that. The real guard is that `anon` has no RLS policy on
+  -- `reader_posts` (nothing to sweep as that role) and `authenticated` is the owner's own session,
+  -- not an arbitrary caller — the same single-user trust boundary every other write in this
+  -- schema stands on.
   if p_days < 1 then
     raise exception 'reader_sweep_text: p_days must be at least 1, got %', p_days;
   end if;
