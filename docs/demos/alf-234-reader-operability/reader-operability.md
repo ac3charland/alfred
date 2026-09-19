@@ -38,7 +38,7 @@ It persists, and the roster re-sorts into name order around it.
 
 ## Health — two dots, and at most one banner
 
-The header carries a summariser dot and a Gmail (personal) dot, each with its state in the accessible label, and a sentence beneath any state that is not live. Above them, at most ONE banner renders, in a fixed precedence: a REFUSED mailbox → a stalled summariser → a mailbox merely gone quiet → the daily ceiling.
+The header carries a summariser dot and a Gmail (personal) dot, and a sentence beneath any state that is not live. The summariser's state is the visible line beside its dot (`summariser · stalled`) — amber covers both "stalled" and "never ran", so the tone alone would not say which; the Gmail dot carries its state in the accessible label. Above them, at most ONE banner renders, in a fixed precedence: a REFUSED mailbox → a stalled summariser → a mailbox merely gone quiet → the daily ceiling.
 
 **Gmail dead wins over everything.** This seed has BOTH a refusing mailbox and a spent ceiling; the red banner is the one that renders, because nothing new is arriving to summarise or to spend the budget on. The Gmail dot goes red and carries how long it has been silent; the summariser dot stays green, because the summariser is fine.
 
