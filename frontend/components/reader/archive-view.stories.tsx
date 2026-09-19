@@ -11,11 +11,11 @@ import { ArchiveView } from './archive-view';
 
 /**
  * The archive: a populated list with a selected row, the same list read back at its ceiling
- * (which is the only time the "latest 200" line appears), and the empty state the view rests at
- * once its read has landed with nothing in it.
+ * (which is the only time the slice line appears), the empty state the view rests at once its
+ * read has landed with nothing in it, and the read that never answered.
  *
  * The view reads its own scope on mount, so every story answers that read itself rather than
- * seeding the provider — the empty state and the "latest 200" line are both consequences of what
+ * seeding the provider — the empty state and the slice line are both consequences of what
  * came back, and a seeded list could show neither honestly.
  */
 
@@ -91,18 +91,13 @@ const ARCHIVED_FULL: ReaderPostListItem[] = [
 ];
 
 /**
- * Answer the archive read with `rows`, the way the route would. The view is about what came
- * back, so the read is stubbed rather than the store pre-seeded.
+ * Stub the archive read with `answer` and hand the view an empty store to fold it into. Every
+ * story's state is a consequence of what came back, so the read is stubbed rather than the store
+ * pre-seeded.
  */
-function withArchiveRead(rows: ReaderPostListItem[]): Decorator {
+function withArchiveReadOf(answer: () => Promise<unknown>): Decorator {
   return function ArchiveRead(Story) {
-    globalThis.fetch = (() =>
-      Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve(rows),
-        text: () => Promise.resolve(JSON.stringify(rows)),
-      })) as unknown as typeof fetch;
+    globalThis.fetch = answer as unknown as typeof fetch;
     return (
       <ToastProvider>
         <ReaderProvider initialPosts={[]} initialHealth={NO_READER_HEALTH}>
@@ -112,6 +107,23 @@ function withArchiveRead(rows: ReaderPostListItem[]): Decorator {
     );
   };
 }
+
+/** Answer the archive read with `rows`, the way the route would. */
+function withArchiveRead(rows: ReaderPostListItem[]): Decorator {
+  return withArchiveReadOf(() =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(rows),
+      text: () => Promise.resolve(JSON.stringify(rows)),
+    }),
+  );
+}
+
+/** The read never answers at all — an offline tab, which the view has to speak for itself. */
+const withFailedArchiveRead: Decorator = withArchiveReadOf(() =>
+  Promise.reject(new Error('offline')),
+);
 
 const withFrame: Decorator = (Story) => (
   <div data-testid="archive-frame" className="w-[720px] bg-background p-4">
@@ -162,5 +174,14 @@ export const LatestTwoHundred: Story = {
 /** Nothing has ever been archived — the view's resting state, once the read has landed. */
 export const Empty: Story = {
   decorators: [withArchiveRead([])],
+  parameters: { visualTest: { target: '[data-testid="archive-frame"]' } },
+};
+
+/**
+ * The read never answered. A blank archive would read as "nothing here", so the view says what
+ * happened and offers the read again — the one state where the owner has something to press.
+ */
+export const ReadFailed: Story = {
+  decorators: [withFailedArchiveRead],
   parameters: { visualTest: { target: '[data-testid="archive-frame"]' } },
 };

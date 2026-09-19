@@ -55,14 +55,25 @@ function seededPosts() {
 /**
  * Point the keyboard at `row` with `j`. The hotkeys are a client listener, so a press that lands
  * before the page has hydrated is swallowed with nothing to catch it — press until the selection
- * takes rather than once and hope. Idempotent in practice: each attempt waits out a real
- * selection before pressing again, so the retry only fires while nothing is listening yet.
+ * takes rather than once and hope.
+ *
+ * What is retried is the press, not the assertion: the loop presses only while NO row is
+ * selected, so a press that did land can never be followed by a second one walking the selection
+ * off the row it was meant to reach. Once something is selected the retrying stops, and the row
+ * asked for is asserted once — a different row selected here is a real failure (the list was not
+ * at rest when the press landed), and says so rather than being pressed at again.
  */
 async function selectWithJ(page: Page, row: Locator): Promise<void> {
+  const anySelected = page.locator('[data-testid="reader-row"][data-selected="true"]');
   await expect(async () => {
-    await page.keyboard.press('j');
-    await expect(row).toHaveAttribute('data-selected', 'true', { timeout: 1000 });
+    if ((await anySelected.count()) === 0) await page.keyboard.press('j');
+    await expect(anySelected).toHaveCount(1, { timeout: 1000 });
   }).toPass();
+
+  await expect(row, 'j selected a row, but not the one this test steers from').toHaveAttribute(
+    'data-selected',
+    'true',
+  );
 }
 
 /** What the mock holds for a post's `archived_at` right now. */
