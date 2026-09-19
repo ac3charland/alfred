@@ -3,8 +3,8 @@
  *
  * Boots the database package's throwaway cluster, applies every migration exactly as production
  * does, inserts four posts either side of the retention window, and calls `reader_sweep_text`
- * the way the Worker does — one batch per call, until a batch reports 0. Then calls it with
- * `p_days => 0` to show the floor refusing rather than emptying the table.
+ * the way the Worker does — one batch per call, until a batch reports 0. Then calls it with each
+ * argument below its floor, to show both refusing rather than emptying the table or spinning.
  *
  * Every printed value is derived (an age in whole days, a boolean, a character count) rather than
  * an id or a timestamp, so the output is byte-identical on every run and `demo -- verify` stays
@@ -95,24 +95,31 @@ async function main() {
 
     await report(client, 'Before the sweep:');
 
-    // One batch per call, exactly as the Worker loops it — p_limit 1 here so the batching is
-    // visible in three lines instead of one.
+    // One batch per call, exactly as the Worker loops it: until a call reports 0, never a fixed
+    // number of calls. `p_limit` is 1 here so the batching is visible in more than one line.
     console.log('\nreader_sweep_text(90, 1), called until it returns 0:');
-    for (let call = 1; call <= 3; call += 1) {
+    let batch = 0;
+    let swept = 1;
+    while (swept > 0) {
+      batch += 1;
       const { rows } = await client.query('select reader_sweep_text(90, 1) as swept');
-      console.log(`  call ${String(call)} → ${String(rows[0].swept)} row(s) swept`);
+      swept = rows[0].swept;
+      console.log(`  call ${String(batch)} → ${String(swept)} row(s) swept`);
     }
 
     await report(client, 'After the sweep:');
 
-    // The function runs as the CALLER, which on this database includes `authenticated`, so a
-    // p_days of 0 would otherwise null every body in the table in one call.
-    console.log('\nreader_sweep_text(0, 1) — the floor, from a session that asks for everything:');
-    try {
-      await client.query('select reader_sweep_text(0, 1)');
-      console.log('  it swept');
-    } catch (error) {
-      console.log(`  ${error.message}`);
+    // Both arguments floor at 1 and raise below it, so an obviously-wrong call is loud rather
+    // than silent: `p_days => 0` would null every body in the table in one call, and a
+    // `p_limit => 0` loop would spin forever on a batch that can never report anything but 0.
+    console.log('\nBoth floors, from a session that asks for a nonsense argument:');
+    for (const call of ['reader_sweep_text(0, 1)', 'reader_sweep_text(90, 0)']) {
+      try {
+        await client.query(`select ${call}`);
+        console.log(`  ${call} → it swept`);
+      } catch (error) {
+        console.log(`  ${call} → ${error.message}`);
+      }
     }
   } finally {
     await client.end();

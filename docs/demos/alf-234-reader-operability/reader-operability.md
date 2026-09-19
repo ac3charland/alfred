@@ -8,7 +8,7 @@ branch: claude/lucid-gates-jug4gp
 
 The Reader module was a pipe with a list on the end of it: mail arrived, a Worker summarised it, and everything else — who gets claimed, whether the summariser is alive, re-running a summary, finding a post you put away — was a SQL query or a `wrangler tail`. This branch makes all of that reachable from the app, and bounds what the pipe stores.
 
-Every screenshot here is the running app, driven through the Playwright mock backend — except in *The Storybook baselines that moved*, whose images are Storybook artefacts: one snapshot diff and the baselines it approved. The retention evidence is a real PostgreSQL cluster; the Worker evidence is the Worker's own `scheduled` handler with a stubbed `fetch`.
+Every screenshot here is the running app, driven through the Playwright mock backend — except in *The Storybook baselines that moved*, whose images are Storybook artefacts: one snapshot diff and the baselines it approved. The retention evidence is a real PostgreSQL cluster; the Worker evidence is a whole tick and the Worker's own `scheduled` handler, both run with a stubbed `fetch`.
 
 ## Publications — the roster, and who could join it
 
@@ -108,7 +108,7 @@ Unarchiving is the same optimistic patch in the other direction; the archive dro
 
 ## Retention — the ninety-day text sweep, against a real PostgreSQL
 
-The E2E mock has no `reader_sweep_text`, so this runs against the database package's throwaway cluster with every migration applied exactly as production applies them. Four posts are inserted either side of the window and the function is called the way the Worker loops it — one batch per call, until a batch returns 0 (`p_limit` is 1 here so the batching is visible). The 91- and 120-day-old posts lose their text and gain `text_swept_at`; the 89-day-old one is untouched; every summary survives. The fourth is 200 days old and arrived with nothing readable in it: the sweep passes over it, so `text_swept_at` stays null and the row keeps saying "there was never a body" rather than "the sweep took it". Last, the floor — the function runs as whoever calls it, which here includes any session holding the anon key, so `p_days => 0` raises instead of emptying the table.
+The E2E mock has no `reader_sweep_text`, so this runs against the database package's throwaway cluster with every migration applied exactly as production applies them. Four posts are inserted either side of the window and the function is called the way the Worker loops it — one batch per call, until a batch returns 0 (`p_limit` is 1 here so the batching is visible). The 91- and 120-day-old posts lose their text and gain `text_swept_at`; the 89-day-old one is untouched; every summary survives. The fourth is 200 days old and arrived with nothing readable in it: the sweep passes over it, so `text_swept_at` stays null and the row keeps saying "there was never a body" rather than "the sweep took it". Last, the two floors: both arguments raise below 1 rather than clamping, so an obviously-wrong call is loud — `p_days => 0` would null every body in the table in one call, and `p_limit => 0` would leave the Worker's loop spinning on a batch that can only ever report 0.
 
 ```bash
 node docs/demos/alf-234-reader-operability/retention-sweep.mjs
@@ -133,24 +133,36 @@ After the sweep:
   C · 120 days old  text=   0 chars  swept=true   title/gist/overview/summarized_at kept=true
   D · 200 days, no body  text=   0 chars  swept=false  title/gist/overview/summarized_at kept=true
 
-reader_sweep_text(0, 1) — the floor, from a session that asks for everything:
-  reader_sweep_text: p_days must be at least 1, got 0
+Both floors, from a session that asks for a nonsense argument:
+  reader_sweep_text(0, 1) → reader_sweep_text: p_days must be at least 1, got 0
+  reader_sweep_text(90, 0) → reader_sweep_text: p_limit must be at least 1, got 0
 ```
 
 ## The Worker — the ceiling stamp, and the daily sweep's own log lines
 
-The Worker is headless: its surfaces are the calls it makes and the lines it logs. This drives the REAL modules (`reader/health.ts`, and the entrypoint's own `scheduled` handler) with `fetch` stubbed, so both are captured rather than restated. Note the health PATCHes: BOTH carry the whole ceiling, because the tick counts the day's model calls before it stamps the run's start — the first write reports the spend as the tick found it (24 of 30), the last one its own calls added (30 of 30). That ordering is what stops `last_run_at` moving into a new day while the row still holds the previous day's count, and the stamped cap is what lets the ceiling banner say "(30)" without the frontend knowing a deploy var. Then the daily cron: the comms sweep, then the reader's, each logging its own line; and when the reader's RPC is refused, the comms sweep beside it still ran and the reader's failure is reported rather than rethrown.
+The Worker is headless: its surfaces are the calls it makes and the lines it logs. Section 1 runs a whole five-minute tick — `runReaderTick` itself, not its health writers — against a stubbed Supabase and a stubbed token mint, with every read answering empty so the loop has no work to do; what is captured is the tick's own request trace and the two `reader_health` PATCH bodies. Read the trace in order: the ceiling count (`Prefer: count=exact`, answered with a `Content-Range` of 24) is request **1** and the run-start stamp is request **2**. That is the hoist, driven rather than asserted, and it is why BOTH writes carry the whole ceiling rather than the cap alone — a start stamp that moved `last_run_at` into a new day while the row still held the previous day's count would describe a budget already spent. The stamped cap is also what lets the ceiling banner say "(30)" without the frontend knowing a deploy var.
+
+Then the daily cron, three ways. The clean run: the comms sweep, then the reader's, each logging its own line. The sweep that commits two batches and then breaks: each batch is its own transaction, so the run reports the **2 posts swept** it really did commit beside the failure rather than throwing a true number away. And the sweep that breaks before any batch commits: "did not run", the one case where nothing was in fact swept — with the comms sweep beside it still having run, because each unit owns its own try/catch.
 
 ```bash
 node docs/demos/alf-234-reader-operability/worker-evidence.mjs
 ```
 
 ```output
-1 · The ceiling the tick stamps on reader_health
-  PATCH /rest/v1/reader_health
+1 · One whole tick: what it reads, in what order, and what it stamps
+  1. GET /rest/v1/reader_posts  (Prefer: count=exact — the ceiling count)
+  2. PATCH /rest/v1/reader_health
+  3. GET /rest/v1/v_reader_discovery
+  4. GET /rest/v1/reader_publications
+  5. GET /rest/v1/reader_posts
+  6. GET /rest/v1/v_reader_worklist
+  7. POST /token
+  8. PATCH /rest/v1/reader_health
+  failures: []
+
+  The reader_health writes, in order:
     {"calls_day":"2026-09-18","calls_today":24,"daily_cap":30,"last_run_at":"2026-09-18T09:17:00.000Z"}
-  PATCH /rest/v1/reader_health
-    {"calls_day":"2026-09-18","calls_today":30,"daily_cap":30,"last_success_at":"2026-09-18T09:17:00.000Z"}
+    {"calls_day":"2026-09-18","calls_today":24,"daily_cap":30,"last_success_at":"2026-09-18T09:17:00.000Z"}
 
 2 · The daily retention cron (17 9 * * *): comms, then the reader
 comms retention: 12 messages deleted
@@ -160,7 +172,12 @@ reader retention: 3 posts swept
   POST /rest/v1/rpc/reader_sweep_text  {"p_days":90,"p_limit":5000}
   POST /rest/v1/rpc/reader_sweep_text  {"p_days":90,"p_limit":5000}
 
-3 · The reader sweep failing does not take the comms sweep with it
+3 · A reader sweep that commits two batches and then breaks
+comms retention: 6 messages deleted
+reader retention: 2 posts swept
+reader: reader retention: Supabase POST rpc/reader_sweep_text failed: 500 canceling statement due to statement timeout
+
+4 · A reader sweep that breaks before any batch commits
 comms retention: 4 messages deleted
 reader retention: did not run
 reader: reader retention: Supabase POST rpc/reader_sweep_text failed: 500 nope
@@ -190,7 +207,7 @@ Twenty-five further baselines are NEW — no committed version to move: four `St
 
 One baseline was dropped rather than added: `ArchiveView`'s two-hundred-row story is no longer a visual test. Two hundred rows make a crop tall enough that the single line it exists to check is a rounding error against the gate's 1% threshold, so its 2.87 MB PNG could never have failed on the thing it was guarding; `archive-view.test.tsx` pins the line instead.
 
-## Two more states, captured in review
+## Three more states, captured in review
 
 **The mailbox merely gone quiet.** A Gmail account that has stopped polling but refused nothing is amber, not red, and sits BELOW a stalled summariser in the banner's precedence: nothing that has already arrived is lost, and spending the alarm here would spend it on the state that needs a person. The banner leads with the mailbox's own name and how long the silence has been.
 
@@ -199,3 +216,7 @@ One baseline was dropped rather than added: `ArchiveView`'s two-hundred-row stor
 **The archive read failing.** The archive's own read is the only thing on that page, so a read that never answers used to leave a blank frame that reads exactly like an empty archive. It now says so and offers the read again — the in-flight guard releases on failure, so **Try again** is a real retry rather than a no-op. Provoked by failing the browser's `GET /api/reader/posts?scope=archived` with a 500.
 
 ![](reader-operability-image-29.png)
+
+**The pre-flight failure, read as a stall.** The tick fires, fails its credential check BEFORE it can stamp a run, and writes that error onto the otherwise-untouched seeded row. That row used to read as "the summariser has never run" — a green-ish shrug at a cron that is in fact firing every five minutes and shouting. It now reads as stalled, in the tick's own words, and the dot goes amber: `never` is the BLANK row and only that.
+
+![](reader-operability-image-30.png)
