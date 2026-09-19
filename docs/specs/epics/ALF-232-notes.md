@@ -211,9 +211,21 @@ what a reader who wasn't here needs.
 - **The ceiling columns did not pre-exist.** Story 1 kept `reader_health` to
   `last_run_at`/`last_success_at`/`last_error`/`last_error_at` and derived the ceiling from a count
   over `reader_posts.model_called_at`, so `daily_cap`, `calls_today` and `calls_day` are ALL new
-  here and all three are stamped by the tick on the health writes it was already making — the
-  run-start write carries the cap, the terminal write carries the cap and the count.
-  — `0036_reader_operability.sql`, `workers/src/reader/health.ts`
+  here and all three are stamped by the tick on the health writes it was already making. The tick
+  reads the count BEFORE it stamps the run start, so BOTH writes carry all three columns: a start
+  stamp that moved `last_run_at` into a new day while the row still held the previous day's count
+  would describe a budget already spent for the length of the first tick after midnight.
+  — `0036_reader_operability.sql`, `workers/src/reader/health.ts`, `workers/src/reader/scheduled.ts`
+- **The summariser stalls on three signals, and `never` is the blank row only.** Either an error
+  newer than the last success, or a `last_run_at` older than the stall window (the tick stamps a
+  run every five minutes whether or not it finds work, so a run three cadences old is the cron
+  itself having stopped), or a claimed post waiting past the window with no summary and no clean
+  tick pass inside it. Only that third one is suppressed while the ceiling is reached, because
+  only then is waiting the designed behaviour. `never` means a row with no run AND no error: the
+  tick stamps its pre-flight failures — an unparsable cap, a missing credential — before it
+  records a run, so "no run, an error" is a misconfigured deploy shouting, not a cron that never
+  fired, and the owner is owed the tick's own words rather than a shrug at the schedule.
+  — `lib/reader/health.ts`, `components/reader/reader-header.tsx`
 - **`last_post_at` is a view, not a column.** `v_reader_publications` is the roster plus
   `max(received_at)` over its posts; the store reconciles a publication PATCH as a shallow patch,
   never a replace, so the server's table row cannot overwrite the derived column with `undefined`.
@@ -230,8 +242,11 @@ what a reader who wasn't here needs.
   three refusals applies — swept, never had a body, or already queued. Its pre-read asks for
   `text_swept_at`, `word_count` and `summary_state`, never `text`: the presence signal the UI
   draws the verb from is the one the route refuses on, so the two cannot disagree, and no post
-  body crosses the wire to be null-checked.
-  — `components/reader/post-row.tsx`, `app/api/reader/posts/[id]/route.ts`
+  body crosses the wire to be null-checked. The already-queued rule rides the WRITE as well as
+  the pre-read (`.neq('summary_state','pending')`): the pre-read only describes the row a moment
+  ago, so a tick that leases it in between matches nothing and gets the same 409 rather than
+  having its lease cleared and its attempts reset mid-run.
+  — `components/reader/post-row.tsx`, `app/api/reader/posts/[id]/route.ts`, `lib/data/reader.ts`
 - **The reading list's heading kept Story 1's words** ("Reader", "N to read") rather than the
   spec's mockup wording; the health block sits beside it and the banner above it.
 - **Hints are verified by their class, not by a media query.** jsdom has no layout, so
@@ -248,12 +263,12 @@ what a reader who wasn't here needs.
   from `@/lib/comms/hotkeys` as Story 1's `message-row.tsx` already does. The one exception is a
   test: `renderWithProviders` mounts every module's provider, so the Reader store's new health
   refetch had to be stubbed in `comms-queue-view.test.tsx`.
-- **`settle()` is duplicated, deliberately.** The Reader needs comms' promise-swallowing helper,
-  and the frontend-architecture skill's shared layer for cross-module reuse is
-  `components/atoms/`, not another feature module's own directory — so reaching into
-  `components/comms/` for it would be exactly the cross-feature import that skill rules out, and
-  `components/reader/publications-settle.ts` is its own copy until the fold-up happens. Folding it
-  (and `publications.styles.ts`'s card strings) onto an atom is a follow-up, next to folding
-  comms' `AccountDot` onto the new `StatusDot`.
+- **`settle()` is duplicated, and that is a debt rather than a design.** The Reader needs comms'
+  promise-swallowing helper, and the honest fix is one shared `lib/` helper both callers import —
+  a behaviour helper's place under the frontend-architecture skill, which names "defined
+  identically in two files" as an anti-pattern. That fix edits comms' own files, which this story
+  deliberately does not, so `components/reader/publications-settle.ts` is a copy until the
+  consolidation happens. Same for `publications.styles.ts`'s three card strings, and next to
+  folding comms' `AccountDot` onto the new `StatusDot`.
 - **The paywalled-teaser marker from Story 1's handoff was not built** — nothing detects the cut,
   and `headline` is still stored and unrendered.
