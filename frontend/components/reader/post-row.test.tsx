@@ -32,6 +32,11 @@ function endExit(): void {
   fireEvent(wrapper, event);
 }
 
+/** The card itself — a button whose accessible name is the content it wraps. */
+function card(): HTMLElement {
+  return screen.getByRole('button', { name: /the row’s own gist/ });
+}
+
 beforeEach(() => {
   resetReaderFixtureClock();
   jest.clearAllMocks();
@@ -261,11 +266,6 @@ describe('PostRow — the disclosure', () => {
     gist: 'the row’s own gist',
     word_count: 3220,
   } as const;
-
-  /** The card itself — a button whose accessible name is the content it wraps. */
-  function card(): HTMLElement {
-    return screen.getByRole('button', { name: /the row’s own gist/ });
-  }
 
   it('says what it controls, and that it is shut, when there is a panel', () => {
     renderReader(
