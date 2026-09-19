@@ -158,6 +158,21 @@ describe('ReaderHeader — the sentences', () => {
         'Summariser stalled 2m ago — ANTHROPIC_API_KEY is not set. Posts are still arriving; none are being summarised.',
       ),
     ).toBeInTheDocument();
+    // The dot's title is the tick's own quoted words, so hovering it cannot contradict the line.
+    expect(screen.getByTitle('ANTHROPIC_API_KEY is not set (2m ago)')).toBeInTheDocument();
+  });
+
+  it('blames the silence itself when the tick is running but nothing has been summarised', () => {
+    const health = liveHealth({ last_success_at: ago(120) });
+    renderHeader({ health, account: LIVE_ACCOUNT }, [waiting(90)]);
+
+    expect(
+      screen.getByText(
+        'Summariser stalled 1h ago — no summary has landed since. Posts are still arriving; none are being summarised.',
+      ),
+    ).toBeInTheDocument();
+    // The dot's title is the same silence, so hovering it cannot contradict the line beneath.
+    expect(screen.getByTitle('no summary has landed since (1h ago)')).toBeInTheDocument();
   });
 
   it('blames the cron itself when the tick has stopped running and recorded nothing', () => {
