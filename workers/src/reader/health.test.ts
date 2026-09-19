@@ -97,7 +97,7 @@ describe('the reader health writers', () => {
 });
 
 describe('the ceiling stamp', () => {
-  it('rides the run-start write as the cap alone', async () => {
+  it('a partial ceiling drops its undefined keys from the patch body', async () => {
     const calls = harness(() => Response.json([{ id: 1 }]));
 
     await recordRunStart(env, NOW, { daily_cap: 30 });

@@ -27,10 +27,14 @@ const HEALTH_ROW = '1';
 /**
  * The ceiling columns as one patchable object, dropping whatever the caller could not know yet.
  *
- * A tick learns the cap from its config before it does anything, and the COUNT only once it has
- * read it — so the run-start write carries the cap alone and the terminal write carries all
- * three. `JSON.stringify` drops the undefined keys, so an unknown column is simply not in the
- * PATCH body rather than being written as null over a good value.
+ * The tick reads the day's model-call count BEFORE it stamps a run start at all (see
+ * `scheduled.ts`), so a run-start write that happens carries all three columns — the cap, the
+ * count, and the day it was counted over — same as the terminal write. The three pre-flight
+ * failures (an unparsable config, a missing API key, a missing Gmail binding) and a count read
+ * that itself fails never reach a run-start write: they go straight to `recordRunError` with the
+ * cap alone, because there is no count yet and no run to say started. `JSON.stringify` drops the
+ * undefined keys, so an unknown column is simply not in the PATCH body rather than being written
+ * as null over a good value.
  */
 function ceilingColumns(ceiling: ReaderCeiling | undefined): Record<string, unknown> {
   if (ceiling === undefined) return {};
@@ -42,9 +46,12 @@ function ceilingColumns(ceiling: ReaderCeiling | undefined): Record<string, unkn
 }
 
 /**
- * Stamp that a tick began. Written before anything can fail, so a tick that dies still shows.
- * Carries the cap this run will enforce, which is the one thing the tick already knows at that
- * point — so a reader of the row never has to hard-code the Worker's deploy var.
+ * Stamp that a tick got past pre-flight and read the day's count. A run-start row therefore means
+ * exactly that: the config parsed, the API key and Gmail bindings were set, and the count read
+ * cleanly. Any of those failing is recorded by `recordRunError` instead, with no `last_run_at`
+ * write — so a reader can tell "never even started" apart from "started and then died". Once it
+ * does run, it carries the cap and the count this run will enforce, so a reader of the row never
+ * has to hard-code the Worker's deploy var or guess a day's spend.
  */
 export function recordRunStart(
   env: SupabaseEnv,
