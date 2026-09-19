@@ -159,9 +159,12 @@ export const NO_READER_HEALTH: ReaderHealthSnapshot = { health: undefined, accou
  * shape of the same state, a database with no row at all.
  *
  * `preflight` is the misconfigured deploy, and is deliberately close to `never`: the tick fires,
- * fails on its config or its credentials BEFORE it can stamp a run, and writes that error to an
- * otherwise-untouched row. The two shapes differ by one column and mean opposite things — no
- * cron versus a cron shouting — which is exactly why the preset exists.
+ * fails on its credentials BEFORE it can stamp a run, and writes that error to a row it has
+ * otherwise only stamped the cap on — the cap is parsed first, so both the missing-key and the
+ * missing-binding failures carry it into the error write. Only the unparsable-config failure has
+ * no cap to stamp and leaves that column null too. The two shapes differ by the columns the
+ * failure reached and mean opposite things — no cron versus a cron shouting — which is exactly
+ * why the preset exists.
  */
 export type ReaderHealthPreset = 'live' | 'stalled' | 'ceiling' | 'error' | 'never' | 'preflight';
 
@@ -213,7 +216,9 @@ export function makeReaderHealth(
     last_success_at: stated(overrides.last_success_at, seeded ? null : succeeded),
     last_error: stated(overrides.last_error, errored ? 'ANTHROPIC_API_KEY is not set' : null),
     last_error_at: stated(overrides.last_error_at, errored ? recently : null),
-    daily_cap: stated(overrides.daily_cap, seeded ? null : 30),
+    // The pre-flight row is seeded in every column but this one: its error write carries the cap
+    // it had already parsed, which is why a misconfigured deploy can still name the ceiling.
+    daily_cap: stated(overrides.daily_cap, preset === 'never' ? null : 30),
     calls_today: stated(overrides.calls_today, seeded ? null : spent),
     calls_day: stated(overrides.calls_day, seeded ? null : today),
   };

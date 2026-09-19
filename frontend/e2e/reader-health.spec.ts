@@ -130,7 +130,8 @@ test.describe('the Reader health surface', () => {
       readerPublications: [PUBLICATION],
       readerPosts: pendingPosts(),
       // A misconfigured deploy: the tick fires, fails its credential check ahead of the run
-      // stamp, and writes that error to an otherwise-untouched row. No run, but not silence.
+      // stamp, and writes that error to a row it has otherwise only stamped the parsed cap on.
+      // No run, but not silence.
       readerHealth: [
         makeReaderHealth(
           'preflight',
