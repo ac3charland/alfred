@@ -3,13 +3,13 @@
  * state is declared once and can be pinned in a unit test rather than eyeballed in JSX — the
  * same reasoning as `post-row.styles.ts`'s own placement.
  *
- * The two card strings mirror comms' `settings.styles.ts` exactly, by design: a settings card
- * reads the same wherever it sits. They are restated here rather than imported, because this
- * story touches nothing under `components/comms/`, and the frontend-architecture skill's shared
- * layer for cross-module reuse is `components/atoms/`, not another feature module's own
- * directory. Folding these strings (and `publications-settle.ts`'s helper) up into
- * `components/atoms/`, alongside comms' own `AccountDot` → `StatusDot` consolidation, is a named
- * follow-up rather than something this change takes on.
+ * The three strings below (`PUBLICATION_CARD`, `PAUSED_CARD`, `PUBLICATION_CAPTION`) mirror
+ * comms' `settings.styles.ts` exactly, by design: a settings card reads the same wherever it
+ * sits. They are restated here rather than imported because this story deliberately doesn't edit
+ * comms' own files (the epic caps how much of comms this story touches), so consolidating onto
+ * one shared source would mean touching comms too. Promoting these strings (and
+ * `publications-settle.ts`'s helper) to `components/atoms/` / `lib/`, alongside comms' own
+ * `AccountDot` → `StatusDot` consolidation, is the named follow-up.
  *
  * Every string is written out in full — never assembled from a colour name — because Tailwind
  * scans source text for complete utility names and an interpolated class compiles to nothing.

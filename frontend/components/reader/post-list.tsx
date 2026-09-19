@@ -36,9 +36,13 @@ export function PostList({ posts, now, variant = 'list' }: PostListProperties) {
    * is on its way out, and its verbs would act on a post the list has already moved past.
    *
    * The flags are scoped to the exact list they were raised in, and read back only while the
-   * store is still handing that same list down. So they need no pruning: a new list means the
-   * write either committed (the row is gone) or rolled back (the row is here to stay, and
-   * navigable again), and either way what was exiting no longer is.
+   * store is still handing that same list down — so they need no pruning: a new array drops
+   * them. Usually that array is the write settling, which is exactly when they should go (the
+   * row committed and is gone, or rolled back and is navigable again). But ANY store dispatch
+   * that rebuilds `posts` clears them — an Open stamp on another row, a focus refresh — and one
+   * landing mid-collapse costs nothing: the collapse is the row's own state and finishes
+   * regardless, and a second archive on the row it forgot is refused by the row's `isExiting`
+   * guard rather than by this set.
    */
   const [exits, setExits] = React.useState<{
     from: readonly ReaderPostListItem[];

@@ -111,8 +111,10 @@ export interface ReaderActions {
    * before the read was ISSUED — the read left the server before that write arrived, whether it
    * was still pending at that instant or had not even started, so its answer is stale for exactly
    * those rows and would put a just-archived post back on screen. Whether the write has since
-   * answered is beside the point: what decides is which of the two left first. A failed read
-   * changes nothing and says nothing — the stale list it would have replaced is still better than
+   * answered is beside the point: what decides is which of the two left first. A kept row is
+   * kept WHOLE, field for field — so a summary the Worker landed on one of those rows while
+   * this tab's own write was in the air is discarded with the rest of the read's copy, and
+   * arrives at the next refetch. A failed read changes nothing and says nothing — the stale list it would have replaced is still better than
    * a blanked one, and the next trigger tries again (mirrors Comms' `reconcileHealth`).
    */
   refresh: () => void;

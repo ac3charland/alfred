@@ -7,14 +7,14 @@
  * Call it as `void settle(action(...))` from an event handler: the handler stays synchronous,
  * the write still runs, and the promise is accounted for.
  *
- * A small copy of comms' own `settle` helper (`components/comms/settle.ts`) rather than an
- * import from it: this story touches nothing under `components/comms/`, and the
- * frontend-architecture skill's shared layer for cross-module reuse is `components/atoms/`, not
- * another feature module's own directory — importing from `components/comms/` here would be
- * exactly the kind of cross-feature reach that skill says not to take. Folding this helper (and
- * the settings-card strings in `publications.styles.ts`) up into `components/atoms/`, alongside
- * comms' own `AccountDot` → `StatusDot` consolidation, is a named follow-up rather than something
- * this change takes on.
+ * This is a copy of comms' own `settle` helper (`components/comms/settle.ts`), not an import from
+ * it. The frontend-architecture skill routes a reusable behaviour helper to `lib/hooks/` or
+ * `lib/` (its placement table), and lists "a helper defined identically in two files" as a named
+ * anti-pattern — so the honest fix is consolidating both callers onto one `lib/` helper, which
+ * this story deliberately doesn't do: it would mean editing comms' own files, and the epic caps
+ * how much of comms this story touches. Consolidating `settle` (and the settings-card strings in
+ * `publications.styles.ts`) onto shared `lib/` / `components/atoms/` helpers, alongside comms'
+ * own `AccountDot` → `StatusDot` consolidation, is the named follow-up.
  */
 export async function settle(promise: Promise<unknown>): Promise<void> {
   try {
