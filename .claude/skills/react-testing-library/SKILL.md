@@ -166,7 +166,7 @@ await waitFor(() => {
 
 - **`readerFixtureSet()` (`frontend/lib/reader/fixtures.ts`) rows render newest-first and `makeReaderPost` stamps increasing `received_at`, so `.nth(0)` is the LAST-built fixture** (the no-link row), not the first. Address rows by title with `.filter({ hasText })` instead of position.
 
-- **Don't index a `getAllBy*` result — address the row you mean.** Write a `rowFor(title)` helper that `.find()`s the row by its text and throws when it is missing, then scope with `within(rowFor('Alpha'))`; iterate with `for (const row of rows)` when you really mean all of them. Either way the element is already `HTMLElement`, so nothing needs casting — and no cast of an indexed element lints anyway (see the `eslint` skill). (`components/reader/post-list.test.tsx`)
+- **Don't index a `getAllBy*` result — address the row you mean.** Write a `rowFor(title)` helper that `.find()`s the row by its text and throws when it is missing, then scope with `within(rowFor('Alpha'))`; iterate with `for (const row of rows)` when you really mean all of them. A test that names its rows should not index at all; the `eslint` skill's `defined()` helper is for where indexing is unavoidable. (`components/reader/post-list.test.tsx`)
 
 ---
 

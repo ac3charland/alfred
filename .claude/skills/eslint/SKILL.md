@@ -225,7 +225,7 @@ rather than matching what you wrote.
 
 **`unicorn/prefer-includes-over-repeated-comparisons` fires across *different* variables**
 
-Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.) The one-var-three-literals shape trips it at the same threshold — `p === 'stalled' || p === 'error' || p === 'preflight'` → `['stalled', 'error', 'preflight'].includes(p)`. A plain array literal infers as `string[]`, so a union-typed argument needs no cast; the `as const` trap below is a *tuple*'s doing, not this rule's.
+Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.) A plain array literal infers as `string[]`, so a union-typed argument needs no cast; the `as const` trap below is a *tuple*'s doing, not this rule's.
 
 **`@typescript-eslint/prefer-optional-chain` rejects a null-guard spelled as two comparisons**
 
