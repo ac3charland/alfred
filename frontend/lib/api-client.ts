@@ -722,7 +722,7 @@ export function pruneCommExample(id: string, pruned: boolean): Promise<CommCorre
 // ---------------------------------------------------------------------------
 // Reader — the newsletter pipe and reading list
 //
-// Both routes return the row they changed (text omitted), so the store reconciles with
+// Every write route returns the row it changed (text omitted), so the store reconciles with
 // the server-canonical post rather than re-reading the module.
 // ---------------------------------------------------------------------------
 
@@ -742,8 +742,10 @@ export function fetchReaderPosts(
 }
 
 /**
- * The reading list's two verbs, both a PATCH to the same row: archive (either direction, though
- * the store only ever sends `true` so far) or mark-opened. Returns the patched row.
+ * The reading list's three verbs, each a PATCH to the same row: archive (`archived: true`, and
+ * `false` is what Unarchive sends from the archive view), mark-opened, and re-summarise — which
+ * the route may refuse with a 409 naming which of its three reasons applies. Returns the patched
+ * row.
  */
 export function patchReaderPost(
   id: string,

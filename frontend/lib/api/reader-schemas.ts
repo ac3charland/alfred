@@ -22,13 +22,14 @@ export const readerPostsQuerySchema = z.object({
 export type ReaderPostsQuery = z.infer<typeof readerPostsQuerySchema>;
 
 /**
- * Body for PATCH /api/reader/posts/[id] — the reading list's two verbs, and only two: archive
- * (either direction) and mark-opened. A `z.union` of two `.strict()` objects rather than one
- * object of optional fields, because the two verbs stamp two different columns and a body that
- * named both (`{ archived: true, opened: true }`) would be ambiguous about which timestamp
- * matters — `.strict()` on each branch rejects the extra key instead of silently taking the
- * first one. `opened` is `z.literal(true)` because there is no "un-open": the store never sends
- * `{ opened: false }`, so that shape has no meaning to accept.
+ * Body for PATCH /api/reader/posts/[id] — the reading list's three verbs, and only three:
+ * archive (either direction — Unarchive sends `archived: false`), mark-opened, and re-summarise.
+ * A `z.union` of `.strict()` objects rather than one object of optional fields, because each
+ * verb stamps different columns and a body that named two (`{ archived: true, opened: true }`)
+ * would be ambiguous about which timestamp matters — `.strict()` on each branch rejects the
+ * extra key instead of silently taking the first one. `opened` and `resummarize` are
+ * `z.literal(true)` because neither has an inverse: the store never sends `{ opened: false }`,
+ * so that shape has no meaning to accept.
  */
 export const patchReaderPostSchema = z.union([
   z.object({ archived: z.boolean() }).strict(),
