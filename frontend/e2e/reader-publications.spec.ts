@@ -1,3 +1,5 @@
+import { formatPostDate } from '@/components/reader/reader-format';
+
 import {
   MOCK_URL,
   makeCommAccount,
@@ -145,6 +147,7 @@ test.describe('the publications roster', () => {
   });
 
   test('shows a publication’s last post date, or that it has none yet', async ({ page, seed }) => {
+    const LAST_POST_AT = '2026-09-16T12:00:00.000Z';
     const withPost = makeReaderPublication('Second Thoughts', {
       id: '88888888-8888-4888-8888-888888888883',
       handle: 'secondthoughts@substack.com',
@@ -158,17 +161,18 @@ test.describe('the publications roster', () => {
     await seed({
       commAccounts: [ACCOUNT],
       readerPublications: [withPost, withoutPost],
-      readerPosts: [makeReaderPost(withPost.id, { received_at: '2026-09-16T12:00:00.000Z' })],
+      readerPosts: [makeReaderPost(withPost.id, { received_at: LAST_POST_AT })],
     });
     await page.goto('/reader/publications');
 
     const withPostCard = page.getByRole('listitem').filter({ hasText: 'Second Thoughts' });
-    // Pins the actual date the card renders, not merely that SOME "last post" text is there.
-    // The instant is seeded at MIDDAY UTC because the formatter reads it in LOCAL time: midnight
-    // UTC is Sep 15 in the Americas and the assertion would fail by a day wherever the suite
-    // runs west of Greenwich. The formatter drops the year while it matches "now"'s, so the
-    // optional year keeps this holding however many years this test keeps running.
-    await expect(withPostCard.getByText(/last post Sep 16(, \d{4})?/)).toBeVisible();
+    // The card formats this in LOCAL time, and the IANA tz database spans a 26-hour range, so no
+    // fixed instant renders the same calendar date in every zone the suite might run in. Rather
+    // than pin a literal date, derive the expectation from the same formatter the card uses —
+    // Playwright's browser inherits the host's TZ, so Node here and the page agree.
+    await expect(
+      withPostCard.getByText(`last post ${formatPostDate(LAST_POST_AT, new Date())}`),
+    ).toBeVisible();
 
     const withoutPostCard = page.getByRole('listitem').filter({ hasText: 'Fresh Letter' });
     await expect(withoutPostCard.getByText('no posts yet')).toBeVisible();
