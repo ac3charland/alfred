@@ -21,6 +21,9 @@ const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
 
 const MINUTE_MS = 60 * 1000;
 
+/** The last tick of the capped day in {@link deadAfterCap} — the moment its cron stopped. */
+const LAST_RUN_BEFORE_DEATH = '2026-09-17T23:50:00.000Z';
+
 /** An instant `minutes` before the pinned now, as the columns store it. */
 function ago(minutes: number): string {
   return new Date(NOW.getTime() - minutes * MINUTE_MS).toISOString();
@@ -63,7 +66,10 @@ function deadAfterCap() {
       calls_day: '2026-09-17',
       calls_today: 30,
       daily_cap: 30,
-      last_run_at: '2026-09-17T23:50:00.000Z',
+      last_run_at: LAST_RUN_BEFORE_DEATH,
+      // Its last clean pass is that same final tick: a success cannot postdate the run it was
+      // made in, and a row saying otherwise would read as a summariser working after it died.
+      last_success_at: LAST_RUN_BEFORE_DEATH,
     },
     NOW,
   );
@@ -197,11 +203,24 @@ describe('summariserStalled', () => {
     });
   });
 
-  it('is "never" when the seeded row has no run stamped on it — the cron has not fired', () => {
+  it('is "never" when the seeded row is blank — no run, no error, so the cron has not fired', () => {
     expect(summariserStalled(makeReaderHealth('never', {}, NOW), [waiting(60)], NOW)).toEqual({
       state: 'never',
       since: null,
     });
+  });
+
+  it('is stalled, not "never", when the tick failed before it could stamp a run', () => {
+    // The pre-flight failures — an unparsable cap, a missing credential, the ceiling count — are
+    // stamped ahead of the run, so this row is a misconfigured deploy rather than a dead cron.
+    const health = makeReaderHealth(
+      'preflight',
+      { last_error_at: ago(2), last_error: 'ANTHROPIC_API_KEY is not set' },
+      NOW,
+    );
+
+    expect(health.last_run_at).toBeNull();
+    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'stalled', since: ago(2) });
   });
 
   it('is stalled when the tick recorded a failure more recently than a success', () => {
@@ -285,6 +304,45 @@ describe('summariserStalled', () => {
       state: 'stalled',
       since: ago(300),
     });
+  });
+
+  it('is stalled when the tick itself has not run inside the window, with nothing queued', () => {
+    // The tick stamps a run every five minutes whether or not it finds work, so a run three
+    // cadences old is the cron having stopped — an empty queue proves nothing either way.
+    const health = makeReaderHealth(
+      'live',
+      { last_run_at: ago(20), last_success_at: ago(20) },
+      NOW,
+    );
+
+    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'stalled', since: ago(20) });
+  });
+
+  it('is live when the tick ran inside the window and nothing is waiting', () => {
+    const health = makeReaderHealth('live', { last_run_at: ago(4), last_success_at: ago(4) }, NOW);
+
+    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'live', since: null });
+  });
+
+  it('counts a run stamped exactly at the cutoff as having stopped', () => {
+    const health = makeReaderHealth(
+      'live',
+      { last_run_at: ago(READER_STALL_MINUTES), last_success_at: ago(READER_STALL_MINUTES) },
+      NOW,
+    );
+
+    expect(summariserStalled(health, [], NOW)).toEqual({
+      state: 'stalled',
+      since: ago(READER_STALL_MINUTES),
+    });
+  });
+
+  it('reads a cron that died over a capped day as stalled the morning after', () => {
+    // The ceiling silences the waiting posts and nothing else: a capped day's ticks still stamp
+    // runs, so a run that stopped with the budget is a dead cron however full yesterday was.
+    expect(
+      summariserStalled(deadAfterCap(), [waiting(600)], new Date('2026-09-18T08:00:00.000Z')),
+    ).toEqual({ state: 'stalled', since: LAST_RUN_BEFORE_DEATH });
   });
 
   it('ignores a claimed post still inside the cadence', () => {
@@ -451,6 +509,18 @@ describe('readerBanner', () => {
       state: 'stale',
       account: quiet,
     });
+  });
+
+  it('carries the recorded error when the tick failed before it could stamp a run', () => {
+    const health = makeReaderHealth(
+      'preflight',
+      { last_error_at: ago(2), last_error: 'ANTHROPIC_API_KEY is not set' },
+      NOW,
+    );
+
+    expect(
+      readerBanner({ health, account: { ...account, last_seen_at: ago(1) } }, [], NOW),
+    ).toEqual({ kind: 'stalled', since: ago(2), error: 'ANTHROPIC_API_KEY is not set' });
   });
 
   it('says nothing about a summariser that has never run — there is nothing to be stalled from', () => {

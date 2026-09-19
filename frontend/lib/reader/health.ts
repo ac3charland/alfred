@@ -16,8 +16,9 @@ import type {
  *
  * The stall rules are the Comms classifier's, transplanted: a backlog draining under a cap is
  * not an outage, and the proof of life is the last summary rather than the absence of errors.
- * The third rule is the Reader's own — past the daily ceiling, posts waiting is the designed
- * behaviour, and a banner calling that a stall would teach the owner to ignore banners.
+ * The last rule is the Reader's own — past the daily ceiling, posts waiting is the designed
+ * behaviour, and a banner calling that a stall would teach the owner to ignore banners. It
+ * silences that one signal only: a capped day's ticks still run and still record what fails.
  */
 
 /**
@@ -54,6 +55,11 @@ function utcDay(iso: string | Date): string {
  * That second clause only BRIDGES midnight: the spent count has to belong to yesterday, so a
  * cron that dies the moment a capped day ends reads as "reached" for that one day and no longer.
  * From the day after, the count is stale rather than current and the stall rules take it over.
+ *
+ * And "reached" only ever silences the WAITING-POSTS signal in {@link summariserStalled}. A tick
+ * on a capped day still runs every five minutes and still records what fails, so a cron that
+ * dies over one reads as stalled from its own run age from the moment the window passes —
+ * bridging midnight buys the DESIGNED wait a quiet banner, never a dead cron one.
  */
 export function ceilingReached(health: ReaderHealth | undefined, now: Date): boolean {
   if (health === undefined) return false;
@@ -84,33 +90,55 @@ export function waitingPosts(posts: ReaderPostListItem[]): ReaderPostListItem[] 
 }
 
 /**
+ * Has the tick itself stopped running? The Worker fires every five minutes and stamps
+ * `last_run_at` before it does anything else, so a run older than the stall window is the cron
+ * having stopped rather than a slow one — three cadences is well past "the next one will do it".
+ *
+ * Its own predicate because two surfaces need it: the stall rules take it as a signal, and the
+ * header words a stall the tick recorded nothing about ("the tick has stopped running" rather
+ * than "no summary has landed since"). A row with no run at all is not this state — nothing has
+ * stopped that never started, and {@link summariserStalled} reads that row by its error.
+ */
+export function tickStopped(health: ReaderHealth | undefined, now: Date): boolean {
+  const run = health?.last_run_at ?? null;
+  if (run === null) return false;
+  // `<=`, as every other comparison against this cutoff is: an instant exactly at the boundary
+  // has waited the full window, and the surfaces must not disagree by a millisecond.
+  return Date.parse(run) <= now.getTime() - READER_STALL_MINUTES * MS_PER_MINUTE;
+}
+
+/**
  * Has summarising stopped, and when did it stop?
  *
- * An unrun tick is `never`, checked before either signal: the migration seeds row 1, so the row
- * is always there and its emptiness is what says the cron has never fired — `last_run_at` null,
- * which the tick stamps before it does anything else. (A missing row reads the same way, for a
- * database that predates the seed.) That is a different fault, with a different fix, from a
- * summariser that ran and then stopped.
+ * `never` is the BLANK row and only that: the row the migration seeds with nothing stamped on it
+ * yet, or no row at all for a database that predates the seed. A row carrying an error but no
+ * run is not blank and not a cron that never fired — the tick stamps its pre-flight failures (an
+ * unparsable cap, a missing credential, the ceiling count that precedes the start stamp) BEFORE
+ * it records a run, so "no run, an error" is a misconfigured deploy, and the owner is owed the
+ * words the tick wrote rather than a shrug at the cron.
  *
- * Then two independent signals, either sufficient:
+ * Then three independent signals, any one sufficient:
  *
  *  1. the tick recorded a systemic failure more recently than a success (a missing binding, a
- *     rejected key) — something it knew about and wrote down; and
- *  2. a claimed post has waited past the cadence while NO post was summarised inside it AND the
+ *     rejected key) — something it knew about and wrote down;
+ *  2. its last run is older than the stall window: the tick stamps a run every five minutes
+ *     whether or not it finds work, so a run three cadences old says the cron itself has
+ *     stopped, which no queue would ever show on a Reader whose mailbox has gone quiet too; and
+ *  3. a claimed post has waited past the cadence while NO post was summarised inside it AND the
  *     tick itself recorded no clean pass inside it, which catches an outage the tick never got
- *     far enough to record. Suppressed while the daily ceiling is reached, because then waiting
- *     is the designed behaviour.
+ *     far enough to record. This one alone is suppressed while the daily ceiling is reached,
+ *     because then waiting is the designed behaviour — the other two are independent of it.
  *
- * The tick's own proof of life is part of the second signal because a claim is not always fresh:
+ * The tick's own proof of life is part of the third signal because a claim is not always fresh:
  * re-summarising a post re-queues a row that keeps its original `created_at`, so a post claimed
  * months ago can be pending a second later. A tick that passed cleanly inside the window is
  * working whatever the claims say — the next one will pick that row up.
  *
  * A waiting post is dated by `created_at` — the instant the tick claimed it — and never by
  * `received_at`, which for a backfilled post is a much older moment and would report an outage
- * dated before the Reader was switched on. And `since` is the EARLIER of the two signals, so the
- * banner names when summarising actually stopped rather than when the failure was noticed: for
- * the second signal that is the last summary that did land, falling back to the oldest claim
+ * dated before the Reader was switched on. And `since` is the EARLIEST signal of the three, so
+ * the banner names when summarising actually stopped rather than when the failure was noticed:
+ * for the third signal that is the last summary that did land, falling back to the oldest claim
  * when nothing has ever been summarised.
  */
 export function summariserStalled(
@@ -118,10 +146,12 @@ export function summariserStalled(
   posts: ReaderPostListItem[],
   now: Date,
 ): { state: SummariserState; since: string | null } {
-  // Two statements rather than one condition: the row's absence and its emptiness are the same
+  // Two statements rather than one condition: the row's absence and its blankness are the same
   // state read off different databases, and either one alone says the cron has never fired.
   if (health === undefined) return { state: 'never', since: null };
-  if (health.last_run_at === null) return { state: 'never', since: null };
+  if (health.last_run_at === null && health.last_error_at === null) {
+    return { state: 'never', since: null };
+  }
 
   const signals: string[] = [];
 
@@ -131,6 +161,9 @@ export function summariserStalled(
       signals.push(health.last_error_at);
     }
   }
+
+  const run = health.last_run_at;
+  if (run !== null && tickStopped(health, now)) signals.push(run);
 
   if (!ceilingReached(health, now)) {
     const cutoff = now.getTime() - READER_STALL_MINUTES * MS_PER_MINUTE;

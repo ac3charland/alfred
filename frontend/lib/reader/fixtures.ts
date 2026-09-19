@@ -157,8 +157,13 @@ export const NO_READER_HEALTH: ReaderHealthSnapshot = { health: undefined, accou
  * row as the migration seeds it — row 1 with every other column still null — which is what "the
  * tick has never run" looks like in a live database; {@link NO_READER_HEALTH} covers the older
  * shape of the same state, a database with no row at all.
+ *
+ * `preflight` is the misconfigured deploy, and is deliberately close to `never`: the tick fires,
+ * fails on its config or its credentials BEFORE it can stamp a run, and writes that error to an
+ * otherwise-untouched row. The two shapes differ by one column and mean opposite things — no
+ * cron versus a cron shouting — which is exactly why the preset exists.
  */
-export type ReaderHealthPreset = 'live' | 'stalled' | 'ceiling' | 'error' | 'never';
+export type ReaderHealthPreset = 'live' | 'stalled' | 'ceiling' | 'error' | 'never' | 'preflight';
 
 const MINUTE_MS = 60 * 1000;
 
@@ -190,10 +195,11 @@ export function makeReaderHealth(
 ): ReaderHealth {
   const recently = new Date(now.getTime() - MINUTE_MS).toISOString();
   const today = now.toISOString().slice(0, 10);
-  const errored = preset === 'stalled' || preset === 'error';
+  const errored = ['stalled', 'error', 'preflight'].includes(preset);
   // The seeded row: the migration writes row 1 and nothing else, and the tick fills it in from
-  // `last_run_at` outwards, so every other column is still null until it first fires.
-  const seeded = preset === 'never';
+  // `last_run_at` outwards, so every other column is still null until it first fires — and a
+  // pre-flight failure lands on that same untouched row, its error column apart.
+  const seeded = preset === 'never' || preset === 'preflight';
   const succeeded = errored ? new Date(now.getTime() - 120 * MINUTE_MS).toISOString() : recently;
   const spent = preset === 'ceiling' ? 30 : 3;
 

@@ -97,8 +97,9 @@ test.describe('the Reader health surface', () => {
     await expect(banner).toHaveCount(1);
     await expect(banner).toContainText('Daily summary ceiling reached (30)');
     await expect(banner).toContainText('2 claimed posts wait for tomorrow');
-    // Nothing is broken, so the summariser dot stays green and says so in words.
-    await expect(page.getByLabel(/summariser · live/)).toBeVisible();
+    // Nothing is broken, so the summariser dot stays green and the line beside it says so in
+    // words — the dot itself is decorative wherever the caller names the state.
+    await expect(page.getByTestId('reader-health-dots')).toContainText('summariser · live');
   });
 
   test('lets the dead mailbox win over the ceiling — nothing new is arriving to summarise', async ({
@@ -120,6 +121,33 @@ test.describe('the Reader health surface', () => {
     await expect(banner).not.toContainText('Daily summary ceiling reached');
   });
 
+  test('names the error the tick stamped before it could ever record a run', async ({
+    page,
+    seed,
+  }) => {
+    await seed({
+      commAccounts: [liveAccount()],
+      readerPublications: [PUBLICATION],
+      readerPosts: pendingPosts(),
+      // A misconfigured deploy: the tick fires, fails its credential check ahead of the run
+      // stamp, and writes that error to an otherwise-untouched row. No run, but not silence.
+      readerHealth: [
+        makeReaderHealth(
+          'preflight',
+          { last_error_at: new Date(NOW.getTime() - 2 * 60 * 1000).toISOString() },
+          NOW,
+        ),
+      ],
+    });
+    await page.goto('/reader');
+
+    const banner = readerBanner(page);
+    await expect(banner).toHaveCount(1);
+    await expect(banner).toContainText('Summariser stalled');
+    await expect(banner).toContainText('ANTHROPIC_API_KEY is not set');
+    await expect(page.getByTestId('reader-health-dots')).toContainText('summariser · stalled');
+  });
+
   test('says the summariser has never run when the tick has never stamped the seeded row', async ({
     page,
     seed,
@@ -137,7 +165,7 @@ test.describe('the Reader health surface', () => {
     await expect(
       page.getByText("The summariser has never run — check the Worker's cron."),
     ).toBeVisible();
-    await expect(page.getByLabel(/summariser · never ran/)).toBeVisible();
+    await expect(page.getByTestId('reader-health-dots')).toContainText('summariser · never ran');
     // Before the first tick there is nothing to be stalled from, so the module owes no banner.
     await expect(readerBanner(page)).toHaveCount(0);
   });
