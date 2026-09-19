@@ -225,7 +225,11 @@ rather than matching what you wrote.
 
 **`unicorn/prefer-includes-over-repeated-comparisons` fires across *different* variables**
 
-Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.)
+Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.) The one-var-three-literals shape trips it at the same threshold — `p === 'stalled' || p === 'error' || p === 'preflight'` → `['stalled', 'error', 'preflight'].includes(p)`. A plain array literal infers as `string[]`, so a union-typed argument needs no cast; the `as const` trap below is a *tuple*'s doing, not this rule's.
+
+**`@typescript-eslint/prefer-optional-chain` rejects a null-guard spelled as two comparisons**
+
+`if (x === undefined || x.y === null)` is flagged even though the second half is only reachable because of the first — the rule wants one optional chain. Hoist the read instead of chaining inside the `if`: `const y = x?.y ?? null; if (y === null) …`. The `?? null` is what makes it equivalent (a missing `x` gives `undefined`, not `null`), and the branch below already has the value in hand.
 
 **`unicorn/prefer-includes` autofixes `.some()` on an `as const` tuple into a type error**
 
