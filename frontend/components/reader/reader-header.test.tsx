@@ -169,7 +169,8 @@ describe('ReaderHeader — the sentences', () => {
         'Summariser stalled 20m ago — the tick has stopped running. Posts are still arriving; none are being summarised.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByTitle('The tick has stopped running (20m ago)')).toBeInTheDocument();
+    // The dot's title is the same cause, so hovering it cannot contradict the line beneath.
+    expect(screen.getByTitle('the tick has stopped running (20m ago)')).toBeInTheDocument();
   });
 
   it('sends the owner to the cron when the summariser has never run', () => {

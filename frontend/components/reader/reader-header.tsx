@@ -7,7 +7,11 @@ import { StatusDot, type StatusDotState } from '@/components/atoms/status-dot';
 import { ViewHeading } from '@/components/atoms/view-heading';
 import { formatElapsed } from '@/components/comms/comms-format';
 import { accountHealth } from '@/lib/comms';
-import { type SummariserState, summariserStalled, tickStopped } from '@/lib/reader/health';
+import {
+  type SummariserReading,
+  type SummariserState,
+  summariserStalled,
+} from '@/lib/reader/health';
 import type {
   CommAccount,
   ReaderHealth,
@@ -60,20 +64,6 @@ function reason(error: string | null, fallback: string): string {
   return written === undefined || written === '' ? fallback : written;
 }
 
-/**
- * What a stall the tick recorded no words for is put down to. A run of its own that has gone
- * missing is a different fault from a tick that keeps running and summarises nothing, and it is
- * the one the owner can act on — so it is named rather than left to the generic silence.
- */
-function stallFallback(
-  health: ReaderHealth | undefined,
-  now: Date,
-): { title: string; line: string } {
-  return tickStopped(health, now)
-    ? { title: 'The tick has stopped running', line: 'the tick has stopped running' }
-    : { title: 'No summary has landed', line: 'no summary has landed since' };
-}
-
 /** Why the mailbox is in the state it is — the dot's hover/focus title, in the Comms treatment. */
 function gmailReason(account: CommAccount, now: Date): string {
   if (accountHealth(account, now) === 'erroring') {
@@ -110,18 +100,18 @@ function gmailSentence(account: CommAccount, now: Date): string | null {
 }
 
 /**
- * Why the summariser is in the state it is — the dot's hover/focus title. A stall quotes what
- * the tick recorded and how long ago; a working summariser quotes its last clean pass.
+ * Why the summariser is in the state it is — the dot's hover/focus title. A stall names the same
+ * cause the sentence beneath it does, so hovering the dot never contradicts the line; a working
+ * summariser quotes its last clean pass.
  */
 function summariserReason(
   health: ReaderHealth | undefined,
-  stall: { state: SummariserState; since: string | null },
+  stall: SummariserReading,
   now: Date,
 ): string {
   if (stall.state === 'never') return 'The summariser has never run — the tick has never fired';
   if (stall.state === 'stalled') {
-    const when = stall.since === null ? '' : ` (${formatElapsed(stall.since, now)})`;
-    return `${reason(health?.last_error ?? null, stallFallback(health, now).title)}${when}`;
+    return `${stall.cause} (${formatElapsed(stall.since, now)})`;
   }
   const success = health?.last_success_at ?? null;
   return success === null
@@ -129,18 +119,17 @@ function summariserReason(
     : `Last clean run ${formatElapsed(success, now)}`;
 }
 
-/** What a summariser that is not live says: when it stopped, why, and what still happens. */
-function summariserSentence(
-  health: ReaderHealth | undefined,
-  stall: { state: SummariserState; since: string | null },
-  now: Date,
-): string | null {
+/**
+ * What a summariser that is not live says: when it stopped, why, and what still happens. The why
+ * is the stall rules' own `cause`, rendered verbatim — the banner above renders that same string,
+ * so the two surfaces cannot blame different things for one stall.
+ */
+function summariserSentence(stall: SummariserReading, now: Date): string | null {
   if (stall.state === 'live') return null;
   if (stall.state === 'never') return "The summariser has never run — check the Worker's cron.";
 
-  const when = stall.since === null ? 'recently' : formatElapsed(stall.since, now);
   return (
-    `Summariser stalled ${when} — ${reason(health?.last_error ?? null, stallFallback(health, now).line)}. ` +
+    `Summariser stalled ${formatElapsed(stall.since, now)} — ${stall.cause}. ` +
     'Posts are still arriving; none are being summarised.'
   );
 }
@@ -160,7 +149,7 @@ export function ReaderHeader({ snapshot, posts, now, description }: ReaderHeader
   const gmail = account === undefined ? undefined : accountHealth(account, now);
 
   const notes: { key: string; tone: 'amber' | 'red'; text: string }[] = [];
-  const summariser = summariserSentence(health, stall, now);
+  const summariser = summariserSentence(stall, now);
   if (summariser !== null) notes.push({ key: 'summariser', tone: 'amber', text: summariser });
   if (account !== undefined) {
     const sentence = gmailSentence(account, now);

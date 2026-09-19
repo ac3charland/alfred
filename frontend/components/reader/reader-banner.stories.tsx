@@ -63,7 +63,7 @@ export const GmailQuiet: Story = {
 /** Posts arrive and sit: the tick recorded a systemic failure and nothing is being summarised. */
 export const SummariserStalled: Story = {
   args: {
-    banner: { kind: 'stalled', since: ago(48), error: 'ANTHROPIC_API_KEY is not set' },
+    banner: { kind: 'stalled', since: ago(48), cause: 'ANTHROPIC_API_KEY is not set' },
   },
 };
 

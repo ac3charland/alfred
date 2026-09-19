@@ -263,6 +263,74 @@ describe('ReadingListView — the health surface', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  it('names the cron in both the banner and the header when a stale error is superseded', () => {
+    // The tick recorded a failure this morning, recovered, and then its cron died: the error is
+    // no longer the newest thing on the row, so quoting it would blame a key that is fine for a
+    // run that has gone missing. Both surfaces read the one cause the stall rules hand them.
+    renderReader(<ReadingListView now={HEALTH_NOW} />, [], {
+      health: makeReaderHealth(
+        'live',
+        {
+          last_run_at: ago(20),
+          last_success_at: ago(19),
+          last_error_at: ago(180),
+          last_error: 'ANTHROPIC_API_KEY is not set',
+        },
+        HEALTH_NOW,
+      ),
+      account: LIVE_ACCOUNT,
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Summariser stalled 20m ago — the tick has stopped running.',
+    );
+    expect(screen.getByTestId('reader-health-notes')).toHaveTextContent(
+      'Summariser stalled 20m ago — the tick has stopped running. Posts are still arriving; none are being summarised.',
+    );
+  });
+
+  it('quotes the pre-flight failure on both surfaces — the error IS the newest event', () => {
+    renderReader(<ReadingListView now={HEALTH_NOW} />, [], {
+      health: makeReaderHealth('preflight', { last_error_at: ago(2) }, HEALTH_NOW),
+      account: LIVE_ACCOUNT,
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Summariser stalled 2m ago — ANTHROPIC_API_KEY is not set.',
+    );
+    expect(screen.getByTestId('reader-health-notes')).toHaveTextContent(
+      'Summariser stalled 2m ago — ANTHROPIC_API_KEY is not set.',
+    );
+  });
+
+  it('falls to the silence on both surfaces when the tick recorded nothing at all', () => {
+    const { publication } = readerFixtureSet();
+    const claimed = withoutText(
+      makeReaderPost(publication.id, {
+        id: 'p-waiting',
+        summary_state: 'pending',
+        word_count: 900,
+        created_at: ago(90),
+      }),
+    );
+
+    renderReader(<ReadingListView now={HEALTH_NOW} />, [claimed], {
+      health: makeReaderHealth(
+        'live',
+        { last_run_at: ago(1), last_success_at: ago(200) },
+        HEALTH_NOW,
+      ),
+      account: LIVE_ACCOUNT,
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Summariser stalled 1h ago — no summary has landed since.',
+    );
+    expect(screen.getByTestId('reader-health-notes')).toHaveTextContent(
+      'Summariser stalled 1h ago — no summary has landed since.',
+    );
+  });
+
   it('counts an archived post that is still claimed among the ones the ceiling holds', () => {
     const { publication } = readerFixtureSet();
     const archivedClaim = withoutText(

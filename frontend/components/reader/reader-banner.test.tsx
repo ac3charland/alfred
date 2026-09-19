@@ -110,7 +110,7 @@ describe('ReaderBanner — the stalled summariser', () => {
         banner={{
           kind: 'stalled',
           since: new Date(NOW.getTime() - 48 * 60 * 1000).toISOString(),
-          error: 'ANTHROPIC_API_KEY is not set',
+          cause: 'ANTHROPIC_API_KEY is not set',
         }}
         now={NOW}
       />,
@@ -125,13 +125,31 @@ describe('ReaderBanner — the stalled summariser', () => {
     expect(banner).toHaveClass('border-accent-amber/50', 'glow-amber');
   });
 
-  it('says what it can when the stall was read off the waiting posts and nothing was recorded', () => {
+  it('renders the cause it was handed, whatever the tick did or did not record', () => {
+    // The banner words nothing of its own: the stall rules decide between the tick's words, the
+    // cron and the silence, and both surfaces render that one string.
     render(
-      <ReaderBanner banner={{ kind: 'stalled', since: hoursAgo(3), error: null }} now={NOW} />,
+      <ReaderBanner
+        banner={{ kind: 'stalled', since: hoursAgo(3), cause: 'no summary has landed since' }}
+        now={NOW}
+      />,
     );
 
     expect(screen.getByRole('status')).toHaveTextContent(
       'Summariser stalled 3h ago — no summary has landed since.',
+    );
+  });
+
+  it('names the cron when that is the cause, rather than a failure the row still carries', () => {
+    render(
+      <ReaderBanner
+        banner={{ kind: 'stalled', since: hoursAgo(3), cause: 'the tick has stopped running' }}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Summariser stalled 3h ago — the tick has stopped running.',
     );
   });
 });

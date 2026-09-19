@@ -200,6 +200,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(undefined, [waiting(60)], NOW)).toEqual({
       state: 'never',
       since: null,
+      cause: null,
     });
   });
 
@@ -207,6 +208,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(makeReaderHealth('never', {}, NOW), [waiting(60)], NOW)).toEqual({
       state: 'never',
       since: null,
+      cause: null,
     });
   });
 
@@ -220,7 +222,11 @@ describe('summariserStalled', () => {
     );
 
     expect(health.last_run_at).toBeNull();
-    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'stalled', since: ago(2) });
+    expect(summariserStalled(health, [], NOW)).toEqual({
+      state: 'stalled',
+      since: ago(2),
+      cause: 'ANTHROPIC_API_KEY is not set',
+    });
   });
 
   it('is stalled when the tick recorded a failure more recently than a success', () => {
@@ -234,7 +240,11 @@ describe('summariserStalled', () => {
       NOW,
     );
 
-    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'stalled', since: ago(48) });
+    expect(summariserStalled(health, [], NOW)).toEqual({
+      state: 'stalled',
+      since: ago(48),
+      cause: 'ANTHROPIC_API_KEY is not set',
+    });
   });
 
   it('is live when the last failure is older than the last success', () => {
@@ -244,7 +254,7 @@ describe('summariserStalled', () => {
       NOW,
     );
 
-    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'live', since: null });
+    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'live', since: null, cause: null });
   });
 
   it('is stalled when a claimed post has waited past the cadence and nothing was summarised in it', () => {
@@ -254,6 +264,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [claimed], NOW)).toEqual({
       state: 'stalled',
       since: claimed.created_at,
+      cause: 'no summary has landed since',
     });
   });
 
@@ -264,6 +275,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [waiting(90), summarised], NOW)).toEqual({
       state: 'stalled',
       since: ago(30),
+      cause: 'no summary has landed since',
     });
   });
 
@@ -274,13 +286,18 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [waiting(90), summarised], NOW)).toEqual({
       state: 'live',
       since: null,
+      cause: null,
     });
   });
 
   it('is live when the backlog is waiting because the daily ceiling is spent', () => {
     const health = makeReaderHealth('ceiling', { last_success_at: ago(200) }, NOW);
 
-    expect(summariserStalled(health, [waiting(90)], NOW)).toEqual({ state: 'live', since: null });
+    expect(summariserStalled(health, [waiting(90)], NOW)).toEqual({
+      state: 'live',
+      since: null,
+      cause: null,
+    });
   });
 
   it('reads a row that has only ever started — no success, no error — through the waiting post', () => {
@@ -290,6 +307,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [claimed], NOW)).toEqual({
       state: 'stalled',
       since: claimed.created_at,
+      cause: 'no summary has landed since',
     });
   });
 
@@ -303,6 +321,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [waiting(300)], NOW)).toEqual({
       state: 'stalled',
       since: ago(300),
+      cause: 'the key was rejected',
     });
   });
 
@@ -315,13 +334,17 @@ describe('summariserStalled', () => {
       NOW,
     );
 
-    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'stalled', since: ago(20) });
+    expect(summariserStalled(health, [], NOW)).toEqual({
+      state: 'stalled',
+      since: ago(20),
+      cause: 'the tick has stopped running',
+    });
   });
 
   it('is live when the tick ran inside the window and nothing is waiting', () => {
     const health = makeReaderHealth('live', { last_run_at: ago(4), last_success_at: ago(4) }, NOW);
 
-    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'live', since: null });
+    expect(summariserStalled(health, [], NOW)).toEqual({ state: 'live', since: null, cause: null });
   });
 
   it('counts a run stamped exactly at the cutoff as having stopped', () => {
@@ -334,6 +357,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [], NOW)).toEqual({
       state: 'stalled',
       since: ago(READER_STALL_MINUTES),
+      cause: 'the tick has stopped running',
     });
   });
 
@@ -342,7 +366,11 @@ describe('summariserStalled', () => {
     // runs, so a run that stopped with the budget is a dead cron however full yesterday was.
     expect(
       summariserStalled(deadAfterCap(), [waiting(600)], new Date('2026-09-18T08:00:00.000Z')),
-    ).toEqual({ state: 'stalled', since: LAST_RUN_BEFORE_DEATH });
+    ).toEqual({
+      state: 'stalled',
+      since: LAST_RUN_BEFORE_DEATH,
+      cause: 'the tick has stopped running',
+    });
   });
 
   it('ignores a claimed post still inside the cadence', () => {
@@ -351,6 +379,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [waiting(READER_STALL_MINUTES - 1)], NOW)).toEqual({
       state: 'live',
       since: null,
+      cause: null,
     });
   });
 
@@ -359,7 +388,11 @@ describe('summariserStalled', () => {
     // ancient claim says nothing on its own — the tick's own clean pass is what answers it.
     const requeued = waiting(3 * 24 * 60);
 
-    expect(summariserStalled(liveRow(), [requeued], NOW)).toEqual({ state: 'live', since: null });
+    expect(summariserStalled(liveRow(), [requeued], NOW)).toEqual({
+      state: 'live',
+      since: null,
+      cause: null,
+    });
   });
 
   it('is stalled when the tick has not passed cleanly inside the window either', () => {
@@ -369,6 +402,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [claimed], NOW)).toEqual({
       state: 'stalled',
       since: claimed.created_at,
+      cause: 'no summary has landed since',
     });
   });
 
@@ -379,6 +413,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [claimed], NOW)).toEqual({
       state: 'stalled',
       since: claimed.created_at,
+      cause: 'no summary has landed since',
     });
   });
 
@@ -389,6 +424,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [waiting(90), summarised], NOW)).toEqual({
       state: 'stalled',
       since: ago(READER_STALL_MINUTES),
+      cause: 'no summary has landed since',
     });
   });
 
@@ -399,6 +435,7 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [claimed], NOW)).toEqual({
       state: 'stalled',
       since: claimed.created_at,
+      cause: 'no summary has landed since',
     });
   });
 });
@@ -448,7 +485,7 @@ describe('readerBanner', () => {
     ).toEqual({
       kind: 'stalled',
       since: ago(48),
-      error: 'the key was rejected',
+      cause: 'the key was rejected',
     });
   });
 
@@ -485,7 +522,7 @@ describe('readerBanner', () => {
     expect(readerBanner({ health, account: quiet }, [], NOW)).toEqual({
       kind: 'stalled',
       since: ago(48),
-      error: 'the key was rejected',
+      cause: 'the key was rejected',
     });
   });
 
@@ -511,6 +548,21 @@ describe('readerBanner', () => {
     });
   });
 
+  it('puts a dead cron ahead of the ceiling the morning after a capped day', () => {
+    // The ceiling still holds at 08:00 — yesterday's count, no tick since — and it silences the
+    // waiting posts alone. The run age is a signal of its own, so the banner reports the cron
+    // rather than telling the owner their budget is spent and everything is fine.
+    const morningAfter = new Date('2026-09-18T08:00:00.000Z');
+
+    expect(
+      readerBanner({ health: deadAfterCap(), account: undefined }, [waiting(600)], morningAfter),
+    ).toEqual({
+      kind: 'stalled',
+      since: LAST_RUN_BEFORE_DEATH,
+      cause: 'the tick has stopped running',
+    });
+  });
+
   it('carries the recorded error when the tick failed before it could stamp a run', () => {
     const health = makeReaderHealth(
       'preflight',
@@ -520,7 +572,7 @@ describe('readerBanner', () => {
 
     expect(
       readerBanner({ health, account: { ...account, last_seen_at: ago(1) } }, [], NOW),
-    ).toEqual({ kind: 'stalled', since: ago(2), error: 'ANTHROPIC_API_KEY is not set' });
+    ).toEqual({ kind: 'stalled', since: ago(2), cause: 'ANTHROPIC_API_KEY is not set' });
   });
 
   it('says nothing about a summariser that has never run — there is nothing to be stalled from', () => {

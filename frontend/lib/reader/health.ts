@@ -33,8 +33,35 @@ export const RETRYABLE_ATTEMPTS = 3;
 /** Whether summaries are being produced, have stopped, or have never been produced at all. */
 export type SummariserState = 'live' | 'stalled' | 'never';
 
+/**
+ * What the stall rules read off the row: the state, when summarising stopped, and the ONE cause
+ * the surfaces word that stall with. A union rather than three nullable fields, because a stall
+ * always has both a start and a cause — so neither the banner nor the header carries a fallback
+ * of its own, which is how the two came to word the same stall differently.
+ */
+export type SummariserReading =
+  // Two members for the two quiet states rather than one with a `'live' | 'never'` state: a
+  // member whose discriminant is itself a union survives both narrowings, and the stalled
+  // branch then still reads `since` as nullable.
+  | { state: 'live'; since: null; cause: null }
+  | { state: 'never'; since: null; cause: null }
+  | { state: 'stalled'; since: string; cause: string };
+
+/** What a stall with no words of the tick's own is put down to, in the order they are tried. */
+const STOPPED_CAUSE = 'the tick has stopped running';
+const SILENT_CAUSE = 'no summary has landed since';
+
 const MS_PER_MINUTE = 60 * 1000;
 const DAY_MS = 24 * 60 * MS_PER_MINUTE;
+
+/**
+ * The tick's own words for a failure, as it phrased them — or null when it recorded none worth
+ * quoting. The trailing terminator goes because the line that quotes this supplies its own.
+ */
+function recordedWords(error: string | null): string | null {
+  const written = error?.trim().replace(/[!.?]+$/, '');
+  return written === undefined || written === '' ? null : written;
+}
 
 /** The UTC calendar day an instant falls in, in the shape the health row's `calls_day` holds. */
 function utcDay(iso: string | Date): string {
@@ -91,8 +118,9 @@ export function waitingPosts(posts: ReaderPostListItem[]): ReaderPostListItem[] 
 
 /**
  * Has the tick itself stopped running? The Worker fires every five minutes and stamps
- * `last_run_at` before it does anything else, so a run older than the stall window is the cron
- * having stopped rather than a slow one — three cadences is well past "the next one will do it".
+ * `last_run_at` as soon as it has cleared pre-flight and counted the day's model calls, so a run
+ * older than the stall window is the cron having stopped rather than a slow one — three cadences
+ * is well past "the next one will do it".
  *
  * Its own predicate because two surfaces need it: the stall rules take it as a signal, and the
  * header words a stall the tick recorded nothing about ("the tick has stopped running" rather
@@ -140,30 +168,44 @@ export function tickStopped(health: ReaderHealth | undefined, now: Date): boolea
  * the banner names when summarising actually stopped rather than when the failure was noticed:
  * for the third signal that is the last summary that did land, falling back to the oldest claim
  * when nothing has ever been summarised.
+ *
+ * `cause` is the one phrase both surfaces word the stall with, and it follows the signals in
+ * their own order rather than being re-derived per surface. The tick's own words come first, and
+ * ONLY while signal 1 fired: an error a later success has superseded is not what the summariser
+ * is stalled on now, and quoting it would blame a key that was rejected this morning for a cron
+ * that died at lunchtime. Then the cron itself, when its run has gone missing. Otherwise the
+ * silence the waiting posts read — which also covers the tick that recorded a failure and no
+ * words for it.
  */
 export function summariserStalled(
   health: ReaderHealth | undefined,
   posts: ReaderPostListItem[],
   now: Date,
-): { state: SummariserState; since: string | null } {
+): SummariserReading {
   // Two statements rather than one condition: the row's absence and its blankness are the same
   // state read off different databases, and either one alone says the cron has never fired.
-  if (health === undefined) return { state: 'never', since: null };
+  if (health === undefined) return { state: 'never', since: null, cause: null };
   if (health.last_run_at === null && health.last_error_at === null) {
-    return { state: 'never', since: null };
+    return { state: 'never', since: null, cause: null };
   }
 
   const signals: string[] = [];
+  let recorded: string | null = null;
+  let stopped = false;
 
   if (health.last_error_at !== null) {
     const success = health.last_success_at === null ? null : Date.parse(health.last_success_at);
     if (success === null || Date.parse(health.last_error_at) > success) {
       signals.push(health.last_error_at);
+      recorded = recordedWords(health.last_error);
     }
   }
 
   const run = health.last_run_at;
-  if (run !== null && tickStopped(health, now)) signals.push(run);
+  if (run !== null && tickStopped(health, now)) {
+    signals.push(run);
+    stopped = true;
+  }
 
   if (!ceilingReached(health, now)) {
     const cutoff = now.getTime() - READER_STALL_MINUTES * MS_PER_MINUTE;
@@ -201,14 +243,15 @@ export function summariserStalled(
     if (since === undefined || Date.parse(candidate) < Date.parse(since)) since = candidate;
   }
 
-  return since === undefined ? { state: 'live', since: null } : { state: 'stalled', since };
+  if (since === undefined) return { state: 'live', since: null, cause: null };
+  return { state: 'stalled', since, cause: recorded ?? (stopped ? STOPPED_CAUSE : SILENT_CAUSE) };
 }
 
 /** The one banner the module may show, and everything it needs to word itself. */
 export type ReaderBanner =
   | { kind: 'gmail'; state: 'stale' | 'erroring'; account: CommAccount }
-  /** `error` is the tick's own words when it recorded any; a stall read off the waiting posts alone has none. */
-  | { kind: 'stalled'; since: string; error: string | null }
+  /** `cause` is {@link summariserStalled}'s, so the banner and the header name one cause. */
+  | { kind: 'stalled'; since: string; cause: string }
   | { kind: 'ceiling'; cap: number; waiting: number };
 
 /**
@@ -235,8 +278,8 @@ export function readerBanner(
   }
 
   const stall = summariserStalled(health, posts, now);
-  if (stall.state === 'stalled' && stall.since !== null) {
-    return { kind: 'stalled', since: stall.since, error: health?.last_error ?? null };
+  if (stall.state === 'stalled') {
+    return { kind: 'stalled', since: stall.since, cause: stall.cause };
   }
 
   if (account !== undefined && gmail === 'stale') {

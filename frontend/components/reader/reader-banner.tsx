@@ -102,13 +102,16 @@ function readerBannerContent(banner: ReaderBannerState, now: Date): BannerConten
       };
     }
     case 'stalled': {
+      // The cause is the stall rules' own, worded once in `lib/reader/health.ts` and rendered
+      // verbatim here and in the header — a fallback of this banner's own is how the two
+      // surfaces came to blame different things for one stall.
       return {
         tone: 'amber',
         icon: CircleAlert,
         lead: `Summariser stalled ${formatElapsed(banner.since, now)}`,
         rest:
-          `— ${reason(banner.error, 'no summary has landed since')}. Everything still arriving ` +
-          'is still stored with its title and link; nothing new is being summarised.',
+          `— ${banner.cause}. Everything still arriving is still stored with its title and ` +
+          'link; nothing new is being summarised.',
       };
     }
     case 'ceiling': {
