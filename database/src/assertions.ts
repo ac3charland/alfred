@@ -32,6 +32,10 @@ const EPIC_2 = '66666666-6666-6666-6666-666666666666';
 // shares this one account rather than each minting its own.
 const READER_ACCOUNT = 'facade00-0000-4000-8000-000000000001';
 
+// A second mailbox for the candidates view's account-scoping check — fixed, like READER_ACCOUNT,
+// so re-seeding is idempotent regardless of which assertion runs first.
+const READER_CANDIDATES_OTHER_ACCOUNT = 'facade00-0000-4000-8000-000000000002';
+
 /**
  * Run `fn` with the connection's role temporarily switched, then restore it. RLS and table
  * GRANTs apply as `role` (not the superuser session), so this is what exercises the real
@@ -3656,18 +3660,22 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       const account = await ensureReaderAccount(client);
       // A second mailbox, because the view's join names `gmail-personal` explicitly: a bulk
       // sender seen only on the work account is not a candidate for the personal reading list.
-      const { rows: otherRows } = await client.query<{ id: string }>(
-        `insert into comm_accounts (key, kind, label, home)
-           values ('gmail-candidates-other', 'gmail', 'Other Mailbox', 'worker')
-           returning id`,
+      // Seeded like `ensureReaderAccount` — a fixed id, `on conflict (id) do nothing` — so this
+      // assertion stays idempotent regardless of run order too.
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'gmail-candidates-other', 'gmail', 'Other Mailbox', 'worker')
+           on conflict (id) do nothing`,
+        [READER_CANDIDATES_OTHER_ACCOUNT],
       );
-      const otherAccount = otherRows[0]?.id;
-      if (!otherAccount) throw new Error('could not seed the second account');
 
       // Three messages from the loud candidate, the newest carrying the name the view should
-      // report; one from the quiet one; one 31 days old from a sender that must not appear. Then
-      // one row per exclusion the view's WHERE clause claims, each otherwise perfectly eligible,
-      // so a clause that got dropped fails here rather than filling the picker with the inbox.
+      // report; one from the quiet one — deliberately the MOST RECENT message of the batch, an
+      // hour ago, so a recency-only `ORDER BY` (dropping the volume-first sort) would float this
+      // one-message sender above loud's three and this assertion would go red; one 31 days old
+      // from a sender that must not appear. Then one row per exclusion the view's WHERE clause
+      // claims, each otherwise perfectly eligible, so a clause that got dropped fails here rather
+      // than filling the picker with the inbox.
       await client.query(
         `insert into comm_messages (account_id, source_id, thread_key, sender_handle, sender_name,
                                      direction, has_list_header, received_at)
@@ -3678,7 +3686,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
                   ($1, 'cand-loud-3', 'cand-loud-3', 'loud@news.example', 'Loud Daily',
                    'inbound', true, now() - interval '2 days'),
                   ($1, 'cand-quiet-1', 'cand-quiet-1', 'quiet@news.example', 'Quiet Monthly',
-                   'inbound', true, now() - interval '5 days'),
+                   'inbound', true, now() - interval '1 hour'),
                   ($1, 'cand-stale-1', 'cand-stale-1', 'stale@news.example', 'Stale Letter',
                    'inbound', true, now() - interval '31 days'),
                   ($1, 'cand-out-1', 'cand-out-1', 'sent@news.example', 'Sent Mail',
@@ -3695,7 +3703,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
                    'inbound', true, now() - interval '9 days'),
                   ($1, 'cand-tie-old-2', 'cand-tie-old-2', 'tie-old@news.example', 'Tie Older',
                    'inbound', true, now() - interval '4 days')`,
-        [account, otherAccount],
+        [account, READER_CANDIDATES_OTHER_ACCOUNT],
       );
 
       const { rows: loud } = await client.query<{
@@ -3722,16 +3730,26 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         if (excluded[0]?.n !== '0') throw new Error(`${why} is still offered`);
       }
 
-      // The view's own order, as a caller with no order of their own receives it.
+      // The view's own order, as a caller with no order of their own receives it. Volume is the
+      // PRIMARY key: loud (3 messages) beats both 2-message ties, which beat quiet (1 message)
+      // even though quiet's one message is the most recent of the whole batch — a recency-only
+      // sort would put quiet first, and a volume-only sort with no recency tie-break would leave
+      // tie-new and tie-old in an arbitrary order, so this checks the full, exact order rather
+      // than pairwise positions that pass on a stray -1 (indexOf finding neither handle).
+      const expectedOrder = [
+        'loud@news.example',
+        'tie-new@news.example',
+        'tie-old@news.example',
+        'quiet@news.example',
+      ];
       const { rows: ordered } = await client.query<{ handle: string }>(
         `select handle from v_reader_candidates`,
       );
-      const positions = ordered.map((row) => row.handle);
-      if (positions.indexOf('loud@news.example') > positions.indexOf('quiet@news.example'))
-        throw new Error('the louder sender did not rank ahead of the quieter one');
-      // Two senders on two messages each: volume cannot separate them, so recency must.
-      if (positions.indexOf('tie-new@news.example') > positions.indexOf('tie-old@news.example'))
-        throw new Error('two senders on equal counts did not break the tie towards the newer one');
+      const positions = ordered
+        .map((row) => row.handle)
+        .filter((handle) => expectedOrder.includes(handle));
+      if (JSON.stringify(positions) !== JSON.stringify(expectedOrder))
+        throw new Error(`expected order ${expectedOrder.join(', ')}, got ${positions.join(', ')}`);
 
       // A handle on the roster is somebody's publication, not a candidate.
       await client.query(
