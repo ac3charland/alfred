@@ -488,6 +488,13 @@ project:
   whatever the deployer leaves in `public` is part of production's schema. Miss it and the drift
   check above reports *production ahead of repo* on **every** run, on a gap no migration may ever
   close: the backup uploads and the job still exits 1. `buildVerifySchema` is the worked example.
+- **A migration that SEEDS a row collides with the dump's own copy of it.** The verify schema is
+  built from the migrations, so `0035_reader`'s singleton (`insert into reader_health (id) values
+  (1)`) is already sitting there when the data loads — the COPY hits `duplicate key value violates
+  unique constraint "reader_health_pkey"`, and under `--single-transaction` that one collision
+  aborts the whole load of a perfectly sound dump. Build the schema, then `truncate` every public
+  base table: the verify database is a TARGET for production's data, and rows the migrations
+  planted on the way are residue in its path. `buildVerifySchema` is the worked example.
 - **Match the restore server's major version to Supabase's.** Supabase runs **Postgres 17**, whose
   `pg_dump` writes PG17-only GUCs into the dump preamble (e.g. `SET transaction_timeout = 0;`). Loading
   that into an older server fails with `unrecognized configuration parameter "transaction_timeout"` and
