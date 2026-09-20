@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { COMPUTING_POLL_MS } from '@/lib/hooks/use-loc-velocity';
 import type { LocVelocityResponse, LocWeek } from '@/lib/types';
 
 import { LocVelocity } from './loc-velocity';
@@ -49,14 +50,72 @@ describe('LocVelocity', () => {
     });
   });
 
-  it('invites a refresh while GitHub is still computing the statistics', async () => {
+  it('says so, without asking for a manual refresh, while GitHub is still computing the statistics', async () => {
     mockGetLocVelocity.mockResolvedValue({ status: 'computing' });
 
     render(<LocVelocity />);
 
     expect(
-      await screen.findByText('GitHub is still computing these statistics. Refresh in a minute.'),
+      await screen.findByText(/GitHub is still computing these statistics/),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/refresh/i)).not.toBeInTheDocument();
+  });
+
+  it('polls in the background and swaps in the chart on its own once GitHub finishes', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetLocVelocity
+        .mockResolvedValueOnce({ status: 'computing' })
+        .mockResolvedValueOnce({ status: 'ready', velocity: makeVelocity(LINES) });
+
+      render(<LocVelocity />);
+
+      expect(
+        await screen.findByText(/GitHub is still computing these statistics/),
+      ).toBeInTheDocument();
+      expect(mockGetLocVelocity).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        jest.advanceTimersByTime(COMPUTING_POLL_MS);
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(mockGetLocVelocity).toHaveBeenCalledTimes(2);
+      });
+      expect(await screen.findByText(/4-week average 5,900/)).toBeInTheDocument();
+
+      // The chart landed — a later tick must not fire a third, now-pointless fetch.
+      await act(async () => {
+        jest.advanceTimersByTime(COMPUTING_POLL_MS * 3);
+        await Promise.resolve();
+      });
+      expect(mockGetLocVelocity).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('cancels the pending poll on unmount, so an unmounted card never fetches again', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetLocVelocity.mockResolvedValue({ status: 'computing' });
+
+      const { unmount } = render(<LocVelocity />);
+      await screen.findByText(/GitHub is still computing these statistics/);
+      expect(mockGetLocVelocity).toHaveBeenCalledTimes(1);
+
+      unmount();
+
+      await act(async () => {
+        jest.advanceTimersByTime(COMPUTING_POLL_MS * 3);
+        await Promise.resolve();
+      });
+
+      expect(mockGetLocVelocity).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('shows one muted line when GitHub would not answer', async () => {

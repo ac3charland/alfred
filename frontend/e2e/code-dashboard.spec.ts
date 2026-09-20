@@ -199,11 +199,43 @@ test('says so, rather than showing zeros, while GitHub is still computing the st
 
   await page.goto('/code/dashboard');
 
-  await expect(
-    page.getByText('GitHub is still computing these statistics. Refresh in a minute.'),
-  ).toBeVisible();
+  await expect(page.getByText(/GitHub is still computing these statistics/)).toBeVisible();
+  // No manual reload is asked for — the card polls for itself.
+  await expect(page.getByText(/refresh/i)).toBeHidden();
   // The ratio beside it is unaffected, and so is everything else on the page.
   await expect(page.getByText('PRs merged in the last 7 days')).toBeVisible();
+});
+
+test('swaps the chart in on its own, with no reload, once GitHub finishes computing (ALF-243)', async ({
+  page,
+  seed,
+}) => {
+  await seed({ projects: [project], epics: [epic], items, codeItems });
+  await page.route('**/api/code/pr-ratio*', (route) => route.fulfill({ status: 200, json: RATIO }));
+
+  // The first request finds GitHub still computing; every request after that finds it ready —
+  // exactly what a real cold cache warming up between polls looks like.
+  let requestCount = 0;
+  await page.route('**/api/code/loc-velocity*', (route) => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      return route.fulfill({
+        status: 202,
+        json: { error: 'GitHub is still computing these statistics' },
+      });
+    }
+    return route.fulfill({ status: 200, json: VELOCITY });
+  });
+
+  await page.goto('/code/dashboard');
+
+  await expect(page.getByText(/GitHub is still computing these statistics/)).toBeVisible();
+
+  // The card's own timer re-polls — nobody clicks anything or reloads the page.
+  await expect(page.getByText('Jun 21 – Sep 12', { exact: false })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByText(/GitHub is still computing these statistics/)).toBeHidden();
 });
 
 test('shows a muted note, not silence, when GitHub would not answer', async ({ page, seed }) => {

@@ -15,9 +15,10 @@ import { fetchLocVelocity } from '@/lib/github/loc';
 // reachable from a script without going through the UI.
 //
 // Four outcomes, each load-bearing for the card: 501 "this deployment doesn't measure repos",
-// which renders nothing at all; 202 "GitHub is still computing these statistics", which invites
-// a refresh; 502 "configured, but GitHub wouldn't answer", which shows a muted note. Collapsing
-// either of the last two into silence would read as "you wrote no code for three months".
+// which renders nothing at all; 202 "GitHub is still computing these statistics", which the card
+// polls quietly behind until it clears; 502 "configured, but GitHub wouldn't answer", which shows
+// a muted note. Collapsing either of the last two into silence would read as "you wrote no code
+// for three months".
 // ---------------------------------------------------------------------------
 
 export const GET = withSessionOrApiKey(async () => {
