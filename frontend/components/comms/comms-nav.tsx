@@ -4,9 +4,7 @@ import { BookMarked, Inbox, ScrollText, Users } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
-import { FolderCountBadge } from '@/components/tasks/folder-count-badge';
 import { ViewLink } from '@/components/tasks/view-link';
-import { useQueueCount } from '@/lib/stores/comms-store';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
 
 interface CommsNavProperties {
@@ -15,17 +13,15 @@ interface CommsNavProperties {
 }
 
 /**
- * Comms-module sidebar navigation. The Queue leads — it is the module's default view and the
- * only one with a number on it — followed by the three surfaces the owner edits by hand: the
- * people list, the rubric, and the example set the corrections double as.
+ * Comms-module sidebar navigation. The Queue leads — it is the module's default view —
+ * followed by the three surfaces the owner edits by hand: the people list, the rubric, and the
+ * example set the corrections double as.
  *
- * The Queue badge counts the three counted tiers together and hides at zero, exactly like the
- * Habits badge: an empty queue is the module's resting state, and a "0" chip would make the
- * thing it exists to say into something to read past.
+ * The queue count used to badge this Queue link; ALF-222 moved it onto the Comms segment of the
+ * module switcher instead, so it reads from every module rather than only once Comms is open.
  */
 export function CommsNav({ onClose }: CommsNavProperties) {
   const pathname = usePathname();
-  const queued = useQueueCount();
 
   const isActive = (path: string) => pathname === path;
   // exactOptionalPropertyTypes: only spread the handler when one was given.
@@ -36,11 +32,6 @@ export function CommsNav({ onClose }: CommsNavProperties) {
       <ViewLink href="/comms" className={navLinkClass(isActive('/comms'))} {...closeProperty}>
         <Inbox size={15} className="shrink-0" />
         <span className="min-w-0 flex-1 truncate">Queue</span>
-        <FolderCountBadge
-          tone="attention"
-          count={queued}
-          label={(count) => `${String(count)} waiting for a reply`}
-        />
       </ViewLink>
 
       <ViewLink

@@ -17,6 +17,11 @@ interface FolderCountBadgeProperties {
    * habits, which are neither high-priority nor due.
    */
   label?: (count: number) => string;
+  /**
+   * Extra classes merged onto the pill, last — e.g. the module switcher's Comms segment
+   * (ALF-222) positions it as an absolute corner badge instead of an inline row chip.
+   */
+  className?: string;
 }
 
 /**
@@ -44,13 +49,13 @@ const TONE: Record<FolderCountTone, { className: string; label: (count: number) 
  * `aria-label` names the meaning, not just the number, so a folder link reads as "Work, 2
  * high-priority or due today, 1 overdue".
  */
-export function FolderCountBadge({ count, tone, label }: FolderCountBadgeProperties) {
+export function FolderCountBadge({ count, tone, label, className }: FolderCountBadgeProperties) {
   if (count <= 0) return null;
-  const { className, label: toneLabel } = TONE[tone];
+  const { className: toneClassName, label: toneLabel } = TONE[tone];
   return (
     <Badge
       variant="plain"
-      className={cn(className, 'font-medium')}
+      className={cn(toneClassName, 'font-medium', className)}
       aria-label={(label ?? toneLabel)(count)}
     >
       {count}

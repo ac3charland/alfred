@@ -58,8 +58,13 @@ test.describe('the desktop module switcher', () => {
       ).toBeLessThanOrEqual(boundary);
 
       // Fitting by truncating the labels would be its own bug, so hold the control to the
-      // stronger bar: at the sidebar's width every label is still shown in full.
-      const clipped = await segment.evaluate(
+      // stronger bar: at the sidebar's width every label is still shown in full. `truncate`
+      // (and its clipping) lives on an inner span, not the anchor itself (ALF-222 moved it so
+      // the Comms corner badge isn't clipped along with overflowing text) — the anchor's own
+      // scrollWidth never exceeds its clientWidth once a clipped child self-contains its
+      // overflow, so the check has to read the span that actually does the clipping.
+      const labelSpan = segment.locator('span').first();
+      const clipped = await labelSpan.evaluate(
         (element) => element.scrollWidth > element.clientWidth,
       );
       expect(clipped, `the ${label} label must not be truncated to fit`).toBe(false);
