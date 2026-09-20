@@ -1,5 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import * as React from 'react';
+
+import { makeCommAccount, makeCommMessage } from '@/lib/comms/fixtures';
+import { renderWithProviders } from '@/lib/test-utils';
 
 import { ViewSwitcher } from './view-switcher';
 
@@ -10,6 +13,14 @@ const mockPathname = jest.fn<string, []>(() => '/');
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
 }));
+
+// `useQueueCount` (ALF-222) needs a CommsProvider, so every render goes through
+// `renderWithProviders` now instead of a bare `render` — with no messages seeded, the switcher's
+// Comms badge stays at its default hidden-at-zero state and the existing exact-name assertions
+// below ('Comms', not 'Comms 2') keep holding.
+function render(ui: React.ReactElement) {
+  return renderWithProviders(ui);
+}
 
 describe('ViewSwitcher', () => {
   beforeEach(() => {
@@ -155,8 +166,11 @@ describe('ViewSwitcher', () => {
       // Without `min-w-0` a flex item refuses to shrink below its text width, which is
       // exactly how the control burst its container in the first place.
       expect(segment).toHaveClass('min-w-0');
-      expect(segment).toHaveClass('truncate');
       expect(segment).toHaveClass('text-center');
+      // `truncate` lives on an inner span (ALF-222), not the anchor itself, so the Comms
+      // corner badge — an absolutely-positioned sibling — isn't clipped by the same
+      // overflow-hidden that keeps the label from wrapping.
+      expect(segment.querySelector('span')).toHaveClass('truncate');
     }
   });
 
@@ -170,5 +184,38 @@ describe('ViewSwitcher', () => {
       expect(segment).not.toHaveClass('text-sm');
       expect(segment).not.toHaveClass('px-1.5');
     }
+  });
+
+  it("puts Comms last, so its badge lands at the control's own end (ALF-222)", () => {
+    render(<ViewSwitcher />);
+
+    const labels = screen.getAllByRole('link').map((link) => link.textContent);
+    expect(labels).toEqual(['Tasks', 'Code', 'Reader', 'Comms']);
+  });
+
+  it('badges the Comms segment with how many messages are waiting for a reply (ALF-222)', () => {
+    const account = makeCommAccount('personal');
+    renderWithProviders(<ViewSwitcher />, {
+      comms: {
+        accounts: [account],
+        messages: [
+          makeCommMessage(account.id, { tier: 'asap', judged_by: 'model' }),
+          makeCommMessage(account.id, { tier: 'today', judged_by: 'model' }),
+          // On the shelf, so uncounted.
+          makeCommMessage(account.id, { tier: 'fyi', judged_by: 'model' }),
+        ],
+      },
+    });
+
+    expect(screen.getByLabelText('2 waiting for a reply')).toHaveTextContent('2');
+    // The badge does not widen the segment: it stays an absolutely-positioned corner overlay.
+    expect(screen.getByLabelText('2 waiting for a reply')).toHaveClass('absolute');
+  });
+
+  it('hides the Comms badge when nothing is owed — the resting state', () => {
+    render(<ViewSwitcher />);
+
+    expect(screen.getByRole('link', { name: 'Comms' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/waiting for a reply/)).not.toBeInTheDocument();
   });
 });

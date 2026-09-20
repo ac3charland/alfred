@@ -27,7 +27,7 @@ test.describe('the Comms module shell', () => {
     ).toBeVisible();
   });
 
-  test('badges the Queue link with the count of messages waiting for a reply', async ({
+  test('badges the Comms segment in the switcher with the count of messages waiting for a reply (ALF-222)', async ({
     page,
     seed,
   }) => {
@@ -42,17 +42,27 @@ test.describe('the Comms module shell', () => {
     });
     await page.goto('/comms');
 
+    const switcher = page.getByRole('group', { name: 'Switch module' });
+    await expect(switcher.getByLabel('2 waiting for a reply')).toHaveText('2');
+
+    // The count moved off the Queue link (ALF-222) — it doesn't also duplicate there.
     const nav = page.getByRole('navigation', { name: 'Comms' });
-    await expect(nav.getByLabel('2 waiting for a reply')).toHaveText('2');
+    await expect(nav.getByLabel(/waiting for a reply/)).toHaveCount(0);
   });
 
-  test('hides the Queue badge when nothing is owed — the resting state', async ({ page, seed }) => {
+  test('hides the switcher badge when nothing is owed — the resting state', async ({
+    page,
+    seed,
+  }) => {
     await seed({ commAccounts: [ACCOUNT] });
     await page.goto('/comms');
 
+    const switcher = page.getByRole('group', { name: 'Switch module' });
+    await expect(switcher.getByRole('link', { name: 'Comms' })).toBeVisible();
+    await expect(switcher.getByLabel(/waiting for a reply/)).toHaveCount(0);
+
     const nav = page.getByRole('navigation', { name: 'Comms' });
     await expect(nav.getByRole('link', { name: 'Queue' })).toBeVisible();
-    await expect(nav.getByLabel(/waiting for a reply/)).toHaveCount(0);
   });
 
   test('reaches People, Rubric and Examples from the sidebar without a reload', async ({

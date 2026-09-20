@@ -3,8 +3,10 @@
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
+import { FolderCountBadge } from '@/components/tasks/folder-count-badge';
 import { ViewLink } from '@/components/tasks/view-link';
 import { MODULE_ACCENT, type ModuleId, activeModule } from '@/lib/modules';
+import { useQueueCount } from '@/lib/stores/comms-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -46,15 +48,30 @@ import { cn } from '@/lib/utils';
  *
  * It takes no close/navigate callback: the mobile drawer deliberately STAYS open across a
  * module switch (ALF-157), so there is nothing for a segment click to notify.
+ *
+ * Comms is the LAST segment (ALF-222), not the third: it is the only segment that carries a
+ * count (how many messages are waiting for a reply, `useQueueCount`), rendered as a small badge
+ * over its top-right corner. Putting Comms at the far right puts that badge at the control's own
+ * end, rather than pinned to a corner in the middle of the row. The badge used to live inline on
+ * the sidebar's Queue link instead (`comms-nav.tsx`) — ALF-222 moved it here so the count is
+ * visible from every module, not only once Comms is already open.
+ *
+ * The badge pokes slightly OUTSIDE the segment's own corner (negative offsets), the same way a
+ * notification badge conventionally overlaps its host icon, rather than trying to squeeze inside
+ * the segment next to the label — the segment is only ~13px of text tall with 4px of padding, so
+ * any inside-the-box position collides with the label's own cap-height (measured in Storybook: it
+ * covered part of the final "s"). That only works because `truncate` (the text-clipping
+ * `overflow-hidden`) moved off this anchor and onto an inner span wrapping just the label text —
+ * left on the anchor, it would clip the badge's overhang along with any overflowing text.
  */
 const segmentClass = (module: ModuleId, active: boolean) =>
   cn(
     // `flex-auto` (basis: content), not `flex-1` (basis: 0): each segment starts at its own
     // label's width and only the LEFTOVER space is shared out. Equal thirds would hand every
-    // segment what the narrowest needs and clip "Comms" at the sidebar's width. `min-w-0` +
-    // `truncate` are the floor under that: a fourth module would truncate inside the control
-    // rather than push it past the sidebar border, which is the failure mode being fixed.
-    'flex-auto min-w-0 truncate rounded-md px-1 py-1 text-center text-[13px] font-medium',
+    // segment what the narrowest needs and clip "Comms" at the sidebar's width. `min-w-0` is the
+    // floor under that: a fourth module shrinks below its label's width inside the control rather
+    // than push it past the sidebar border, which is the failure mode being fixed.
+    'relative flex-auto min-w-0 rounded-md px-1 py-1 text-center text-[13px] font-medium',
     'transition-colors duration-100 motion-reduce:transition-none',
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface',
     active
@@ -62,16 +79,32 @@ const segmentClass = (module: ModuleId, active: boolean) =>
       : 'text-muted-foreground hover:text-foreground',
   );
 
+/**
+ * The label text's own clipping — `truncate` moved here (off the anchor) so the corner badge,
+ * an absolutely-positioned sibling, isn't clipped by the same `overflow-hidden`. A plain `block`
+ * child fills its flex-item parent's width without needing its own `min-w-0`: that escape hatch
+ * is specifically for flex/grid items defaulting to `min-width: auto`, and this span is neither.
+ */
+const labelClass = 'block truncate';
+
+/**
+ * The corner badge's own classes. Negative insets deliberately poke it outside the segment's own
+ * box — see the component doc comment for why that needs `truncate` off the anchor first.
+ */
+const queueBadgeClass =
+  'absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-surface px-0.5 py-0 text-[9px] leading-none';
+
 /** Each segment: the module it selects, its label, and the view it lands on. */
 const SEGMENTS: readonly { module: ModuleId; label: string; href: string }[] = [
   { module: 'tasks', label: 'Tasks', href: '/priority' },
   { module: 'code', label: 'Code', href: '/code' },
-  { module: 'comms', label: 'Comms', href: '/comms' },
   { module: 'reader', label: 'Reader', href: '/reader' },
+  { module: 'comms', label: 'Comms', href: '/comms' },
 ];
 
 export function ViewSwitcher() {
   const current = activeModule(usePathname());
+  const queued = useQueueCount();
 
   return (
     <div
@@ -86,7 +119,15 @@ export function ViewSwitcher() {
           aria-current={current === module ? 'page' : undefined}
           className={segmentClass(module, current === module)}
         >
-          {label}
+          <span className={labelClass}>{label}</span>
+          {module === 'comms' && (
+            <FolderCountBadge
+              tone="attention"
+              count={queued}
+              label={(count) => `${String(count)} waiting for a reply`}
+              className={queueBadgeClass}
+            />
+          )}
         </ViewLink>
       ))}
     </div>
