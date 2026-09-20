@@ -17,3 +17,7 @@ After (same page, no reload, ~15s later): the card's own poll finds the statisti
 ![](auto-refresh-loc-graph-image-2.png)
 
 The journey above is driven end to end through the real running Dashboard (stubbing only the GitHub-backed endpoint, per the repo's e2e convention): the first request finds GitHub still computing, the request the card's own timer fires next finds it ready. The default Playwright assertion timeout is raised for that one wait, since the poll is real wall-clock time (15s), not a mocked clock. (Regression coverage for the hook's scheduling/cleanup itself lives in frontend/components/code/loc-velocity.test.tsx, driven by a fake clock.)
+
+The copy change also moves the Code/LocVelocity Computing story's committed visual snapshot. Baseline | changed pixels (red) | new render — only the second sentence changed, from the old 'Refresh in a minute' instruction to the new 'This chart will appear automatically once they're ready.'
+
+![](auto-refresh-loc-graph-image-3.png)
