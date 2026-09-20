@@ -3,21 +3,34 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import {
+  makeReaderHealth,
   makeReaderPost,
   makeReaderPublication,
   resetReaderFixtureClock,
 } from '@/lib/reader/fixtures';
-import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
+import type { ReaderHealthSnapshot, ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
 import {
+  ARCHIVE_READ_LIMIT,
   ReaderProvider,
+  type ReaderState,
   readerReducer,
   useActiveCount,
+  useArchiveStatus,
+  useArchivedPosts,
   useReaderActions,
+  useReaderHealth,
   useReaderPosts,
 } from './reader-store';
 
-jest.mock('@/lib/api-client');
+// A partial mock: the request wrappers are stubbed, but `ApiError` stays the real class, since
+// the re-summarise verb distinguishes a refusal the owner should read from a fault it shouldn't.
+jest.mock('@/lib/api-client', () => ({
+  ...jest.requireActual<typeof import('@/lib/api-client')>('@/lib/api-client'),
+  fetchReaderPosts: jest.fn(),
+  fetchReaderHealth: jest.fn(),
+  patchReaderPost: jest.fn(),
+}));
 const mockApi = jest.mocked(api);
 
 const mockShowToast = jest.fn();
@@ -63,62 +76,155 @@ function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
   return { promise, settle };
 }
 
-function makeWrapper(posts: ReaderPostListItem[]) {
+/** Nothing read yet — the shape the shell hands the provider when neither read answered. */
+const NO_HEALTH: ReaderHealthSnapshot = { health: undefined, account: undefined };
+
+/** A reducer state at rest: the posts under test, no health read and no archive read. */
+function state(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HEALTH): ReaderState {
+  return { posts, health, archiveStatus: 'idle', archiveFull: false };
+}
+
+function makeWrapper(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HEALTH) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <ReaderProvider initialPosts={posts}>{children}</ReaderProvider>;
+    return (
+      <ReaderProvider initialPosts={posts} initialHealth={health}>
+        {children}
+      </ReaderProvider>
+    );
   };
 }
 
 beforeEach(() => {
   resetReaderFixtureClock();
   jest.clearAllMocks();
+  // Every return-to-the-foreground re-reads BOTH surfaces, so the health read needs an answer in
+  // any test that fires one, even where the list is what's under assertion.
+  mockApi.fetchReaderHealth.mockResolvedValue(NO_HEALTH);
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
 });
 
 describe('readerReducer', () => {
   it('patches a post by id', () => {
     const original = post({ id: 'p-1', title: 'Original' });
-    const next = readerReducer(
-      { posts: [original] },
-      { type: 'posts', action: { type: 'patch', ids: ['p-1'], patch: { title: 'Patched' } } },
-    );
+    const next = readerReducer(state([original]), {
+      type: 'posts',
+      action: { type: 'patch', ids: ['p-1'], patch: { title: 'Patched' } },
+    });
     expect(next.posts[0]?.title).toBe('Patched');
   });
 
   it('is a no-op for a patch naming an id it no longer holds', () => {
-    const state = { posts: [post({ id: 'p-1' })] };
-    const next = readerReducer(state, {
+    const before = state([post({ id: 'p-1' })]);
+    const next = readerReducer(before, {
       type: 'posts',
       action: { type: 'patch', ids: ['gone'], patch: { title: 'x' } },
     });
-    expect(next).toEqual(state);
+    expect(next).toEqual(before);
   });
 
   it('replaces the whole list on replaceAll', () => {
-    const state = { posts: [post({ id: 'p-1' }), post({ id: 'p-2' })] };
+    const before = state([post({ id: 'p-1' }), post({ id: 'p-2' })]);
     const replacement = [post({ id: 'p-3' })];
-    const next = readerReducer(state, { type: 'replaceAll', posts: replacement, keep: [] });
+    const next = readerReducer(before, { type: 'replaceAll', posts: replacement, keep: [] });
     expect(next.posts).toEqual(replacement);
   });
 
   it('keeps the local row for every id replaceAll is told to keep', () => {
     const local = post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' });
     const fromServer = post({ id: 'p-1', archived_at: null });
-    const next = readerReducer(
-      { posts: [local] },
-      { type: 'replaceAll', posts: [fromServer, post({ id: 'p-2' })], keep: ['p-1'] },
-    );
+    const next = readerReducer(state([local]), {
+      type: 'replaceAll',
+      posts: [fromServer, post({ id: 'p-2' })],
+      keep: ['p-1'],
+    });
     expect(next.posts[0]).toBe(local);
     expect(next.posts).toHaveLength(2);
   });
 
-  it('does not re-add a kept row the server no longer lists', () => {
-    const local = post({ id: 'p-1' });
-    const next = readerReducer(
-      { posts: [local] },
-      { type: 'replaceAll', posts: [], keep: ['p-1'] },
-    );
+  it('holds a kept row the server no longer lists — this tab wrote it after the read left', () => {
+    // An unarchive still settling: the read went out before the write reached the server, so the
+    // active list it came back with cannot speak for this row either way.
+    const local = post({ id: 'p-1', archived_at: null });
+    const next = readerReducer(state([local]), { type: 'replaceAll', posts: [], keep: ['p-1'] });
+    expect(next.posts).toEqual([local]);
+  });
+
+  it('keeps every archived row the active read cannot see', () => {
+    const archived = post({ id: 'p-archived', archived_at: '2026-09-18T09:00:00.000Z' });
+    const active = post({ id: 'p-active' });
+    const next = readerReducer(state([archived, active]), {
+      type: 'replaceAll',
+      posts: [active],
+      keep: [],
+    });
+    expect(next.posts.map((p) => p.id)).toEqual(['p-active', 'p-archived']);
+  });
+
+  it('drops an active row the read no longer lists and this tab never touched', () => {
+    // Archived on another tab — the read IS the authority for a row nobody here wrote.
+    const gone = post({ id: 'p-gone' });
+    const next = readerReducer(state([gone]), { type: 'replaceAll', posts: [], keep: [] });
     expect(next.posts).toEqual([]);
+  });
+
+  it('never lists a row twice, whichever rule holds it', () => {
+    const archived = post({ id: 'p-archived', archived_at: '2026-09-18T09:00:00.000Z' });
+    const written = post({ id: 'p-written' });
+    const next = readerReducer(state([archived, written]), {
+      type: 'replaceAll',
+      posts: [post({ id: 'p-written' }), post({ id: 'p-fresh' })],
+      keep: ['p-written'],
+    });
+    const ids = next.posts.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toHaveLength(3);
+  });
+
+  it('folds the archive read into the one post list and records how full it came back', () => {
+    const held = post({ id: 'p-held' });
+    const next = readerReducer(state([held]), {
+      type: 'archiveRead',
+      posts: [
+        post({ id: 'p-held', archived_at: '2026-09-18T09:00:00.000Z' }),
+        post({ id: 'p-new' }),
+      ],
+      full: true,
+      keep: [],
+    });
+    expect(next.posts).toHaveLength(2);
+    expect(next.posts[0]?.archived_at).toBe('2026-09-18T09:00:00.000Z');
+    expect(next.archiveStatus).toBe('loaded');
+    expect(next.archiveFull).toBe(true);
+  });
+
+  it('keeps the local row for every id the archive read is told to keep', () => {
+    const local = post({ id: 'p-1', archived_at: null });
+    const next = readerReducer(state([local]), {
+      type: 'archiveRead',
+      posts: [post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' })],
+      full: false,
+      keep: ['p-1'],
+    });
+    expect(next.posts[0]).toBe(local);
+    expect(next.archiveStatus).toBe('loaded');
+  });
+
+  it('takes a kept row the store no longer holds from the read — there is nothing to defend', () => {
+    const fromServer = post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' });
+    const next = readerReducer(state([]), {
+      type: 'archiveRead',
+      posts: [fromServer],
+      full: false,
+      keep: ['p-1'],
+    });
+    expect(next.posts).toEqual([fromServer]);
+  });
+
+  it('records a failed archive read without touching the list', () => {
+    const held = post({ id: 'p-1' });
+    const next = readerReducer(state([held]), { type: 'archiveStatus', status: 'failed' });
+    expect(next.archiveStatus).toBe('failed');
+    expect(next.posts).toEqual([held]);
   });
 });
 
@@ -261,6 +367,28 @@ describe('markOpened', () => {
 
     expect(result.current.posts).toHaveLength(0);
     expect(result.current.count).toBe(0);
+  });
+
+  it('is not un-stamped by a read the write left too late to be in', async () => {
+    // The read was issued while the Open PATCH was still in flight, so its answer describes the
+    // row as it was before the stamp — taking it would rub the stamp out.
+    const row = post({ id: 'p-1', opened_at: null });
+    const openCall = deferred<ReaderPostListItem>();
+    mockApi.patchReaderPost.mockReturnValue(openCall.promise);
+    mockApi.fetchReaderPosts.mockResolvedValue([row]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.markOpened('p-1');
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.posts[0]?.opened_at).not.toBeNull();
   });
 
   it('neither rolls back nor toasts when the write fails', async () => {
@@ -460,6 +588,47 @@ describe('refresh', () => {
     });
   });
 
+  it('holds a row back until the LAST of two overlapping writes on it has settled', async () => {
+    // An Open stamp and an archive in flight on one row. The stamp answers first; the archive
+    // has still not reached the server, so a read issued now cannot speak for the row — a
+    // protection keyed on "is anything in flight" rather than "how many" would have dropped it
+    // when the first of the two settled.
+    const row = post({ id: 'p-1', opened_at: null });
+    const openCall = deferred<ReaderPostListItem>();
+    const archiveCall = deferred<ReaderPostListItem>();
+    mockApi.patchReaderPost.mockImplementation((_id, body) =>
+      'opened' in body ? openCall.promise : archiveCall.promise,
+    );
+    mockApi.fetchReaderPosts.mockResolvedValue([row]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.markOpened('p-1');
+    });
+    let archiving: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      archiving = result.current.actions.archive('p-1');
+    });
+    await act(async () => {
+      openCall.settle({ ...row, opened_at: '2026-09-18T09:05:00.000Z' });
+      await flush();
+    });
+
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await flush();
+    });
+    expect(result.current.posts).toHaveLength(0);
+
+    await act(async () => {
+      archiveCall.settle({ ...row, archived_at: '2026-09-18T09:06:00.000Z' });
+      await archiving;
+    });
+    expect(result.current.posts).toHaveLength(0);
+  });
+
   it('keeps the last known list when the re-read fails, and stays silent about it', async () => {
     const initial = [post({ id: 'p-1' })];
     mockApi.fetchReaderPosts.mockRejectedValue(new Error('offline'));
@@ -474,5 +643,508 @@ describe('refresh', () => {
     });
     expect(result.current.posts.map((p) => p.id)).toEqual(['p-1']);
     expect(mockShowToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('the health slice', () => {
+  it('exposes the snapshot the shell seeded it with', () => {
+    const snapshot: ReaderHealthSnapshot = { health: makeReaderHealth('live'), account: undefined };
+    const { result } = renderHook(() => useReaderHealth(), {
+      wrapper: makeWrapper([], snapshot),
+    });
+
+    expect(result.current).toEqual(snapshot);
+  });
+
+  it('replaces the whole snapshot rather than merging into it', () => {
+    const before: ReaderHealthSnapshot = {
+      health: makeReaderHealth('live'),
+      account: undefined,
+    };
+    const after: ReaderHealthSnapshot = { health: undefined, account: undefined };
+
+    const next = readerReducer(state([post({ id: 'p-1' })], before), {
+      type: 'health',
+      snapshot: after,
+    });
+
+    expect(next.health).toEqual(after);
+    // A health read says nothing about the list, and vice versa.
+    expect(next.posts).toHaveLength(1);
+  });
+
+  it('leaves the snapshot alone when the list is replaced', () => {
+    const snapshot: ReaderHealthSnapshot = {
+      health: makeReaderHealth('ceiling'),
+      account: undefined,
+    };
+
+    const next = readerReducer(state([], snapshot), {
+      type: 'replaceAll',
+      posts: [post({ id: 'p-1' })],
+      keep: [],
+    });
+
+    expect(next.health).toBe(snapshot);
+  });
+});
+
+describe('resummarize', () => {
+  const DONE = {
+    summary_state: 'done',
+    gist: 'the summary it already has',
+    summarize_attempts: 3,
+    last_error: 'the schema did not fit',
+  } as const;
+
+  it('shows the row as pending immediately, keeping the summary already on it', () => {
+    const row = post({ id: 'p-1', ...DONE });
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      void result.current.actions.resummarize('p-1');
+    });
+
+    expect(result.current.posts[0]).toMatchObject({
+      summary_state: 'pending',
+      summarize_attempts: 0,
+      last_error: null,
+      gist: 'the summary it already has',
+    });
+  });
+
+  it('reconciles with the row the server wrote', async () => {
+    const row = post({ id: 'p-1', ...DONE });
+    const saved: ReaderPostListItem = {
+      ...row,
+      summary_state: 'pending',
+      summarize_attempts: 0,
+      last_error: null,
+      summarizing_since: null,
+    };
+    mockApi.patchReaderPost.mockResolvedValue(saved);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.resummarize('p-1');
+    });
+
+    expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { resummarize: true });
+    expect(result.current.posts[0]).toEqual(saved);
+  });
+
+  it('rolls back the fields it touched and toasts when the write fails', async () => {
+    const row = post({ id: 'p-1', ...DONE });
+    mockApi.patchReaderPost.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(result.current.actions.resummarize('p-1')).rejects.toThrow('boom');
+    });
+
+    expect(result.current.posts[0]).toMatchObject({
+      summary_state: 'done',
+      summarize_attempts: 3,
+      last_error: 'the schema did not fit',
+    });
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't queue that summary");
+  });
+
+  it('toasts the server’s own sentence when the post cannot be re-summarised at all', async () => {
+    const row = post({ id: 'p-1', ...DONE });
+    mockApi.patchReaderPost.mockRejectedValue(
+      new api.ApiError('API PATCH failed: 409', 409, 'Post text was swept on Sep 8, 2026'),
+    );
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(result.current.actions.resummarize('p-1')).rejects.toThrow();
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith('Post text was swept on Sep 8, 2026');
+  });
+
+  it('is not undone by a focus refetch that was already in the air', async () => {
+    // The read left the server before the PATCH reached it, so its answer still calls the row
+    // `done` — replacing the list wholesale would put the old summary state back on screen.
+    const row = post({ id: 'p-1', ...DONE });
+    const queueing = deferred<ReaderPostListItem>();
+    mockApi.patchReaderPost.mockReturnValue(queueing.promise);
+    mockApi.fetchReaderPosts.mockResolvedValue([row]);
+    mockApi.fetchReaderHealth.mockResolvedValue(NO_HEALTH);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let resummarizing: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      resummarizing = result.current.actions.resummarize('p-1');
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.posts[0]?.summary_state).toBe('pending');
+
+    await act(async () => {
+      queueing.settle({ ...row, summary_state: 'pending', summarize_attempts: 0 });
+      await resummarizing;
+    });
+    expect(result.current.posts[0]?.summary_state).toBe('pending');
+  });
+});
+
+describe('reconcileHealth', () => {
+  it('re-reads the health snapshot and the list together when the tab returns', async () => {
+    const snapshot: ReaderHealthSnapshot = {
+      health: makeReaderHealth('stalled'),
+      account: undefined,
+    };
+    mockApi.fetchReaderPosts.mockResolvedValue([]);
+    mockApi.fetchReaderHealth.mockResolvedValue(snapshot);
+    const { result } = renderHook(
+      () => ({ health: useReaderHealth(), actions: useReaderActions() }),
+      { wrapper: makeWrapper([]) },
+    );
+
+    act(() => {
+      globalThis.dispatchEvent(new Event('focus'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.health).toEqual(snapshot);
+    });
+    expect(mockApi.fetchReaderPosts).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchReaderHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not read while the tab is hidden', () => {
+    mockApi.fetchReaderHealth.mockResolvedValue(NO_HEALTH);
+    renderHook(() => useReaderHealth(), { wrapper: makeWrapper([]) });
+
+    act(() => {
+      setTabHidden(true);
+    });
+
+    expect(mockApi.fetchReaderHealth).not.toHaveBeenCalled();
+  });
+
+  it('collapses concurrent triggers into one request', async () => {
+    mockApi.fetchReaderHealth.mockResolvedValue(NO_HEALTH);
+    const { result } = renderHook(() => useReaderActions(), { wrapper: makeWrapper([]) });
+
+    act(() => {
+      result.current.reconcileHealth();
+      result.current.reconcileHealth();
+    });
+
+    await waitFor(() => {
+      expect(mockApi.fetchReaderHealth).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('leaves the held snapshot alone when the read fails', async () => {
+    const seeded: ReaderHealthSnapshot = { health: makeReaderHealth('live'), account: undefined };
+    mockApi.fetchReaderHealth.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(
+      () => ({ health: useReaderHealth(), actions: useReaderActions() }),
+      { wrapper: makeWrapper([], seeded) },
+    );
+
+    await act(async () => {
+      result.current.actions.reconcileHealth();
+      await flush();
+    });
+
+    expect(result.current.health).toEqual(seeded);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('unarchive', () => {
+  const ARCHIVED = { archived_at: '2026-09-18T09:00:00.000Z' };
+
+  it('puts the row back on the reading list at once and reconciles with the server row', async () => {
+    const row = post({ id: 'p-1', ...ARCHIVED });
+    const saved: ReaderPostListItem = { ...row, archived_at: null };
+    mockApi.patchReaderPost.mockResolvedValue(saved);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+    expect(result.current.posts).toHaveLength(0);
+
+    await act(async () => {
+      await result.current.actions.unarchive('p-1');
+    });
+
+    expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { archived: false });
+    expect(result.current.posts.map((p) => p.id)).toEqual(['p-1']);
+  });
+
+  it('moves the row between the two lists before the server answers', () => {
+    const row = post({ id: 'p-1', ...ARCHIVED });
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => ({ ...useStore(), archived: useArchivedPosts() }), {
+      wrapper: makeWrapper([row]),
+    });
+
+    act(() => {
+      void result.current.actions.unarchive('p-1');
+    });
+
+    expect(result.current.posts).toHaveLength(1);
+    expect(result.current.archived).toHaveLength(0);
+  });
+
+  it('rolls the row back into the archive and toasts when the write fails', async () => {
+    const row = post({ id: 'p-1', ...ARCHIVED });
+    mockApi.patchReaderPost.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => ({ ...useStore(), archived: useArchivedPosts() }), {
+      wrapper: makeWrapper([row]),
+    });
+
+    await act(async () => {
+      await expect(result.current.actions.unarchive('p-1')).rejects.toThrow('boom');
+    });
+
+    expect(result.current.posts).toHaveLength(0);
+    expect(result.current.archived.map((p) => p.id)).toEqual(['p-1']);
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't unarchive that post");
+  });
+
+  it('survives a refresh whose read was issued before the write reached the server', async () => {
+    const row = post({ id: 'p-1', ...ARCHIVED });
+    const patchCall = deferred<ReaderPostListItem>();
+    mockApi.patchReaderPost.mockReturnValue(patchCall.promise);
+    // The stale active read cannot see the row: it was still archived when the read was served.
+    mockApi.fetchReaderPosts.mockResolvedValue([]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      void result.current.actions.unarchive('p-1');
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.posts.map((p) => p.id)).toEqual(['p-1']);
+
+    await act(async () => {
+      patchCall.settle({ ...row, archived_at: null });
+      await flush();
+    });
+    expect(result.current.posts.map((p) => p.id)).toEqual(['p-1']);
+  });
+});
+
+describe('useArchivedPosts', () => {
+  it('lists only archived posts, newest arrival first', () => {
+    const posts = [
+      post({
+        id: 'p-old',
+        received_at: '2026-09-12T09:00:00.000Z',
+        archived_at: '2026-09-18T09:00:00.000Z',
+      }),
+      post({ id: 'p-active', received_at: '2026-09-17T09:00:00.000Z' }),
+      post({
+        id: 'p-new',
+        received_at: '2026-09-15T09:00:00.000Z',
+        archived_at: '2026-09-18T10:00:00.000Z',
+      }),
+    ];
+    const { result } = renderHook(() => useArchivedPosts(), { wrapper: makeWrapper(posts) });
+
+    expect(result.current.map((p) => p.id)).toEqual(['p-new', 'p-old']);
+  });
+});
+
+/** The archive's three surfaces at once: its verb, its rows and how far its read got. */
+function useArchive() {
+  return {
+    actions: useReaderActions(),
+    archived: useArchivedPosts(),
+    status: useArchiveStatus(),
+  };
+}
+
+describe('loadArchive', () => {
+  it('reads the archived scope once, however often it is asked', async () => {
+    mockApi.fetchReaderPosts.mockResolvedValue([]);
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      result.current.actions.loadArchive();
+      result.current.actions.loadArchive();
+      await flush();
+    });
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+
+    expect(mockApi.fetchReaderPosts).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchReaderPosts).toHaveBeenCalledWith({
+      scope: 'archived',
+      limit: ARCHIVE_READ_LIMIT,
+    });
+    expect(result.current.status.status).toBe('loaded');
+  });
+
+  it('upserts the read into the one post list rather than beside it', async () => {
+    const held = post({ id: 'p-held', archived_at: '2026-09-18T09:00:00.000Z', title: 'Held' });
+    mockApi.fetchReaderPosts.mockResolvedValue([
+      { ...held, title: 'Held, as the server has it' },
+      post({ id: 'p-fetched', archived_at: '2026-09-17T09:00:00.000Z' }),
+    ]);
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([held]) });
+
+    await act(async () => {
+      result.current.actions.loadArchive();
+      await flush();
+    });
+
+    expect(result.current.archived).toHaveLength(2);
+    expect(result.current.archived.map((p) => p.title)).toContain('Held, as the server has it');
+  });
+
+  it('says the archive is full only when the read came back at its ceiling', async () => {
+    mockApi.fetchReaderPosts.mockResolvedValue(
+      Array.from({ length: ARCHIVE_READ_LIMIT }, (_, index) =>
+        post({ id: `p-${String(index)}`, archived_at: '2026-09-18T09:00:00.000Z' }),
+      ),
+    );
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      result.current.actions.loadArchive();
+      await flush();
+    });
+
+    expect(result.current.status.full).toBe(true);
+  });
+
+  it('is not full on a short read', async () => {
+    mockApi.fetchReaderPosts.mockResolvedValue([
+      post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' }),
+    ]);
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      result.current.actions.loadArchive();
+      await flush();
+    });
+
+    expect(result.current.status.full).toBe(false);
+    expect(result.current.status.status).toBe('loaded');
+  });
+
+  it('records the failure rather than reading as an empty archive, and retries', async () => {
+    mockApi.fetchReaderPosts.mockRejectedValueOnce(new Error('boom')).mockResolvedValue([]);
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      result.current.actions.loadArchive();
+      await flush();
+    });
+    expect(result.current.status.status).toBe('failed');
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      result.current.actions.loadArchive();
+      await flush();
+    });
+    expect(mockApi.fetchReaderPosts).toHaveBeenCalledTimes(2);
+    expect(result.current.status.status).toBe('loaded');
+  });
+
+  it('is reading while the request is in the air, neither loaded nor failed', () => {
+    mockApi.fetchReaderPosts.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([]) });
+
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+
+    expect(result.current.status.status).toBe('loading');
+  });
+
+  it('does not undo an unarchive that landed while its read was in flight', async () => {
+    // The archive read was served before the PATCH reached the server, so its answer still has
+    // the row filed away — folding that in would put a post the owner just recovered straight
+    // back into the archive.
+    const row = post({ id: 'p-1', archived_at: '2026-09-18T09:00:00.000Z' });
+    const read = deferred<ReaderPostListItem[]>();
+    mockApi.fetchReaderPosts.mockReturnValue(read.promise);
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, archived_at: null });
+    const { result } = renderHook(() => ({ ...useArchive(), posts: useReaderPosts() }), {
+      wrapper: makeWrapper([row]),
+    });
+
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+    await act(async () => {
+      await result.current.actions.unarchive('p-1');
+    });
+
+    await act(async () => {
+      read.settle([row]);
+      await flush();
+    });
+
+    expect(result.current.posts.map((p) => p.id)).toEqual(['p-1']);
+    expect(result.current.archived).toHaveLength(0);
+  });
+
+  it('does not undo a re-summarise that landed while its read was in flight', async () => {
+    const row = post({
+      id: 'p-1',
+      archived_at: '2026-09-18T09:00:00.000Z',
+      summary_state: 'done',
+      gist: 'the summary it already has',
+    });
+    const read = deferred<ReaderPostListItem[]>();
+    mockApi.fetchReaderPosts.mockReturnValue(read.promise);
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, summary_state: 'pending' });
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+    await act(async () => {
+      await result.current.actions.resummarize('p-1');
+    });
+
+    await act(async () => {
+      read.settle([row]);
+      await flush();
+    });
+
+    expect(result.current.archived[0]?.summary_state).toBe('pending');
+  });
+
+  it('still takes the read’s copy of a row this tab never wrote', async () => {
+    const held = post({ id: 'p-held', archived_at: '2026-09-18T09:00:00.000Z', title: 'Held' });
+    const written = post({ id: 'p-written', archived_at: '2026-09-18T09:00:00.000Z' });
+    const read = deferred<ReaderPostListItem[]>();
+    mockApi.fetchReaderPosts.mockReturnValue(read.promise);
+    mockApi.patchReaderPost.mockResolvedValue({ ...written, archived_at: null });
+    const { result } = renderHook(() => useArchive(), { wrapper: makeWrapper([held, written]) });
+
+    act(() => {
+      result.current.actions.loadArchive();
+    });
+    await act(async () => {
+      await result.current.actions.unarchive('p-written');
+    });
+    await act(async () => {
+      read.settle([{ ...held, title: 'Held, as the server has it' }, written]);
+      await flush();
+    });
+
+    expect(result.current.archived.map((p) => p.title)).toEqual(['Held, as the server has it']);
   });
 });

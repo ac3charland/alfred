@@ -669,13 +669,32 @@ describe('worker.scheduled', () => {
     const retention = jest
       .spyOn(commsScheduled, 'runCommsRetention')
       .mockResolvedValue({ deleted: 12, failures: [] });
+    const readerRetention = jest
+      .spyOn(readerScheduled, 'runReaderRetention')
+      .mockResolvedValue({ swept: 91, failures: [] });
 
     await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
 
     expect(retention).toHaveBeenCalledTimes(1);
+    expect(readerRetention).toHaveBeenCalledTimes(1);
     expect(judge).not.toHaveBeenCalled();
     expect(poll).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('runs the reader sweep after the comms sweep, and a comms failure does not skip it', async () => {
+    // Each is isolated by its own wrapper's try/catch — a comms outage must not stop the reader's
+    // text from ageing out on schedule, and vice versa.
+    jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: undefined, failures: ['comms retention: 500 upstream'] });
+    const readerRetention = jest
+      .spyOn(readerScheduled, 'runReaderRetention')
+      .mockResolvedValue({ swept: 5, failures: [] });
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    expect(readerRetention).toHaveBeenCalledTimes(1);
   });
 
   it('logs a line per unit, including the ones that failed', async () => {
@@ -765,10 +784,11 @@ describe('worker.scheduled', () => {
     expect(errors).toEqual(['reader: gmail: 503 upstream']);
   });
 
-  it('logs what the retention sweep deleted', async () => {
+  it('logs what each retention sweep did, comms then reader', async () => {
     jest
       .spyOn(commsScheduled, 'runCommsRetention')
       .mockResolvedValue({ deleted: 12, failures: [] });
+    jest.spyOn(readerScheduled, 'runReaderRetention').mockResolvedValue({ swept: 1, failures: [] });
     const logged: string[] = [];
     jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
       logged.push(args.map(String).join(' '));
@@ -776,7 +796,65 @@ describe('worker.scheduled', () => {
 
     await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
 
-    expect(logged).toEqual(['comms retention: 12 messages deleted']);
+    expect(logged).toEqual([
+      'comms retention: 12 messages deleted',
+      // Singular: one post, like the comms gmail-poll line's 'account' / 'accounts' split.
+      'reader retention: 1 post swept',
+    ]);
+  });
+
+  it('logs a reader-prefixed error line when the reader sweep fails', async () => {
+    jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: 12, failures: [] });
+    jest.spyOn(readerScheduled, 'runReaderRetention').mockResolvedValue({
+      swept: undefined,
+      failures: ['reader retention: permission denied'],
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    expect(logged).toEqual([
+      'comms retention: 12 messages deleted',
+      'reader retention: did not run',
+    ]);
+    expect(errors).toEqual(['reader: reader retention: permission denied']);
+  });
+
+  it('says how far a half-run sweep got as well as that it broke', async () => {
+    // Each batch is its own transaction, so a run that died on its third batch really did sweep
+    // the first two — the log says both, rather than filing durable work under "did not run".
+    jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: 12, failures: [] });
+    jest.spyOn(readerScheduled, 'runReaderRetention').mockResolvedValue({
+      swept: 2,
+      failures: ['reader retention: permission denied'],
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    expect(logged).toEqual([
+      'comms retention: 12 messages deleted',
+      'reader retention: 2 posts swept',
+    ]);
+    expect(errors).toEqual(['reader: reader retention: permission denied']);
   });
 });
 

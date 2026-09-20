@@ -1,13 +1,23 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { makeSupabaseDouble } from '@/lib/api/supabase-route-double';
+import { makeCommAccount } from '@/lib/comms/fixtures';
 import {
+  makeReaderHealth,
   makeReaderPost,
   makeReaderPublication,
   resetReaderFixtureClock,
 } from '@/lib/reader/fixtures';
 import { createClient } from '@/lib/supabase/server';
 
-import { READER_POST_LIST_COLUMNS, getReaderPosts, getReaderSeed, patchReaderPost } from './reader';
+import {
+  READER_POST_LIST_COLUMNS,
+  getReaderHealthSeed,
+  getReaderHealthSnapshot,
+  getReaderPostResummarizeState,
+  getReaderPosts,
+  getReaderSeed,
+  patchReaderPost,
+} from './reader';
 
 // `import 'server-only'` throws outside a Server Component context; neutralise it under Jest.
 jest.mock('server-only', () => ({}));
@@ -163,6 +173,21 @@ describe('patchReaderPost', () => {
     });
   });
 
+  it('re-summarising resets the state, the attempts, the error and the lease — and nothing else', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await patchReaderPost(supabase as never, POST_ID, { resummarize: true }, NOW);
+
+    // The headline, gist, overview, model, prompt version and summarised-at are deliberately
+    // absent: the row keeps the summary it has until the tick overwrites it.
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+      summary_state: 'pending',
+      summarize_attempts: 0,
+      last_error: null,
+      summarizing_since: null,
+    });
+  });
+
   it('scopes the write to the given id and reads the row back through the shared columns', async () => {
     const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
 
@@ -171,6 +196,30 @@ describe('patchReaderPost', () => {
     expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
     expect(supabase.table('reader_posts').select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
   });
+
+  it('re-summarising refuses a row the tick has queued, in the WHERE clause', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await patchReaderPost(supabase as never, POST_ID, { resummarize: true }, NOW);
+
+    // The route's pre-read can only see the state a moment ago; the filter is what makes the
+    // same rule hold at the instant of the write.
+    expect(supabase.table('reader_posts').neq).toHaveBeenCalledWith('summary_state', 'pending');
+  });
+
+  it.each([
+    ['archiving', { archived: true }],
+    ['opening', { opened: true }],
+  ] as const)(
+    '%s carries no state guard — those verbs apply whatever the tick is doing',
+    async (_name, patch) => {
+      const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+      await patchReaderPost(supabase as never, POST_ID, patch, NOW);
+
+      expect(supabase.table('reader_posts').neq).not.toHaveBeenCalled();
+    },
+  );
 
   it('resolves null data for a row that is not there — the route handles the 404', async () => {
     const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
@@ -192,6 +241,144 @@ describe('patchReaderPost', () => {
     });
 
     const { error } = await patchReaderPost(supabase as never, POST_ID, { archived: true }, NOW);
+
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('getReaderHealthSnapshot', () => {
+  it('reads the singleton row and the personal Gmail account', async () => {
+    const health = makeReaderHealth('live');
+    const account = makeCommAccount('Personal', { key: 'gmail-personal' });
+    const supabase = makeSupabaseDouble({
+      reader_health: { maybeSingle: { data: health } },
+      comm_accounts: { maybeSingle: { data: account } },
+    });
+
+    const { data, error } = await getReaderHealthSnapshot(supabase as never);
+
+    expect(data).toEqual({ health, account });
+    expect(error).toBeNull();
+    expect(supabase.table('reader_health').eq).toHaveBeenCalledWith('id', 1);
+    expect(supabase.table('comm_accounts').eq).toHaveBeenCalledWith('key', 'gmail-personal');
+  });
+
+  it('reports each half as undefined when it is simply not there', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_health: { maybeSingle: { data: null } },
+      comm_accounts: { maybeSingle: { data: null } },
+    });
+
+    const { data } = await getReaderHealthSnapshot(supabase as never);
+
+    expect(data).toEqual({ health: undefined, account: undefined });
+  });
+
+  it('short-circuits on the first error rather than returning half a snapshot', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_health: { maybeSingle: { data: null, error: { message: 'boom' } } },
+      comm_accounts: {
+        maybeSingle: { data: makeCommAccount('Personal', { key: 'gmail-personal' }) },
+      },
+    });
+
+    const { data, error } = await getReaderHealthSnapshot(supabase as never);
+
+    expect(data).toBeNull();
+    expect(error).toEqual({ message: 'boom' });
+    expect(supabase.table('comm_accounts').select).not.toHaveBeenCalled();
+  });
+
+  it('reports the account read’s error too', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_health: { maybeSingle: { data: makeReaderHealth('live') } },
+      comm_accounts: { maybeSingle: { data: null, error: { message: 'accounts are down' } } },
+    });
+
+    const { data, error } = await getReaderHealthSnapshot(supabase as never);
+
+    expect(data).toBeNull();
+    expect(error).toEqual({ message: 'accounts are down' });
+  });
+});
+
+describe('getReaderHealthSeed', () => {
+  it('hands the snapshot through when the reads answer', async () => {
+    const health = makeReaderHealth('ceiling');
+    const account = makeCommAccount('Personal', { key: 'gmail-personal' });
+    const supabase = makeSupabaseDouble({
+      reader_health: { maybeSingle: { data: health } },
+      comm_accounts: { maybeSingle: { data: account } },
+    });
+
+    await expect(getReaderHealthSeed(supabase as never)).resolves.toEqual({ health, account });
+  });
+
+  it('degrades to an empty snapshot on a read error, never to a healthy-looking one', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const supabase = makeSupabaseDouble({
+      reader_health: { maybeSingle: { data: null, error: { message: 'boom' } } },
+    });
+
+    await expect(getReaderHealthSeed(supabase as never)).resolves.toEqual({
+      health: undefined,
+      account: undefined,
+    });
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('creates its own client when none is passed', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_health: { maybeSingle: { data: null } },
+      comm_accounts: { maybeSingle: { data: null } },
+    });
+    mockCreateClient.mockResolvedValue(supabase as never);
+
+    await getReaderHealthSeed();
+
+    expect(mockCreateClient).toHaveBeenCalled();
+  });
+});
+
+describe('getReaderPostResummarizeState', () => {
+  const STORED = { text_swept_at: null, word_count: 3220, summary_state: 'done' };
+
+  it('reads the sweep stamp, the word count and the state, for the row asked for', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: STORED } } });
+
+    const { data } = await getReaderPostResummarizeState(supabase as never, POST_ID);
+
+    expect(data).toEqual(STORED);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+  });
+
+  it('never asks for the body — the count is the presence signal', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: STORED } } });
+
+    await getReaderPostResummarizeState(supabase as never, POST_ID);
+
+    // Compared as COLUMNS rather than as a substring: `text_swept_at` is a column this read does
+    // want, and a substring match on "text" would read it as the body coming back.
+    const [columns] = supabase.table('reader_posts').select.mock.calls[0] as [string];
+    expect(columns.split(',')).not.toContain('text');
+    expect(columns.split(',')).toStrictEqual(['text_swept_at', 'word_count', 'summary_state']);
+  });
+
+  it('resolves null data for a row that is not there — the route handles the 404', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    const { data } = await getReaderPostResummarizeState(supabase as never, POST_ID);
+
+    expect(data).toBeNull();
+  });
+
+  it('passes a Supabase error straight through', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: null, error: { message: 'boom' } } },
+    });
+
+    const { error } = await getReaderPostResummarizeState(supabase as never, POST_ID);
 
     expect(error).toEqual({ message: 'boom' });
   });

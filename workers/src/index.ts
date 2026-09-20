@@ -13,7 +13,7 @@
  * `scheduled` is fired by the cron triggers in wrangler.toml, and dispatches on WHICH schedule
  * fired: the frequent one runs the Inbox classifier and then the comms judge pass, the poll one
  * reads Gmail, the reader one runs the newsletter tick, and the daily one runs the comms
- * retention sweep. Every handler stays thin and delegates.
+ * retention sweep and then the reader's own text sweep. Every handler stays thin and delegates.
  */
 import { handleIngest } from './comms/ingest';
 import {
@@ -27,7 +27,12 @@ import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
 import { READER_DEFAULT_DAILY_CAP } from './reader/config';
-import { type ReaderTickSummary, runReaderTick } from './reader/scheduled';
+import {
+  type ReaderRetentionSummary,
+  type ReaderTickSummary,
+  runReaderRetention,
+  runReaderTick,
+} from './reader/scheduled';
 import { patchCodeItem, patchEpic } from './supabase';
 import { runSweep } from './sweep';
 import { type TransitionTarget, planTransition } from './transitions';
@@ -119,9 +124,12 @@ export const TICK_CRON = '*/2 * * * *';
 export const POLL_CRON = '*/3 * * * *';
 
 /**
- * The daily retention sweep. Housekeeping rather than triage, so it runs alone, overnight, and
- * never drags a model call along with it. These two strings must match wrangler.toml's `crons`:
- * the runtime hands the handler the expression it fired, and that is all it has to dispatch on.
+ * The daily retention sweep — the comms message sweep, then the Reader's 90-day text sweep.
+ * Housekeeping rather than triage, so it runs alone, overnight, and never drags a model call
+ * along with it. Each unit is isolated in its own wrapper's try/catch, so a comms failure never
+ * skips the reader sweep and a reader failure never skips the comms one. These two strings must
+ * match wrangler.toml's `crons`: the runtime hands the handler the expression it fired, and that
+ * is all it has to dispatch on.
  */
 export const RETENTION_CRON = '17 9 * * *';
 
@@ -206,7 +214,10 @@ export default {
     const now = new Date();
 
     if (event.cron === RETENTION_CRON) {
+      // Two isolated units on one schedule: each wrapper owns its own try/catch, so a comms
+      // failure never skips the reader sweep and a reader failure never skips the comms one.
       logRetention(await runCommsRetention(env, now));
+      logReaderRetention(await runReaderRetention(env, now));
       return;
     }
 
@@ -277,6 +288,17 @@ function logRetention(summary: CommsRetentionSummary): void {
   logFailures(summary.failures);
 }
 
+/** The reader's own text sweep, logged separately so a half-run day still says which half. */
+function logReaderRetention(summary: ReaderRetentionSummary): void {
+  if (summary.swept === undefined) {
+    console.log('reader retention: did not run');
+  } else {
+    const plural = summary.swept === 1 ? 'post' : 'posts';
+    console.log(`reader retention: ${String(summary.swept)} ${plural} swept`);
+  }
+  logFailures(summary.failures, 'reader');
+}
+
 /**
  * The reader tick, as ONE line of counts, so `wrangler tail` can say how much of a tick ran. The
  * counts are the tick's own summary; each failure that ended a unit is an error line beneath them.
@@ -293,8 +315,8 @@ function logReaderTick(summary: ReaderTickSummary): void {
   for (const failure of summary.failures) console.error(`reader: ${failure}`);
 }
 
-function logFailures(failures: string[]): void {
-  for (const failure of failures) console.error(`comms: ${failure}`);
+function logFailures(failures: string[], unit = 'comms'): void {
+  for (const failure of failures) console.error(`${unit}: ${failure}`);
 }
 
 async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

@@ -8,7 +8,8 @@ import { getCommsSeed, getCommsSettingsSeed } from '@/lib/data/comms';
 import { getFolders } from '@/lib/data/folders';
 import { getHabitSeed } from '@/lib/data/habits';
 import { getAllItems } from '@/lib/data/items';
-import { getReaderSeed } from '@/lib/data/reader';
+import { getReaderHealthSeed, getReaderSeed } from '@/lib/data/reader';
+import { getReaderSettingsSeed } from '@/lib/data/reader-publications';
 import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans';
 import { todayIn } from '@/lib/habits';
 import { getInstanceConfig } from '@/lib/instance';
@@ -23,6 +24,7 @@ import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
+import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
@@ -63,6 +65,8 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     commsSeed,
     commsSettingsSeed,
     readerSeed,
+    readerSettingsSeed,
+    readerHealthSeed,
   ] = await Promise.all([
     getFolders(),
     getAllItems(),
@@ -81,6 +85,10 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     getCommsSettingsSeed(),
     // The reading list, without post bodies: the row opens the original rather than showing them.
     getReaderSeed(),
+    // Three Reader reads for the same reason Comms takes two: the list moves on the tick's
+    // clock, the roster only when the owner edits it, and health is its own surface.
+    getReaderSettingsSeed(),
+    getReaderHealthSeed(),
   ]);
 
   return (
@@ -131,13 +139,21 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                                     initialRubrics={commsSettingsSeed.rubrics}
                                     initialCorrections={commsSettingsSeed.corrections}
                                   >
-                                    <ReaderProvider initialPosts={readerSeed.posts}>
-                                      <AppShell
-                                        email={user.email ?? null}
-                                        instance={getInstanceConfig()}
+                                    <ReaderProvider
+                                      initialPosts={readerSeed.posts}
+                                      initialHealth={readerHealthSeed}
+                                    >
+                                      <ReaderSettingsProvider
+                                        initialPublications={readerSettingsSeed.publications}
+                                        initialCandidates={readerSettingsSeed.candidates}
                                       >
-                                        {children}
-                                      </AppShell>
+                                        <AppShell
+                                          email={user.email ?? null}
+                                          instance={getInstanceConfig()}
+                                        >
+                                          {children}
+                                        </AppShell>
+                                      </ReaderSettingsProvider>
                                     </ReaderProvider>
                                   </CommsSettingsProvider>
                                 </CommsProvider>

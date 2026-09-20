@@ -45,6 +45,7 @@ export interface TableChain extends PromiseLike<MockResult> {
   update: jest.Mock;
   delete: jest.Mock;
   eq: jest.Mock;
+  neq: jest.Mock;
   is: jest.Mock;
   in: jest.Mock;
   not: jest.Mock;
@@ -69,6 +70,7 @@ export function makeChain(stub: TableStub = {}): TableChain {
     update: jest.fn(self),
     delete: jest.fn(self),
     eq: jest.fn(self),
+    neq: jest.fn(self),
     is: jest.fn(self),
     in: jest.fn(self),
     not: jest.fn(self),

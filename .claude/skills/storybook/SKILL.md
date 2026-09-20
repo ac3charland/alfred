@@ -400,8 +400,8 @@ component can't be screenshotted — a dialog containing a **sandboxed `srcDoc` 
 `postVisit` until the 30 s test timeout (the reason `epic-spec-modal.stories.tsx` opts out
 wholesale), while the same capture driven straight from Playwright takes under a second.
 
-**Capturing interactive states — the part the docs skip.** The official page never
-explains hover/focus. Two hard-won rules:
+**Capturing interactive states — the part the docs skip.** The official page never explains
+hover, focus or keys. Four hard-won rules:
 
 - **CSS `:hover` is NOT triggered by `userEvent.hover` in a play function.** `userEvent`
   dispatches pointer *events*; it never moves a real pointer, so the `:hover`
@@ -412,7 +412,12 @@ explains hover/focus. Two hard-won rules:
   programmatically yields a plain `:focus` with no ring — Tailwind's `focus-visible:ring-*`
   won't render. Press Tab instead: `await page.keyboard.press('Tab')`. Each focus story
   must render a **single** focusable control so the first Tab lands on it.
-
+- **A play function's FIRST `userEvent.keyboard` never reaches a `document`-level listener.**
+  Nothing in the story iframe holds focus yet, so a story whose state a hotkey drives (the
+  Comms queue's / Reader list's `j`-to-select) screenshots the resting state — silently, like
+  the portal case below. Any `userEvent.click` inside the canvas first, and every later
+  keystroke lands. Better still, drive the state through a click the component already honours
+  and leave the keys to the RTL and Playwright suites.
 - **An open Radix menu, dialog or popover is invisible to a snapshot unless the story targets
   `body`.** `DropdownMenuContent` and `DropdownMenuSubContent` both render through
   `DropdownMenuPrimitive.Portal` — outside `#storybook-root`, which is `visualTest.target`'s

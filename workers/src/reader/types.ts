@@ -82,6 +82,8 @@ export interface ReaderPost {
   summarized_at?: string | undefined;
   opened_at?: string | undefined;
   archived_at?: string | undefined;
+  /** When the retention sweep took the body. Set, and the post can never be re-summarised. */
+  text_swept_at?: string | undefined;
   created_at: string;
 }
 
@@ -92,6 +94,23 @@ export interface ReaderHealth {
   last_success_at?: string | undefined;
   last_error?: string | undefined;
   last_error_at?: string | undefined;
+  /** The cap this tick enforced — so nothing reading the row has to know the deploy var. */
+  daily_cap?: number | undefined;
+  /** Model calls made for `calls_day`, as the tick last counted them. */
+  calls_today?: number | undefined;
+  /** The UTC date (`YYYY-MM-DD`) the count belongs to. */
+  calls_day?: string | undefined;
+}
+
+/**
+ * What a health write says about the ceiling. The cap is known from the config before the tick
+ * does anything; the count only after the tick has read it, which is why the other two are
+ * optional rather than a second interface.
+ */
+export interface ReaderCeiling {
+  daily_cap: number;
+  calls_today?: number | undefined;
+  calls_day?: string | undefined;
 }
 
 /**

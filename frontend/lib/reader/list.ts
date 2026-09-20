@@ -13,6 +13,14 @@ export function isActive(post: ReaderPostListItem): boolean {
 }
 
 /**
+ * True for a post the owner has put away — the archive's membership rule, and the complement of
+ * {@link isActive} over the store's one post list.
+ */
+export function isArchived(post: ReaderPostListItem): boolean {
+  return post.archived_at !== null;
+}
+
+/**
  * The list's own order: most recently arrived first, ties broken stably (the input order is
  * preserved for two posts with the same instant, rather than left to the sort's whim).
  */

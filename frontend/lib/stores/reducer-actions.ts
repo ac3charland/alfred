@@ -29,27 +29,46 @@ export function simpleReducer<T extends { id: string }>(
   action: SimpleAction<T>,
   context: string,
 ): T[] {
+  return keyedReducer(state, action, context, (row) => row.id);
+}
+
+/**
+ * The same five moves over a list whose identity is NOT a column called `id` — `keyOf` says what
+ * a row is keyed on, and the action's `id` / `ids` carry that key.
+ *
+ * Most rows in the app are database rows and are keyed on their primary key, which is why
+ * {@link simpleReducer} (this with `row.id`) is what stores reach for. A row read from an
+ * aggregate view has no primary key at all: the Reader's candidate senders are grouped by
+ * handle, and the handle IS the identity — so the choice is either this, or inventing an `id`
+ * column that nothing in the database has.
+ */
+export function keyedReducer<T>(
+  state: T[],
+  action: SimpleAction<T>,
+  context: string,
+  keyOf: (row: T) => string,
+): T[] {
   switch (action.type) {
     case 'insert': {
       return [...state, action.item];
     }
     case 'replace': {
-      return state.map((row) => (row.id === action.id ? action.item : row));
+      return state.map((row) => (keyOf(row) === action.id ? action.item : row));
     }
     case 'patch': {
       const ids = new Set(action.ids);
-      return state.map((row) => (ids.has(row.id) ? { ...row, ...action.patch } : row));
+      return state.map((row) => (ids.has(keyOf(row)) ? { ...row, ...action.patch } : row));
     }
     case 'upsert': {
-      const byId = new Map(action.items.map((row) => [row.id, row] as const));
-      const replaced = state.map((row) => byId.get(row.id) ?? row);
-      const presentIds = new Set(state.map((row) => row.id));
-      const added = action.items.filter((row) => !presentIds.has(row.id));
+      const byId = new Map(action.items.map((row) => [keyOf(row), row] as const));
+      const replaced = state.map((row) => byId.get(keyOf(row)) ?? row);
+      const presentIds = new Set(state.map((row) => keyOf(row)));
+      const added = action.items.filter((row) => !presentIds.has(keyOf(row)));
       return [...replaced, ...added];
     }
     case 'remove': {
       const ids = new Set(action.ids);
-      return state.filter((row) => !ids.has(row.id));
+      return state.filter((row) => !ids.has(keyOf(row)));
     }
     default: {
       return assertNever(action, context);

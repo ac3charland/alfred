@@ -2,7 +2,8 @@ import type { GmailMessage } from '../comms/gmail-api';
 import { type FetchInit, type FetchInput, spyOnFetch } from '../fetch-stub';
 import { READER_DEFAULT_DAILY_CAP } from './config';
 import { ESSAY_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE, READ_IN_APP_MESSAGE } from './fixtures';
-import { READER_TICK_BUDGET_MS, runReaderTick } from './scheduled';
+import * as retention from './retention';
+import { READER_TICK_BUDGET_MS, runReaderRetention, runReaderTick } from './scheduled';
 import * as summarize from './summarize';
 import type { ReaderEnv, ReaderSummary, SummaryInput, SummaryOutcome } from './types';
 
@@ -241,8 +242,11 @@ describe('runReaderTick — failing closed', () => {
     expect(summary.failures).toEqual([expect.stringContaining('READER_DAILY_CAP')]);
     expect(summarized).not.toHaveBeenCalled();
     expect(calls.filter((call) => !call.url.includes('reader_health'))).toEqual([]);
-    expect(payload(restCalls(calls, 'reader_health')[0])).toMatchObject({
+    // No ceiling columns: the cap is exactly what could not be read, so the tick has nothing
+    // true to say about it.
+    expect(payload(restCalls(calls, 'reader_health')[0])).toEqual({
       last_error: expect.stringContaining('READER_DAILY_CAP') as unknown,
+      last_error_at: NOW_ISO,
     });
   });
 
@@ -299,9 +303,35 @@ describe('runReaderTick — ordering', () => {
     const summary = await runReaderTick(env, NOW);
 
     const health = restCalls(calls, 'reader_health');
-    expect(payload(health[0])).toEqual({ last_run_at: NOW_ISO });
-    expect(payload(health[1])).toEqual({ last_success_at: NOW_ISO });
+    // The run-start write carries the whole ceiling: the count is read BEFORE the stamp, so
+    // `last_run_at` never moves to today while the row still holds yesterday's count.
+    expect(payload(health[0])).toEqual({
+      last_run_at: NOW_ISO,
+      daily_cap: 30,
+      calls_today: 0,
+      calls_day: '2026-09-18',
+    });
+    expect(payload(health[1])).toEqual({
+      last_success_at: NOW_ISO,
+      daily_cap: 30,
+      calls_today: 0,
+      calls_day: '2026-09-18',
+    });
     expect(summary.failures).toEqual([]);
+  });
+
+  it('counts the day before it stamps the run, so the two never disagree', async () => {
+    const calls = harness({ callsToday: 7 });
+
+    await runReaderTick(env, NOW);
+
+    const count = indexOfCall(
+      calls,
+      (call) => call.method === 'GET' && call.url.includes('model_called_at=gte'),
+    );
+    const start = indexOfCall(calls, (call) => 'last_run_at' in payload(call));
+    expect(count).toBeGreaterThanOrEqual(0);
+    expect(count).toBeLessThan(start);
   });
 
   it('puts retries ahead of fresh posts, so a post is never starved by a busy morning', async () => {
@@ -399,7 +429,12 @@ describe('runReaderTick — the mailbox', () => {
     expect(restCalls(calls, 'reader_posts', 'POST')).toEqual([]);
     const health = restCalls(calls, 'reader_health');
     expect(health).toHaveLength(1);
-    expect(payload(health[0])).toEqual({ last_run_at: NOW_ISO });
+    expect(payload(health[0])).toEqual({
+      last_run_at: NOW_ISO,
+      daily_cap: 30,
+      calls_today: 0,
+      calls_day: '2026-09-18',
+    });
   });
 
   it('claims and inserts nothing for a message Gmail has lost', async () => {
@@ -784,6 +819,56 @@ describe('runReaderTick — a write that fails outright', () => {
     expect(summary.intake).toBe(1);
     expect(restCalls(calls, 'reader_posts', 'POST')).toHaveLength(1);
   });
+
+  it('stamps the spend the throw happened after, not the one the day started with', async () => {
+    // The money already spent is what a failed run most needs to report: a count dropped here
+    // reads, until the next clean tick, as a day that spent nothing.
+    const calls = harness({
+      callsToday: 4,
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+      postPatchStatus: 500,
+    });
+    mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(payload(restCalls(calls, 'reader_health').at(-1))).toMatchObject({
+      daily_cap: 30,
+      calls_today: 5,
+      calls_day: '2026-09-18',
+    });
+  });
+
+  it('stamps the cap alone when the throw beat the count', async () => {
+    // The ceiling count is the tick's first fetch; a throw on it leaves nothing to report but
+    // the cap, and a guessed count would be worse than none.
+    const calls: Call[] = [];
+    spyOnFetch().mockImplementation((input: FetchInput, init?: FetchInit) => {
+      const url = input as string;
+      calls.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      });
+      return Promise.resolve(
+        url.includes('reader_health')
+          ? Response.json([{ id: 1 }])
+          : new Response('postgrest said no', { status: 500 }),
+      );
+    });
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(summary.failures).toEqual([expect.stringContaining('COUNT reader_posts')]);
+    const health = restCalls(calls, 'reader_health');
+    expect(health).toHaveLength(1);
+    expect(payload(health[0])).toEqual({
+      last_error: expect.stringContaining('COUNT reader_posts') as unknown,
+      last_error_at: NOW_ISO,
+      daily_cap: 30,
+    });
+  });
 });
 
 describe('runReaderTick — one whole tick over the fixtures', () => {
@@ -858,6 +943,112 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
       skippedForCap: 0,
       skippedForBudget: 0,
       failures: [],
+    });
+  });
+});
+
+describe('runReaderTick — the ceiling stamp', () => {
+  it("reports the day's spend as the count it started from plus the calls it made", async () => {
+    const calls = harness({
+      callsToday: 7,
+      fresh: [
+        worklistRow(),
+        worklistRow({ comm_message_id: 'comm-2', gmail_message_id: PLAIN_TEXT_ONLY_MESSAGE.id }),
+      ],
+      messages: [ESSAY_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE],
+    });
+    mockSummarize(DONE, DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(payload(restCalls(calls, 'reader_health').at(-1))).toEqual({
+      last_success_at: NOW_ISO,
+      daily_cap: 30,
+      calls_today: 9,
+      calls_day: '2026-09-18',
+    });
+  });
+
+  it('stamps the ceiling on the error write too, once the count has been read', async () => {
+    const calls = harness({
+      callsToday: 4,
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+    });
+    mockSummarize({ kind: 'systemic', reason: 'credentials', error: '401 invalid x-api-key' });
+
+    await runReaderTick(env, NOW);
+
+    expect(payload(restCalls(calls, 'reader_health').at(-1))).toMatchObject({
+      last_error: expect.stringContaining('401') as unknown,
+      daily_cap: 30,
+      calls_today: 5,
+      calls_day: '2026-09-18',
+    });
+  });
+
+  it('stamps the cap alone when a credential fails before the count is read', async () => {
+    const calls = harness();
+
+    await runReaderTick(without('ANTHROPIC_API_KEY'), NOW);
+
+    expect(payload(restCalls(calls, 'reader_health')[0])).toEqual({
+      last_error: 'ANTHROPIC_API_KEY is not set',
+      last_error_at: NOW_ISO,
+      daily_cap: 30,
+    });
+  });
+
+  it('stamps the cap the tick actually enforced, not the default', async () => {
+    const calls = harness({ callsToday: 2 });
+
+    await runReaderTick({ ...env, READER_DAILY_CAP: '5' }, NOW);
+
+    expect(payload(restCalls(calls, 'reader_health')[0])).toMatchObject({ daily_cap: 5 });
+    expect(payload(restCalls(calls, 'reader_health').at(-1))).toMatchObject({
+      daily_cap: 5,
+      calls_today: 2,
+    });
+  });
+});
+
+describe('runReaderRetention', () => {
+  it('passes the swept count through', async () => {
+    jest.spyOn(retention, 'runReaderRetention').mockResolvedValue({ swept: 91 });
+
+    await expect(runReaderRetention(env, NOW)).resolves.toEqual({ swept: 91, failures: [] });
+  });
+
+  it('reports a failed sweep rather than taking the invocation down with it', async () => {
+    jest.spyOn(retention, 'runReaderRetention').mockRejectedValue(new Error('permission denied'));
+
+    await expect(runReaderRetention(env, NOW)).resolves.toEqual({
+      swept: undefined,
+      failures: ['reader retention: permission denied'],
+    });
+  });
+
+  it('keeps the rows committed before the failure, beside the failure', async () => {
+    // Each batch is its own transaction: those two posts are swept whatever happened next, and a
+    // run that reported "did not run" would be lying about durable work.
+    jest
+      .spyOn(retention, 'runReaderRetention')
+      .mockRejectedValue(new retention.ReaderSweepError('permission denied', 2));
+
+    await expect(runReaderRetention(env, NOW)).resolves.toEqual({
+      swept: 2,
+      failures: ['reader retention: permission denied'],
+    });
+  });
+
+  it('still reads as "did not run" when the failure beat the first batch', async () => {
+    jest
+      .spyOn(retention, 'runReaderRetention')
+      .mockRejectedValue(new retention.ReaderSweepError('permission denied', 0));
+
+    await expect(runReaderRetention(env, NOW)).resolves.toEqual({
+      swept: undefined,
+      failures: ['reader retention: permission denied'],
     });
   });
 });

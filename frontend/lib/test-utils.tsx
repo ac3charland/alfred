@@ -14,6 +14,7 @@ import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
+import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
@@ -33,7 +34,10 @@ import type {
   HabitEntry,
   Item,
   Project,
+  ReaderCandidate,
+  ReaderHealth,
   ReaderPostListItem,
+  ReaderPublicationListItem,
   WeeklyPlan,
   WeeklyPlanSummary,
 } from '@/lib/types';
@@ -79,9 +83,18 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
     rubrics?: CommRubric[];
     corrections?: CommCorrection[];
   };
-  /** The Reader's list seed: the unarchived posts, bodies omitted. */
+  /**
+   * The Reader's list seed: the unarchived posts (bodies omitted) and the tick's health row.
+   * Leaving `health` out is the state before the tick has ever run.
+   */
   reader?: {
     posts?: ReaderPostListItem[];
+    health?: ReaderHealth;
+  };
+  /** The Reader's roster seed: the publications and the off-roster senders offered beside them. */
+  readerSettings?: {
+    publications?: ReaderPublicationListItem[];
+    candidates?: ReaderCandidate[];
   };
 }
 
@@ -98,6 +111,7 @@ export function renderWithProviders(
     comms = {},
     commsSettings = {},
     reader = {},
+    readerSettings = {},
     ...options
   }: ProviderRenderOptions = {},
 ) {
@@ -140,8 +154,16 @@ export function renderWithProviders(
                                   initialRubrics={commsSettings.rubrics ?? []}
                                   initialCorrections={commsSettings.corrections ?? []}
                                 >
-                                  <ReaderProvider initialPosts={reader.posts ?? []}>
-                                    {children}
+                                  <ReaderProvider
+                                    initialPosts={reader.posts ?? []}
+                                    initialHealth={{ health: reader.health, account: undefined }}
+                                  >
+                                    <ReaderSettingsProvider
+                                      initialPublications={readerSettings.publications ?? []}
+                                      initialCandidates={readerSettings.candidates ?? []}
+                                    >
+                                      {children}
+                                    </ReaderSettingsProvider>
                                   </ReaderProvider>
                                 </CommsSettingsProvider>
                               </CommsProvider>

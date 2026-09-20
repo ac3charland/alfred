@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -30,6 +30,11 @@ function endExit(): void {
   const event = new Event('transitionend', { bubbles: true });
   Object.defineProperty(event, 'propertyName', { value: 'grid-template-rows' });
   fireEvent(wrapper, event);
+}
+
+/** The card itself — a button whose accessible name is the content it wraps. */
+function card(): HTMLElement {
+  return screen.getByRole('button', { name: /the row’s own gist/ });
 }
 
 beforeEach(() => {
@@ -164,9 +169,9 @@ describe('PostRow — Open', () => {
     );
   });
 
-  it('is disabled with a title when neither exists', () => {
+  it('is disabled with a title when neither exists, and wears no keycap', () => {
     renderReader(
-      <PostRow post={post({ canonical_url: null, rfc822_message_id: null })} now={NOW} />,
+      <PostRow post={post({ canonical_url: null, rfc822_message_id: null })} now={NOW} selected />,
     );
 
     const button = screen.getByRole('button', { name: 'Open' });
@@ -175,6 +180,8 @@ describe('PostRow — Open', () => {
       'title',
       'No link in the post and no Message-ID captured for it.',
     );
+    // `o` runs the row's anchor, and there is no anchor to run — a hint here points at nothing.
+    expect(within(button).queryByText('o')).not.toBeInTheDocument();
   });
 
   it('stamps opened on click, without calling preventDefault', () => {
@@ -252,6 +259,121 @@ describe('PostRow — Overview', () => {
   });
 });
 
+describe('PostRow — the disclosure', () => {
+  const PANEL_ROW = {
+    id: 'p-1',
+    summary_state: 'done',
+    gist: 'the row’s own gist',
+    word_count: 3220,
+  } as const;
+
+  it('says what it controls, and that it is shut, when there is a panel', () => {
+    renderReader(
+      <PostRow post={post({ ...PANEL_ROW, overview: makeReaderOverview() })} now={NOW} />,
+    );
+
+    const panel = screen.getByTestId('reader-row-overview').parentElement;
+    expect(card()).toHaveAttribute('aria-expanded', 'false');
+    expect(card()).toHaveAttribute('aria-controls', panel?.id ?? '');
+    expect(screen.getByRole('button', { name: 'Overview' })).toHaveAttribute(
+      'aria-controls',
+      panel?.id ?? '',
+    );
+  });
+
+  it('claims no disclosure at all on a row with nothing to disclose', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={post({ ...PANEL_ROW, summary_state: 'pending' })} now={NOW} />);
+
+    expect(card()).not.toHaveAttribute('aria-expanded');
+    expect(card()).not.toHaveAttribute('aria-controls');
+
+    // The click still points the keyboard here; it just has nothing to open.
+    await user.click(card());
+
+    expect(card()).not.toHaveAttribute('aria-expanded');
+    expect(screen.getByTestId('reader-row').className).not.toContain('bg-secondary/40');
+  });
+
+  it('reaches the panel of a done row whose overview failed the guard', async () => {
+    const user = userEvent.setup();
+    const row = post({
+      ...PANEL_ROW,
+      overview: { broken: true } as unknown as ReaderOverview,
+      model: 'claude-sonnet-5',
+      prompt_version: 2,
+      summarized_at: '2026-09-16T14:05:00.000Z',
+    });
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getByText('claude-sonnet-5 · prompt v2 · Sep 16')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Re-summarise' })).toBeInTheDocument();
+  });
+
+  it('answers v on a done row whose only panel content is the stamp', async () => {
+    const user = userEvent.setup();
+    const row = post({
+      ...PANEL_ROW,
+      overview: { broken: true } as unknown as ReaderOverview,
+      word_count: 0,
+      model: 'claude-sonnet-5',
+      prompt_version: 2,
+      summarized_at: '2026-09-16T14:05:00.000Z',
+    });
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    await user.keyboard('v');
+
+    expect(screen.getByRole('button', { name: 'Hide overview' })).toBeInTheDocument();
+    expect(screen.getByText('claude-sonnet-5 · prompt v2 · Sep 16')).toBeInTheDocument();
+  });
+});
+
+describe('PostRow — every verb points the keyboard at its own row', () => {
+  const ROW = {
+    id: 'p-1',
+    canonical_url: 'https://example.test/alpha',
+    word_count: 900,
+    gist: 'a gist',
+  } as const;
+
+  it.each([
+    ['Open', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
+    ['Overview', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
+    ['Retry summary', post({ ...ROW, summary_state: 'failed' })],
+    ['Archive', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
+  ])('%s', async (name, row) => {
+    const user = userEvent.setup();
+    const onSelect = jest.fn();
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    renderReader(<PostRow post={row} now={NOW} onSelect={onSelect} />, [row]);
+
+    await user.click(screen.getByRole(name === 'Open' ? 'link' : 'button', { name }));
+
+    expect(onSelect).toHaveBeenCalledWith('p-1');
+  });
+
+  it('Re-summarise, from inside the panel', async () => {
+    const user = userEvent.setup();
+    const onSelect = jest.fn();
+    const row = post({
+      ...ROW,
+      summary_state: 'done',
+      overview: makeReaderOverview(),
+      model: 'claude-sonnet-5',
+    });
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    renderReader(<PostRow post={row} now={NOW} onSelect={onSelect} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    await user.click(screen.getByRole('button', { name: 'Re-summarise' }));
+
+    expect(onSelect).toHaveBeenNthCalledWith(2, 'p-1');
+  });
+});
+
 describe('PostRow — Archive', () => {
   it('runs the exit animation then the store action', async () => {
     const user = userEvent.setup();
@@ -276,5 +398,289 @@ describe('PostRow — Archive', () => {
     endExit();
 
     expect(await screen.findByText("Couldn't archive that post")).toBeInTheDocument();
+  });
+});
+
+describe('PostRow — Retry summary', () => {
+  it('offers the verb on a failed row and queues the post when it is clicked', async () => {
+    const user = userEvent.setup();
+    const row = post({ id: 'p-1', summary_state: 'failed', word_count: 6500 });
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, summary_state: 'pending' });
+    renderReader(<PostRow post={row} now={NOW} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Retry summary' }));
+
+    expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { resummarize: true });
+  });
+
+  it('offers the verb on a refused row too — the owner overrides "no retry"', () => {
+    const row = post({ summary_state: 'refused', word_count: 420 });
+    renderReader(<PostRow post={row} now={NOW} />, [row]);
+
+    expect(screen.getByRole('button', { name: 'Retry summary' })).toBeInTheDocument();
+  });
+
+  it('is absent while a summary is still on its way', () => {
+    renderReader(<PostRow post={post({ summary_state: 'pending', word_count: 900 })} now={NOW} />);
+
+    expect(screen.queryByRole('button', { name: 'Retry summary' })).not.toBeInTheDocument();
+  });
+
+  it('is absent once the text has been swept — a re-run could only fail', () => {
+    const row = post({
+      summary_state: 'failed',
+      word_count: 6500,
+      text_swept_at: '2026-09-08T03:00:00.000Z',
+    });
+    renderReader(<PostRow post={row} now={NOW} />);
+
+    expect(screen.queryByRole('button', { name: 'Retry summary' })).not.toBeInTheDocument();
+  });
+
+  it('is absent on a post that never had a body to summarise', () => {
+    const row = post({ summary_state: 'failed', word_count: 0, last_error: 'no readable body' });
+    renderReader(<PostRow post={row} now={NOW} />);
+
+    expect(screen.queryByRole('button', { name: 'Retry summary' })).not.toBeInTheDocument();
+  });
+});
+
+describe('PostRow — the summary stamp and Re-summarise', () => {
+  const DONE = {
+    summary_state: 'done',
+    gist: 'a gist',
+    word_count: 3220,
+    model: 'claude-sonnet-5',
+    prompt_version: 2,
+    summarized_at: '2026-09-16T14:05:00.000Z',
+  } as const;
+
+  it('stamps which model wrote the summary, under which prompt, and when', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={post({ ...DONE, overview: makeReaderOverview() })} now={NOW} />);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getByText('claude-sonnet-5 · prompt v2 · Sep 16')).toBeInTheDocument();
+  });
+
+  it('offers the ghost re-run beneath the overview, and queues the post', async () => {
+    const user = userEvent.setup();
+    const row = post({ id: 'p-1', ...DONE, overview: makeReaderOverview() });
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, summary_state: 'pending' });
+    renderReader(<PostRow post={row} now={NOW} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    await user.click(screen.getByRole('button', { name: 'Re-summarise' }));
+
+    expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { resummarize: true });
+  });
+
+  it('never offers the re-run as the row’s primary "Retry summary" verb', () => {
+    renderReader(<PostRow post={post({ ...DONE, overview: makeReaderOverview() })} now={NOW} />);
+
+    expect(screen.queryByRole('button', { name: 'Retry summary' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the stamp but drops the verb once the text has been swept', async () => {
+    const user = userEvent.setup();
+    renderReader(
+      <PostRow
+        post={post({
+          ...DONE,
+          overview: makeReaderOverview(),
+          text_swept_at: '2026-09-08T03:00:00.000Z',
+        })}
+        now={NOW}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getByText('claude-sonnet-5 · prompt v2 · Sep 16')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Re-summarise' })).not.toBeInTheDocument();
+  });
+});
+
+describe('PostRow — a summary being replaced', () => {
+  it('keeps the previous gist under the pending marker rather than blanking it', () => {
+    renderReader(
+      <PostRow
+        post={post({
+          summary_state: 'pending',
+          gist: 'the summary it already has',
+          word_count: 3220,
+        })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('summarising…')).toBeInTheDocument();
+    const gist = screen.getByText('the summary it already has');
+    expect(gist).toHaveClass('opacity-60');
+  });
+
+  it('keeps the previous overview reachable while the re-run is queued', () => {
+    renderReader(
+      <PostRow
+        post={post({
+          summary_state: 'pending',
+          gist: 'the summary it already has',
+          overview: makeReaderOverview(),
+        })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Overview' })).toBeInTheDocument();
+  });
+
+  it('still shows the waiting placeholder for a post that has never been summarised', () => {
+    renderReader(<PostRow post={post({ summary_state: 'pending', gist: null })} now={NOW} />);
+
+    expect(
+      screen.getByText('The summary is on its way — open it now, or check back in a few minutes.'),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('PostRow — a swept post', () => {
+  it('says the text was swept, and why that is the end of it', () => {
+    renderReader(
+      <PostRow
+        post={post({ summary_state: 'refused', text_swept_at: '2026-09-08T03:00:00.000Z' })}
+        now={NOW}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "No summary — the model declined to summarise this one. Its text was swept on Sep 8, so it can't be retried; open it or archive it.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the ordinary failed line for a post that simply had no body', () => {
+    renderReader(
+      <PostRow
+        post={post({ summary_state: 'failed', word_count: 0, last_error: 'no readable body' })}
+        now={NOW}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'No summary — no readable body. The post is still here; open it or archive it.',
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('PostRow — selection', () => {
+  const SELECTABLE = {
+    id: 'p-1',
+    title: 'Alpha',
+    canonical_url: 'https://example.test/alpha',
+    word_count: 900,
+    summary_state: 'done',
+    gist: 'The only one.',
+  } as const;
+
+  it('goes unmarked and unringed while another row holds the selection', () => {
+    const row = post({ ...SELECTABLE, overview: makeReaderOverview() });
+    renderReader(<PostRow post={row} now={NOW} />, [row]);
+
+    expect(screen.getByTestId('reader-row').dataset['selected']).toBe('false');
+    expect(screen.getByTestId('reader-row').className).not.toContain('ring-1');
+  });
+
+  it('marks itself for the keyboard and wears the ring once it holds the selection', () => {
+    const row = post({ ...SELECTABLE, overview: makeReaderOverview() });
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    expect(screen.getByTestId('reader-row').dataset['selected']).toBe('true');
+    expect(screen.getByTestId('reader-row').className).toContain('ring-1');
+  });
+
+  it('is selected and expanded independently — a selected row need not be open', async () => {
+    const user = userEvent.setup();
+    const row = post({ ...SELECTABLE, overview: makeReaderOverview() });
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    expect(screen.getByRole('button', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.getByTestId('reader-row').className).not.toContain('bg-secondary/40');
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getByTestId('reader-row').className).toContain('bg-secondary/40');
+    expect(screen.getByTestId('reader-row').className).toContain('ring-1');
+  });
+
+  it('asks to be selected when its card is clicked, without ever asking to be cleared', async () => {
+    const user = userEvent.setup();
+    const onSelect = jest.fn();
+    const row = post({ ...SELECTABLE, overview: makeReaderOverview() });
+    renderReader(<PostRow post={row} now={NOW} selected onSelect={onSelect} />, [row]);
+
+    await user.click(screen.getByText('Alpha'));
+    await user.click(screen.getByText('Alpha'));
+
+    expect(onSelect).toHaveBeenNthCalledWith(1, 'p-1');
+    expect(onSelect).toHaveBeenNthCalledWith(2, 'p-1');
+  });
+
+  it('answers no verb key while another row holds the selection', async () => {
+    const user = userEvent.setup();
+    const row = post({ ...SELECTABLE, overview: makeReaderOverview() });
+    renderReader(<PostRow post={row} now={NOW} />, [row]);
+
+    await user.keyboard('ve');
+
+    expect(screen.queryByRole('heading', { name: 'Novel ideas' })).not.toBeInTheDocument();
+    expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
+  });
+});
+
+describe('PostRow — the archive variant', () => {
+  const ARCHIVED = {
+    id: 'p-1',
+    title: 'Alpha',
+    canonical_url: 'https://example.test/alpha',
+    word_count: 900,
+    summary_state: 'done',
+    gist: 'Put away a while ago.',
+    archived_at: '2026-09-18T08:00:00.000Z',
+  } as const;
+
+  it('reverses the archive verb and tells the list as the exit starts', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = post(ARCHIVED);
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, archived_at: null });
+    renderReader(<PostRow post={row} now={NOW} variant="archive" onExit={onExit} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Unarchive' }));
+
+    // The list is told at once, so the selection moves on while the collapse is still playing.
+    expect(onExit).toHaveBeenCalledWith('p-1');
+    expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
+
+    endExit();
+
+    await waitFor(() => {
+      expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { archived: false });
+    });
+  });
+
+  it('toasts and keeps the row when the unarchive fails', async () => {
+    const user = userEvent.setup();
+    const row = post(ARCHIVED);
+    mockApi.patchReaderPost.mockRejectedValue(new Error('boom'));
+    renderReader(<PostRow post={row} now={NOW} variant="archive" />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Unarchive' }));
+    endExit();
+
+    expect(await screen.findByText("Couldn't unarchive that post")).toBeInTheDocument();
   });
 });

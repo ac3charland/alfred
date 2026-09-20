@@ -1,6 +1,6 @@
 import { makeReaderPost } from '@/lib/reader/fixtures';
 
-import { byReceivedDescending, isActive } from './list';
+import { byReceivedDescending, isActive, isArchived } from './list';
 
 const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
 
@@ -13,6 +13,18 @@ describe('isActive', () => {
   it('is false once archived_at is stamped', () => {
     const post = makeReaderPost(PUBLICATION_ID, { archived_at: '2026-09-16T09:00:00.000Z' });
     expect(isActive(post)).toBe(false);
+  });
+});
+
+describe('isArchived', () => {
+  it('is false while the post is still on the reading list', () => {
+    const post = makeReaderPost(PUBLICATION_ID, { archived_at: null });
+    expect(isArchived(post)).toBe(false);
+  });
+
+  it('is true once the post has been put away', () => {
+    const post = makeReaderPost(PUBLICATION_ID, { archived_at: '2026-09-16T09:00:00.000Z' });
+    expect(isArchived(post)).toBe(true);
   });
 });
 
