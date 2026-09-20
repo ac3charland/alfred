@@ -106,8 +106,10 @@ export function LocVelocity() {
   if (state.status === 'computing') {
     return (
       <SurfaceCard title={TITLE}>
+        {/* The hook is already polling in the background, so this never asks for a manual reload. */}
         <p className="text-sm text-muted-foreground">
-          GitHub is still computing these statistics. Refresh in a minute.
+          GitHub is still computing these statistics. This chart will appear automatically once
+          they&apos;re ready.
         </p>
       </SurfaceCard>
     );
