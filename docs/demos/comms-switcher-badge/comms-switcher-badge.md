@@ -12,7 +12,7 @@ Two messages are seeded into counted tiers (asap, today) and one onto the FYI sh
 
 ![](comms-switcher-badge-image-1.png)
 
-A closer look at the corner badge (Storybook's ViewSwitcher story, framed at the real 256px sidebar width): the badge sits fully inside the segment's own box — a positive inset, not a negative one — so it survives the segment's own text-clipping `overflow-hidden` instead of being cut off by it. Comms reserves a little extra right padding so the badge never overlaps the label's final "s".
+A closer look at the corner badge (Storybook's ViewSwitcher story, framed at the real 256px sidebar width): the badge pokes slightly *outside* the segment's own corner, like a conventional notification badge, rather than squeezing inside next to the label — the segment is only ~13px of text tall, so any inside-the-box position collided with the label's own cap-height (an earlier version of this badge visibly overlapped the final "s" in "Comms"). That only works because `truncate` (the text-clipping `overflow-hidden`) moved off the segment link itself and onto an inner span wrapping just the label text — left on the link, it would clip the badge's overhang along with any overflowing text.
 
 ![](comms-switcher-badge-image-2.png)
 
@@ -21,3 +21,9 @@ The resting state — nothing owed, so the badge disappears entirely (hides at z
 ![](comms-switcher-badge-image-3.png)
 
 Order and accessibility are pinned by tests: the switcher's DOM order is Tasks, Code, Reader, Comms, and the badge exposes its meaning through an accessible label ("N waiting for a reply") exactly like the Habits and old Queue badges did.
+
+Moving Comms to the far right shifted the switcher's committed Storybook baselines for all four modules (each segment's own rendered width and position shift when the fourth slot changes hands) — the auto-generated diff for the two modules that actually swapped seats, Comms and Reader:
+
+![](comms-switcher-badge-image-4.png)
+
+![](comms-switcher-badge-image-5.png)
