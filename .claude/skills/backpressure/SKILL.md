@@ -154,9 +154,10 @@ your change: the `daemon` package's `node:sqlite` suites can't resolve the built
 `Cannot find module 'sqlite'`), and the import sorter reformats `daemon/src/sources/imessage/*`,
 dirtying files you never touched. Install the pinned version and the whole fan-out goes green —
 never work around it by editing the daemon's Jest config or committing that formatting drift. In the
-web sandbox `nvm install 24` lands under `~/.nvm/versions/node/v24.*/bin` but the login PATH still
-leads with `/opt/node22/bin`, so prefix `PATH` with that bin dir on every command that runs the hooks
-(`git commit`, `git push`) — a `bash -lc` shell alone does not pick it up.
+web sandbox `nvm install 24` reports the build it installed but `nvm use` does not take, and the
+login PATH still leads with `/opt/node22/bin`; find the new `bin` dir (`find / -name v24.\* -type d`
+— with `NVM_DIR` unset it is not under `~/.nvm`) and prefix `PATH` with it on every command that
+runs the hooks (`git commit`, `git push`) — a `bash -lc` shell alone does not pick it up.
 
 ## Related skills
 
