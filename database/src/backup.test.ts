@@ -10,6 +10,7 @@ import {
   copiedTables,
   dailyKey,
   describeSchemaDrift,
+  emptyTablesStatement,
   missingCoreTables,
   monthlyKey,
   reconcileDriftStatements,
@@ -297,5 +298,24 @@ describe('reconcileDriftStatements identifier guard', () => {
     expect(() =>
       reconcileDriftStatements([{ table: 'it"ems', columns: ['a'], absent: false }]),
     ).toThrow(/identifier/);
+  });
+});
+
+describe('emptyTablesStatement', () => {
+  it('truncates every table it is given, so a migration-seeded row cannot meet the dump’s copy', () => {
+    // The verify database is a TARGET for production's data. 0035 seeds the reader_health
+    // singleton, so without this the dump's own `id = 1` hits reader_health_pkey and the
+    // --single-transaction load aborts on a sound dump.
+    expect(emptyTablesStatement(['items', 'reader_health'])).toBe(
+      'truncate table public."items", public."reader_health" restart identity cascade',
+    );
+  });
+
+  it('is undefined when there is nothing to empty, so no statement is sent', () => {
+    expect(emptyTablesStatement([])).toBeUndefined();
+  });
+
+  it('refuses a table name that could break out of its quoting', () => {
+    expect(() => emptyTablesStatement(['it"ems'])).toThrow(/identifier/);
   });
 });

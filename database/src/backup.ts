@@ -231,6 +231,17 @@ export function reconcileDriftStatements(drift: readonly TableDrift[]): string[]
 }
 
 /**
+ * SQL emptying every one of `tables` in `public`, or `undefined` when there is nothing to empty.
+ * `restart identity` so sequences start where a fresh database's would, and `cascade` so an FK
+ * from a table outside the list can never block the truncate.
+ */
+export function emptyTablesStatement(tables: readonly string[]): string | undefined {
+  if (tables.length === 0) return undefined;
+  const names = tables.map((table) => `public.${quoteIdentifier(table)}`).join(', ');
+  return `truncate table ${names} restart identity cascade`;
+}
+
+/**
  * The run's exit code once the dump has been verified and uploaded. Drift means the artifact is
  * safe but the repo is behind production, and a red run is the only thing that chases that — so a
  * drifted run reports failure even though the backup is in R2. Separated from {@link main} so the
@@ -319,11 +330,18 @@ async function presentPublicColumns(
  *
  * Leave the ledger out and the drift check below reports it as *production ahead of the repo* on
  * every single run — a gap no migration may ever close, since none is allowed to create it.
+ *
+ * Then empty it: the schema is what this step wanted, and any ROWS a migration planted on the way
+ * are residue standing in the dump's path. A migration that seeds a singleton (`reader_health`)
+ * leaves production's own copy of that row with nowhere to land, and since the restore loads
+ * `--single-transaction`, that one duplicate key aborts the whole load of a perfectly sound dump.
  */
 export async function buildVerifySchema(client: InstanceType<typeof Client>): Promise<void> {
   await bootstrapSupabase(client);
   await applyMigrations(client);
   await ensureLedger(client);
+  const empty = emptyTablesStatement(await presentPublicTables(client));
+  if (empty !== undefined) await client.query(empty);
 }
 
 /**

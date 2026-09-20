@@ -2731,6 +2731,44 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const backupVerifierEmptyResult = await attempt(
+    'the backup verifier hands the dump an EMPTY database, whatever a migration seeded',
+    async () => {
+      // The nightly went red from 2026-09-19: 0035 seeds the reader_health singleton
+      // (`insert into reader_health (id) values (1)`), so the verify schema already held id 1 and
+      // the dump's own copy of that row hit `duplicate key value violates unique constraint
+      // "reader_health_pkey"`. The restore loads `--single-transaction`, so that one collision
+      // aborted the whole load and a sound 2.4 MB dump never reached R2. The verifier wants the
+      // SCHEMA; rows a migration planted are residue in the payload's way.
+      const verifier = await throwawayDatabase(client, 'alfred_backup_empty');
+      try {
+        await buildVerifySchema(verifier);
+        const tables = [...(await publicColumns(verifier))].map(([table]) => table);
+        if (!tables.includes('reader_health'))
+          throw new Error('precondition failed: no seeding migration left a table to empty');
+
+        const populated: string[] = [];
+        for (const table of tables) {
+          const { rows } = await verifier.query<{ n: number }>(
+            `select count(*)::int as n from public."${table}"`,
+          );
+          const n = rows[0]?.n ?? 0;
+          if (n > 0) populated.push(`${table} (${String(n)})`);
+        }
+        if (populated.length > 0)
+          throw new Error(
+            `the verify schema carries rows of its own: ${populated.join(', ')} — the dump's copy of them will collide`,
+          );
+
+        // The proof that matters: production's own singleton now lands where the seed used to sit.
+        await verifier.query(`insert into reader_health (id) values (1)`);
+        return `${String(tables.length)} public tables built and left empty; the dump's reader_health row loaded`;
+      } finally {
+        await verifier.end();
+      }
+    },
+  );
+
   // ── Comms (ALF-7) ───────────────────────────────────────────────────────────
 
   const commsGrantsResult = await attempt(
@@ -3544,6 +3582,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     codeDoneAtResult,
     backupDriftResult,
     backupVerifierShapeResult,
+    backupVerifierEmptyResult,
     commsGrantsResult,
     commsIdentityResult,
     commsReplyDrainResult,
