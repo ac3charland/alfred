@@ -352,20 +352,60 @@ roster typed "+15125550111" -&gt; Mom</code></pre>
 </div>
 
 <div class="dec">
-  <h3><span class="n">S2</span>A message owed only an acknowledgement lands on <code>whenever</code></h3>
+  <h3><span class="n">S2</span>An acknowledgement lands on <code>whenever</code> — or on <code>today</code> when the sender is a priority person</h3>
   <p>
     When the obligation is to respond rather than to answer — news shared, a plan announced,
-    something that happened to them — the tier is <code>whenever</code> unless the message's own
-    content earns more. <code>today</code> stays for messages that want a reply before the owner
-    logs off.
+    something that happened to them — the tier is <code>whenever</code> by default. When the sender
+    resolves to a <strong><code>high</code></strong> roster person, it is <code>today</code>
+    instead: with someone who matters, the delay <em>is</em> the cost, and a two-day silence on
+    their news is the rudeness the tier exists to prevent.
+  </p>
+  <p>
+    <strong>A floor, never a ceiling.</strong> Either tier is a minimum the message's own content
+    can exceed — “I'm in the ER” asks nothing and must not be capped at <code>today</code>. Only
+    rule 3's existing test reaches <code>asap</code> (a deadline within the next few hours, or a
+    named person who cannot continue until the owner acts). An acknowledgement cannot satisfy it,
+    so <code>asap</code> stays earned without a special case.
+  </p>
+  <p>
+    <strong>And a <em>prompt</em> floor, not a code one.</strong> This is a sentence the model
+    reads, evaluated alongside everything else — not a post-verdict override. S5 still holds:
+    nothing in this story rewrites a tier in TypeScript on the strength of roster membership.
+    The two uses of the word are different mechanisms and must not be conflated.
+  </p>
+  <div class="scroll"><table>
+    <tr><th>Sender resolves to</th><th>Acknowledgement-only message</th></tr>
+    <tr><td><code>high</code></td><td><code>today</code> floor</td></tr>
+    <tr><td><code>normal</code></td><td><code>whenever</code> floor</td></tr>
+    <tr><td><code>low</code></td><td><code>whenever</code> floor (and rule 7's “never asap” cap still applies)</td></tr>
+    <tr><td>nobody on the roster</td><td><code>whenever</code> floor</td></tr>
+  </table></div>
+  <p class="why">
+    <b>Why <code>whenever</code> is the default:</b> an acknowledgement is undated almost by
+    definition, which is what D4 says <code>whenever</code> means, and it is where the ticket puts
+    them (“at least Whenever”). It also protects the tier the epic flags as most at risk — §1 notes
+    <code>today</code> already absorbs D5's floor, D7's uncertainty and both of D25's can't-judge
+    paths, and is “where the pressure lands”. Routing <em>every</em> acknowledgement there would be
+    the change most likely to make a tier too large to read.<br>
+    <b>Why <code>high</code> is the exception:</b> because the roster already means this. The
+    schema defines <code>high</code> as “delay costs something real”
+    (<code>0034_comms.sql:216</code>), and rule 7 already reads “a priority person who asks
+    anything is at least today”. Extending that from asks to acknowledgements removes an arbitrary
+    line, and the volume is bounded by the size of a roster the owner curates rather than by
+    traffic.<br>
+    <b>Why <code>normal</code> does not get it:</b> the schema calls <code>normal</code> a person
+    “listed only so a handle resolves to a name” — explicitly not a priority judgment. A
+    <code>today</code> floor there would contradict what the field means, and would quietly make
+    every named contact a priority contact.
   </p>
   <p class="why">
-    <b>Why:</b> an acknowledgement is undated almost by definition, which is exactly what D4 says
-    <code>whenever</code> means. It is also where the ticket itself puts them (“at least
-    Whenever”). And it protects the tier the epic flags as most at risk: §1 notes
-    <code>today</code> already absorbs D5's floor, D7's uncertainty and both of D25's can't-judge
-    paths, and is “where the pressure lands”. Routing a new and fairly common class into it would
-    be the change most likely to make a tier too large to read.
+    <b>What this concentrates, stated because it is the cost:</b> a priority person is exactly who
+    sends the most reactions and closers. Under the default, S1's closer test misfiring on “lol”
+    costs a quiet row in <code>whenever</code>; under this exception it costs a loud one in
+    <code>today</code>, from the person who texts most. So the distinction between <em>a message
+    that owes an acknowledgement</em> and <em>a message that IS one</em> is load-bearing here in a
+    way it is not elsewhere — which is why §7.1's guards are sender-aware, and why a guard failing
+    from a <code>high</code> sender is the most serious way this change can go wrong.
   </p>
 </div>
 
@@ -459,7 +499,8 @@ roster typed "+15125550111" -&gt; Mom</code></pre>
 undated, not unimportant. An invoice to pay, a form to return, a decision requested with a
 distant due date — and an acknowledgement owed to a person who told the owner something:
 news, a plan, something that happened to them. It wants a human response, not one by any
-particular time.'
+particular time. But see rule 8: an acknowledgement owed to a priority person is today, not
+whenever.'
 
 '- fyi — No response owed. Three shapes, and nothing else: machine mail (newsletters,
 receipts, confirmations, alerts, notifications, automatic replies); mass or cold outreach
@@ -488,6 +529,28 @@ is judged on whether silence would be a lapse.'</code></pre>
   conversation, or in a group where they are named — and never to ordinary group chatter, however
   personal it is.</em> Without that guard a busy group chat becomes §1's failure 3 on its own.
 </p>
+
+<h4>RULES — the people-list rule carries S2's exception</h4>
+<p class="small" style="margin-top:.4rem">
+  Today's rule 7 already says <em>“a priority person who asks anything is at least today”</em>. It
+  gains the other half, so the sender axis covers acknowledgements as well as asks. (Renumbered to
+  8 by rule 1's split; the numbering is the implementing session's to settle.)
+</p>
+<pre><code>'8. The people list is the owner speaking directly. A priority person who asks anything is at
+least today — and so is an acknowledgement owed to one: when someone marked as a priority
+person tells the owner something, waiting days to respond is itself the cost, so choose today
+rather than whenever. That is a floor and not a ceiling; a message whose content earns more
+still gets more. An acknowledgement owed to anyone else — normal, low, or nobody on the list —
+is whenever. A low-priority person is never asap, however urgent the message sounds, but a
+real ask from them is still owed: judge it today or whenever on its merits, never fyi for the
+sender alone.'</code></pre>
+<div class="callout" style="margin-top:.6rem">
+  <strong>This floor is a sentence in the prompt, not code.</strong> S5 declines a
+  code-enforced roster floor, and nothing here reverses that: no post-verdict override, no new
+  branch in <code>verdict.ts</code>, no change to <code>applyFloor</code>. If the model weighs this
+  rule against the rubric and the message and lands elsewhere, that is the design working — D11
+  keeps the rubric primary over every rule here.
+</div>
 
 <h4>RULES — a new rule, where the transcript is shown</h4>
 <pre><code>'N. When a thread transcript is shown, judge this message's place in the exchange rather than
@@ -733,20 +796,33 @@ thread?: readonly CommThreadMessage[] | undefined;</code></pre>
 
 <div class="scroll"><table>
   <tr><th>Case</th><th>Shape</th><th>Expected</th></tr>
-  <tr><td><code>text-news-shared</code></td><td>Sister: “we got the house!! closing is the 14th”</td><td><code>whenever</code>, queued</td></tr>
-  <tr><td><code>text-hard-news</code></td><td>Friend: “my dad's back in the hospital”</td><td><code>today</code>, queued</td></tr>
-  <tr><td><code>text-plan-announced</code></td><td>“heads up I'm bringing Sam on Sunday”</td><td><code>whenever</code>, queued</td></tr>
-  <tr><td><code>text-arrival</code></td><td>“just landed, flight was brutal”</td><td><code>whenever</code>, queued</td></tr>
+  <tr><td><code>text-arrival-priority</code></td><td><strong>Priority person</strong> (wife): “just landed, flight was brutal”</td><td><code>today</code>, queued</td></tr>
+  <tr><td><code>text-arrival-other</code></td><td><strong>Same words, unrostered sender.</strong> The pair is the point — the tier must move with the sender and nothing else</td><td><code>whenever</code>, queued</td></tr>
+  <tr><td><code>text-news-priority</code></td><td><strong>Priority person</strong>: “we got the house!! closing is the 14th”</td><td><code>today</code>, queued</td></tr>
+  <tr><td><code>text-news-shared</code></td><td>Sister, <code>normal</code> on the roster: the same announcement</td><td><code>whenever</code>, queued</td></tr>
+  <tr><td><code>text-hard-news</code></td><td>Friend (unrostered): “my dad's back in the hospital” — content, not sender, earns the tier</td><td><code>today</code>, queued</td></tr>
+  <tr><td><code>text-plan-announced</code></td><td>Unrostered: “heads up I'm bringing Sam on Sunday”</td><td><code>whenever</code>, queued</td></tr>
   <tr><td><code>text-follow-up-after-silence</code></td><td>Thread shows the owner never answered; sender sends “?”</td><td><code>today</code>, queued</td></tr>
   <tr><td><code>text-new-topic-after-settled</code></td><td>Thread settled, then “hey are you free saturday”</td><td><code>today</code>, queued</td></tr>
-  <tr><td colspan="3" style="background:var(--card);font-weight:600">Guards — these must stay on the shelf</td></tr>
-  <tr><td><code>text-answer-closes-loop</code></td><td>Thread: the owner asked “what time?”; reply is “4ish”</td><td><code>fyi</code></td></tr>
-  <tr><td><code>text-ack-closer</code></td><td>“thanks!! 🙏” after the owner did the thing</td><td><code>fyi</code></td></tr>
-  <tr><td><code>text-reaction</code></td><td>Wife: “lol”</td><td><code>fyi</code></td></tr>
-  <tr><td><code>text-group-chatter</code></td><td>Lively group banter, owner not named</td><td><code>fyi</code></td></tr>
+  <tr><td colspan="3" style="background:var(--card);font-weight:600">Guards — these must stay on the shelf. <span style="font-weight:400">Most are deliberately from a <code>high</code> sender, because that is where S2's exception makes a miss loud</span></td></tr>
+  <tr><td><code>text-reaction-priority</code></td><td><strong>Priority person</strong> (wife): “lol”</td><td><code>fyi</code></td></tr>
+  <tr><td><code>text-emoji-only-priority</code></td><td><strong>Priority person</strong>: “👍” alone</td><td><code>fyi</code></td></tr>
+  <tr><td><code>text-ack-closer-priority</code></td><td><strong>Priority person</strong>: “thanks!! 🙏” after the owner did the thing</td><td><code>fyi</code></td></tr>
+  <tr><td><code>text-answer-closes-loop-priority</code></td><td><strong>Priority person</strong>, thread: the owner asked “what time?”; reply is “4ish”</td><td><code>fyi</code></td></tr>
+  <tr><td><code>text-group-chatter</code></td><td>Lively group banter, owner not named — including from a priority person</td><td><code>fyi</code></td></tr>
   <tr><td><code>text-group-news</code></td><td>Group: someone announces news, not to the owner</td><td><code>fyi</code></td></tr>
   <tr><td><code>text-machine-notification</code></td><td>“Your package was delivered”</td><td><code>fyi</code></td></tr>
 </table></div>
+
+<p class="small">
+  <strong>The pairs are the instrument, not the individual rows.</strong>
+  <code>text-arrival-priority</code> / <code>text-arrival-other</code> and
+  <code>text-news-priority</code> / <code>text-news-shared</code> hold the message fixed and vary
+  only the sender, so they measure S2's exception itself rather than the classifier's opinion of
+  a particular sentence. If a pair answers the same tier twice, the exception is not firing —
+  and the first thing to check is S4, because an unresolved handle makes a priority person read
+  as a stranger and the rule can never fire at all.
+</p>
 
 <p class="small">
   The committed <code>spouse-chitchat</code> fixture (expected <code>fyi</code>) is
@@ -760,10 +836,12 @@ thread?: readonly CommThreadMessage[] | undefined;</code></pre>
   <strong>run the eval on the unmodified prompt first</strong> and keep the numbers.
 </p>
 <ul class="tight">
-  <li>Every <strong>guard</strong> fixture in §7.1 answers <code>fyi</code> — per fixture, not as a rate. A single guard failing means the fix overshot into §1's failure 3.</li>
-  <li>Queue recall over the <strong>new recall</strong> fixtures ≥ <strong>0.90</strong> (≥ 5 of 6).</li>
+  <li>Every <strong>guard</strong> fixture in §7.1 answers <code>fyi</code> — per fixture, not as a rate. A single guard failing means the fix overshot into §1's failure 3, and a guard failing from a <code>high</code> sender is the worst version of it: that row lands on <code>today</code>, from the person who texts most.</li>
+  <li>Queue recall over the <strong>new recall</strong> fixtures ≥ <strong>0.90</strong> (≥ 8 of 8 — with 8 cases, 7 rounds to 0.875 and misses).</li>
+  <li><strong>Both sender pairs separate.</strong> <code>text-arrival-priority</code> answers <code>today</code> while <code>text-arrival-other</code> answers <code>whenever</code>, and the same for the news pair. Identical answers mean S2's exception is not firing at all — check S4's handle resolution before touching the prompt.</li>
   <li>Overall queue recall does not fall below the baseline.</li>
   <li><code>asap</code> precision does not fall below the baseline — the change must not spill into the tier that claims “now” (epic §1's failure 2).</li>
+  <li><code>today</code>'s share of the queued fixtures is reported beside the rest. No bar is set on it — any number would be invented — but S2's exception is the one change here that can inflate it, and §1 of the epic names that tier as the one most at risk of growing too large to read.</li>
 </ul>
 <p>
   Report all four numbers with their sample sizes and Wilson intervals — <code>score.ts</code>
@@ -784,8 +862,12 @@ thread?: readonly CommThreadMessage[] | undefined;</code></pre>
   <li>Ordinary group chatter is still <code>fyi</code>; a group message naming the owner is still queued.</li>
 
   <li class="grp">Tiering</li>
-  <li>A message owed only an acknowledgement lands on <code>whenever</code> unless its content earns more.</li>
+  <li>A message owed only an acknowledgement lands on <code>whenever</code> when the sender is <code>normal</code>, <code>low</code> or unrostered.</li>
+  <li>The same message lands on <code>today</code> when the sender resolves to a <code>high</code> roster person — verified by a sender pair that holds the text fixed and varies only the sender.</li>
+  <li>Both are floors, not ceilings: a message whose content earns a higher tier still gets it.</li>
+  <li>A reaction, emoji or closer from a <code>high</code> person is still <code>fyi</code> — the exception lifts messages that <em>owe</em> an acknowledgement, never messages that <em>are</em> one.</li>
   <li>Nothing in this change can produce <code>asap</code>; <code>capForBacklog</code> and D5's floor behave exactly as before.</li>
+  <li>S2's floor is implemented as prompt text only. No post-verdict tier override exists anywhere in the diff; <code>verdict.ts</code> gains no roster-aware branch (S5).</li>
 
   <li class="grp">Thread context</li>
   <li>An iMessage message is judged with up to 6 prior messages of its thread, both directions, oldest first, bounded to 30 days and truncated per message.</li>
@@ -848,8 +930,21 @@ thread?: readonly CommThreadMessage[] | undefined;</code></pre>
     <strong>Does <code>whenever</code> need an escalation now that more lands there?</strong> S2
     routes a new and fairly common class into a tier the epic's own <strong>Q7</strong> already
     describes as “almost inert” — it does not age, escalate or resurface, and its only escalation
-    is D27's expiry marker at day 53. This story makes Q7 more pressing without answering it.
-    Watch the tier for a few weeks of real traffic before deciding.
+    is D27's expiry marker at day 53. S2's priority exception lifts the sharpest cases out of it,
+    which blunts the question without settling it: what stays behind is an acknowledgement owed to
+    someone <em>not</em> on the roster, sitting undated and inert. Watch both tiers for a few weeks
+    of real traffic before deciding.
+  </li>
+  <li>
+    <strong>Is <code>high</code> the right cut for S2's exception, or should <code>normal</code> get it too?</strong>
+    Decided as <code>high</code>-only because the schema calls <code>normal</code> a person “listed
+    only so a handle resolves to a name” — not a priority judgment — so a <code>today</code> floor
+    there would contradict the field. The risk that leaves: the owner may be using
+    <code>normal</code> as “matters, but not urgently” rather than as the schema intends, in which
+    case close friends and family sit at <code>whenever</code> and the reported failure partly
+    survives. Cheap to check once real traffic runs — look at who is <code>normal</code> on the
+    roster and whether their acknowledgements feel under-tiered. The fix would be a roster edit,
+    not a code change.
   </li>
   <li>
     <strong>Non-NANP numbers.</strong> The canonical rule assumes a bare 10-digit number is
