@@ -51,6 +51,15 @@ describe('FolderCountBadge', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('merges a caller-supplied className onto the pill, after the tone classes', () => {
+    // The module switcher's Comms segment (ALF-222) positions this as an absolute corner
+    // badge instead of an inline row chip — the tone stays, the position is overridden.
+    render(<FolderCountBadge tone="attention" count={2} className="absolute right-0.5 top-0.5" />);
+
+    const badge = screen.getByText('2');
+    expect(badge).toHaveClass('text-accent-amber', 'absolute', 'right-0.5', 'top-0.5');
+  });
+
   it('takes a caller-supplied label when the tally is not a folder’s', () => {
     // The Habits link borrows the amber tone for today's unlogged habits, which are neither
     // high-priority nor due — the tone carries the urgency, the label carries the meaning.
