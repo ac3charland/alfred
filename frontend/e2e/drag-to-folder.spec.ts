@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { makeFolder, makeItem } from './support/constants';
-import { pickUp } from './support/drag';
+import { boxOf, pickUp } from './support/drag';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -83,5 +83,46 @@ test.describe('drag a task to a folder', () => {
     await expect(
       page.getByRole('button', { name: 'Mark "Unfiled thought" complete' }),
     ).toBeVisible();
+  });
+
+  test('a code-classified inbox item is not draggable onto a folder (ALF-239)', async ({
+    page,
+    seed,
+  }) => {
+    // A folder holds tasks; a code item still awaiting Dispatch has no business there. Before
+    // the fix, the row lifted like any other and a drop onto a folder silently filed it —
+    // stranding it with none of the affordances (Dispatch, completion) either view expects.
+    const work = makeFolder('Work');
+    await seed({ folders: [work], items: [makeItem('Ship the widget', { item_type: 'code' })] });
+    await page.goto('/?view=inbox');
+
+    const list = page.getByRole('list', { name: 'Tasks' });
+    const source = list.getByText('Ship the widget');
+    await expect(source).toBeVisible();
+    const workFolder = page.getByRole('link', { name: 'Work' });
+
+    // The same press-and-glide gesture that files an ordinary task (see `dragOnto` above),
+    // performed by hand so the assertions below can run WHILE the pointer is still down —
+    // `.opacity-40` only applies for the instant a drag is active, so checking it after
+    // `mouse.up()` would pass either way.
+    const from = await boxOf(source);
+    const to = await boxOf(workFolder);
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2 + 16, from.y + from.height / 2, { steps: 5 });
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+
+    // Nothing lifted and the folder never lit up: the row is simply not a drag source.
+    await expect(page.locator('.opacity-40')).toHaveCount(0);
+    await expect(page.locator('[data-drop-over="true"]')).toHaveCount(0);
+
+    await page.mouse.up();
+
+    // Still in the Inbox — never filed, never stranded in the folder.
+    await expect(source).toBeVisible();
+    await workFolder.click();
+    await expect(
+      page.getByRole('list', { name: 'Tasks' }).getByText('Ship the widget'),
+    ).toBeHidden();
   });
 });
