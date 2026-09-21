@@ -71,6 +71,11 @@ function usageFields(usage: SummaryUsage | undefined): { usage?: SummaryUsage } 
   return usage === undefined ? {} : { usage };
 }
 
+/** `explanation` as a spreadable fragment, for the same `exactOptionalPropertyTypes` reason. */
+function explanationFields(explanation: string | undefined): { explanation?: string } {
+  return explanation === undefined ? {} : { explanation };
+}
+
 /**
  * Summarise one post. Never throws; every failure is one of the five `SummaryOutcome` kinds, and
  * which kind it is decides what the tick does next:
@@ -142,7 +147,11 @@ export async function summarizePost(
   // Guard `stop_reason` before touching `content`: a refusal or a truncation carries no usable
   // summary, and re-sending the identical prompt after a refusal will not change the answer.
   if (message.stop_reason === 'refusal') {
-    return { kind: 'refused', ...usageFields(usage) };
+    // `stop_details` is a sibling of `stop_reason`, not narrowed by it, and the API may omit the
+    // explanation even for a refusal — hence the fallback to `undefined` rather than the `null`
+    // this package bans in source.
+    const explanation = message.stop_details?.explanation ?? undefined;
+    return { kind: 'refused', ...explanationFields(explanation), ...usageFields(usage) };
   }
   if (message.stop_reason === 'max_tokens') {
     return { kind: 'counted', error: 'max_tokens', ...usageFields(usage) };

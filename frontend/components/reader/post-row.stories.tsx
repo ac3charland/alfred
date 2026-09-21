@@ -124,7 +124,7 @@ export const Failed: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** The model declined — the destructive-outline badge, the fixed placeholder, dimmed. */
+/** The model declined — the destructive-outline badge, its own explanation, dimmed. */
 export const Refused: Story = {
   args: {
     post: post({
@@ -135,6 +135,9 @@ export const Refused: Story = {
       word_count: 420,
       canonical_url: 'https://somesubstack.substack.com/p/a-post-the-model-declined',
       summary_state: 'refused',
+      last_error:
+        'this post walks through exploit chains in enough operational detail that summarising ' +
+        'it would mean reproducing that detail',
       model: 'claude-sonnet-5',
       prompt_version: 1,
     }),

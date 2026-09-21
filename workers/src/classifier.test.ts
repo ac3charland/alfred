@@ -3,6 +3,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { type ClassifierEnv, MAX_TOKENS, classify } from './classifier';
 import type { ClassifyRequest } from './prompt';
 
+/** The wire value the SDK types as `null` on `RefusalStopDetails` — the package bans the literal. */
+const WIRE_NULL: unknown = JSON.parse('null');
+
 const env: ClassifierEnv = {
   ANTHROPIC_API_KEY: 'sk-ant-test-key',
   CLASSIFIER_MODEL: 'claude-haiku-4-5',
@@ -26,8 +29,16 @@ const request: ClassifyRequest = {
  * response always fills, but nothing under test looks at them — a genuine value of the right
  * shape isn't needed to pin the behavior this module owns.
  */
-function fakeMessage(content: unknown[], stopReason: Anthropic.StopReason): Anthropic.Message {
-  return { content, stop_reason: stopReason } as unknown as Anthropic.Message;
+function fakeMessage(
+  content: unknown[],
+  stopReason: Anthropic.StopReason,
+  stopDetails?: Anthropic.RefusalStopDetails,
+): Anthropic.Message {
+  return {
+    content,
+    stop_reason: stopReason,
+    stop_details: stopDetails,
+  } as unknown as Anthropic.Message;
 }
 
 function textContent(text: string): unknown[] {
@@ -113,6 +124,35 @@ describe('classify — reading a response', () => {
 
   it('maps stop_reason "refusal" to a refusal failure without reading content', async () => {
     mockCreate().mockResolvedValue(fakeMessage(textContent('not read'), 'refusal'));
+
+    await expect(classify(env, request)).resolves.toEqual({ failed: { reason: 'refusal' } });
+  });
+
+  it("carries stop_details.explanation as the refusal failure's detail", async () => {
+    mockCreate().mockResolvedValue(
+      fakeMessage(textContent('not read'), 'refusal', {
+        category: 'general_harms',
+        explanation: 'This request asks for step-by-step wire-fraud instructions.',
+        type: 'refusal',
+      }),
+    );
+
+    await expect(classify(env, request)).resolves.toEqual({
+      failed: {
+        reason: 'refusal',
+        detail: 'This request asks for step-by-step wire-fraud instructions.',
+      },
+    });
+  });
+
+  it('omits the detail key when stop_details carries no explanation', async () => {
+    mockCreate().mockResolvedValue(
+      fakeMessage(textContent('not read'), 'refusal', {
+        category: WIRE_NULL as Anthropic.RefusalStopDetails['category'],
+        explanation: WIRE_NULL as Anthropic.RefusalStopDetails['explanation'],
+        type: 'refusal',
+      }),
+    );
 
     await expect(classify(env, request)).resolves.toEqual({ failed: { reason: 'refusal' } });
   });

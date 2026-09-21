@@ -12,6 +12,9 @@ import type { ReaderSummary, SummaryConfig, SummaryInput } from './types';
 
 const config: SummaryConfig = { apiKey: 'sk-ant-test-key', model: 'claude-sonnet-5' };
 
+/** The wire value the SDK types as `null` on `RefusalStopDetails` — the package bans the literal. */
+const WIRE_NULL: unknown = JSON.parse('null');
+
 const post: SummaryInput = {
   publication: 'The Diff',
   author: 'Dana Whitfield',
@@ -44,8 +47,14 @@ function fakeMessage(
   content: unknown[],
   stopReason: Anthropic.StopReason,
   usage?: { input_tokens: number; output_tokens: number },
+  stopDetails?: Anthropic.RefusalStopDetails,
 ): Anthropic.Message {
-  return { content, stop_reason: stopReason, usage } as unknown as Anthropic.Message;
+  return {
+    content,
+    stop_reason: stopReason,
+    usage,
+    stop_details: stopDetails,
+  } as unknown as Anthropic.Message;
 }
 
 function textContent(text: string): unknown[] {
@@ -153,6 +162,33 @@ describe('summarizePost — reading a response', () => {
 
   it('maps stop_reason "refusal" to refused, without reading content', async () => {
     mockCreate().mockResolvedValue(fakeMessage(textContent('not read'), 'refusal'));
+
+    await expect(summarizePost(post, config)).resolves.toEqual({ kind: 'refused' });
+  });
+
+  it("carries stop_details.explanation as the refused outcome's explanation", async () => {
+    mockCreate().mockResolvedValue(
+      fakeMessage(textContent('not read'), 'refusal', undefined, {
+        category: 'general_harms',
+        explanation: 'This post walks through exploit chains in operational detail.',
+        type: 'refusal',
+      }),
+    );
+
+    await expect(summarizePost(post, config)).resolves.toEqual({
+      kind: 'refused',
+      explanation: 'This post walks through exploit chains in operational detail.',
+    });
+  });
+
+  it('omits the explanation key when stop_details carries none', async () => {
+    mockCreate().mockResolvedValue(
+      fakeMessage(textContent('not read'), 'refusal', undefined, {
+        category: WIRE_NULL as Anthropic.RefusalStopDetails['category'],
+        explanation: WIRE_NULL as Anthropic.RefusalStopDetails['explanation'],
+        type: 'refusal',
+      }),
+    );
 
     await expect(summarizePost(post, config)).resolves.toEqual({ kind: 'refused' });
   });

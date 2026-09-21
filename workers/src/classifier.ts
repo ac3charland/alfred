@@ -133,7 +133,11 @@ export async function classifyJson(
   // Guard `stop_reason` before touching `content`: a refusal or truncation carries no usable
   // verdict, and re-sending the identical prompt after a refusal will not change the model's mind.
   if (message.stop_reason === 'refusal') {
-    return { failed: { reason: 'refusal' } };
+    // `stop_details` is a sibling of `stop_reason`, not narrowed by it, and the API may omit the
+    // explanation even for a refusal — hence the double fallback to `undefined` rather than the
+    // `null` this package bans in source.
+    const detail = message.stop_details?.explanation ?? undefined;
+    return { failed: detail === undefined ? { reason: 'refusal' } : { reason: 'refusal', detail } };
   }
   if (message.stop_reason === 'max_tokens') {
     return { failed: { reason: 'truncated' } };

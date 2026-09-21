@@ -177,7 +177,11 @@ export interface SummaryUsage {
 
 export type SummaryOutcome =
   | { kind: 'done'; summary: ReaderSummary; usage?: SummaryUsage }
-  | { kind: 'refused'; usage?: SummaryUsage }
+  /**
+   * `explanation` carries the API's own `stop_details.explanation` when it supplied one — absent
+   * when the response carried no explanation for the category, which the SDK types as possible.
+   */
+  | { kind: 'refused'; explanation?: string; usage?: SummaryUsage }
   | { kind: 'counted'; error: 'max_tokens' | 'unparseable' | 'schema'; usage?: SummaryUsage }
   | { kind: 'uncounted'; error: string }
   | { kind: 'systemic'; reason: 'credentials' | 'bad_request'; error: string };
