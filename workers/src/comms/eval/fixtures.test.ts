@@ -1,5 +1,6 @@
-import { buildCommsRequest } from '../prompt';
+import { buildCommsRequest, resolveSender } from '../prompt';
 import {
+  type CommFixture,
   FIXTURES,
   FIXTURE_ACCOUNTS,
   FIXTURE_NOW,
@@ -7,6 +8,32 @@ import {
   FIXTURE_RUBRIC,
   FIXTURE_TIME_ZONE,
 } from './fixtures';
+
+/** The request one fixture produces, rubric and roster included — the prompt the eval sends. */
+function build(fixture: CommFixture): { system: string; user: string } {
+  return buildCommsRequest({
+    message: fixture.message,
+    account: fixture.account,
+    rubric: FIXTURE_RUBRIC,
+    examples: [],
+    people: FIXTURE_PEOPLE,
+    timeZone: FIXTURE_TIME_ZONE,
+    now: FIXTURE_NOW,
+    thread: fixture.thread,
+  });
+}
+
+/** One fixture by id, or a throw — a renamed fixture should fail loudly, not silently pass. */
+function byId(id: string): CommFixture {
+  const found = FIXTURES.find((fixture) => fixture.id === id);
+  if (found === undefined) throw new Error(`no fixture named ${id}`);
+  return found;
+}
+
+/** What the roster says about a fixture's sender, or `undefined` when nobody claims the handle. */
+function priorityOf(fixture: CommFixture): string | undefined {
+  return resolveSender(fixture.message.sender_handle, FIXTURE_PEOPLE)?.priority;
+}
 
 describe('the evaluation set', () => {
   it('is large enough to say something about recall', () => {
@@ -71,18 +98,77 @@ describe('the evaluation set', () => {
 
   it('builds a request for every fixture without any I/O', () => {
     for (const fixture of FIXTURES) {
-      const request = buildCommsRequest({
-        message: fixture.message,
-        account: fixture.account,
-        rubric: FIXTURE_RUBRIC,
-        examples: [],
-        people: FIXTURE_PEOPLE,
-        timeZone: FIXTURE_TIME_ZONE,
-        now: FIXTURE_NOW,
-      });
+      const request = build(fixture);
 
       expect(request.user).toContain(`Account: ${fixture.account.label}`);
       expect(request.system).toContain(FIXTURE_RUBRIC.body);
+    }
+  });
+
+  /**
+   * The two sender pairs, and what makes them an instrument rather than two more opinions: each
+   * holds the message text fixed and varies ONLY the roster priority of who sent it. If a pair
+   * comes back with the same tier twice, the acknowledgement floor is not firing at all — and
+   * the first thing to check is handle resolution, because an unresolved handle makes a priority
+   * person read as a stranger and the rule can never fire.
+   */
+  const PAIRS = [
+    ['text-arrival-priority', 'text-arrival-other'],
+    ['text-news-priority', 'text-news-shared'],
+  ] as const;
+
+  it.each(PAIRS)('holds the message fixed across the %s / %s pair', (high, other) => {
+    const one = byId(high);
+    const two = byId(other);
+
+    expect(one.message.body).toBe(two.message.body);
+    expect(one.account.id).toBe(two.account.id);
+    // The whole difference is who sent it, and what the roster says about them.
+    expect(one.message.sender_handle).not.toBe(two.message.sender_handle);
+    expect(priorityOf(one)).toBe('high');
+    expect(priorityOf(two)).not.toBe('high');
+    expect(one.expected.tier).toBe('today');
+    expect(two.expected.tier).toBe('whenever');
+  });
+
+  it('resolves every rostered fixture sender, so a pair can never be measuring a stranger', () => {
+    for (const [high] of PAIRS) {
+      expect(priorityOf(byId(high))).toBeDefined();
+    }
+  });
+
+  it('guards the closers from a priority sender, where a miss is loudest', () => {
+    const guards = [
+      'text-reaction-priority',
+      'text-emoji-only-priority',
+      'text-ack-closer-priority',
+      'text-answer-closes-loop-priority',
+    ];
+
+    for (const id of guards) {
+      const fixture = byId(id);
+      expect(priorityOf(fixture)).toBe('high');
+      expect(fixture.expected.tier).toBe('fyi');
+    }
+  });
+
+  it('renders a transcript for every fixture that carries a thread, and none for the rest', () => {
+    const threaded = FIXTURES.filter((fixture) => (fixture.thread ?? []).length > 0);
+    expect(threaded.length).toBeGreaterThanOrEqual(4);
+
+    for (const fixture of FIXTURES) {
+      const { user } = build(fixture);
+      expect(user.includes('<<<THREAD>>>')).toBe((fixture.thread ?? []).length > 0);
+    }
+  });
+
+  it('dates every thread entry before the message it precedes', () => {
+    for (const fixture of FIXTURES) {
+      for (const entry of fixture.thread ?? []) {
+        expect(new Date(entry.received_at).getTime()).toBeLessThan(
+          new Date(fixture.message.received_at).getTime(),
+        );
+      }
     }
   });
 });
