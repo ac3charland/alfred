@@ -743,6 +743,20 @@ describe('the failure table', () => {
     expect(summary).toMatchObject({ classified: 0, failed: 0, parked: 1 });
   });
 
+  it("shelves a refusal's own explanation as the ask, when the API supplied one", async () => {
+    const { calls } = mockSupabase({ unjudged: [row()] });
+    mockClassify({
+      failed: { reason: 'refusal', detail: 'This message asks for step-by-step exploit code.' },
+    });
+
+    await runCommsSweep(env, NOW);
+
+    expect(patchOf(calls, 'message-1')?.body).toMatchObject({
+      judged_by: 'refusal',
+      ask: 'This message asks for step-by-step exploit code.',
+    });
+  });
+
   it('stamps the classifier healthy after a tick that finished', async () => {
     const { calls } = mockSupabase({ unjudged: [row()] });
     mockClassify({ ok: verdict() });

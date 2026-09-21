@@ -548,13 +548,15 @@ export async function runCommsSweep(env: CommsSweepEnv, now: Date): Promise<Comm
 
       // A refusal is terminal and gets its own state: re-sending an identical prompt cannot
       // change it, so it is filed on the shelf with a visible flag rather than queued — and it
-      // costs no attempt, because there is nothing to retry.
+      // costs no attempt, because there is nothing to retry. `ask` carries the API's own
+      // explanation when it supplied one, so the row says exactly why rather than the generic
+      // `REFUSAL_ASK`, which stays the fallback for the categories the API doesn't explain.
       if (failed.reason === 'refusal') {
         console.error(`comms classifier: the model refused to judge message ${message.id}`);
         const filed = await file(
           env,
           message,
-          { tier: REFUSAL_TIER, judged_by: 'refusal', ask: REFUSAL_ASK },
+          { tier: REFUSAL_TIER, judged_by: 'refusal', ask: failed.detail ?? REFUSAL_ASK },
           now,
         );
         if (filed) summary.parked += 1;

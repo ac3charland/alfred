@@ -123,7 +123,11 @@ export type ClassifyFailure =
   | { reason: 'credentials'; detail: string }
   | { reason: 'bad_request'; detail: string }
   | { reason: 'transport'; detail: string }
-  | { reason: 'refusal' }
+  /**
+   * `detail` carries the API's own `stop_details.explanation` when it supplied one — absent when
+   * the response carried no explanation for the category, which the SDK types as possible.
+   */
+  | { reason: 'refusal'; detail?: string }
   | { reason: 'truncated' }
   | { reason: 'unparseable'; detail: string };
 
