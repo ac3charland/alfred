@@ -189,7 +189,13 @@ export function TaskRow({
   // The whole row is a drag source (the row sensors ignore presses on its buttons
   // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
   // be dragged to re-parent it; an active task can also be filed into a folder. A completed
-  // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable.
+  // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable. Nor is a
+  // top-level code row (ALF-239): it has no legitimate drag target — a folder holds tasks,
+  // not a code item still awaiting Dispatch — so dragging one onto the sidebar used to file
+  // it into a folder anyway, stranding it there with none of the affordances (Dispatch,
+  // completion) the folder view expects. A code CHILD (a story under an in-progress epic)
+  // stays draggable — reordering it among its siblings, including across sibling epics,
+  // is a real feature (see resolveReorder) — only a code ROOT has nothing to gain from it.
   const { draggedSubtreeIds, activeDragItemType } = useTaskDrag();
   // Item-type flags + drop-target validity (completion/due-date/subtask gating, the drop
   // highlight) all derive from the node — see useTaskRowFlags.
@@ -308,7 +314,7 @@ export function TaskRow({
   const [showEpicGate, setShowEpicGate] = React.useState(false);
   const { convertToCodeEpic, convertTaskToCode } = useCodeActions();
 
-  const canDrag = !isCompleted && !isTempId(node.id);
+  const canDrag = !isCompleted && !isTempId(node.id) && !(isCode && node.parent_id === null);
   const {
     setNodeRef: setDragNodeRef,
     listeners: dragListeners,
