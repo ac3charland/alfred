@@ -93,7 +93,6 @@ const VELOCITY = {
     },
   ),
   repos: ['ac3charland/realplay', 'ac3charland/alfred'],
-  authors: ['ac3charland'],
   averageWeeks: 4,
 };
 

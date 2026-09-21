@@ -16,9 +16,17 @@ import { DEPENDENCY_BOTS } from './pr-ratio';
  * dead module or rewriting a component nets out near zero while being the busiest week of the
  * month; net growth honestly measures codebase size and misleadingly measures velocity.
  *
- * It is scoped to the same authors the PR ratio counts, because the two widgets sit in the
- * same card stack: if the chart counted Dependabot and the bar beside it didn't, the page
- * would disagree with itself about whose work counts.
+ * Dependency bots are excluded, because the PR ratio beside it excludes them too: two widgets
+ * on one page disagreeing about whether Dependabot's work counts would be worse than either
+ * being wrong.
+ *
+ * It is NOT scoped by the `PR_RATIO_AUTHORS` allowlist, even though it shares that config.
+ * That list names the logins whose merged PRs count — whoever OPENS a pull request. These
+ * statistics key on whoever AUTHORED the commits, and in an agentic workflow those are
+ * different accounts: the owner opens and merges every PR, the agent authors nearly every
+ * commit inside it. Filtering commit statistics through a PR-opener allowlist silently
+ * discarded every agent-authored line — weeks holding a single 12 000-line PR drew as 34 —
+ * and no allowlist derived from PR authorship can be made to mean commit authorship.
  */
 
 const STATS_URL_TEMPLATE = (repo: RatioRepo): string =>
@@ -113,17 +121,12 @@ function isDependencyBot(login: string): boolean {
 }
 
 /**
- * Whether a contributor's lines count. An allowlist is exact (and case-insensitive, since
- * GitHub logins are); an empty allowlist means "anyone", which still excludes the known
- * dependency bots by name and keeps the unattributable rows — under an allowlist those rows
- * cannot match and drop out on their own, which is the right answer there.
+ * Whether a contributor's lines count: anyone but the known dependency bots.
+ *
+ * An unattributable row (`null` — a commit email GitHub maps to no account) counts. Those
+ * lines were written by someone, and the only accounts deliberately left out are named.
  */
-export function countsAuthor(login: string | null, authors: readonly string[]): boolean {
-  if (authors.length > 0) {
-    return (
-      login !== null && authors.some((allowed) => allowed.toLowerCase() === login.toLowerCase())
-    );
-  }
+export function countsAuthor(login: string | null): boolean {
   return login === null || !isDependencyBot(login);
 }
 
@@ -163,7 +166,6 @@ async function fetchRepoStats(repo: RatioRepo, config: GithubRepoConfig): Promis
  */
 function bucketLines(
   repoStats: readonly ContributorStats[][],
-  authors: readonly string[],
   currentWeek: number,
 ): { week: number; lines: number }[] {
   // Built oldest-first so the series comes out ordered by construction — no sort to get wrong,
@@ -176,7 +178,7 @@ function bucketLines(
 
   for (const contributors of repoStats) {
     for (const contributor of contributors) {
-      if (!countsAuthor(contributor.author?.login ?? null, authors)) continue;
+      if (!countsAuthor(contributor.author?.login ?? null)) continue;
       for (const week of contributor.weeks ?? []) {
         const running = buckets.get(week.w);
         if (running === undefined) continue;
@@ -238,14 +240,13 @@ export async function fetchLocVelocity(
   const contributors = results.map((result) =>
     result.status === 'ready' ? result.contributors : [],
   );
-  const series = bucketLines(contributors, config.authors, weekStartSeconds(now));
+  const series = bucketLines(contributors, weekStartSeconds(now));
 
   return {
     status: 'ready',
     velocity: {
       weeks: toWeeks(series),
       repos: config.repos.map((repo) => `${repo.owner}/${repo.name}`),
-      authors: [...config.authors],
       averageWeeks: ROLLING_AVERAGE_WEEKS,
     },
   };

@@ -89,7 +89,6 @@ describe('GET /api/code/loc-velocity', () => {
     expect(body.weeks).toHaveLength(12);
     expect(body.averageWeeks).toBe(4);
     expect(body.repos).toStrictEqual(['ac3charland/realplay', 'ac3charland/alfred']);
-    expect(body.authors).toStrictEqual(['ac3charland']);
     // Oldest first, and only the newest bucket is the week still filling.
     expect(body.weeks.filter((week) => week.partial)).toHaveLength(1);
     expect(body.weeks.at(-1)?.partial).toBe(true);

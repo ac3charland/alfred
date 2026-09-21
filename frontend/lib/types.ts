@@ -93,7 +93,7 @@ export interface PrRatioResponse {
 export interface LocWeek {
   /** ISO date of the week's Sunday, in UTC — e.g. '2026-09-06'. */
   week: string;
-  /** Lines added + removed that week by the measured authors, across every measured repo. */
+  /** Lines added + removed that week across every measured repo, by every non-bot author. */
   lines: number;
   /**
    * Trailing mean of `lines` over this week and the `averageWeeks - 1` before it, rounded.
@@ -113,8 +113,6 @@ export interface LocVelocityResponse {
   weeks: LocWeek[];
   /** `owner/name` of every repo counted, in configured order. */
   repos: string[];
-  /** Logins counted; empty means "every contributor but the known bots". */
-  authors: string[];
   /** The trailing window the `average` field was computed over. */
   averageWeeks: number;
 }

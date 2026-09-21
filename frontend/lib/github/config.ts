@@ -1,7 +1,9 @@
 /**
  * GitHub measurement configuration, read from environment. Shared by the two widgets on the
- * Code Dashboard: the merged-PR ratio and the lines-changed-per-week chart. One repo set and
- * one author set feed both, so the two measurements on one page share a denominator.
+ * Code Dashboard: the merged-PR ratio and the lines-changed-per-week chart. One repo set feeds
+ * both, so the two measurements on one page cover the same ground. The author allowlist is the
+ * RATIO's alone — it names who opens a pull request, which says nothing about who authored the
+ * commits the velocity chart counts (see `loc.ts`).
  *
  * The measured repos are env-configured rather than read from the `projects` table on
  * purpose: not every repo the owner ships to runs through the Software Factory, and adding
