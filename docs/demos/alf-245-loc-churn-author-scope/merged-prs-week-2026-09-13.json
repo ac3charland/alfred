@@ -1,0 +1,83 @@
+[
+  {
+    "repo": "alfred",
+    "number": 333,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-14T17:32:08Z",
+    "additions": 615,
+    "deletions": 12,
+    "title": "fix(comms): re-read source health after a lapse in the realtime stream"
+  },
+  {
+    "repo": "realplay",
+    "number": 378,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-15T14:47:28Z",
+    "additions": 16,
+    "deletions": 16,
+    "title": "chore(data): update founding members promo and regenerate catalogs"
+  },
+  {
+    "repo": "realplay",
+    "number": 377,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-15T15:47:14Z",
+    "additions": 2062,
+    "deletions": 492,
+    "title": "RLP-110: Ship three screen switchers behind a visible demo switcher"
+  },
+  {
+    "repo": "alfred",
+    "number": 334,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-17T19:36:28Z",
+    "additions": 238,
+    "deletions": 0,
+    "title": "feat(workers): add a gmail refresh-token authorize script"
+  },
+  {
+    "repo": "alfred",
+    "number": 335,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-18T01:12:51Z",
+    "additions": 1114,
+    "deletions": 0,
+    "title": "docs(specs): ALF-232 Reader Module epic spec"
+  },
+  {
+    "repo": "alfred",
+    "number": 336,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-18T11:26:11Z",
+    "additions": 1421,
+    "deletions": 0,
+    "title": "docs(specs): ALF-233 reader module story 1 spec"
+  },
+  {
+    "repo": "alfred",
+    "number": 338,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-18T16:52:06Z",
+    "additions": 223,
+    "deletions": 0,
+    "title": "ALF-231: forbid a scheduled check-in once a PR is open"
+  },
+  {
+    "repo": "alfred",
+    "number": 337,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-18T17:02:19Z",
+    "additions": 1043,
+    "deletions": 1,
+    "title": "ALF-234: spec — Reader module: publications, health and retention (Half 2)"
+  },
+  {
+    "repo": "alfred",
+    "number": 339,
+    "pr_author": "ac3charland",
+    "merged_at": "2026-09-18T17:37:51Z",
+    "additions": 12176,
+    "deletions": 111,
+    "title": "feat(reader): add the reader module's pipe and reading list (ALF-233)"
+  }
+]
