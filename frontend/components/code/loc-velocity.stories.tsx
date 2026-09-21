@@ -31,7 +31,6 @@ function velocity(values: number[]): LocVelocityResponse {
   return {
     weeks: weeks(values),
     repos: ['ac3charland/realplay', 'ac3charland/alfred'],
-    authors: ['ac3charland'],
     averageWeeks: 4,
   };
 }

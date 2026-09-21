@@ -116,6 +116,26 @@ without issue: `gh pr create`, `gh pr comment`, `gh pr view --json <fields>`,
 of a PR/issue body or title trips the Projects-classic GraphQL error — there's no need to
 abandon `gh` porcelain everywhere.
 
+## `author` is a different person on each endpoint
+
+When measuring a repo, decide which "author" you mean before picking an endpoint — the two the
+Code dashboard reads disagree, and neither is wrong:
+
+- **Search (`/search/issues`, `author:<login>`)** — who **opened** the pull request.
+- **`/repos/{o}/{r}/stats/contributors`** — who **authored the commits**, per Sunday-UTC week
+  (`w` seconds, `a` additions, `d` deletions **positive**, unlike `code_frequency`). A commit
+  email GitHub maps to no account arrives as `author: null`; `Co-Authored-By` trailers are not
+  counted at all.
+
+In an agentic workflow those are different accounts: the owner opens and merges every PR, the
+login `claude` authors nearly every commit inside it. So an allowlist built for one endpoint
+silently zeroes the other — reusing `PR_RATIO_AUTHORS` (PR openers) on contributor statistics
+dropped ~95% of the churn and drew a week holding a 12,000-line PR as 34 lines (ALF-245).
+
+Sanity-check any repo metric against a single merged PR's own `additions`/`deletions` before
+trusting the series; the two are a magnitude check, not an identity (contributor statistics
+count each commit's diff, a merged PR counts one net diff).
+
 ## Inspecting & copying repo webhooks (`gh api .../hooks`)
 
 The Software-Factory Worker turns `pull_request` webhooks into ticket-state transitions, so

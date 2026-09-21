@@ -13,6 +13,10 @@ const NOW = new Date('2026-09-12T18:00:00Z');
 /** The Sunday that opens the week containing {@link NOW}: 6 Sep 2026. */
 const CURRENT_WEEK = weekStartSeconds(NOW);
 
+/**
+ * An allowlist IS configured throughout, deliberately: it belongs to the PR ratio, and the
+ * velocity series must come out the same whether or not one is set.
+ */
 const CONFIG: GithubRepoConfig = {
   repos: [{ owner: 'ac3charland', name: 'alfred', label: 'Alfred' }],
   authors: ['ac3charland'],
@@ -110,34 +114,30 @@ describe('fetchLocVelocity', () => {
     expect(week?.lines).toBe(420);
   });
 
-  it('counts only the allowlisted logins, case-insensitively', async () => {
+  it('counts the agent that AUTHORS the commits, not just the login that OPENS the PRs', async () => {
+    // The defect this pins: `PR_RATIO_AUTHORS` lists the logins whose merged PRs count — the
+    // human who opens them. `stats/contributors` keys on the COMMIT author, which in an agentic
+    // workflow is the agent. Filtering commit stats through the PR allowlist discarded every
+    // agent-authored line: real weeks of ~36 000 lines drew as ~34.
     mockContributors(
-      { author: { login: 'AC3Charland' }, weeks: [{ w: weekAgo(1), a: 100, d: 0, c: 1 }] },
-      { author: { login: 'someone-else' }, weeks: [{ w: weekAgo(1), a: 999, d: 0, c: 1 }] },
+      { author: { login: 'ac3charland' }, weeks: [{ w: weekAgo(1), a: 2, d: 0, c: 1 }] },
+      { author: { login: 'claude' }, weeks: [{ w: weekAgo(1), a: 11_000, d: 1000, c: 111 }] },
     );
 
     const week = await lastCompleteWeek();
 
-    expect(week?.lines).toBe(100);
+    expect(week?.lines).toBe(12_002);
   });
 
-  it('drops unattributable commits under an allowlist — they cannot match it', async () => {
+  it('counts unattributable commits, whose email GitHub maps to no account', async () => {
     mockContributors({ author: null, weeks: [{ w: weekAgo(1), a: 500, d: 0, c: 1 }] });
 
     const week = await lastCompleteWeek();
 
-    expect(week?.lines).toBe(0);
+    expect(week?.lines).toBe(500);
   });
 
-  it('counts unattributable commits when no allowlist is configured', async () => {
-    mockContributors({ author: null, weeks: [{ w: weekAgo(1), a: 500, d: 0, c: 1 }] });
-
-    const { weeks } = await velocity({ ...CONFIG, authors: [] });
-
-    expect(weeks.at(-2)?.lines).toBe(500);
-  });
-
-  it('excludes the dependency bots by name when no allowlist is configured', async () => {
+  it('excludes the dependency bots by name even under an author allowlist', async () => {
     mockContributors(
       { author: { login: 'dependabot[bot]' }, weeks: [{ w: weekAgo(1), a: 9000, d: 0, c: 1 }] },
       { author: { login: 'renovate[bot]' }, weeks: [{ w: weekAgo(1), a: 9000, d: 0, c: 1 }] },
@@ -145,7 +145,7 @@ describe('fetchLocVelocity', () => {
       { author: { login: 'ac3charland' }, weeks: [{ w: weekAgo(1), a: 40, d: 0, c: 1 }] },
     );
 
-    const week = await lastCompleteWeek({ ...CONFIG, authors: [] });
+    const week = await lastCompleteWeek();
 
     expect(week?.lines).toBe(40);
   });
@@ -239,7 +239,7 @@ describe('fetchLocVelocity', () => {
     expect(previous?.average).toBe(25);
   });
 
-  it('reports the window the averages were taken over, and the repos and authors counted', async () => {
+  it('reports the window the averages were taken over and the repos counted', async () => {
     mockContributors();
 
     const payload = await velocity(TWO_REPOS);
@@ -247,7 +247,6 @@ describe('fetchLocVelocity', () => {
     expect(payload).toMatchObject({
       averageWeeks: ROLLING_AVERAGE_WEEKS,
       repos: ['ac3charland/alfred', 'ac3charland/realplay'],
-      authors: ['ac3charland'],
     });
   });
 

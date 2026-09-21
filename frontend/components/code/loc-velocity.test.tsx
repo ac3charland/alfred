@@ -28,7 +28,6 @@ function makeVelocity(lines: number[]): LocVelocityResponse {
   return {
     weeks: makeWeeks(lines),
     repos: ['ac3charland/alfred'],
-    authors: ['ac3charland'],
     averageWeeks: 4,
   };
 }
