@@ -74,12 +74,14 @@ function specPathFor(story: CodeStory): string {
 }
 
 /**
- * Where a spec moves once its story is implemented: `docs/specs/archive/<basename>`. The
- * implementation PR git-moves the spec out of the active `docs/specs/` directory into the
- * archive, retiring the now-consumed scaffolding so the active directory only ever holds specs
- * still awaiting implementation. The `alfred-frontmatter` check enforces the move (it fails an
- * implementation PR whose `spec-path` still resolves to a file in the active directory). Derived
- * from the spec path's basename so it works whatever extension the spec used (`.html`/`.md`).
+ * The FALLBACK archive destination, used only when a project's implement-spec skill is absent:
+ * `docs/specs/archive/<basename>`. Archiving convention is otherwise the skill's job (mirroring
+ * how `buildRefinementUrl` defers spec format/location to the refinement skill) — this path
+ * exists in the prompt purely as what to do when that skill isn't there to say otherwise. The
+ * `alfred-frontmatter` check doesn't care where the spec ends up either way, only that
+ * `spec-path` no longer resolves to a file in the active directory, so a project is free to
+ * archive however its own skill prescribes. Derived from the spec path's basename so it still
+ * works whatever extension the spec used (`.html`/`.md`).
  */
 function archivePathFor(specPath: string): string {
   const basename = specPath.slice(specPath.lastIndexOf('/') + 1);
@@ -445,8 +447,11 @@ export function buildEpicImplementationUrl(project: Project, epic: Epic): string
  * References the committed spec file — does NOT inline the spec body, and stays format-agnostic
  * (the spec may be HTML, markdown, or a multi-file folder — whatever the refinement skill chose).
  * Carries the same shared guardrails as refinement (ground in the repo, ask when the spec is
- * ambiguous/stale, verbatim-block self-check) and points at the implement-spec skill for the
- * archiving convention, while keeping the CI-enforced archive step inline as the system hook.
+ * ambiguous/stale, verbatim-block self-check) and, like the spec's own format/location, defers HOW
+ * and WHERE the consumed spec gets archived to the implement-spec skill — `docs/specs/archive/`
+ * appears in the prompt only as the fallback for a repo where that skill is absent. The one thing
+ * that stays hardcoded is the CI-enforced hook every project needs regardless of convention: the
+ * spec must no longer resolve to a file at its original `spec-path`.
  */
 export function buildImplementationUrl(project: Project, story: CodeStory): string {
   const ref = refOf(story);
@@ -462,18 +467,20 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
     `You are implementing the ticket ${ref}. Implement the merged spec committed at \`${specPath}\` in this repo — read it first, then build it.`,
     '',
     ...epicContextLines(story),
-    `Ground yourself first: skim the repo and honor its own conventions (read any CONTRIBUTING or CLAUDE.md). If the merged spec is ambiguous or has drifted from the current code, ASK ME HERE before building rather than guessing — I'm in this tab. Follow the implement-spec skill at \`${IMPLEMENT_SKILL_PATH}\` where present — it owns the conventions for building from a spec (archiving the consumed spec, pinning each requirement with a test).`,
+    `Ground yourself first: skim the repo and honor its own conventions (read any CONTRIBUTING or CLAUDE.md). If the merged spec is ambiguous or has drifted from the current code, ASK ME HERE before building rather than guessing — I'm in this tab. Follow the implement-spec skill at \`${IMPLEMENT_SKILL_PATH}\` where present — it owns the conventions for building from a spec, including how and where the consumed spec gets archived, and pinning each requirement with a test.`,
     '',
     // The spec is scaffolding: once it's built, retire it from the active specs directory so
-    // only specs still awaiting implementation remain there. The alfred-frontmatter check fails
-    // the PR if the spec is left un-archived, so the move is part of the implementation PR.
-    `When the change is built, ARCHIVE the spec in this same PR: git-move \`${specPath}\` to \`${archivePath}\` (keep the block's spec-path below pointing at the original path). A CI check fails the PR if \`${specPath}\` is still sitting un-archived in the active specs directory.`,
+    // only specs still awaiting implementation remain there. The alfred-frontmatter check only
+    // requires that spec-path no longer resolves to a file there — it doesn't care where the spec
+    // ends up — so HOW/WHERE it's archived is the skill's call; docs/specs/archive/ is only the
+    // fallback for a repo where the skill is absent.
+    `When the change is built, ARCHIVE the now-consumed spec in this same PR (keep the block's spec-path below pointing at the original path \`${specPath}\`). If the implement-spec skill is absent, git-move it to \`${archivePath}\`. A CI check fails the PR if \`${specPath}\` is still sitting un-archived in the active specs directory.`,
     '',
     `When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
     '',
     frontmatterBlock(ref, 'implementation', specPath),
     '',
-    `Before opening the PR, confirm your changes satisfy the spec's acceptance criteria, the spec is archived at \`${archivePath}\`, and the block above is reproduced exactly.`,
+    `Before opening the PR, confirm your changes satisfy the spec's acceptance criteria, the spec has been archived out of the active specs directory, and the block above is reproduced exactly.`,
     noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
