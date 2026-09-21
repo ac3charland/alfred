@@ -3004,14 +3004,63 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
-  const commsHandleCanonicalResult = await attempt(
-    'comms: the migration rewrote every stored handle into E.164, deleting a row that collapsed' +
-      ' onto the same person and leaving one that would have collided with another (ALF-244)',
+  const commsThreadContextTiesResult = await attempt(
+    "comms: comm_thread_context keeps the prior messages that share the target's timestamp" +
+      ' instead of dropping them, and totally orders a tie the same way on every call (ALF-244)',
     async () => {
-      // Seeded here rather than asserted against production data: what is being proved is that
-      // the rewrite's own rules hold, and this cluster is empty. The statements below are the
-      // migration's, re-run over rows inserted after it — so a rewrite that is not idempotent, or
-      // that loses a handle to a collision, fails here.
+      const account = 'cccccccc-0000-4000-8000-000000000008';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'imessage-tie-test', 'imessage', 'iMessage', 'daemon')`,
+        [account],
+      );
+      // Every row on the SAME second, which is what the daemon's pre-nanosecond chat.db branch
+      // produces for a rapid exchange. A `received_at < target.received_at` predicate returns
+      // NOTHING here — the classifier would be shown no transcript at all for the newest message.
+      const at = '2026-09-09T12:00:00Z';
+      for (const source of ['t1', 't2', 't3', 't4']) {
+        await client.query(
+          `insert into comm_messages (account_id, source_id, thread_key, direction, sender_handle,
+                                      body, received_at)
+             values ($1, $2, 'thread-tie', 'inbound', 'x@example.com', $2, $3::timestamptz)`,
+          [account, source, at],
+        );
+      }
+      const { rows: newest } = await client.query<{ id: string }>(
+        `select id from comm_messages where account_id = $1
+           order by created_at desc, id desc limit 1`,
+        [account],
+      );
+      const target = newest[0]?.id;
+      if (target === undefined) throw new Error('could not seed a tied thread');
+
+      const read = async () => {
+        const { rows } = await client.query<{ body: string }>(
+          `select body from comm_thread_context(array[$1]::uuid[], 6, '30 days')`,
+          [target],
+        );
+        return rows.map((row) => row.body).join(',');
+      };
+      const once = await read();
+      if (once === '') throw new Error('a thread whose rows share one second returned no context');
+      if (once.split(',').length !== 3)
+        throw new Error(`returned ${String(once.split(',').length)} of the 3 prior rows: ${once}`);
+      if (once !== (await read()))
+        throw new Error('two identical calls disagreed on the order of a tie');
+
+      return `all 3 same-second priors returned, in a stable order (${once})`;
+    },
+  );
+
+  const commsHandleCanonicalResult = await attempt(
+    'comms: comm_canonicalise_handles rewrites every stored handle into E.164, deleting a row that' +
+      ' collapsed onto the same person, leaving one that would have collided with another, and' +
+      ' is idempotent on a second call (ALF-244)',
+    async () => {
+      // The migration applies to a database whose rows already exist; this cluster starts empty,
+      // so the rewrite is INVOKED here against seeded rows rather than re-implemented. Deleting
+      // the function from the migration fails this assertion, which is the whole point of it
+      // being a function.
       const { rows: people } = await client.query<{ id: string; name: string }>(
         `insert into comm_people (name, priority) values ('Mom', 'high'), ('Not Mom', 'normal')
            returning id, name`,
@@ -3025,33 +3074,15 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
            ($1, '5125550111', 'phone'),
            ($1, '+15125550111', 'phone'),
            ($1, '442079460000', 'phone'),
+           ($1, 'Mom@Example.COM', 'email'),
            ($2, '3125550100', 'phone'),
            ($1, '+13125550100', 'phone')`,
         [mom, other],
       );
 
-      // The rewrite, exactly as 0037 states it.
-      await client.query(`
-        do $mig$
-        declare v_row record; v_canon text;
-        begin
-          for v_row in select id, person_id, handle from comm_handles where handle not like '%@%' loop
-            v_canon := regexp_replace(v_row.handle, '[^0-9]', '', 'g');
-            if v_canon = '' then v_canon := lower(btrim(v_row.handle));
-            elsif btrim(v_row.handle) like '+%' then v_canon := '+' || v_canon;
-            elsif length(v_canon) = 10 then v_canon := '+1' || v_canon;
-            elsif length(v_canon) = 11 and left(v_canon, 1) = '1' then v_canon := '+' || v_canon;
-            end if;
-            continue when v_canon = v_row.handle;
-            if exists (select 1 from comm_handles o where o.handle = v_canon and o.person_id = v_row.person_id) then
-              delete from comm_handles where id = v_row.id;
-            elsif not exists (select 1 from comm_handles o where o.handle = v_canon) then
-              update comm_handles set handle = v_canon where id = v_row.id;
-            end if;
-          end loop;
-        end $mig$;
-      `);
-
+      const { rows: first } = await client.query<{ n: number }>(
+        `select comm_canonicalise_handles() as n`,
+      );
       const { rows: after } = await client.query<{ handle: string; name: string }>(
         `select h.handle, p.name from comm_handles h join comm_people p on p.id = h.person_id
            where h.person_id = any ($1::uuid[]) order by h.handle`,
@@ -3059,11 +3090,48 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       );
       const seen = after.map((row) => `${row.handle}=${row.name}`).join(', ');
       // The redundant duplicate collapsed onto its own person's canonical row and went; the
-      // non-NANP number kept its shape; and the row whose canonical form belongs to somebody
-      // else stayed exactly as it was rather than being moved between people.
-      if (seen !== '+13125550100=Mom, +15125550111=Mom, 3125550100=Not Mom, 442079460000=Mom')
+      // non-NANP number and the address kept their shape; and the row whose canonical form
+      // belongs to somebody else stayed exactly as it was rather than being moved between people.
+      if (
+        seen !==
+        '+13125550100=Mom, +15125550111=Mom, 3125550100=Not Mom, 442079460000=Mom, mom@example.com=Mom'
+      )
         throw new Error(`the rewrite produced: ${seen}`);
-      return 'the duplicate collapsed, the international number kept its shape, and the colliding row was left with its own person';
+
+      const { rows: second } = await client.query<{ n: number }>(
+        `select comm_canonicalise_handles() as n`,
+      );
+      if (second[0]?.n !== 0)
+        throw new Error(`a second call changed ${String(second[0]?.n)} rows — not idempotent`);
+
+      return `${String(first[0]?.n)} rows moved: the duplicate collapsed, the international number and the address kept their shape, the colliding row kept its own person, and a second call was a no-op`;
+    },
+  );
+
+  const commsCanonicalHandleRuleResult = await attempt(
+    'comms: comm_canonical_handle states the same canonical rule the three TypeScript copies do,' +
+      ' inferring +1 only for 10 digits and 11 starting with 1 (ALF-244)',
+    async () => {
+      // The mirrored test table the spec asks each package to carry, in SQL. When this drifts
+      // from daemon/frontend/workers, a roster entry silently stops resolving its sender.
+      const table: [string, string][] = [
+        ['  Dana@Example.COM ', 'dana@example.com'],
+        ['+1 (555) 010-2233', '+15550102233'],
+        ['555-010-2233', '+15550102233'],
+        ['15550102233', '+15550102233'],
+        ['44 20 7946 0000', '442079460000'],
+        ['262966', '262966'],
+        ['()-', '()-'],
+      ];
+      for (const [input, expected] of table) {
+        const { rows } = await client.query<{ out: string }>(
+          `select comm_canonical_handle($1) as out`,
+          [input],
+        );
+        if (rows[0]?.out !== expected)
+          throw new Error(`${input} → ${String(rows[0]?.out)}, expected ${expected}`);
+      }
+      return `all ${String(table.length)} rows of the canonical-form table hold`;
     },
   );
 
@@ -4075,7 +4143,9 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     commsReplyDrainResult,
     commsReplyDrainUnjudgedResult,
     commsThreadContextResult,
+    commsThreadContextTiesResult,
     commsHandleCanonicalResult,
+    commsCanonicalHandleRuleResult,
     commsExampleVersionResult,
     commsRetentionResult,
     commsInboxItemAtomicResult,

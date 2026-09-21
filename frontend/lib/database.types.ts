@@ -1381,6 +1381,8 @@ export type Database = {
       }
     }
     Functions: {
+      comm_canonical_handle: { Args: { p_handle: string }; Returns: string }
+      comm_canonicalise_handles: { Args: never; Returns: number }
       comm_create_inbox_item: {
         Args: {
           p_message: string
