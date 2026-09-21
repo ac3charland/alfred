@@ -113,10 +113,29 @@ describe('PostRow — floor-state placeholders and badges', () => {
     ).toBeInTheDocument();
   });
 
-  it('refused: the fixed placeholder', () => {
-    renderReader(<PostRow post={post({ summary_state: 'refused' })} now={NOW} />);
+  it('refused: draws the middle clause from last_error', () => {
+    renderReader(
+      <PostRow
+        post={post({
+          summary_state: 'refused',
+          last_error: 'this post walks through exploit chains in operational detail',
+        })}
+        now={NOW}
+      />,
+    );
 
     expect(screen.getByText('summary refused')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'No summary — this post walks through exploit chains in operational detail. ' +
+          'The post is still here; open it or archive it.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('refused: falls back to a generic clause when last_error is absent', () => {
+    renderReader(<PostRow post={post({ summary_state: 'refused', last_error: null })} now={NOW} />);
+
     expect(
       screen.getByText(
         'No summary — the model declined to summarise this one. The post is still here; open it or archive it.',

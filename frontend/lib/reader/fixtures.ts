@@ -340,6 +340,9 @@ export function readerFixtureSet(): { publication: ReaderPublication; posts: Rea
     word_count: 420,
     html_extracted: true,
     summary_state: 'refused',
+    last_error:
+      'this post walks through exploit chains in enough operational detail that summarising ' +
+      'it would mean reproducing that detail',
     model: 'claude-sonnet-5',
     prompt_version: 1,
     model_called_at: nextTimestamp(),

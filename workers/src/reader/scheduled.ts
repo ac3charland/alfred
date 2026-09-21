@@ -344,10 +344,13 @@ async function applyOutcome(
 
     case 'refused': {
       // Terminal and uncounted: re-sending an identical prompt cannot change a refusal, so there
-      // is nothing to retry and nothing to charge against the attempt ceiling.
+      // is nothing to retry and nothing to charge against the attempt ceiling. `last_error`
+      // carries the model's own explanation when the API supplied one, read the same way a
+      // content-shaped failure's reason is (`gistOrPlaceholder` in `post-row.tsx`) — nulled out
+      // rather than left stale when there isn't one, so the row falls back to a generic line.
       await patchPost(env, prepared.id, {
         summary_state: 'refused',
-        last_error: 'refused',
+        last_error: outcome.explanation ?? JSON_NULL,
         model_called_at: nowIso,
         summarizing_since: JSON_NULL,
       });

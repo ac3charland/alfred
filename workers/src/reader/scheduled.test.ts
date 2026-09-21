@@ -680,7 +680,26 @@ describe('runReaderTick — the terminal patch', () => {
     expect(summary.summarized).toBe(1);
   });
 
-  it('files a refusal as terminal, uncounted', async () => {
+  it('files a refusal as terminal, uncounted, carrying the explanation into last_error', async () => {
+    const calls = harness(freshOnly);
+    mockSummarize({
+      kind: 'refused',
+      explanation: 'This post walks through exploit chains in operational detail.',
+    });
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(payload(restCalls(calls, 'reader_posts', 'PATCH')[0])).toEqual({
+      summary_state: 'refused',
+      last_error: 'This post walks through exploit chains in operational detail.',
+      model_called_at: NOW_ISO,
+      summarizing_since: WIRE_NULL,
+    });
+    expect(summary.refused).toBe(1);
+    expect(summary.countedFailures).toBe(0);
+  });
+
+  it('nulls out last_error on a refusal with no explanation, rather than leaving a stale one', async () => {
     const calls = harness(freshOnly);
     mockSummarize({ kind: 'refused' });
 
@@ -688,7 +707,7 @@ describe('runReaderTick — the terminal patch', () => {
 
     expect(payload(restCalls(calls, 'reader_posts', 'PATCH')[0])).toEqual({
       summary_state: 'refused',
-      last_error: 'refused',
+      last_error: WIRE_NULL,
       model_called_at: NOW_ISO,
       summarizing_since: WIRE_NULL,
     });

@@ -103,10 +103,21 @@ function floorStateTail(post: ReaderPostListItem, now: Date): string {
 }
 
 /**
- * The floor states' placeholder line, in the gist's place, and a `done` post's own gist.
- * `failed`'s middle clause is drawn from `last_error` when the tick recorded one, so the row
- * says exactly what went wrong rather than a generic apology. A `pending` post that already has
- * a gist is being RE-summarised, and keeps the summary it has until the tick replaces it.
+ * The generic clause a floor state falls back to when the tick recorded no `last_error` —
+ * `refused` when the API gave no `stop_details.explanation` for the category, `failed` for every
+ * other content-shaped miss.
+ */
+const GENERIC_CLAUSE: Record<'refused' | 'failed', string> = {
+  refused: 'the model declined to summarise this one',
+  failed: "the model couldn't produce one",
+};
+
+/**
+ * The floor states' placeholder line, in the gist's place, and a `done` post's own gist. Both
+ * `refused`'s and `failed`'s middle clause are drawn from `last_error` when the tick recorded
+ * one — the model's own refusal explanation, or the content-shaped failure reason — so the row
+ * says exactly what happened rather than a generic apology. A `pending` post that already has a
+ * gist is being RE-summarised, and keeps the summary it has until the tick replaces it.
  */
 function gistOrPlaceholder(post: ReaderPostListItem, state: ReaderSummaryState, now: Date): string {
   switch (state) {
@@ -115,13 +126,10 @@ function gistOrPlaceholder(post: ReaderPostListItem, state: ReaderSummaryState, 
         post.gist ?? 'The summary is on its way — open it now, or check back in a few minutes.'
       );
     }
-    case 'refused': {
-      return `No summary — the model declined to summarise this one. ${floorStateTail(post, now)}`;
-    }
+    case 'refused':
     case 'failed': {
       const reason = post.last_error?.trim();
-      const clause =
-        reason === undefined || reason === '' ? "the model couldn't produce one" : reason;
+      const clause = reason === undefined || reason === '' ? GENERIC_CLAUSE[state] : reason;
       return `No summary — ${clause}. ${floorStateTail(post, now)}`;
     }
     case 'done': {
