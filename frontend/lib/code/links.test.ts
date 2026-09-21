@@ -322,14 +322,22 @@ describe('buildImplementationUrl', () => {
     expect(prompt).toContain('phase: implementation');
   });
 
-  it('instructs archiving the consumed spec to docs/specs/archive/<REF>', () => {
+  it('instructs archiving the consumed spec, offering docs/specs/archive/<REF> only as the fallback', () => {
     const prompt =
       parse(
         buildImplementationUrl(makeProject(), makeStory({ spec_path: 'docs/specs/ALF-42.html' })),
       ).prompt ?? '';
-    // The spec is scaffolding — the implementation PR git-moves it out of the active dir.
+    // The spec is scaffolding — the implementation PR retires it from the active dir — but HOW
+    // and WHERE it's archived is the implement-spec skill's call; the hardcoded path only covers
+    // a repo where that skill is absent.
     expect(prompt).toMatch(/archive/i);
+    expect(prompt).toMatch(/if the implement-spec skill is absent/i);
     expect(prompt).toContain('docs/specs/archive/ALF-42.html');
+  });
+
+  it('defers HOW and WHERE the spec is archived to the implement-spec skill', () => {
+    const prompt = parse(buildImplementationUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/implement-spec skill.*how and where the consumed spec gets archived/i);
   });
 
   it('keeps the block spec-path on the ORIGINAL active path, not the archive path', () => {
@@ -342,7 +350,7 @@ describe('buildImplementationUrl', () => {
     expect(prompt).toContain('spec-path: docs/specs/ALF-42.html');
   });
 
-  it('derives the archive path from the spec basename for a non-default ref/extension', () => {
+  it('derives the fallback archive path from the spec basename for a non-default ref/extension', () => {
     const prompt =
       parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: 'docs/specs/RLP-7.md' })))
         .prompt ?? '';
