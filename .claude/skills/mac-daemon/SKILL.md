@@ -91,7 +91,9 @@ npm run uninstall:launchd -w daemon                           # bootout + remove
   works, flag or no flag) but it is absent from `builtinModules`, so Jest's resolver reports
   `Cannot find module 'sqlite' from 'src/sources/imessage/chat-db.ts'` and every suite that
   reaches chat.db fails. That failure takes the **root** `check:fast` down with it, so on an
-  older-Node machine check a red gate against a clean tree before treating it as yours.
+  older-Node machine check a red gate against a clean tree before treating it as yours — then
+  get the Node the repo's `.nvmrc` pins rather than working around the gate: unpack the
+  `latest-v24.x` linux-x64 tarball from `nodejs.org/dist` and put its `bin` first on `PATH`.
 
 ## chat.db and iMessage
 
