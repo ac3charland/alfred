@@ -16,8 +16,9 @@ import { expect, test } from './support/fixtures';
  * Proven end-to-end rather than in jsdom because each verb is a chain — an optimistic patch, a
  * route handler, a correction row (or deliberately none), and a row leaving the list — and the
  * thing worth checking is that the WRITE at the far end matches the verb the owner pressed.
- * "Nothing to answer" and "Not replying" look identical on screen and differ only in what they
- * teach the classifier, which is exactly the kind of difference a UI test can't see.
+ * "Not replying" and the tier dropdown's move to FYI both clear a row and look nothing alike on
+ * screen, but only the dropdown records a correction — exactly the kind of difference a UI test
+ * can't see.
  */
 
 const PERSONAL = makeCommAccount('personal', { id: '11111111-1111-4111-8111-111111111111' });
@@ -159,39 +160,8 @@ test.describe('the Comms triage queue', () => {
       'message://%3Cq3-invoice-99@realplay.example%3E',
     );
     await expect(page.getByRole('button', { name: 'Make an Inbox item' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Nothing to answer' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Not replying' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Change tier' })).toBeVisible();
-  });
-
-  test('"Nothing to answer" clears the row and records the demotion', async ({
-    page,
-    seed,
-    request,
-  }) => {
-    await seed(BAD_DAY);
-    await page.goto('/comms');
-
-    await page.getByText('Needs the Q3 invoice approved before the 5pm billing run.').click();
-    await page.getByRole('button', { name: 'Nothing to answer' }).click();
-
-    await expect(page.getByLabel('0 in ASAP')).toHaveText('0');
-    await expect(
-      page.getByText('Needs the Q3 invoice approved before the 5pm billing run.'),
-    ).toBeHidden();
-
-    // The correction is the whole reason this verb is separate from the one beside it.
-    await expect.poll(async () => countCorrections(request)).toBe(1);
-    const { commCorrections, commMessages } = await storedState(request);
-    expect(commCorrections[0]).toMatchObject({
-      kind: 'nothing_to_answer',
-      chosen_tier: 'fyi',
-      model_tier: 'asap',
-    });
-    expect(commMessages.find((row) => row.id === ASAP_ROW.id)).toMatchObject({
-      tier: 'fyi',
-      cleared_by: 'nothing_to_answer',
-    });
   });
 
   test('"Not replying" clears the row and records nothing', async ({ page, seed, request }) => {
@@ -255,7 +225,7 @@ test.describe('the Comms triage queue', () => {
     expect(items[0]?.notes).toContain('From Priya Raghavan via personal');
   });
 
-  test('the keyboard walks the queue and clears a row', async ({ page, seed, request }) => {
+  test('the keyboard walks the queue and clears a row', async ({ page, seed }) => {
     await seed(BAD_DAY);
     await page.goto('/comms');
     await expect(page.getByLabel('1 in ASAP')).toBeVisible();
@@ -266,10 +236,9 @@ test.describe('the Comms triage queue', () => {
       page.getByText('Can you approve the Q3 invoice before the 5pm billing run?'),
     ).toBeVisible();
 
-    await page.keyboard.press('n');
+    await page.keyboard.press('x');
 
     await expect(page.getByLabel('0 in ASAP')).toHaveText('0');
-    await expect.poll(async () => countCorrections(request)).toBe(1);
   });
 
   test('names each account and its state on the header dots', async ({ page, seed }) => {

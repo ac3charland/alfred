@@ -12,14 +12,12 @@ import { TierMenu } from './tier-menu';
 /**
  * The verbs on an expanded row.
  *
- * Five of them, and the shape is a decision rather than a layout: the two CLEARING verbs are
- * separate because only one of them is a correction. "Nothing to answer" says the row should
- * never have been queued and teaches the classifier that; "Not replying" says the verdict was
- * right and the owner is declining. One button cannot mean both, and collapsing them makes the
- * cheap gesture the uninformative one — which starves the example set exactly where the recall
- * bias guarantees the corrections are richest.
+ * Four of them. Clearing the row as "not replying" says the verdict was right and the owner is
+ * declining to answer — that clear teaches the classifier nothing, since the queue judgment
+ * stands. A row the classifier judged wrong is corrected through the tier dropdown instead,
+ * which demotes it and records the correction in the same motion.
  *
- * Two smaller affordances sit apart from the five: asking for a re-run, and adding the sender to
+ * Two smaller affordances sit apart from the four: asking for a re-run, and adding the sender to
  * the roster. The second is here because a roster drifts silently, and the moment the owner
  * notices the gap is the moment a message was mistiered — so the fix has to be reachable from
  * that message and not only from a settings page.
@@ -28,7 +26,6 @@ import { TierMenu } from './tier-menu';
 /** What the row can do, wired by the row so its hotkeys and its buttons fire the same code. */
 export interface RowVerbHandlers {
   makeInboxItem: () => void;
-  nothingToAnswer: () => void;
   notReplying: () => void;
   changeTier: (tier: CommTier) => void;
   reclassify: () => void;
@@ -83,9 +80,6 @@ export function RowVerbs({
           <>
             <Button variant="outline" size="sm" onClick={handlers.makeInboxItem}>
               Make an Inbox item
-            </Button>
-            <Button variant="outline" size="sm" onClick={handlers.nothingToAnswer}>
-              Nothing to answer
             </Button>
             <Button variant="outline" size="sm" onClick={handlers.notReplying}>
               Not replying

@@ -112,9 +112,6 @@ export function MessageRow({
       makeInboxItem: () => {
         runExit(() => actions.makeInboxItem(messageId));
       },
-      nothingToAnswer: () => {
-        runExit(() => actions.clearMessage(messageId, 'nothing_to_answer'));
-      },
       notReplying: () => {
         runExit(() => actions.clearMessage(messageId, 'not_replying'));
       },
@@ -161,12 +158,6 @@ export function MessageRow({
           if (shelved) break;
           event.preventDefault();
           handlers.makeInboxItem();
-          break;
-        }
-        case 'nothing': {
-          if (shelved) break;
-          event.preventDefault();
-          handlers.nothingToAnswer();
           break;
         }
         case 'not_replying': {

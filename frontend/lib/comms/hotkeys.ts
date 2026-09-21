@@ -23,8 +23,6 @@ export type RowHotkeyAction =
   | 'open'
   /** Spin the selected row into an Inbox item. */
   | 'inbox'
-  /** Clear the selected row as asking nothing — the demotion correction. */
-  | 'nothing'
   /** Clear the selected row as a real ask being left unanswered. */
   | 'not_replying'
   /** Open the selected row's tier menu. */
@@ -48,7 +46,6 @@ const KEYS: Record<string, RowHotkeyAction> = {
   arrowup: 'previous',
   o: 'open',
   i: 'inbox',
-  n: 'nothing',
   x: 'not_replying',
   t: 'tier',
   escape: 'deselect',
