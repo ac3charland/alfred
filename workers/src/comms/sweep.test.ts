@@ -1032,9 +1032,13 @@ describe('the thread transcript', () => {
   // Degrading to the behaviour this module had yesterday beats not judging at all — and a
   // database hiccup is not a bad message, so it must not spend one of the five attempts.
   it('still judges, logs, and counts no attempt when the thread read fails', async () => {
+    // Seeded mid-way up the ceiling rather than at 0, so "counted an attempt" is a value the
+    // test could actually observe: `countAttempt` PATCHes `read + 1`, and at 0 the only
+    // `classify_attempts` a passing sweep ever writes is the compare-and-set guard's own 0 —
+    // which is 0 whether or not the failure was counted, making the assertion unfalsifiable.
     const { calls } = mockSupabase({
       accounts: [imessageAccountRow()],
-      unjudged: [row()],
+      unjudged: [row({ classify_attempts: 2 })],
       threadFails: true,
     });
     const classify = mockClassify({ ok: verdict() });
@@ -1042,13 +1046,14 @@ describe('the thread transcript', () => {
 
     const summary = await runCommsSweep(env, NOW);
 
-    expect(summary.classified).toBe(1);
+    expect(summary).toMatchObject({ classified: 1, failed: 0, parked: 0 });
     expect(classify.mock.calls[0]?.[1].user).not.toContain('<<<THREAD>>>');
     expect(logged.join(' ')).toContain('could not read thread context');
     expect(verdicts(calls)).toHaveLength(1);
-    // The only patches are the freshness check and the verdict write, both at the count as read.
-    for (const patch of patches(calls)) {
-      expect(patch.body?.['classify_attempts']).not.toBe(1);
-    }
+    // A database hiccup is not a bad message: no write may advance the counter past what this
+    // tick read, or an outage would empty the inbound stream onto a counted tier via the ceiling.
+    const written = patches(calls).map((patch) => patch.body?.['classify_attempts']);
+    expect(written).not.toContain(3);
+    expect(written.every((count) => count === undefined || count === 2)).toBe(true);
   });
 });
