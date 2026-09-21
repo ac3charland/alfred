@@ -19,7 +19,6 @@ describe('rowHotkeyAction', () => {
     ['ArrowUp', 'previous'],
     ['o', 'open'],
     ['i', 'inbox'],
-    ['n', 'nothing'],
     ['x', 'not_replying'],
     ['t', 'tier'],
     ['Escape', 'deselect'],
@@ -28,7 +27,7 @@ describe('rowHotkeyAction', () => {
   });
 
   it('accepts the shifted letter — a caps-locked keyboard still drives the queue', () => {
-    expect(rowHotkeyAction(press('N'))).toBe('nothing');
+    expect(rowHotkeyAction(press('X'))).toBe('not_replying');
   });
 
   it('ignores a key with no meaning here', () => {
@@ -43,7 +42,7 @@ describe('rowHotkeyAction', () => {
 describe('rowHotkeyAction — what owns the keystroke', () => {
   it('ignores typing in a text field', () => {
     const input = document.createElement('input');
-    expect(rowHotkeyAction(press('n', { target: input }))).toBeUndefined();
+    expect(rowHotkeyAction(press('x', { target: input }))).toBeUndefined();
   });
 
   it('ignores typing in a textarea', () => {

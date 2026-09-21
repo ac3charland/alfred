@@ -378,13 +378,13 @@ export const FreshlyActivated: Story = {
   },
 };
 
-/** The bad day with the ASAP row opened: the five verbs, the body, and the verdict's reason. */
+/** The bad day with the ASAP row opened: the four verbs, the body, and the verdict's reason. */
 export const RowExpanded: Story = {
   parameters: BAD_DAY_PARAMETERS,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByText(ASAP_ROW.ask ?? ''));
-    await canvas.findByRole('button', { name: 'Nothing to answer' });
+    await canvas.findByRole('button', { name: 'Not replying' });
   },
 };
 

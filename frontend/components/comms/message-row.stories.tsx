@@ -164,7 +164,7 @@ export const RefusedAndFiltered: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** Selected: the message, the reason it landed here, and the five verbs. */
+/** Selected: the message, the reason it landed here, and the four verbs. */
 export const Selected: Story = {
   args: { selected: true },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },

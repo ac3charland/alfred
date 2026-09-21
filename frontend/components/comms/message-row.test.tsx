@@ -14,8 +14,7 @@ const mockApi = jest.mocked(api);
 
 /**
  * The row is where the module stops being a report. What is pinned here is that each verb sends
- * the write it claims to — the two clearing verbs in particular, since they are two verbs
- * precisely because only one of them teaches the classifier anything.
+ * the write it claims to.
  */
 
 const NOW = new Date(2026, 8, 9, 12, 0);
@@ -175,7 +174,7 @@ describe('MessageRow — what a collapsed row says', () => {
   it('hides the detail until the row is selected', () => {
     renderRow();
 
-    expect(screen.queryByRole('button', { name: 'Nothing to answer' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Not replying' })).not.toBeInTheDocument();
   });
 });
 
@@ -222,12 +221,11 @@ describe('MessageRow — the expanded detail', () => {
     expect(screen.getByText(/Dana is on the roster and named a deadline\./)).toBeInTheDocument();
   });
 
-  it('offers all five verbs on a queued row', () => {
+  it('offers all four verbs on a queued row', () => {
     renderRow({ selected: true });
 
     expect(screen.getByRole('link', { name: /Open in Mail/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Make an Inbox item' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Nothing to answer' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Not replying' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Change tier/ })).toBeInTheDocument();
   });
@@ -254,25 +252,11 @@ describe('MessageRow — the expanded detail', () => {
 
     expect(screen.getByRole('link', { name: /Open in Mail/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Change tier/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Nothing to answer' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Make an Inbox item' })).not.toBeInTheDocument();
   });
 });
 
 describe('MessageRow — the verbs', () => {
-  it('records a demotion when the row asked nothing', async () => {
-    const user = userEvent.setup();
-    renderRow({ selected: true });
-
-    await user.click(screen.getByRole('button', { name: 'Nothing to answer' }));
-    endExit();
-
-    expect(mockApi.clearCommMessage).toHaveBeenCalledWith(
-      '00000000-0000-4000-8000-0000000000b1',
-      'nothing_to_answer',
-    );
-  });
-
   it('records nothing when the owner is simply not replying', async () => {
     const user = userEvent.setup();
     renderRow({ selected: true });
@@ -354,7 +338,7 @@ describe('MessageRow — the verbs', () => {
 
     // A second verb pressed before the first's 300ms exit finishes must be dropped, not
     // silently retarget the pending commit.
-    fireEvent.keyDown(document, { key: 'n' });
+    fireEvent.keyDown(document, { key: 'x' });
     endExit();
 
     expect(mockApi.changeCommTier).toHaveBeenCalledWith(
@@ -366,10 +350,10 @@ describe('MessageRow — the verbs', () => {
 });
 
 describe('MessageRow — hotkeys on the selected row', () => {
-  it('clears with n, and only while the row is selected', () => {
+  it('clears with x, and only while the row is selected', () => {
     const { rerender } = renderRow({ selected: false });
 
-    fireEvent.keyDown(document, { key: 'n' });
+    fireEvent.keyDown(document, { key: 'x' });
     expect(mockApi.clearCommMessage).not.toHaveBeenCalled();
 
     rerender(
@@ -385,18 +369,6 @@ describe('MessageRow — hotkeys on the selected row', () => {
         onAddSender={jest.fn()}
       />,
     );
-    fireEvent.keyDown(document, { key: 'n' });
-    endExit();
-
-    expect(mockApi.clearCommMessage).toHaveBeenCalledWith(
-      '00000000-0000-4000-8000-0000000000b1',
-      'nothing_to_answer',
-    );
-  });
-
-  it('clears with x', () => {
-    renderRow({ selected: true });
-
     fireEvent.keyDown(document, { key: 'x' });
     endExit();
 
@@ -436,7 +408,6 @@ describe('MessageRow — hotkeys on the selected row', () => {
   it('leaves the clearing verbs alone on a shelf row', () => {
     renderRow({ selected: true, shelved: true, message: makeRow({ tier: 'fyi' }) });
 
-    fireEvent.keyDown(document, { key: 'n' });
     fireEvent.keyDown(document, { key: 'x' });
     fireEvent.keyDown(document, { key: 'i' });
 
@@ -449,7 +420,7 @@ describe('MessageRow — hotkeys on the selected row', () => {
     const field = document.createElement('input');
     document.body.append(field);
 
-    fireEvent.keyDown(field, { key: 'n' });
+    fireEvent.keyDown(field, { key: 'x' });
 
     expect(mockApi.clearCommMessage).not.toHaveBeenCalled();
     field.remove();
