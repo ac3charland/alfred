@@ -11,7 +11,9 @@
  *   npm run prompt:comms -w workers -- --resolve <handle>…   # what the people list does with it
  *
  * `--user` prints only the per-message half, which is where the sender line and the thread
- * transcript are; the system half is the same ~1,500 tokens on every call.
+ * transcript are; the system half is the same ~1,500 tokens on every call. `--body <text>`
+ * swaps the fixture's body for text of your own, which is how you check what the quoting fence
+ * does with a message that tries to reproduce alfred's own delimiters.
  */
 import {
   FIXTURES,
@@ -24,8 +26,14 @@ import { buildCommsRequest, resolveSender } from '../src/comms/prompt.ts';
 
 const args = process.argv.slice(2);
 
+/** The value after a flag, or undefined when it is absent or last. */
+function flagValue(name: string): string | undefined {
+  const at = args.indexOf(name);
+  return at === -1 ? undefined : args[at + 1];
+}
+
 function usage(): void {
-  console.error('usage: <fixture-id> [--user] | --resolve <handle>…');
+  console.error('usage: <fixture-id> [--user] [--body <text>] | --resolve <handle>…');
   console.error(`fixtures: ${FIXTURES.map((fixture) => fixture.id).join(', ')}`);
   process.exitCode = 1;
 }
@@ -44,8 +52,9 @@ if (args[0] === '--resolve') {
   if (fixture === undefined) {
     usage();
   } else {
+    const body = flagValue('--body');
     const request = buildCommsRequest({
-      message: fixture.message,
+      message: body === undefined ? fixture.message : { ...fixture.message, body },
       account: fixture.account,
       rubric: FIXTURE_RUBRIC,
       examples: [],
