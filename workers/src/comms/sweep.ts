@@ -36,6 +36,7 @@ import {
   fetchExamples,
   fetchPeople,
   fetchReclassifyRequests,
+  fetchThreadContext,
   fetchUnjudgedAtCeiling,
   fetchUnjudgedMessages,
   insertVerdict,
@@ -50,6 +51,7 @@ import type {
   CommMessage,
   CommPerson,
   CommRubric,
+  CommThreadMessage,
   CommTier,
   JudgedBy,
 } from './types';
@@ -70,12 +72,14 @@ import {
  * a schedule that does not serialize its invocations.
  *
  * It also keeps the tick inside the Workers **subrequest budget** — 50 outbound fetches per
- * invocation on the Free plan. A sweep spends ~11 before it judges anything (the Inbox
+ * invocation on the Free plan. A sweep spends ~12 before it judges anything (the Inbox
  * classifier that shares this tick, the at-ceiling park, the two eligibility queries, the five
- * context reads, the closing health stamp) and ~5 per message (the model call, the verdict
- * insert, the message patches, a rerun's clear). Six lands at ~41. Raise it only alongside that
- * arithmetic: over the budget the tick throws part-way, and a half-swept tick bills model calls
- * for verdicts it never managed to store.
+ * context reads, the ONE thread-context read, the closing health stamp) and ~5 per message (the
+ * model call, the verdict insert, the message patches, a rerun's clear). Six lands at ~42. Raise
+ * it only alongside that arithmetic: over the budget the tick throws part-way, and a half-swept
+ * tick bills model calls for verdicts it never managed to store. The thread read is deliberately
+ * ONE call for the whole tick rather than one per message — per-message it would be ~47, too
+ * close to the ceiling to ship.
  */
 export const COMMS_SWEEP_LIMIT = 6;
 
@@ -220,6 +224,37 @@ async function readContext(env: CommsSweepEnv): Promise<SweepContext> {
     exampleSetVersion,
     people,
   };
+}
+
+/**
+ * The conversation each iMessage message arrived into, for the whole tick at once.
+ *
+ * Texts only, which is the owner's call and what the evidence supports: the failure reported was
+ * text-shaped, mail already carries its context in quoted replies and subject lines, and six
+ * email bodies would cost an order of magnitude more than six texts do. A tick with no iMessage
+ * rows makes no call at all.
+ *
+ * A failed read is NOT a failed classification. It is logged and the message is judged without a
+ * transcript — degrading to the behaviour this module had yesterday beats not judging at all —
+ * and it counts no attempt, for the same reason a transport failure counts none: a database
+ * hiccup is not a bad message, and counting it would empty an outage into a counted tier.
+ */
+async function readThreads(
+  env: CommsSweepEnv,
+  messages: readonly CommMessage[],
+  accounts: Map<string, CommAccount>,
+): Promise<Map<string, CommThreadMessage[]>> {
+  const ids = messages
+    .filter((message) => accounts.get(message.account_id)?.kind === 'imessage')
+    .map((message) => message.id);
+  if (ids.length === 0) return new Map();
+
+  try {
+    return await fetchThreadContext(env, ids);
+  } catch (error) {
+    console.error('comms classifier: could not read thread context; judging without it', error);
+    return new Map();
+  }
 }
 
 /** Whether the owner asked for this row to be judged again. Nothing is ever re-judged silently. */
@@ -474,6 +509,7 @@ export async function runCommsSweep(env: CommsSweepEnv, now: Date): Promise<Comm
   // Read lazily and once: a tick whose only work is parking a decode failure makes no model call
   // and needs no prompt, so it should not pay for a rubric, a roster and an example draw.
   let context: SweepContext | undefined;
+  let threads: Map<string, CommThreadMessage[]> | undefined;
 
   // Sequential, one request per message, deliberately — NOT Promise.all. Nobody is waiting on a
   // tick, while parallel bursts only add rate-limit risk, and one request per message is what
@@ -493,6 +529,9 @@ export async function runCommsSweep(env: CommsSweepEnv, now: Date): Promise<Comm
     }
 
     context ??= await readContext(env);
+    // Once per tick, on the first message that actually needs a prompt — the same laziness
+    // `readContext` has, so a tick whose only work is parking a decode failure pays for neither.
+    threads ??= await readThreads(env, eligible, context.accounts);
     const account = context.accounts.get(message.account_id);
     if (account === undefined) {
       // The account row is gone, which deletes its messages by cascade — so this row is on its
@@ -528,6 +567,9 @@ export async function runCommsSweep(env: CommsSweepEnv, now: Date): Promise<Comm
         // Both producers (`gmail.ts`, `ingest.ts`) write the raw header signal onto the row;
         // this is the one place it is read back off and handed to the prompt as evidence.
         carriesListHeader: message.has_list_header,
+        // Empty for mail, for a first contact, and for a tick whose thread read failed — all
+        // three render no section at all, so the prompt is exactly what it was before.
+        thread: threads.get(message.id) ?? [],
       }),
     );
 

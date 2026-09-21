@@ -8,6 +8,7 @@ import {
   fetchExamples,
   fetchPeople,
   fetchReclassifyRequests,
+  fetchThreadContext,
   fetchUnjudgedAtCeiling,
   fetchUnjudgedMessages,
   ingestMessages,
@@ -928,5 +929,88 @@ describe('sweepExpired', () => {
     await expect(sweepExpired(env, 60)).rejects.toThrow(
       'Supabase POST rpc/comm_sweep_expired failed: 403 permission denied',
     );
+  });
+});
+
+/** One row of `comm_thread_context`'s result set, with `sender_name` as the wire spells absent. */
+function threadRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    for_message_id: 'message-1',
+    direction: 'inbound',
+    sender_name: WIRE_NULL,
+    sender_handle: '+15125550111',
+    body: 'Are you still coming Sunday?',
+    body_extracted: true,
+    has_attachments: false,
+    received_at: '2026-09-08T19:02:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('fetchThreadContext', () => {
+  it('posts the message ids, the limit and the age bound to the RPC', async () => {
+    const calls = mockSupabase(() => Response.json([]));
+
+    await fetchThreadContext(env, ['message-1', 'message-2']);
+
+    const [call] = calls as [Call];
+    expect(call.method).toBe('POST');
+    expect(call.url).toContain('/rest/v1/rpc/comm_thread_context');
+    expect(call.body).toEqual({
+      p_message_ids: ['message-1', 'message-2'],
+      p_limit: 6,
+      p_max_age: '30 days',
+    });
+  });
+
+  it('groups the rows by the message they belong to, oldest first', async () => {
+    // The RPC ranks newest-first, because taking the most recent N is the whole point of it.
+    mockSupabase(() =>
+      Response.json([
+        threadRow({ body: 'newest', received_at: '2026-09-08T19:41:00.000Z' }),
+        threadRow({ body: 'middle', received_at: '2026-09-08T19:40:00.000Z' }),
+        threadRow({ body: 'oldest', received_at: '2026-09-08T19:02:00.000Z' }),
+        threadRow({ for_message_id: 'message-2', body: 'elsewhere' }),
+      ]),
+    );
+
+    const grouped = await fetchThreadContext(env, ['message-1', 'message-2']);
+
+    expect([...grouped.keys()]).toEqual(['message-1', 'message-2']);
+    expect(grouped.get('message-1')?.map((entry) => entry.body)).toEqual([
+      'oldest',
+      'middle',
+      'newest',
+    ]);
+    expect(grouped.get('message-2')).toHaveLength(1);
+  });
+
+  it('maps an absent sender name to undefined, never to a null', async () => {
+    mockSupabase(() =>
+      Response.json([threadRow({ sender_name: 'Mom', body: 'named' }), threadRow({ body: 'not' })]),
+    );
+
+    const grouped = await fetchThreadContext(env, ['message-1']);
+
+    const byBody = new Map(
+      (grouped.get('message-1') ?? []).map((entry) => [entry.body, entry.sender_name]),
+    );
+    expect(byBody.get('named')).toBe('Mom');
+    expect(byBody.get('not')).toBeUndefined();
+  });
+
+  it('makes no request at all when there is nothing to read', async () => {
+    const calls = mockSupabase();
+
+    const grouped = await fetchThreadContext(env, []);
+
+    expect(calls).toHaveLength(0);
+    expect(grouped.size).toBe(0);
+  });
+
+  it('throws like every other rejected read, so the caller can decide what to do', async () => {
+    mockSupabase(() => new Response('nope', { status: 500 }));
+
+    await expect(fetchThreadContext(env, ['message-1'])).rejects.toThrow('Supabase');
   });
 });

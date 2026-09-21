@@ -34,6 +34,7 @@ import type {
   CommMessage,
   CommPerson,
   CommRubric,
+  CommThreadMessage,
   CommTier,
   CommVerdictInsert,
   CorrectionKind,
@@ -563,6 +564,77 @@ export async function patchMessage(
     `PATCH comm_messages (${id})`,
   );
   return rows.length;
+}
+
+interface WireThreadRow {
+  for_message_id: string;
+  direction: CommDirection;
+  sender_name: string | null;
+  sender_handle: string;
+  body: string;
+  body_extracted: boolean;
+  has_attachments: boolean;
+  received_at: string;
+}
+
+/** How many prior messages of a thread the classifier is shown. */
+export const THREAD_CONTEXT_LIMIT = 6;
+
+/** How far back a prior message may sit and still count as part of the same exchange. A thread
+ *  dormant for months is not a conversation, and dragging its last beat in would make a new
+ *  message read as a continuation of something long settled. */
+export const THREAD_CONTEXT_MAX_AGE = '30 days';
+
+/**
+ * The messages that came before each of these, grouped by the message they belong to.
+ *
+ * ONE request for the whole tick, not one per message, and the budget is why: a sweep already
+ * spends roughly 41 of the Workers free plan's 50 subrequests, so a per-message query would take
+ * a full tick to ~47 against a hard ceiling — and over it the tick throws part-way, having billed
+ * model calls for verdicts it never stored. A single RPC with a window function keeps it at ~42
+ * and leaves `COMMS_SWEEP_LIMIT` where it is.
+ *
+ * The rows come back newest-first per message (that is what the window function ranks on), so
+ * each group is reversed here: the transcript reads oldest-first, in the direction the
+ * conversation actually happened.
+ */
+export async function fetchThreadContext(
+  env: SupabaseEnv,
+  messageIds: readonly string[],
+  options: { limit?: number; maxAge?: string } = {},
+): Promise<Map<string, CommThreadMessage[]>> {
+  const grouped = new Map<string, CommThreadMessage[]>();
+  if (messageIds.length === 0) return grouped;
+
+  const rows = await fetchJson<WireThreadRow[]>(
+    env,
+    rpcUrl(env, 'comm_thread_context'),
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        p_message_ids: [...messageIds],
+        p_limit: options.limit ?? THREAD_CONTEXT_LIMIT,
+        p_max_age: options.maxAge ?? THREAD_CONTEXT_MAX_AGE,
+      }),
+    },
+    'POST rpc/comm_thread_context',
+  );
+
+  for (const row of rows) {
+    const entries = grouped.get(row.for_message_id) ?? [];
+    entries.push({
+      direction: row.direction,
+      sender_handle: row.sender_handle,
+      sender_name: row.sender_name ?? undefined,
+      body: row.body,
+      body_extracted: row.body_extracted,
+      has_attachments: row.has_attachments,
+      received_at: row.received_at,
+    });
+    grouped.set(row.for_message_id, entries);
+  }
+  for (const entries of grouped.values()) entries.reverse();
+  return grouped;
 }
 
 // ── comm_verdicts ────────────────────────────────────────────────────────────

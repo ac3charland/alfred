@@ -38,6 +38,13 @@ const UNKNOWN_HANDLE = 'unknown';
  * Anything that is neither — a short code, an Apple business id — is passed through cleaned but
  * not reshaped, because inventing a country code for a five-digit sender would be a wrong answer
  * rather than a missing one.
+ *
+ * This is the REFERENCE implementation of a rule two other packages also hold:
+ * `frontend/lib/comms/people.ts` (what gets stored when the owner adds a person) and
+ * `workers/src/comms/prompt.ts` (what the classifier compares a sender against). They are
+ * separate copies on purpose — the daemon ships separately, exactly as `contract.ts` explains —
+ * so a change here is a change in all three, against the mirrored test table each one carries.
+ * When they drift, a roster entry silently stops resolving its sender.
  */
 export function normalizeHandle(raw?: string): string | undefined {
   const trimmed = raw?.trim();

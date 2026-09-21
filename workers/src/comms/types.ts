@@ -154,6 +154,25 @@ export interface CommMessage {
 }
 
 /**
+ * One earlier message in a thread, as the classifier reads it — the small slice of a stored row
+ * the transcript actually renders, not the whole `CommMessage`.
+ *
+ * Deliberately narrow: the RPC that reads these returns exactly these columns, and a wider type
+ * would invite a caller to reason about a tier or an attempt count that the read never selected.
+ * `direction` is what carries the position — an `outbound` row is the owner's own reply, which is
+ * most of what decides whether the message being judged closes a loop or opens one.
+ */
+export interface CommThreadMessage {
+  direction: CommDirection;
+  sender_handle: string;
+  sender_name?: string | undefined;
+  body: string;
+  body_extracted: boolean;
+  has_attachments: boolean;
+  received_at: string;
+}
+
+/**
  * A verdict on its way into the database. Every field of the provenance is required on purpose:
  * a verdict stamped with only one of the rubric and example-set versions cannot be reconstructed
  * later, which defeats the point of versioning either.

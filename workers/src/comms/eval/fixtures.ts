@@ -13,7 +13,14 @@
  * from someone who does not, a group chat that names the owner and one that does not, a vendor
  * being loud about an invoice, and a good deal of mail that asks nothing at all.
  */
-import type { CommAccount, CommMessage, CommPerson, CommRubric, CommTier } from '../types';
+import type {
+  CommAccount,
+  CommMessage,
+  CommPerson,
+  CommRubric,
+  CommThreadMessage,
+  CommTier,
+} from '../types';
 
 /** The instant the fixtures are dated against, so a run is reproducible. */
 export const FIXTURE_NOW = new Date('2026-09-09T15:00:00.000Z');
@@ -34,6 +41,12 @@ export interface CommFixture {
   about: string;
   account: CommAccount;
   message: CommMessage;
+  /**
+   * The conversation the message arrived into, oldest first. Absent on most fixtures, because
+   * most cases do not turn on position — and a fixture with no thread is also the case that
+   * proves the prompt is unchanged for a first contact.
+   */
+  thread?: CommThreadMessage[] | undefined;
   expected: ExpectedJudgment;
 }
 
@@ -108,6 +121,23 @@ export const FIXTURE_PEOPLE: CommPerson[] = [
     notes: 'Neighbour.',
     handles: [{ handle: '+13125550188', kind: 'phone' }],
   },
+  // The rubric says nothing about Noor or Rosa, deliberately. The sender pairs below hold the
+  // message fixed and vary only the roster priority, so they measure the acknowledgement floor
+  // itself — a rubric line naming the sender (as there is for Priya) would measure that instead.
+  {
+    id: 'p-noor',
+    name: 'Noor Haddad',
+    priority: 'high',
+    notes: 'Oldest friend.',
+    handles: [{ handle: '+15125550133', kind: 'phone' }],
+  },
+  {
+    id: 'p-rosa',
+    name: 'Rosa Reyes',
+    priority: 'normal',
+    notes: 'My sister.',
+    handles: [{ handle: '+15125550144', kind: 'phone' }],
+  },
 ];
 
 export const FIXTURE_RUBRIC: CommRubric = {
@@ -134,6 +164,12 @@ interface FixtureInput {
   chat?: { name: string; participants: string[] };
   attachments?: boolean;
   minutesAgo?: number;
+  /**
+   * The exchange this message lands in, oldest first, each entry dated by how long before
+   * `FIXTURE_NOW` it was sent. `owner: true` is the owner's own sent message — which side spoke
+   * last is most of what decides whether a message closes a loop or opens one.
+   */
+  thread?: { body: string; minutesAgo: number; owner?: boolean }[];
   tier: CommTier;
 }
 
@@ -144,10 +180,20 @@ interface FixtureInput {
  */
 function fixture(input: FixtureInput): CommFixture {
   const receivedAt = new Date(FIXTURE_NOW.getTime() - (input.minutesAgo ?? 30) * 60 * 1000);
+  const thread = input.thread?.map((entry) => ({
+    direction: entry.owner === true ? ('outbound' as const) : ('inbound' as const),
+    sender_handle: entry.owner === true ? (input.account.owner_handles[0] ?? 'owner') : input.from,
+    sender_name: entry.owner === true ? undefined : input.name,
+    body: entry.body,
+    body_extracted: true,
+    has_attachments: false,
+    received_at: new Date(FIXTURE_NOW.getTime() - entry.minutesAgo * 60 * 1000).toISOString(),
+  }));
   return {
     id: input.id,
     about: input.about,
     account: input.account,
+    thread,
     message: {
       id: input.id,
       account_id: input.account.id,
@@ -675,5 +721,171 @@ export const FIXTURES: CommFixture[] = [
     subject: 'Closing in 20 minutes',
     body: "We're still on for the 2pm closing but need your signature on the wire instructions in the next 20 minutes or we lose today's rate lock.",
     tier: 'asap',
+  }),
+
+  // ── Personal texts: the entry test and the acknowledgement floor ──────────
+  // Everything below is a message that asks for NOTHING. Under the old entry test — "does this
+  // want an answer, a decision, an action" — every one of them failed cleanly and was shelved,
+  // which is the reported failure. The pairs hold the words fixed and vary only the sender's
+  // roster priority, so they measure the floor rather than the classifier's opinion of a
+  // particular sentence; if a pair answers the same tier twice, check handle resolution before
+  // touching the prompt, because an unresolved handle makes a priority person read as a stranger.
+  fixture({
+    id: 'text-arrival-priority',
+    about: 'A priority person says they have landed. Asks nothing; silence would be a lapse.',
+    account: IMESSAGE,
+    from: '+15125550133',
+    name: 'Noor Haddad',
+    body: 'just landed, flight was brutal',
+    tier: 'today',
+  }),
+  fixture({
+    id: 'text-arrival-other',
+    about: 'The same words from nobody on the roster. The pair is the point.',
+    account: IMESSAGE,
+    from: '+13125559123',
+    body: 'just landed, flight was brutal',
+    tier: 'whenever',
+  }),
+  fixture({
+    id: 'text-news-priority',
+    about: 'News shared by a priority person. Nothing asked, and silence costs something.',
+    account: IMESSAGE,
+    from: '+15125550133',
+    name: 'Noor Haddad',
+    body: 'we got the house!! closing is the 14th',
+    tier: 'today',
+  }),
+  fixture({
+    id: 'text-news-shared',
+    about: 'The same announcement from a sister, listed at normal. The other half of the pair.',
+    account: IMESSAGE,
+    from: '+15125550144',
+    name: 'Rosa Reyes',
+    body: 'we got the house!! closing is the 14th',
+    tier: 'whenever',
+  }),
+  fixture({
+    id: 'text-hard-news',
+    about: 'Content earns the tier, not the sender: nobody on the roster, and it cannot wait.',
+    account: IMESSAGE,
+    from: '+13125559144',
+    body: "my dad's back in the hospital",
+    tier: 'today',
+  }),
+  fixture({
+    id: 'text-plan-announced',
+    about: 'A plan the owner is told about, from nobody on the roster. Owed, but undated.',
+    account: IMESSAGE,
+    from: '+13125559155',
+    body: "heads up I'm bringing Sam on Sunday",
+    tier: 'whenever',
+  }),
+  fixture({
+    id: 'text-follow-up-after-silence',
+    about: 'One character, and the thread is the only thing that says it is owed.',
+    account: IMESSAGE,
+    from: '+13125559166',
+    body: '?',
+    minutesAgo: 20,
+    thread: [
+      { body: 'hey are we still on for the 3rd?', minutesAgo: 2880 },
+      { body: 'I need to give them a number by friday', minutesAgo: 2875 },
+    ],
+    tier: 'today',
+  }),
+  fixture({
+    id: 'text-new-topic-after-settled',
+    about: 'A settled exchange, then a new subject. Opening one is owed; closing one is not.',
+    account: IMESSAGE,
+    from: '+13125559177',
+    body: 'hey are you free saturday',
+    minutesAgo: 20,
+    thread: [
+      { body: 'thanks for sending that over', minutesAgo: 4320 },
+      { body: 'no problem!', minutesAgo: 4315, owner: true },
+      { body: 'perfect', minutesAgo: 4310 },
+    ],
+    tier: 'today',
+  }),
+
+  // ── Guards: the closing beats of an exchange are still the shelf ──────────
+  // Deliberately from a priority sender, because that is where the acknowledgement floor makes a
+  // miss loud: under it, a closer misread as an obligation lands on today, from the person who
+  // texts most. The distinction between a message that OWES an acknowledgement and one that IS
+  // one is load-bearing here in a way it is nowhere else.
+  fixture({
+    id: 'text-reaction-priority',
+    about: 'A reaction from a priority person. Nothing is owed to it.',
+    account: IMESSAGE,
+    from: '+15125550133',
+    name: 'Noor Haddad',
+    body: 'lol',
+    tier: 'fyi',
+  }),
+  fixture({
+    id: 'text-emoji-only-priority',
+    about: 'An emoji alone, from a priority person.',
+    account: IMESSAGE,
+    from: '+15125550133',
+    name: 'Noor Haddad',
+    body: '👍',
+    tier: 'fyi',
+  }),
+  fixture({
+    id: 'text-ack-closer-priority',
+    about: 'Thanks that closes a thread the owner already acted on.',
+    account: IMESSAGE,
+    from: '+15125550133',
+    name: 'Noor Haddad',
+    body: 'thanks!! 🙏',
+    minutesAgo: 20,
+    thread: [
+      { body: 'any chance you can send me that photo from saturday', minutesAgo: 120 },
+      { body: 'sent!', minutesAgo: 40, owner: true },
+    ],
+    tier: 'fyi',
+  }),
+  fixture({
+    id: 'text-answer-closes-loop-priority',
+    about: 'An answer to a question the OWNER asked. It closes the loop rather than opening one.',
+    account: IMESSAGE,
+    from: '+15125550133',
+    name: 'Noor Haddad',
+    body: '4ish',
+    minutesAgo: 20,
+    thread: [
+      { body: 'are you still coming sunday?', minutesAgo: 90 },
+      { body: 'yes! what time should I be there', minutesAgo: 60, owner: true },
+    ],
+    tier: 'fyi',
+  }),
+  fixture({
+    id: 'text-group-chatter-priority',
+    about:
+      'Group banter from a priority person, aimed at nobody. The acknowledgement floor must not reach it.',
+    account: IMESSAGE,
+    from: '+15125550133',
+    name: 'Noor Haddad',
+    chat: { name: 'Saturday crew', participants: ['+15125550133', '+13125559188'] },
+    body: 'honestly that place has gone downhill so hard',
+    tier: 'fyi',
+  }),
+  fixture({
+    id: 'text-group-news',
+    about: 'News announced to a group rather than to the owner. Read it, owe nothing.',
+    account: IMESSAGE,
+    from: '+13125559188',
+    chat: { name: 'Saturday crew', participants: ['+15125550133', '+13125559188'] },
+    body: 'we finally booked the italy trip!! june 2nd to the 14th',
+    tier: 'fyi',
+  }),
+  fixture({
+    id: 'text-machine-notification',
+    about: 'Machine mail arriving as a text — judged by a different test than human speech.',
+    account: IMESSAGE,
+    from: '262966',
+    body: 'Your package was delivered to the front door. Reply STOP to opt out.',
+    tier: 'fyi',
   }),
 ];

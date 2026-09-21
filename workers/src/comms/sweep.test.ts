@@ -93,6 +93,26 @@ function accountRow(): Record<string, unknown> {
   };
 }
 
+/** The same account as an iMessage one — the only source whose prompts carry a transcript. */
+function imessageAccountRow(): Record<string, unknown> {
+  return { ...accountRow(), kind: 'imessage', key: 'imessage', label: 'iMessage', home: 'daemon' };
+}
+
+/** One prior message of a thread, as `comm_thread_context` returns it. */
+function threadRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    for_message_id: 'message-1',
+    direction: 'inbound',
+    sender_name: WIRE_NULL,
+    sender_handle: '+15125550111',
+    body: 'Are you still coming Sunday?',
+    body_extracted: true,
+    has_attachments: false,
+    received_at: '2026-09-09T13:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function personRow(): Record<string, unknown> {
   return {
     id: 'person-1',
@@ -125,6 +145,10 @@ interface MockOptions {
   ceiling?: Record<string, unknown>[];
   people?: Record<string, unknown>[];
   rubric?: Record<string, unknown>[];
+  accounts?: Record<string, unknown>[];
+  /** What `comm_thread_context` hands back, or a rejection when the read is meant to fail. */
+  threadRows?: Record<string, unknown>[];
+  threadFails?: boolean;
   patchRows?: () => unknown[];
   verdictFails?: boolean;
 }
@@ -159,7 +183,12 @@ function mockSupabase(options: MockOptions = {}): { calls: Call[] } {
       return Promise.resolve(Response.json(options.unjudged ?? []));
     }
     if (url.includes('/rest/v1/comm_accounts')) {
-      return Promise.resolve(Response.json([accountRow()]));
+      return Promise.resolve(Response.json(options.accounts ?? [accountRow()]));
+    }
+    if (url.includes('/rest/v1/rpc/comm_thread_context')) {
+      return options.threadFails === true
+        ? Promise.resolve(new Response('function timed out', { status: 500 }))
+        : Promise.resolve(Response.json(options.threadRows ?? []));
     }
     if (url.includes('/rest/v1/comm_people')) {
       return Promise.resolve(Response.json(options.people ?? []));
@@ -213,6 +242,9 @@ const patchOf = (calls: Call[], id: string): Call | undefined => {
 
 const verdicts = (calls: Call[]): Call[] =>
   calls.filter((call) => call.url.includes('/rest/v1/comm_verdicts'));
+
+const threads = (calls: Call[]): Call[] =>
+  calls.filter((call) => call.url.includes('/rest/v1/rpc/comm_thread_context'));
 
 const health = (calls: Call[]): Call[] =>
   calls.filter((call) => call.url.includes('/rest/v1/comm_classifier_health'));
@@ -420,7 +452,7 @@ describe('a judged message', () => {
       reason: 'A named deadline today from a colleague who is blocked.',
       provider: 'anthropic',
       model: 'claude-haiku-4-5',
-      prompt_version: 3,
+      prompt_version: 4,
       rubric_version: 4,
       example_set_version: 7,
       // Stamped because the sender resolved to someone on the roster — "flagged because it's
@@ -947,5 +979,95 @@ describe('the tick stays inside the cron cadence', () => {
     const worstCase = sweepBudget(SWEEP_LIMIT) + sweepBudget(COMMS_SWEEP_LIMIT);
 
     expect(worstCase).toBeLessThan(CADENCE_MS * 4);
+  });
+});
+
+describe('the thread transcript', () => {
+  it('reads the thread once per tick, for every iMessage row at once', async () => {
+    const { calls } = mockSupabase({
+      accounts: [imessageAccountRow()],
+      unjudged: [row({ id: 'message-1' }), row({ id: 'message-2' })],
+      threadRows: [threadRow()],
+    });
+    mockClassify({ ok: verdict() });
+
+    await runCommsSweep(env, NOW);
+
+    // ONE call, not one per message: a per-message read would take the tick from ~42 of the
+    // Workers free plan's 50 subrequests to ~47, and over the budget it throws part-way.
+    expect(threads(calls)).toHaveLength(1);
+    expect(threads(calls)[0]?.body).toMatchObject({
+      p_message_ids: ['message-1', 'message-2'],
+      p_limit: 6,
+    });
+  });
+
+  it('puts the transcript in front of the model, oldest first', async () => {
+    mockSupabase({
+      accounts: [imessageAccountRow()],
+      unjudged: [row()],
+      threadRows: [
+        threadRow({ body: 'and 4ish works', received_at: '2026-09-09T13:10:00.000Z' }),
+        threadRow({ body: 'Are you still coming Sunday?' }),
+      ],
+    });
+    const classify = mockClassify({ ok: verdict() });
+
+    await runCommsSweep(env, NOW);
+
+    const [request] = classify.mock.calls[0] ?? [];
+    const user = classify.mock.calls[0]?.[1].user ?? '';
+    expect(request).toBeDefined();
+    expect(user).toContain('<<<THREAD>>>');
+    expect(user.indexOf('Are you still coming Sunday?')).toBeLessThan(user.indexOf('and 4ish'));
+  });
+
+  it('makes no such call at all on a tick with no iMessage rows', async () => {
+    const { calls } = mockSupabase({ unjudged: [row()] });
+    mockClassify({ ok: verdict() });
+
+    await runCommsSweep(env, NOW);
+
+    expect(threads(calls)).toHaveLength(0);
+  });
+
+  it('asks only about the iMessage rows when a tick holds both kinds', async () => {
+    const { calls } = mockSupabase({
+      accounts: [accountRow(), { ...imessageAccountRow(), id: 'account-2' }],
+      unjudged: [row({ id: 'mail-1' }), row({ id: 'text-1', account_id: 'account-2' })],
+    });
+    mockClassify({ ok: verdict() });
+
+    await runCommsSweep(env, NOW);
+
+    expect(threads(calls)[0]?.body).toMatchObject({ p_message_ids: ['text-1'] });
+  });
+
+  // Degrading to the behaviour this module had yesterday beats not judging at all — and a
+  // database hiccup is not a bad message, so it must not spend one of the five attempts.
+  it('still judges, logs, and counts no attempt when the thread read fails', async () => {
+    // Seeded mid-way up the ceiling rather than at 0, so "counted an attempt" is a value the
+    // test could actually observe: `countAttempt` PATCHes `read + 1`, and at 0 the only
+    // `classify_attempts` a passing sweep ever writes is the compare-and-set guard's own 0 —
+    // which is 0 whether or not the failure was counted, making the assertion unfalsifiable.
+    const { calls } = mockSupabase({
+      accounts: [imessageAccountRow()],
+      unjudged: [row({ classify_attempts: 2 })],
+      threadFails: true,
+    });
+    const classify = mockClassify({ ok: verdict() });
+    const logged = captureErrors();
+
+    const summary = await runCommsSweep(env, NOW);
+
+    expect(summary).toMatchObject({ classified: 1, failed: 0, parked: 0 });
+    expect(classify.mock.calls[0]?.[1].user).not.toContain('<<<THREAD>>>');
+    expect(logged.join(' ')).toContain('could not read thread context');
+    expect(verdicts(calls)).toHaveLength(1);
+    // A database hiccup is not a bad message: no write may advance the counter past what this
+    // tick read, or an outage would empty the inbound stream onto a counted tier via the ceiling.
+    const written = patches(calls).map((patch) => patch.body?.['classify_attempts']);
+    expect(written).not.toContain(3);
+    expect(written.every((count) => count === undefined || count === 2)).toBe(true);
   });
 });

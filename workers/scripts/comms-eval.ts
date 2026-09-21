@@ -127,6 +127,9 @@ if (apiKey === undefined || apiKey === '') {
       people: FIXTURE_PEOPLE,
       timeZone: FIXTURE_TIME_ZONE,
       now: FIXTURE_NOW,
+      // Absent on most fixtures, which is the point: a case with no thread produces exactly the
+      // prompt it produced before the transcript existed.
+      thread: fixture.thread,
     });
 
     const outcome = await classifyJson(env, request);

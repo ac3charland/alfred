@@ -1381,6 +1381,8 @@ export type Database = {
       }
     }
     Functions: {
+      comm_canonical_handle: { Args: { p_handle: string }; Returns: string }
+      comm_canonicalise_handles: { Args: never; Returns: number }
       comm_create_inbox_item: {
         Args: {
           p_message: string
@@ -1405,6 +1407,19 @@ export type Database = {
         Returns: number
       }
       comm_sweep_expired: { Args: { p_days?: number }; Returns: number }
+      comm_thread_context: {
+        Args: { p_limit?: number; p_max_age?: string; p_message_ids: string[] }
+        Returns: {
+          body: string
+          body_extracted: boolean
+          direction: string
+          for_message_id: string
+          has_attachments: boolean
+          received_at: string
+          sender_handle: string
+          sender_name: string
+        }[]
+      }
       complete_and_spawn: {
         Args: { next_due: string; next_index: number; root_id: string }
         Returns: Json

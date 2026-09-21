@@ -2934,6 +2934,207 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const commsThreadContextResult = await attempt(
+    'comms: comm_thread_context returns the most recent prior messages of each thread, both' +
+      ' directions, never the message itself, never another thread and never past the age bound (ALF-244)',
+    async () => {
+      const account = 'cccccccc-0000-4000-8000-000000000007';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'imessage-thread-test', 'imessage', 'iMessage', 'daemon')`,
+        [account],
+      );
+      // `minutes` is how long BEFORE now the row arrived, so the target is the newest of its
+      // thread and everything else is genuinely prior to it.
+      const insert = async (
+        source: string,
+        thread: string,
+        minutes: number,
+        direction: string,
+        body: string,
+      ) => {
+        const { rows } = await client.query<{ id: string }>(
+          `insert into comm_messages (account_id, source_id, thread_key, direction, sender_handle,
+                                      body, received_at)
+             values ($1, $2, $3, $4, 'x@example.com', $5,
+                     now() - ($6::text || ' minutes')::interval)
+             returning id`,
+          [account, source, thread, direction, body, String(minutes)],
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error(`could not seed ${source}`);
+        return id;
+      };
+
+      const target = await insert('target', 'thread-x', 1, 'inbound', 'the message being judged');
+      await insert('p1', 'thread-x', 10, 'inbound', 'oldest kept');
+      await insert('p2', 'thread-x', 8, 'outbound', 'the owner answering');
+      await insert('p3', 'thread-x', 5, 'inbound', 'newest prior');
+      await insert('after', 'thread-x', 0, 'inbound', 'arrived after the target');
+      await insert('ancient', 'thread-x', 60 * 24 * 45, 'inbound', 'past the age bound');
+      await insert('elsewhere', 'thread-y', 6, 'inbound', 'a different conversation');
+
+      const { rows } = await client.query<{ body: string; direction: string }>(
+        `select body, direction from comm_thread_context(array[$1]::uuid[], 6, '30 days')`,
+        [target],
+      );
+      const bodies = rows.map((row) => row.body);
+      // Newest first — the caller reverses each group so the transcript reads oldest-first.
+      if (bodies.join(' | ') !== 'newest prior | the owner answering | oldest kept')
+        throw new Error(`returned the wrong rows in the wrong order: ${bodies.join(' | ')}`);
+      if (!rows.some((row) => row.direction === 'outbound'))
+        throw new Error(
+          "the owner's own messages were dropped — the position is what carries the etiquette",
+        );
+
+      const { rows: capped } = await client.query<{ body: string }>(
+        `select body from comm_thread_context(array[$1]::uuid[], 1, '30 days')`,
+        [target],
+      );
+      if (capped.length !== 1 || capped[0]?.body !== 'newest prior')
+        throw new Error('p_limit did not take the most recent row');
+
+      const { rows: batched } = await client.query<{ for_message_id: string }>(
+        `select for_message_id from comm_thread_context(array[$1, $1]::uuid[], 6, '30 days')`,
+        [target],
+      );
+      if (batched.length !== 3) throw new Error('a repeated id did not collapse to one group');
+
+      return 'three prior rows, newest first, both directions; the target, a later row, another thread and a 45-day-old row all excluded, and p_limit takes the most recent';
+    },
+  );
+
+  const commsThreadContextTiesResult = await attempt(
+    "comms: comm_thread_context keeps the prior messages that share the target's timestamp" +
+      ' instead of dropping them, and totally orders a tie the same way on every call (ALF-244)',
+    async () => {
+      const account = 'cccccccc-0000-4000-8000-000000000008';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'imessage-tie-test', 'imessage', 'iMessage', 'daemon')`,
+        [account],
+      );
+      // Every row on the SAME second, which is what the daemon's pre-nanosecond chat.db branch
+      // produces for a rapid exchange. A `received_at < target.received_at` predicate returns
+      // NOTHING here — the classifier would be shown no transcript at all for the newest message.
+      const at = '2026-09-09T12:00:00Z';
+      for (const source of ['t1', 't2', 't3', 't4']) {
+        await client.query(
+          `insert into comm_messages (account_id, source_id, thread_key, direction, sender_handle,
+                                      body, received_at)
+             values ($1, $2, 'thread-tie', 'inbound', 'x@example.com', $2, $3::timestamptz)`,
+          [account, source, at],
+        );
+      }
+      const { rows: newest } = await client.query<{ id: string }>(
+        `select id from comm_messages where account_id = $1
+           order by created_at desc, id desc limit 1`,
+        [account],
+      );
+      const target = newest[0]?.id;
+      if (target === undefined) throw new Error('could not seed a tied thread');
+
+      const read = async () => {
+        const { rows } = await client.query<{ body: string }>(
+          `select body from comm_thread_context(array[$1]::uuid[], 6, '30 days')`,
+          [target],
+        );
+        return rows.map((row) => row.body).join(',');
+      };
+      const once = await read();
+      if (once === '') throw new Error('a thread whose rows share one second returned no context');
+      if (once.split(',').length !== 3)
+        throw new Error(`returned ${String(once.split(',').length)} of the 3 prior rows: ${once}`);
+      if (once !== (await read()))
+        throw new Error('two identical calls disagreed on the order of a tie');
+
+      return `all 3 same-second priors returned, in a stable order (${once})`;
+    },
+  );
+
+  const commsHandleCanonicalResult = await attempt(
+    'comms: comm_canonicalise_handles rewrites every stored handle into E.164, deleting a row that' +
+      ' collapsed onto the same person, leaving one that would have collided with another, and' +
+      ' is idempotent on a second call (ALF-244)',
+    async () => {
+      // The migration applies to a database whose rows already exist; this cluster starts empty,
+      // so the rewrite is INVOKED here against seeded rows rather than re-implemented. Deleting
+      // the function from the migration fails this assertion, which is the whole point of it
+      // being a function.
+      const { rows: people } = await client.query<{ id: string; name: string }>(
+        `insert into comm_people (name, priority) values ('Mom', 'high'), ('Not Mom', 'normal')
+           returning id, name`,
+      );
+      const mom = people.find((row) => row.name === 'Mom')?.id;
+      const other = people.find((row) => row.name === 'Not Mom')?.id;
+      if (mom === undefined || other === undefined) throw new Error('could not seed two people');
+
+      await client.query(
+        `insert into comm_handles (person_id, handle, kind) values
+           ($1, '5125550111', 'phone'),
+           ($1, '+15125550111', 'phone'),
+           ($1, '442079460000', 'phone'),
+           ($1, 'Mom@Example.COM', 'email'),
+           ($2, '3125550100', 'phone'),
+           ($1, '+13125550100', 'phone')`,
+        [mom, other],
+      );
+
+      const { rows: first } = await client.query<{ n: number }>(
+        `select comm_canonicalise_handles() as n`,
+      );
+      const { rows: after } = await client.query<{ handle: string; name: string }>(
+        `select h.handle, p.name from comm_handles h join comm_people p on p.id = h.person_id
+           where h.person_id = any ($1::uuid[]) order by h.handle`,
+        [[mom, other]],
+      );
+      const seen = after.map((row) => `${row.handle}=${row.name}`).join(', ');
+      // The redundant duplicate collapsed onto its own person's canonical row and went; the
+      // non-NANP number and the address kept their shape; and the row whose canonical form
+      // belongs to somebody else stayed exactly as it was rather than being moved between people.
+      if (
+        seen !==
+        '+13125550100=Mom, +15125550111=Mom, 3125550100=Not Mom, 442079460000=Mom, mom@example.com=Mom'
+      )
+        throw new Error(`the rewrite produced: ${seen}`);
+
+      const { rows: second } = await client.query<{ n: number }>(
+        `select comm_canonicalise_handles() as n`,
+      );
+      if (second[0]?.n !== 0)
+        throw new Error(`a second call changed ${String(second[0]?.n)} rows — not idempotent`);
+
+      return `${String(first[0]?.n)} rows moved: the duplicate collapsed, the international number and the address kept their shape, the colliding row kept its own person, and a second call was a no-op`;
+    },
+  );
+
+  const commsCanonicalHandleRuleResult = await attempt(
+    'comms: comm_canonical_handle states the same canonical rule the three TypeScript copies do,' +
+      ' inferring +1 only for 10 digits and 11 starting with 1 (ALF-244)',
+    async () => {
+      // The mirrored test table the spec asks each package to carry, in SQL. When this drifts
+      // from daemon/frontend/workers, a roster entry silently stops resolving its sender.
+      const table: [string, string][] = [
+        ['  Dana@Example.COM ', 'dana@example.com'],
+        ['+1 (555) 010-2233', '+15550102233'],
+        ['555-010-2233', '+15550102233'],
+        ['15550102233', '+15550102233'],
+        ['44 20 7946 0000', '442079460000'],
+        ['262966', '262966'],
+        ['()-', '()-'],
+      ];
+      for (const [input, expected] of table) {
+        const { rows } = await client.query<{ out: string }>(
+          `select comm_canonical_handle($1) as out`,
+          [input],
+        );
+        if (rows[0]?.out !== expected)
+          throw new Error(`${input} → ${String(rows[0]?.out)}, expected ${expected}`);
+      }
+      return `all ${String(table.length)} rows of the canonical-form table hold`;
+    },
+  );
+
   const commsExampleVersionResult = await attempt(
     'comms: every correction insert and every prune bumps the example-set version, so a stamped verdict is reconstructable (ALF-7)',
     async () => {
@@ -3941,6 +4142,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     commsIdentityResult,
     commsReplyDrainResult,
     commsReplyDrainUnjudgedResult,
+    commsThreadContextResult,
+    commsThreadContextTiesResult,
+    commsHandleCanonicalResult,
+    commsCanonicalHandleRuleResult,
     commsExampleVersionResult,
     commsRetentionResult,
     commsInboxItemAtomicResult,
