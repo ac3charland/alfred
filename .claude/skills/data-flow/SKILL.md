@@ -126,13 +126,15 @@ that lapses — a backgrounded tab, a machine asleep, a suspended phone app — 
 made while it was down and replays none; so does the gap between the server seed and the channels
 joining. `CommsProvider` is the pattern: re-read the whole view (`GET /api/comms/snapshot`) and
 **replace** it whenever all channels (re)join — the first join included — the tab returns
-(`visibilitychange` / `focus` / `pageshow`), the browser comes back `online`, or a burst of stream
-changes settles (its counts are server-side). Three guards keep the re-read itself honest: dispatches
+(`visibilitychange`, or a bfcache-restored `pageshow`; not `focus`, which a visible tab fires
+without having missed anything), the browser comes back `online`, or a burst of stream changes
+settles (its counts are server-side). Three guards keep the re-read itself honest: dispatches
 made while it is in flight are recorded and replayed over the snapshot; rows with a write in flight
 keep their optimistic value; a trigger mid-read runs one more read (a loop — recursion trips
 `react-hooks/immutability`). A failed read replaces and toasts nothing but marks the view **not
 live**, and the header says so: a stale view that looks current is the one state it may never
-show (ALF-227, ALF-258).
+show (ALF-227, ALF-258). Not-live must also end on its own: a failed read retries on a timer while
+the tab is in front, and a channel the server closed is re-created (see the supabase skill).
 
 ## A derived status must mirror the query that does the work
 
