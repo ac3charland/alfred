@@ -2,6 +2,7 @@ import type { Preview } from '@storybook/nextjs';
 import React from 'react';
 
 import '../app/globals.css';
+import { makeCommsSeed } from '../lib/comms/fixtures';
 import { ActiveEditorProvider } from '../lib/stores/active-editor-store';
 import { CodeFilterProvider } from '../lib/stores/code-filter-store';
 import { CommsSettingsProvider } from '../lib/stores/comms-settings-store';
@@ -105,10 +106,7 @@ const preview: Preview = {
                           React.createElement(
                             CommsProvider,
                             {
-                              initialAccounts: seed.comms?.accounts ?? [],
-                              initialMessages: seed.comms?.messages ?? [],
-                              initialVerdicts: seed.comms?.verdicts ?? [],
-                              initialHealth: seed.comms?.health,
+                              initialSeed: makeCommsSeed(seed.comms),
                             },
                             React.createElement(
                               CommsSettingsProvider,

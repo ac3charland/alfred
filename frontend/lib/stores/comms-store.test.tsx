@@ -3,11 +3,13 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { SHELF_PAGE_SIZE } from '@/lib/comms';
 import {
   makeCommAccount,
   makeCommHealth,
   makeCommMessage,
   makeCommVerdict,
+  makeCommsSeed,
   resetCommFixtureClock,
 } from '@/lib/comms/fixtures';
 import { holdRealtimeAuth } from '@/lib/supabase/hold-realtime-auth';
@@ -16,6 +18,7 @@ import type {
   CommClassifierHealth,
   CommMessage,
   CommVerdict,
+  CommsSeed,
   Item,
 } from '@/lib/types';
 
@@ -25,14 +28,17 @@ import {
   commsReducer,
   healthStreamValue,
   messageStreamAction,
+  stateFromSeed,
   useCommsAccounts,
   useCommsActions,
   useCommsHealth,
   useCommsMessages,
+  useCommsSync,
   useCommsVerdicts,
   useQueueCount,
   useQueuedByTier,
   useShelf,
+  useShelfCounts,
   verdictStreamAction,
 } from './comms-store';
 
@@ -101,10 +107,12 @@ beforeEach(() => {
   mockRealtimeHandlers.clear();
   mockSubscribeCallbacks.clear();
   mockJoinedTables.length = 0;
+  // Every mount re-reads once its channels join; unless a test is about that read, it never lands.
+  mockApi.fetchCommsSnapshot.mockReturnValue(new Promise(() => {}));
 });
 
 describe('commsReducer', () => {
-  const empty = { accounts: [], messages: [], verdictsById: {}, health: undefined };
+  const empty = stateFromSeed(makeCommsSeed());
 
   it('upserts a message and patches it by id', () => {
     const message = makeCommMessage(ACCOUNT);
@@ -372,6 +380,8 @@ function useStore() {
     shelf: useShelf(),
     health: useCommsHealth(),
     verdicts: useCommsVerdicts(),
+    counts: useShelfCounts(),
+    sync: useCommsSync(),
   };
 }
 
@@ -379,10 +389,12 @@ function makeWrapper(messages: CommMessage[] = [QUEUED, SHELVED]) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <CommsProvider
-        initialAccounts={[makeCommAccount('personal')]}
-        initialMessages={messages}
-        initialVerdicts={[SEEDED_VERDICT]}
-        initialHealth={makeCommHealth()}
+        initialSeed={makeCommsSeed({
+          accounts: [makeCommAccount('personal')],
+          messages,
+          verdicts: [SEEDED_VERDICT],
+          health: makeCommHealth(),
+        })}
       >
         {children}
       </CommsProvider>
@@ -833,104 +845,253 @@ describe('purge', () => {
   });
 });
 
-/**
- * ALF-227. Realtime is fire-and-forget: a socket that lapses while the tab is backgrounded or
- * the machine asleep drops every change made in the gap and never replays them. Account health
- * is the surface that shows it, because it is the one thing read against a ticking clock — a
- * `last_seen_at` frozen at the seed decays into "stale" on its own, and a tab left open long
- * enough reports every source as disconnected while all of them are polling fine.
- */
 /** Shadow `document.hidden` — a read-only getter in jsdom — and fire what that change fires. */
 function setTabHidden(hidden: boolean) {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
   document.dispatchEvent(new Event('visibilitychange'));
 }
 
-describe('CommsProvider — reconciling the health surface after a realtime gap', () => {
-  const STALE_ACCOUNT = makeCommAccount('personal', {
-    id: ACCOUNT,
-    last_seen_at: '2026-09-09T11:00:00.000Z',
-  });
-  const FRESH: CommAccount = { ...STALE_ACCOUNT, last_seen_at: '2026-09-09T11:59:00.000Z' };
-  const FRESH_HEALTH = makeCommHealth({ last_success_at: '2026-09-09T11:59:00.000Z' });
+/** Shadow `navigator.onLine` and fire the matching window event. */
+function setOnline(online: boolean) {
+  Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online });
+  globalThis.dispatchEvent(new Event(online ? 'online' : 'offline'));
+}
 
-  function wrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <CommsProvider
-        initialAccounts={[STALE_ACCOUNT]}
-        initialMessages={[]}
-        initialVerdicts={[]}
-        initialHealth={makeCommHealth({ last_success_at: '2026-09-09T11:00:00.000Z' })}
-      >
-        {children}
-      </CommsProvider>
-    );
-  }
+/** A snapshot read the test resolves (or fails) by hand. */
+function holdSnapshot() {
+  const held: { resolve?: (seed: CommsSeed) => void; reject?: (error: Error) => void } = {};
+  mockApi.fetchCommsSnapshot.mockReturnValueOnce(
+    new Promise<CommsSeed>((resolve, reject) => {
+      held.resolve = resolve;
+      held.reject = reject;
+    }),
+  );
+  return {
+    resolve: async (seed: CommsSeed) => {
+      await act(async () => {
+        held.resolve?.(seed);
+        await Promise.resolve();
+      });
+    },
+    reject: async () => {
+      await act(async () => {
+        held.reject?.(new Error('offline'));
+        await Promise.resolve();
+      });
+    },
+  };
+}
+
+/**
+ * ALF-258. The view has to be a true reflection of the server however the tab got here, and
+ * Realtime can't promise that alone: a socket that lapses — a tab in the background, a machine
+ * asleep, a phone that suspended the app — drops every change in the gap and replays none, and so
+ * does the gap between the shell's server read and the channels joining.
+ */
+describe('CommsProvider — re-reading the view whenever it may have missed something', () => {
+  const PERSONAL = makeCommAccount('personal', { id: ACCOUNT });
+  const ARRIVED = makeCommMessage(ACCOUNT, {
+    id: '00000000-0000-4000-8000-000000000003',
+    tier: 'asap',
+    judged_by: 'model',
+  });
+
+  /** What the server holds after `ARRIVED` landed and `SHELVED` was purged. */
+  const LATER = makeCommsSeed({ accounts: [PERSONAL], messages: [QUEUED, ARRIVED] });
 
   afterEach(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
   });
 
-  it('re-reads account health when the tab comes back to the foreground', async () => {
-    mockApi.fetchCommsHealth.mockResolvedValue({ accounts: [FRESH], health: FRESH_HEALTH });
-    const { result } = renderHook(() => useStore(), { wrapper });
-    expect(result.current.accounts[0]?.last_seen_at).toBe(STALE_ACCOUNT.last_seen_at);
+  /** Render, and let the first read — the one every join makes — land as `first`. */
+  async function renderJoined(first: CommsSeed = makeCommsSeed({ messages: [QUEUED, SHELVED] })) {
+    const read = holdSnapshot();
+    const rendered = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await waitFor(() => {
+      expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+    });
+    await read.resolve(first);
+    return rendered;
+  }
+
+  it('re-reads once every channel has joined, closing the gap since the shell read', async () => {
+    const read = holdSnapshot();
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledWith(SHELF_PAGE_SIZE);
+    });
+    await read.resolve(LATER);
+
+    expect(result.current.messages.map((message) => message.id)).toEqual([QUEUED.id, ARRIVED.id]);
+  });
+
+  it('brings the view up to date when the tab comes back — new rows in, purged rows out', async () => {
+    const { result } = await renderJoined();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
 
     act(() => {
       setTabHidden(false);
     });
 
     await waitFor(() => {
-      expect(result.current.accounts[0]?.last_seen_at).toBe(FRESH.last_seen_at);
+      expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
     });
-    expect(mockApi.fetchCommsHealth).toHaveBeenCalledTimes(1);
-    expect(result.current.health).toEqual(FRESH_HEALTH);
+    expect(result.current.shelf).toEqual([]);
   });
 
-  it('re-reads it when the channel rejoins — the socket dropped while the tab stayed in front', async () => {
-    mockApi.fetchCommsHealth.mockResolvedValue({ accounts: [FRESH], health: FRESH_HEALTH });
-    const { result } = renderHook(() => useStore(), { wrapper });
-    // The join waits for the session token (ALF-258); it is the FIRST join, not a rejoin — the
-    // seed is already fresh.
-    await waitFor(() => {
-      expect(mockSubscribeCallbacks.get('comm_accounts')).toBeDefined();
-    });
-    expect(mockApi.fetchCommsHealth).not.toHaveBeenCalled();
+  it('re-reads when the socket rejoins, with the tab in front the whole time', async () => {
+    const { result } = await renderJoined();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
 
     act(() => {
-      mockSubscribeCallbacks.get('comm_accounts')?.('SUBSCRIBED');
+      mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
+    });
+    expect(result.current.sync.live).toBe(false);
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('SUBSCRIBED');
     });
 
     await waitFor(() => {
-      expect(result.current.accounts[0]?.last_seen_at).toBe(FRESH.last_seen_at);
+      expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
     });
-    expect(mockApi.fetchCommsHealth).toHaveBeenCalledTimes(1);
+    expect(result.current.sync.live).toBe(true);
   });
 
-  it('does not re-read while the tab is still hidden — a background wake is not a return', () => {
-    mockApi.fetchCommsHealth.mockResolvedValue({ accounts: [FRESH], health: FRESH_HEALTH });
-    renderHook(() => useStore(), { wrapper });
+  it('re-reads when the browser comes back online, and is not live while it is off', async () => {
+    const { result } = await renderJoined();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
+
+    act(() => {
+      setOnline(false);
+    });
+    expect(result.current.sync.live).toBe(false);
+    act(() => {
+      setOnline(true);
+    });
+
+    await waitFor(() => {
+      expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
+    });
+    expect(result.current.sync.live).toBe(true);
+  });
+
+  it('keeps a change that streamed in while the read was in flight', async () => {
+    const { result } = await renderJoined();
+    const read = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+
+    // The read was taken before ARRIVED landed; the stream delivers it while the read is out.
+    act(() => {
+      mockRealtimeHandlers.get('comm_messages')?.(payload<CommMessage>('INSERT', ARRIVED) as never);
+    });
+    await read.resolve(makeCommsSeed({ messages: [QUEUED, SHELVED] }));
+
+    expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
+  });
+
+  it('never reverts a row whose write is still in flight', async () => {
+    const { result } = await renderJoined();
+    mockApi.clearCommMessage.mockReturnValue(new Promise(() => {}));
+    act(() => {
+      void result.current.actions.clearMessage(QUEUED.id, 'not_replying');
+    });
+    // The server hasn't seen the clear yet, so its snapshot still has the row queued.
+    const stale = makeCommsSeed({
+      messages: [QUEUED, SHELVED],
+      readAt: '2026-09-09T12:30:00.000Z',
+    });
+    mockApi.fetchCommsSnapshot.mockResolvedValue(stale);
+
+    act(() => {
+      setTabHidden(false);
+    });
+    await waitFor(() => {
+      expect(result.current.sync.readAt).toBe(stale.readAt);
+    });
+
+    expect(result.current.byTier.today).toEqual([]);
+  });
+
+  it('runs one more read when a trigger lands mid-read, rather than dropping it', async () => {
+    await renderJoined();
+    const read = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
+    act(() => {
+      setTabHidden(false);
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+
+    await read.resolve(makeCommsSeed());
+
+    await waitFor(() => {
+      expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  it('says it is not live when a read fails, and live again once one lands', async () => {
+    const { result } = await renderJoined();
+    const failing = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+    await failing.reject();
+
+    // Nothing is blanked or toasted — the header's "Not live" line is how the owner hears it.
+    expect(result.current.sync.live).toBe(false);
+    expect(result.current.messages).toHaveLength(2);
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
+    act(() => {
+      setTabHidden(false);
+    });
+    await waitFor(() => {
+      expect(result.current.sync.live).toBe(true);
+    });
+    expect(result.current.sync.readAt).toBe(LATER.readAt);
+  });
+
+  it('does not read while the tab is hidden — coming back to the front does', async () => {
+    await renderJoined();
 
     act(() => {
       setTabHidden(true);
     });
 
-    expect(mockApi.fetchCommsHealth).not.toHaveBeenCalled();
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the last known health when the re-read fails, and stays silent about it', async () => {
-    mockApi.fetchCommsHealth.mockRejectedValue(new Error('offline'));
-    const { result } = renderHook(() => useStore(), { wrapper });
+  it('re-reads the counts once a burst of message changes settles', async () => {
+    const { result } = await renderJoined();
+    mockApi.fetchCommsSnapshot.mockResolvedValue({ ...LATER, shelfCount: 7 });
 
     act(() => {
-      setTabHidden(false);
-    });
-    await waitFor(() => {
-      expect(mockApi.fetchCommsHealth).toHaveBeenCalledTimes(1);
+      mockRealtimeHandlers.get('comm_messages')?.(payload<CommMessage>('INSERT', ARRIVED) as never);
     });
 
-    // Emptying the roster would blank every dot — worse than the stale reading it replaces.
-    expect(result.current.accounts).toEqual([STALE_ACCOUNT]);
-    expect(mockShowToast).not.toHaveBeenCalled();
+    await waitFor(
+      () => {
+        expect(result.current.counts.shelfCount).toBe(7);
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it('loads the next shelf page through the same read, asked for more', async () => {
+    const { result } = await renderJoined();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
+
+    act(() => {
+      result.current.actions.showMoreShelf();
+    });
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2);
   });
 });

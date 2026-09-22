@@ -6,6 +6,7 @@ import {
   makeCommHealth,
   makeCommMessage,
   makeCommVerdict,
+  makeCommsSeed,
 } from '@/lib/comms/fixtures';
 import type { CommMessage, CommPersonWithHandles, CommVerdict } from '@/lib/types';
 
@@ -394,8 +395,8 @@ export const RowExpanded: Story = {
  * with hours ago — and because health is read against a ticking clock, that frozen roster has
  * decayed on its own into three amber dots accusing three healthy sources of having died.
  *
- * The story runs the real recovery (ALF-227): returning to the foreground makes the store
- * re-read `GET /api/comms/health`, which is stubbed here to answer what the pollers have
+ * The story runs the real recovery (ALF-227, ALF-258): returning to the foreground makes the
+ * store re-read `GET /api/comms/snapshot`, which is stubbed here to answer what the pollers have
  * actually been doing. What is snapshotted is the state AFTER that re-read — every dot green,
  * every accusation withdrawn — so the pixels this fix exists to restore are gated.
  */
@@ -407,10 +408,14 @@ export const RecoversAfterTimeAway: Story = {
           ok: true,
           status: 200,
           json: () =>
-            Promise.resolve({
-              accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
-              health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
-            }),
+            Promise.resolve(
+              makeCommsSeed({
+                accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
+                messages: [MARCUS, ...shelfRows(2441)],
+                verdicts: VERDICTS,
+                health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
+              }),
+            ),
         })) as unknown as typeof fetch;
       return <Story />;
     },

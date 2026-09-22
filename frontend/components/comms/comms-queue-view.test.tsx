@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { makeCommAccount, makeCommMessage } from '@/lib/comms/fixtures';
+import { SHELF_PAGE_SIZE } from '@/lib/comms';
+import { makeCommAccount, makeCommMessage, makeCommsSeed } from '@/lib/comms/fixtures';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { CommAccount, CommMessage } from '@/lib/types';
 
@@ -143,6 +144,21 @@ describe('CommsQueueView — the three counted tiers', () => {
       'true',
     );
     expect(screen.getByText('A receipt.')).toBeInTheDocument();
+  });
+
+  it('holds one page of the shelf, counts all of it, and asks for the next page on request', async () => {
+    const user = userEvent.setup();
+    const shelf = Array.from({ length: SHELF_PAGE_SIZE + 10 }, () => row({ tier: 'fyi' }));
+    jest
+      .mocked(api)
+      .fetchCommsSnapshot.mockResolvedValue(makeCommsSeed({ accounts: [GMAIL], messages: shelf }));
+    renderView(shelf);
+
+    await user.click(screen.getByRole('button', { name: /FYI · 60 messages/ }));
+
+    expect(screen.getAllByTestId('comms-row')).toHaveLength(SHELF_PAGE_SIZE);
+    await user.click(screen.getByRole('button', { name: 'Show more (10 older)' }));
+    expect(jest.mocked(api).fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2);
   });
 });
 
@@ -299,7 +315,7 @@ describe('CommsQueueView — a tab that has been away', () => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
   });
 
-  it('re-reads the sources on return, so an hour away does not read as an outage', async () => {
+  it('re-reads the view on return, so an hour away does not read as an outage', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(OPENED);
     // The Reader store the providers mount refreshes on the same signal, so the automocked
@@ -307,12 +323,13 @@ describe('CommsQueueView — a tab that has been away', () => {
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
     // What the poller has been doing the whole hour the tab was away.
-    jest.mocked(api).fetchCommsHealth.mockResolvedValue({
-      accounts: [
-        { ...LIVE, last_seen_at: new Date(OPENED.getTime() + 59 * 60 * 1000).toISOString() },
-      ],
-      health: undefined,
-    });
+    jest.mocked(api).fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({
+        accounts: [
+          { ...LIVE, last_seen_at: new Date(OPENED.getTime() + 59 * 60 * 1000).toISOString() },
+        ],
+      }),
+    );
     // No `now` prop: this is the view's own ticking clock, which is half the defect.
     renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
     expect(screen.getByLabelText('RealPlay · live')).toBeInTheDocument();
@@ -327,5 +344,46 @@ describe('CommsQueueView — a tab that has been away', () => {
     });
 
     expect(await screen.findByLabelText('RealPlay · live')).toBeInTheDocument();
+  });
+
+  it('brings in a message that arrived while it was away', async () => {
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    const arrived = makeCommMessage(LIVE.id, {
+      tier: 'asap',
+      judged_by: 'model',
+      ask: 'Needs the contract signed before noon.',
+    });
+    jest
+      .mocked(api)
+      .fetchCommsSnapshot.mockResolvedValue(
+        makeCommsSeed({ accounts: [LIVE], messages: [arrived] }),
+      );
+    renderWithProviders(<CommsQueueView now={OPENED} />, {
+      comms: { accounts: [LIVE], messages: [] },
+    });
+    expect(screen.getByText('Nothing to answer.')).toBeInTheDocument();
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(await screen.findByText('Needs the contract signed before noon.')).toBeInTheDocument();
+  });
+
+  it('says it is not live when it cannot re-read', async () => {
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('offline'));
+    renderWithProviders(<CommsQueueView now={OPENED} />, {
+      comms: { accounts: [LIVE], messages: [] },
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
   });
 });

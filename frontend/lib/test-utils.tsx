@@ -2,6 +2,7 @@ import { type RenderOptions, render } from '@testing-library/react';
 import * as React from 'react';
 
 import { ToastViewport } from '@/components/shell/toast-viewport';
+import { makeCommsSeed } from '@/lib/comms/fixtures';
 import type { HabitStats } from '@/lib/habits';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
@@ -143,12 +144,7 @@ export function renderWithProviders(
                               initialStats={habits.stats ?? {}}
                               serverToday={habits.today}
                             >
-                              <CommsProvider
-                                initialAccounts={comms.accounts ?? []}
-                                initialMessages={comms.messages ?? []}
-                                initialVerdicts={comms.verdicts ?? []}
-                                initialHealth={comms.health}
-                              >
+                              <CommsProvider initialSeed={makeCommsSeed(comms)}>
                                 <CommsSettingsProvider
                                   initialPeople={commsSettings.people ?? []}
                                   initialRubrics={commsSettings.rubrics ?? []}

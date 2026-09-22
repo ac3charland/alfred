@@ -6,7 +6,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import type { ChangeTierInput, ClearMessageInput, PurgeInput } from '@/lib/api-client';
-import { type QueueByTier, groupByTier, queueCount, shelved } from '@/lib/comms';
+import { type QueueByTier, SHELF_PAGE_SIZE, groupByTier, queueCount, shelved } from '@/lib/comms';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
@@ -19,6 +19,7 @@ import type {
   CommClassifierHealth,
   CommMessage,
   CommVerdict,
+  CommsSeed,
   Item,
 } from '@/lib/types';
 
@@ -40,6 +41,19 @@ export interface CommsState {
   verdictsById: Record<string, CommVerdict>;
   /** The classifier's singleton health row; absent until the sweep has ever run. */
   health: CommClassifierHealth | undefined;
+  /** Every row on the shelf — `messages` holds only the pages loaded so far. */
+  shelfCount: number;
+  /** Shelf-eligible newsletters the Reader claimed; counted, never held. */
+  readerClaimedCount: number;
+  /** The newest verdict across the whole window, as of the last snapshot. */
+  lastClassifiedAt: string | null;
+  /** When the last snapshot was read. */
+  readAt: string;
+  /**
+   * Whether this view is a live reflection of the server: every channel joined, the last re-read
+   * succeeded, and the browser online. When it is not, the header says so.
+   */
+  live: boolean;
 }
 
 export interface CommsActions {
@@ -90,6 +104,8 @@ export interface CommsActions {
    * the server says they left the database.
    */
   purge: (input: PurgeInput) => Promise<{ purged: number }>;
+  /** Load the next page of the shelf — the same re-read as recovery, asked for more rows. */
+  showMoreShelf: () => void;
 }
 
 /**
@@ -104,7 +120,48 @@ type CommsAction =
   | { type: 'messages'; action: SimpleAction<CommMessage> }
   | { type: 'accounts'; action: SimpleAction<CommAccount> }
   | { type: 'verdicts'; action: VerdictStreamAction }
-  | { type: 'health'; health: CommClassifierHealth | undefined };
+  | { type: 'health'; health: CommClassifierHealth | undefined }
+  /**
+   * Replace the view with a server snapshot — except the rows in `keep`, which have a write in
+   * flight: the snapshot may predate it, and the write reconciles them itself when it lands.
+   */
+  | { type: 'snapshot'; seed: CommsSeed; keep: ReadonlySet<string> }
+  | { type: 'live'; live: boolean };
+
+/** The store's state for a seed, before any change arrives. */
+export function stateFromSeed(seed: CommsSeed): CommsState {
+  return {
+    accounts: seed.accounts,
+    messages: seed.messages,
+    verdictsById: Object.fromEntries(seed.verdicts.map((verdict) => [verdict.id, verdict])),
+    health: seed.health,
+    shelfCount: seed.shelfCount,
+    readerClaimedCount: seed.readerClaimedCount,
+    lastClassifiedAt: seed.lastClassifiedAt,
+    readAt: seed.readAt,
+    live: true,
+  };
+}
+
+/** {@link CommsAction}'s snapshot move: the seed wins, but a row with a write in flight holds. */
+function applySnapshot(state: CommsState, seed: CommsSeed, keep: ReadonlySet<string>): CommsState {
+  const next = stateFromSeed(seed);
+  const held = state.messages.filter((message) => keep.has(message.id));
+  if (held.length === 0) return { ...next, live: state.live };
+  const heldIds = new Set(held.map((message) => message.id));
+  const verdictsById = { ...next.verdictsById };
+  for (const message of held) {
+    const verdict =
+      message.verdict_id === null ? undefined : state.verdictsById[message.verdict_id];
+    if (verdict !== undefined) verdictsById[verdict.id] = verdict;
+  }
+  return {
+    ...next,
+    messages: [...next.messages.filter((message) => !heldIds.has(message.id)), ...held],
+    verdictsById,
+    live: state.live,
+  };
+}
 
 /**
  * Pure reducer. The two row lists delegate to the shared flat-list reducer, so the race rule
@@ -134,6 +191,12 @@ export function commsReducer(state: CommsState, action: CommsAction): CommsState
     }
     case 'health': {
       return { ...state, health: action.health };
+    }
+    case 'snapshot': {
+      return applySnapshot(state, action.seed, action.keep);
+    }
+    case 'live': {
+      return state.live === action.live ? state : { ...state, live: action.live };
     }
     default: {
       return assertNever(action, 'comms action');
@@ -353,25 +416,20 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
   CommsActions
 >('a CommsProvider');
 
+/** How long a burst of message changes settles before the counts are re-read. */
+const COUNTS_SETTLE_MS = 1000;
+
+/** The four tables the view streams, each on its own channel. */
+const CHANNELS = ['comm_messages', 'comm_accounts', 'comm_classifier_health', 'comm_verdicts'];
+
 export function CommsProvider({
-  initialAccounts,
-  initialMessages,
-  initialVerdicts,
-  initialHealth,
+  initialSeed,
   children,
 }: {
-  initialAccounts: CommAccount[];
-  initialMessages: CommMessage[];
-  initialVerdicts: CommVerdict[];
-  initialHealth?: CommClassifierHealth | undefined;
+  initialSeed: CommsSeed;
   children: React.ReactNode;
 }) {
-  const [state, dispatch] = React.useReducer(commsReducer, {
-    accounts: initialAccounts,
-    messages: initialMessages,
-    verdictsById: Object.fromEntries(initialVerdicts.map((verdict) => [verdict.id, verdict])),
-    health: initialHealth,
-  });
+  const [state, dispatch] = React.useReducer(commsReducer, initialSeed, stateFromSeed);
 
   // Latest state, readable inside the stable action closures so they can capture pre-mutation
   // values for rollback without going stale. Synced via an effect, like the other stores.
@@ -387,66 +445,101 @@ export function CommsProvider({
   }, [showToast]);
 
   /**
-   * Re-read the health surface and replace it with what the server currently holds.
+   * The view has to be a true reflection of the server however the tab got here (ALF-258), and
+   * Realtime alone can't promise that: it is fire-and-forget, so a socket that lapses — a
+   * backgrounded tab, a machine asleep, a phone that suspended the app — drops every change made
+   * in the gap and replays none of them, and so does the gap between the shell's server read and
+   * the channels joining. So whenever the tab may have missed something it re-reads the whole
+   * view ({@link api.fetchCommsSnapshot}) and replaces what it holds.
    *
-   * Realtime is fire-and-forget: a socket that lapses — a backgrounded tab whose timers are
-   * throttled past the heartbeat, a machine that slept — drops every change made in the gap and
-   * replays none of them on reconnect. Health is the surface that shows it, because it is the
-   * one thing read against a TICKING CLOCK: a `last_seen_at` frozen at the seed decays into
-   * "stale" on its own, so a tab left open long enough reports every source as disconnected
-   * while all of them are polling fine (ALF-227).
+   * Three things keep a re-read from being wrong itself:
+   * - a change that streams in WHILE it is in flight is recorded and replayed over the snapshot,
+   *   which may predate it;
+   * - a row with a write in flight keeps its optimistic value (see the `snapshot` action);
+   * - a trigger that lands mid-read runs one more read after it, rather than being dropped.
    *
-   * A failed re-read changes nothing and says nothing: the stale reading it would have replaced
-   * is still better than a blanked roster, and the next trigger tries again. This is recovery,
-   * not a user action — there is nothing for the owner to do about it.
+   * A hidden tab doesn't re-read — coming back to the front does.
    */
-  const reconcilingRef = React.useRef(false);
-  const reconcileHealth = React.useCallback(() => {
-    if (reconcilingRef.current || document.hidden) return;
-    reconcilingRef.current = true;
-    void api
-      .fetchCommsHealth()
-      .then((snapshot) => {
-        // Upsert rather than replace: this read is about freshness, and an account leaving is
-        // the realtime DELETE's business.
-        dispatch({ type: 'accounts', action: { type: 'upsert', items: snapshot.accounts } });
-        dispatch({ type: 'health', health: snapshot.health });
-      })
-      .catch(() => {
-        // Deliberately silent — see above.
-      })
-      .finally(() => {
-        reconcilingRef.current = false;
-      });
+  const recordingRef = React.useRef<CommsAction[] | null>(null);
+  const apply = React.useCallback((action: CommsAction) => {
+    dispatch(action);
+    recordingRef.current?.push(action);
   }, []);
 
-  // The two ways a tab learns it may have missed something. The tab coming back to the front is
-  // the one the owner feels; the channel REJOINING is the one that catches a socket that dropped
-  // and recovered while the tab sat in the foreground the whole time (a machine waking). One
-  // channel carries that signal for all four — the socket they share is what lapses.
+  const writesInFlightRef = React.useRef(new Map<string, number>());
+  const shelfLimitRef = React.useRef(SHELF_PAGE_SIZE);
+  const syncRef = React.useRef({ running: false, again: false, failed: false });
+  const channelStatusRef = React.useRef<Partial<Record<string, REALTIME_SUBSCRIBE_STATES>>>({});
+
+  /** Live = every channel joined (or still joining for the first time), last read ok, online. */
+  const updateLive = React.useCallback(() => {
+    const joined = CHANNELS.every((table) => {
+      const status = channelStatusRef.current[table];
+      return status === undefined || status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED;
+    });
+    dispatch({ type: 'live', live: joined && !syncRef.current.failed && navigator.onLine });
+  }, []);
+
+  const reconcile = React.useCallback(() => {
+    const sync = syncRef.current;
+    if (document.hidden) return;
+    if (sync.running) {
+      sync.again = true;
+      return;
+    }
+    sync.running = true;
+    void (async () => {
+      do {
+        sync.again = false;
+        recordingRef.current = [];
+        const keep = new Set(writesInFlightRef.current.keys());
+        try {
+          const seed = await api.fetchCommsSnapshot(shelfLimitRef.current);
+          for (const id of writesInFlightRef.current.keys()) keep.add(id);
+          dispatch({ type: 'snapshot', seed, keep });
+          for (const action of recordingRef.current) dispatch(action);
+          sync.failed = false;
+        } catch {
+          // Nothing to toast — there is nothing for the owner to do. The header's "Not live" line
+          // says the view may be behind, and the next trigger tries again.
+          sync.failed = true;
+        }
+        recordingRef.current = null;
+        updateLive();
+        // Read through the ref: a trigger may have set it while the read was awaited.
+      } while (syncRef.current.again && !document.hidden);
+      sync.running = false;
+    })();
+  }, [updateLive]);
+
+  // The ways a tab learns it may have missed something without the socket saying so: coming back
+  // to the front (including from the back/forward cache) and coming back online.
   React.useEffect(() => {
     const onReturn = () => {
-      if (!document.hidden) reconcileHealth();
+      if (!document.hidden) reconcile();
     };
 
     document.addEventListener('visibilitychange', onReturn);
     globalThis.addEventListener('focus', onReturn);
+    globalThis.addEventListener('pageshow', onReturn);
+    globalThis.addEventListener('online', reconcile);
+    globalThis.addEventListener('offline', updateLive);
     return () => {
       document.removeEventListener('visibilitychange', onReturn);
       globalThis.removeEventListener('focus', onReturn);
+      globalThis.removeEventListener('pageshow', onReturn);
+      globalThis.removeEventListener('online', reconcile);
+      globalThis.removeEventListener('offline', updateLive);
     };
-  }, [reconcileHealth]);
+  }, [reconcile, updateLive]);
 
   // The push channel. All four tables are written out of band — the poller inserts messages
   // and stamps account health, the classifier sweep writes a verdict and (via a separate write
   // to comm_messages) fills in the message's tier — so a browser that only ever read its seed
-  // would show a stale queue, a green dot over a dead account, and no "Why:" explanation until
-  // a hard reload.
+  // would show a stale queue, a green dot over a dead account, and no "Why:" explanation.
   React.useEffect(() => {
     const supabase = createClient();
-    // Whether the accounts channel has completed a join, so a later one can be told apart as a
-    // rejoin (see its subscribe callback below).
-    let joined = false;
+    let settleCounts: ReturnType<typeof setTimeout> | undefined;
 
     const channel = supabase
       .channel('comm_messages')
@@ -455,7 +548,11 @@ export function CommsProvider({
         { event: '*', schema: 'public', table: 'comm_messages' },
         (payload: RealtimePostgresChangesPayload<CommMessage>) => {
           const action = messageStreamAction(payload);
-          if (action !== null) dispatch({ type: 'messages', action });
+          if (action !== null) apply({ type: 'messages', action });
+          // The row moves at once; the shelf's and the Reader's counts are the server's, so a
+          // change that may have moved one is followed by a re-read once the burst settles.
+          clearTimeout(settleCounts);
+          settleCounts = setTimeout(reconcile, COUNTS_SETTLE_MS);
         },
       );
 
@@ -466,7 +563,7 @@ export function CommsProvider({
         { event: '*', schema: 'public', table: 'comm_accounts' },
         (payload: RealtimePostgresChangesPayload<CommAccount>) => {
           const action = accountStreamAction(payload);
-          if (action !== null) dispatch({ type: 'accounts', action });
+          if (action !== null) apply({ type: 'accounts', action });
         },
       );
 
@@ -476,7 +573,7 @@ export function CommsProvider({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'comm_classifier_health' },
         (payload: RealtimePostgresChangesPayload<CommClassifierHealth>) => {
-          dispatch({ type: 'health', health: healthStreamValue(payload) });
+          apply({ type: 'health', health: healthStreamValue(payload) });
         },
       );
 
@@ -487,162 +584,180 @@ export function CommsProvider({
         { event: '*', schema: 'public', table: 'comm_verdicts' },
         (payload: RealtimePostgresChangesPayload<CommVerdict>) => {
           const action = verdictStreamAction(payload);
-          if (action !== null) dispatch({ type: 'verdicts', action });
+          if (action !== null) apply({ type: 'verdicts', action });
         },
       );
 
+    // Every channel reports its state. The moment all four are joined — the first time, closing
+    // the gap since the shell's read, or again after the socket dropped — is when to re-read.
+    const track = (table: string) => (status: REALTIME_SUBSCRIBE_STATES) => {
+      channelStatusRef.current[table] = status;
+      updateLive();
+      if (
+        status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED &&
+        CHANNELS.every(
+          (name) => channelStatusRef.current[name] === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED,
+        )
+      ) {
+        reconcile();
+      }
+    };
+
     const cancelJoin = joinWhenAuthenticated(supabase.realtime, () => {
-      channel.subscribe();
-      // The first SUBSCRIBED is this channel's initial join, and the seed it arrives beside is
-      // already current; every one after it is a REJOIN, which means the socket was down and
-      // whatever changed while it was is lost. That is exactly when to re-read.
-      accountsChannel.subscribe((status) => {
-        if (status !== REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) return;
-        if (joined) reconcileHealth();
-        joined = true;
-      });
-      healthChannel.subscribe();
-      verdictsChannel.subscribe();
+      channel.subscribe(track('comm_messages'));
+      accountsChannel.subscribe(track('comm_accounts'));
+      healthChannel.subscribe(track('comm_classifier_health'));
+      verdictsChannel.subscribe(track('comm_verdicts'));
     });
 
     return () => {
       cancelJoin();
+      clearTimeout(settleCounts);
       void supabase.removeChannel(channel);
       void supabase.removeChannel(accountsChannel);
       void supabase.removeChannel(healthChannel);
       void supabase.removeChannel(verdictsChannel);
     };
-  }, [reconcileHealth]);
+  }, [apply, reconcile, updateLive]);
 
-  const actions = React.useMemo<CommsActions>(
-    () => {
-      /**
-       * The one optimistic write every row verb runs through, generic over what the endpoint
-       * hands back: most return the message itself, but making an Inbox item returns the item
-       * beside it, and both reconcile from the same server-canonical row.
-       */
-      async function writeAndReconcile<R>(
-        id: string,
-        patch: Partial<CommMessage>,
-        apiCall: () => Promise<R>,
-        toMessage: (result: R) => CommMessage,
-        errorMessage: string,
-      ): Promise<R> {
-        const current = stateRef.current.messages.find((message) => message.id === id);
-        // Selective-field capture: only the keys this write touches, so a rollback restores
-        // exactly what it changed and can't clobber a realtime change to another field.
-        const captured = current === undefined ? {} : capturedFields(current, patch);
-        return runOptimisticMutation({
+  const actions = React.useMemo<CommsActions>(() => {
+    /**
+     * The one optimistic write every row verb runs through, generic over what the endpoint
+     * hands back: most return the message itself, but making an Inbox item returns the item
+     * beside it, and both reconcile from the same server-canonical row.
+     */
+    async function writeAndReconcile<R>(
+      id: string,
+      patch: Partial<CommMessage>,
+      apiCall: () => Promise<R>,
+      toMessage: (result: R) => CommMessage,
+      errorMessage: string,
+    ): Promise<R> {
+      const current = stateRef.current.messages.find((message) => message.id === id);
+      // Selective-field capture: only the keys this write touches, so a rollback restores
+      // exactly what it changed and can't clobber a realtime change to another field.
+      const captured = current === undefined ? {} : capturedFields(current, patch);
+      // Held while in flight, so a re-read landing meanwhile doesn't revert the optimistic row.
+      const inFlight = writesInFlightRef.current;
+      inFlight.set(id, (inFlight.get(id) ?? 0) + 1);
+      try {
+        return await runOptimisticMutation({
           optimistic: () => {
-            dispatch({ type: 'messages', action: { type: 'patch', ids: [id], patch } });
+            apply({ type: 'messages', action: { type: 'patch', ids: [id], patch } });
           },
           apiCall,
           reconcile: (saved) => {
             const patchFromServer = toMessage(saved);
-            dispatch({
+            apply({
               type: 'messages',
               action: { type: 'patch', ids: [id], patch: patchFromServer },
             });
           },
           rollback: () => {
-            dispatch({ type: 'messages', action: { type: 'patch', ids: [id], patch: captured } });
+            apply({ type: 'messages', action: { type: 'patch', ids: [id], patch: captured } });
           },
           onError: () => {
             showToastRef.current(errorMessage);
           },
         });
+      } finally {
+        const left = (inFlight.get(id) ?? 1) - 1;
+        if (left === 0) inFlight.delete(id);
+        else inFlight.set(id, left);
       }
+    }
 
-      /** The row leaves the queue the instant the verb is pressed; the clock is the server's. */
-      const identity = (message: CommMessage): CommMessage => message;
+    /** The row leaves the queue the instant the verb is pressed; the clock is the server's. */
+    const identity = (message: CommMessage): CommMessage => message;
 
-      return {
-        patchMessageLocally(id, patch) {
-          dispatch({ type: 'messages', action: { type: 'patch', ids: [id], patch } });
-        },
-        async writeMessage(id, patch, apiCall, errorMessage) {
-          return writeAndReconcile(id, patch, apiCall, identity, errorMessage);
-        },
-        async clearMessage(id, exit) {
-          const patch: Partial<CommMessage> = {
-            cleared_at: new Date().toISOString(),
-            cleared_by: exit,
-          };
-          // "Nothing to answer" is also a re-judgment: the owner has just said this belongs on
-          // the shelf, so the row shows the tier they chose rather than the one they rejected.
-          if (exit === 'nothing_to_answer') {
-            patch.tier = 'fyi';
-            patch.judged_by = 'owner';
+    return {
+      patchMessageLocally(id, patch) {
+        apply({ type: 'messages', action: { type: 'patch', ids: [id], patch } });
+      },
+      async writeMessage(id, patch, apiCall, errorMessage) {
+        return writeAndReconcile(id, patch, apiCall, identity, errorMessage);
+      },
+      async clearMessage(id, exit) {
+        const patch: Partial<CommMessage> = {
+          cleared_at: new Date().toISOString(),
+          cleared_by: exit,
+        };
+        // "Nothing to answer" is also a re-judgment: the owner has just said this belongs on
+        // the shelf, so the row shows the tier they chose rather than the one they rejected.
+        if (exit === 'nothing_to_answer') {
+          patch.tier = 'fyi';
+          patch.judged_by = 'owner';
+        }
+        return writeAndReconcile(
+          id,
+          patch,
+          () => api.clearCommMessage(id, exit),
+          identity,
+          "Couldn't clear that message",
+        );
+      },
+      async changeTier(id, tier) {
+        const patch: Partial<CommMessage> = { tier, judged_by: 'owner' };
+        // A promotion out of the shelf is also a re-opening — otherwise the correction lands
+        // and the row stays exactly as invisible as it was.
+        if (tier !== 'fyi') {
+          patch.cleared_at = null;
+          patch.cleared_by = null;
+        }
+        return writeAndReconcile(
+          id,
+          patch,
+          () => api.changeCommTier(id, tier),
+          identity,
+          "Couldn't change that tier",
+        );
+      },
+      async makeInboxItem(id) {
+        const result = await writeAndReconcile(
+          id,
+          { cleared_at: new Date().toISOString(), cleared_by: 'inbox_item' },
+          () => api.makeInboxItemFromMessage(id),
+          (saved) => saved.message,
+          "Couldn't add that to the Inbox",
+        );
+        // Said out loud because the obligation moved MODULES: the row is gone from Comms and
+        // the only thing still tracking it is an item the owner is not currently looking at.
+        showToastRef.current('Added to Inbox');
+        return result;
+      },
+      async requestReclassify(id) {
+        return writeAndReconcile(
+          id,
+          { reclassify_requested_at: new Date().toISOString(), classify_attempts: 0 },
+          () => api.requestReclassify(id),
+          identity,
+          "Couldn't ask for a re-run",
+        );
+      },
+      async purge(input) {
+        try {
+          const result = await api.purgeComms(input);
+          // Only a single-message purge can be reflected locally: an account-wide or
+          // date-range purge has no id list to remove, and guessing which rows the RPC
+          // matched would be a client re-implementation of the server's own predicate.
+          if (input.message_id !== undefined) {
+            apply({
+              type: 'messages',
+              action: { type: 'remove', ids: [input.message_id] },
+            });
           }
-          return writeAndReconcile(
-            id,
-            patch,
-            () => api.clearCommMessage(id, exit),
-            identity,
-            "Couldn't clear that message",
-          );
-        },
-        async changeTier(id, tier) {
-          const patch: Partial<CommMessage> = { tier, judged_by: 'owner' };
-          // A promotion out of the shelf is also a re-opening — otherwise the correction lands
-          // and the row stays exactly as invisible as it was.
-          if (tier !== 'fyi') {
-            patch.cleared_at = null;
-            patch.cleared_by = null;
-          }
-          return writeAndReconcile(
-            id,
-            patch,
-            () => api.changeCommTier(id, tier),
-            identity,
-            "Couldn't change that tier",
-          );
-        },
-        async makeInboxItem(id) {
-          const result = await writeAndReconcile(
-            id,
-            { cleared_at: new Date().toISOString(), cleared_by: 'inbox_item' },
-            () => api.makeInboxItemFromMessage(id),
-            (saved) => saved.message,
-            "Couldn't add that to the Inbox",
-          );
-          // Said out loud because the obligation moved MODULES: the row is gone from Comms and
-          // the only thing still tracking it is an item the owner is not currently looking at.
-          showToastRef.current('Added to Inbox');
           return result;
-        },
-        async requestReclassify(id) {
-          return writeAndReconcile(
-            id,
-            { reclassify_requested_at: new Date().toISOString(), classify_attempts: 0 },
-            () => api.requestReclassify(id),
-            identity,
-            "Couldn't ask for a re-run",
-          );
-        },
-        async purge(input) {
-          try {
-            const result = await api.purgeComms(input);
-            // Only a single-message purge can be reflected locally: an account-wide or
-            // date-range purge has no id list to remove, and guessing which rows the RPC
-            // matched would be a client re-implementation of the server's own predicate.
-            if (input.message_id !== undefined) {
-              dispatch({
-                type: 'messages',
-                action: { type: 'remove', ids: [input.message_id] },
-              });
-            }
-            return result;
-          } catch (error) {
-            showToastRef.current("Couldn't purge those messages");
-            throw error;
-          }
-        },
-      };
-    },
-    // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].
-    [],
-  );
+        } catch (error) {
+          showToastRef.current("Couldn't purge those messages");
+          throw error;
+        }
+      },
+      showMoreShelf() {
+        shelfLimitRef.current += SHELF_PAGE_SIZE;
+        reconcile();
+      },
+    };
+  }, [apply, reconcile]);
 
   return (
     <ActionsContext.Provider value={actions}>
@@ -677,6 +792,27 @@ export function useQueueCount(): number {
 export function useShelf(): CommMessage[] {
   const { messages } = useStateValue('useShelf');
   return React.useMemo(() => shelved(messages), [messages]);
+}
+
+/** The shelf's size and the Reader's share of it — the server's counts, not the held rows. */
+export function useShelfCounts(): { shelfCount: number; readerClaimedCount: number } {
+  const { shelfCount, readerClaimedCount } = useStateValue('useShelfCounts');
+  return React.useMemo(
+    () => ({ shelfCount, readerClaimedCount }),
+    [shelfCount, readerClaimedCount],
+  );
+}
+
+/**
+ * Whether the view is live, when it was last read, and the newest verdict the server knows of —
+ * what the header needs to say whether anything on the page can be trusted right now.
+ */
+export function useCommsSync(): { live: boolean; readAt: string; lastClassifiedAt: string | null } {
+  const { live, readAt, lastClassifiedAt } = useStateValue('useCommsSync');
+  return React.useMemo(
+    () => ({ live, readAt, lastClassifiedAt }),
+    [live, readAt, lastClassifiedAt],
+  );
 }
 
 /** The current verdict behind each judged message, keyed by verdict id. */

@@ -99,6 +99,11 @@ export function classifierStalled(
   health: CommClassifierHealth | undefined,
   messages: CommMessage[],
   now: Date,
+  /**
+   * The newest verdict the server knows of. The client holds only a page of the shelf, so the
+   * held rows alone can miss the latest proof of life; this floors it.
+   */
+  lastClassifiedAt: string | null = null,
 ): ClassifierStall {
   const signals: string[] = [];
 
@@ -111,7 +116,7 @@ export function classifierStalled(
 
   const cutoff = now.getTime() - CLASSIFIER_STALL_MINUTES * MS_PER_MINUTE;
   let waitingSince: string | undefined;
-  let lastVerdict: string | undefined;
+  let lastVerdict: string | undefined = lastClassifiedAt ?? undefined;
   for (const message of messages) {
     if (
       message.classified_at !== null &&
