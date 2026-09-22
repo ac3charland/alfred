@@ -6,7 +6,7 @@ import * as api from '@/lib/api-client';
 import { SHELF_PAGE_SIZE } from '@/lib/comms';
 import { makeCommAccount, makeCommMessage, makeCommsSeed } from '@/lib/comms/fixtures';
 import { renderWithProviders } from '@/lib/test-utils';
-import type { CommAccount, CommMessage } from '@/lib/types';
+import type { CommAccount, CommMessage, CommsSeed } from '@/lib/types';
 
 import { CommsQueueView } from './comms-queue-view';
 
@@ -410,6 +410,47 @@ describe('CommsQueueView — a tab that has been away', () => {
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
+  });
+
+  it('shows nothing as the queue until a read lands when the shell could not load it', async () => {
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    const arrived = makeCommMessage(LIVE.id, {
+      tier: 'asap',
+      judged_by: 'model',
+      ask: 'Needs the contract signed before noon.',
+    });
+    const read = { resolve: (_seed: CommsSeed) => {} };
+    jest
+      .mocked(api)
+      .fetchCommsSnapshot.mockRejectedValueOnce(new Error('down'))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          read.resolve = resolve;
+        }),
+      );
+    renderWithProviders(<CommsQueueView now={OPENED} />, {
+      comms: { accounts: [], messages: [], failed: true },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // A queue that was never read is not an empty one.
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load Comms — retrying.");
+    expect(screen.queryByText('Nothing to answer.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'ASAP' })).not.toBeInTheDocument();
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await act(async () => {
+      read.resolve(makeCommsSeed({ accounts: [LIVE], messages: [arrived] }));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText('Needs the contract signed before noon.')).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load Comms/)).not.toBeInTheDocument();
   });
 
   it('dates "not live" from when it stopped being live, since the stream kept it current until then', () => {

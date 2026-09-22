@@ -77,6 +77,8 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
     messages?: CommMessage[];
     verdicts?: CommVerdict[];
     health?: CommClassifierHealth;
+    /** The shell's read failed: nothing has loaded yet. */
+    failed?: boolean;
   };
   /** The Comms settings data: the roster, the rubric versions (newest first), the example set. */
   commsSettings?: {
@@ -144,7 +146,10 @@ export function renderWithProviders(
                               initialStats={habits.stats ?? {}}
                               serverToday={habits.today}
                             >
-                              <CommsProvider initialSeed={makeCommsSeed(comms)}>
+                              <CommsProvider
+                                initialSeed={makeCommsSeed(comms)}
+                                initialFailed={comms.failed ?? false}
+                              >
                                 <CommsSettingsProvider
                                   initialPeople={commsSettings.people ?? []}
                                   initialRubrics={commsSettings.rubrics ?? []}

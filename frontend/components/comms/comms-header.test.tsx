@@ -24,6 +24,7 @@ function renderHeader(properties: Partial<React.ComponentProps<typeof CommsHeade
       now={NOW}
       lastClassifiedAt={properties.lastClassifiedAt}
       notLiveSince={properties.notLiveSince}
+      loaded={properties.loaded}
     />,
   );
 }
@@ -149,6 +150,12 @@ describe('CommsHeader', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Not live — this is what was here 12m ago. Anything since may be missing until it reconnects.',
     );
+  });
+
+  it('says it could not load, rather than dating a view it never had', () => {
+    renderHeader({ loaded: false });
+
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load Comms — retrying.");
   });
 
   it('says nothing about liveness while the view is live', () => {

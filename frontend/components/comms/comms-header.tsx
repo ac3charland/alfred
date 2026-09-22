@@ -37,6 +37,8 @@ interface CommsHeaderProperties {
    * A view that may be behind has to say so, or it is quietly lying about what needs answering.
    */
   notLiveSince?: string | undefined;
+  /** `false` while no read of the view has ever landed — there is nothing yet to show or date. */
+  loaded?: boolean | undefined;
 }
 
 /**
@@ -74,6 +76,7 @@ export function CommsHeader({
   now,
   lastClassifiedAt = null,
   notLiveSince,
+  loaded = true,
 }: CommsHeaderProperties) {
   const stall = classifierStalled(health, messages, now, lastClassifiedAt);
   const ping = lastPing(accounts);
@@ -84,6 +87,11 @@ export function CommsHeader({
 
   return (
     <div className="flex flex-col gap-3">
+      {!loaded && (
+        <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
+          Couldn&apos;t load Comms — retrying.
+        </p>
+      )}
       {notLiveSince !== undefined && (
         <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
           Not live — this is what was here {formatElapsed(notLiveSince, now)}. Anything since may be

@@ -62,7 +62,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   const byTier = useQueuedByTier();
   const shelf = useShelf();
   const { shelfCount, readerClaimedCount } = useShelfCounts();
-  const { lastClassifiedAt, notLiveSince } = useCommsSync();
+  const { loaded, lastClassifiedAt, notLiveSince } = useCommsSync();
   const { showMoreShelf } = useCommsActions();
   const verdicts = useCommsVerdicts();
   const health = useCommsHealth();
@@ -150,39 +150,43 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
         now={now}
         lastClassifiedAt={lastClassifiedAt}
         notLiveSince={notLiveSince}
+        loaded={loaded}
       />
 
-      {queueEmpty ? (
-        <EmptyState title="Nothing to answer." description={EMPTY_DESCRIPTION} />
-      ) : (
-        <div className="flex flex-col gap-4">
-          {QUEUED_TIERS.map((tier) => (
-            <TierSection
-              key={tier}
-              tier={tier}
-              count={byTier[tier].length}
-              // Only Today says anything when it is empty: that is the sentence the
-              // module is built to be able to show.
-              emptyLabel={tier === 'today' ? 'Nothing to answer today.' : undefined}
-            >
-              {byTier[tier].map((message) => renderRow(message, false))}
-            </TierSection>
-          ))}
+      {/* A queue that was never read is not an empty one: nothing is drawn until a read lands. */}
+      {loaded ? (
+        queueEmpty ? (
+          <EmptyState title="Nothing to answer." description={EMPTY_DESCRIPTION} />
+        ) : (
+          <div className="flex flex-col gap-4">
+            {QUEUED_TIERS.map((tier) => (
+              <TierSection
+                key={tier}
+                tier={tier}
+                count={byTier[tier].length}
+                // Only Today says anything when it is empty: that is the sentence the
+                // module is built to be able to show.
+                emptyLabel={tier === 'today' ? 'Nothing to answer today.' : undefined}
+              >
+                {byTier[tier].map((message) => renderRow(message, false))}
+              </TierSection>
+            ))}
 
-          <FyiShelf
-            count={shelfTotal}
-            claimedCount={readerClaimedCount}
-            onOpenChange={setShelfOpen}
-          >
-            {shelf.map((message) => renderRow(message, true))}
-            {shelfTotal > shelf.length && (
-              <Button variant="ghost" size="sm" className="self-start" onClick={showMoreShelf}>
-                Show more ({String(shelfTotal - shelf.length)} older)
-              </Button>
-            )}
-          </FyiShelf>
-        </div>
-      )}
+            <FyiShelf
+              count={shelfTotal}
+              claimedCount={readerClaimedCount}
+              onOpenChange={setShelfOpen}
+            >
+              {shelf.map((message) => renderRow(message, true))}
+              {shelfTotal > shelf.length && (
+                <Button variant="ghost" size="sm" className="self-start" onClick={showMoreShelf}>
+                  Show more ({String(shelfTotal - shelf.length)} older)
+                </Button>
+              )}
+            </FyiShelf>
+          </div>
+        )
+      ) : null}
 
       <AddSenderDialog
         message={addingSenderFor}

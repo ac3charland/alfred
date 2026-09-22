@@ -130,7 +130,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                               >
                                 <CommsProvider
                                   initialSeed={commsSeed.seed}
-                                  initialStale={commsSeed.failed}
+                                  initialFailed={commsSeed.failed}
                                 >
                                   <CommsSettingsProvider
                                     initialPeople={commsSettingsSeed.people}

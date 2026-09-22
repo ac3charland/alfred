@@ -109,3 +109,11 @@ export const NotLive: Story = {
     notLiveSince: ago(12 * MINUTE),
   },
 };
+
+/**
+ * The shell's read failed and no read has landed since: the view has nothing to show and nothing
+ * to date, so it says only that it is trying again.
+ */
+export const NotLoaded: Story = {
+  args: { accounts: [], loaded: false },
+};
