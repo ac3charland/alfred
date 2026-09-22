@@ -23,3 +23,21 @@ branch: claude/comes-module-live-update-c9bx5a
 **The Comms header baseline moved on purpose.** Below is the visual-snapshot gate's diff (old, diff, new): the dots lift slightly and the last-ping line appears beneath them. The same shift moved the queue-view stories' baselines, all approved in this branch.
 
 ![](comms-live-update-image-4.png)
+
+## Recovering whatever the socket missed
+
+A working channel still can't replay what it missed: a tab in the background, a laptop asleep, a phone that suspended the app, or the moment between the server render and the join. So the view re-reads itself via `GET /api/comms/snapshot` and replaces what it holds. It does this whenever every channel (re)joins, on tab return, on `online`, and after a burst of live changes settles. The read is small because the view only holds what it shows: everything above FYI in full, the first 50 shelf rows, and the shelf and Reader totals as counts.
+
+**A message written while the tab was away, with no realtime push for it.** The page opens with 60 FYI rows and nothing owed. Then a new ASAP message is written straight to the backend, standing in for the change the dropped socket never delivered. The tab comes back to the front:
+
+![](comms-live-update-image-5.png)
+
+![](comms-live-update-image-6.png)
+
+**When it can't re-read, it says so.** The re-read is blocked, standing in for being offline. The queue keeps what it had, and a line above everything says the view may be behind. It clears on the next successful read.
+
+![](comms-live-update-image-7.png)
+
+**The shelf pages from the server.** The count says 60 while the view holds only 50 rows. "Show more (10 older)" is the same snapshot read asked for 100, and afterwards all 60 are on screen, down to Receipt 60:
+
+![](comms-live-update-image-8.png)
