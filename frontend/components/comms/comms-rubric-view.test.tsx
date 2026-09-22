@@ -146,12 +146,20 @@ describe('CommsRubricView', () => {
   it('ticks a single clock for the whole view, not one per child', () => {
     // `comms-format.ts` names the convention: the view owns one ticking instant and hands the
     // same one to every consumer — so one `useNow` interval per mount is the signature of that
-    // being followed. The Comms store the providers mount mounts its own `setInterval` poll at
-    // the same period (`COMMS_POLL_MS` happens to equal `NOW_TICK_MS`), so two is the count that
-    // says "one clock per view, plus the store's unrelated poll" — not a per-child clock.
+    // being followed. The providers alone also mount the Comms store's own `setInterval` poll,
+    // which happens to run at `COMMS_POLL_MS === NOW_TICK_MS` — counted as a baseline first,
+    // rather than folded into a hard-coded total, so this stays meaningful if the two constants
+    // ever diverge.
     const setIntervalSpy = jest.spyOn(globalThis, 'setInterval');
+    const providersOnly = renderWithProviders(<></>);
+    const baseline = setIntervalSpy.mock.calls.filter(([, ms]) => ms === NOW_TICK_MS).length;
+    providersOnly.unmount();
+    setIntervalSpy.mockClear();
+
     renderView([V2, V1]);
 
-    expect(setIntervalSpy.mock.calls.filter(([, ms]) => ms === NOW_TICK_MS)).toHaveLength(2);
+    expect(setIntervalSpy.mock.calls.filter(([, ms]) => ms === NOW_TICK_MS)).toHaveLength(
+      baseline + 1,
+    );
   });
 });

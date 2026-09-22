@@ -33,11 +33,27 @@ const SHELVED = makeCommMessage(PERSONAL.id, {
   ask: 'Wants to know if Thursday lunch works.',
 });
 
-/** What a tab coming back to the front fires. */
+/**
+ * What a tab coming back to the front fires — retried until the dispatch actually lands a
+ * snapshot read, rather than a fixed sleep before the first call. That makes it double as the
+ * hydration barrier too: the very first dispatch after `page.goto` can outrun React attaching
+ * the listener, the same way a real tab's first foreground event can arrive before hydration
+ * finishes. Extra reads along the way are harmless — the store's re-read replaces its view
+ * idempotently either way.
+ */
 async function returnToTab(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
+  await expect(async () => {
+    const read = page.waitForResponse(
+      (candidate) => candidate.url().includes('/api/comms/snapshot'),
+      {
+        timeout: 1000,
+      },
+    );
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await read;
+  }).toPass();
 }
 
 /** The next snapshot re-read the view makes — what it would replace a stale row with. */
@@ -54,8 +70,6 @@ test('a row the classifier re-tiers moves into the open queue on the next re-rea
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
   await page.goto('/comms');
-  // Hydration has to finish before a synthetic `visibilitychange` has a listener to reach.
-  await page.waitForTimeout(300);
   const today = page.getByRole('region', { name: 'Today' });
   await expect(today.getByText('Lunch Thursday?')).toBeHidden();
 
@@ -73,8 +87,6 @@ test('a row the classifier re-tiers moves into the open queue on the next re-rea
 test('the last-ping line under the dots follows a poll as it lands', async ({ page, seed }) => {
   await seed({ commAccounts: [PERSONAL] });
   await page.goto('/comms');
-  // Hydration has to finish before a synthetic `visibilitychange` has a listener to reach.
-  await page.waitForTimeout(300);
 
   const ping = page.getByTestId('last-ping');
   await expect(ping).toHaveText('Last ping 2h ago · personal');
@@ -106,8 +118,6 @@ test('a message that landed while the tab was away is there when it comes back',
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
   await page.goto('/comms');
-  // Hydration has to finish before a synthetic `visibilitychange` has a listener to reach.
-  await page.waitForTimeout(300);
   const asap = page.getByRole('region', { name: 'ASAP' });
   await expect(asap.getByText('Needs the contract signed before noon.')).toBeHidden();
 
@@ -123,18 +133,23 @@ test('says it is not live once every poll fails for long enough, and stops once 
   seed,
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
-  // Installed before navigating, so every timer the store creates on mount (the poll interval,
-  // the view's own ticking clock) is fake from the start — one installed after hydration leaves
-  // those already-real timers deaf to `fastForward`, since it never advances real wall time.
+  // Installed before navigating, so every timer the store and view create on mount (the poll
+  // interval, the view's own ticking clock, the live-window timer) is fake from the start — one
+  // installed after hydration leaves those already-real timers deaf to `fastForward`, since it
+  // never advances real wall time.
   await page.clock.install();
   await page.goto('/comms');
-  await page.waitForTimeout(300);
+  // The hydration barrier, before anything about this test's own fake clock: a real round trip
+  // through the still-real `/api/comms/snapshot`, so the poll interval and the live-window timer
+  // the assertions below depend on are both known to exist before the abort route goes in.
+  await returnToTab(page);
   // Scoped by text: Next's own route announcer is an `alert` too.
   const notLive = page.getByRole('alert').filter({ hasText: 'Not live' });
   await expect(notLive).toBeHidden();
 
   await page.route('**/api/comms/snapshot**', (route) => route.abort());
-  // Enough failed polls, back to back, to walk the clock just past the live window.
+  // `fastForward` fires each timer due within the jump exactly once, not a replay of every poll
+  // along the way — so one jump past the live window is enough to land past it.
   await page.clock.fastForward(COMMS_LIVE_WINDOW_MS + COMMS_POLL_MS);
   await expect(notLive).toHaveText(/^Not live — this is what was here/);
 
