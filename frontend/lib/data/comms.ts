@@ -1,17 +1,16 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
-import { RETENTION_DAYS } from '@/lib/comms';
+import { RETENTION_DAYS, SHELF_PAGE_SIZE } from '@/lib/comms';
 import type { Database } from '@/lib/database.types';
 import { createClient } from '@/lib/supabase/server';
 import type {
-  CommAccount,
-  CommClassifierHealth,
   CommCorrection,
   CommMessage,
   CommPersonWithHandles,
   CommRubric,
   CommVerdict,
+  CommsSeed,
 } from '@/lib/types';
 
 /**
@@ -36,7 +35,7 @@ export const COMMS_PAGE_SIZE = 1000;
 
 /**
  * How many pages a single paged read may take before it is called a failure. At ~45 messages a
- * day the 60-day mirror holds a few thousand rows — the largest of the four paged tables here —
+ * day the 60-day mirror holds a few thousand rows — the most any paged read here could reach —
  * so fifty pages is orders of magnitude of headroom for all of them; exhausting it means a
  * backend that never returns a short page, and truncating there would silently shrink whichever
  * list it was.
@@ -46,8 +45,8 @@ export const COMMS_MAX_PAGES = 50;
 /**
  * How many verdict ids one `in.()` request may carry.
  *
- * `getCommsSeed` asks for the CURRENT verdict behind every judged message in the retention
- * window — this file's own sizing note above says that's routinely a few thousand ids. An
+ * The snapshot asks for the CURRENT verdict behind every message it returns — during a classifier
+ * outage or a long unjudged backlog that can still run to thousands of ids. An
  * `in.(…)` list that size builds a request URL of ~100KB, which a typical PostgREST-fronting
  * proxy rejects outright, well before the row cap above would even come into play. 200 ids at a
  * 36-character UUID apiece keeps one chunk's `in.()` clause under ~8KB — comfortably inside the
@@ -74,7 +73,7 @@ function retentionCutoff(now: Date): string {
 /**
  * Walk one table a page at a time and hand back every row, or a bounded-pages failure.
  *
- * `readMessages` needed this first, but PostgREST's row cap doesn't care whether a table is
+ * The message read needed this first, but PostgREST's row cap doesn't care whether a table is
  * "small and edited by hand" — it truncates any unbounded `.select()` the same way regardless of
  * why the table grew past it. So this is the one loop every paged Comms read shares: the caller
  * supplies the query up to `.range()` (which needs the `offset` this passes in), and this owns
@@ -96,8 +95,13 @@ async function readAllPages<T>(
   return { rows: [], error: pagingError() };
 }
 
-/** Every inbound message inside the retention window, walked a page at a time. */
-async function readMessages(
+/**
+ * Everything above FYI inside the retention window, walked a page at a time: every uncleared row
+ * that is queued or not judged yet. Both are complete sets the client derives from — the queue
+ * and the badge count from the first, the classifier-stall signal from the second — and both
+ * are small by design, so neither is paged in the UI.
+ */
+async function readActiveMessages(
   supabase: SupabaseClient<Database>,
   since: string,
 ): Promise<{ messages: CommMessage[]; error: PostgrestError | null }> {
@@ -109,6 +113,9 @@ async function readMessages(
       // never shelved and never rendered, so the client has no use for them.
       .eq('direction', 'inbound')
       .gte('received_at', since)
+      .is('cleared_at', null)
+      // `neq` alone would drop the unjudged rows: a null tier is not "not fyi" to SQL.
+      .or('tier.is.null,tier.neq.fyi')
       // A total order across pages is what makes paging safe: without it two requests can
       // return the same row twice and never return another.
       .order('received_at', { ascending: false })
@@ -116,6 +123,64 @@ async function readMessages(
       .range(offset, offset + COMMS_PAGE_SIZE - 1),
   );
   return { messages: rows, error };
+}
+
+/**
+ * Judged (or cleared) and not in the queue — the `isShelfEligible` predicate in
+ * `lib/comms/queue.ts`, which the two shelf reads below must match exactly.
+ */
+const SHELF_ELIGIBLE = 'tier.eq.fyi,cleared_at.not.is.null';
+
+/** The newest `limit` shelf rows, and how many are on the shelf in all. */
+async function readShelfPage(
+  supabase: SupabaseClient<Database>,
+  since: string,
+  limit: number,
+): Promise<{ messages: CommMessage[]; count: number; error: PostgrestError | null }> {
+  const { data, count, error } = await supabase
+    .from('comm_messages')
+    .select('*', { count: 'exact' })
+    .eq('direction', 'inbound')
+    .gte('received_at', since)
+    .or(SHELF_ELIGIBLE)
+    // A claimed newsletter lives in the reading list; the shelf only counts it (below).
+    .is('reader_claimed_at', null)
+    .order('received_at', { ascending: false })
+    .order('id', { ascending: true })
+    .limit(limit);
+  return { messages: data ?? [], count: count ?? 0, error };
+}
+
+/** How many shelf-eligible newsletters the Reader claimed — a count, never the rows. */
+async function countReaderClaimed(
+  supabase: SupabaseClient<Database>,
+  since: string,
+): Promise<{ count: number; error: PostgrestError | null }> {
+  const { count, error } = await supabase
+    .from('comm_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('direction', 'inbound')
+    .gte('received_at', since)
+    .or(SHELF_ELIGIBLE)
+    .not('reader_claimed_at', 'is', null);
+  return { count: count ?? 0, error };
+}
+
+/** The newest verdict across the window — held rows alone can't say, once the shelf is paged. */
+async function readLastClassifiedAt(
+  supabase: SupabaseClient<Database>,
+  since: string,
+): Promise<{ at: string | null; error: PostgrestError | null }> {
+  const { data, error } = await supabase
+    .from('comm_messages')
+    .select('classified_at')
+    .eq('direction', 'inbound')
+    .gte('received_at', since)
+    .not('classified_at', 'is', null)
+    .order('classified_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return { at: data?.classified_at ?? null, error };
 }
 
 /**
@@ -152,63 +217,81 @@ async function readVerdicts(
   return { verdicts, error: null };
 }
 
-/** What the queue needs: the accounts, their messages, the verdicts behind them, and health. */
-export interface CommsSeed {
-  accounts: CommAccount[];
-  messages: CommMessage[];
-  verdicts: CommVerdict[];
-  /** The singleton health row; absent until the classifier sweep has run at least once. */
-  health: CommClassifierHealth | undefined;
-}
-
 /**
- * The Comms queue seed: every account, every inbound message inside the 60-day retention
- * window, the verdicts those messages point at, and the classifier's own health.
+ * The Comms queue's snapshot: every account, everything above FYI, the newest `shelfLimit` shelf
+ * rows, the shelf's and the Reader's counts, the verdicts behind the rows returned, and the
+ * classifier's own health. The shell seeds from it; `GET /api/comms/snapshot` re-reads it whenever
+ * a tab may have missed something, and to load more of the shelf.
  *
  * Verdicts are read by `id` from the messages' `verdict_id` — the CURRENT verdict for each
- * message, not the whole audit trail. A re-classification writes a new verdict row and moves
- * the message's pointer, so the superseded rows are history the queue never renders; fetching
- * them all would grow without bound while showing nothing extra.
+ * message, not the whole audit trail.
  *
- * The four reads are sequenced, each one checked for `error` before the next runs, and a failure
- * returns whatever already succeeded plus empty defaults for the rest — never a fallback (`??
- * []`) that would let a failed read masquerade as "there's nothing here." An account read that
- * fails, for instance, stops the seed cold rather than going on to read messages against a roster
- * it doesn't actually have.
- *
- * The client takes it from here: the queue, the shelf and the badge count are all derived from
- * this one list (the app's fetch-all, filter-client-side default).
+ * The reads are sequenced, each checked for `error` before the next runs. A failure returns what
+ * already succeeded, with empty defaults for the rest, AND the error: the shell degrades in
+ * layers rather than blanking, while the snapshot route refuses to hand a partial read to a
+ * client that would replace its whole view with it.
  */
-export async function getCommsSeed(client?: SupabaseClient<Database>): Promise<CommsSeed> {
-  const supabase = client ?? (await createClient());
-  const empty: CommsSeed = { accounts: [], messages: [], verdicts: [], health: undefined };
+export async function readCommsSnapshot(
+  supabase: SupabaseClient<Database>,
+  shelfLimit: number = SHELF_PAGE_SIZE,
+): Promise<{ seed: CommsSeed; error: PostgrestError | null }> {
+  const now = new Date();
+  const since = retentionCutoff(now);
+  const seed: CommsSeed = {
+    accounts: [],
+    messages: [],
+    verdicts: [],
+    health: undefined,
+    shelfCount: 0,
+    readerClaimedCount: 0,
+    lastClassifiedAt: null,
+    readAt: now.toISOString(),
+  };
 
   const { data: accounts, error: accountsError } = await supabase
     .from('comm_accounts')
     .select('*')
     .order('created_at', { ascending: true });
-  if (accountsError) return empty;
+  if (accountsError) return { seed, error: accountsError };
+  seed.accounts = accounts;
 
-  const { messages, error: messagesError } = await readMessages(
-    supabase,
-    retentionCutoff(new Date()),
-  );
-  if (messagesError) return { ...empty, accounts };
+  const active = await readActiveMessages(supabase, since);
+  if (active.error) return { seed, error: active.error };
+  const shelf = await readShelfPage(supabase, since, shelfLimit);
+  if (shelf.error) return { seed, error: shelf.error };
+  seed.messages = [...active.messages, ...shelf.messages];
+  seed.shelfCount = shelf.count;
+
+  const claimed = await countReaderClaimed(supabase, since);
+  if (claimed.error) return { seed, error: claimed.error };
+  seed.readerClaimedCount = claimed.count;
+
+  const lastClassified = await readLastClassifiedAt(supabase, since);
+  if (lastClassified.error) return { seed, error: lastClassified.error };
+  seed.lastClassifiedAt = lastClassified.at;
 
   const verdictIds = [
-    ...new Set(messages.flatMap((m) => (m.verdict_id === null ? [] : [m.verdict_id]))),
+    ...new Set(seed.messages.flatMap((m) => (m.verdict_id === null ? [] : [m.verdict_id]))),
   ];
   const { verdicts, error: verdictsError } = await readVerdicts(supabase, verdictIds);
-  if (verdictsError) return { ...empty, accounts, messages };
+  if (verdictsError) return { seed, error: verdictsError };
+  seed.verdicts = verdicts;
 
-  const { data: healthData, error: healthError } = await supabase
+  const { data: health, error: healthError } = await supabase
     .from('comm_classifier_health')
     .select('*')
     .eq('id', 1)
     .maybeSingle();
-  if (healthError) return { accounts, messages, verdicts, health: undefined };
+  if (healthError) return { seed, error: healthError };
+  seed.health = health ?? undefined;
 
-  return { accounts, messages, verdicts, health: healthData ?? undefined };
+  return { seed, error: null };
+}
+
+/** The shell's first read of the queue: {@link readCommsSnapshot}'s first shelf page. */
+export async function getCommsSeed(client?: SupabaseClient<Database>): Promise<CommsSeed> {
+  const { seed } = await readCommsSnapshot(client ?? (await createClient()));
+  return seed;
 }
 
 /** What the settings pages need: the roster, every rubric version, and the example set. */
@@ -228,7 +311,7 @@ export interface CommsSettingsSeed {
  * roster and the correction set both grow with ordinary use, and PostgREST's `Max rows` cap
  * truncates an unbounded `.select()` on any of them exactly as silently as it would on the
  * message queue. So all three are walked page by page through the same `readAllPages` loop
- * `readMessages` uses, including its bounded-pages failure mode: the rubric history in
+ * the message read uses, including its bounded-pages failure mode: the rubric history in
  * particular has to stay COMPLETE for a verdict's stamped version to stay resolvable, and a
  * truncated tail would quietly break that.
  */

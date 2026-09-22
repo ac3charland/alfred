@@ -172,14 +172,28 @@ export interface CommPersonWithHandles extends CommPerson {
 }
 
 /**
- * Everything the module's health surface is derived from — the accounts and the classifier's
- * singleton row — read together so a long-lived tab can re-establish it in one request after a
- * lapse in the realtime stream.
+ * What the Comms queue view holds, read in one go — by the shell on a first load and by a
+ * long-lived tab re-establishing itself whenever it may have missed something (ALF-258).
+ *
+ * The client holds everything above FYI but only a PAGE of the shelf, so the shelf's size and the
+ * Reader's share of it arrive as counts rather than as rows.
  */
-export interface CommsHealthSnapshot {
+export interface CommsSeed {
   accounts: CommAccount[];
+  /** Everything above FYI (the queue and anything not yet judged), then the newest shelf page. */
+  messages: CommMessage[];
+  /** The current verdict behind each of those messages. */
+  verdicts: CommVerdict[];
   /** Absent until the classifier sweep has run at least once. */
   health: CommClassifierHealth | undefined;
+  /** Every row on the shelf, not just the page in `messages`. */
+  shelfCount: number;
+  /** Shelf-eligible newsletters the Reader claimed — counted beneath the shelf, never drawn. */
+  readerClaimedCount: number;
+  /** The newest verdict across the whole window: the classifier's proof of life. */
+  lastClassifiedAt: string | null;
+  /** When the server read this — what "Not live — showing what was here at …" names. */
+  readAt: string;
 }
 
 // ── Reader (newsletter posts pulled out of Comms and summarised) — ──

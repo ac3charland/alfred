@@ -128,12 +128,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                                 initialStats={habitSeed.stats}
                                 serverToday={todayIn('UTC')}
                               >
-                                <CommsProvider
-                                  initialAccounts={commsSeed.accounts}
-                                  initialMessages={commsSeed.messages}
-                                  initialVerdicts={commsSeed.verdicts}
-                                  initialHealth={commsSeed.health}
-                                >
+                                <CommsProvider initialSeed={commsSeed}>
                                   <CommsSettingsProvider
                                     initialPeople={commsSettingsSeed.people}
                                     initialRubrics={commsSettingsSeed.rubrics}

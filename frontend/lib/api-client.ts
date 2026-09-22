@@ -41,7 +41,7 @@ import type {
   CommMessage,
   CommPersonWithHandles,
   CommRubric,
-  CommsHealthSnapshot,
+  CommsSeed,
   Epic,
   Folder,
   Habit,
@@ -581,13 +581,12 @@ export function fetchCommMessages(query: CommMessagesQuery): Promise<CommMessage
 }
 
 /**
- * Re-read the module's health surface — every account and the classifier's row. The shell seeds
- * both and Realtime keeps them current, so this is purely the recovery path for a tab whose
- * socket lapsed while it was away: without it a frozen `last_seen_at` decays into "stale" on the
- * ticking clock alone and every source reads as disconnected (ALF-227).
+ * Re-read everything the Comms queue view holds, `shelf` shelf rows included. The shell seeds the
+ * store and Realtime keeps it current, so this is the recovery path for whenever a tab may have
+ * missed something — and, asked for more shelf rows, how "Show more" pages the shelf (ALF-258).
  */
-export function fetchCommsHealth(): Promise<CommsHealthSnapshot> {
-  return apiRequest<CommsHealthSnapshot>('/api/comms/health');
+export function fetchCommsSnapshot(shelf: number): Promise<CommsSeed> {
+  return apiRequest<CommsSeed>(`/api/comms/snapshot?shelf=${String(shelf)}`);
 }
 
 /**

@@ -199,56 +199,75 @@ function sendRows(req, res, rows, total) {
 // ── PostgREST filtering ──────────────────────────────────────────────────────
 
 /**
- * Apply the `column=op.value` filters from the query string: `eq` (id=eq.x), `is`
- * (folder_id=is.null), `in` (habit_id=in.(a,b)), and the `gte`/`lte` range the habit-entry
- * window read uses — dates are `YYYY-MM-DD`, which compares correctly as a string.
+ * Does one row satisfy one PostgREST condition (`op.value`, e.g. `eq.x`, `is.null`,
+ * `in.(a,b)`)? A `not.` prefix negates whatever follows it. `gte`/`lte` compare as strings,
+ * which is right for the ISO dates and timestamps alfred filters on.
  */
+function matchesCondition(row, column, condition) {
+  if (condition.startsWith('not.')) return !matchesCondition(row, column, condition.slice(4));
+  const dot = condition.indexOf('.');
+  const op = condition.slice(0, dot);
+  const value = condition.slice(dot + 1);
+  switch (op) {
+    case 'is': {
+      return row[column] === (value === 'null' ? null : value === 'true');
+    }
+    case 'eq': {
+      return String(row[column]) === value;
+    }
+    case 'neq': {
+      // SQL's `<>` is unknown — so false — against a null, exactly as PostgREST answers it.
+      return row[column] !== null && row[column] !== undefined && String(row[column]) !== value;
+    }
+    case 'in': {
+      // `in.("a","b")` — supabase-js quotes each element, so strip the wrapping parens and
+      // any quotes before comparing.
+      const members = new Set(
+        value
+          .replace(/^\(/, '')
+          .replace(/\)$/, '')
+          .split(',')
+          .map((element) => element.replace(/^"/, '').replace(/"$/, '')),
+      );
+      return members.has(String(row[column]));
+    }
+    case 'gte': {
+      return String(row[column]) >= value;
+    }
+    case 'lte': {
+      return String(row[column]) <= value;
+    }
+    default: {
+      return true;
+    }
+  }
+}
+
+/**
+ * `or=(a.op.value,b.op.value)` — any one condition holding. Split on the commas BETWEEN
+ * conditions only; alfred's `or` filters never nest or carry an `in` list.
+ */
+function matchesAny(row, raw) {
+  return raw
+    .replace(/^\(/, '')
+    .replace(/\)$/, '')
+    .split(',')
+    .some((term) => {
+      const dot = term.indexOf('.');
+      return matchesCondition(row, term.slice(0, dot), term.slice(dot + 1));
+    });
+}
+
+/** Apply the `column=op.value` filters from the query string, plus `or=(…)`. */
 function applyFilters(rows, searchParameters) {
   let result = rows;
   const nonFilterKeys = new Set(['select', 'order', 'limit', 'offset', 'on_conflict']);
   for (const [key, raw] of searchParameters.entries()) {
     if (nonFilterKeys.has(key)) continue;
-    const dot = raw.indexOf('.');
-    const op = raw.slice(0, dot);
-    const value = raw.slice(dot + 1);
-    switch (op) {
-      case 'is': {
-        const target = value === 'null' ? null : value === 'true';
-        result = result.filter((row) => row[key] === target);
-
-        break;
-      }
-      case 'eq': {
-        result = result.filter((row) => String(row[key]) === value);
-
-        break;
-      }
-      case 'in': {
-        // `in.("a","b")` — supabase-js quotes each element, so strip the wrapping parens and
-        // any quotes before comparing.
-        const members = new Set(
-          value
-            .replace(/^\(/, '')
-            .replace(/\)$/, '')
-            .split(',')
-            .map((element) => element.replace(/^"/, '').replace(/"$/, '')),
-        );
-        result = result.filter((row) => members.has(String(row[key])));
-
-        break;
-      }
-      case 'gte': {
-        result = result.filter((row) => String(row[key]) >= value);
-
-        break;
-      }
-      case 'lte': {
-        result = result.filter((row) => String(row[key]) <= value);
-
-        break;
-      }
-      // No default
-    }
+    result =
+      key === 'or'
+        ? result.filter((row) => matchesAny(row, raw))
+        : result.filter((row) => matchesCondition(row, key, raw));
   }
   return result;
 }

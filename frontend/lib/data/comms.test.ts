@@ -11,6 +11,7 @@ import {
   resetCommFixtureClock,
 } from '@/lib/comms/fixtures';
 import { RETENTION_DAYS } from '@/lib/comms/markers';
+import { SHELF_PAGE_SIZE } from '@/lib/comms/queue';
 import { pinClock } from '@/lib/pin-clock';
 import * as supabaseServer from '@/lib/supabase/server';
 
@@ -20,6 +21,7 @@ import {
   COMMS_VERDICT_CHUNK_SIZE,
   getCommsSeed,
   getCommsSettingsSeed,
+  readCommsSnapshot,
 } from './comms';
 
 // `import 'server-only'` throws outside a Server Component context; neutralise it under Jest.
@@ -34,6 +36,7 @@ const ACCOUNT = makeCommAccount('personal', { id: '00000000-0000-4000-8000-00000
 interface Result {
   data: unknown;
   error: { message: string; code?: string } | null;
+  count?: number;
 }
 
 /** What one request asked for, recorded so the query itself can be asserted. */
@@ -41,9 +44,14 @@ interface RecordedQuery {
   eq: [string, unknown][];
   gte?: [string, unknown];
   in?: [string, unknown];
+  is: [string, unknown][];
+  not: [string, string, unknown][];
+  or?: string;
   order: [string, unknown][];
   range?: [number, number];
+  limit?: number;
   select?: string | undefined;
+  selectOptions?: unknown;
   maybeSingle?: boolean;
 }
 
@@ -56,25 +64,33 @@ type Table =
   | 'comm_rubrics'
   | 'comm_corrections';
 
-/** The chaining surface the two seed readers use, over a promise of the request's result. */
+/** A table's answer: one result, a queue of pages, or a pick by what the request asked. */
+type Answer = Result | Result[] | ((query: RecordedQuery) => Result);
+
+/** The chaining surface the seed readers use, over a promise of the request's result. */
 type Builder = Promise<Result> & {
-  select: (columns?: string) => Builder;
+  select: (columns?: string, options?: unknown) => Builder;
   eq: (column: string, value: unknown) => Builder;
   gte: (column: string, value: unknown) => Builder;
   in: (column: string, values: unknown) => Builder;
+  is: (column: string, value: unknown) => Builder;
+  not: (column: string, op: string, value: unknown) => Builder;
+  or: (filter: string) => Builder;
   order: (column: string, options: unknown) => Builder;
   range: (start: number, end: number) => Builder;
+  limit: (count: number) => Builder;
   overrideTypes: () => Builder;
   maybeSingle: () => Promise<Result>;
 };
 
 /**
  * A stand-in for the Supabase query builder. It IS a promise — the real builder is thenable —
- * with the chaining methods assigned onto it, so awaiting the end of any chain resolves the
- * result queued for that request. A fresh builder per request is what lets the paged message
- * read be driven by queueing several `comm_messages` results in an array.
+ * with the chaining methods assigned onto it. The answer is picked a microtask later, once the
+ * synchronous chain has recorded what the request asked for, so a table read several different
+ * ways (`comm_messages`) can answer each by its filters. A queue of results is consumed one per
+ * request, the last repeating, so a read that never shortens can be exercised.
  */
-function makeClient(results: Partial<Record<Table, Result | Result[]>>) {
+function makeClient(results: Partial<Record<Table, Answer>>) {
   // Every table starts with an empty list, so "was this read at all?" is a length assertion
   // rather than an undefined check the type system then has to be talked through.
   const calls: Record<Table, RecordedQuery[]> = {
@@ -89,23 +105,29 @@ function makeClient(results: Partial<Record<Table, Result | Result[]>>) {
   const pages: Partial<Record<Table, number>> = {};
 
   const from = jest.fn((table: Table) => {
-    const recorded: RecordedQuery = { eq: [], order: [] };
+    const recorded: RecordedQuery = { eq: [], is: [], not: [], order: [] };
     calls[table].push(recorded);
 
     const queued = results[table];
-    let result: Result = { data: [], error: null };
-    if (Array.isArray(queued)) {
-      const page = pages[table] ?? 0;
-      // The last queued page repeats, so a read that never shortens can be exercised.
-      result = queued[Math.min(page, queued.length - 1)] ?? result;
-      pages[table] = page + 1;
-    } else if (queued !== undefined) {
-      result = queued;
-    }
+    const pick = (): Result => {
+      if (typeof queued === 'function') return queued(recorded);
+      if (Array.isArray(queued)) {
+        const page = pages[table] ?? 0;
+        pages[table] = page + 1;
+        return queued[Math.min(page, queued.length - 1)] ?? { data: [], error: null };
+      }
+      return queued ?? { data: [], error: null };
+    };
+    const answer = new Promise<Result>((resolve) => {
+      queueMicrotask(() => {
+        resolve(pick());
+      });
+    });
 
-    const builder: Builder = Object.assign(Promise.resolve(result), {
-      select: jest.fn((columns?: string) => {
+    const builder: Builder = Object.assign(answer, {
+      select: jest.fn((columns?: string, options?: unknown) => {
         recorded.select = columns;
+        recorded.selectOptions = options;
         return builder;
       }),
       eq: jest.fn((column: string, value: unknown) => {
@@ -120,6 +142,18 @@ function makeClient(results: Partial<Record<Table, Result | Result[]>>) {
         recorded.in = [column, values];
         return builder;
       }),
+      is: jest.fn((column: string, value: unknown) => {
+        recorded.is.push([column, value]);
+        return builder;
+      }),
+      not: jest.fn((column: string, op: string, value: unknown) => {
+        recorded.not.push([column, op, value]);
+        return builder;
+      }),
+      or: jest.fn((filter: string) => {
+        recorded.or = filter;
+        return builder;
+      }),
       order: jest.fn((column: string, options: unknown) => {
         recorded.order.push([column, options]);
         return builder;
@@ -128,10 +162,14 @@ function makeClient(results: Partial<Record<Table, Result | Result[]>>) {
         recorded.range = [start, end];
         return builder;
       }),
+      limit: jest.fn((count: number) => {
+        recorded.limit = count;
+        return builder;
+      }),
       overrideTypes: jest.fn(() => builder),
       maybeSingle: jest.fn(() => {
         recorded.maybeSingle = true;
-        return Promise.resolve(result);
+        return answer;
       }),
     });
     return builder;
@@ -140,83 +178,184 @@ function makeClient(results: Partial<Record<Table, Result | Result[]>>) {
   return { client: { from } as never, calls };
 }
 
+/** Which of the snapshot's four `comm_messages` reads a request is. */
+function messageRead(query: RecordedQuery): 'active' | 'shelf' | 'claimed' | 'last' {
+  if (query.or === 'tier.is.null,tier.neq.fyi') return 'active';
+  if (query.not.some(([column]) => column === 'reader_claimed_at')) return 'claimed';
+  if (query.not.some(([column]) => column === 'classified_at')) return 'last';
+  return 'shelf';
+}
+
+/** Answer the four message reads separately; `active` may be a queue of pages. */
+function messages(answers: {
+  active?: Result | Result[];
+  shelf?: Result;
+  claimed?: Result;
+  last?: Result;
+}): (query: RecordedQuery) => Result {
+  let activePage = 0;
+  return (query) => {
+    const read = messageRead(query);
+    if (read === 'active' && Array.isArray(answers.active)) {
+      const page = answers.active[Math.min(activePage, answers.active.length - 1)];
+      activePage += 1;
+      return page ?? { data: [], error: null };
+    }
+    const answer = read === 'active' ? answers.active : answers[read];
+    return (Array.isArray(answer) ? undefined : answer) ?? { data: [], error: null };
+  };
+}
+
 beforeEach(() => {
   resetCommFixtureClock();
   jest.clearAllMocks();
 });
 
-describe('getCommsSeed', () => {
-  it('reads only INBOUND messages, and only inside the retention window', async () => {
+describe('readCommsSnapshot', () => {
+  const CUTOFF = '2025-12-31T12:00:00.000Z';
+
+  it('reads everything above FYI in full: inbound, uncleared, not on the shelf, in the window', async () => {
     const { client, calls } = makeClient({ comm_accounts: { data: [ACCOUNT], error: null } });
-    mockCreateClient.mockResolvedValue(client);
 
-    await getCommsSeed();
+    await readCommsSnapshot(client);
 
-    const query = calls.comm_messages[0];
-    expect(query?.eq).toContainEqual(['direction', 'inbound']);
+    const active = calls.comm_messages.find((query) => messageRead(query) === 'active');
+    expect(active?.eq).toContainEqual(['direction', 'inbound']);
     // 60 days before the pinned now — the sweep deletes anything older anyway.
     expect(RETENTION_DAYS).toBe(60);
-    expect(query?.gte).toEqual(['received_at', '2025-12-31T12:00:00.000Z']);
+    expect(active?.gte).toEqual(['received_at', CUTOFF]);
+    expect(active?.is).toContainEqual(['cleared_at', null]);
+    // A null tier is not "not fyi" to SQL — the unjudged rows have to be asked for by name.
+    expect(active?.or).toBe('tier.is.null,tier.neq.fyi');
+    expect(active?.limit).toBeUndefined();
   });
 
-  it('pages the message read until a short page arrives, keeping every row', async () => {
+  it('pages the active read until a short page arrives, keeping every row', async () => {
     const full = Array.from({ length: COMMS_PAGE_SIZE }, () => makeCommMessage(ACCOUNT.id));
     const tail = [makeCommMessage(ACCOUNT.id)];
     const { client, calls } = makeClient({
-      comm_messages: [
-        { data: full, error: null },
-        { data: tail, error: null },
-      ],
+      comm_messages: messages({
+        active: [
+          { data: full, error: null },
+          { data: tail, error: null },
+        ],
+      }),
     });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed } = await readCommsSnapshot(client);
 
     expect(seed.messages).toHaveLength(COMMS_PAGE_SIZE + 1);
-    expect(calls.comm_messages).toHaveLength(2);
-    expect(calls.comm_messages[1]?.range).toEqual([COMMS_PAGE_SIZE, COMMS_PAGE_SIZE * 2 - 1]);
+    const actives = calls.comm_messages.filter((query) => messageRead(query) === 'active');
+    expect(actives).toHaveLength(2);
+    expect(actives[1]?.range).toEqual([COMMS_PAGE_SIZE, COMMS_PAGE_SIZE * 2 - 1]);
   });
 
   it('calls a never-terminating read a failure rather than silently truncating the queue', async () => {
     const full = Array.from({ length: COMMS_PAGE_SIZE }, () => makeCommMessage(ACCOUNT.id));
-    const { client, calls } = makeClient({
+    const { client } = makeClient({
       comm_accounts: { data: [ACCOUNT], error: null },
-      comm_messages: { data: full, error: null },
+      comm_messages: messages({ active: { data: full, error: null } }),
     });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed, error } = await readCommsSnapshot(client);
 
-    expect(calls.comm_messages).toHaveLength(COMMS_MAX_PAGES);
+    expect(error?.code).toBe('PGRST_PAGING');
     expect(seed.messages).toEqual([]);
-    // Degrades in layers: the accounts still arrive, so the header isn't blank too.
+    // Degrades in layers: the accounts still arrive, so the shell's header isn't blank too.
     expect(seed.accounts).toEqual([ACCOUNT]);
   });
 
-  it('fetches only the verdicts the messages actually point at', async () => {
+  it('reads only the newest page of the shelf, and counts the whole shelf in the same request', async () => {
+    const queued = makeCommMessage(ACCOUNT.id, { tier: 'today', judged_by: 'model' });
+    const shelved = makeCommMessage(ACCOUNT.id, { tier: 'fyi', judged_by: 'model' });
+    const { client, calls } = makeClient({
+      comm_messages: messages({
+        active: { data: [queued], error: null },
+        shelf: { data: [shelved], error: null, count: 1234 },
+      }),
+    });
+
+    const { seed } = await readCommsSnapshot(client);
+
+    const shelf = calls.comm_messages.find((query) => messageRead(query) === 'shelf');
+    expect(shelf?.or).toBe('tier.eq.fyi,cleared_at.not.is.null');
+    expect(shelf?.is).toContainEqual(['reader_claimed_at', null]);
+    expect(shelf?.gte).toEqual(['received_at', CUTOFF]);
+    expect(shelf?.selectOptions).toEqual({ count: 'exact' });
+    expect(shelf?.limit).toBe(SHELF_PAGE_SIZE);
+    expect(shelf?.order[0]).toEqual(['received_at', { ascending: false }]);
+    expect(seed.messages).toEqual([queued, shelved]);
+    expect(seed.shelfCount).toBe(1234);
+  });
+
+  it('reads as many shelf rows as the tab is showing', async () => {
+    const { client, calls } = makeClient({});
+
+    await readCommsSnapshot(client, SHELF_PAGE_SIZE * 3);
+
+    const shelf = calls.comm_messages.find((query) => messageRead(query) === 'shelf');
+    expect(shelf?.limit).toBe(SHELF_PAGE_SIZE * 3);
+  });
+
+  it('counts the newsletters the Reader claimed without fetching them', async () => {
+    const { client, calls } = makeClient({
+      comm_messages: messages({ claimed: { data: null, error: null, count: 9 } }),
+    });
+
+    const { seed } = await readCommsSnapshot(client);
+
+    const claimed = calls.comm_messages.find((query) => messageRead(query) === 'claimed');
+    expect(claimed?.selectOptions).toEqual({ count: 'exact', head: true });
+    expect(claimed?.or).toBe('tier.eq.fyi,cleared_at.not.is.null');
+    expect(claimed?.not).toContainEqual(['reader_claimed_at', 'is', null]);
+    expect(seed.readerClaimedCount).toBe(9);
+  });
+
+  it('reads the newest verdict across the window, which the held rows alone can miss', async () => {
+    const { client, calls } = makeClient({
+      comm_messages: messages({
+        last: { data: { classified_at: '2026-03-01T11:58:00.000Z' }, error: null },
+      }),
+    });
+
+    const { seed } = await readCommsSnapshot(client);
+
+    const last = calls.comm_messages.find((query) => messageRead(query) === 'last');
+    expect(last?.order).toEqual([['classified_at', { ascending: false }]]);
+    expect(last?.limit).toBe(1);
+    expect(seed.lastClassifiedAt).toBe('2026-03-01T11:58:00.000Z');
+  });
+
+  it('stamps when it was read', async () => {
+    const { client } = makeClient({});
+
+    const { seed } = await readCommsSnapshot(client);
+
+    expect(seed.readAt).toBe('2026-03-01T12:00:00.000Z');
+  });
+
+  it('fetches only the verdicts the returned messages actually point at', async () => {
     const judged = makeCommMessage(ACCOUNT.id, {
       tier: 'today',
       judged_by: 'model',
-      verdict_id: '00000000-0000-4000-8000-0000000000v1'.replace('v', '1'),
+      verdict_id: '00000000-0000-4000-8000-000000000011',
     });
     const unjudged = makeCommMessage(ACCOUNT.id);
     const { client, calls } = makeClient({
-      comm_messages: { data: [judged, unjudged], error: null },
+      comm_messages: messages({ active: { data: [judged, unjudged], error: null } }),
     });
-    mockCreateClient.mockResolvedValue(client);
 
-    await getCommsSeed();
+    await readCommsSnapshot(client);
 
     expect(calls.comm_verdicts[0]?.in).toEqual(['id', [judged.verdict_id]]);
   });
 
   it('asks for no verdicts at all when nothing has been judged', async () => {
     const { client, calls } = makeClient({
-      comm_messages: { data: [makeCommMessage(ACCOUNT.id)], error: null },
+      comm_messages: messages({ active: { data: [makeCommMessage(ACCOUNT.id)], error: null } }),
     });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed } = await readCommsSnapshot(client);
 
     expect(calls.comm_verdicts).toHaveLength(0);
     expect(seed.verdicts).toEqual([]);
@@ -224,9 +363,8 @@ describe('getCommsSeed', () => {
 
   it('reads the singleton health row, and reports undefined before the sweep has ever run', async () => {
     const { client, calls } = makeClient({ comm_classifier_health: { data: null, error: null } });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed } = await readCommsSnapshot(client);
 
     expect(calls.comm_classifier_health[0]?.eq).toContainEqual(['id', 1]);
     expect(calls.comm_classifier_health[0]?.maybeSingle).toBe(true);
@@ -236,34 +374,17 @@ describe('getCommsSeed', () => {
   it('hands back the health row when there is one', async () => {
     const health = makeCommHealth();
     const { client } = makeClient({ comm_classifier_health: { data: health, error: null } });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed } = await readCommsSnapshot(client);
+
     expect(seed.health).toEqual(health);
   });
-
-  it('takes a caller-supplied client rather than creating one', async () => {
-    const { client } = makeClient({ comm_accounts: { data: [ACCOUNT], error: null } });
-
-    const seed = await getCommsSeed(client);
-
-    expect(mockCreateClient).not.toHaveBeenCalled();
-    expect(seed.accounts).toEqual([ACCOUNT]);
-  });
-
-  // BUG 1 (getCommsSeed's own three reads — accounts, verdicts, health — got neither the paging
-  // nor the error-checking `readMessages` already has): `verdictIds` is one id per judged message
-  // in the 60-day window, which this file's own sizing note says routinely runs to a few thousand
-  // — an `in.(…)` list that size builds a request URL a typical PostgREST-fronting proxy rejects
-  // outright, and even a request that got through would still be subject to PostgREST's row cap.
-  // These pin the fix: the verdict read is chunked (so no single request's `in.()` list can grow
-  // unbounded) and every one of the three reads is paged/checked exactly like `readMessages`.
 
   it('chunks the verdict read so a large verdict id list never builds one oversized request', async () => {
     const verdictIds = Array.from({ length: COMMS_VERDICT_CHUNK_SIZE * 2 + 1 }, () =>
       crypto.randomUUID(),
     );
-    const messages = verdictIds.map((id) =>
+    const judged = verdictIds.map((id) =>
       makeCommMessage(ACCOUNT.id, { tier: 'today', judged_by: 'model', verdict_id: id }),
     );
     const idChunks: string[][] = [];
@@ -271,16 +392,15 @@ describe('getCommsSeed', () => {
       idChunks.push(verdictIds.slice(start, start + COMMS_VERDICT_CHUNK_SIZE));
     }
     const verdictPages: Result[] = idChunks.map((ids) => ({
-      data: ids.map((id) => makeCommVerdict(messages[0]?.id ?? '', { id })),
+      data: ids.map((id) => makeCommVerdict(judged[0]?.id ?? '', { id })),
       error: null,
     }));
     const { client, calls } = makeClient({
-      comm_messages: { data: messages, error: null },
+      comm_messages: messages({ active: { data: judged, error: null } }),
       comm_verdicts: verdictPages,
     });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed } = await readCommsSnapshot(client);
 
     expect(calls.comm_verdicts).toHaveLength(idChunks.length);
     for (const call of calls.comm_verdicts) {
@@ -306,37 +426,50 @@ describe('getCommsSeed', () => {
     );
     const tail = [makeCommVerdict(judged.id, { id: judged.verdict_id ?? '' })];
     const { client, calls } = makeClient({
-      comm_messages: { data: [judged], error: null },
+      comm_messages: messages({ active: { data: [judged], error: null } }),
       comm_verdicts: [
         { data: full, error: null },
         { data: tail, error: null },
       ],
     });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed } = await readCommsSnapshot(client);
 
     expect(seed.verdicts).toHaveLength(COMMS_PAGE_SIZE + 1);
     expect(calls.comm_verdicts).toHaveLength(2);
     expect(calls.comm_verdicts[1]?.range).toEqual([COMMS_PAGE_SIZE, COMMS_PAGE_SIZE * 2 - 1]);
   });
 
-  it('returns nothing at all when the account read errors, rather than continuing with an empty roster', async () => {
+  it('stops at a failed account read, rather than continuing with an empty roster', async () => {
     const { client, calls } = makeClient({
       comm_accounts: { data: null, error: { message: 'nope' } },
-      comm_messages: { data: [makeCommMessage(ACCOUNT.id)], error: null },
     });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed, error } = await readCommsSnapshot(client);
 
-    expect(seed).toEqual({ accounts: [], messages: [], verdicts: [], health: undefined });
-    // The account read failing stops the seed there — it never goes on to read messages off a
-    // roster it doesn't actually have.
+    expect(error?.message).toBe('nope');
+    expect(seed.accounts).toEqual([]);
     expect(calls.comm_messages).toHaveLength(0);
   });
 
-  it('surfaces a verdict read error instead of shipping a seed with silently zero verdicts', async () => {
+  it('reports a failed shelf read rather than shipping a shelf of nothing', async () => {
+    const queued = makeCommMessage(ACCOUNT.id, { tier: 'today', judged_by: 'model' });
+    const { client } = makeClient({
+      comm_accounts: { data: [ACCOUNT], error: null },
+      comm_messages: messages({
+        active: { data: [queued], error: null },
+        shelf: { data: null, error: { message: 'shelf down' } },
+      }),
+    });
+
+    const { seed, error } = await readCommsSnapshot(client);
+
+    expect(error?.message).toBe('shelf down');
+    expect(seed.accounts).toEqual([ACCOUNT]);
+    expect(seed.shelfCount).toBe(0);
+  });
+
+  it('reports a verdict read error, keeping what already succeeded and attempting nothing after', async () => {
     const judged = makeCommMessage(ACCOUNT.id, {
       tier: 'today',
       judged_by: 'model',
@@ -344,35 +477,54 @@ describe('getCommsSeed', () => {
     });
     const { client, calls } = makeClient({
       comm_accounts: { data: [ACCOUNT], error: null },
-      comm_messages: { data: [judged], error: null },
+      comm_messages: messages({ active: { data: [judged], error: null } }),
       comm_verdicts: { data: null, error: { message: 'nope' } },
     });
-    mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed, error } = await readCommsSnapshot(client);
 
-    // Degrades in layers: what already succeeded (accounts, messages) survives; the read that
-    // failed comes back empty and nothing after it (health) is attempted at all.
-    expect(seed).toEqual({
-      accounts: [ACCOUNT],
-      messages: [judged],
-      verdicts: [],
-      health: undefined,
-    });
+    expect(error?.message).toBe('nope');
+    expect(seed.accounts).toEqual([ACCOUNT]);
+    expect(seed.messages).toEqual([judged]);
+    expect(seed.verdicts).toEqual([]);
     expect(calls.comm_classifier_health).toHaveLength(0);
   });
 
-  it('reports no health rather than a stale one when the health read errors', async () => {
+  it('reports a failed health read rather than a stale one', async () => {
     const { client } = makeClient({
       comm_accounts: { data: [ACCOUNT], error: null },
       comm_classifier_health: { data: null, error: { message: 'nope' } },
     });
+
+    const { seed, error } = await readCommsSnapshot(client);
+
+    expect(error?.message).toBe('nope');
+    expect(seed.health).toBeUndefined();
+    expect(seed.accounts).toEqual([ACCOUNT]);
+  });
+});
+
+describe('getCommsSeed', () => {
+  it('seeds the shell from the first shelf page, creating its own client', async () => {
+    const { client, calls } = makeClient({ comm_accounts: { data: [ACCOUNT], error: null } });
     mockCreateClient.mockResolvedValue(client);
 
     const seed = await getCommsSeed();
 
-    expect(seed.health).toBeUndefined();
-    // What already succeeded (accounts) is not thrown away by a later read's failure.
+    expect(seed.accounts).toEqual([ACCOUNT]);
+    const shelf = calls.comm_messages.find((query) => messageRead(query) === 'shelf');
+    expect(shelf?.limit).toBe(SHELF_PAGE_SIZE);
+  });
+
+  it('degrades in layers rather than failing the shell', async () => {
+    const { client } = makeClient({
+      comm_accounts: { data: [ACCOUNT], error: null },
+      comm_classifier_health: { data: null, error: { message: 'nope' } },
+    });
+
+    const seed = await getCommsSeed(client);
+
+    expect(mockCreateClient).not.toHaveBeenCalled();
     expect(seed.accounts).toEqual([ACCOUNT]);
   });
 });

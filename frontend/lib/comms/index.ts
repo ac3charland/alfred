@@ -8,6 +8,7 @@
  */
 export {
   QUEUED_TIERS,
+  SHELF_PAGE_SIZE,
   type QueueByTier,
   type QueuedTier,
   groupByTier,
