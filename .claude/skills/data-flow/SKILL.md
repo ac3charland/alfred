@@ -128,13 +128,20 @@ joining. `CommsProvider` is the pattern: re-read the whole view (`GET /api/comms
 **replace** it whenever all channels (re)join — the first join included — the tab returns
 (`visibilitychange`, or a bfcache-restored `pageshow`; not `focus`, which a visible tab fires
 without having missed anything), the browser comes back `online`, or a burst of stream changes
-settles (its counts are server-side). Three guards keep the re-read itself honest: dispatches
-made while it is in flight are recorded and replayed over the snapshot; rows with a write in flight
-keep their optimistic value; a trigger mid-read runs one more read (a loop — recursion trips
-`react-hooks/immutability`). A failed read replaces and toasts nothing but marks the view **not
-live**, and the header says so: a stale view that looks current is the one state it may never
-show (ALF-227, ALF-258). Not-live must also end on its own: a failed read retries on a timer while
-the tab is in front, and a channel the server closed is re-created (see the supabase skill).
+settles or hits its max wait (its counts are server-side). Three guards keep the re-read itself
+honest: dispatches made while it is in flight are recorded and replayed over the snapshot; rows
+with a write in flight keep their optimistic value; a trigger mid-read runs one more read (a loop —
+recursion trips `react-hooks/immutability`).
+
+The view is **live** only when the last read that landed *started* with every channel joined and
+the browser online, and nothing has made it stale since — a channel leaving `SUBSCRIBED`, a failed
+(or timed-out) read, `offline`. A rejoin alone isn't live; the read it triggers is. While not
+live the header says so, dated (on the client's clock, never the server's) to the moment it went
+stale and moved forward by any read that lands meanwhile: a stale view that looks current is the
+one state it may never show (ALF-227, ALF-258). A failed read replaces and toasts nothing, and
+not-live ends on its own: a tab in front re-reads on a timer while not live, a shell whose seed
+read failed starts not live, and a channel the server closed is re-created (see the supabase
+skill).
 
 ## A derived status must mirror the query that does the work
 
