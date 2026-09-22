@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { SHELF_PAGE_SIZE } from '@/lib/comms';
+import { COMMS_LIVE_WINDOW_MS, COMMS_POLL_MS, SHELF_PAGE_SIZE } from '@/lib/comms';
 import { makeCommAccount, makeCommMessage, makeCommsSeed } from '@/lib/comms/fixtures';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { CommAccount, CommMessage, CommsSeed } from '@/lib/types';
@@ -396,20 +396,20 @@ describe('CommsQueueView — a tab that has been away', () => {
     expect(await screen.findByText('Needs the contract signed before noon.')).toBeInTheDocument();
   });
 
-  it('says it is not live when it cannot re-read', async () => {
+  it('says it is not live once every poll has failed for long enough', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(OPENED);
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
     jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('offline'));
-    renderWithProviders(<CommsQueueView now={OPENED} />, {
-      comms: { accounts: [LIVE], messages: [] },
-    });
+    // No `now` prop: liveness compares `lastReadAt` (the store's own clock) against the view's
+    // own ticking clock, so the two have to share one — the ticking ONE, not a pinned prop.
+    renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    act(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_LIVE_WINDOW_MS + COMMS_POLL_MS));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
   });
 
   it('shows nothing as the queue until a read lands when the shell could not load it', async () => {
@@ -430,7 +430,9 @@ describe('CommsQueueView — a tab that has been away', () => {
         }),
       );
     renderWithProviders(<CommsQueueView now={OPENED} />, {
-      comms: { accounts: [], messages: [], failed: true },
+      // A live account seeded alongside the failed shell read, so what follows proves the dot
+      // is withheld deliberately — not just absent for lack of any account to draw.
+      comms: { accounts: [LIVE], messages: [], failed: true },
     });
     await act(async () => {
       await Promise.resolve();
@@ -440,6 +442,7 @@ describe('CommsQueueView — a tab that has been away', () => {
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load Comms — retrying.");
     expect(screen.queryByText('Nothing to answer.')).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'ASAP' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-dots')).not.toBeInTheDocument();
 
     act(() => {
       document.dispatchEvent(new Event('visibilitychange'));
@@ -453,22 +456,16 @@ describe('CommsQueueView — a tab that has been away', () => {
     expect(screen.queryByText(/Couldn't load Comms/)).not.toBeInTheDocument();
   });
 
-  it('dates "not live" from when it stopped being live, since the stream kept it current until then', () => {
+  it('dates "not live" from the last successful read, not from a failed retry since', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(OPENED);
+    jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('down'));
     renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
 
-    // An hour of the stream keeping the view current, with no re-read in between.
-    act(() => {
-      jest.advanceTimersByTime(60 * 60 * 1000);
-    });
-    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
-    act(() => {
-      globalThis.dispatchEvent(new Event('offline'));
-    });
+    // An hour of every poll failing in turn: the anchor is the last read that WORKED (the mount
+    // seed), not the most recent attempt — so the "ago" grows with the whole hour, not resets.
+    await act(() => jest.advanceTimersByTimeAsync(60 * 60 * 1000));
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      /^Not live — this is what was here just now/,
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here 1h ago/);
   });
 });

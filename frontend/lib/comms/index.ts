@@ -43,3 +43,5 @@ export {
 } from './health';
 
 export { normalizeHandle, resolvePerson } from './people';
+
+export { COMMS_LIVE_WINDOW_MS, COMMS_POLL_MS, isCommsLive } from './live';

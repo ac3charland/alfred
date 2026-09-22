@@ -148,14 +148,40 @@ describe('CommsHeader', () => {
     renderHeader({ notLiveSince: iso(12) });
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Not live — this is what was here 12m ago. Anything since may be missing until it reconnects.',
+      'Not live — this is what was here 12m ago. Anything since may be missing until it refreshes.',
     );
   });
 
   it('says it could not load, rather than dating a view it never had', () => {
     renderHeader({ loaded: false });
 
+    expect(screen.getByRole('heading', { level: 2, name: 'Comms' })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load Comms — retrying.");
+  });
+
+  it('shows only the heading and the retry line while unloaded — never partial dots or sentences', () => {
+    renderHeader({
+      loaded: false,
+      accounts: [
+        makeCommAccount('RealPlay', {
+          last_seen_at: iso(300),
+          last_error: 'the refresh token was rejected',
+          last_error_at: iso(40),
+        }),
+      ],
+      health: makeCommHealth({
+        last_success_at: iso(200),
+        last_error: 'ANTHROPIC_API_KEY missing',
+        last_error_at: iso(140),
+      }),
+      notLiveSince: iso(12),
+    });
+
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.queryByTestId('account-dots')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('last-ping')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-health-notes')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('says nothing about liveness while the view is live', () => {

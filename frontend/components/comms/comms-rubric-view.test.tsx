@@ -146,10 +146,12 @@ describe('CommsRubricView', () => {
   it('ticks a single clock for the whole view, not one per child', () => {
     // `comms-format.ts` names the convention: the view owns one ticking instant and hands the
     // same one to every consumer — so one `useNow` interval per mount is the signature of that
-    // being followed. (The Comms store's own re-read timer runs at another period.)
+    // being followed. The Comms store the providers mount mounts its own `setInterval` poll at
+    // the same period (`COMMS_POLL_MS` happens to equal `NOW_TICK_MS`), so two is the count that
+    // says "one clock per view, plus the store's unrelated poll" — not a per-child clock.
     const setIntervalSpy = jest.spyOn(globalThis, 'setInterval');
     renderView([V2, V1]);
 
-    expect(setIntervalSpy.mock.calls.filter(([, ms]) => ms === NOW_TICK_MS)).toHaveLength(1);
+    expect(setIntervalSpy.mock.calls.filter(([, ms]) => ms === NOW_TICK_MS)).toHaveLength(2);
   });
 });

@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
-import { QUEUED_TIERS } from '@/lib/comms';
+import { QUEUED_TIERS, isCommsLive } from '@/lib/comms';
 import { rowHotkeyAction } from '@/lib/comms/hotkeys';
 import { useNow } from '@/lib/hooks/use-now';
 import { useCommsPeople } from '@/lib/stores/comms-settings-store';
@@ -62,7 +62,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   const byTier = useQueuedByTier();
   const shelf = useShelf();
   const { shelfCount, readerClaimedCount } = useShelfCounts();
-  const { loaded, lastClassifiedAt, notLiveSince } = useCommsSync();
+  const { loaded, lastClassifiedAt, lastReadAt } = useCommsSync();
   const { showMoreShelf } = useCommsActions();
   const verdicts = useCommsVerdicts();
   const health = useCommsHealth();
@@ -73,6 +73,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   // asserted and snapshotted at all.
   const ticking = useNow();
   const now = pinnedNow ?? ticking;
+  const live = isCommsLive(loaded, lastReadAt, now);
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [addingSenderFor, setAddingSenderFor] = React.useState<CommMessage | undefined>();
@@ -149,7 +150,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
         health={health}
         now={now}
         lastClassifiedAt={lastClassifiedAt}
-        notLiveSince={notLiveSince}
+        notLiveSince={live ? undefined : (lastReadAt ?? undefined)}
         loaded={loaded}
       />
 

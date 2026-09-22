@@ -218,4 +218,17 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Comms' })).toBeInTheDocument();
     expect(screen.queryByLabelText(/waiting for a reply/)).not.toBeInTheDocument();
   });
+
+  it('hides the Comms badge while unloaded, even though the failed seed carried queued rows', () => {
+    const account = makeCommAccount('personal');
+    renderWithProviders(<ViewSwitcher />, {
+      comms: {
+        accounts: [account],
+        messages: [makeCommMessage(account.id, { tier: 'asap', judged_by: 'model' })],
+        failed: true,
+      },
+    });
+
+    expect(screen.queryByLabelText(/waiting for a reply/)).not.toBeInTheDocument();
+  });
 });

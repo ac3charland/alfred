@@ -20,9 +20,10 @@ import { formatElapsed } from './comms-format';
  * reader needs them. The classifier banner sits ABOVE the dots because it is not one of the
  * source states and its fix is different. The dots are one per ACCOUNT rather than one per
  * ingestion home — a green dot over a dead mailbox is exactly the failure the health surface
- * exists to prevent, and two accounts sharing a poller can still fail apart. Directly beneath the dots, which source pinged last and how long ago — the one
- * number that shows the surface is still moving. Below them, a sentence per account that is not
- * live, because a coloured dot says that something is wrong and never what or what to do about it.
+ * exists to prevent, and two accounts sharing a poller can still fail apart. Directly beneath the
+ * dots, which source pinged last and how long ago — the one number that shows the surface is
+ * still moving. Below them, a sentence per account that is not live, because a coloured dot says
+ * that something is wrong and never what or what to do about it.
  */
 
 interface CommsHeaderProperties {
@@ -78,6 +79,28 @@ export function CommsHeader({
   notLiveSince,
   loaded = true,
 }: CommsHeaderProperties) {
+  const heading = (
+    <ViewHeading
+      icon={Inbox}
+      title="Comms"
+      description="Messages that ask something of you, in the order they need answering."
+      accent="comms"
+    />
+  );
+
+  // A page that never loaded has nothing to show beyond that — no dot, ping, account sentence
+  // or classifier banner, because every one of them would be partial data presented as fact.
+  if (!loaded) {
+    return (
+      <div className="flex flex-col gap-3">
+        {heading}
+        <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
+          Couldn&apos;t load Comms — retrying.
+        </p>
+      </div>
+    );
+  }
+
   const stall = classifierStalled(health, messages, now, lastClassifiedAt);
   const ping = lastPing(accounts);
   const sentences = accounts.flatMap((account) => {
@@ -87,26 +110,16 @@ export function CommsHeader({
 
   return (
     <div className="flex flex-col gap-3">
-      {!loaded && (
-        <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
-          Couldn&apos;t load Comms — retrying.
-        </p>
-      )}
       {notLiveSince !== undefined && (
         <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
           Not live — this is what was here {formatElapsed(notLiveSince, now)}. Anything since may be
-          missing until it reconnects.
+          missing until it refreshes.
         </p>
       )}
       {stall.stalled && stall.since !== null && <ClassifierBanner since={stall.since} now={now} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <ViewHeading
-          icon={Inbox}
-          title="Comms"
-          description="Messages that ask something of you, in the order they need answering."
-          accent="comms"
-        />
+        {heading}
         {accounts.length > 0 && (
           <div className="flex flex-col items-end gap-1">
             <div className="flex flex-wrap items-center gap-3" data-testid="account-dots">
