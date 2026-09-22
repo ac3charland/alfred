@@ -192,7 +192,11 @@ export interface CommsSeed {
   readerClaimedCount: number;
   /** The newest verdict across the whole window: the classifier's proof of life. */
   lastClassifiedAt: string | null;
-  /** When the server read this — what "Not live — showing what was here at …" names. */
+  /**
+   * When the server read this. Informational only — the client measures "Not live" against its
+   * own clock (`lastReadAt`, captured when the read STARTED), never this, since only the
+   * client's clock can be compared to the client's later reads.
+   */
   readAt: string;
 }
 

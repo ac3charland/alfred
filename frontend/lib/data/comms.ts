@@ -18,9 +18,10 @@ import type {
  * them: the queue's live data, and the settings pages' roster / rubric / example set.
  *
  * They are separate reads rather than one because they change on completely different clocks:
- * messages and account health move every few minutes and carry a realtime subscription, while
- * the roster and the rubric change when the owner edits them. Splitting them keeps the two
- * stores independent, which is what lets the settings pages be built without touching the queue.
+ * messages and account health move every few minutes and the queue store polls to stay caught
+ * up, while the roster and the rubric change when the owner edits them. Splitting them keeps the
+ * two stores independent, which is what lets the settings pages be built without touching the
+ * queue.
  *
  * Both degrade in layers rather than to a blank shell: a failed read hands back an empty slice,
  * so a broken table takes out one panel and not the whole app.

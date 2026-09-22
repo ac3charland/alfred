@@ -79,8 +79,8 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     // stats rail rests on — the baseline needs full history, so windowing the entry read too
     // would re-fetch rows it already returned.
     getHabitSeed(),
-    // Two Comms reads, not one: the queue's data moves every few minutes and rides a realtime
-    // subscription, while the roster and the rubric change only when the owner edits them.
+    // Two Comms reads, not one: the queue's data moves every few minutes and the queue store
+    // polls to catch up, while the roster and the rubric change only when the owner edits them.
     getCommsSeed(),
     getCommsSettingsSeed(),
     // The reading list, without post bodies: the row opens the original rather than showing them.

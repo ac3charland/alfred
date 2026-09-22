@@ -390,15 +390,16 @@ export const RowExpanded: Story = {
 };
 
 /**
- * A tab that has been left open. Every source is polling normally, but this tab's realtime
- * socket lapsed while the owner was elsewhere, so it is still holding the roster it was seeded
- * with hours ago — and because health is read against a ticking clock, that frozen roster has
- * decayed on its own into three amber dots accusing three healthy sources of having died.
+ * A tab that has been left open, in the background, for hours. `CommsProvider`'s poll no-ops
+ * while the tab is hidden, so nothing has re-read the snapshot since the owner left — the view
+ * is still holding the roster it was seeded with, and because health is read against a ticking
+ * clock, that frozen roster has decayed on its own into three amber dots accusing three healthy
+ * sources of having died.
  *
  * The story runs the real recovery (ALF-227, ALF-258): returning to the foreground makes the
- * store re-read `GET /api/comms/snapshot`, which is stubbed here to answer what the pollers have
- * actually been doing. What is snapshotted is the state AFTER that re-read — every dot green,
- * every accusation withdrawn — so the pixels this fix exists to restore are gated.
+ * store re-read `GET /api/comms/snapshot`, which is stubbed here to answer what the poll would
+ * actually find. What is snapshotted is the state AFTER that re-read — every dot green, every
+ * accusation withdrawn — so the pixels this fix exists to restore are gated.
  */
 export const RecoversAfterTimeAway: Story = {
   decorators: [

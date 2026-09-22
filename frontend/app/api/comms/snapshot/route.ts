@@ -8,12 +8,13 @@ import { readCommsSnapshot } from '@/lib/data/comms';
 // ---------------------------------------------------------------------------
 // GET /api/comms/snapshot?shelf= — everything the Comms queue view holds, as it stands now
 //
-// Realtime is fire-and-forget: a socket that lapses (a backgrounded tab, a machine asleep, a
-// phone that suspended the app) drops every change made in the gap and never replays it, and
-// the gap between the shell's server read and the channel joining is lost the same way. So a
-// tab re-reads this whenever it may have missed something, and replaces its view with it
-// (ALF-258). `shelf` is how many shelf rows the tab is showing, which is also how "Show more"
-// loads the next page: the same read, asked for more.
+// Comms has no Realtime subscription — every source it mirrors is minutes-granular, so a socket
+// bought almost nothing over polling (ALF-258). This is the read the view polls on a timer
+// (`COMMS_POLL_MS`) while visible, plus whenever it may have missed something sooner: the tab
+// returning to the front, a bfcache restore, coming back online, a failed optimistic write, or
+// "Show more" paging the shelf. Each read REPLACES the view with what it returns, rather than
+// trusting a push it might have missed. `shelf` is how many shelf rows the tab is showing, which
+// is also how "Show more" loads the next page: the same read, asked for more.
 //
 // A failed read is a 4xx/5xx rather than a partial body: the caller REPLACES its view with what
 // this returns, so an empty slice shipped as success would blank the queue.
