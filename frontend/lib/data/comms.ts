@@ -129,6 +129,8 @@ async function readActiveMessages(
  * The newest `limit` shelf rows, and how many are on the shelf in all — walked a page at a time,
  * since a tab that has pressed "Show more" enough asks for more than the row cap. The first
  * request carries the count; the walk stops once it holds `limit` rows or a page comes up short.
+ * A row arriving between two requests shifts the next page down by one, so a row that comes back
+ * twice is held once.
  */
 async function readShelfPage(
   supabase: SupabaseClient<Database>,
@@ -156,7 +158,8 @@ async function readShelfPage(
       .range(offset, offset + size - 1);
     if (error) return { messages: [], count: 0, error };
     if (offset === 0) count = total ?? 0;
-    messages.push(...data);
+    const held = new Set(messages.map((message) => message.id));
+    messages.push(...data.filter((message) => !held.has(message.id)));
     if (data.length < size) break;
   }
   return { messages, count, error: null };
@@ -304,10 +307,15 @@ export async function readCommsSnapshot(
   return { seed, error: null };
 }
 
-/** The shell's first read of the queue: {@link readCommsSnapshot}'s first shelf page. */
-export async function getCommsSeed(client?: SupabaseClient<Database>): Promise<CommsSeed> {
-  const { seed } = await readCommsSnapshot(client ?? (await createClient()));
-  return seed;
+/**
+ * The shell's first read of the queue: {@link readCommsSnapshot}'s first shelf page, and whether
+ * it `failed` — the seed is then partial, and the view has to start by saying it is not live.
+ */
+export async function getCommsSeed(
+  client?: SupabaseClient<Database>,
+): Promise<{ seed: CommsSeed; failed: boolean }> {
+  const { seed, error } = await readCommsSnapshot(client ?? (await createClient()));
+  return { seed, failed: error !== null };
 }
 
 /** What the settings pages need: the roster, every rubric version, and the example set. */

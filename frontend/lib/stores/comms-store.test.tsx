@@ -23,6 +23,8 @@ import type {
 } from '@/lib/types';
 
 import {
+  COMMS_COUNTS_MAX_WAIT_MS,
+  COMMS_COUNTS_SETTLE_MS,
   COMMS_READ_RETRY_MS,
   COMMS_REJOIN_MS,
   CommsProvider,
@@ -58,12 +60,19 @@ const mockRemoveChannel = jest.fn();
 // that has to come first — the seam the ALF-258 tests use to hold the session token back.
 const mockJoinedTables: string[] = [];
 const mockSetAuth = jest.fn(() => Promise.resolve());
+// Off, a subscribed channel waits for the test to report its join by hand.
+let mockJoinOnSubscribe = true;
+/** The double's channel, as `removeChannel` receives it: `report` is its status callback. */
+interface MockChannel {
+  report?: (status: string) => void;
+}
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     realtime: { setAuth: mockSetAuth },
     channel: () => {
       let table: string | undefined;
       const chan = {
+        report: undefined as ((status: string) => void) | undefined,
         on: (_event: string, filter: { table?: string }, handler: (payload: never) => void) => {
           if (filter.table !== undefined) {
             table = filter.table;
@@ -75,9 +84,10 @@ jest.mock('@/lib/supabase/client', () => ({
           if (table !== undefined) mockJoinedTables.push(table);
           if (callback !== undefined && table !== undefined) {
             mockSubscribeCallbacks.set(table, callback);
+            chan.report = callback;
             // The real client reports the join through the same callback, so the double does
             // too — otherwise a replayed REJOIN would arrive as the channel's first join.
-            callback('SUBSCRIBED');
+            if (mockJoinOnSubscribe) callback('SUBSCRIBED');
           }
           return chan;
         },
@@ -112,6 +122,7 @@ beforeEach(() => {
   mockRealtimeHandlers.clear();
   mockSubscribeCallbacks.clear();
   mockJoinedTables.length = 0;
+  mockJoinOnSubscribe = true;
   // A test may make teardown report CLOSED, as the real client does; don't let it leak.
   mockRemoveChannel.mockReset();
   // Every mount re-reads once its channels join; unless a test is about that read, it never lands.
@@ -181,25 +192,60 @@ describe('commsReducer', () => {
     expect(state.verdictsById[verdict.id]).toBeUndefined();
   });
 
-  it('records when the view stopped being live, and keeps that moment until it is live again', () => {
-    const down = commsReducer(empty, { type: 'live', live: false, at: '2026-09-09T12:05:00.000Z' });
-    const stillDown = commsReducer(down, {
-      type: 'live',
-      live: false,
-      at: '2026-09-09T12:09:00.000Z',
-    });
+  it('freezes "current as of" at the first stale moment, and no later one moves it', () => {
+    const down = commsReducer(empty, { type: 'stale', at: '2026-09-09T12:05:00.000Z' });
+    const stillDown = commsReducer(down, { type: 'stale', at: '2026-09-09T12:09:00.000Z' });
     const reread = commsReducer(stillDown, {
       type: 'snapshot',
       seed: makeCommsSeed(),
       keep: new Set(),
     });
-    const up = commsReducer(reread, { type: 'live', live: true, at: '2026-09-09T12:10:00.000Z' });
 
-    expect(empty.notLiveSince).toBeNull();
-    expect(stillDown.notLiveSince).toBe('2026-09-09T12:05:00.000Z');
+    expect(empty).toMatchObject({ live: true, currentAsOf: null });
+    expect(stillDown).toMatchObject({ live: false, currentAsOf: '2026-09-09T12:05:00.000Z' });
     // A re-read replaces the rows, not what the tab knows about its own connection.
-    expect(reread.notLiveSince).toBe('2026-09-09T12:05:00.000Z');
-    expect(up.notLiveSince).toBeNull();
+    expect(reread).toMatchObject({ live: false, currentAsOf: '2026-09-09T12:05:00.000Z' });
+  });
+
+  it('moves "current as of" forward to a read that cannot vouch for the stream, never back', () => {
+    const down = commsReducer(empty, { type: 'stale', at: '2026-09-09T12:05:00.000Z' });
+    const later = commsReducer(down, {
+      type: 'read',
+      live: false,
+      startedAt: '2026-09-09T12:08:00.000Z',
+    });
+    const earlier = commsReducer(later, {
+      type: 'read',
+      live: false,
+      startedAt: '2026-09-09T12:06:00.000Z',
+    });
+
+    expect(later).toMatchObject({ live: false, currentAsOf: '2026-09-09T12:08:00.000Z' });
+    expect(earlier).toMatchObject({ live: false, currentAsOf: '2026-09-09T12:08:00.000Z' });
+    // Nothing had made a live view stale, so a read that can't vouch for the stream changes nothing.
+    expect(
+      commsReducer(empty, { type: 'read', live: false, startedAt: '2026-09-09T12:08:00.000Z' }),
+    ).toBe(empty);
+  });
+
+  it('is live again only once a read that vouches for the stream lands', () => {
+    const down = commsReducer(empty, { type: 'stale', at: '2026-09-09T12:05:00.000Z' });
+    const up = commsReducer(down, {
+      type: 'read',
+      live: true,
+      startedAt: '2026-09-09T12:08:00.000Z',
+    });
+
+    expect(up).toMatchObject({ live: true, currentAsOf: null });
+  });
+
+  it('starts a shell whose read failed not live, as of that read', () => {
+    const seed = makeCommsSeed({ readAt: '2026-09-09T12:00:00.000Z' });
+
+    expect(stateFromSeed(seed, true)).toMatchObject({
+      live: false,
+      currentAsOf: '2026-09-09T12:00:00.000Z',
+    });
   });
 
   it('replaces the classifier health row wholesale', () => {
@@ -970,21 +1016,22 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
     expect(result.current.shelf).toEqual([]);
   });
 
-  it('re-reads when the socket rejoins, with the tab in front the whole time', async () => {
+  it('re-reads when the socket rejoins, and is live again only once that read lands', async () => {
     const { result } = await renderJoined();
-    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
 
     act(() => {
       mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
     });
     expect(result.current.sync.live).toBe(false);
+    const read = holdSnapshot();
     act(() => {
       mockSubscribeCallbacks.get('comm_messages')?.('SUBSCRIBED');
     });
+    // Joined again, but whatever the gap dropped is still missing until the read says otherwise.
+    expect(result.current.sync.live).toBe(false);
+    await read.resolve(LATER);
 
-    await waitFor(() => {
-      expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
-    });
+    expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
     expect(result.current.sync.live).toBe(true);
   });
 
@@ -1029,17 +1076,17 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
       void result.current.actions.clearMessage(QUEUED.id, 'not_replying');
     });
     // The server hasn't seen the clear yet, so its snapshot still has the row queued.
-    const stale = makeCommsSeed({
-      messages: [QUEUED, SHELVED],
-      readAt: '2026-09-09T12:30:00.000Z',
-    });
+    const stale = {
+      ...makeCommsSeed({ messages: [QUEUED, SHELVED] }),
+      lastClassifiedAt: '2026-09-09T12:30:00.000Z',
+    };
     mockApi.fetchCommsSnapshot.mockResolvedValue(stale);
 
     act(() => {
       setTabHidden(false);
     });
     await waitFor(() => {
-      expect(result.current.sync.readAt).toBe(stale.readAt);
+      expect(result.current.sync.lastClassifiedAt).toBe(stale.lastClassifiedAt);
     });
 
     expect(result.current.byTier.today).toEqual([]);
@@ -1084,7 +1131,7 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
     await waitFor(() => {
       expect(result.current.sync.live).toBe(true);
     });
-    expect(result.current.sync.readAt).toBe(LATER.readAt);
+    expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
   });
 
   it('does not read while the tab is hidden — coming back to the front does', async () => {
@@ -1191,6 +1238,7 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
 
   it('re-creates the channels after one is closed out from under it, then re-reads', async () => {
     const { result } = await renderJoined();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
     jest.useFakeTimers();
 
     // phoenix never rejoins a channel the server closed, so nothing else would bring it back.
@@ -1211,11 +1259,14 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
   });
 
   it('never takes its own teardown for a close to recover from', async () => {
-    // As the real client does: removing a channel reports it CLOSED.
-    mockRemoveChannel.mockImplementation(() => {
-      for (const callback of mockSubscribeCallbacks.values()) callback('CLOSED');
+    // As the real client does: removing a channel reports it CLOSED — once the server lets it
+    // go, by which time the next generation has joined.
+    const closes: (() => void)[] = [];
+    mockRemoveChannel.mockImplementation((channel: MockChannel) => {
+      closes.push(() => channel.report?.('CLOSED'));
     });
-    await renderJoined();
+    const { result } = await renderJoined();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
     jest.useFakeTimers();
     act(() => {
       mockSubscribeCallbacks.get('comm_messages')?.('CLOSED');
@@ -1224,9 +1275,12 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
       jest.advanceTimersByTime(COMMS_REJOIN_MS);
     });
     await waitFor(() => {
-      expect(mockJoinedTables).toHaveLength(CHANNEL_COUNT * 2);
+      expect(result.current.sync.live).toBe(true);
     });
 
+    act(() => {
+      for (const close of closes) close();
+    });
     act(() => {
       jest.advanceTimersByTime(COMMS_REJOIN_MS * 3);
     });
@@ -1234,7 +1288,37 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
       await Promise.resolve();
     });
 
+    expect(closes).toHaveLength(CHANNEL_COUNT);
+    expect(result.current.sync.live).toBe(true);
     expect(mockJoinedTables).toHaveLength(CHANNEL_COUNT * 2);
+  });
+
+  it('counts a re-created channel as joined only once it has joined again', async () => {
+    await renderJoined();
+    jest.useFakeTimers();
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CLOSED');
+    });
+    mockJoinOnSubscribe = false;
+    act(() => {
+      jest.advanceTimersByTime(COMMS_REJOIN_MS);
+    });
+    await waitFor(() => {
+      expect(mockJoinedTables).toHaveLength(CHANNEL_COUNT * 2);
+    });
+
+    // The last generation's other three were joined; these three are not, yet.
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('SUBSCRIBED');
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      for (const table of ['comm_accounts', 'comm_classifier_health', 'comm_verdicts']) {
+        mockSubscribeCallbacks.get(table)?.('SUBSCRIBED');
+      }
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('dates "not live" from the moment it stopped being live, not from the last read', async () => {
@@ -1249,6 +1333,162 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
     });
 
     expect(Date.parse(result.current.sync.notLiveSince ?? '')).toBeGreaterThanOrEqual(before);
+  });
+
+  const T1 = '2026-09-09T12:01:00.000Z';
+  const T2 = '2026-09-09T12:02:00.000Z';
+  const T3 = '2026-09-09T12:03:00.000Z';
+
+  it('stays not live, dated at the drop, through a rejoin whose read then fails', async () => {
+    const { result } = await renderJoined();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(T1));
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
+    });
+
+    jest.setSystemTime(new Date(T2));
+    const read = holdSnapshot();
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('SUBSCRIBED');
+    });
+    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: T1 });
+
+    jest.setSystemTime(new Date(T3));
+    await read.reject();
+    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: T1 });
+  });
+
+  it('stays dated at the drop when it rejoined behind a hidden tab and the return read fails', async () => {
+    const { result } = await renderJoined();
+    jest.useFakeTimers();
+    act(() => {
+      setTabHidden(true);
+    });
+    jest.setSystemTime(new Date(T1));
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
+    });
+    jest.setSystemTime(new Date(T2));
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('SUBSCRIBED');
+    });
+    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: T1 });
+
+    jest.setSystemTime(new Date(T3));
+    const read = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: T1 });
+    await read.reject();
+
+    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: T1 });
+  });
+
+  it('is not live after a read a channel dropped out from under, dated at the drop', async () => {
+    const { result } = await renderJoined();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(T1));
+    const read = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+    jest.setSystemTime(new Date(T2));
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
+    });
+
+    await read.resolve(LATER);
+
+    expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
+    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: T2 });
+  });
+
+  it('dates itself to a read that lands while a channel is still down, but stays not live', async () => {
+    const { result } = await renderJoined();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(T1));
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
+    });
+    jest.setSystemTime(new Date(T2));
+    const read = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+    jest.setSystemTime(new Date(T3));
+
+    await read.resolve(LATER);
+
+    expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
+    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: T2 });
+  });
+
+  it('keeps re-reading while it is not live, not only after a read failed', async () => {
+    const { result } = await renderJoined();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
+    jest.useFakeTimers();
+    // A socket that can't get through: the channel errors and doesn't come back.
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
+    });
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_READ_RETRY_MS * 2));
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(3);
+    expect(result.current.sync.live).toBe(false);
+
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('SUBSCRIBED');
+    });
+    await waitFor(() => {
+      expect(result.current.sync.live).toBe(true);
+    });
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_READ_RETRY_MS * 3));
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(4);
+  });
+
+  it('starts a shell whose read failed not live, and reads without waiting for its channels', async () => {
+    void holdRealtimeAuth(mockSetAuth);
+    const read = holdSnapshot();
+    const failed = makeCommsSeed({ readAt: '2026-01-01T00:00:00.000Z' });
+    function Wrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <CommsProvider initialSeed={failed} initialStale>
+          {children}
+        </CommsProvider>
+      );
+    }
+    const { result } = renderHook(() => useStore(), { wrapper: Wrapper });
+
+    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: failed.readAt });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+    await read.resolve(LATER);
+
+    // The rows are in, but with no channel joined the view still can't say it is live.
+    expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
+    expect(result.current.sync.live).toBe(false);
+    expect(Date.parse(result.current.sync.notLiveSince ?? '')).toBeGreaterThan(
+      Date.parse(failed.readAt),
+    );
+  });
+
+  it('re-reads the counts within a bounded wait, however long a burst of message changes runs', async () => {
+    await renderJoined();
+    jest.useFakeTimers();
+    // A change every half-settle: waiting for the burst to settle alone would never re-read.
+    const step = COMMS_COUNTS_SETTLE_MS / 2;
+    const change = () => {
+      mockRealtimeHandlers.get('comm_messages')?.(payload<CommMessage>('INSERT', ARRIVED) as never);
+      jest.advanceTimersByTime(step);
+    };
+    act(() => {
+      for (let elapsed = step; elapsed < COMMS_COUNTS_MAX_WAIT_MS; elapsed += step) change();
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+
+    act(change);
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('re-reads the counts once a burst of message changes settles', async () => {

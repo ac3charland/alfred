@@ -322,6 +322,24 @@ describe('readCommsSnapshot', () => {
     expect(seed.shelfCount).toBe(4321);
   });
 
+  it('holds a row once when a write between shelf pages shifts it onto the next page too', async () => {
+    const first = shelvedRows(COMMS_PAGE_SIZE);
+    const repeated = first.at(-1);
+    const { client } = makeClient({
+      comm_messages: messages({
+        shelf: [
+          { data: first, error: null, count: COMMS_PAGE_SIZE + 2 },
+          { data: [repeated, ...shelvedRows(1)], error: null },
+        ],
+      }),
+    });
+
+    const { seed } = await readCommsSnapshot(client, COMMS_PAGE_SIZE * 2);
+
+    expect(seed.messages).toHaveLength(COMMS_PAGE_SIZE + 1);
+    expect(new Set(seed.messages.map((message) => message.id)).size).toBe(COMMS_PAGE_SIZE + 1);
+  });
+
   it('stops paging the shelf at a short page', async () => {
     const { client, calls } = makeClient({
       comm_messages: messages({
@@ -570,23 +588,26 @@ describe('getCommsSeed', () => {
     const { client, calls } = makeClient({ comm_accounts: { data: [ACCOUNT], error: null } });
     mockCreateClient.mockResolvedValue(client);
 
-    const seed = await getCommsSeed();
+    const { seed, failed } = await getCommsSeed();
 
+    expect(failed).toBe(false);
     expect(seed.accounts).toEqual([ACCOUNT]);
     const shelf = calls.comm_messages.find((query) => messageRead(query) === 'shelf');
     expect(shelf?.range).toEqual([0, SHELF_PAGE_SIZE - 1]);
   });
 
-  it('degrades in layers rather than failing the shell', async () => {
+  it('degrades in layers rather than failing the shell, and says the read failed', async () => {
     const { client } = makeClient({
       comm_accounts: { data: [ACCOUNT], error: null },
       comm_classifier_health: { data: null, error: { message: 'nope' } },
     });
 
-    const seed = await getCommsSeed(client);
+    const { seed, failed } = await getCommsSeed(client);
 
     expect(mockCreateClient).not.toHaveBeenCalled();
     expect(seed.accounts).toEqual([ACCOUNT]);
+    // A partial seed must not render as a live view that happens to be empty.
+    expect(failed).toBe(true);
   });
 });
 
