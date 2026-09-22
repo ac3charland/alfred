@@ -4,8 +4,9 @@ import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
-import { QUEUED_TIERS, isCommsLive } from '@/lib/comms';
+import { QUEUED_TIERS } from '@/lib/comms';
 import { rowHotkeyAction } from '@/lib/comms/hotkeys';
+import { useCommsLive } from '@/lib/hooks/use-comms-live';
 import { useNow } from '@/lib/hooks/use-now';
 import { useCommsPeople } from '@/lib/stores/comms-settings-store';
 import {
@@ -73,7 +74,10 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   // asserted and snapshotted at all.
   const ticking = useNow();
   const now = pinnedNow ?? ticking;
-  const live = isCommsLive(loaded, lastReadAt, now);
+  // Live/not-live is its own precise timer rather than a comparison against `now`: `now` is
+  // coalesced to a 30s bucket for display, which is too coarse for a boundary a viewer watches
+  // cross — see `useCommsLive`.
+  const live = useCommsLive(loaded, lastReadAt);
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [addingSenderFor, setAddingSenderFor] = React.useState<CommMessage | undefined>();

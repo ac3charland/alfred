@@ -402,13 +402,33 @@ describe('CommsQueueView — a tab that has been away', () => {
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
     jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('offline'));
-    // No `now` prop: liveness compares `lastReadAt` (the store's own clock) against the view's
-    // own ticking clock, so the two have to share one — the ticking ONE, not a pinned prop.
+    // No `now` prop: liveness is `useCommsLive`'s own precise timer, independent of the pinned
+    // `now` that drives everything else drawn here.
     renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     await act(() => jest.advanceTimersByTimeAsync(COMMS_LIVE_WINDOW_MS + COMMS_POLL_MS));
 
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
+  });
+
+  it('flips to not-live exactly at the window, even mounted off a 30s tick boundary', async () => {
+    jest.useFakeTimers();
+    // 26s past the read the mount seed lands at — deliberately NOT a multiple of 30s, so a
+    // liveness check still riding `useNow`'s bucketed, unaligned-interval clock flips late
+    // (as late as ~120s here) instead of exactly at `COMMS_LIVE_WINDOW_MS`.
+    jest.setSystemTime(new Date(OPENED.getTime() + 26_000));
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('offline'));
+    renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    // `isCommsLive` treats an elapsed time equal to the window as still live.
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_LIVE_WINDOW_MS));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await act(() => jest.advanceTimersByTimeAsync(1));
     expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
   });
 
