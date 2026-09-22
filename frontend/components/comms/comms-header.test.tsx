@@ -22,6 +22,8 @@ function renderHeader(properties: Partial<React.ComponentProps<typeof CommsHeade
       messages={properties.messages ?? []}
       health={properties.health}
       now={NOW}
+      lastClassifiedAt={properties.lastClassifiedAt}
+      notLiveSince={properties.notLiveSince}
     />,
   );
 }
@@ -139,6 +141,31 @@ describe('CommsHeader', () => {
     });
 
     expect(screen.getByRole('status')).toHaveTextContent('Classifier stalled 45m ago');
+  });
+
+  it('says the view is not live, and what it is showing, when it may be behind', () => {
+    renderHeader({ notLiveSince: iso(12) });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Not live — this is what was here 12m ago. Anything since may be missing until it reconnects.',
+    );
+  });
+
+  it('says nothing about liveness while the view is live', () => {
+    renderHeader({ accounts: [makeCommAccount('personal', { last_seen_at: iso(1) })] });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('counts a verdict the server knows of as proof of life, even off the loaded page', () => {
+    renderHeader({
+      accounts: [makeCommAccount('personal', { last_seen_at: iso(1) })],
+      messages: [makeCommMessage('acct-1', { received_at: iso(45), tier: null })],
+      health: makeCommHealth({ last_success_at: iso(1) }),
+      lastClassifiedAt: iso(2),
+    });
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('leaves the banner off while the sweep is keeping up', () => {

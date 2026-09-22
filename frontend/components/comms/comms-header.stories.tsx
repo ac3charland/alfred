@@ -97,3 +97,15 @@ export const OneSourceErroring: Story = {
     ],
   },
 };
+
+/**
+ * The view could not re-read — offline, or the socket down — so it says so above everything,
+ * with how old what it is showing is. Every source was fine when it last heard; that is exactly
+ * why the line is needed: green dots over a view that may be behind would read as all-clear.
+ */
+export const NotLive: Story = {
+  args: {
+    accounts: [live('personal'), live('RealPlay'), live('iMessage', DAEMON)],
+    notLiveSince: ago(12 * MINUTE),
+  },
+};

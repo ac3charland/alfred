@@ -15,8 +15,10 @@ import { formatElapsed } from './comms-format';
 /**
  * The module's masthead: what it is, and whether anything about it can be trusted right now.
  *
- * Three layers, in the order a reader needs them. The classifier banner sits ABOVE the dots
- * because it is not one of the source states and its fix is different. The dots are one per
+ * Above everything, whether the page itself is live: a view that may have missed something says
+ * so rather than passing off what it last read as the present. Then three layers, in the order a
+ * reader needs them. The classifier banner sits ABOVE the dots because it is not one of the
+ * source states and its fix is different. The dots are one per
  * ACCOUNT rather than one per ingestion home — a green dot over a dead mailbox is exactly the
  * failure the health surface exists to prevent, and two accounts sharing a poller can still
  * fail apart. Directly beneath the dots, which source pinged last and how long ago — the one
@@ -29,6 +31,13 @@ interface CommsHeaderProperties {
   messages: CommMessage[];
   health: CommClassifierHealth | undefined;
   now: Date;
+  /** The newest verdict the server knows of — see `classifierStalled`. */
+  lastClassifiedAt?: string | null | undefined;
+  /**
+   * When the view was last read, and only while it is NOT live — `undefined` means live. A
+   * view that may be behind has to say so, or it is quietly lying about what needs answering.
+   */
+  notLiveSince?: string | undefined;
 }
 
 /**
@@ -59,8 +68,15 @@ export function accountSentence(account: CommAccount, now: Date): string | null 
     : `${account.label} ${silence} — the poll has stopped running. Anything sent there since won't appear until it starts again.`;
 }
 
-export function CommsHeader({ accounts, messages, health, now }: CommsHeaderProperties) {
-  const stall = classifierStalled(health, messages, now);
+export function CommsHeader({
+  accounts,
+  messages,
+  health,
+  now,
+  lastClassifiedAt = null,
+  notLiveSince,
+}: CommsHeaderProperties) {
+  const stall = classifierStalled(health, messages, now, lastClassifiedAt);
   const ping = lastPing(accounts);
   const sentences = accounts.flatMap((account) => {
     const sentence = accountSentence(account, now);
@@ -69,6 +85,12 @@ export function CommsHeader({ accounts, messages, health, now }: CommsHeaderProp
 
   return (
     <div className="flex flex-col gap-3">
+      {notLiveSince !== undefined && (
+        <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
+          Not live — this is what was here {formatElapsed(notLiveSince, now)}. Anything since may be
+          missing until it reconnects.
+        </p>
+      )}
       {stall.stalled && stall.since !== null && <ClassifierBanner since={stall.since} now={now} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
