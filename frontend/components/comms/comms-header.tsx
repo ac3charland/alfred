@@ -4,7 +4,7 @@ import { Inbox } from 'lucide-react';
 import * as React from 'react';
 
 import { ViewHeading } from '@/components/atoms/view-heading';
-import { accountHealth, classifierStalled } from '@/lib/comms';
+import { accountHealth, classifierStalled, lastPing } from '@/lib/comms';
 import type { CommAccount, CommClassifierHealth, CommMessage } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -19,8 +19,9 @@ import { formatElapsed } from './comms-format';
  * because it is not one of the source states and its fix is different. The dots are one per
  * ACCOUNT rather than one per ingestion home — a green dot over a dead mailbox is exactly the
  * failure the health surface exists to prevent, and two accounts sharing a poller can still
- * fail apart. Below them, a sentence per account that is not live, because a coloured dot says
- * that something is wrong and never what or what to do about it.
+ * fail apart. Directly beneath the dots, which source pinged last and how long ago — the one
+ * number that shows the surface is still moving. Below them, a sentence per account that is not
+ * live, because a coloured dot says that something is wrong and never what or what to do about it.
  */
 
 interface CommsHeaderProperties {
@@ -60,6 +61,7 @@ export function accountSentence(account: CommAccount, now: Date): string | null 
 
 export function CommsHeader({ accounts, messages, health, now }: CommsHeaderProperties) {
   const stall = classifierStalled(health, messages, now);
+  const ping = lastPing(accounts);
   const sentences = accounts.flatMap((account) => {
     const sentence = accountSentence(account, now);
     return sentence === null ? [] : [{ account, sentence }];
@@ -77,10 +79,17 @@ export function CommsHeader({ accounts, messages, health, now }: CommsHeaderProp
           accent="comms"
         />
         {accounts.length > 0 && (
-          <div className="flex flex-wrap items-center gap-3" data-testid="account-dots">
-            {accounts.map((account) => (
-              <AccountDot key={account.id} account={account} now={now} />
-            ))}
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-wrap items-center gap-3" data-testid="account-dots">
+              {accounts.map((account) => (
+                <AccountDot key={account.id} account={account} now={now} />
+              ))}
+            </div>
+            {ping !== null && (
+              <p className="text-[11px] text-muted-foreground/70" data-testid="last-ping">
+                Last ping {formatElapsed(ping.at, now)} · {ping.account.label}
+              </p>
+            )}
           </div>
         )}
       </div>

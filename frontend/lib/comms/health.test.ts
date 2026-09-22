@@ -4,7 +4,7 @@ import {
   makeCommMessage,
   resetCommFixtureClock,
 } from './fixtures';
-import { accountHealth, classifierStalled } from './health';
+import { accountHealth, classifierStalled, lastPing } from './health';
 
 const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
 const NOW = new Date('2026-03-01T12:00:00.000Z');
@@ -62,6 +62,30 @@ describe('accountHealth', () => {
       last_seen_at: minutesAgo(1),
     });
     expect(accountHealth(account, NOW)).toBe('live');
+  });
+});
+
+describe('lastPing', () => {
+  it('names the account whose poll succeeded most recently, whatever order they arrive in', () => {
+    const imessage = makeCommAccount('iMessage', { home: 'daemon', last_seen_at: minutesAgo(1) });
+    const accounts = [
+      makeCommAccount('personal', { last_seen_at: minutesAgo(9) }),
+      imessage,
+      makeCommAccount('WorkMail', { home: 'daemon', last_seen_at: minutesAgo(4) }),
+    ];
+
+    expect(lastPing(accounts)).toEqual({ account: imessage, at: imessage.last_seen_at });
+  });
+
+  it('skips an account that has never been polled', () => {
+    const personal = makeCommAccount('personal', { last_seen_at: minutesAgo(30) });
+
+    expect(lastPing([makeCommAccount('WorkMail'), personal])?.account).toBe(personal);
+  });
+
+  it('is null until any account has been polled at all', () => {
+    expect(lastPing([])).toBeNull();
+    expect(lastPing([makeCommAccount('WorkMail')])).toBeNull();
   });
 });
 

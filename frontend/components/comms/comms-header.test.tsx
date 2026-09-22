@@ -45,6 +45,23 @@ describe('CommsHeader', () => {
     expect(screen.getByLabelText('iMessage · stale')).toBeInTheDocument();
   });
 
+  it('says under the dots which source pinged last, and how long ago', () => {
+    renderHeader({
+      accounts: [
+        makeCommAccount('personal', { last_seen_at: iso(9) }),
+        makeCommAccount('iMessage', { home: 'daemon', last_seen_at: iso(3) }),
+      ],
+    });
+
+    expect(screen.getByTestId('last-ping')).toHaveTextContent('Last ping 3m ago · iMessage');
+  });
+
+  it('leaves the last-ping line off until some source has ever been polled', () => {
+    renderHeader({ accounts: [makeCommAccount('WorkMail', { home: 'daemon' })] });
+
+    expect(screen.queryByTestId('last-ping')).not.toBeInTheDocument();
+  });
+
   it('separates a broken account from a quiet one — a green dot over a dead source is the failure', () => {
     renderHeader({
       accounts: [

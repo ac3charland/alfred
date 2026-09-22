@@ -33,8 +33,10 @@ export {
   type AccountHealth,
   CLASSIFIER_STALL_MINUTES,
   type ClassifierStall,
+  type LastPing,
   accountHealth,
   classifierStalled,
+  lastPing,
 } from './health';
 
 export { normalizeHandle, resolvePerson } from './people';
