@@ -121,30 +121,31 @@ writer and stay pure seed-once.
 The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
 suite gates, not in branches inside the subscription callback.
 
-**Realtime is fire-and-forget, so a store it keeps current needs a way back from a gap.** A socket
-that lapses — a backgrounded tab, a machine asleep, a suspended phone app — drops every change
-made while it was down and replays none; so does the gap between the server seed and the channels
-joining. `CommsProvider` is the pattern: re-read the whole view (`GET /api/comms/snapshot`) and
-**replace** it whenever all channels (re)join — the first join included — the tab returns
+**Comms polls instead of subscribing — its sources are minutes-granular, so a socket buys almost
+nothing.** The three tables above have another BROWSER as the second writer; Comms' four
+(`comm_messages`, `comm_accounts`, `comm_classifier_health`, `comm_verdicts`) have a Worker or the
+Mac daemon polling on a 1–3 minute cadence, so the machinery a Realtime subscription needs to stay
+honest (join bookkeeping, a wake-from-sleep detector, a settle debounce) bought seconds of latency
+at the cost of a class of bugs review kept finding. `CommsProvider` instead re-reads the whole view
+(`GET /api/comms/snapshot`) and **replaces** it on a `setInterval` (`COMMS_POLL_MS`, `lib/comms/live.ts`)
+while the tab is visible, plus whenever it may have missed something sooner: the tab returns
 (`visibilitychange`, or a bfcache-restored `pageshow`; not `focus`, which a visible tab fires
-without having missed anything), the browser comes back `online`, or a burst of stream changes
-settles or hits its max wait (its counts are server-side). Three guards keep the re-read itself
-honest: dispatches made while it is in flight are recorded and replayed over the snapshot; rows
-with a write in flight keep their optimistic value; a trigger mid-read runs one more read (a loop —
-recursion trips `react-hooks/immutability`).
+without having missed anything), the browser comes back `online`, a failed optimistic write
+(after releasing its in-flight hold), and "Show more" paging the shelf. Two guards keep the
+re-read itself honest: local dispatches made while it is in flight are recorded and replayed over
+the snapshot; rows with a write in flight keep their optimistic value. A trigger mid-read runs one
+more read after it (a loop — recursion trips `react-hooks/immutability`).
 
-The view is **live** only when the last read that landed *started* with every channel joined, and
-nothing has made it stale since — a channel leaving `SUBSCRIBED`, a failed (or timed-out) read,
-`offline`, or waking from sleep (a gap between two ticks of its timer in a visible tab, dated to
-the first; the channels that slept are re-created rather than trusted, since phoenix takes a
-heartbeat to notice the socket died). A rejoin alone isn't live; the
-read it triggers is. While not live the header says so, dated (on the client's clock, never the
-server's) to the moment it went stale and moved forward by any read that lands meanwhile: a stale
-view that looks current is the one state it may never show (ALF-227, ALF-258). A shell whose seed
-read failed isn't *loaded* — it says it couldn't load and draws no queue (an unread queue is not an
-empty one) until a read lands. A failed read replaces and toasts nothing, and not-live ends on its
-own: the timer re-reads while not live, a failed row write re-reads (its row was held back from
-any read meanwhile), and a channel the server closed is re-created (see the supabase skill).
+**Liveness is recency, not an event log.** The store holds only `loaded` (false until the first
+successful read, forever if the shell's own seed read failed) and `lastReadAt` (the client's own
+clock, captured when a successful read *started*; a failed read moves neither). The view is live
+iff `loaded && now - lastReadAt <= COMMS_LIVE_WINDOW_MS` (`isCommsLive`, `lib/comms/live.ts`, ~2
+polls + slack), computed in the queue view against its own ticking clock (`useNow`) rather than
+tracked as a `stale` event fired by something — so a dead network, a frozen tab, or a machine
+asleep all show up on their own as time passes, with nothing that has to remember to fire. While
+not live the header dates the line to `lastReadAt`. A shell whose seed read failed isn't *loaded*
+at all — it says it couldn't load and draws no queue (an unread queue is not an empty one) until a
+read lands, which it asks for on mount without waiting for the poll interval.
 
 ## A derived status must mirror the query that does the work
 
