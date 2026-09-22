@@ -133,15 +133,18 @@ honest: dispatches made while it is in flight are recorded and replayed over the
 with a write in flight keep their optimistic value; a trigger mid-read runs one more read (a loop —
 recursion trips `react-hooks/immutability`).
 
-The view is **live** only when the last read that landed *started* with every channel joined and
-the browser online, and nothing has made it stale since — a channel leaving `SUBSCRIBED`, a failed
-(or timed-out) read, `offline`. A rejoin alone isn't live; the read it triggers is. While not
-live the header says so, dated (on the client's clock, never the server's) to the moment it went
-stale and moved forward by any read that lands meanwhile: a stale view that looks current is the
-one state it may never show (ALF-227, ALF-258). A failed read replaces and toasts nothing, and
-not-live ends on its own: a tab in front re-reads on a timer while not live, a shell whose seed
-read failed starts not live, and a channel the server closed is re-created (see the supabase
-skill).
+The view is **live** only when the last read that landed *started* with every channel joined, and
+nothing has made it stale since — a channel leaving `SUBSCRIBED`, a failed (or timed-out) read,
+`offline`, or waking from sleep (a gap between two ticks of its timer in a visible tab, dated to
+the first; the channels that slept are re-created rather than trusted, since phoenix takes a
+heartbeat to notice the socket died). A rejoin alone isn't live; the
+read it triggers is. While not live the header says so, dated (on the client's clock, never the
+server's) to the moment it went stale and moved forward by any read that lands meanwhile: a stale
+view that looks current is the one state it may never show (ALF-227, ALF-258). A shell whose seed
+read failed isn't *loaded* — it says it couldn't load and draws no queue (an unread queue is not an
+empty one) until a read lands. A failed read replaces and toasts nothing, and not-live ends on its
+own: the timer re-reads while not live, a failed row write re-reads (its row was held back from
+any read meanwhile), and a channel the server closed is re-created (see the supabase skill).
 
 ## A derived status must mirror the query that does the work
 
