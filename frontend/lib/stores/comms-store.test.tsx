@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { SHELF_PAGE_SIZE } from '@/lib/comms';
+import { SHELF_LIMIT_MAX, SHELF_PAGE_SIZE } from '@/lib/comms';
 import {
   makeCommAccount,
   makeCommHealth,
@@ -23,6 +23,8 @@ import type {
 } from '@/lib/types';
 
 import {
+  COMMS_READ_RETRY_MS,
+  COMMS_REJOIN_MS,
   CommsProvider,
   accountStreamAction,
   commsReducer,
@@ -101,12 +103,17 @@ jest.mock('@/lib/stores/toast-store', () => ({
 
 const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
 
+/** One channel per streamed table. */
+const CHANNEL_COUNT = 4;
+
 beforeEach(() => {
   resetCommFixtureClock();
   jest.clearAllMocks();
   mockRealtimeHandlers.clear();
   mockSubscribeCallbacks.clear();
   mockJoinedTables.length = 0;
+  // A test may make teardown report CLOSED, as the real client does; don't let it leak.
+  mockRemoveChannel.mockReset();
   // Every mount re-reads once its channels join; unless a test is about that read, it never lands.
   mockApi.fetchCommsSnapshot.mockReturnValue(new Promise(() => {}));
 });
@@ -172,6 +179,27 @@ describe('commsReducer', () => {
       action: { type: 'remove', ids: [verdict.id] },
     });
     expect(state.verdictsById[verdict.id]).toBeUndefined();
+  });
+
+  it('records when the view stopped being live, and keeps that moment until it is live again', () => {
+    const down = commsReducer(empty, { type: 'live', live: false, at: '2026-09-09T12:05:00.000Z' });
+    const stillDown = commsReducer(down, {
+      type: 'live',
+      live: false,
+      at: '2026-09-09T12:09:00.000Z',
+    });
+    const reread = commsReducer(stillDown, {
+      type: 'snapshot',
+      seed: makeCommsSeed(),
+      keep: new Set(),
+    });
+    const up = commsReducer(reread, { type: 'live', live: true, at: '2026-09-09T12:10:00.000Z' });
+
+    expect(empty.notLiveSince).toBeNull();
+    expect(stillDown.notLiveSince).toBe('2026-09-09T12:05:00.000Z');
+    // A re-read replaces the rows, not what the tab knows about its own connection.
+    expect(reread.notLiveSince).toBe('2026-09-09T12:05:00.000Z');
+    expect(up.notLiveSince).toBeNull();
   });
 
   it('replaces the classifier health row wholesale', () => {
@@ -900,6 +928,7 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
   const LATER = makeCommsSeed({ accounts: [PERSONAL], messages: [QUEUED, ARRIVED] });
 
   afterEach(() => {
+    jest.useRealTimers();
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
     Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
   });
@@ -1068,6 +1097,160 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
     expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
   });
 
+  it('does not read when a channel rejoins behind a hidden tab — coming back does', async () => {
+    await renderJoined();
+    act(() => {
+      setTabHidden(true);
+    });
+
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
+      mockSubscribeCallbacks.get('comm_messages')?.('SUBSCRIBED');
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      setTabHidden(false);
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads once when the tab comes back, not once per event the return fires', async () => {
+    await renderJoined();
+    const read = holdSnapshot();
+
+    act(() => {
+      setTabHidden(false);
+      globalThis.dispatchEvent(new Event('focus'));
+    });
+    await read.resolve(makeCommsSeed());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-reads a page restored from the back/forward cache, and not an ordinary pageshow', async () => {
+    await renderJoined();
+
+    act(() => {
+      globalThis.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }));
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      globalThis.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a failed read while the tab is in front, and stops once one lands', async () => {
+    const { result } = await renderJoined();
+    jest.useFakeTimers();
+    const failing = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+    await failing.reject();
+    expect(result.current.sync.live).toBe(false);
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
+
+    act(() => {
+      jest.advanceTimersByTime(COMMS_READ_RETRY_MS);
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(3);
+    await waitFor(() => {
+      expect(result.current.sync.live).toBe(true);
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(COMMS_READ_RETRY_MS * 3);
+    });
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry a failed read behind a hidden tab', async () => {
+    await renderJoined();
+    jest.useFakeTimers();
+    const failing = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+    await failing.reject();
+
+    act(() => {
+      setTabHidden(true);
+    });
+    act(() => {
+      jest.advanceTimersByTime(COMMS_READ_RETRY_MS * 3);
+    });
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-creates the channels after one is closed out from under it, then re-reads', async () => {
+    const { result } = await renderJoined();
+    jest.useFakeTimers();
+
+    // phoenix never rejoins a channel the server closed, so nothing else would bring it back.
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CLOSED');
+    });
+    expect(result.current.sync.live).toBe(false);
+    act(() => {
+      jest.advanceTimersByTime(COMMS_REJOIN_MS);
+    });
+
+    await waitFor(() => {
+      expect(mockJoinedTables).toHaveLength(CHANNEL_COUNT * 2);
+    });
+    expect(mockRemoveChannel).toHaveBeenCalledTimes(CHANNEL_COUNT);
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+    expect(result.current.sync.live).toBe(true);
+  });
+
+  it('never takes its own teardown for a close to recover from', async () => {
+    // As the real client does: removing a channel reports it CLOSED.
+    mockRemoveChannel.mockImplementation(() => {
+      for (const callback of mockSubscribeCallbacks.values()) callback('CLOSED');
+    });
+    await renderJoined();
+    jest.useFakeTimers();
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CLOSED');
+    });
+    act(() => {
+      jest.advanceTimersByTime(COMMS_REJOIN_MS);
+    });
+    await waitFor(() => {
+      expect(mockJoinedTables).toHaveLength(CHANNEL_COUNT * 2);
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(COMMS_REJOIN_MS * 3);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockJoinedTables).toHaveLength(CHANNEL_COUNT * 2);
+  });
+
+  it('dates "not live" from the moment it stopped being live, not from the last read', async () => {
+    const { result } = await renderJoined(
+      makeCommsSeed({ messages: [QUEUED, SHELVED], readAt: '2026-01-01T00:00:00.000Z' }),
+    );
+    expect(result.current.sync.notLiveSince).toBeUndefined();
+    const before = Date.now();
+
+    act(() => {
+      setOnline(false);
+    });
+
+    expect(Date.parse(result.current.sync.notLiveSince ?? '')).toBeGreaterThanOrEqual(before);
+  });
+
   it('re-reads the counts once a burst of message changes settles', async () => {
     const { result } = await renderJoined();
     mockApi.fetchCommsSnapshot.mockResolvedValue({ ...LATER, shelfCount: 7 });
@@ -1084,14 +1267,60 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
     );
   });
 
+  /** A shelf ten rows longer than one page. */
+  const LONG_SHELF = Array.from({ length: SHELF_PAGE_SIZE + 10 }, () =>
+    makeCommMessage(ACCOUNT, { tier: 'fyi', judged_by: 'model' }),
+  );
+
   it('loads the next shelf page through the same read, asked for more', async () => {
-    const { result } = await renderJoined();
-    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
+    const { result } = await renderJoined(makeCommsSeed({ messages: LONG_SHELF }));
 
     act(() => {
       result.current.actions.showMoreShelf();
     });
 
     expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2);
+  });
+
+  it('asks for no more of the shelf than there is', async () => {
+    const { result } = await renderJoined(makeCommsSeed({ messages: LONG_SHELF }));
+    mockApi.fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({ messages: LONG_SHELF, shelfLimit: SHELF_PAGE_SIZE * 2 }),
+    );
+
+    // Pressed twice before the page lands: the second can't reach past the shelf's last page.
+    act(() => {
+      result.current.actions.showMoreShelf();
+      result.current.actions.showMoreShelf();
+    });
+    await waitFor(() => {
+      expect(result.current.shelf).toHaveLength(LONG_SHELF.length);
+    });
+    // Every row is held: there is nothing more to ask for.
+    act(() => {
+      result.current.actions.showMoreShelf();
+    });
+
+    expect(mockApi.fetchCommsSnapshot.mock.calls.map(([shelf]) => shelf)).toEqual([
+      SHELF_PAGE_SIZE,
+      SHELF_PAGE_SIZE * 2,
+      SHELF_PAGE_SIZE * 2,
+    ]);
+  });
+
+  it('never asks for more of the shelf than the snapshot route serves', async () => {
+    const vast = { ...makeCommsSeed({ messages: LONG_SHELF }), shelfCount: SHELF_LIMIT_MAX * 2 };
+    const { result } = await renderJoined(vast);
+    mockApi.fetchCommsSnapshot.mockResolvedValue(vast);
+
+    act(() => {
+      for (let press = 0; press <= SHELF_LIMIT_MAX / SHELF_PAGE_SIZE; press += 1) {
+        result.current.actions.showMoreShelf();
+      }
+    });
+
+    await waitFor(() => {
+      expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_LIMIT_MAX);
+    });
   });
 });

@@ -18,10 +18,9 @@ import { formatElapsed } from './comms-format';
  * Above everything, whether the page itself is live: a view that may have missed something says
  * so rather than passing off what it last read as the present. Then three layers, in the order a
  * reader needs them. The classifier banner sits ABOVE the dots because it is not one of the
- * source states and its fix is different. The dots are one per
- * ACCOUNT rather than one per ingestion home — a green dot over a dead mailbox is exactly the
- * failure the health surface exists to prevent, and two accounts sharing a poller can still
- * fail apart. Directly beneath the dots, which source pinged last and how long ago — the one
+ * source states and its fix is different. The dots are one per ACCOUNT rather than one per
+ * ingestion home — a green dot over a dead mailbox is exactly the failure the health surface
+ * exists to prevent, and two accounts sharing a poller can still fail apart. Directly beneath the dots, which source pinged last and how long ago — the one
  * number that shows the surface is still moving. Below them, a sentence per account that is not
  * live, because a coloured dot says that something is wrong and never what or what to do about it.
  */
@@ -34,8 +33,8 @@ interface CommsHeaderProperties {
   /** The newest verdict the server knows of — see `classifierStalled`. */
   lastClassifiedAt?: string | null | undefined;
   /**
-   * When the view was last read, and only while it is NOT live — `undefined` means live. A
-   * view that may be behind has to say so, or it is quietly lying about what needs answering.
+   * The last moment the view was current, and only while it is NOT live — `undefined` means live.
+   * A view that may be behind has to say so, or it is quietly lying about what needs answering.
    */
   notLiveSince?: string | undefined;
 }

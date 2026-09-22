@@ -6,7 +6,14 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import type { ChangeTierInput, ClearMessageInput, PurgeInput } from '@/lib/api-client';
-import { type QueueByTier, SHELF_PAGE_SIZE, groupByTier, queueCount, shelved } from '@/lib/comms';
+import {
+  type QueueByTier,
+  SHELF_LIMIT_MAX,
+  SHELF_PAGE_SIZE,
+  groupByTier,
+  queueCount,
+  shelved,
+} from '@/lib/comms';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
@@ -35,7 +42,10 @@ import type {
 
 export interface CommsState {
   accounts: CommAccount[];
-  /** Every inbound message inside the retention window; the queue and shelf derive from it. */
+  /**
+   * Everything above FYI inside the retention window (the queue, and the rows not judged yet), in
+   * full, plus the shelf pages loaded so far. The queue and the shelf derive from it.
+   */
   messages: CommMessage[];
   /** The current verdict behind each judged message, keyed by verdict id. */
   verdictsById: Record<string, CommVerdict>;
@@ -54,6 +64,8 @@ export interface CommsState {
    * succeeded, and the browser online. When it is not, the header says so.
    */
   live: boolean;
+  /** When `live` last went false — the stream kept the view current until then. `null` while live. */
+  notLiveSince: string | null;
 }
 
 export interface CommsActions {
@@ -126,7 +138,8 @@ type CommsAction =
    * flight: the snapshot may predate it, and the write reconciles them itself when it lands.
    */
   | { type: 'snapshot'; seed: CommsSeed; keep: ReadonlySet<string> }
-  | { type: 'live'; live: boolean };
+  /** Whether the view is live, as of `at` — which is when it stopped, if this is the moment. */
+  | { type: 'live'; live: boolean; at: string };
 
 /** The store's state for a seed, before any change arrives. */
 export function stateFromSeed(seed: CommsSeed): CommsState {
@@ -140,14 +153,16 @@ export function stateFromSeed(seed: CommsSeed): CommsState {
     lastClassifiedAt: seed.lastClassifiedAt,
     readAt: seed.readAt,
     live: true,
+    notLiveSince: null,
   };
 }
 
 /** {@link CommsAction}'s snapshot move: the seed wins, but a row with a write in flight holds. */
 function applySnapshot(state: CommsState, seed: CommsSeed, keep: ReadonlySet<string>): CommsState {
-  const next = stateFromSeed(seed);
+  // Liveness is this tab's own connection, not something a server read knows about.
+  const next = { ...stateFromSeed(seed), live: state.live, notLiveSince: state.notLiveSince };
   const held = state.messages.filter((message) => keep.has(message.id));
-  if (held.length === 0) return { ...next, live: state.live };
+  if (held.length === 0) return next;
   const heldIds = new Set(held.map((message) => message.id));
   const verdictsById = { ...next.verdictsById };
   for (const message of held) {
@@ -159,7 +174,6 @@ function applySnapshot(state: CommsState, seed: CommsSeed, keep: ReadonlySet<str
     ...next,
     messages: [...next.messages.filter((message) => !heldIds.has(message.id)), ...held],
     verdictsById,
-    live: state.live,
   };
 }
 
@@ -196,7 +210,8 @@ export function commsReducer(state: CommsState, action: CommsAction): CommsState
       return applySnapshot(state, action.seed, action.keep);
     }
     case 'live': {
-      return state.live === action.live ? state : { ...state, live: action.live };
+      if (state.live === action.live) return state;
+      return { ...state, live: action.live, notLiveSince: action.live ? null : action.at };
     }
     default: {
       return assertNever(action, 'comms action');
@@ -419,6 +434,12 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 /** How long a burst of message changes settles before the counts are re-read. */
 const COUNTS_SETTLE_MS = 1000;
 
+/** How often a tab in front tries again after a read failed. */
+export const COMMS_READ_RETRY_MS = 10_000;
+
+/** How long after a channel closes out from under the view its channels are re-created. */
+export const COMMS_REJOIN_MS = 5000;
+
 /** The four tables the view streams, each on its own channel. */
 const CHANNELS = ['comm_messages', 'comm_accounts', 'comm_classifier_health', 'comm_verdicts'];
 
@@ -458,7 +479,8 @@ export function CommsProvider({
    * - a row with a write in flight keeps its optimistic value (see the `snapshot` action);
    * - a trigger that lands mid-read runs one more read after it, rather than being dropped.
    *
-   * A hidden tab doesn't re-read — coming back to the front does.
+   * A hidden tab doesn't re-read — coming back to the front does. A read that fails is tried again
+   * every {@link COMMS_READ_RETRY_MS} while the tab is in front, until one lands.
    */
   const recordingRef = React.useRef<CommsAction[] | null>(null);
   const apply = React.useCallback((action: CommsAction) => {
@@ -470,6 +492,8 @@ export function CommsProvider({
   const shelfLimitRef = React.useRef(SHELF_PAGE_SIZE);
   const syncRef = React.useRef({ running: false, again: false, failed: false });
   const channelStatusRef = React.useRef<Partial<Record<string, REALTIME_SUBSCRIBE_STATES>>>({});
+  /** A failed read in a tab that is in front — what the retry timer runs on. */
+  const [retrying, setRetrying] = React.useState(false);
 
   /** Live = every channel joined (or still joining for the first time), last read ok, online. */
   const updateLive = React.useCallback(() => {
@@ -477,7 +501,11 @@ export function CommsProvider({
       const status = channelStatusRef.current[table];
       return status === undefined || status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED;
     });
-    dispatch({ type: 'live', live: joined && !syncRef.current.failed && navigator.onLine });
+    dispatch({
+      type: 'live',
+      live: joined && !syncRef.current.failed && navigator.onLine,
+      at: new Date().toISOString(),
+    });
   }, []);
 
   const reconcile = React.useCallback(() => {
@@ -501,7 +529,7 @@ export function CommsProvider({
           sync.failed = false;
         } catch {
           // Nothing to toast — there is nothing for the owner to do. The header's "Not live" line
-          // says the view may be behind, and the next trigger tries again.
+          // says the view may be behind, and the retry (or the next trigger) tries again.
           sync.failed = true;
         }
         recordingRef.current = null;
@@ -509,29 +537,47 @@ export function CommsProvider({
         // Read through the ref: a trigger may have set it while the read was awaited.
       } while (syncRef.current.again && !document.hidden);
       sync.running = false;
+      setRetrying(sync.failed && !document.hidden);
     })();
   }, [updateLive]);
 
-  // The ways a tab learns it may have missed something without the socket saying so: coming back
-  // to the front (including from the back/forward cache) and coming back online.
+  // One timer, and only while a read has failed in a tab that is in front: a success, the tab
+  // hiding and unmounting all clear it.
   React.useEffect(() => {
-    const onReturn = () => {
-      if (!document.hidden) reconcile();
+    if (!retrying) return;
+    const retry = setInterval(reconcile, COMMS_READ_RETRY_MS);
+    return () => {
+      clearInterval(retry);
+    };
+  }, [retrying, reconcile]);
+
+  // The ways a tab learns it may have missed something without the socket saying so: coming back
+  // to the front, being restored from the back/forward cache, and coming back online. A window
+  // that merely lost focus stayed visible and missed nothing, and a machine waking is caught by
+  // the channels rejoining.
+  React.useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) setRetrying(false);
+      else reconcile();
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted && !document.hidden) reconcile();
     };
 
-    document.addEventListener('visibilitychange', onReturn);
-    globalThis.addEventListener('focus', onReturn);
-    globalThis.addEventListener('pageshow', onReturn);
+    document.addEventListener('visibilitychange', onVisibility);
+    globalThis.addEventListener('pageshow', onPageShow);
     globalThis.addEventListener('online', reconcile);
     globalThis.addEventListener('offline', updateLive);
     return () => {
-      document.removeEventListener('visibilitychange', onReturn);
-      globalThis.removeEventListener('focus', onReturn);
-      globalThis.removeEventListener('pageshow', onReturn);
+      document.removeEventListener('visibilitychange', onVisibility);
+      globalThis.removeEventListener('pageshow', onPageShow);
       globalThis.removeEventListener('online', reconcile);
       globalThis.removeEventListener('offline', updateLive);
     };
   }, [reconcile, updateLive]);
+
+  /** Bumped to re-create the channels after one closed out from under the view. */
+  const [generation, setGeneration] = React.useState(0);
 
   // The push channel. All four tables are written out of band — the poller inserts messages
   // and stamps account health, the classifier sweep writes a verdict and (via a separate write
@@ -540,9 +586,15 @@ export function CommsProvider({
   React.useEffect(() => {
     const supabase = createClient();
     let settleCounts: ReturnType<typeof setTimeout> | undefined;
+    let rejoin: ReturnType<typeof setTimeout> | undefined;
+    // Set by the cleanup, so the CLOSED our own `removeChannel` reports isn't taken for a drop.
+    let closing = false;
+    // A fresh topic per generation: the client hands back a same-named channel that is still
+    // leaving, and that one never joins again.
+    const topic = (table: string) => `${table}:${String(generation)}`;
 
     const channel = supabase
-      .channel('comm_messages')
+      .channel(topic('comm_messages'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'comm_messages' },
@@ -557,7 +609,7 @@ export function CommsProvider({
       );
 
     const accountsChannel = supabase
-      .channel('comm_accounts')
+      .channel(topic('comm_accounts'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'comm_accounts' },
@@ -568,7 +620,7 @@ export function CommsProvider({
       );
 
     const healthChannel = supabase
-      .channel('comm_classifier_health')
+      .channel(topic('comm_classifier_health'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'comm_classifier_health' },
@@ -578,7 +630,7 @@ export function CommsProvider({
       );
 
     const verdictsChannel = supabase
-      .channel('comm_verdicts')
+      .channel(topic('comm_verdicts'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'comm_verdicts' },
@@ -589,10 +641,18 @@ export function CommsProvider({
       );
 
     // Every channel reports its state. The moment all four are joined — the first time, closing
-    // the gap since the shell's read, or again after the socket dropped — is when to re-read.
+    // the gap since the shell's read, or again after the socket dropped — is when to re-read. A
+    // channel the server closed is never rejoined by phoenix, so that re-creates them all.
     const track = (table: string) => (status: REALTIME_SUBSCRIBE_STATES) => {
+      if (closing) return;
       channelStatusRef.current[table] = status;
       updateLive();
+      if (status === REALTIME_SUBSCRIBE_STATES.CLOSED) {
+        rejoin ??= setTimeout(() => {
+          setGeneration((current) => current + 1);
+        }, COMMS_REJOIN_MS);
+        return;
+      }
       if (
         status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED &&
         CHANNELS.every(
@@ -611,14 +671,16 @@ export function CommsProvider({
     });
 
     return () => {
+      closing = true;
       cancelJoin();
       clearTimeout(settleCounts);
+      clearTimeout(rejoin);
       void supabase.removeChannel(channel);
       void supabase.removeChannel(accountsChannel);
       void supabase.removeChannel(healthChannel);
       void supabase.removeChannel(verdictsChannel);
     };
-  }, [apply, reconcile, updateLive]);
+  }, [apply, reconcile, updateLive, generation]);
 
   const actions = React.useMemo<CommsActions>(() => {
     /**
@@ -753,7 +815,15 @@ export function CommsProvider({
         }
       },
       showMoreShelf() {
-        shelfLimitRef.current += SHELF_PAGE_SIZE;
+        const { messages, shelfCount } = stateRef.current;
+        if (shelved(messages).length >= shelfCount) return;
+        // Never past the shelf's own last page, nor past what the snapshot route will serve.
+        const lastPage = Math.ceil(shelfCount / SHELF_PAGE_SIZE) * SHELF_PAGE_SIZE;
+        shelfLimitRef.current = Math.min(
+          shelfLimitRef.current + SHELF_PAGE_SIZE,
+          lastPage,
+          SHELF_LIMIT_MAX,
+        );
         reconcile();
       },
     };
@@ -788,7 +858,10 @@ export function useQueueCount(): number {
   return React.useMemo(() => queueCount(messages), [messages]);
 }
 
-/** The FYI shelf: everything judged that owes no reply, newest first. Deliberately uncounted. */
+/**
+ * The shelf rows held so far — the pages loaded, not the whole shelf (see {@link useShelfCounts}
+ * for its size) — newest first. Deliberately uncounted.
+ */
 export function useShelf(): CommMessage[] {
   const { messages } = useStateValue('useShelf');
   return React.useMemo(() => shelved(messages), [messages]);
@@ -804,15 +877,22 @@ export function useShelfCounts(): { shelfCount: number; readerClaimedCount: numb
 }
 
 /**
- * Whether the view is live, when it was last read, and the newest verdict the server knows of —
- * what the header needs to say whether anything on the page can be trusted right now.
+ * Whether the view is live, when it was last read, the newest verdict the server knows of, and —
+ * only while NOT live — the last moment the view was current: the later of the last read and when
+ * it stopped being live, since the stream kept it current in between. What the header needs to
+ * say whether anything on the page can be trusted right now.
  */
-export function useCommsSync(): { live: boolean; readAt: string; lastClassifiedAt: string | null } {
-  const { live, readAt, lastClassifiedAt } = useStateValue('useCommsSync');
-  return React.useMemo(
-    () => ({ live, readAt, lastClassifiedAt }),
-    [live, readAt, lastClassifiedAt],
-  );
+export function useCommsSync(): {
+  live: boolean;
+  readAt: string;
+  lastClassifiedAt: string | null;
+  notLiveSince: string | undefined;
+} {
+  const { live, readAt, lastClassifiedAt, notLiveSince } = useStateValue('useCommsSync');
+  return React.useMemo(() => {
+    const currentAsOf = notLiveSince !== null && notLiveSince > readAt ? notLiveSince : readAt;
+    return { live, readAt, lastClassifiedAt, notLiveSince: live ? undefined : currentAsOf };
+  }, [live, readAt, lastClassifiedAt, notLiveSince]);
 }
 
 /** The current verdict behind each judged message, keyed by verdict id. */

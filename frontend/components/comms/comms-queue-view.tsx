@@ -62,7 +62,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   const byTier = useQueuedByTier();
   const shelf = useShelf();
   const { shelfCount, readerClaimedCount } = useShelfCounts();
-  const { live, readAt, lastClassifiedAt } = useCommsSync();
+  const { lastClassifiedAt, notLiveSince } = useCommsSync();
   const { showMoreShelf } = useCommsActions();
   const verdicts = useCommsVerdicts();
   const health = useCommsHealth();
@@ -137,9 +137,9 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
     );
   };
 
-  const queueEmpty = orderedIds.length === 0 && shelfCount === 0;
   // A live row can land on the shelf between re-reads, so never claim fewer than are drawn.
   const shelfTotal = Math.max(shelfCount, shelf.length);
+  const queueEmpty = orderedIds.length === 0 && shelfTotal === 0;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -149,7 +149,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
         health={health}
         now={now}
         lastClassifiedAt={lastClassifiedAt}
-        notLiveSince={live ? undefined : readAt}
+        notLiveSince={notLiveSince}
       />
 
       {queueEmpty ? (

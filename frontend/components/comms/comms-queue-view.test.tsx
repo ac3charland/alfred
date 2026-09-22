@@ -157,8 +157,32 @@ describe('CommsQueueView — the three counted tiers', () => {
     await user.click(screen.getByRole('button', { name: /FYI · 60 messages/ }));
 
     expect(screen.getAllByTestId('comms-row')).toHaveLength(SHELF_PAGE_SIZE);
+    jest
+      .mocked(api)
+      .fetchCommsSnapshot.mockResolvedValue(
+        makeCommsSeed({ accounts: [GMAIL], messages: shelf, shelfLimit: SHELF_PAGE_SIZE * 2 }),
+      );
     await user.click(screen.getByRole('button', { name: 'Show more (10 older)' }));
+
     expect(jest.mocked(api).fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2);
+    expect(await screen.findAllByTestId('comms-row')).toHaveLength(shelf.length);
+    expect(screen.queryByRole('button', { name: /Show more/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps the shelf in view when the last queued row is cleared before the server has counted it', async () => {
+    const user = userEvent.setup();
+    jest.mocked(api).clearCommMessage.mockReturnValue(new Promise(() => {}));
+    renderView([row({ tier: 'today', ask: 'Asking whether you are coming Sunday.' })]);
+
+    await user.click(screen.getByText('Asking whether you are coming Sunday.'));
+    await user.click(screen.getByRole('button', { name: 'Not replying' }));
+    const collapsed = new Event('transitionend', { bubbles: true });
+    Object.defineProperty(collapsed, 'propertyName', { value: 'grid-template-rows' });
+    fireEvent(screen.getByTestId('comms-row-collapse'), collapsed);
+
+    // The server's shelf count is still 0 — the row it is about to count is only held here.
+    expect(screen.queryByText('Nothing to answer.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /FYI · 1 message/ })).toBeInTheDocument();
   });
 });
 
@@ -313,6 +337,7 @@ describe('CommsQueueView — a tab that has been away', () => {
   afterEach(() => {
     jest.useRealTimers();
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
   });
 
   it('re-reads the view on return, so an hour away does not read as an outage', async () => {
@@ -385,5 +410,24 @@ describe('CommsQueueView — a tab that has been away', () => {
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
+  });
+
+  it('dates "not live" from when it stopped being live, since the stream kept it current until then', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(OPENED);
+    renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
+
+    // An hour of the stream keeping the view current, with no re-read in between.
+    act(() => {
+      jest.advanceTimersByTime(60 * 60 * 1000);
+    });
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    act(() => {
+      globalThis.dispatchEvent(new Event('offline'));
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /^Not live — this is what was here just now/,
+    );
   });
 });
