@@ -533,6 +533,19 @@ describe('purge', () => {
     expect(result.current.messages).toHaveLength(2);
     expect(mockShowToast).toHaveBeenCalledWith("Couldn't purge those messages");
   });
+
+  it('re-reads the snapshot once a purge lands, for every selector — not just the message one', async () => {
+    mockApi.purgeComms.mockResolvedValue({ purged: 12 });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await result.current.actions.purge({ account_id: ACCOUNT });
+    });
+
+    // An account/date-range purge has no id list to remove locally, so a re-read is the only
+    // thing that can bring the queue and shelf up to date with what the server actually purged.
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalled();
+  });
 });
 
 /** Shadow `document.hidden` — a read-only getter in jsdom — and fire what that change fires. */

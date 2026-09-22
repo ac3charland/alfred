@@ -109,7 +109,8 @@ export interface CommsActions {
   /**
    * The deliberate "I want this gone" — one message, one account, or everything before a date.
    * Destructive and irreversible, so it is NOT optimistic: the rows leave the client only once
-   * the server says they left the database.
+   * the server says they left the database, and a re-read follows to pick up whatever an
+   * account or date-range purge matched that this tab has no id list for.
    */
   purge: (input: PurgeInput) => Promise<{ purged: number }>;
   /** Load the next page of the shelf — the same re-read as recovery, asked for more rows. */
@@ -432,15 +433,20 @@ export function CommsProvider({
       async purge(input) {
         try {
           const result = await api.purgeComms(input);
-          // Only a single-message purge can be reflected locally: an account-wide or
-          // date-range purge has no id list to remove, and guessing which rows the RPC
-          // matched would be a client re-implementation of the server's own predicate.
+          // A single-message purge is removed locally too, ahead of the reconcile below: the id
+          // is right here, unlike an account-wide or date-range purge (which has no id list to
+          // remove without a client re-implementation of the server's own predicate), and the
+          // row was very likely the one the owner was just looking at.
           if (input.message_id !== undefined) {
             apply({
               type: 'messages',
               action: { type: 'remove', ids: [input.message_id] },
             });
           }
+          // Every selector reconciles: this is what brings an account-wide or date-range purge
+          // into view, and it costs the single-message case nothing since the removal above
+          // already applied.
+          reconcile();
           return result;
         } catch (error) {
           showToastRef.current("Couldn't purge those messages");

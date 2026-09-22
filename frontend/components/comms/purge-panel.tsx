@@ -10,9 +10,9 @@ import { PickerChip } from '@/components/atoms/picker-chip';
 import { TextField } from '@/components/atoms/text-field';
 import { ToggleButton } from '@/components/atoms/toggle-button';
 import { SETTINGS_CAPTION, SETTINGS_CARD } from '@/components/comms/settings.styles';
-import { type PurgeInput, purgeComms } from '@/lib/api-client';
+import type { PurgeInput } from '@/lib/api-client';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
-import { useCommsAccounts } from '@/lib/stores/comms-store';
+import { useCommsAccounts, useCommsActions } from '@/lib/stores/comms-store';
 
 /**
  * The purge — the deliberate "I want this gone", and the one destructive control in the module.
@@ -26,11 +26,10 @@ import { useCommsAccounts } from '@/lib/stores/comms-store';
  * with no selector would be "delete the whole mirror", which is not a thing to reach by
  * accident, so the API refuses it and the button stays disabled until one is filled in.
  *
- * This is the one surface here that calls the API client directly rather than through a store
- * action. What it destroys is `comm_messages` — rows the QUEUE store owns, not this one — and
- * that table carries a realtime subscription, so the deletes reach the queue through the same
- * channel a Worker's writes do. An optimistic action here would be a second, racing writer to a
- * store this page has no business reaching into.
+ * The confirm submits through the comms store's `purge` action rather than calling the API
+ * client directly: what it destroys is `comm_messages`, which the QUEUE store owns, not this
+ * settings page, and the store is what re-reads the snapshot afterwards so the queue drops the
+ * purged rows without this page reaching into it.
  */
 type PurgeMode = 'before' | 'account' | 'message';
 
@@ -204,13 +203,14 @@ function PurgeConfirmBody({
   onPurged: (count: number) => void;
 }) {
   const cancelRef = React.useRef<HTMLButtonElement>(null);
+  const { purge } = useCommsActions();
 
   React.useEffect(() => {
     cancelRef.current?.focus();
   }, []);
 
   const { error, isPending, submit } = useFormSubmit({
-    onSubmit: () => purgeComms(selection),
+    onSubmit: () => purge(selection),
     onSuccess: (result) => {
       onPurged(result.purged);
     },

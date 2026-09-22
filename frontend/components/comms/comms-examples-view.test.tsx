@@ -2,7 +2,12 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import * as apiClient from '@/lib/api-client';
-import { makeCommAccount, makeCommCorrection, resetCommFixtureClock } from '@/lib/comms/fixtures';
+import {
+  makeCommAccount,
+  makeCommCorrection,
+  makeCommsSeed,
+  resetCommFixtureClock,
+} from '@/lib/comms/fixtures';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { CommAccount, CommCorrection } from '@/lib/types';
 
@@ -13,6 +18,7 @@ jest.mock('@/lib/api-client');
 
 const mockPruneExample = jest.mocked(apiClient.pruneCommExample);
 const mockPurge = jest.mocked(apiClient.purgeComms);
+const mockFetchSnapshot = jest.mocked(apiClient.fetchCommsSnapshot);
 
 const MESSAGE_ID = 'd4e5f6a7-b8c9-4d0e-8f1a-2b3c4d5e6f70';
 
@@ -22,6 +28,9 @@ let ACCOUNT: CommAccount;
 
 beforeEach(() => {
   resetCommFixtureClock();
+  // A purge now goes through the comms store's action, which reconciles afterwards — give it
+  // somewhere harmless to land rather than a hanging automock promise.
+  mockFetchSnapshot.mockResolvedValue(makeCommsSeed());
   ACCOUNT = makeCommAccount('personal');
   TIER_CHANGE = makeCommCorrection({
     account_label: 'personal',
@@ -154,6 +163,9 @@ describe('the purge', () => {
     expect(mockPurge).toHaveBeenCalledWith({ message_id: MESSAGE_ID });
     expect(dialog).not.toBeInTheDocument();
     expect(await screen.findByText('Purged 1 message')).toBeInTheDocument();
+    // Goes through the comms store's `purge` action, not a bare API call: the store re-reads
+    // the snapshot once the purge lands.
+    expect(mockFetchSnapshot).toHaveBeenCalled();
   });
 
   it('sends a date selector as an instant, which is what the API takes', async () => {
