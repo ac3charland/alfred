@@ -1,27 +1,22 @@
 import type { Page } from '@playwright/test';
 
+import { COMMS_LIVE_WINDOW_MS, COMMS_POLL_MS } from '@/lib/comms';
 import type { CommsSeed } from '@/lib/types';
 
 import { makeCommAccount, makeCommMessage } from './support/constants';
 import { expect, test } from './support/fixtures';
-import {
-  installRealtimeStub,
-  pushRowUpdate,
-  realtimeJoinToken,
-  waitForRealtimeJoin,
-} from './support/realtime';
 
 /**
- * ALF-258 — the Comms queue updates itself while it is open.
+ * ALF-258 — the Comms queue stays an accurate, trustworthy reflection of the server.
  *
- * Every Comms write comes from somewhere other than this tab (the pollers, the classifier sweep),
- * so the queue is only ever as fresh as its realtime channels. A channel that joins before the
- * browser client has read the session carries no token, the server subscribes it as `anon`, and
- * RLS delivers it nothing — a queue that looks live and never moves. These drive the real client
- * against a faked socket (see `support/realtime.ts`), so what they check is the frame it sends.
+ * Comms has no Realtime subscription: every source it mirrors is minutes-granular (the Gmail
+ * poll every 3 minutes, the classifier sweep every 2, the Mac daemon roughly once a minute), so
+ * instead the view POLLS `GET /api/comms/snapshot` on a timer while the tab is visible, plus a
+ * handful of triggers that mean it may have missed something sooner: the tab returning to the
+ * front, a bfcache-restored page, coming back online, a failed optimistic write, and "Show more"
+ * paging the shelf. These drive the backend directly (`seed(...)`, with no push involved) and
+ * make the view re-read by returning it to the front, the same way a real tab would notice.
  */
-
-const COMMS_TABLES = ['comm_messages', 'comm_accounts', 'comm_classifier_health', 'comm_verdicts'];
 
 const PERSONAL = makeCommAccount('personal', {
   id: '11111111-1111-4111-8111-111111111111',
@@ -45,7 +40,7 @@ async function returnToTab(page: Page): Promise<void> {
   });
 }
 
-/** The next snapshot re-read the view makes — what it would replace a pushed row with. */
+/** The next snapshot re-read the view makes — what it would replace a stale row with. */
 async function nextSnapshot(page: Page): Promise<CommsSeed> {
   const response = await page.waitForResponse((candidate) =>
     candidate.url().includes('/api/comms/snapshot'),
@@ -53,77 +48,48 @@ async function nextSnapshot(page: Page): Promise<CommsSeed> {
   return (await response.json()) as CommsSeed;
 }
 
-test('every Comms channel joins as the signed-in user, never anon', async ({ page, seed }) => {
-  await seed({ commAccounts: [PERSONAL] });
-  await installRealtimeStub(page);
-  await page.goto('/comms');
-
-  for (const table of COMMS_TABLES) {
-    await waitForRealtimeJoin(page, table);
-    const token = await realtimeJoinToken(page, table);
-    expect(token, `${table} joined with no session token`).toBeDefined();
-    expect(token).not.toBe('sb_publishable_mock');
-  }
-});
-
-test('a row the classifier re-tiers moves into the open queue without a reload', async ({
+test('a row the classifier re-tiers moves into the open queue on the next re-read', async ({
   page,
   seed,
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
-  await installRealtimeStub(page);
-  const joined = nextSnapshot(page);
   await page.goto('/comms');
-
+  // Hydration has to finish before a synthetic `visibilitychange` has a listener to reach.
+  await page.waitForTimeout(300);
   const today = page.getByRole('region', { name: 'Today' });
   await expect(today.getByText('Lunch Thursday?')).toBeHidden();
 
-  await waitForRealtimeJoin(page, 'comm_messages');
-  await joined;
-  // The push reports a write, so the backend holds it too — or the re-read after it reverts it.
+  // Written straight to the backend — no push, the way the classifier sweep actually writes it.
   const retiered = { ...SHELVED, tier: 'today' as const };
   await seed({ commAccounts: [PERSONAL], commMessages: [retiered] });
   const settled = nextSnapshot(page);
-  await pushRowUpdate(page, 'comm_messages', retiered);
+  await returnToTab(page);
 
   await expect(today.getByText('Lunch Thursday?')).toBeVisible();
-  // The counts are re-read once the burst settles; the row stays where the push put it.
   const { messages } = await settled;
   expect(messages).toContainEqual(expect.objectContaining({ id: SHELVED.id, tier: 'today' }));
-  await expect(today.getByText('Lunch Thursday?')).toBeVisible();
 });
 
 test('the last-ping line under the dots follows a poll as it lands', async ({ page, seed }) => {
   await seed({ commAccounts: [PERSONAL] });
-  await installRealtimeStub(page);
-  const joined = nextSnapshot(page);
   await page.goto('/comms');
+  // Hydration has to finish before a synthetic `visibilitychange` has a listener to reach.
+  await page.waitForTimeout(300);
 
   const ping = page.getByTestId('last-ping');
   await expect(ping).toHaveText('Last ping 2h ago · personal');
 
-  await waitForRealtimeJoin(page, 'comm_accounts');
-  await joined;
   const polled = { ...PERSONAL, last_seen_at: new Date().toISOString() };
   await seed({ commAccounts: [polled] });
-  await pushRowUpdate(page, 'comm_accounts', polled);
-
-  await expect(ping).toHaveText('Last ping just now · personal');
-  // A re-read after the push agrees with it rather than reverting it.
   const reread = nextSnapshot(page);
   await returnToTab(page);
+
+  await expect(ping).toHaveText('Last ping just now · personal');
   const { accounts } = await reread;
   expect(accounts).toContainEqual(
     expect.objectContaining({ id: PERSONAL.id, last_seen_at: polled.last_seen_at }),
   );
-  await expect(ping).toHaveText('Last ping just now · personal');
 });
-
-/**
- * The other half of "trustworthy": the socket can't replay what it missed, so the view re-reads
- * whenever it may have missed something. These write to the backend with NO realtime push — the
- * change the stream dropped — and check the view catches up anyway, or says it can't.
- */
 
 const ARRIVED = makeCommMessage(PERSONAL.id, {
   id: '33333333-3333-4333-8333-333333333333',
@@ -139,43 +105,41 @@ test('a message that landed while the tab was away is there when it comes back',
   seed,
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
-  await installRealtimeStub(page);
-  const joined = nextSnapshot(page);
   await page.goto('/comms');
-  await waitForRealtimeJoin(page, 'comm_messages');
-  // The read the join makes has landed, so only the return's re-read can bring ARRIVED in.
-  await joined;
+  // Hydration has to finish before a synthetic `visibilitychange` has a listener to reach.
+  await page.waitForTimeout(300);
   const asap = page.getByRole('region', { name: 'ASAP' });
   await expect(asap.getByText('Needs the contract signed before noon.')).toBeHidden();
 
-  // Written while the socket was down: nothing is pushed for it.
+  // Written while the tab was away: nothing is pushed for it, and no poll has fired yet either.
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED, ARRIVED] });
   await returnToTab(page);
 
   await expect(asap.getByText('Needs the contract signed before noon.')).toBeVisible();
 });
 
-test('says it is not live while it cannot re-read, and stops once it can', async ({
+test('says it is not live once every poll fails for long enough, and stops once one lands', async ({
   page,
   seed,
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
-  await installRealtimeStub(page);
-  const joined = nextSnapshot(page);
+  // Installed before navigating, so every timer the store creates on mount (the poll interval,
+  // the view's own ticking clock) is fake from the start — one installed after hydration leaves
+  // those already-real timers deaf to `fastForward`, since it never advances real wall time.
+  await page.clock.install();
   await page.goto('/comms');
-  await waitForRealtimeJoin(page, 'comm_messages');
-  await joined;
+  await page.waitForTimeout(300);
   // Scoped by text: Next's own route announcer is an `alert` too.
   const notLive = page.getByRole('alert').filter({ hasText: 'Not live' });
   await expect(notLive).toBeHidden();
 
   await page.route('**/api/comms/snapshot**', (route) => route.abort());
-  await returnToTab(page);
+  // Enough failed polls, back to back, to walk the clock just past the live window.
+  await page.clock.fastForward(COMMS_LIVE_WINDOW_MS + COMMS_POLL_MS);
   await expect(notLive).toHaveText(/^Not live — this is what was here/);
 
-  // Joined throughout, so the next read that lands makes it live again.
   await page.unroute('**/api/comms/snapshot**');
-  await returnToTab(page);
+  await page.clock.fastForward(COMMS_POLL_MS);
   await expect(notLive).toBeHidden();
 });
 

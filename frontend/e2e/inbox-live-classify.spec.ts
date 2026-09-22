@@ -1,6 +1,11 @@
 import { makeFolder, makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
-import { installRealtimeStub, pushRowUpdate, waitForRealtimeJoin } from './support/realtime';
+import {
+  installRealtimeStub,
+  pushRowUpdate,
+  realtimeJoinToken,
+  waitForRealtimeJoin,
+} from './support/realtime';
 
 /**
  * ALF-196 — the Inbox updates itself as the classifier judges its rows.
@@ -26,6 +31,22 @@ const VERDICT = {
   classified_prompt_version: 1,
   classified_guess: { item_type: 'task', priority: 'high' },
 };
+
+/**
+ * ALF-258. A channel's join payload is frozen at `subscribe()`, and on a fresh page load the
+ * socket does not hold the session's JWT yet — so a channel that joined too early carries no
+ * token, joins as `anon`, and `to authenticated` RLS delivers it nothing.
+ */
+test('the items channel joins as the signed-in user, never anon', async ({ page, seed }) => {
+  await seed({ folders: [HEALTH], items: [CAPTURE] });
+  await installRealtimeStub(page);
+  await page.goto('/?view=inbox');
+
+  await waitForRealtimeJoin(page, 'items');
+  const token = await realtimeJoinToken(page, 'items');
+  expect(token, 'items joined with no session token').toBeDefined();
+  expect(token).not.toBe('sb_publishable_mock');
+});
 
 test('a verdict lands on an open Inbox row, labels and all', async ({ page, seed }) => {
   await seed({ folders: [HEALTH], items: [CAPTURE] });
