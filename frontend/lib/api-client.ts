@@ -586,7 +586,10 @@ export function fetchCommMessages(query: CommMessagesQuery): Promise<CommMessage
  * missed something — and, asked for more shelf rows, how "Show more" pages the shelf (ALF-258).
  */
 export function fetchCommsSnapshot(shelf: number): Promise<CommsSeed> {
-  return apiRequest<CommsSeed>(`/api/comms/snapshot?shelf=${String(shelf)}`);
+  // A read that hangs would hold every later one behind it, so after 15s it fails — and is retried.
+  return apiRequest<CommsSeed>(`/api/comms/snapshot?shelf=${String(shelf)}`, {
+    signal: AbortSignal.timeout(15_000),
+  });
 }
 
 /**
