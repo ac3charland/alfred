@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test';
+
 import { makeCommAccount, makeCommMessage } from './support/constants';
 import { expect, test } from './support/fixtures';
 import {
@@ -79,4 +81,85 @@ test('the last-ping line under the dots follows a poll as it lands', async ({ pa
   });
 
   await expect(ping).toHaveText('Last ping just now · personal');
+});
+
+/**
+ * The other half of "trustworthy": the socket can't replay what it missed, so the view re-reads
+ * whenever it may have missed something. These write to the backend with NO realtime push — the
+ * change the stream dropped — and check the view catches up anyway, or says it can't.
+ */
+
+const ARRIVED = makeCommMessage(PERSONAL.id, {
+  id: '33333333-3333-4333-8333-333333333333',
+  tier: 'asap',
+  judged_by: 'model',
+  sender_name: 'Priya R.',
+  subject: 'Contract',
+  ask: 'Needs the contract signed before noon.',
+});
+
+/** What a tab coming back to the front fires. */
+async function returnToTab(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+
+test('a message that landed while the tab was away is there when it comes back', async ({
+  page,
+  seed,
+}) => {
+  await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
+  await installRealtimeStub(page);
+  await page.goto('/comms');
+  await waitForRealtimeJoin(page, 'comm_messages');
+  const asap = page.getByRole('region', { name: 'ASAP' });
+  await expect(asap.getByText('Needs the contract signed before noon.')).toBeHidden();
+
+  // Written while the socket was down: nothing is pushed for it.
+  await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED, ARRIVED] });
+  await returnToTab(page);
+
+  await expect(asap.getByText('Needs the contract signed before noon.')).toBeVisible();
+});
+
+test('says it is not live while it cannot re-read, and stops once it can', async ({
+  page,
+  seed,
+}) => {
+  await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
+  await installRealtimeStub(page);
+  await page.goto('/comms');
+  await waitForRealtimeJoin(page, 'comm_messages');
+  // Scoped by text: Next's own route announcer is an `alert` too.
+  const notLive = page.getByRole('alert').filter({ hasText: 'Not live' });
+  await expect(notLive).toBeHidden();
+
+  await page.route('**/api/comms/snapshot**', (route) => route.abort());
+  await returnToTab(page);
+  await expect(notLive).toHaveText(/^Not live — this is what was here/);
+
+  await page.unroute('**/api/comms/snapshot**');
+  await returnToTab(page);
+  await expect(notLive).toBeHidden();
+});
+
+test('the shelf loads a page at a time, counting all of it', async ({ page, seed }) => {
+  const shelf = Array.from({ length: 60 }, (_unused, index) =>
+    makeCommMessage(PERSONAL.id, {
+      tier: 'fyi',
+      judged_by: 'model',
+      subject: `Receipt ${String(index + 1)}`,
+      received_at: new Date(Date.now() - (index + 1) * 60 * 1000).toISOString(),
+    }),
+  );
+  await seed({ commAccounts: [PERSONAL], commMessages: shelf });
+  await page.goto('/comms');
+
+  await page.getByRole('button', { name: /FYI · 60 messages/ }).click();
+  await expect(page.getByTestId('comms-row')).toHaveCount(50);
+
+  await page.getByRole('button', { name: 'Show more (10 older)' }).click();
+  await expect(page.getByTestId('comms-row')).toHaveCount(60);
+  await expect(page.getByRole('button', { name: /Show more/ })).toBeHidden();
 });
