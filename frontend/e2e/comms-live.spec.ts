@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
 
+import type { CommsSeed } from '@/lib/types';
+
 import { makeCommAccount, makeCommMessage } from './support/constants';
 import { expect, test } from './support/fixtures';
 import {
@@ -36,6 +38,21 @@ const SHELVED = makeCommMessage(PERSONAL.id, {
   ask: 'Wants to know if Thursday lunch works.',
 });
 
+/** What a tab coming back to the front fires. */
+async function returnToTab(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+
+/** The next snapshot re-read the view makes — what it would replace a pushed row with. */
+async function nextSnapshot(page: Page): Promise<CommsSeed> {
+  const response = await page.waitForResponse((candidate) =>
+    candidate.url().includes('/api/comms/snapshot'),
+  );
+  return (await response.json()) as CommsSeed;
+}
+
 test('every Comms channel joins as the signed-in user, never anon', async ({ page, seed }) => {
   await seed({ commAccounts: [PERSONAL] });
   await installRealtimeStub(page);
@@ -55,31 +72,50 @@ test('a row the classifier re-tiers moves into the open queue without a reload',
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
   await installRealtimeStub(page);
+  const joined = nextSnapshot(page);
   await page.goto('/comms');
 
   const today = page.getByRole('region', { name: 'Today' });
   await expect(today.getByText('Lunch Thursday?')).toBeHidden();
 
   await waitForRealtimeJoin(page, 'comm_messages');
-  await pushRowUpdate(page, 'comm_messages', { ...SHELVED, tier: 'today' });
+  await joined;
+  // The push reports a write, so the backend holds it too — or the re-read after it reverts it.
+  const retiered = { ...SHELVED, tier: 'today' as const };
+  await seed({ commAccounts: [PERSONAL], commMessages: [retiered] });
+  const settled = nextSnapshot(page);
+  await pushRowUpdate(page, 'comm_messages', retiered);
 
+  await expect(today.getByText('Lunch Thursday?')).toBeVisible();
+  // The counts are re-read once the burst settles; the row stays where the push put it.
+  const { messages } = await settled;
+  expect(messages).toContainEqual(expect.objectContaining({ id: SHELVED.id, tier: 'today' }));
   await expect(today.getByText('Lunch Thursday?')).toBeVisible();
 });
 
 test('the last-ping line under the dots follows a poll as it lands', async ({ page, seed }) => {
   await seed({ commAccounts: [PERSONAL] });
   await installRealtimeStub(page);
+  const joined = nextSnapshot(page);
   await page.goto('/comms');
 
   const ping = page.getByTestId('last-ping');
   await expect(ping).toHaveText('Last ping 2h ago · personal');
 
   await waitForRealtimeJoin(page, 'comm_accounts');
-  await pushRowUpdate(page, 'comm_accounts', {
-    ...PERSONAL,
-    last_seen_at: new Date().toISOString(),
-  });
+  await joined;
+  const polled = { ...PERSONAL, last_seen_at: new Date().toISOString() };
+  await seed({ commAccounts: [polled] });
+  await pushRowUpdate(page, 'comm_accounts', polled);
 
+  await expect(ping).toHaveText('Last ping just now · personal');
+  // A re-read after the push agrees with it rather than reverting it.
+  const reread = nextSnapshot(page);
+  await returnToTab(page);
+  const { accounts } = await reread;
+  expect(accounts).toContainEqual(
+    expect.objectContaining({ id: PERSONAL.id, last_seen_at: polled.last_seen_at }),
+  );
   await expect(ping).toHaveText('Last ping just now · personal');
 });
 
@@ -97,13 +133,6 @@ const ARRIVED = makeCommMessage(PERSONAL.id, {
   subject: 'Contract',
   ask: 'Needs the contract signed before noon.',
 });
-
-/** What a tab coming back to the front fires. */
-async function returnToTab(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
-}
 
 test('a message that landed while the tab was away is there when it comes back', async ({
   page,
