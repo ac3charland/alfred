@@ -122,11 +122,15 @@ The shape generalizes: put the "may this payload touch the store?" rule in a **p
 suite gates, not in branches inside the subscription callback.
 
 **Comms polls instead of subscribing — its sources are minutes-granular, so a socket buys almost
-nothing.** The three tables above have another BROWSER as the second writer; Comms' four
-(`comm_messages`, `comm_accounts`, `comm_classifier_health`, `comm_verdicts`) have a Worker or the
-Mac daemon polling on a 1–3 minute cadence, so the machinery a Realtime subscription needs to stay
-honest (join bookkeeping, a wake-from-sleep detector, a settle debounce) bought seconds of latency
-at the cost of a class of bugs review kept finding. `CommsProvider` instead re-reads the whole view
+nothing.** The split isn't who writes — a Worker writes both groups — it's what a stale view
+costs. The three tables above get Realtime because their writer's own latency is near-instant (a
+PR transition, a spec merge, a classifier verdict), so a push is what makes the update visible the
+moment it happens; delaying it to a poll would itself be the lag. Comms' four (`comm_messages`,
+`comm_accounts`, `comm_classifier_health`, `comm_verdicts`) are written by a Worker or the Mac
+daemon on a 1–3 minute cadence regardless of transport, so nothing there is time-critical at
+second granularity, and the machinery a Realtime subscription needs to stay honest (join
+bookkeeping, a wake-from-sleep detector, a settle debounce) bought seconds of latency at the cost
+of a class of bugs review kept finding. `CommsProvider` instead re-reads the whole view
 (`GET /api/comms/snapshot`) and **replaces** it on a `setInterval` (`COMMS_POLL_MS`, `lib/comms/live.ts`)
 while the tab is visible, plus whenever it may have missed something sooner: the tab returns
 (`visibilitychange`, or a bfcache-restored `pageshow`; not `focus`, which a visible tab fires
