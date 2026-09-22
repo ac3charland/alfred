@@ -239,13 +239,35 @@ describe('commsReducer', () => {
     expect(up).toMatchObject({ live: true, currentAsOf: null });
   });
 
-  it('starts a shell whose read failed not live, as of that read', () => {
+  it('starts a shell whose read failed unloaded, dated by nothing — least of all the server clock', () => {
     const seed = makeCommsSeed({ readAt: '2026-09-09T12:00:00.000Z' });
+    const unloaded = stateFromSeed(seed, true);
 
-    expect(stateFromSeed(seed, true)).toMatchObject({
+    expect(unloaded).toMatchObject({ loaded: false, live: false, currentAsOf: null });
+    expect(commsReducer(unloaded, { type: 'stale', at: '2026-09-09T12:05:00.000Z' })).toBe(
+      unloaded,
+    );
+    expect(empty.loaded).toBe(true);
+  });
+
+  it('is loaded by the first read that lands, dated to it unless it can vouch for the stream', () => {
+    const unloaded = stateFromSeed(makeCommsSeed(), true);
+    const startedAt = '2026-09-09T12:08:00.000Z';
+
+    expect(commsReducer(unloaded, { type: 'read', live: false, startedAt })).toMatchObject({
+      loaded: true,
       live: false,
-      currentAsOf: '2026-09-09T12:00:00.000Z',
+      currentAsOf: startedAt,
     });
+    expect(commsReducer(unloaded, { type: 'read', live: true, startedAt })).toMatchObject({
+      loaded: true,
+      live: true,
+      currentAsOf: null,
+    });
+    // A snapshot alone replaces the rows; it is the read landing that says anything is loaded.
+    expect(
+      commsReducer(unloaded, { type: 'snapshot', seed: makeCommsSeed(), keep: new Set() }).loaded,
+    ).toBe(false);
   });
 
   it('replaces the classifier health row wholesale', () => {
@@ -1092,6 +1114,55 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
     expect(result.current.byTier.today).toEqual([]);
   });
 
+  it('re-reads after a write fails, since its row was held back from any read meanwhile', async () => {
+    const { result } = await renderJoined();
+    const write = { reject: (_error: Error) => {} };
+    mockApi.clearCommMessage.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        write.reject = reject;
+      }),
+    );
+    let clearing: Promise<unknown> = Promise.resolve();
+    act(() => {
+      clearing = result.current.actions.clearMessage(QUEUED.id, 'not_replying').catch(() => {});
+    });
+    // The server re-judged the row while the clear was out; the read that saw it held the row.
+    const rejudged = { ...QUEUED, tier: 'asap' as const };
+    mockApi.fetchCommsSnapshot.mockResolvedValue(makeCommsSeed({ messages: [rejudged, SHELVED] }));
+    act(() => {
+      setTabHidden(false);
+    });
+    await waitFor(() => {
+      expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      write.reject(new Error('boom'));
+      await clearing;
+    });
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(3);
+    await waitFor(() => {
+      expect(result.current.byTier.asap.map((message) => message.id)).toEqual([QUEUED.id]);
+    });
+  });
+
+  it('takes a read that lands as proof it is online, whatever navigator.onLine says', async () => {
+    const { result } = await renderJoined();
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('CHANNEL_ERROR');
+    });
+    // `onLine` has false negatives; the read landing is the evidence.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    const read = holdSnapshot();
+    act(() => {
+      mockSubscribeCallbacks.get('comm_messages')?.('SUBSCRIBED');
+    });
+    await read.resolve(LATER);
+
+    expect(result.current.sync.live).toBe(true);
+  });
+
   it('runs one more read when a trigger lands mid-read, rather than dropping it', async () => {
     await renderJoined();
     const read = holdSnapshot();
@@ -1233,6 +1304,55 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
       jest.advanceTimersByTime(COMMS_READ_RETRY_MS * 3);
     });
 
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  const HOUR = 60 * 60 * 1000;
+
+  it('knows the machine slept, dates "not live" to the last tick before it did, and rejoins', async () => {
+    jest.useFakeTimers();
+    const { result } = await renderJoined();
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_READ_RETRY_MS));
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+    const asleepAt = Date.now();
+    const joinsBeforeSleep = mockJoinedTables.length;
+
+    // Timers freeze while it sleeps; the socket may be dead without phoenix knowing yet.
+    jest.setSystemTime(asleepAt + HOUR);
+    const read = holdSnapshot();
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_READ_RETRY_MS));
+
+    const since = Date.parse(result.current.sync.notLiveSince ?? '');
+    expect(result.current.sync.live).toBe(false);
+    expect(since).toBeLessThanOrEqual(asleepAt);
+    expect(since).toBeGreaterThan(asleepAt - COMMS_READ_RETRY_MS);
+    // The channels that slept aren't trusted: fresh ones join, and their join is what re-reads.
+    expect(mockJoinedTables).toHaveLength(joinsBeforeSleep + 4);
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
+    await read.resolve(LATER);
+    expect(result.current.sync.live).toBe(true);
+  });
+
+  it('takes no gap behind a hidden tab for sleep — its timers are only throttled', async () => {
+    jest.useFakeTimers();
+    const { result } = await renderJoined();
+    act(() => {
+      setTabHidden(true);
+    });
+    jest.setSystemTime(Date.now() + HOUR);
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_READ_RETRY_MS));
+    expect(result.current.sync.live).toBe(true);
+
+    // Throttled to one tick a minute or less, so the gap after its last hidden tick is no proof either.
+    jest.setSystemTime(Date.now() + HOUR);
+    const read = holdSnapshot();
+    act(() => {
+      setTabHidden(false);
+    });
+    await read.resolve(LATER);
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_READ_RETRY_MS));
+
+    expect(result.current.sync.live).toBe(true);
     expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(2);
   });
 
@@ -1447,26 +1567,35 @@ describe('CommsProvider — re-reading the view whenever it may have missed some
     expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(4);
   });
 
-  it('starts a shell whose read failed not live, and reads without waiting for its channels', async () => {
+  it('starts a shell whose read failed unloaded, and reads without waiting for its channels', async () => {
     void holdRealtimeAuth(mockSetAuth);
+    const failing = holdSnapshot();
     const read = holdSnapshot();
     const failed = makeCommsSeed({ readAt: '2026-01-01T00:00:00.000Z' });
     function Wrapper({ children }: { children: React.ReactNode }) {
       return (
-        <CommsProvider initialSeed={failed} initialStale>
+        <CommsProvider initialSeed={failed} initialFailed>
           {children}
         </CommsProvider>
       );
     }
     const { result } = renderHook(() => useStore(), { wrapper: Wrapper });
 
-    expect(result.current.sync).toMatchObject({ live: false, notLiveSince: failed.readAt });
+    // Nothing has loaded, so there is no moment the view was current to date it by.
+    expect(result.current.sync).toMatchObject({ loaded: false, live: false });
+    expect(result.current.sync.notLiveSince).toBeUndefined();
     expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+    await failing.reject();
+    expect(result.current.sync).toMatchObject({ loaded: false, notLiveSince: undefined });
+
+    act(() => {
+      setTabHidden(false);
+    });
     await read.resolve(LATER);
 
     // The rows are in, but with no channel joined the view still can't say it is live.
     expect(result.current.byTier.asap.map((message) => message.id)).toEqual([ARRIVED.id]);
-    expect(result.current.sync.live).toBe(false);
+    expect(result.current.sync).toMatchObject({ loaded: true, live: false });
     expect(Date.parse(result.current.sync.notLiveSince ?? '')).toBeGreaterThan(
       Date.parse(failed.readAt),
     );

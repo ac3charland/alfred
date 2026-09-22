@@ -5106,8 +5106,9 @@ describe('a verdict landing live', () => {
       emitVerdict();
       expect(rowBody('call the dentist')).toHaveClass('ring-muted-foreground/50');
 
+      // Only the pending ones: the Comms store the providers mount keeps an interval running.
       act(() => {
-        jest.runAllTimers();
+        jest.runOnlyPendingTimers();
       });
       expect(rowBody('call the dentist')).not.toHaveClass('ring-muted-foreground/50');
     } finally {

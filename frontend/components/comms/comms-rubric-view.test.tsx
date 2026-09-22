@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import * as apiClient from '@/lib/api-client';
 import { makeCommRubric, resetCommFixtureClock } from '@/lib/comms/fixtures';
+import { NOW_TICK_MS } from '@/lib/hooks/use-now';
 import { pinClock } from '@/lib/pin-clock';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { CommRubric } from '@/lib/types';
@@ -144,11 +145,11 @@ describe('CommsRubricView', () => {
 
   it('ticks a single clock for the whole view, not one per child', () => {
     // `comms-format.ts` names the convention: the view owns one ticking instant and hands the
-    // same one to every consumer — `useNow`'s interval is the only thing in the tree that calls
-    // `setInterval`, so one subscription per mount is the signature of that being followed.
+    // same one to every consumer — so one `useNow` interval per mount is the signature of that
+    // being followed. (The Comms store's own re-read timer runs at another period.)
     const setIntervalSpy = jest.spyOn(globalThis, 'setInterval');
     renderView([V2, V1]);
 
-    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(setIntervalSpy.mock.calls.filter(([, ms]) => ms === NOW_TICK_MS)).toHaveLength(1);
   });
 });
