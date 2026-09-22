@@ -67,7 +67,11 @@ the nextjs skill, "Client-side view switching." **Revisit** (scoped/paginated se
 or a normalized cache) only when the dataset grows large enough that filtering everything in
 memory hurts.
 
-**The one exception: big documents seed lazily.** `weekly_plans` rows are ~40 KB of HTML each
+**Comms pages its archive.** Its store holds everything above FYI in full but the 60-day shelf a
+page at a time, with the shelf's size as a server count — so the re-read above stays ~100 KB, not
+megabytes. "Show more" is that same read asked for more rows.
+
+**Big documents seed lazily.** `weekly_plans` rows are ~40 KB of HTML each
 and the archive grows by one a week, so seeding them all would inflate *every* page load,
 including the ones that never open `/plan`. The layout seeds the **index** (ids + timestamps,
 `html` excluded from the select) plus the **latest** document; `WeeklyPlanProvider` pulls an
@@ -118,18 +122,17 @@ The shape generalizes: put the "may this payload touch the store?" rule in a **p
 suite gates, not in branches inside the subscription callback.
 
 **Realtime is fire-and-forget, so a store it keeps current needs a way back from a gap.** A socket
-that lapses — a backgrounded tab throttled past the heartbeat, a machine that slept — drops every
-change made while it was down and replays none on reconnect, leaving the seed frozen for as long
-as the tab stays open. Anything read against a TICKING CLOCK then turns that silence into a false
-alarm on its own: a `last_seen_at` the tab stopped hearing about decays into "stale" while the
-source polls fine (ALF-227 — the Comms health dots). So pair the subscription with a re-read of
-whatever the gap can stale-end, on both signals: the tab returning to the foreground
-(`visibilitychange` / `focus`), and the channel REJOINING, which is the one a machine waking with
-the tab in front gives you (`subscribe(status)`, ignoring the first `SUBSCRIBED` — that is the
-initial join, beside a fresh seed). `CommsProvider` re-reads `GET /api/comms/health` that way.
-Recovery must not be worse than the staleness: **upsert, never replace** (a row leaving is the
-DELETE payload's business), and a **failed re-read changes nothing and toasts nothing** — a
-stale reading beats a blanked roster, and the next trigger retries.
+that lapses — a backgrounded tab, a machine asleep, a suspended phone app — drops every change
+made while it was down and replays none; so does the gap between the server seed and the channels
+joining. `CommsProvider` is the pattern: re-read the whole view (`GET /api/comms/snapshot`) and
+**replace** it whenever all channels (re)join — the first join included — the tab returns
+(`visibilitychange` / `focus` / `pageshow`), the browser comes back `online`, or a burst of stream
+changes settles (its counts are server-side). Three guards keep the re-read itself honest: dispatches
+made while it is in flight are recorded and replayed over the snapshot; rows with a write in flight
+keep their optimistic value; a trigger mid-read runs one more read (a loop — recursion trips
+`react-hooks/immutability`). A failed read replaces and toasts nothing but marks the view **not
+live**, and the header says so: a stale view that looks current is the one state it may never
+show (ALF-227, ALF-258).
 
 ## A derived status must mirror the query that does the work
 
