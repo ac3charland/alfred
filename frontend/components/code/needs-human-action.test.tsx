@@ -16,7 +16,11 @@ const mockReorderCode = jest.mocked(api.reorderCode);
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => {
     const channel = { on: () => channel, subscribe: () => channel };
-    return { channel: () => channel, removeChannel: () => Promise.resolve('ok') };
+    return {
+      realtime: { setAuth: () => Promise.resolve() },
+      channel: () => channel,
+      removeChannel: () => Promise.resolve('ok'),
+    };
   },
 }));
 

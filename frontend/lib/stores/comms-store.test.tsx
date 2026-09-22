@@ -10,6 +10,7 @@ import {
   makeCommVerdict,
   resetCommFixtureClock,
 } from '@/lib/comms/fixtures';
+import { holdRealtimeAuth } from '@/lib/supabase/hold-realtime-auth';
 import type {
   CommAccount,
   CommClassifierHealth,
@@ -45,8 +46,13 @@ const mockRealtimeHandlers = new Map<string, (payload: never) => void>();
 // uses to replay a rejoin after the socket dropped.
 const mockSubscribeCallbacks = new Map<string, (status: string) => void>();
 const mockRemoveChannel = jest.fn();
+// The tables whose channel has actually been JOINED, in join order, and the realtime auth call
+// that has to come first — the seam the ALF-258 tests use to hold the session token back.
+const mockJoinedTables: string[] = [];
+const mockSetAuth = jest.fn(() => Promise.resolve());
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
+    realtime: { setAuth: mockSetAuth },
     channel: () => {
       let table: string | undefined;
       const chan = {
@@ -58,6 +64,7 @@ jest.mock('@/lib/supabase/client', () => ({
           return chan;
         },
         subscribe: (callback?: (status: string) => void) => {
+          if (table !== undefined) mockJoinedTables.push(table);
           if (callback !== undefined && table !== undefined) {
             mockSubscribeCallbacks.set(table, callback);
             // The real client reports the join through the same callback, so the double does
@@ -93,6 +100,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockRealtimeHandlers.clear();
   mockSubscribeCallbacks.clear();
+  mockJoinedTables.length = 0;
 });
 
 describe('commsReducer', () => {
@@ -437,6 +445,42 @@ describe('comm_verdicts realtime subscription', () => {
     });
 
     expect(result.current.verdicts[SEEDED_VERDICT.id]).toBeUndefined();
+  });
+});
+
+/**
+ * ALF-258. A channel's join payload is frozen at `subscribe()`, and on a fresh page load the
+ * socket does not hold the session's JWT yet — so every table joined as `anon`, which RLS lets
+ * see nothing, and supabase-js never re-sent the token because, by the time the join completed,
+ * it had not "changed". The queue then sat still until a hard reload.
+ */
+describe('CommsProvider — joining realtime as the signed-in user', () => {
+  it('joins no channel until the socket holds the session token', async () => {
+    const releaseAuth = holdRealtimeAuth(mockSetAuth);
+    renderHook(() => useStore(), { wrapper: makeWrapper() });
+
+    // No argument: the token comes from the session, not a pinned one that would never refresh.
+    expect(mockSetAuth).toHaveBeenCalledWith();
+    expect(mockJoinedTables).toEqual([]);
+
+    await releaseAuth();
+
+    expect(mockJoinedTables).toEqual([
+      'comm_messages',
+      'comm_accounts',
+      'comm_classifier_health',
+      'comm_verdicts',
+    ]);
+  });
+
+  it('joins nothing when it unmounts before the token arrives', async () => {
+    const releaseAuth = holdRealtimeAuth(mockSetAuth);
+    const { unmount } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    unmount();
+
+    await releaseAuth();
+
+    expect(mockJoinedTables).toEqual([]);
   });
 });
 
@@ -846,7 +890,11 @@ describe('CommsProvider — reconciling the health surface after a realtime gap'
   it('re-reads it when the channel rejoins — the socket dropped while the tab stayed in front', async () => {
     mockApi.fetchCommsHealth.mockResolvedValue({ accounts: [FRESH], health: FRESH_HEALTH });
     const { result } = renderHook(() => useStore(), { wrapper });
-    // The subscribe that ran on mount is the FIRST join, not a rejoin: the seed is already fresh.
+    // The join waits for the session token (ALF-258); it is the FIRST join, not a rejoin — the
+    // seed is already fresh.
+    await waitFor(() => {
+      expect(mockSubscribeCallbacks.get('comm_accounts')).toBeDefined();
+    });
     expect(mockApi.fetchCommsHealth).not.toHaveBeenCalled();
 
     act(() => {

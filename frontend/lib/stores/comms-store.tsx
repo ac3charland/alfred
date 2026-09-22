@@ -13,6 +13,7 @@ import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, capturedFields, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { createClient } from '@/lib/supabase/client';
+import { joinWhenAuthenticated } from '@/lib/supabase/realtime';
 import type {
   CommAccount,
   CommClassifierHealth,
@@ -456,8 +457,7 @@ export function CommsProvider({
           const action = messageStreamAction(payload);
           if (action !== null) dispatch({ type: 'messages', action });
         },
-      )
-      .subscribe();
+      );
 
     const accountsChannel = supabase
       .channel('comm_accounts')
@@ -468,15 +468,7 @@ export function CommsProvider({
           const action = accountStreamAction(payload);
           if (action !== null) dispatch({ type: 'accounts', action });
         },
-      )
-      // The first SUBSCRIBED is this channel's initial join, and the seed it arrives beside is
-      // already current; every one after it is a REJOIN, which means the socket was down and
-      // whatever changed while it was is lost. That is exactly when to re-read.
-      .subscribe((status) => {
-        if (status !== REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) return;
-        if (joined) reconcileHealth();
-        joined = true;
-      });
+      );
 
     const healthChannel = supabase
       .channel('comm_classifier_health')
@@ -486,8 +478,7 @@ export function CommsProvider({
         (payload: RealtimePostgresChangesPayload<CommClassifierHealth>) => {
           dispatch({ type: 'health', health: healthStreamValue(payload) });
         },
-      )
-      .subscribe();
+      );
 
     const verdictsChannel = supabase
       .channel('comm_verdicts')
@@ -498,10 +489,24 @@ export function CommsProvider({
           const action = verdictStreamAction(payload);
           if (action !== null) dispatch({ type: 'verdicts', action });
         },
-      )
-      .subscribe();
+      );
+
+    const cancelJoin = joinWhenAuthenticated(supabase.realtime, () => {
+      channel.subscribe();
+      // The first SUBSCRIBED is this channel's initial join, and the seed it arrives beside is
+      // already current; every one after it is a REJOIN, which means the socket was down and
+      // whatever changed while it was is lost. That is exactly when to re-read.
+      accountsChannel.subscribe((status) => {
+        if (status !== REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) return;
+        if (joined) reconcileHealth();
+        joined = true;
+      });
+      healthChannel.subscribe();
+      verdictsChannel.subscribe();
+    });
 
     return () => {
+      cancelJoin();
       void supabase.removeChannel(channel);
       void supabase.removeChannel(accountsChannel);
       void supabase.removeChannel(healthChannel);

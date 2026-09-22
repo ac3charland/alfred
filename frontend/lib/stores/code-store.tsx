@@ -27,6 +27,7 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { createClient } from '@/lib/supabase/client';
+import { joinWhenAuthenticated } from '@/lib/supabase/realtime';
 import { makeOptimisticEpic, makeOptimisticProject, makeOptimisticStory, tempId } from '@/lib/tree';
 import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
@@ -641,8 +642,7 @@ export function CodeProvider({
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'code_items' },
         handleUpdate,
-      )
-      .subscribe();
+      );
 
     const epicsChannel = supabase
       .channel('epics')
@@ -650,13 +650,18 @@ export function CodeProvider({
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'epics' },
         handleEpicUpdate,
-      )
-      .subscribe();
+      );
+
+    const cancelJoin = joinWhenAuthenticated(supabase.realtime, () => {
+      channel.subscribe();
+      epicsChannel.subscribe();
+    });
 
     document.addEventListener('visibilitychange', handleVisible);
     window.addEventListener('focus', handleVisible);
 
     return () => {
+      cancelJoin();
       void supabase.removeChannel(channel);
       void supabase.removeChannel(epicsChannel);
       document.removeEventListener('visibilitychange', handleVisible);

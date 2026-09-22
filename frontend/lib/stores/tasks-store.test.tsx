@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as apiClient from '@/lib/api-client';
 import { pinClock } from '@/lib/pin-clock';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
+import { holdRealtimeAuth } from '@/lib/supabase/hold-realtime-auth';
 import type { Item } from '@/lib/types';
 
 import {
@@ -28,6 +29,9 @@ const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
 // (Overrides the no-op stub from jest.setup.ts — a file-level mock wins.)
 let mockRealtimeHandler: ((payload: { new: Item }) => void) | undefined;
 const mockRemoveChannel = jest.fn();
+// Every channel join, and the realtime auth call that has to come first (ALF-258).
+const mockSubscribe = jest.fn();
+const mockSetAuth = jest.fn(() => Promise.resolve());
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => {
     const channel = {
@@ -35,9 +39,16 @@ jest.mock('@/lib/supabase/client', () => ({
         mockRealtimeHandler = handler as (payload: { new: Item }) => void;
         return channel;
       },
-      subscribe: () => channel,
+      subscribe: () => {
+        mockSubscribe();
+        return channel;
+      },
     };
-    return { channel: () => channel, removeChannel: mockRemoveChannel };
+    return {
+      realtime: { setAuth: mockSetAuth },
+      channel: () => channel,
+      removeChannel: mockRemoveChannel,
+    };
   },
 }));
 
@@ -2738,6 +2749,20 @@ describe('realtime items subscription', () => {
     emitUpdate({ ...claimed, ...VERDICT });
 
     expect(result.current.tasks.find((t) => t.id === 'i1')?.priority).toBe('low');
+  });
+
+  it('joins the channel only once the socket holds the session token (ALF-258)', async () => {
+    // A join sent before the token is loaded goes out as `anon`, which RLS lets see nothing.
+    const releaseAuth = holdRealtimeAuth(mockSetAuth);
+    mockSubscribe.mockClear();
+    renderHook(useTasksTest, { wrapper: makeWrapper([unjudged()]) });
+
+    expect(mockSetAuth).toHaveBeenCalledWith();
+    expect(mockSubscribe).not.toHaveBeenCalled();
+
+    await releaseAuth();
+
+    expect(mockSubscribe).toHaveBeenCalledTimes(1);
   });
 
   it('tears the channel down on unmount', () => {

@@ -3,6 +3,7 @@ import * as React from 'react';
 
 import { StoryCard } from '@/components/code/story-card';
 import * as api from '@/lib/api-client';
+import { holdRealtimeAuth } from '@/lib/supabase/hold-realtime-auth';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import {
@@ -49,6 +50,9 @@ const mockListCode = jest.mocked(api.listCode);
 let mockRealtimeHandler: ((payload: { new: CodeItem }) => void) | undefined;
 let mockEpicRealtimeHandler: ((payload: { new: Epic }) => void) | undefined;
 const mockRemoveChannel = jest.fn();
+// Every channel join, and the realtime auth call that has to come first (ALF-258).
+const mockSubscribe = jest.fn();
+const mockSetAuth = jest.fn(() => Promise.resolve());
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => {
     const channel = {
@@ -60,9 +64,16 @@ jest.mock('@/lib/supabase/client', () => ({
         }
         return channel;
       },
-      subscribe: () => channel,
+      subscribe: () => {
+        mockSubscribe();
+        return channel;
+      },
     };
-    return { channel: () => channel, removeChannel: mockRemoveChannel };
+    return {
+      realtime: { setAuth: mockSetAuth },
+      channel: () => channel,
+      removeChannel: mockRemoveChannel,
+    };
   },
 }));
 
@@ -3681,6 +3692,22 @@ describe('code-store', () => {
 
       expect(mockShowToast).not.toHaveBeenCalled();
       expect(findStory(result.current)?.spec_markdown).toBe('# fresh spec');
+    });
+
+    it('joins both channels only once the socket holds the session token (ALF-258)', async () => {
+      // A join sent before the token is loaded goes out as `anon`, which RLS lets see nothing.
+      const releaseAuth = holdRealtimeAuth(mockSetAuth);
+      mockSubscribe.mockClear();
+      renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+      });
+
+      expect(mockSetAuth).toHaveBeenCalledWith();
+      expect(mockSubscribe).not.toHaveBeenCalled();
+
+      await releaseAuth();
+
+      expect(mockSubscribe).toHaveBeenCalledTimes(2);
     });
 
     it('tears BOTH channels down on unmount (code_items and epics)', () => {
