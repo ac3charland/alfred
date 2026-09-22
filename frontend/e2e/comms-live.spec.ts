@@ -140,8 +140,11 @@ test('a message that landed while the tab was away is there when it comes back',
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
   await installRealtimeStub(page);
+  const joined = nextSnapshot(page);
   await page.goto('/comms');
   await waitForRealtimeJoin(page, 'comm_messages');
+  // The read the join makes has landed, so only the return's re-read can bring ARRIVED in.
+  await joined;
   const asap = page.getByRole('region', { name: 'ASAP' });
   await expect(asap.getByText('Needs the contract signed before noon.')).toBeHidden();
 
@@ -158,8 +161,10 @@ test('says it is not live while it cannot re-read, and stops once it can', async
 }) => {
   await seed({ commAccounts: [PERSONAL], commMessages: [SHELVED] });
   await installRealtimeStub(page);
+  const joined = nextSnapshot(page);
   await page.goto('/comms');
   await waitForRealtimeJoin(page, 'comm_messages');
+  await joined;
   // Scoped by text: Next's own route announcer is an `alert` too.
   const notLive = page.getByRole('alert').filter({ hasText: 'Not live' });
   await expect(notLive).toBeHidden();
@@ -168,6 +173,7 @@ test('says it is not live while it cannot re-read, and stops once it can', async
   await returnToTab(page);
   await expect(notLive).toHaveText(/^Not live — this is what was here/);
 
+  // Joined throughout, so the next read that lands makes it live again.
   await page.unroute('**/api/comms/snapshot**');
   await returnToTab(page);
   await expect(notLive).toBeHidden();
