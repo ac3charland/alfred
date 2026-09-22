@@ -209,8 +209,8 @@ export function makeCommHealth(
 
 /**
  * A queue seed built the way the server builds one, from a plain list of rows: everything above
- * FYI (uncleared, and not on the shelf — unjudged included), then the newest shelf page, with the
- * shelf and the Reader counted from the whole list.
+ * FYI (uncleared, and not on the shelf — unjudged included), then the newest `shelfLimit` shelf
+ * rows (one page unless asked for more), with the shelf and the Reader counted from the whole list.
  */
 export function makeCommsSeed(
   input: {
@@ -219,6 +219,7 @@ export function makeCommsSeed(
     verdicts?: CommVerdict[];
     health?: CommClassifierHealth;
     readAt?: string;
+    shelfLimit?: number;
   } = {},
 ): CommsSeed {
   const all = (input.messages ?? []).filter((message) => message.direction === 'inbound');
@@ -231,7 +232,7 @@ export function makeCommsSeed(
   }
   return {
     accounts: input.accounts ?? [],
-    messages: [...active, ...shelf.slice(0, SHELF_PAGE_SIZE)],
+    messages: [...active, ...shelf.slice(0, input.shelfLimit ?? SHELF_PAGE_SIZE)],
     verdicts: input.verdicts ?? [],
     health: input.health,
     shelfCount: shelf.length,

@@ -8,6 +8,8 @@
  */
 export {
   QUEUED_TIERS,
+  SHELF_ELIGIBLE_FILTER,
+  SHELF_LIMIT_MAX,
   SHELF_PAGE_SIZE,
   type QueueByTier,
   type QueuedTier,

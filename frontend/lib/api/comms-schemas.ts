@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { SHELF_PAGE_SIZE } from '@/lib/comms/queue';
+import { SHELF_LIMIT_MAX, SHELF_PAGE_SIZE } from '@/lib/comms/queue';
 
 /**
  * Request shapes for the Comms module's routes — its own file rather than a section of
@@ -44,7 +44,7 @@ export type CommMessagesQuery = z.infer<typeof commMessagesQuerySchema>;
  * first page by default, more after "Show more" — so a re-read keeps what is on screen.
  */
 export const commsSnapshotQuerySchema = z.object({
-  shelf: z.coerce.number().int().min(1).max(5000).default(SHELF_PAGE_SIZE),
+  shelf: z.coerce.number().int().min(1).max(SHELF_LIMIT_MAX).default(SHELF_PAGE_SIZE),
 });
 
 export type CommsSnapshotQuery = z.infer<typeof commsSnapshotQuerySchema>;

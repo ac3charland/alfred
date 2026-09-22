@@ -1,6 +1,6 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { makeSignedOutDouble, makeSupabaseDouble } from '@/lib/api/supabase-route-double';
-import { SHELF_PAGE_SIZE } from '@/lib/comms/queue';
+import { SHELF_LIMIT_MAX, SHELF_PAGE_SIZE } from '@/lib/comms/queue';
 import { readCommsSnapshot } from '@/lib/data/comms';
 import { createClient } from '@/lib/supabase/server';
 import type { CommsSeed } from '@/lib/types';
@@ -56,6 +56,24 @@ describe('GET /api/comms/snapshot', () => {
     await GET(new Request('http://localhost/api/comms/snapshot?shelf=150'), STUB_CONTEXT);
 
     expect(mockReadCommsSnapshot).toHaveBeenCalledWith(supabase, 150);
+  });
+
+  it('reads a shelf of a few thousand rows, and 400s one past the most a tab ever asks for', async () => {
+    const supabase = signedIn();
+    mockReadCommsSnapshot.mockResolvedValue({ seed: SEED, error: null });
+
+    const large = await GET(
+      new Request('http://localhost/api/comms/snapshot?shelf=6000'),
+      STUB_CONTEXT,
+    );
+    const tooLarge = await GET(
+      new Request(`http://localhost/api/comms/snapshot?shelf=${String(SHELF_LIMIT_MAX + 1)}`),
+      STUB_CONTEXT,
+    );
+
+    expect(large.status).toBe(200);
+    expect(mockReadCommsSnapshot).toHaveBeenCalledWith(supabase, 6000);
+    expect(tooLarge.status).toBe(400);
   });
 
   it('400s a shelf size that is not a positive whole number', async () => {

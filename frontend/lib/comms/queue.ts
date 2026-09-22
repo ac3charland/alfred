@@ -13,6 +13,12 @@ import type { CommMessage, CommTier } from '@/lib/types';
 /** How many shelf rows are loaded at a time — the first page, and each "Show more". */
 export const SHELF_PAGE_SIZE = 50;
 
+/**
+ * The most shelf rows a tab may ask for. Sixty days at ~45 messages a day is a few thousand, so
+ * this is headroom rather than a limit anyone meets; it exists so the request stays bounded.
+ */
+export const SHELF_LIMIT_MAX = 20_000;
+
 /** The three counted tiers, in the order the queue shows them. `fyi` is the shelf, not a tier. */
 export const QUEUED_TIERS = ['asap', 'today', 'whenever'] as const;
 
@@ -47,8 +53,8 @@ export function isQueued(message: CommMessage): boolean {
  *
  * The one rule the shelf's two numbers are both cut from, so they cannot drift apart: whether an
  * eligible row is DRAWN on the shelf or only COUNTED beneath it is then the single question of
- * whether the Reader claimed it. This predicate and the shelf branch of the server read
- * (`getCommMessagesByScope`) must agree exactly; `isQueued` deliberately never reads
+ * whether the Reader claimed it. This predicate and {@link SHELF_ELIGIBLE_FILTER}, which every
+ * server read of the shelf filters by, must agree exactly; `isQueued` deliberately never reads
  * `reader_claimed_at`, because a claimed message that owes a reply is still an obligation.
  */
 function isShelfEligible(message: CommMessage): boolean {
@@ -56,6 +62,12 @@ function isShelfEligible(message: CommMessage): boolean {
   if (isQueued(message)) return false;
   return message.tier !== null || message.cleared_at !== null;
 }
+
+/**
+ * {@link isShelfEligible} as a PostgREST `or` filter, for an inbound read: the `fyi` tier, or
+ * cleared by any exit — a row that is neither is queued or unjudged.
+ */
+export const SHELF_ELIGIBLE_FILTER = 'tier.eq.fyi,cleared_at.not.is.null';
 
 /**
  * Is this message on the FYI shelf? Eligible for it, and unclaimed.

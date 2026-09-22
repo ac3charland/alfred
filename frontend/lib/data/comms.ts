@@ -1,7 +1,7 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
-import { RETENTION_DAYS, SHELF_PAGE_SIZE } from '@/lib/comms';
+import { RETENTION_DAYS, SHELF_ELIGIBLE_FILTER, SHELF_PAGE_SIZE } from '@/lib/comms';
 import type { Database } from '@/lib/database.types';
 import { createClient } from '@/lib/supabase/server';
 import type {
@@ -126,29 +126,40 @@ async function readActiveMessages(
 }
 
 /**
- * Judged (or cleared) and not in the queue — the `isShelfEligible` predicate in
- * `lib/comms/queue.ts`, which the two shelf reads below must match exactly.
+ * The newest `limit` shelf rows, and how many are on the shelf in all — walked a page at a time,
+ * since a tab that has pressed "Show more" enough asks for more than the row cap. The first
+ * request carries the count; the walk stops once it holds `limit` rows or a page comes up short.
  */
-const SHELF_ELIGIBLE = 'tier.eq.fyi,cleared_at.not.is.null';
-
-/** The newest `limit` shelf rows, and how many are on the shelf in all. */
 async function readShelfPage(
   supabase: SupabaseClient<Database>,
   since: string,
   limit: number,
 ): Promise<{ messages: CommMessage[]; count: number; error: PostgrestError | null }> {
-  const { data, count, error } = await supabase
-    .from('comm_messages')
-    .select('*', { count: 'exact' })
-    .eq('direction', 'inbound')
-    .gte('received_at', since)
-    .or(SHELF_ELIGIBLE)
-    // A claimed newsletter lives in the reading list; the shelf only counts it (below).
-    .is('reader_claimed_at', null)
-    .order('received_at', { ascending: false })
-    .order('id', { ascending: true })
-    .limit(limit);
-  return { messages: data ?? [], count: count ?? 0, error };
+  const messages: CommMessage[] = [];
+  let count = 0;
+  for (let offset = 0; offset < limit; offset += COMMS_PAGE_SIZE) {
+    const size = Math.min(COMMS_PAGE_SIZE, limit - offset);
+    const {
+      data,
+      count: total,
+      error,
+    } = await supabase
+      .from('comm_messages')
+      .select('*', offset === 0 ? { count: 'exact' } : undefined)
+      .eq('direction', 'inbound')
+      .gte('received_at', since)
+      .or(SHELF_ELIGIBLE_FILTER)
+      // A claimed newsletter lives in the reading list; the shelf only counts it (below).
+      .is('reader_claimed_at', null)
+      .order('received_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + size - 1);
+    if (error) return { messages: [], count: 0, error };
+    if (offset === 0) count = total ?? 0;
+    messages.push(...data);
+    if (data.length < size) break;
+  }
+  return { messages, count, error: null };
 }
 
 /** How many shelf-eligible newsletters the Reader claimed — a count, never the rows. */
@@ -161,7 +172,7 @@ async function countReaderClaimed(
     .select('id', { count: 'exact', head: true })
     .eq('direction', 'inbound')
     .gte('received_at', since)
-    .or(SHELF_ELIGIBLE)
+    .or(SHELF_ELIGIBLE_FILTER)
     .not('reader_claimed_at', 'is', null);
   return { count: count ?? 0, error };
 }
@@ -259,7 +270,12 @@ export async function readCommsSnapshot(
   if (active.error) return { seed, error: active.error };
   const shelf = await readShelfPage(supabase, since, shelfLimit);
   if (shelf.error) return { seed, error: shelf.error };
-  seed.messages = [...active.messages, ...shelf.messages];
+  // Two reads, so a row cleared between them comes back from both; the shelf's copy is the later.
+  const shelfIds = new Set(shelf.messages.map((message) => message.id));
+  seed.messages = [
+    ...active.messages.filter((message) => !shelfIds.has(message.id)),
+    ...shelf.messages,
+  ];
   seed.shelfCount = shelf.count;
 
   const claimed = await countReaderClaimed(supabase, since);

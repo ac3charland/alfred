@@ -186,24 +186,26 @@ function messageRead(query: RecordedQuery): 'active' | 'shelf' | 'claimed' | 'la
   return 'shelf';
 }
 
-/** Answer the four message reads separately; `active` may be a queue of pages. */
-function messages(answers: {
-  active?: Result | Result[];
-  shelf?: Result;
-  claimed?: Result;
-  last?: Result;
-}): (query: RecordedQuery) => Result {
-  let activePage = 0;
+/** Answer the four message reads separately; any of them may be a queue of pages. */
+function messages(
+  answers: Partial<Record<ReturnType<typeof messageRead>, Result | Result[]>>,
+): (query: RecordedQuery) => Result {
+  const served: Partial<Record<ReturnType<typeof messageRead>, number>> = {};
   return (query) => {
     const read = messageRead(query);
-    if (read === 'active' && Array.isArray(answers.active)) {
-      const page = answers.active[Math.min(activePage, answers.active.length - 1)];
-      activePage += 1;
-      return page ?? { data: [], error: null };
-    }
-    const answer = read === 'active' ? answers.active : answers[read];
-    return (Array.isArray(answer) ? undefined : answer) ?? { data: [], error: null };
+    const answer = answers[read];
+    if (!Array.isArray(answer)) return answer ?? { data: [], error: null };
+    const page = served[read] ?? 0;
+    served[read] = page + 1;
+    return answer[Math.min(page, answer.length - 1)] ?? { data: [], error: null };
   };
+}
+
+/** `length` rows on the shelf. */
+function shelvedRows(length: number) {
+  return Array.from({ length }, () =>
+    makeCommMessage(ACCOUNT.id, { tier: 'fyi', judged_by: 'model' }),
+  );
 }
 
 beforeEach(() => {
@@ -282,7 +284,7 @@ describe('readCommsSnapshot', () => {
     expect(shelf?.is).toContainEqual(['reader_claimed_at', null]);
     expect(shelf?.gte).toEqual(['received_at', CUTOFF]);
     expect(shelf?.selectOptions).toEqual({ count: 'exact' });
-    expect(shelf?.limit).toBe(SHELF_PAGE_SIZE);
+    expect(shelf?.range).toEqual([0, SHELF_PAGE_SIZE - 1]);
     expect(shelf?.order[0]).toEqual(['received_at', { ascending: false }]);
     expect(seed.messages).toEqual([queued, shelved]);
     expect(seed.shelfCount).toBe(1234);
@@ -294,7 +296,66 @@ describe('readCommsSnapshot', () => {
     await readCommsSnapshot(client, SHELF_PAGE_SIZE * 3);
 
     const shelf = calls.comm_messages.find((query) => messageRead(query) === 'shelf');
-    expect(shelf?.limit).toBe(SHELF_PAGE_SIZE * 3);
+    expect(shelf?.range).toEqual([0, SHELF_PAGE_SIZE * 3 - 1]);
+  });
+
+  it('pages a shelf past the row cap, counting it once, until it holds as many rows as asked', async () => {
+    const { client, calls } = makeClient({
+      comm_messages: messages({
+        shelf: [
+          { data: shelvedRows(COMMS_PAGE_SIZE), error: null, count: 4321 },
+          { data: shelvedRows(500), error: null },
+        ],
+      }),
+    });
+
+    const { seed } = await readCommsSnapshot(client, COMMS_PAGE_SIZE + 500);
+
+    const shelves = calls.comm_messages.filter((query) => messageRead(query) === 'shelf');
+    expect(shelves.map((query) => query.range)).toEqual([
+      [0, COMMS_PAGE_SIZE - 1],
+      [COMMS_PAGE_SIZE, COMMS_PAGE_SIZE + 499],
+    ]);
+    expect(shelves[0]?.selectOptions).toEqual({ count: 'exact' });
+    expect(shelves[1]?.selectOptions).toBeUndefined();
+    expect(seed.messages).toHaveLength(COMMS_PAGE_SIZE + 500);
+    expect(seed.shelfCount).toBe(4321);
+  });
+
+  it('stops paging the shelf at a short page', async () => {
+    const { client, calls } = makeClient({
+      comm_messages: messages({
+        shelf: {
+          data: [makeCommMessage(ACCOUNT.id, { tier: 'fyi', judged_by: 'model' })],
+          error: null,
+          count: 1,
+        },
+      }),
+    });
+
+    await readCommsSnapshot(client, COMMS_PAGE_SIZE * 3);
+
+    const shelves = calls.comm_messages.filter((query) => messageRead(query) === 'shelf');
+    expect(shelves.map((query) => query.range)).toEqual([[0, COMMS_PAGE_SIZE - 1]]);
+  });
+
+  it('holds a row cleared between the active and shelf reads once, as the later shelf read has it', async () => {
+    const queued = makeCommMessage(ACCOUNT.id, { tier: 'today', judged_by: 'model' });
+    const cleared = {
+      ...queued,
+      cleared_at: '2026-03-01T11:59:00.000Z',
+      cleared_by: 'not_replying' as const,
+    };
+    const { client } = makeClient({
+      comm_messages: messages({
+        active: { data: [queued], error: null },
+        shelf: { data: [cleared], error: null, count: 1 },
+      }),
+    });
+
+    const { seed } = await readCommsSnapshot(client);
+
+    expect(seed.messages).toEqual([cleared]);
   });
 
   it('counts the newsletters the Reader claimed without fetching them', async () => {
@@ -513,7 +574,7 @@ describe('getCommsSeed', () => {
 
     expect(seed.accounts).toEqual([ACCOUNT]);
     const shelf = calls.comm_messages.find((query) => messageRead(query) === 'shelf');
-    expect(shelf?.limit).toBe(SHELF_PAGE_SIZE);
+    expect(shelf?.range).toEqual([0, SHELF_PAGE_SIZE - 1]);
   });
 
   it('degrades in layers rather than failing the shell', async () => {
