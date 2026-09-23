@@ -117,6 +117,15 @@ function pendingCreate() {
   mockCreateItem.mockReturnValue(new Promise<Item>(() => {}));
 }
 
+/** A promise the test settles by hand, so one request can be held in flight (race tests). */
+function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
+  let settle!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+}
+
 function makeWrapper(initialTasks: Item[]) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     // ExpansionProvider wraps the store here as it does in the shell layout — the store hands
@@ -2873,5 +2882,38 @@ describe('refreshVerdicts (ALF-246 navigation refetch)', () => {
 
     expect(result.current.tasks).toStrictEqual([row]);
     expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('skips a fetched verdict for a row a concurrent edit touched while the fetch was in flight', async () => {
+    // The owner relabels the row (setFolder) WHILE this fetch is still out — the fetch's own
+    // held-row snapshot was taken before that edit landed, so its (now stale) verdict must not
+    // overwrite what the edit just set.
+    const row = unjudged();
+    const { promise: fetchPromise, settle: settleFetch } = deferred<Item[]>();
+    mockListItems.mockReturnValue(fetchPromise);
+    const edited = { ...row, folder_id: 'f2' };
+    mockUpdateItem.mockResolvedValue(edited);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    // Started outside `act()`: its only synchronous work is reading `tasksRef.current` (no
+    // dispatch), so nothing here needs flushing yet — and starting it inside a still-pending
+    // `act()` scope would make the concurrent edit's own `act()` below fight it for the same
+    // flush, leaving `tasksRef.current` stale when read back out.
+    const refreshing = result.current.actions.refreshVerdicts();
+
+    // The concurrent edit runs — and fully reconciles — before the fetch resolves.
+    await act(async () => {
+      await result.current.actions.setFolder(row.id, 'f2');
+    });
+
+    await act(async () => {
+      settleFetch([{ ...row, ...VERDICT }]);
+      await refreshing;
+    });
+
+    expect(result.current.tasks.find((t) => t.id === row.id)).toMatchObject({
+      folder_id: 'f2', // the race-winning edit, not the stale fetch's 'f1'
+      classified_at: null, // the stale verdict never applied
+    });
   });
 });

@@ -24,20 +24,23 @@ const FOLDER_PREFIX = '/folders/';
  * server round-trip; a hard load of any of those paths renders the same view server-side.
  *
  * The seed-once store means a classifier verdict can drift after a long-lived session (a
- * realtime UPDATE dropped by a stale connection, a sweep that landed while the tab sat on
- * another module). So on every navigation within the module — keyed on `pathname`, which also
- * covers entry to it — refetch and reconcile those verdicts (ALF-246, mirroring the Code
- * module's `refreshStatuses`, ALF-69). `refreshVerdicts` is stable and swallows its own errors,
- * so this is a fire-and-forget reconcile that never blocks the view.
+ * realtime UPDATE dropped by a stale or backgrounded connection — Tasks has no tab-return
+ * trigger of its own, unlike Comms/Reader). So on every navigation within the module — keyed on
+ * `pathname` AND the `view` search param, since entry to the Inbox list toggles `?view=inbox`
+ * without changing `pathname` (see the landing-route comment below) — refetch and reconcile
+ * those verdicts (ALF-246, mirroring the Code module's `refreshStatuses`, ALF-69).
+ * `refreshVerdicts` is stable and swallows its own errors, so this is a fire-and-forget reconcile
+ * that never blocks the view.
  */
 export function TaskViews() {
   const pathname = usePathname();
   const searchParameters = useSearchParams();
+  const view = searchParameters.get('view');
   const { refreshVerdicts } = useTaskActions();
 
   React.useEffect(() => {
     void refreshVerdicts();
-  }, [pathname, refreshVerdicts]);
+  }, [pathname, view, refreshVerdicts]);
 
   if (pathname === '/priority') {
     return <PriorityView />;

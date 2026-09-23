@@ -209,11 +209,19 @@ interface TaskActions {
    * Refetch every item from the server and reconcile the CLASSIFIER VERDICT fields onto the
    * rows already held, keyed by id — the same patch {@link classifierVerdictPatch} applies from
    * the live `items` UPDATE stream, run here as a fallback. Fired on navigation within the Tasks
-   * module (ALF-246) so a verdict a stale realtime connection dropped, or one that landed while
-   * this tab sat on another module, reconciles the moment the owner lands on a Tasks view.
-   * Patches only the verdict's own columns (never title/notes/due date/etc.) and only rows
-   * already present in the store (the race rule), mirroring the code store's `refreshStatuses`
-   * (ALF-69); a failed fetch is swallowed, leaving the current data as-is.
+   * module (ALF-246) so a verdict a stale or dropped realtime connection missed reconciles the
+   * moment the owner lands on a Tasks view — unlike Comms/Reader, this module has no tab-return
+   * trigger of its own, so navigation is the only fallback it gets. Patches only the verdict's
+   * own columns (never title/notes/due date/etc.) and only rows already present in the store
+   * (the race rule), mirroring the code store's `refreshStatuses` (ALF-69); a failed fetch is
+   * swallowed, leaving the current data as-is.
+   *
+   * Race-safe against a concurrent local edit: the held rows are snapshotted BEFORE the fetch
+   * goes out, and a fetched row's patch only applies if its snapshot is still reference-equal to
+   * the row this store holds when the fetch resolves. Anything that touched the row while the
+   * fetch was in flight — an optimistic edit, that edit's rollback, or a realtime verdict —
+   * replaces it with a new object, so this fetch's now-stale answer is skipped for that row
+   * rather than overwriting whatever landed after it started.
    */
   refreshVerdicts: () => Promise<void>;
 }
@@ -1034,6 +1042,11 @@ export function TasksProvider({
         dispatch({ type: 'remove', ids: [parentId, ...childIds] });
       },
       async refreshVerdicts() {
+        // Snapshot BEFORE the await, not after: this fetch can take a while, and if a
+        // concurrent optimistic edit (setFolder/classifyItem/updateTask) or a realtime verdict
+        // patches the row while it's in flight, `heldAtStart` must still reflect what this fetch
+        // is actually answering for — not the store's state at fetch-completion time.
+        const heldAtStart = new Map(tasksRef.current.map((item) => [item.id, item] as const));
         let rows: Item[];
         try {
           rows = await api.listItems({ status: 'all' });
@@ -1042,9 +1055,16 @@ export function TasksProvider({
           // data as-is and stay silent (no rollback, no toast); the next navigation retries.
           return;
         }
-        const heldById = new Map(tasksRef.current.map((item) => [item.id, item] as const));
+        // The race guard: every reducer move (`patch`/`upsert`/`replace`/`remove`) that touches a
+        // row creates a new object reference for it, so a row still `===` its pre-fetch snapshot
+        // means nothing touched it while this fetch was in flight — a cheap, correct staleness
+        // check. Skip anything that moved (including a row this fetch no longer holds a snapshot
+        // for), so a stale verdict can never land on top of a newer local edit or its rollback.
+        const currentById = new Map(tasksRef.current.map((item) => [item.id, item] as const));
         for (const row of rows) {
-          const patch = classifierVerdictPatch(heldById.get(row.id), row);
+          const held = heldAtStart.get(row.id);
+          if (held === undefined || currentById.get(row.id) !== held) continue;
+          const patch = classifierVerdictPatch(held, row);
           if (patch !== null) dispatch({ type: 'patch', ids: [row.id], patch });
         }
       },

@@ -98,6 +98,19 @@ describe('TaskViews navigation refetch (ALF-246)', () => {
     await Promise.resolve();
     expect(mockListItems).toHaveBeenCalledTimes(1);
   });
+
+  it('refetches when the inbox list is revealed via ?view=inbox, even though pathname stays `/`', async () => {
+    const { rerender } = renderWithProviders(<TaskViews />);
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(1);
+    });
+
+    setLocation('/', 'view=inbox');
+    rerender(<TaskViews />);
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
 describe('TaskViews view routing', () => {
