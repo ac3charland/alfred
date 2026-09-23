@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spike — LLM wiki: architecture and location</title>
+<meta name="description" content="Findings on where Alex's Karpathy-style LLM wiki should live, how it stays private, and how Alfred fits it. Recommendation, evidence and technical shape." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f4efe4;
+    --paper-2: #ece4d2;
+    --ink: #2a241d;
+    --ink-soft: #5b5142;
+    --ink-faint: #8c8170;
+    --rule: #c9bda3;
+    --rule-soft: #ddd3bd;
+    --vermilion: #b8420f;
+    --teal: #2c5c58;
+    --code-bg: #e8dfc9;
+    --code-ink: #3a3226;
+    --sans: "Space Grotesk", "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --serif: "Source Serif 4", Georgia, "Iowan Old Style", serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #1c1912;
+      --paper-2: #241f16;
+      --ink: #ece2cd;
+      --ink-soft: #bcaf94;
+      --ink-faint: #857c68;
+      --rule: #4a4130;
+      --rule-soft: #362f22;
+      --vermilion: #e2793f;
+      --teal: #6cada6;
+      --code-bg: #2a2418;
+      --code-ink: #e2d6b9;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(ellipse at top left, color-mix(in srgb, var(--ink) 3%, transparent), transparent 60%),
+      repeating-linear-gradient(0deg, color-mix(in srgb, var(--ink) 2%, transparent) 0px, transparent 1px, transparent 3px),
+      var(--paper);
+    color: var(--ink);
+    font: 17px/1.62 var(--serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 61.25rem; margin: 0 auto; padding: 2.4rem 1.15rem 5rem; }
+  a { color: var(--teal); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: var(--vermilion); }
+
+  /* ---- narrow prose measure: text-carrying elements only.
+     Layout/figure elements (.sec-head, .side, .verdict-block, .tbl-scroll,
+     pre, the SVG diagram wrap) stay full wrapper width. ---- */
+  p, ul, ol, blockquote, h2, h3, h4, .callout, .qa {
+    max-width: 72ch;
+  }
+
+  /* ---- masthead ---- */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--vermilion);
+    margin: 0 0 0.9rem;
+  }
+  h1 {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 1.86rem;
+    line-height: 1.18;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.5rem;
+  }
+  .subdek {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 1.02rem;
+    margin: 0 0 1.5rem;
+    max-width: 34rem;
+  }
+  .masthead-rule {
+    border: none;
+    border-top: 3px double var(--ink);
+    opacity: 0.75;
+    margin: 0 0 2.2rem;
+  }
+
+  /* ---- section headers with big light numerals ---- */
+  .sec { margin-top: 3.6rem; }
+  .sec:first-of-type { margin-top: 0; }
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 0.55rem;
+    margin-bottom: 1.3rem;
+  }
+  .sec-num {
+    font-family: var(--sans);
+    font-weight: 300;
+    font-size: 2.6rem;
+    line-height: 1;
+    color: var(--vermilion);
+    min-width: 2.1rem;
+  }
+  .sec-head h2 {
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 1.28rem;
+    letter-spacing: -0.005em;
+    margin: 0;
+    color: var(--ink);
+  }
+  h3 {
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 1.02rem;
+    margin: 1.9rem 0 0.6rem;
+    color: var(--ink);
+  }
+  h3 .tnum { color: var(--teal); font-weight: 700; margin-right: 0.4em; }
+  h4 {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    margin: 1.3rem 0 0.4rem;
+  }
+
+  p { margin: 0.75rem 0; }
+  ul, ol { margin: 0.75rem 0; padding-left: 1.3rem; }
+  li { margin: 0.32rem 0; }
+  li::marker { color: var(--vermilion); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 0.08rem 0.32rem;
+    border-radius: 2px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--vermilion);
+    padding: 0.95rem 1.05rem;
+    overflow-x: auto;
+    max-width: 100%;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    margin: 1rem 0;
+  }
+  pre code { background: none; padding: 0; color: inherit; overflow-wrap: normal; word-break: normal; }
+
+  /* ---- callout: left rule, no box fill ---- */
+  .callout {
+    border-left: 3px solid var(--teal);
+    padding: 0.15rem 0 0.15rem 1rem;
+    margin: 1.1rem 0;
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+  }
+  .callout b { color: var(--ink); }
+  .callout.warn { border-left-color: var(--vermilion); }
+
+  /* ---- top-line answer block ---- */
+  .verdict-block {
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 1.1rem 0;
+    margin: 0 0 1.6rem;
+  }
+  .qa { margin: 0.9rem 0; }
+  .qa .q {
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 0.92rem;
+    color: var(--vermilion);
+    display: block;
+    margin-bottom: 0.15rem;
+  }
+  .qa .a { margin: 0; }
+
+  /* ---- tables ---- */
+  .tbl-scroll { overflow-x: auto; margin: 1rem 0; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; min-width: 28rem; font-size: 0.83rem; }
+  th, td { text-align: left; padding: 0.5rem 0.65rem; vertical-align: top; }
+  th {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-variant: small-caps;
+    color: var(--ink-soft);
+    border-bottom: 2px solid var(--ink);
+    border-top: none;
+  }
+  td { border-bottom: 1px solid var(--rule-soft); }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { font-family: var(--mono); }
+  .loc-matrix th:first-child, .loc-matrix td:first-child { min-width: 12ch; }
+  .loc-matrix th:last-child, .loc-matrix td:last-child { min-width: 14ch; }
+
+  /* ---- sidebar cards (appealing alternatives) ---- */
+  .side {
+    margin: 1.3rem 0;
+    padding: 0.2rem 0 0.2rem 1rem;
+    border-left: 3px solid var(--ink-faint);
+  }
+  .side h4.side-title {
+    font-family: var(--sans);
+    font-size: 0.98rem;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink);
+    font-weight: 600;
+    margin: 0.3rem 0 0.3rem;
+  }
+  .side p { margin: 0.4rem 0; font-size: 0.93rem; }
+  .side .label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--teal);
+  }
+  .side .label.no { color: var(--vermilion); }
+
+  .diagram-wrap {
+    margin: 1.3rem 0;
+    padding: 0.9rem 0.4rem;
+    border: 1px solid var(--rule);
+    background: color-mix(in srgb, var(--paper-2) 60%, transparent);
+  }
+  .diagram-wrap svg { display: block; margin: 0 auto; max-width: 100%; height: auto; color: var(--ink); }
+  .diagram-cap { text-align: center; font-family: var(--mono); font-size: 0.7rem; color: var(--ink-faint); margin-top: 0.5rem; }
+
+  .small { font-size: 0.85rem; color: var(--ink-soft); }
+  .kicker { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-faint); }
+
+  footer.end {
+    margin-top: 3.5rem;
+    padding-top: 1rem;
+    border-top: 3px double var(--ink);
+    opacity: 0.85;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    text-align: center;
+  }
+
+  @media (max-width: 420px) {
+    body { font-size: 16px; }
+    h1 { font-size: 1.5rem; }
+    .sec-num { font-size: 2.1rem; min-width: 1.7rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">docs/spikes · 2026-09-23 · findings, not a spec</p>
+<h1>Spike — LLM wiki: architecture and location</h1>
+<p class="subdek">Where Karpathy's LLM-wiki pattern should live, who writes it, how it stays private, and what part of it (if any) is Alfred.</p>
+<hr class="masthead-rule" />
+
+<div class="sec">
+<div class="sec-head"><span class="sec-num">01</span><h2>Where we landed</h2></div>
+
+<div class="verdict-block">
+<div class="qa">
+  <span class="q">Q1 — Public, private, or a mix?</span>
+  <p class="a">Private-first. Every raw source gets a <code>sensitivity</code> label set by a script, never by Alex or the model; every wiki page's <code>visibility</code> is computed from its <code>sources:</code> list. Nothing is exported. A public garden stays a real later goal, built as a separate deterministic export step when there's demand to show for it.</p>
+</div>
+<div class="qa">
+  <span class="q">Q2 — Alfred module, or standalone?</span>
+  <p class="a">Both, split by role. The <b>store</b> is a new private git repo of plain markdown — never Alfred's Supabase. The <b>writer</b> is a Claude session working the repo's files. Alfred is the <b>feed</b> (an inbox for Reader posts and captured ideas) and a thin read-only <b>reading room</b> (Day 2) — not a native module of rows.</p>
+</div>
+<div class="qa">
+  <span class="q">Q3 — Where does it live?</span>
+  <p class="a">A new private GitHub repo, cloned to <code>~/docs/Claude/Wiki/</code> on the Mac as a <b>sibling</b> of the Productivity Coach folder, never nested in it. Links run one way, coach → wiki. The wiki never reads coach files.</p>
+</div>
+</div>
+
+<p>The build is two one-day chunks:</p>
+<ul>
+<li><b>Day 1 — the wiki itself, no Alfred code.</b> Create the private repo and skeleton, write the <code>CLAUDE.md</code> schema and the three scripts, clone it locally, stand up a separate "Wiki" Claude Project, drop one pointer row into the coach's <code>index.md</code>, and ingest a handful of real sources by hand — seeded from Obsidian book notes and Instapaper highlights — to prove ingest → index → log → lint end to end.</li>
+<li><b>Day 2 — the Alfred Knowledge module, thin.</b> A snapshot-on-push read view built from the same pattern that already serves specs, plus a keyed inbox endpoint so Reader posts and captured ideas can flow into an ingest session. No LLM write path through Alfred, no graph view.</li>
+</ul>
+
+<p class="small">A reader who stops here knows the shape of the build. Everything below is the evidence and the detail.</p>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec">
+<div class="sec-head"><span class="sec-num">02</span><h2>Why</h2></div>
+
+<h3><span class="tnum">2.1</span>The privacy mechanism</h3>
+<p>Karpathy's pattern already asks for a <code>sources:</code> citation on every page. The design here makes that structural rather than a courtesy:</p>
+<ul>
+<li>Every raw source in <code>raw/</code> carries <code>sensitivity: public | licensed | private</code>, set by a script from a fixed mapping table keyed on source type. Anything unmatched defaults to <code>private</code>. Alex can lower a label by explicit command; nothing raises one automatically.</li>
+<li>Every wiki page carries <code>sources:</code>, and a script computes the page's <code>visibility</code> as the most restrictive of those sources. A page with no sources is private. The model never writes <code>visibility</code> or <code>sensitivity</code>.</li>
+<li>Publishing is a separate <b>export</b> step to a separate public target, never a flag filtering the private tree.</li>
+</ul>
+<p>The reasoning behind putting this outside the model: the model's context window, not the files, is the main leak path. What a page cites is a claim the model makes about itself, not a record of what it actually used. In Karpathy's own description, a single source touches 10–15 pages during ingest, and "good answers" from a query get filed back too — so a private source's contamination can spread across the tree in ways a citation list won't catch. Three research results back this up:</p>
+<ul>
+<li><a href="https://arxiv.org/abs/2310.17884">ConfAIde</a> (ICLR 2024): LLMs reveal private information in contexts humans wouldn't, GPT-4 39% of the time, ChatGPT 57%.</li>
+<li><a href="https://arxiv.org/abs/2409.00138">PrivacyLens</a>: agents leak in 25.7% (GPT-4) to 38.7% (Llama-3-70B) of cases, <i>even when given explicit privacy instructions</i>.</li>
+<li><a href="https://arxiv.org/html/2609.14003">FlowSeal</a>: labeling data by provenance and checking every write with a <i>deterministic interceptor outside the model</i>, plus an isolated LLM checker for declassification, cut item-level leakage from 52.2% to 0.5%.</li>
+</ul>
+<p>That last number is the design principle in one sentence: the model that saw the conversation shouldn't also decide what's safe to release. So the export script checks provenance on every allowlisted page, strips links to anything not exported, copies only referenced assets, and publishes a snapshot with no git history — because git history can't be undone, and flipping the private repo to public later would be the single biggest irreversible action in the whole design. An isolated LLM privacy check runs as a second, weaker layer. Alex reviews the diff by hand the first time any page is promoted.</p>
+<p>Comms and firewall messages are never a wiki source. That's not a stricter rule invented for this spike — it defends a decision already made (60-day comms retention, so alfred's copy stays "safe to lose and not safe to keep"). Chat transcripts aren't sources either; only notes Alex explicitly asks Claude to file are.</p>
+
+<h3><span class="tnum">2.2</span>Why storage is the repo, not Alfred</h3>
+<p>Three separate facts rule out Supabase as the store, and a fourth rules out the Alfred monorepo as the location for content:</p>
+<ul>
+<li><b>Alfred's own storage sweeps by design.</b> Reader post text is nulled at 90 days (<code>0036_reader_operability.sql</code>, ALF-232 D13); the comms mirror deletes at 60 (<code>wrangler.toml</code> cron comment). ALF-7 D2 is explicit: "alfred mirrors, it is never the store of record." A wiki that's supposed to compound over years can't sit on a table designed to forget.</li>
+<li><b>There's no keyed write path for what an ingest needs.</b> The only key-authenticated write the <code>alfred</code> skill can reach is <code>POST /api/items</code>; <code>PATCH</code> and <code>DELETE</code> are session-only (<code>frontend/app/api/items/[id]/route.ts</code>). One ingest touches 10–15 pages, so this would mean building a keyed CRUD API, a batch/transaction RPC, and rename-with-link-rewrite from scratch — none of which exists today.</li>
+<li><b>Wiki pages don't fit the item model.</b> The Reader epic already decided a post is never an item (ALF-232 D1); a wiki page fits worse still — it's edited in place forever, it links many-to-many, and it has no status. Pages would need their own tables (<code>wiki_pages</code>, <code>wiki_links</code>, <code>wiki_log</code>, a revisions table) to replace what git already gives away free.</li>
+<li><b>Committing into the Alfred repo has a CI tax.</b> Every commit runs root <code>check:fast</code> via the pre-commit hook — skill-lint, migration-lint, type-check, lint, unit tests across every workspace. Paying that on every wiki ingest is absurd, and it also means wiki content would sit in the context of factory agents working on unrelated code.</li>
+</ul>
+
+<h4>Location, compared</h4>
+<p class="small">● good · ◐ partial · ○ bad. "Cloud" means an LLM can read and write while the Mac is asleep.</p>
+<div class="tbl-scroll">
+<table class="loc-matrix">
+<thead><tr><th>Location</th><th>Privacy</th><th>Mac LLM</th><th>Cloud</th><th>Phone</th><th>History / diffs</th><th>Coach sep.</th><th>KISS</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td>Alfred monorepo workspace</td><td>○ public only</td><td>●</td><td>●</td><td>●</td><td>◐ <code>check:fast</code> + a PR on every commit</td><td>●</td><td>○</td><td><b>Reject</b> — public, a CI tax on every commit, factory agents load it</td></tr>
+<tr><td>Coach folder, in place</td><td>●</td><td>●</td><td>○</td><td>○</td><td>● shared git</td><td>○ bloats <code>index.md</code></td><td>●</td><td><b>Reject</b></td></tr>
+<tr><td>Repo nested in coach folder, gitignored by parent</td><td>●</td><td>●</td><td>● with a remote</td><td>●</td><td>●</td><td>◐ one grant, but shows up in every coach listing/grep</td><td>●</td><td>Runner-up</td></tr>
+<tr><td>Separate local folder, no remote</td><td>●</td><td>●</td><td>○</td><td>○</td><td>● local</td><td>●</td><td>●</td><td><b>Reject</b> — backup is only the Mac; blocks autonomy</td></tr>
+<tr><td><b>Private GitHub repo, Mac clone as sibling</b></td><td>● (public subset exportable later)</td><td>●</td><td>●</td><td>● GitHub app</td><td>● PR diffs</td><td>●</td><td>●</td><td><b>Recommend</b></td></tr>
+<tr><td>Same, plus an SSG with public flags now</td><td>◐ mixed</td><td>●</td><td>●</td><td>●</td><td>●</td><td>●</td><td>◐</td><td>Defer the SSG</td></tr>
+<tr><td>Supabase rows (pages as rows)</td><td>●</td><td>◐ API only</td><td>●</td><td>◐ needs a UI</td><td>○ unless built</td><td>●</td><td>○ a new module</td><td><b>Reject</b> as the store</td></tr>
+<tr><td>Claude Project knowledge panel</td><td>●</td><td>◐</td><td>◐</td><td>●</td><td>○ no git or diffs</td><td>○ it <i>is</i> the coach project</td><td>●</td><td><b>Reject</b></td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Trimmed from report 03 §2's full 12-row matrix to the rows that decided it.</p>
+
+<h3><span class="tnum">2.3</span>Why Alfred is still the reading room</h3>
+<p>Alfred's whole premise is a single unified second-brain interface, and routing around it for anything Alex actually wants to read works against that. The precedent already exists: week plans are written by a Claude skill as HTML and rendered inside Alfred through a sandboxed iframe (<code>weekly-plan-view.tsx</code>) — the skill owns the writing, Alfred owns the display. A circular usage trigger ("why would I reach for something that's never been in Alfred?") was explicitly rejected as a reason to defer this. So Day 2 gives the wiki the same split: a Claude session (and, eventually, the repo's own git history) is the writer and source of truth; Alfred is a thin, read-only mirror built from the same <code>fetchSpec</code> snapshot pattern that already serves specs.</p>
+
+<h3><span class="tnum">2.4</span>Why a strict split from the coach folder, one way</h3>
+<p>The coach folder is already a small, working wiki about Alex: an index, progressive disclosure, synthesis pages, git history. The new wiki is deliberately scoped to everything <i>outside</i> that — the world, and Alex's ideas about it. Keeping them physically separate does three things at once:</p>
+<ul>
+<li>It's the cheapest privacy firewall available. Coach files hold sleep, binge days and family detail. If the wiki repo never ingests them, no synthesis step inside the wiki can accidentally carry them toward a page that's later exported.</li>
+<li>It protects the coach's per-chat budget. Every coach chat already reads a ~22 KB fixed set (<code>index.md</code>, <code>current-system.md</code>, <code>protocols.md</code>). Merging the folders means either bloating that read or letting the keystone-file rules apply to wiki sessions that don't need them.</li>
+<li>It keeps ownership honest. The coach's files are commitments — "never skipped," enforced mid-conversation. The wiki's pages are LLM-maintained and periodically linted. Those are different governance models, and blending them would let autonomous wiki maintenance edit files that are supposed to hold Alex's word.</li>
+</ul>
+<p>The coach's <code>index.md</code> gets exactly one "Read As Needed" pointer row to the wiki. The wiki never ingests coach files — links run coach → wiki only, never the reverse. This is a convention, not a structural guard (nothing stops a session from reading both), so its own honest failure mode is drift; the mitigation is that the wiki folder isn't connected to coach sessions by default.</p>
+
+<h3><span class="tnum">2.5</span>The format constraints — and why they're expensive to reverse</h3>
+<p>Three consumers have to read the same files unconverted: Obsidian on the Mac, Alfred's <code>react-markdown</code> + <code>remark-gfm</code> renderer, and a static-site generator later. That forces three rules into the schema on day one:</p>
+<ul>
+<li><b>Standard relative markdown links</b> (<code>[habit formation](../concepts/habit-formation.md)</code>), never <code>[[wikilinks]]</code>. Obsidian's backlinks and graph work fine with relative links; GitHub, <code>react-markdown</code> and every SSG render them; wikilinks render as literal text in Alfred and lock the format to Obsidian- or Quartz-only tooling.</li>
+<li><b>YAML frontmatter on every page</b>, with the fields listed in <a href="#technical-shape">§3.2</a>.</li>
+<li><b>No Obsidian-only syntax</b> — no <code>![[embeds]]</code>, no callouts, no Dataview — and assets in one fixed folder with relative paths.</li>
+</ul>
+<p>Of the three, the link syntax is the one choice that's genuinely expensive to reverse: it's woven into every page's body text, not a frontmatter field a script can rewrite in one pass. Get it wrong on day one and a later migration means touching every link in every page by hand.</p>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec" id="technical-shape">
+<div class="sec-head"><span class="sec-num">03</span><h2>Technical shape</h2></div>
+
+<h3><span class="tnum">3.1</span>Repo skeleton</h3>
+<pre><code>~/docs/Claude/Wiki/              ← clone of private repo
+  CLAUDE.md                      ← schema (see 3.3)
+  index.md                       ← content catalog, by category; rebuilt on every ingest
+  log.md                         ← append-only; `## [YYYY-MM-DD] ingest | Title`
+  raw/YYYY/YYYY-MM-DD-slug.md    ← write-once; frontmatter below
+  raw/assets/
+  wiki/{concepts,entities,sources,questions}/*.md
+  scripts/                       ← sensitivity mapper, visibility computer, lint
+                                    (later: export)
+  .gitattributes                 ← log.md merge=union</code></pre>
+
+<h3><span class="tnum">3.2</span>Frontmatter</h3>
+<p>A raw source, script-populated fields marked:</p>
+<pre><code>---
+source_url: https://example.com/article
+captured: 2026-09-23
+origin: mine                # public | mine
+sensitivity: private        # ← script-set from source type, never hand-written
+---</code></pre>
+<p>A wiki page:</p>
+<pre><code>---
+title: Habit formation
+summary: How repetition and cue design compound into automatic behavior.
+sources:
+  - raw/2026/2026-09-12-atomic-habits-notes.md
+visibility: private         # ← computed: most restrictive of sources, fail-closed
+created: 2026-09-12
+updated: 2026-09-23
+tags: [psychology, behavior-change]
+---</code></pre>
+
+<h3><span class="tnum">3.3</span><code>CLAUDE.md</code> — the schema's table of contents</h3>
+<p>One file at the repo root, so any clone (Mac or cloud) picks it up automatically. It has to cover, in order:</p>
+<ol>
+<li><b>Layout</b> — where each file type lives, per the skeleton above.</li>
+<li><b>Frontmatter</b> — required fields per file type, per §3.2.</li>
+<li><b>Link rules</b> — relative markdown only, never wikilinks, never Obsidian-only syntax.</li>
+<li><b>Ingest / query / lint workflows</b> — the three Karpathy operations, written as concrete steps for this repo.</li>
+<li><b>Router</b> — where a new fact goes: action → Alfred; a fact about Alex → the coach folder; knowledge or a thought about the world → this wiki.</li>
+<li><b>House style</b> — lean pages, no archaeology, single source of truth per fact.</li>
+<li><b>Visibility rule</b> — computed by script, fail-closed to private, never hand-set by a session.</li>
+</ol>
+
+<h3><span class="tnum">3.4</span>The three scripts</h3>
+<div class="tbl-scroll">
+<table>
+<thead><tr><th>Script</th><th>What it checks / sets</th></tr></thead>
+<tbody>
+<tr><td><b>Sensitivity mapper</b></td><td>Sets <code>raw/*.md</code> frontmatter <code>sensitivity</code> from a fixed mapping table keyed on source type. Unmatched sources default to <code>private</code>. Alex can lower a label by explicit command; nothing raises one automatically. The model never touches this field.</td></tr>
+<tr><td><b>Visibility computer</b></td><td>Reads a wiki page's <code>sources:</code> list, looks up each cited source's <code>sensitivity</code>, and sets the page's <code>visibility</code> to the most restrictive value found. A page with an empty <code>sources:</code> list is private. The model never writes this field.</td></tr>
+<tr><td><b>Lint</b></td><td>Frontmatter present on every page; every relative link resolves; every page appears in <code>index.md</code>; no orphan pages (no inbound links); <code>visibility</code> fails closed to private when missing.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3><span class="tnum">3.5</span>Sync discipline</h3>
+<p>One remote, one long-lived branch. A session opens with <code>git pull --rebase</code> and makes one commit per ingest, titled like the log entry it wrote; it pushes at the end. <code>raw/</code> is write-once by convention, promoted to a CI check once an autonomous writer exists. <code>index.md</code> is never hand-merged — on conflict, re-derive the affected section; once there's a second concurrent writer, generate it by script from page frontmatter instead. <code>log.md</code> gets <code>merge=union</code> in <code>.gitattributes</code> so concurrent appends merge cleanly. A future autonomous writer works on <code>ingest/&lt;date&gt;-&lt;slug&gt;</code> branches and opens a PR — the merge is the review.</p>
+
+<h3><span class="tnum">3.6</span>Seed content, Day 1</h3>
+<p>The wiki seeds from two sources Alex already has: his existing Obsidian <b>book notes</b> (his own notes, never the book text) and his <b>Instapaper highlights</b> (his highlights plus a <code>source_url</code> back to the article). Both are <code>origin: mine</code>, which sidesteps the <code>licensed</code> sensitivity class entirely for the seed — the sensitivity mapper still runs and sets a value, it just resolves to public or private rather than licensed. The full raw-source scope and the ingest bar ("read/discussed" vs. "saved") are open question 1 in §5.4, not settled here. First pages target what the coach folder can't hold: an essay pipeline/seed page, an <code>llm-maintained-knowledge</code> concept page built from this spike's own sources (public-eligible), a Building Alfred story-arc page (every source already public), and Motivic product-research notes — never self-knowledge pages, which stay in the coach.</p>
+
+<h3><span class="tnum">3.7</span>Day 2 — the Alfred Knowledge module</h3>
+<p>Thin, read-only, and built from pieces that already exist:</p>
+<ul>
+<li><b>Snapshot on push.</b> Reuse the <code>fetchSpec</code> pattern in <code>workers/src/github.ts</code>, which already pulls markdown from GitHub and snapshots it into Supabase on merge. It needs the read PAT's scope extended to cover the new private repo.</li>
+<li><b>The shell.</b> A Knowledge tab wired into <code>modules.ts</code> plus the six files that list the module set (switcher, nav, mobile nav, router, command palette, view heading), with a seeded provider like the other modules have.</li>
+<li><b>The read view.</b> <code>react-markdown</code> + <code>remark-gfm</code>, the same stack that already renders specs in <code>components/code/spec-view.tsx</code>, with relative-link resolution added so wiki links work inside Alfred's route structure.</li>
+<li><b>Search and backlinks.</b> Full-text search over the snapshot text; backlinks computed from the links present at snapshot time (not live, not a graph).</li>
+<li><b>The inbox.</b> A "Send to wiki" verb added to Reader posts (whose <code>overview</code> jsonb, per ALF-232 D6, is already shaped for this), plus <code>knowledge</code> items — an <code>item_type</code> reserved since <code>0001_initial_schema.sql</code> and unused today — feeding a keyed <code>GET /api/knowledge/inbox</code> endpoint. A <code>wiki-ingest</code> skill pulls from that endpoint during an ingest session.</li>
+</ul>
+<p>What Day 2 deliberately doesn't build: any LLM write path through Alfred (the LLM writes git, not Supabase), and a graph view (force-directed layouts are non-deterministic, and every visual-state component needs a Storybook snapshot — a graph needs a seeded layout just to be testable).</p>
+
+<h3><span class="tnum">3.8</span>Data flow</h3>
+<div class="diagram-wrap">
+<svg viewBox="0 0 340 520" role="img" aria-labelledby="dfTitle dfDesc" xmlns="http://www.w3.org/2000/svg">
+  <title id="dfTitle">Wiki data flow</title>
+  <desc id="dfDesc">Sources flow into raw/, a Claude session ingests, queries and lints them into wiki/, index.md and log.md, which feed an Alfred read-only snapshot now and, later, an export script to a public target and static site.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.3">
+    <!-- sources -->
+    <rect x="70" y="8" width="200" height="40" rx="1"/>
+    <!-- raw/ -->
+    <rect x="70" y="88" width="200" height="46" rx="1"/>
+    <!-- claude session -->
+    <rect x="55" y="174" width="230" height="56" rx="1"/>
+    <!-- wiki output -->
+    <rect x="55" y="270" width="230" height="56" rx="1"/>
+    <!-- alfred (a) -->
+    <rect x="14" y="378" width="150" height="66" rx="1"/>
+    <!-- export (b) -->
+    <rect x="190" y="378" width="150" height="66" rx="1"/>
+    <!-- SSG under export -->
+    <rect x="190" y="470" width="150" height="40" rx="1" stroke-dasharray="3 3"/>
+  </g>
+  <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor" text-anchor="middle">
+    <text x="170" y="24">sources</text>
+    <text x="170" y="38" font-size="8.5" fill="currentColor" opacity="0.65">articles · notes · highlights</text>
+
+    <text x="170" y="107">raw/</text>
+    <text x="170" y="121" font-size="8.5" opacity="0.65">write-once · sensitivity: script-set</text>
+
+    <text x="170" y="196">Claude session</text>
+    <text x="170" y="210" font-size="8.5" opacity="0.65">ingest · query · lint</text>
+    <text x="170" y="222" font-size="8.5" opacity="0.65">driven by CLAUDE.md schema</text>
+
+    <text x="170" y="292">wiki/</text>
+    <text x="170" y="306" font-size="8.5" opacity="0.65">+ index.md + log.md</text>
+    <text x="170" y="318" font-size="8.5" opacity="0.65">visibility: computed, fail-closed</text>
+
+    <text x="89" y="400">(a) Alfred</text>
+    <text x="89" y="414" font-size="8.5" opacity="0.65">snapshot on push</text>
+    <text x="89" y="426" font-size="8.5" opacity="0.65">read-only view</text>
+    <text x="89" y="438" font-size="8.5" opacity="0.65">now</text>
+
+    <text x="265" y="400">(b) export script</text>
+    <text x="265" y="414" font-size="8.5" opacity="0.65">provenance check</text>
+    <text x="265" y="426" font-size="8.5" opacity="0.65">→ public target</text>
+    <text x="265" y="438" font-size="8.5" opacity="0.65">later, on demand</text>
+
+    <text x="265" y="494">static site</text>
+    <text x="265" y="504" font-size="8" opacity="0.6">Quartz / Astro</text>
+  </g>
+  <g stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow)">
+    <line x1="170" y1="48" x2="170" y2="86"/>
+    <line x1="170" y1="134" x2="170" y2="172"/>
+    <line x1="170" y1="230" x2="170" y2="268"/>
+    <line x1="150" y1="326" x2="100" y2="376"/>
+    <line x1="200" y1="326" x2="255" y2="376"/>
+    <line x1="265" y1="444" x2="265" y2="468"/>
+  </g>
+</svg>
+<p class="diagram-cap">sources → raw/ → Claude session → wiki/ + index + log → (a) Alfred now, (b) export + SSG later</p>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec">
+<div class="sec-head"><span class="sec-num">04</span><h2>Sidebars: appealing alternatives we're not taking</h2></div>
+
+<p>The UI-surface question packs three separate jobs into "where does the wiki render": the LLM's own read/write, Alex's browsing, and the feeds coming in from Alfred. The column that decides it below is <b>LLM read/write</b> — it runs on every ingest and every query, and the option that scores worst on it (native Alfred) is also the most expensive one to build.</p>
+<div class="tbl-scroll">
+<table>
+<thead><tr><th>Option</th><th>Build cost</th><th>LLM read/write</th><th>Phone</th><th>Browsing</th><th>Privacy</th><th>Feeds</th><th>Maintenance</th></tr></thead>
+<tbody>
+<tr><td>A. Alfred native (pages as rows)</td><td>H: 5–6 stories</td><td>L: new keyed API + skill</td><td>H</td><td>M → H once built; you build all of it</td><td>H (private Supabase)</td><td>H (same DB)</td><td>H (Reader-like tail)</td></tr>
+<tr><td>B. Alfred thin (git → snapshot → Next.js)</td><td>M: ~2 stories</td><td>H (git)</td><td>H</td><td>M: links + backlinks + search; graph deferred</td><td>H (private repo + snapshot)</td><td>H</td><td>M</td></tr>
+<tr><td>C. Obsidian vault on the Mac (repo clone)</td><td>~0</td><td>H: Cowork/Claude Code file tools</td><td>L without sync</td><td>H: links, backlinks, graph, search — native</td><td>H</td><td>M (via the feed seam)</td><td>L</td></tr>
+<tr><td>F. GitHub rendering of a private repo</td><td>0</td><td>H</td><td>M: renders markdown; relative links work</td><td>L–M: links only, no backlinks or graph</td><td>H</td><td>M</td><td>0</td></tr>
+<tr><td><b>H. Hybrid (recommended)</b>: F+C now, feed seam in Alfred, B on Day 2</td><td>0 now + 1 small story</td><td>H</td><td>M now → H on Day 2</td><td>M now (Obsidian on desk) → H</td><td>H</td><td>H</td><td>L</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Trimmed from report 02 §3's full matrix (which also scores design fit and edit-reviewability) to the rows and columns that carried the decision.</p>
+
+<div class="side">
+<h4 class="side-title">Native Alfred module (pages as rows)</h4>
+<p><span class="label">Appealed</span> One place for everything; Alfred's shell and UI polish are real, and the Reader shipped in about a day.</p>
+<p><span class="label no">Ruled out</span> Wiki pages fit the item model worse than a Reader post already does (ALF-232 D1). The only keyed write is <code>POST /api/items</code> — no batch, no rename-with-link-rewrite. It would need its own tables to replace what git gives free, and it prices out at roughly 3–5× the Reader's build. Graph view also hits the Storybook snapshot gate.</p>
+</div>
+
+<div class="side">
+<h4 class="side-title">Wiki inside the coach folder</h4>
+<p><span class="label">Appealed</span> Zero new infrastructure; one folder, one grant, one place Claude already reads every chat.</p>
+<p><span class="label no">Ruled out</span> Bloats the coach's fixed per-chat read; the keystone-file rules (read both files in full, every chat) would apply to sessions that don't need them; and it removes the cheapest privacy firewall — a wiki that can synthesize <code>patterns.md</code> into a page is a wiki that can leak it.</p>
+</div>
+
+<div class="side">
+<h4 class="side-title">Alfred monorepo</h4>
+<p><span class="label">Appealed</span> "One repo so agents have full context" is already the stated reason for Alfred's monorepo shape, and backup/CI infrastructure already exists there.</p>
+<p><span class="label no">Ruled out</span> The repo is public by construction, every commit pays the <code>check:fast</code> CI tax, and factory agents working unrelated code would load wiki content into their context.</p>
+</div>
+
+<div class="side">
+<h4 class="side-title">Per-page publish flag on the same tree</h4>
+<p><span class="label">Appealed</span> Simple metadata, and it's what the digital-garden tools actually do — Obsidian Digital Garden's <code>dg-publish: true</code>, Quartz's <code>ExplicitPublish</code>, Obsidian Publish's <code>publish: true/false</code>.</p>
+<p><span class="label no">Ruled out</span> The model writes the frontmatter, so the flag certifies itself. Git history holds every earlier state of a page, including before it was cleaned. Links and backlinks leak a private page's title from a public one even when the private page itself never gets flagged.</p>
+</div>
+
+<div class="side">
+<h4 class="side-title">Claude Project panel / memory</h4>
+<p><span class="label">Appealed</span> Already available, zero setup, works from the phone today.</p>
+<p><span class="label no">Ruled out</span> No git, no diffs — uploaded copies drift from the folder. Its retrieval is RAG, which is exactly the "rediscover every time" model this pattern replaces. Writes to it bust the whole project's prompt cache on every change. Memory is a size-capped fact store, not a place for a compounding page tree.</p>
+</div>
+
+<div class="side">
+<h4 class="side-title">Obsidian Sync / iCloud as the store</h4>
+<p><span class="label">Appealed</span> Native mobile browsing with graph and backlinks working immediately, no phone-side gap.</p>
+<p><span class="label no">Ruled out</span> A third party holds the vault; whether Obsidian Sync and a git clone coexist cleanly in one vault is unverified; iCloud alone is unreachable while the Mac sleeps, which blocks any future cloud- or phone-started ingest; and it costs $4–5/mo without answering the actual store-of-record question. Obsidian stays in the design, just as a free viewer on the git clone, not as the store.</p>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec">
+<div class="sec-head"><span class="sec-num">05</span><h2>Cost &amp; open questions</h2></div>
+
+<h3><span class="tnum">5.1</span>The two-day estimate, calibrated</h3>
+<p>The Reader is the closest real yardstick in this codebase: 2 stories, about 14.6k lines including tests and stories, spec-to-both-merged in roughly a day (9/17 23:30 to 9/18 22:13 by git log). But <b>59 of the 108 non-merge commits since 9/19 were Reader/comms follow-ups</b> — liveness, refetch, reconnect. Read against that: Day 1 (files, scripts, schema, seed ingest — no Alfred code) is a genuinely self-contained one-day chunk, which matters because week 26's "day-sized chunks" experiment runs directly on it. Day 2 (thin, snapshot-on-push, no write path, no graph) sits at roughly 1× the Reader's build, so 1–2 days — but the Reader's own tail is a warning that a "done" module still draws a string of small follow-ups afterward.</p>
+
+<h3><span class="tnum">5.2</span>Deferred, with triggers</h3>
+<div class="tbl-scroll">
+<table>
+<thead><tr><th>Step</th><th>Trigger</th></tr></thead>
+<tbody>
+<tr><td>Export script + public target + SSG (Quartz or Astro)</td><td>Alex wants to link a garden page from Substack / Building Alfred, or has ≥3 pages worth sharing</td></tr>
+<tr><td>Instapaper sync script</td><td>Manual Instapaper ingest becomes the most common friction logged in <code>log.md</code></td></tr>
+<tr><td>Scheduled cloud ingest (PR-based)</td><td>Backlog outgrows one supervised session a week, and two lint passes come back clean</td></tr>
+<tr><td>Index generated by script + <code>raw/</code> immutability CI check</td><td>First <code>index.md</code> conflict, or first autonomous writer</td></tr>
+<tr><td>R2 for binaries</td><td>First raw file over ~10 MB</td></tr>
+<tr><td>Search tool (e.g. qmd)</td><td><code>index.md</code> no longer reads in one pass (~hundreds of pages)</td></tr>
+<tr><td>Graph view, anywhere</td><td>≥30 pages, and a stated reason</td></tr>
+<tr><td>Clean-room public rewrite pipeline</td><td>Only if <i>public</i> pages need to update unattended</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3><span class="tnum">5.3</span>Anti-goals</h3>
+<ul>
+<li>Ingesting everything — breaks the "what's new to me" property the wiki exists for.</li>
+<li>A UI, SSG, or graph view before ~30 pages.</li>
+<li>Autonomous ingest before a month of reviewed ingests.</li>
+<li>Moving <code>patterns.md</code> or <code>protocols.md</code> into the wiki.</li>
+<li>Tasks or habits in the wiki — Alfred owns anything with a day.</li>
+<li>A sax-practice log (an existing anti-rock; Motivic is that product).</li>
+<li>Per-post Reader personalization (already a non-goal, ALF-232 D7).</li>
+<li>A weekly review that reads the wiki <i>in addition to</i> everything else, rather than in place of something.</li>
+</ul>
+
+<h3><span class="tnum">5.4</span>Open questions for epic refinement</h3>
+<ol>
+<li>Raw-source scope and the ingest bar — "read/discussed" versus "saved."</li>
+<li>Repo name (it will appear in URLs if a public export ever happens).</li>
+<li>Whether Rock 2's "LLM-wiki implemented <i>in Alfred</i>" needs rewording, or Day 2 satisfies it as written. Alex hasn't answered this yet.</li>
+<li>Whether the Motivic/Chad reference docs migrate out of the coach folder.</li>
+<li>Verify live: Quartz's link resolution for standard markdown links and <code>ExplicitPublish</code> behavior; whether Obsidian Sync and a git clone coexist cleanly (only relevant if Obsidian Sync is ever wanted for the phone).</li>
+<li>The <code>wiki-ingest</code> skill's exact contract with <code>GET /api/knowledge/inbox</code>.</li>
+<li>The GitHub read PAT's scope for the new private repo (Contents: read only, matching today's <code>wrangler.toml</code> convention).</li>
+</ol>
+
+<h3><span class="tnum">5.5</span>Optional experiment</h3>
+<p class="small">Offered, not prescribed. "Compiled, not re-derived": for the first ~5 sessions after Day 1, log every historical or topical question a session asks as <code>query | hit / miss / wrong</code> in <code>log.md</code>. Confidence rises if at least ⅔ are hits, Alex corrects fewer than 1 in 5 claims, and there are zero record-contradicting answers. Each failure mode teaches something different: mostly misses means the wrong page set, not a tooling problem; frequent corrections means human review stays mandatory; Alex never opening a page himself means it's a Claude cache and every UI ambition should drop. <code>n≈5</code> is weak evidence on its own — weight it accordingly, not as a verdict.</p>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec">
+<div class="sec-head"><span class="sec-num">06</span><h2>Sources</h2></div>
+
+<h4>The pattern</h4>
+<ul>
+<li>Andrej Karpathy — <a href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f">"LLM Wiki"</a>, the idea file this spike investigates.</li>
+</ul>
+
+<h4>Three influences on the digital-garden framing</h4>
+<ul>
+<li>Andy Matuschak — <a href="https://notes.andymatuschak.org/About_these_notes">"About these notes"</a> and <a href="https://notes.andymatuschak.org/Work_with_the_garage_door_up">"Work with the garage door up"</a></li>
+<li>Maggie Appleton — <a href="https://maggieappleton.com/garden-history">"A Brief History &amp; Ethos of the Digital Garden"</a></li>
+<li>Anne-Laure Le Cunff — <a href="https://www.mentalnodes.com/about">Mental Nodes, "About"</a> (three-tier private / garden / blog model)</li>
+</ul>
+
+<h4>Privacy research</h4>
+<ul>
+<li><a href="https://arxiv.org/abs/2310.17884">ConfAIde</a> — contextual-integrity leakage benchmark, ICLR 2024</li>
+<li><a href="https://arxiv.org/abs/2409.00138">PrivacyLens</a> — agentic leakage under explicit privacy instructions</li>
+<li><a href="https://arxiv.org/html/2609.14003">FlowSeal</a> — provenance labeling + deterministic interceptor, item-level leakage 52.2% → 0.5%</li>
+</ul>
+
+<h4>Publishing tools and prior art</h4>
+<ul>
+<li><a href="https://quartz.jzhao.xyz/features/private-pages">Quartz — private pages / <code>ExplicitPublish</code></a>; <a href="https://github.com/jackyzha0/quartz/pull/2544">PR #2544, asset leak fix for private notes</a></li>
+<li><a href="https://astro.build">Astro</a> — full design control, backlinks DIY</li>
+<li><a href="https://github.com/oleeskild/obsidian-digital-garden">Obsidian Digital Garden</a> — explicit <code>dg-publish: true</code>, linked notes never auto-published</li>
+<li><a href="https://mintlify.wiki/obsidianmd/obsidian-help/publish/publish-content">Obsidian Publish — publish content</a>; <a href="https://obsidian.md/pricing">obsidian.md/pricing</a></li>
+<li><a href="https://oliverfalvai.com/evergreen/my-quartz-+-obsidian-note-publishing-setup">Falvai — Quartz + Obsidian publishing setup</a> ("easy to end up linking a private page from a public one")</li>
+<li><a href="https://notes.hamatti.org/technology/building-a-digital-garden-with-obsidian-and-quartz">Juhis — building a digital garden</a> (manual publish step, kept on purpose)</li>
+<li><a href="https://github.com/ScrapingArt/Karpathy-LLM-Wiki-Stack">ScrapingArt/Karpathy-LLM-Wiki-Stack</a>; <a href="https://blog.saeloun.com/2026/04/28/private-karpathy-llm-wiki-gbrain-gstack-rails-ai-workflow/">Saeloun — private Karpathy LLM-wiki write-up</a> (regex redaction + mandatory human review, the manual step this design avoids)</li>
+</ul>
+
+<h4>Alfred files read (via reports 01–04)</h4>
+<ul>
+<li><code>CLAUDE.md</code>, <code>README.md</code>, <code>docs/specs/product/SPEC.md</code> §3, §5.2–5.5, §6, §13</li>
+<li><code>docs/specs/epics/ALF-232.html</code> (Reader — D1, D2, D3, D6, D7, D13); <code>docs/specs/epics/ALF-7.html</code> D2, D27; <code>docs/specs/epics/ALF-158.html</code></li>
+<li><code>database/migrations/0001_initial_schema.sql</code>, <code>0035_reader.sql</code>, <code>0036_reader_operability.sql</code>, <code>0034_comms.sql</code></li>
+<li><code>workers/src/github.ts</code> (<code>fetchSpec</code>), <code>workers/wrangler.toml</code> (read-only PAT, cron and subrequest limits, 60-day sweep)</li>
+<li><code>frontend/components/code/spec-view.tsx</code>, <code>frontend/components/tasks/weekly-plan-view.tsx</code>, <code>frontend/components/tasks/task-row/task-row-menu.tsx</code></li>
+<li><code>frontend/lib/modules.ts</code>, <code>frontend/app/(shell)/layout.tsx</code>, <code>frontend/app/api/items/[id]/route.ts</code>, <code>frontend/app/api/reader/posts</code></li>
+<li><code>.husky/pre-commit</code>, root <code>package.json</code> (<code>check:fast</code> fan-out); <code>docs/instance-isolation.md</code>; <code>daemon/README.md</code></li>
+<li><code>docs/spikes/composable-shared-skills.html</code> (visibility-inheritance precedent); <code>docs/spikes/scheduled-cloud-backups.md</code> (Worker constraints)</li>
+</ul>
+
+<h4>Productivity Coach files read</h4>
+<ul>
+<li><code>current-system.md</code>, <code>index.md</code>, <code>open-items.md</code>, <code>patterns.md</code>, <code>projects.md</code>, <code>strategic-context.md</code>, <code>quarterly-plan-q3-2026.md</code>, <code>CLAUDE.md</code></li>
+</ul>
+
+<h4>This spike's own inputs</h4>
+<ul>
+<li>Four research reports commissioned for this spike (privacy; UI surface; location; wildcard use cases) and a decisions memo from the interview — not committed; available from the spike session.</li>
+</ul>
+
+</div>
+
+<footer class="end">— end of findings —</footer>
+</div>
+</body>
+</html>

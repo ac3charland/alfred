@@ -13,11 +13,11 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  */
 export function formatPostDate(iso: string, now: Date): string {
   const received = new Date(iso);
-  const month = MONTHS[received.getMonth()] ?? '';
-  const day = String(received.getDate());
-  return received.getFullYear() === now.getFullYear()
+  const month = MONTHS[received.getUTCMonth()] ?? '';
+  const day = String(received.getUTCDate());
+  return received.getUTCFullYear() === now.getUTCFullYear()
     ? `${month} ${day}`
-    : `${month} ${day}, ${String(received.getFullYear())}`;
+    : `${month} ${day}, ${String(received.getUTCFullYear())}`;
 }
 
 /** The read-time estimate: a 230 words-per-minute reader, rounded up, floored at one minute. */
