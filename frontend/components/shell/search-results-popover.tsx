@@ -4,6 +4,7 @@ import { Popover } from 'radix-ui';
 import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
+import { CheckboxField } from '@/components/atoms/checkbox-field';
 import {
   type SearchResult,
   type SearchResults,
@@ -25,6 +26,9 @@ interface SearchResultsPopoverProperties {
   onClose: () => void;
   /** The field the popover anchors to — pointer-downs on it must not count as "outside". */
   inputRef: React.RefObject<HTMLInputElement | null>;
+  /** Whether completed tasks / terminal stories are included in `results`. */
+  showCompleted: boolean;
+  onShowCompletedChange: (next: boolean) => void;
 }
 
 /** One result row. */
@@ -149,6 +153,8 @@ export function SearchResultsPopover({
   onHover,
   onClose,
   inputRef,
+  showCompleted,
+  onShowCompletedChange,
 }: SearchResultsPopoverProperties) {
   const trimmed = query.trim();
 
@@ -184,38 +190,49 @@ export function SearchResultsPopover({
           <p className="px-2 py-2 text-xs text-muted-foreground">
             Search tasks and stories by title, notes, or ref
           </p>
-        ) : flat.length === 0 ? (
-          <p className="px-2 py-2 text-xs text-muted-foreground">No matches for “{trimmed}”</p>
         ) : (
           <>
-            <ul id={listboxId} role="listbox" aria-label="Search results">
-              <Group
-                label="Tasks"
-                groupResults={results.tasks}
-                truncated={results.truncated.tasks}
-                baseIndex={0}
-                activeIndex={activeIndex}
-                onSelect={onSelect}
-                onHover={onHover}
+            <div className="flex items-center justify-end border-b border-border px-2 pb-1.5 pt-1">
+              <CheckboxField
+                label="Show completed"
+                checked={showCompleted}
+                onCheckedChange={onShowCompletedChange}
               />
-              <Group
-                label="Stories"
-                groupResults={results.stories}
-                truncated={results.truncated.stories}
-                baseIndex={results.tasks.length}
-                activeIndex={activeIndex}
-                onSelect={onSelect}
-                onHover={onHover}
-              />
-            </ul>
-            <div className="mt-1 flex items-center gap-3 border-t border-border px-2 py-1.5 text-[11px] text-muted-foreground/70">
-              <span>↑↓ navigate</span>
-              <span>↵ open</span>
-              <span>esc close</span>
-              <span className="ml-auto">
-                {flat.length} result{flat.length === 1 ? '' : 's'}
-              </span>
             </div>
+            {flat.length === 0 ? (
+              <p className="px-2 py-2 text-xs text-muted-foreground">No matches for “{trimmed}”</p>
+            ) : (
+              <>
+                <ul id={listboxId} role="listbox" aria-label="Search results">
+                  <Group
+                    label="Tasks"
+                    groupResults={results.tasks}
+                    truncated={results.truncated.tasks}
+                    baseIndex={0}
+                    activeIndex={activeIndex}
+                    onSelect={onSelect}
+                    onHover={onHover}
+                  />
+                  <Group
+                    label="Stories"
+                    groupResults={results.stories}
+                    truncated={results.truncated.stories}
+                    baseIndex={results.tasks.length}
+                    activeIndex={activeIndex}
+                    onSelect={onSelect}
+                    onHover={onHover}
+                  />
+                </ul>
+                <div className="mt-1 flex items-center gap-3 border-t border-border px-2 py-1.5 text-[11px] text-muted-foreground/70">
+                  <span>↑↓ navigate</span>
+                  <span>↵ open</span>
+                  <span>esc close</span>
+                  <span className="ml-auto">
+                    {flat.length} result{flat.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+              </>
+            )}
           </>
         )}
       </Popover.Content>

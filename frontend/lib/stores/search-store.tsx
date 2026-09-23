@@ -5,8 +5,9 @@ import * as React from 'react';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 
 /**
- * Search store — the tiny shared state behind the top-bar global search: the live `query`
- * and whether the results dropdown is `open`. It's a store (not local `SearchBox` state) so
+ * Search store — the tiny shared state behind the top-bar global search: the live `query`,
+ * whether the results dropdown is `open`, and whether completed items are shown. It's a store
+ * (not local `SearchBox` state) so
  * the desktop header field and the mobile hamburger field stay in sync and the ⌘P shortcut has
  * one place to drive. Mounted once in the shell, around `AppShell`.
  *
@@ -17,6 +18,8 @@ export interface SearchState {
   query: string;
   /** Whether the results dropdown is showing (it opens on focus / typing). */
   open: boolean;
+  /** Whether completed tasks / terminal stories are included in results (off by default). */
+  showCompleted: boolean;
 }
 
 export interface SearchActions {
@@ -24,8 +27,10 @@ export interface SearchActions {
   setQuery: (query: string) => void;
   /** Open the dropdown (on focus) without touching the query. */
   openDropdown: () => void;
-  /** Close the dropdown AND clear the query, so each fresh focus starts empty. */
+  /** Close the dropdown AND clear the query/showCompleted, so each fresh focus starts empty. */
   closeDropdown: () => void;
+  /** Toggle whether completed tasks / terminal stories are included in results. */
+  setShowCompleted: (showCompleted: boolean) => void;
 }
 
 const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
@@ -34,18 +39,25 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 >('a SearchProvider');
 
 export function SearchProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = React.useState<SearchState>({ query: '', open: false });
+  const [state, setState] = React.useState<SearchState>({
+    query: '',
+    open: false,
+    showCompleted: false,
+  });
 
   const actions = React.useMemo<SearchActions>(
     () => ({
       setQuery: (query) => {
-        setState({ query, open: true });
+        setState((current) => ({ ...current, query, open: true }));
       },
       openDropdown: () => {
         setState((current) => ({ ...current, open: true }));
       },
       closeDropdown: () => {
-        setState({ query: '', open: false });
+        setState({ query: '', open: false, showCompleted: false });
+      },
+      setShowCompleted: (showCompleted) => {
+        setState((current) => ({ ...current, showCompleted }));
       },
     }),
     [],

@@ -44,8 +44,8 @@ interface SearchBoxProperties {
  * filters client-side — no network round-trip.
  */
 export function SearchBox({ placement = 'desktop', className, onNavigate }: SearchBoxProperties) {
-  const { query, open } = useSearch();
-  const { setQuery, openDropdown, closeDropdown } = useSearchActions();
+  const { query, open, showCompleted } = useSearch();
+  const { setQuery, openDropdown, closeDropdown, setShowCompleted } = useSearchActions();
   const tasks = useTasks();
   const stories = useCodeStories();
   const folders = useFolders();
@@ -62,8 +62,8 @@ export function SearchBox({ placement = 'desktop', className, onNavigate }: Sear
   useGlobalSearchShortcut(focusInput, placement === 'desktop');
 
   const results = React.useMemo(
-    () => buildResults(query, tasks, stories, folders),
-    [query, tasks, stories, folders],
+    () => buildResults(query, tasks, stories, folders, showCompleted),
+    [query, tasks, stories, folders, showCompleted],
   );
   const flat = React.useMemo(() => flattenResults(results), [results]);
 
@@ -175,6 +175,8 @@ export function SearchBox({ placement = 'desktop', className, onNavigate }: Sear
           onHover={setActiveIndex}
           onClose={closeDropdown}
           inputRef={inputRef}
+          showCompleted={showCompleted}
+          onShowCompletedChange={setShowCompleted}
         />
       )}
     </Popover.Root>
