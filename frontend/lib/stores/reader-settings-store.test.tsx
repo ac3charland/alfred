@@ -389,7 +389,7 @@ describe('ReaderSettingsProvider', () => {
         await result.current.actions.copyFilterQuery();
       });
 
-      expect(mockCopyToClipboard).toHaveBeenCalledWith('from:(a@example.com OR b@example.com)');
+      expect(mockCopyToClipboard).toHaveBeenCalledWith('a@example.com OR b@example.com');
       expect(mockShowToast).toHaveBeenCalledWith('Gmail filter query copied');
     });
 
