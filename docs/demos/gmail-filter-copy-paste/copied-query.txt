@@ -1,0 +1,1 @@
+*@substack.com AND -no-reply@substack.com OR newsletter@example.com OR email@stratechery.com
