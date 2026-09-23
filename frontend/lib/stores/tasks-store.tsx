@@ -205,6 +205,17 @@ interface TaskActions {
    * server-side, so there is no API call, nothing to reconcile and nothing to roll back.
    */
   settleEpicConversion: (input: { parentId: string; childIds: string[] }) => void;
+  /**
+   * Refetch every item from the server and reconcile the CLASSIFIER VERDICT fields onto the
+   * rows already held, keyed by id — the same patch {@link classifierVerdictPatch} applies from
+   * the live `items` UPDATE stream, run here as a fallback. Fired on navigation within the Tasks
+   * module (ALF-246) so a verdict a stale realtime connection dropped, or one that landed while
+   * this tab sat on another module, reconciles the moment the owner lands on a Tasks view.
+   * Patches only the verdict's own columns (never title/notes/due date/etc.) and only rows
+   * already present in the store (the race rule), mirroring the code store's `refreshStatuses`
+   * (ALF-69); a failed fetch is swallowed, leaving the current data as-is.
+   */
+  refreshVerdicts: () => Promise<void>;
 }
 
 type TaskAction = SimpleAction<Item>;
@@ -1021,6 +1032,21 @@ export function TasksProvider({
       },
       settleEpicConversion({ parentId, childIds }) {
         dispatch({ type: 'remove', ids: [parentId, ...childIds] });
+      },
+      async refreshVerdicts() {
+        let rows: Item[];
+        try {
+          rows = await api.listItems({ status: 'all' });
+        } catch {
+          // A background reconcile fired by navigation — on failure keep the seeded/realtime
+          // data as-is and stay silent (no rollback, no toast); the next navigation retries.
+          return;
+        }
+        const heldById = new Map(tasksRef.current.map((item) => [item.id, item] as const));
+        for (const row of rows) {
+          const patch = classifierVerdictPatch(heldById.get(row.id), row);
+          if (patch !== null) dispatch({ type: 'patch', ids: [row.id], patch });
+        }
       },
     }),
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].

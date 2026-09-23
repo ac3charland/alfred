@@ -23,6 +23,7 @@ const mockCompleteTask = jest.mocked(apiClient.completeTask);
 const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
+const mockListItems = jest.mocked(apiClient.listItems);
 
 // Capture the realtime UPDATE handler the TasksProvider subscribes, so the classifier-verdict
 // tests can drive a simulated `items` change through it without a live Realtime channel.
@@ -2772,5 +2773,105 @@ describe('realtime items subscription', () => {
     unmount();
 
     expect(mockRemoveChannel).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Navigation refetch (ALF-246)
+// ---------------------------------------------------------------------------
+
+describe('refreshVerdicts (ALF-246 navigation refetch)', () => {
+  /** The row as the sweep leaves it: labels filled in, stamped with the model that judged it. */
+  const VERDICT: Partial<Item> = {
+    item_type: 'task',
+    priority: 'high',
+    due_date: '2025-01-09T00:00:00Z',
+    folder_id: 'f1',
+    classified_at: '2025-01-01T10:05:00Z',
+    classified_provider: 'anthropic',
+    classified_model: 'claude-haiku-4-5',
+    classified_prompt_version: 1,
+    classified_guess: { item_type: 'task', priority: 'high' },
+  };
+
+  /** An untouched Inbox capture — what the sweeper picks up. */
+  function unjudged(overrides: Partial<Item> = {}): Item {
+    return item({
+      id: 'i1',
+      title: 'call the dentist',
+      item_type: 'unclassified',
+      dispatched_at: null,
+      ...overrides,
+    });
+  }
+
+  it('patches a held row to its freshly-fetched verdict', async () => {
+    const row = unjudged();
+    mockListItems.mockResolvedValue([{ ...row, ...VERDICT }]);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.refreshVerdicts();
+    });
+
+    expect(mockListItems).toHaveBeenCalledWith({ status: 'all' });
+    expect(result.current.tasks.find((t) => t.id === 'i1')).toMatchObject({
+      item_type: 'task',
+      priority: 'high',
+      folder_id: 'f1',
+      classified_provider: 'anthropic',
+    });
+  });
+
+  it('leaves non-verdict fields (title, notes, sort_order) untouched', async () => {
+    const row = unjudged({ title: 'Local title' });
+    mockListItems.mockResolvedValue([{ ...row, ...VERDICT, title: 'Renamed elsewhere' }]);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.refreshVerdicts();
+    });
+
+    expect(result.current.tasks.find((t) => t.id === 'i1')?.title).toBe('Local title');
+  });
+
+  it('ignores a fetched row absent from the store (verdicts only, no insert)', async () => {
+    const row = unjudged();
+    mockListItems.mockResolvedValue([
+      { ...row, ...VERDICT },
+      unjudged({ id: 'new', title: 'captured elsewhere' }),
+    ]);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.refreshVerdicts();
+    });
+
+    expect(result.current.tasks.map((t) => t.id)).toStrictEqual(['i1']);
+  });
+
+  it('ignores a verdict for a row the owner has already claimed', async () => {
+    const claimed = unjudged({ priority: 'low', classified_at: '2025-01-01T10:01:00Z' });
+    mockListItems.mockResolvedValue([{ ...claimed, ...VERDICT }]);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([claimed]) });
+
+    await act(async () => {
+      await result.current.actions.refreshVerdicts();
+    });
+
+    expect(result.current.tasks.find((t) => t.id === 'i1')?.priority).toBe('low');
+  });
+
+  it('swallows a failed fetch and leaves the seeded data intact', async () => {
+    mockListItems.mockRejectedValue(new Error('network down'));
+    const row = unjudged();
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.refreshVerdicts();
+    });
+
+    expect(result.current.tasks).toStrictEqual([row]);
+    expect(mockShowToast).not.toHaveBeenCalled();
   });
 });
