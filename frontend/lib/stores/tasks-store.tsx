@@ -206,22 +206,44 @@ interface TaskActions {
    */
   settleEpicConversion: (input: { parentId: string; childIds: string[] }) => void;
   /**
-   * Refetch every item from the server and reconcile the CLASSIFIER VERDICT fields onto the
+   * Refetch every item from the server and (a) reconcile the CLASSIFIER VERDICT fields onto the
    * rows already held, keyed by id — the same patch {@link classifierVerdictPatch} applies from
-   * the live `items` UPDATE stream, run here as a fallback. Fired on navigation within the Tasks
-   * module (ALF-246) so a verdict a stale or dropped realtime connection missed reconciles the
-   * moment the owner lands on a Tasks view — unlike Comms/Reader, this module has no tab-return
-   * trigger of its own, so navigation is the only fallback it gets. Patches only the verdict's
-   * own columns (never title/notes/due date/etc.) and only rows already present in the store
-   * (the race rule), mirroring the code store's `refreshStatuses` (ALF-69); a failed fetch is
-   * swallowed, leaving the current data as-is.
+   * the live `items` UPDATE stream, run here as a fallback — and (b) insert any row the fetch
+   * returns that this store has never held. Fired on navigation within the Tasks module
+   * (ALF-246) so both a verdict a stale or dropped realtime connection missed AND an item a
+   * second writer created (Comms' "Make Inbox item" action, a Siri capture via `POST
+   * /api/items`) reconcile the moment the owner lands on a Tasks view — unlike Comms/Reader,
+   * this module has no tab-return trigger of its own, so navigation is the only fallback it
+   * gets. A failed fetch is swallowed, leaving the current data as-is.
    *
-   * Race-safe against a concurrent local edit: the held rows are snapshotted BEFORE the fetch
-   * goes out, and a fetched row's patch only applies if its snapshot is still reference-equal to
-   * the row this store holds when the fetch resolves. Anything that touched the row while the
-   * fetch was in flight — an optimistic edit, that edit's rollback, or a realtime verdict —
-   * replaces it with a new object, so this fetch's now-stale answer is skipped for that row
-   * rather than overwriting whatever landed after it started.
+   * The fetch reads `task_items` (`api.listItems({ status: 'all' })`, which GET /api/items now
+   * always serves — see `getItems` in `lib/data/items`), not the raw `items` table: `task_items`
+   * already excludes any item gated into the Software Factory, so the insert path can never
+   * resurrect one into the Inbox — a gated item was already removed from this store
+   * (`removeGatedItem`/`settleEpicConversion`) when it left, and naively inserting every unheld
+   * row the raw table returns would put it right back.
+   *
+   * The existing patch is applied only to rows already present in the store (the race rule),
+   * mirroring the code store's `refreshStatuses` (ALF-69), and is race-safe against a concurrent
+   * local edit: the held rows are snapshotted BEFORE the fetch goes out, and a fetched row's
+   * patch only applies if its snapshot is still reference-equal to the row this store holds when
+   * the fetch resolves. Anything that touched the row while the fetch was in flight — an
+   * optimistic edit, that edit's rollback, or a realtime verdict — replaces it with a new
+   * object, so this fetch's now-stale answer is skipped for that row rather than overwriting
+   * whatever landed after it started.
+   *
+   * The insert is guarded differently, and more durably: NOT by the two fetch-scoped snapshots
+   * above, but by `everHeldIdsRef` — a ref that accumulates every id this store has EVER held
+   * since mount and never removes one (synced by its own effect, alongside `tasksRef`). An id
+   * already in that set is never inserted, no matter when or how it left the store — a row this
+   * tab deleted or gated away, at any point (not just while this fetch happened to be in
+   * flight), cannot come back from a stale fetch. `heldAtStart`/`currentById` catch only a
+   * removal that happens WHILE a particular fetch is in flight; a row gone before the fetch even
+   * started is absent from both, so that pair alone would let this fetch's stale copy of it
+   * insert right back — the bug `everHeldIdsRef` closes. It also still catches the narrower,
+   * mid-flight case: a row that arrives by some OTHER means while the fetch is out (e.g. this
+   * tab's own `addTask` reconciling its optimistic row to that exact server id) is added to
+   * `everHeldIdsRef` the moment it lands, before this fetch's insert check runs.
    */
   refreshVerdicts: () => Promise<void>;
 }
@@ -332,6 +354,16 @@ export function TasksProvider({
   const tasksRef = React.useRef(tasks);
   React.useEffect(() => {
     tasksRef.current = tasks;
+  }, [tasks]);
+
+  // Every id this store has EVER held since mount, accumulated and never removed (`refreshVerdicts`'s
+  // insert guard — ALF-246). A ref, not derived from `tasks`, because it must survive PAST a row's
+  // removal: once an id has been seen here, a stale background fetch may never insert it again, even
+  // long after this tab deleted or gated the row away. Synced by its own effect, same pattern as
+  // `tasksRef` above (and same reason: the closures below read it without going stale).
+  const everHeldIdsRef = React.useRef(new Set<string>());
+  React.useEffect(() => {
+    for (const item of tasks) everHeldIdsRef.current.add(item.id);
   }, [tasks]);
 
   // A failed write rolls its optimistic change back silently; surface that to the user as a
@@ -1049,6 +1081,10 @@ export function TasksProvider({
         const heldAtStart = new Map(tasksRef.current.map((item) => [item.id, item] as const));
         let rows: Item[];
         try {
+          // GET /api/items always reads `task_items` (see `getItems` in `lib/data/items`), not
+          // the raw `items` table: this reconcile inserts unheld rows below, and the view
+          // already excludes anything gated into the Software Factory — so that insert can
+          // never resurrect a gated item into the Inbox (see the interface doc).
           rows = await api.listItems({ status: 'all' });
         } catch {
           // A background reconcile fired by navigation — on failure keep the seeded/realtime
@@ -1067,6 +1103,20 @@ export function TasksProvider({
           const patch = classifierVerdictPatch(held, row);
           if (patch !== null) dispatch({ type: 'patch', ids: [row.id], patch });
         }
+        // Insert rows the fetch returned that this store has NEVER held — a second writer
+        // (Comms' "Make Inbox item" action, a Siri capture via POST /api/items) created them
+        // after this tab's own copy was seeded (ALF-246 gap). Guarded by `everHeldIdsRef`, not
+        // `heldAtStart`/`currentById`: those two only prove nothing touched the row WHILE this
+        // fetch was in flight, which misses a row removed (deleted, or gated away via
+        // `removeGatedItem`/`settleEpicConversion`) just BEFORE the fetch started — such a row is
+        // absent from both maps, so it would otherwise be inserted right back. An id this store
+        // has ever held is never re-inserted, so a row this tab deleted or gated away — at any
+        // point, not just mid-fetch — cannot come back from a stale fetch. It still also catches
+        // the mid-flight case (e.g. this tab's own `addTask` reconciling its optimistic row to
+        // this exact server id): `everHeldIdsRef` picks up that id the moment the reconcile's
+        // dispatch commits, via the effect that syncs it off `tasks`, before this check runs.
+        const newRows = rows.filter((row) => !everHeldIdsRef.current.has(row.id));
+        if (newRows.length > 0) dispatch({ type: 'upsert', items: newRows });
       },
     }),
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].

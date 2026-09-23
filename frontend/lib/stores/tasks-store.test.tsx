@@ -2844,19 +2844,177 @@ describe('refreshVerdicts (ALF-246 navigation refetch)', () => {
     expect(result.current.tasks.find((t) => t.id === 'i1')?.title).toBe('Local title');
   });
 
-  it('ignores a fetched row absent from the store (verdicts only, no insert)', async () => {
+  it('inserts a fetched row this store never held (a second writer created it — ALF-246 gap)', async () => {
     const row = unjudged();
-    mockListItems.mockResolvedValue([
-      { ...row, ...VERDICT },
-      unjudged({ id: 'new', title: 'captured elsewhere' }),
-    ]);
+    const created = unjudged({ id: 'new', title: 'captured elsewhere' });
+    mockListItems.mockResolvedValue([{ ...row, ...VERDICT }, created]);
     const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
 
     await act(async () => {
       await result.current.actions.refreshVerdicts();
     });
 
-    expect(result.current.tasks.map((t) => t.id)).toStrictEqual(['i1']);
+    // Both rows land: the held row via the existing patch path, the unheld one via insert —
+    // with exactly the fields the fetch returned for it (a plain insert, not a partial patch).
+    const ids = result.current.tasks.map((t) => t.id);
+    expect(ids).toHaveLength(2);
+    expect(ids).toContain('i1');
+    expect(ids).toContain('new');
+    expect(result.current.tasks.find((t) => t.id === 'new')).toStrictEqual(created);
+  });
+
+  it('leaves a held row to the patch path — the insert never touches it', async () => {
+    // Pin against a regression where the "insert new rows" logic also re-writes a row that WAS
+    // held: the id-membership check (`!heldAtStart.has(row.id)`) should already exclude it, but
+    // this asserts it explicitly rather than relying on the patch-loop tests alone.
+    const row = unjudged({ title: 'Local title' });
+    mockListItems.mockResolvedValue([{ ...row, ...VERDICT, title: 'Renamed elsewhere' }]);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.refreshVerdicts();
+    });
+
+    // Exactly one row for 'i1' (no duplicate insert), and its title stayed local — an insert
+    // would have replaced the whole row, including the title, clobbering the patch-only rule.
+    const held = result.current.tasks.filter((t) => t.id === 'i1');
+    expect(held).toHaveLength(1);
+    expect(held[0]?.title).toBe('Local title');
+  });
+
+  it('does not duplicate a row that arrives by another means while the fetch is in flight', async () => {
+    // Mirrors the mid-flight race test below, but for the INSERT path: this tab's own addTask
+    // reconciles an optimistic row to server id 'new' WHILE the refreshVerdicts fetch (which
+    // also returns a row for 'new', from a second writer's perspective) is still out. The row
+    // was unheld when the fetch started, so a start-of-fetch snapshot alone can't rule out
+    // inserting it — the guard must re-check the store's CURRENT ids once the fetch resolves
+    // (`everHeldIdsRef`, kept current by the same effect that syncs `tasksRef`).
+    const { promise: fetchPromise, settle: settleFetch } = deferred<Item[]>();
+    mockListItems.mockReturnValue(fetchPromise);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    const refreshing = result.current.actions.refreshVerdicts();
+
+    // The concurrent create starts (optimistic insert) and reconciles to server id 'new' before
+    // the fetch resolves.
+    const reconciled = unjudged({ id: 'new', title: 'captured locally' });
+    mockCreateItem.mockResolvedValue(reconciled);
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'captured locally' });
+    });
+
+    await act(async () => {
+      settleFetch([unjudged({ id: 'new', title: 'captured locally', ...VERDICT })]);
+      await refreshing;
+    });
+
+    // `upsert` already de-dupes by id on its own, so a bare length check here would pass even
+    // with the guard missing (the fetch's stale row would just clobber the reconciled one in
+    // place, still leaving one row). Pin the actual invariant by checking WHICH version won:
+    // the guard must have skipped the stale insert entirely, so the surviving row is exactly
+    // what addTask reconciled — untouched by the fetch's verdict fields — not the stale fetch's
+    // row merged/overwritten on top of it.
+    const rowsForNew = result.current.tasks.filter((t) => t.id === 'new');
+    expect(rowsForNew).toHaveLength(1);
+    expect(rowsForNew[0]).toStrictEqual(reconciled);
+  });
+
+  it('does not resurrect a row deleted before the fetch was even started', async () => {
+    // The literal resurrection gap Fix 1 closes: `deleteTask` removes 'i1' BEFORE
+    // refreshVerdicts's fetch is fired at all, so the row is absent from BOTH the fetch's
+    // held-at-start snapshot and its current-store snapshot when the fetch resolves — those two
+    // fetch-scoped maps alone can't tell this apart from a row this store never saw, and (pre-fix)
+    // would insert the fetch's stale copy right back. `everHeldIdsRef` still remembers 'i1' from
+    // the initial seed and never forgets it, so it stays out.
+    mockDeleteItem.mockResolvedValue({ success: true });
+    const row = unjudged();
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.deleteTask(row.id);
+    });
+    expect(result.current.tasks).toStrictEqual([]);
+
+    // The fetch — fired AFTER the delete — still carries the now-deleted row (a stale read).
+    mockListItems.mockResolvedValue([{ ...row, ...VERDICT }]);
+    await act(async () => {
+      await result.current.actions.refreshVerdicts();
+    });
+
+    expect(result.current.tasks).toStrictEqual([]);
+  });
+
+  it('never re-inserts a row this store once held, even if it was removed WHILE the fetch was in flight', async () => {
+    // The scenario the patch path already handled, pinned here for the insert path too: 'i1' IS
+    // present when refreshVerdicts snapshots `heldAtStart`, then `deleteTask` removes it before
+    // the fetch resolves. Absent from `currentById` at resolve time, but `everHeldIdsRef` still
+    // remembers it from the initial seed, so it stays out regardless of which snapshot changed.
+    mockDeleteItem.mockResolvedValue({ success: true });
+    const row = unjudged();
+    const { promise: fetchPromise, settle: settleFetch } = deferred<Item[]>();
+    mockListItems.mockReturnValue(fetchPromise);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    const refreshing = result.current.actions.refreshVerdicts();
+
+    // The delete runs — and fully completes — before the fetch resolves.
+    await act(async () => {
+      await result.current.actions.deleteTask(row.id);
+    });
+    expect(result.current.tasks).toStrictEqual([]);
+
+    // The fetch's stale response still carries the now-deleted row.
+    await act(async () => {
+      settleFetch([{ ...row, ...VERDICT }]);
+      await refreshing;
+    });
+
+    expect(result.current.tasks.find((t) => t.id === row.id)).toBeUndefined();
+    expect(result.current.tasks).toStrictEqual([]);
+  });
+
+  it('collapses to one row when a concurrent addTask reconciles to an id the fetch already inserted', async () => {
+    // The `replace` side of the ALF-246 gap (Fix 2): this tab's own addTask is mid-flight (its
+    // optimistic temp-id row held) when refreshVerdicts's fetch resolves and inserts server row
+    // 'new' — correctly, by the insert guard's own rule, since this tab hasn't reconciled to
+    // that id yet. THEN addTask's create call resolves and reconciles the temp row to that SAME
+    // server id. Without the reducer's `replace` de-dup, the temp row's slot would swap to
+    // 'new' while the refetch's earlier insert of 'new' still sat elsewhere in the array —
+    // two rows carrying the same id.
+    const { promise: fetchPromise, settle: settleFetch } = deferred<Item[]>();
+    mockListItems.mockReturnValue(fetchPromise);
+    const { promise: createPromise, settle: settleCreate } = deferred<Item>();
+    mockCreateItem.mockReturnValue(createPromise);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    const refreshing = result.current.actions.refreshVerdicts();
+
+    // The concurrent create starts — its optimistic temp row lands — but stays in flight.
+    let adding!: Promise<void>;
+    act(() => {
+      adding = result.current.actions.addTask({ text: 'captured locally' });
+    });
+    expect(result.current.tasks).toHaveLength(1);
+
+    // The fetch resolves FIRST, inserting server row 'new' via the existing (correct) insert
+    // guard — this tab hasn't reconciled to it yet.
+    const fromRefetch = unjudged({ id: 'new', title: 'captured locally', ...VERDICT });
+    await act(async () => {
+      settleFetch([fromRefetch]);
+      await refreshing;
+    });
+    expect(result.current.tasks.map((t) => t.id)).toContain('new');
+
+    // THEN this tab's own create reconciles its temp row to that SAME server id.
+    const reconciled = unjudged({ id: 'new', title: 'captured locally' });
+    await act(async () => {
+      settleCreate(reconciled);
+      await adding;
+    });
+
+    // Exactly one 'new' row survives, carrying the reconciled version (not the stale refetch's
+    // verdict fields), in the temp row's original slot.
+    expect(result.current.tasks).toStrictEqual([reconciled]);
   });
 
   it('ignores a verdict for a row the owner has already claimed', async () => {

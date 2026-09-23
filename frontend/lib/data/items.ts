@@ -41,11 +41,19 @@ export async function getAllItems(): Promise<Item[]> {
 }
 
 /**
- * Scoped read over the raw `items` table for the keyed GET /api/items endpoint.
+ * Scoped read over the `task_items` view for the keyed GET /api/items endpoint.
  *
- * Distinct from `getAllItems` (which reads the `task_items` view to drop factory stories):
- * this is the list endpoint, so it reads `items` directly and applies the caller's scope.
- * It returns the raw Supabase `{ data, error }` so the route can map the error to a status
+ * Reads the SAME view `getAllItems` does (see its doc comment for the exclusion this relies
+ * on) rather than the raw `items` table: every caller of this endpoint is a browser session
+ * (it sits behind `withSession` — see `lib/api/auth`), and nothing in the app needs to see an
+ * item gated into the Software Factory back out through this list. In particular, the Tasks
+ * store's navigation refetch (`refreshVerdicts`, ALF-246) reconciles its OWN held rows broadly
+ * against a fresh fetch and inserts any row it doesn't already hold — a gated item was already
+ * removed from that store on the way out, so handing it back here would resurrect it into the
+ * Inbox. Reading `task_items` unconditionally makes that impossible rather than relying on
+ * every caller to opt in.
+ *
+ * Returns the raw Supabase `{ data, error }` so the route can map the error to a status
  * (`mapSupabaseError`) — the read layer reports, it doesn't decide HTTP codes.
  *
  *   - `inbox: true`              → items still awaiting triage (`.is('dispatched_at', null)`),
@@ -58,8 +66,7 @@ export async function getItems(
   query: ListItemsQuery,
 ): Promise<{ data: Item[] | null; error: PostgrestError | null }> {
   const supabase = await createClient();
-
-  let builder = supabase.from('items').select('*');
+  let builder = supabase.from('task_items').select('*');
 
   if (query.inbox === true) {
     // Inbox: items no human has dispatched yet — must use .is(), not .eq()
@@ -73,5 +80,9 @@ export async function getItems(
     builder = builder.eq('status', resolvedStatus);
   }
 
-  return builder.order('created_at', { ascending: false });
+  // `task_items` is `select i.*` over `items`, so every row IS a full `items` row — but
+  // Postgres views carry no NOT NULL metadata, so the generated view type makes every column
+  // nullable. Override it back to `Item` (the real, non-null row shape the view always
+  // yields), same as `getAllItems`.
+  return builder.order('created_at', { ascending: false }).overrideTypes<Item[]>();
 }
