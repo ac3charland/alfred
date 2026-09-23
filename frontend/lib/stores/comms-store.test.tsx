@@ -85,13 +85,12 @@ describe('commsReducer', () => {
   });
 
   it('starts a shell whose read failed unloaded, with nothing to date it by', () => {
-    const seed = makeCommsSeed({ readAt: '2026-09-09T12:00:00.000Z' });
-    const unloaded = stateFromSeed(seed, true);
+    const unloaded = stateFromSeed(makeCommsSeed(), true);
 
     expect(unloaded).toMatchObject({ loaded: false, lastReadAt: null });
     expect(empty.loaded).toBe(true);
-    // The client's own clock, captured at mount — never the server's `readAt`.
-    expect(empty.lastReadAt).not.toBe(seed.readAt);
+    // The client's own clock, captured at mount.
+    expect(empty.lastReadAt).not.toBeNull();
   });
 
   it('is loaded by the first read that lands, dated to when it started', () => {
@@ -522,7 +521,7 @@ describe('purge', () => {
     expect(result.current.messages).toHaveLength(2);
   });
 
-  it('toasts and re-throws when the purge fails', async () => {
+  it('re-throws when the purge fails, without toasting — PurgePanel shows the error in context', async () => {
     mockApi.purgeComms.mockRejectedValue(new Error('boom'));
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
 
@@ -531,7 +530,7 @@ describe('purge', () => {
     });
 
     expect(result.current.messages).toHaveLength(2);
-    expect(mockShowToast).toHaveBeenCalledWith("Couldn't purge those messages");
+    expect(mockShowToast).not.toHaveBeenCalled();
   });
 
   it('re-reads the snapshot once a purge lands, for every selector — not just the message one', async () => {
@@ -802,7 +801,7 @@ describe('CommsProvider — polling and recovery', () => {
 
   it('starts a shell whose read failed unloaded, and reads on mount without waiting for a poll', async () => {
     const failing = holdSnapshot();
-    const failed = makeCommsSeed({ readAt: '2026-01-01T00:00:00.000Z' });
+    const failed = makeCommsSeed();
     function Wrapper({ children }: { children: React.ReactNode }) {
       return (
         <CommsProvider initialSeed={failed} initialFailed>

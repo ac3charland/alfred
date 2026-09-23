@@ -405,14 +405,6 @@ describe('readCommsSnapshot', () => {
     expect(seed.lastClassifiedAt).toBe('2026-03-01T11:58:00.000Z');
   });
 
-  it('stamps when it was read', async () => {
-    const { client } = makeClient({});
-
-    const { seed } = await readCommsSnapshot(client);
-
-    expect(seed.readAt).toBe('2026-03-01T12:00:00.000Z');
-  });
-
   it('fetches only the verdicts the returned messages actually point at', async () => {
     const judged = makeCommMessage(ACCOUNT.id, {
       tier: 'today',

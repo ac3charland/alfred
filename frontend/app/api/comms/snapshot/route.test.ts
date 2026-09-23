@@ -23,7 +23,6 @@ const SEED: CommsSeed = {
   shelfCount: 3,
   readerClaimedCount: 1,
   lastClassifiedAt: null,
-  readAt: '2026-09-09T12:00:00.000Z',
 };
 const STUB_CONTEXT = { params: Promise.resolve({}) };
 

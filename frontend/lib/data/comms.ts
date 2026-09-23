@@ -260,7 +260,6 @@ export async function readCommsSnapshot(
     shelfCount: 0,
     readerClaimedCount: 0,
     lastClassifiedAt: null,
-    readAt: now.toISOString(),
   };
 
   const { data: accounts, error: accountsError } = await supabase

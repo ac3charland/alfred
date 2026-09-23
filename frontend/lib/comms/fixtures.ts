@@ -218,7 +218,6 @@ export function makeCommsSeed(
     messages?: CommMessage[];
     verdicts?: CommVerdict[];
     health?: CommClassifierHealth;
-    readAt?: string;
     shelfLimit?: number;
   } = {},
 ): CommsSeed {
@@ -238,6 +237,5 @@ export function makeCommsSeed(
     shelfCount: shelf.length,
     readerClaimedCount: readerClaimedCount(all),
     lastClassifiedAt,
-    readAt: input.readAt ?? new Date().toISOString(),
   };
 }

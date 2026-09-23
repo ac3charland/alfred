@@ -58,9 +58,10 @@ export interface CommsState {
   /** Whether any read has landed — `false` only while the shell's failed read has no successor. */
   loaded: boolean;
   /**
-   * The client clock's own time when the last successful read STARTED — never the server's
-   * `readAt`. `null` only while `loaded` is false. `lib/comms/live.ts`'s `isCommsLive` is what
-   * turns this into "is the view live right now"; the store itself tracks no such flag.
+   * The client clock's own time when the last successful read STARTED — the server reports no
+   * read time of its own for this to compare against. `null` only while `loaded` is false.
+   * `lib/comms/live.ts`'s `isCommsLive` is what turns this into "is the view live right now"; the
+   * store itself tracks no such flag.
    */
   lastReadAt: string | null;
 }
@@ -138,8 +139,8 @@ export function stateFromSeed(seed: CommsSeed, failed = false): CommsState {
     readerClaimedCount: seed.readerClaimedCount,
     lastClassifiedAt: seed.lastClassifiedAt,
     loaded: !failed,
-    // The client's own clock, not the server's `readAt` — the window this dates is measured
-    // against the client's later reads, so it has to share their clock.
+    // The client's own clock — the window this dates is measured against the client's later
+    // reads, so it has to share their clock rather than the server's.
     lastReadAt: failed ? null : new Date().toISOString(),
   };
 }
@@ -431,27 +432,25 @@ export function CommsProvider({
         );
       },
       async purge(input) {
-        try {
-          const result = await api.purgeComms(input);
-          // A single-message purge is removed locally too, ahead of the reconcile below: the id
-          // is right here, unlike an account-wide or date-range purge (which has no id list to
-          // remove without a client re-implementation of the server's own predicate), and the
-          // row was very likely the one the owner was just looking at.
-          if (input.message_id !== undefined) {
-            apply({
-              type: 'messages',
-              action: { type: 'remove', ids: [input.message_id] },
-            });
-          }
-          // Every selector reconciles: this is what brings an account-wide or date-range purge
-          // into view, and it costs the single-message case nothing since the removal above
-          // already applied.
-          reconcile();
-          return result;
-        } catch (error) {
-          showToastRef.current("Couldn't purge those messages");
-          throw error;
+        // No toast here: purge's only caller (`PurgePanel`) shows a failure inline, in the
+        // confirm dialog it happened in — a toast would just say the same thing twice. The
+        // rejection still propagates (no try/catch to swallow it) for that caller to show.
+        const result = await api.purgeComms(input);
+        // A single-message purge is removed locally too, ahead of the reconcile below: the id
+        // is right here, unlike an account-wide or date-range purge (which has no id list to
+        // remove without a client re-implementation of the server's own predicate), and the
+        // row was very likely the one the owner was just looking at.
+        if (input.message_id !== undefined) {
+          apply({
+            type: 'messages',
+            action: { type: 'remove', ids: [input.message_id] },
+          });
         }
+        // Every selector reconciles: this is what brings an account-wide or date-range purge
+        // into view, and it costs the single-message case nothing since the removal above
+        // already applied.
+        reconcile();
+        return result;
       },
       showMoreShelf() {
         const { messages, shelfCount } = stateRef.current;
