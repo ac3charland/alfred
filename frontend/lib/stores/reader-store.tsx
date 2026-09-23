@@ -58,6 +58,13 @@ export interface ReaderState {
   archiveStatus: ReaderArchiveStatus;
   /** Whether that read came back at its ceiling, so the archive says it is showing a slice. */
   archiveFull: boolean;
+  /**
+   * The client clock's time the most recently STARTED health reconcile attempt began, successful
+   * or not — `null` between attempts. Read by `lib/comms/health.ts`'s `heldNow`, which is what
+   * stops a returning tab's mailbox dot from flashing offline for the fraction of a second the
+   * read itself takes — see ALF-252.
+   */
+  healthReconcileStartedAt: string | null;
 }
 
 export interface ReaderActions {
@@ -132,7 +139,9 @@ type ReaderAction =
    * `replaceAll` does: an id this tab wrote that the read left too early to know about keeps its
    * local row.
    */
-  | { type: 'archiveRead'; posts: ReaderPostListItem[]; full: boolean; keep: string[] };
+  | { type: 'archiveRead'; posts: ReaderPostListItem[]; full: boolean; keep: string[] }
+  /** A health reconcile attempt was just launched — see {@link ReaderState.healthReconcileStartedAt}. */
+  | { type: 'healthReconcileAttempt'; startedAt: string };
 
 /** Pure reducer. The single row list delegates to the shared flat-list reducer. */
 export function readerReducer(state: ReaderState, action: ReaderAction): ReaderState {
@@ -141,7 +150,8 @@ export function readerReducer(state: ReaderState, action: ReaderAction): ReaderS
       return { ...state, posts: simpleReducer(state.posts, action.action, 'reader post') };
     }
     case 'health': {
-      return { ...state, health: action.snapshot };
+      // A fresh snapshot lands: nothing left to hold `healthReconcileStartedAt` for.
+      return { ...state, health: action.snapshot, healthReconcileStartedAt: null };
     }
     case 'replaceAll': {
       const keep = new Set(action.keep);
@@ -180,6 +190,9 @@ export function readerReducer(state: ReaderState, action: ReaderAction): ReaderS
         archiveFull: action.full,
       };
     }
+    case 'healthReconcileAttempt': {
+      return { ...state, healthReconcileStartedAt: action.startedAt };
+    }
     default: {
       return assertNever(action, 'reader action');
     }
@@ -205,6 +218,7 @@ export function ReaderProvider({
     health: initialHealth,
     archiveStatus: 'idle',
     archiveFull: false,
+    healthReconcileStartedAt: null,
   });
 
   // Latest state, readable inside the stable action closures so they can capture pre-mutation
@@ -298,6 +312,7 @@ export function ReaderProvider({
   const reconcileHealth = React.useCallback(() => {
     if (reconcilingRef.current || document.hidden) return;
     reconcilingRef.current = true;
+    dispatch({ type: 'healthReconcileAttempt', startedAt: new Date().toISOString() });
     void api
       .fetchReaderHealth()
       .then((snapshot) => {
@@ -528,6 +543,14 @@ export function useActiveCount(): number {
  */
 export function useReaderHealth(): ReaderHealthSnapshot {
   return useStateValue('useReaderHealth').health;
+}
+
+/**
+ * When the health snapshot's most recently STARTED reconcile attempt began, successful or not —
+ * `null` between attempts. See {@link ReaderState.healthReconcileStartedAt}.
+ */
+export function useReaderHealthReconcileStartedAt(): string | null {
+  return useStateValue('useReaderHealthReconcileStartedAt').healthReconcileStartedAt;
 }
 
 /** The Reader mutation actions. Throws outside a ReaderProvider. */

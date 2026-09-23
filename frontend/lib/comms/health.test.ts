@@ -4,7 +4,13 @@ import {
   makeCommMessage,
   resetCommFixtureClock,
 } from './fixtures';
-import { accountHealth, classifierStalled, lastPing } from './health';
+import {
+  ACCOUNT_RECONNECT_GRACE_MS,
+  accountHealth,
+  classifierStalled,
+  heldNow,
+  lastPing,
+} from './health';
 
 const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
 const NOW = new Date('2026-03-01T12:00:00.000Z');
@@ -12,6 +18,11 @@ const NOW = new Date('2026-03-01T12:00:00.000Z');
 /** An ISO timestamp `minutes` before {@link NOW}. */
 function minutesAgo(minutes: number): string {
   return new Date(NOW.getTime() - minutes * 60 * 1000).toISOString();
+}
+
+/** An ISO timestamp `ms` before {@link NOW}. */
+function msAgo(ms: number): string {
+  return new Date(NOW.getTime() - ms).toISOString();
 }
 
 beforeEach(() => {
@@ -62,6 +73,27 @@ describe('accountHealth', () => {
       last_seen_at: minutesAgo(1),
     });
     expect(accountHealth(account, NOW)).toBe('live');
+  });
+});
+
+describe('heldNow', () => {
+  it('is just `now` with no reconcile attempt to hold against', () => {
+    expect(heldNow(NOW, null)).toEqual(NOW);
+  });
+
+  it("holds at the attempt's own start while it is inside the grace window", () => {
+    const startedAt = msAgo(1000);
+    expect(heldNow(NOW, startedAt)).toEqual(new Date(startedAt));
+  });
+
+  it('stops holding once the grace window has fully passed — a stuck read cannot hide forever', () => {
+    const startedAt = msAgo(ACCOUNT_RECONNECT_GRACE_MS);
+    expect(heldNow(NOW, startedAt)).toEqual(NOW);
+  });
+
+  it('still holds at exactly one tick inside the edge of the window', () => {
+    const startedAt = msAgo(ACCOUNT_RECONNECT_GRACE_MS - 1);
+    expect(heldNow(NOW, startedAt)).toEqual(new Date(startedAt));
   });
 });
 

@@ -4,7 +4,13 @@ import { Inbox } from 'lucide-react';
 import * as React from 'react';
 
 import { ViewHeading } from '@/components/atoms/view-heading';
-import { COMMS_LIVE_WINDOW_MS, accountHealth, classifierStalled, lastPing } from '@/lib/comms';
+import {
+  COMMS_LIVE_WINDOW_MS,
+  accountHealth,
+  classifierStalled,
+  heldNow,
+  lastPing,
+} from '@/lib/comms';
 import type { CommAccount, CommClassifierHealth, CommMessage } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +46,12 @@ interface CommsHeaderProperties {
   notLiveSince?: string | undefined;
   /** `false` while no read of the view has ever landed — there is nothing yet to show or date. */
   loaded?: boolean | undefined;
+  /**
+   * When the most recent reconcile attempt began, successful or not — `null` between attempts.
+   * Held against the account dots for a short grace window (`heldNow`) so a returning tab's
+   * reconnect doesn't flash an account offline for the moment the read itself takes — ALF-252.
+   */
+  reconcileStartedAt?: string | null | undefined;
 }
 
 /**
@@ -78,6 +90,7 @@ export function CommsHeader({
   lastClassifiedAt = null,
   notLiveSince,
   loaded = true,
+  reconcileStartedAt = null,
 }: CommsHeaderProperties) {
   const heading = (
     <ViewHeading
@@ -116,8 +129,11 @@ export function CommsHeader({
 
   const stall = classifierStalled(health, messages, now, lastClassifiedAt);
   const ping = lastPing(accounts);
+  // The account dots' own clock: held at a reconcile's own start for a short grace window so a
+  // returning tab's reconnect never flashes a live account offline — see `heldNow` / ALF-252.
+  const accountsNow = heldNow(now, reconcileStartedAt);
   const sentences = accounts.flatMap((account) => {
-    const sentence = accountSentence(account, now);
+    const sentence = accountSentence(account, accountsNow);
     return sentence === null ? [] : [{ account, sentence }];
   });
 
@@ -137,7 +153,7 @@ export function CommsHeader({
           <div className="flex flex-col items-end gap-1">
             <div className="flex flex-wrap items-center gap-3" data-testid="account-dots">
               {accounts.map((account) => (
-                <AccountDot key={account.id} account={account} now={now} />
+                <AccountDot key={account.id} account={account} now={accountsNow} />
               ))}
             </div>
             {ping !== null && (

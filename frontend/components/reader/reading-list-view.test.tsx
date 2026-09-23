@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -179,6 +179,10 @@ describe('ReadingListView — the health surface', () => {
     last_seen_at: ago(1),
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('carries the dots beside the heading and stays quiet when everything works', () => {
     renderReader(<ReadingListView now={HEALTH_NOW} />, [], {
       health: makeReaderHealth('live', {}, HEALTH_NOW),
@@ -349,6 +353,53 @@ describe('ReadingListView — the health surface', () => {
     });
 
     expect(screen.getByRole('status')).toHaveTextContent('— 1 claimed post waits for tomorrow.');
+  });
+
+  it('holds the mailbox dot live through the reconnect read, even as it crosses stale while out (ALF-252)', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(HEALTH_NOW);
+    mockApi.fetchReaderPosts.mockResolvedValue([]);
+    const account = {
+      ...LIVE_ACCOUNT,
+      expected_interval_seconds: 60,
+      last_seen_at: new Date(HEALTH_NOW.getTime() - 58_000).toISOString(),
+    };
+    const health = {
+      resolve: (_snapshot: {
+        health: ReturnType<typeof makeReaderHealth>;
+        account: typeof account;
+      }) => {},
+    };
+    mockApi.fetchReaderHealth.mockReturnValue(
+      new Promise((resolve) => {
+        health.resolve = resolve;
+      }),
+    );
+    const { rerender } = renderReader(<ReadingListView now={HEALTH_NOW} />, [], {
+      health: makeReaderHealth('live', {}, HEALTH_NOW),
+      account,
+    });
+    expect(screen.getByRole('img', { name: 'Gmail (personal) · live' })).toBeInTheDocument();
+
+    act(() => {
+      globalThis.dispatchEvent(new Event('focus'));
+    });
+
+    // The account's own 60s interval passes while the reconnect read this just launched is
+    // still out — inside the reconnect's own short grace window, not the (much longer) time it
+    // would take to make this account look overdue on its own.
+    const stillOut = new Date(HEALTH_NOW.getTime() + 3000);
+    jest.setSystemTime(stillOut);
+    rerender(<ReadingListView now={stillOut} />);
+    expect(screen.getByRole('img', { name: 'Gmail (personal) · live' })).toBeInTheDocument();
+
+    await act(async () => {
+      health.resolve({ health: makeReaderHealth('live', {}, HEALTH_NOW), account });
+      await Promise.resolve();
+    });
+
+    // The read landed and confirmed nothing new — now the true state shows for real.
+    expect(screen.getByRole('img', { name: 'Gmail (personal) · stale' })).toBeInTheDocument();
   });
 });
 

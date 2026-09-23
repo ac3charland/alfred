@@ -18,12 +18,18 @@ export function renderReader(
   /** Nothing read yet — the state before the tick has ever run. */
   initialHealth: ReaderHealthSnapshot = NO_READER_HEALTH,
 ) {
-  return render(
-    <ToastProvider>
-      <ReaderProvider initialPosts={initialPosts} initialHealth={initialHealth}>
-        {ui}
-      </ReaderProvider>
-      <ToastViewport />
-    </ToastProvider>,
-  );
+  // Via RTL's own `wrapper` option, not inlined around `ui` directly: only that way does the
+  // result's `rerender` re-wrap a new element in the same providers rather than replacing the
+  // whole tree (and losing the provider state) with the bare element it's given.
+  function Wrapper({ children }: { children: React.ReactNode }) {
+    return (
+      <ToastProvider>
+        <ReaderProvider initialPosts={initialPosts} initialHealth={initialHealth}>
+          {children}
+        </ReaderProvider>
+        <ToastViewport />
+      </ToastProvider>
+    );
+  }
+  return render(ui, { wrapper: Wrapper });
 }

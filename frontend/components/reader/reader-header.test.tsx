@@ -16,7 +16,7 @@ import type {
   ReaderPostListItem,
 } from '@/lib/types';
 
-import { ReaderHeader } from './reader-header';
+import { GMAIL_LABEL, ReaderHeader } from './reader-header';
 
 const NOW = new Date(READER_HEALTH_FIXTURE_NOW);
 const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
@@ -25,6 +25,11 @@ const MINUTE_MS = 60 * 1000;
 /** An instant `minutes` before the pinned now, as the columns store it. */
 function ago(minutes: number): string {
   return new Date(NOW.getTime() - minutes * MINUTE_MS).toISOString();
+}
+
+/** An instant `seconds` before the pinned now. */
+function secondsAgo(seconds: number): string {
+  return new Date(NOW.getTime() - seconds * 1000).toISOString();
 }
 
 const LIVE_ACCOUNT: CommAccount = makeCommAccount('Personal', {
@@ -47,9 +52,19 @@ function waiting(minutes: number): ReaderPostListItem {
   return listItem;
 }
 
-function renderHeader(snapshot: ReaderHealthSnapshot, posts: ReaderPostListItem[] = []) {
+function renderHeader(
+  snapshot: ReaderHealthSnapshot,
+  posts: ReaderPostListItem[] = [],
+  reconcileStartedAt: string | null = null,
+) {
   return render(
-    <ReaderHeader snapshot={snapshot} posts={posts} now={NOW} description="3 to read" />,
+    <ReaderHeader
+      snapshot={snapshot}
+      posts={posts}
+      now={NOW}
+      description="3 to read"
+      reconcileStartedAt={reconcileStartedAt}
+    />,
   );
 }
 
@@ -225,5 +240,46 @@ describe('ReaderHeader — the sentences', () => {
     renderHeader({ health, account: { ...LIVE_ACCOUNT, last_seen_at: ago(360) } });
 
     expect(screen.getByTestId('reader-health-notes').childElementCount).toBe(2);
+  });
+});
+
+describe('ReaderHeader — holding the mailbox dot through a reconnect (ALF-252)', () => {
+  it('holds the mailbox dot live while a reconnect read is in flight, rather than flashing stale', () => {
+    const account = {
+      ...LIVE_ACCOUNT,
+      expected_interval_seconds: 60,
+      last_seen_at: secondsAgo(62),
+    };
+    // The read that would refresh this row launched while it was still inside its interval —
+    // the dot holds that reading rather than the fresh "62s is over the 60s interval" one until
+    // the read actually lands.
+    renderHeader({ health: liveHealth(), account }, [], secondsAgo(2));
+
+    expect(screen.getByRole('img', { name: `${GMAIL_LABEL} · live` })).toBeInTheDocument();
+    expect(screen.queryByTestId('reader-health-notes')).not.toBeInTheDocument();
+  });
+
+  it('does not fabricate liveness a reconnect began after it was already gone', () => {
+    const account = {
+      ...LIVE_ACCOUNT,
+      expected_interval_seconds: 60,
+      last_seen_at: secondsAgo(600),
+    };
+    renderHeader({ health: liveHealth(), account }, [], secondsAgo(2));
+
+    expect(screen.getByRole('img', { name: `${GMAIL_LABEL} · stale` })).toBeInTheDocument();
+  });
+
+  it('stops holding once the reconnect has clearly had its chance', () => {
+    const account = {
+      ...LIVE_ACCOUNT,
+      expected_interval_seconds: 60,
+      last_seen_at: secondsAgo(62),
+    };
+    // Well past ACCOUNT_RECONNECT_GRACE_MS (5s) — a read this old has had its chance, so the
+    // dot reads the true clock again rather than holding forever.
+    renderHeader({ health: liveHealth(), account }, [], secondsAgo(30));
+
+    expect(screen.getByRole('img', { name: `${GMAIL_LABEL} · stale` })).toBeInTheDocument();
   });
 });

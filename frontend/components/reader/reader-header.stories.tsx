@@ -114,3 +114,24 @@ export const NeverRan: Story = {
     snapshot: { health: makeReaderHealth('never', {}, NOW), account: LIVE_ACCOUNT },
   },
 };
+
+/**
+ * The mailbox's own interval has technically lapsed, but the module's reconnect — the health
+ * read a returning tab kicks off — only just launched. The dot holds the live reading it had
+ * right before that read began instead of flashing offline for the fraction of a second the read
+ * takes (ALF-252). Contrast `GmailDead`: there nothing has looked live in hours and there is no
+ * read in flight for the dot to hold against.
+ */
+export const ReconnectingHoldsLive: Story = {
+  args: {
+    snapshot: {
+      health: makeReaderHealth('live', {}, NOW),
+      account: {
+        ...LIVE_ACCOUNT,
+        expected_interval_seconds: 60,
+        last_seen_at: new Date(NOW.getTime() - 62_000).toISOString(),
+      },
+    },
+    reconcileStartedAt: new Date(NOW.getTime() - 2000).toISOString(),
+  },
+};

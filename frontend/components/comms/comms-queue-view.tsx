@@ -63,7 +63,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   const byTier = useQueuedByTier();
   const shelf = useShelf();
   const { shelfCount, readerClaimedCount } = useShelfCounts();
-  const { loaded, lastClassifiedAt, lastReadAt } = useCommsSync();
+  const { loaded, lastClassifiedAt, lastReadAt, lastReconcileAttemptAt } = useCommsSync();
   const { showMoreShelf } = useCommsActions();
   const verdicts = useCommsVerdicts();
   const health = useCommsHealth();
@@ -156,6 +156,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
         lastClassifiedAt={lastClassifiedAt}
         notLiveSince={live ? undefined : (lastReadAt ?? undefined)}
         loaded={loaded}
+        reconcileStartedAt={lastReconcileAttemptAt}
       />
 
       {/* A queue that was never read is not an empty one: nothing is drawn until a read lands. */}

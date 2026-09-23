@@ -32,6 +32,36 @@ export function accountHealth(account: CommAccount, now: Date): AccountHealth {
   return now.getTime() - lastSeen <= account.expected_interval_seconds * 1000 ? 'live' : 'stale';
 }
 
+/**
+ * How long a reconnect attempt (the module's own re-read, kicked off when a tab returns from the
+ * background or the network comes back) gets the benefit of the doubt before the account dots
+ * start reading off the true clock again — long enough to cover a normal round trip, nowhere
+ * near long enough to hide a source that is genuinely still down.
+ */
+export const ACCOUNT_RECONNECT_GRACE_MS = 5000;
+
+/**
+ * ALF-252. `accountHealth`, but fed a clock held at the instant the module's most recent
+ * reconcile attempt began, for a short grace window after it — rather than the true, ticking
+ * `now`.
+ *
+ * Nothing about an account row changes until its read lands (the store replaces it wholesale,
+ * never incrementally), so the only thing that can move between renders while a read is out is
+ * `now` itself. A tab that returns after a while away re-renders with a fresh, ticking `now`
+ * against account data that is still exactly what it was before the tab left — which can tip a
+ * row that was genuinely live a moment ago over its `expected_interval_seconds` and flash it
+ * stale for the fraction of a second the read takes to land. Holding the clock at the read's own
+ * start reproduces whatever the dot read right before the attempt began — connected stays
+ * connected — until the window passes, at which point a read that is still out has clearly had
+ * its chance and the true clock takes back over: a source that is truly offline still shows it,
+ * just no sooner than the reconnect attempt itself allowed for.
+ */
+export function heldNow(now: Date, reconcileStartedAt: string | null): Date {
+  if (reconcileStartedAt === null) return now;
+  const started = Date.parse(reconcileStartedAt);
+  return now.getTime() - started < ACCOUNT_RECONNECT_GRACE_MS ? new Date(started) : now;
+}
+
 /** The most recent successful poll across every account, and the account that made it. */
 export interface LastPing {
   account: CommAccount;
