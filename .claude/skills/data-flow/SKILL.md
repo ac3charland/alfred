@@ -123,9 +123,12 @@ suite gates, not in branches inside the subscription callback.
 
 **Comms polls instead of subscribing — its sources are minutes-granular, so a socket buys almost
 nothing.** The split isn't who writes — a Worker writes both groups — it's what a stale view
-costs. The three tables above get Realtime because their writer's own latency is near-instant (a
-PR transition, a spec merge, a classifier verdict), so a push is what makes the update visible the
-moment it happens; delaying it to a poll would itself be the lag. Comms' four (`comm_messages`,
+costs. The three tables above get Realtime not because delivery is instant — the classifier sweep
+above still lands a row's verdict a minute or two after it arrives — but because each update is a
+narrow patch onto a row the tab already holds (a lane, a spec column, one verdict), so a push
+applies it directly with nothing else to reconcile. Comms needs a whole trustworthy VIEW across
+four tables (is it loaded, is it fresh) rather than one row's patch, which a full re-read produces
+more simply than a channel per table would. Comms' four (`comm_messages`,
 `comm_accounts`, `comm_classifier_health`, `comm_verdicts`) are written by a Worker or the Mac
 daemon on a 1–3 minute cadence regardless of transport, so nothing there is time-critical at
 second granularity, and the machinery a Realtime subscription needs to stay honest (join
@@ -144,12 +147,16 @@ more read after it (a loop — recursion trips `react-hooks/immutability`).
 successful read, forever if the shell's own seed read failed) and `lastReadAt` (the client's own
 clock, captured when a successful read *started*; a failed read moves neither). The view is live
 iff `loaded && now - lastReadAt <= COMMS_LIVE_WINDOW_MS` (`isCommsLive`, `lib/comms/live.ts`, ~2
-polls + slack), computed in the queue view against its own ticking clock (`useNow`) rather than
-tracked as a `stale` event fired by something — so a dead network, a frozen tab, or a machine
-asleep all show up on their own as time passes, with nothing that has to remember to fire. While
-not live the header dates the line to `lastReadAt`. A shell whose seed read failed isn't *loaded*
-at all — it says it couldn't load and draws no queue (an unread queue is not an empty one) until a
-read lands, which it asks for on mount without waiting for the poll interval.
+polls + slack), computed by `useCommsLive` (`lib/hooks/use-comms-live.ts`) rather than the queue
+view's own coarser, 30s-bucketed `useNow`: a `useSyncExternalStore` armed with one `setTimeout` for
+the window's own deadline, so a dead network or a frozen tab flips the instant its deadline passes
+rather than waiting on some unrelated render. A machine actually asleep needs its own check — JS
+timers are monotonic and don't run while suspended, so the deadline timer can wake hours late —
+`useCommsLive` also re-checks against the wall clock on `visibilitychange` and `pageshow`, the same
+signals `CommsProvider` re-reads a snapshot on. While not live the header dates the line to
+`lastReadAt`. A shell whose seed read failed isn't *loaded* at all — it says it couldn't load and
+draws no queue (an unread queue is not an empty one) until a read lands, which it asks for on mount
+without waiting for the poll interval.
 
 ## A derived status must mirror the query that does the work
 
