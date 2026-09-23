@@ -12,6 +12,7 @@ import {
   useActiveCount,
   useArchivedPosts,
   useReaderHealth,
+  useReaderHealthReconcileStartedAt,
   useReaderPosts,
 } from '@/lib/stores/reader-store';
 
@@ -38,6 +39,7 @@ export function ReadingListView({ now: pinnedNow }: ReadingListViewProperties) {
   const archived = useArchivedPosts();
   const activeCount = useActiveCount();
   const health = useReaderHealth();
+  const reconcileStartedAt = useReaderHealthReconcileStartedAt();
 
   // A ticking clock, because every health state is a comparison against now: a seed frozen at
   // first paint would report a stall that ended an hour ago until something else re-rendered.
@@ -64,6 +66,7 @@ export function ReadingListView({ now: pinnedNow }: ReadingListViewProperties) {
           posts={allPosts}
           now={now}
           description={activeCount === 0 ? 'Nothing to read' : `${String(activeCount)} to read`}
+          reconcileStartedAt={reconcileStartedAt}
         />
       </div>
 

@@ -20,6 +20,7 @@ import {
   useArchivedPosts,
   useReaderActions,
   useReaderHealth,
+  useReaderHealthReconcileStartedAt,
   useReaderPosts,
 } from './reader-store';
 
@@ -81,7 +82,13 @@ const NO_HEALTH: ReaderHealthSnapshot = { health: undefined, account: undefined 
 
 /** A reducer state at rest: the posts under test, no health read and no archive read. */
 function state(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HEALTH): ReaderState {
-  return { posts, health, archiveStatus: 'idle', archiveFull: false };
+  return {
+    posts,
+    health,
+    archiveStatus: 'idle',
+    archiveFull: false,
+    healthReconcileStartedAt: null,
+  };
 }
 
 function makeWrapper(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HEALTH) {
@@ -225,6 +232,24 @@ describe('readerReducer', () => {
     const next = readerReducer(state([held]), { type: 'archiveStatus', status: 'failed' });
     expect(next.archiveStatus).toBe('failed');
     expect(next.posts).toEqual([held]);
+  });
+
+  it('marks a health reconcile attempt as it launches', () => {
+    const startedAt = '2026-09-18T09:00:00.000Z';
+    const next = readerReducer(state([]), { type: 'healthReconcileAttempt', startedAt });
+    expect(next.healthReconcileStartedAt).toBe(startedAt);
+  });
+
+  it('clears a marked attempt once a fresh health snapshot lands', () => {
+    const before = {
+      ...state([]),
+      healthReconcileStartedAt: '2026-09-18T09:00:00.000Z',
+    };
+    const next = readerReducer(before, {
+      type: 'health',
+      snapshot: { health: undefined, account: undefined },
+    });
+    expect(next.healthReconcileStartedAt).toBeNull();
   });
 });
 
@@ -861,6 +886,48 @@ describe('reconcileHealth', () => {
 
     expect(result.current.health).toEqual(seeded);
     expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('marks the attempt as it launches, and clears it once a fresh snapshot lands', async () => {
+    const held = deferred<ReaderHealthSnapshot>();
+    mockApi.fetchReaderHealth.mockReturnValue(held.promise);
+    const { result } = renderHook(
+      () => ({
+        actions: useReaderActions(),
+        reconcileStartedAt: useReaderHealthReconcileStartedAt(),
+      }),
+      { wrapper: makeWrapper([]) },
+    );
+    expect(result.current.reconcileStartedAt).toBeNull();
+
+    act(() => {
+      result.current.actions.reconcileHealth();
+    });
+    expect(result.current.reconcileStartedAt).not.toBeNull();
+
+    await act(async () => {
+      held.settle(NO_HEALTH);
+      await flush();
+    });
+    expect(result.current.reconcileStartedAt).toBeNull();
+  });
+
+  it('leaves the attempt marked after a failed reconcile — the next retry still gets its grace', async () => {
+    mockApi.fetchReaderHealth.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(
+      () => ({
+        actions: useReaderActions(),
+        reconcileStartedAt: useReaderHealthReconcileStartedAt(),
+      }),
+      { wrapper: makeWrapper([]) },
+    );
+
+    await act(async () => {
+      result.current.actions.reconcileHealth();
+      await flush();
+    });
+
+    expect(result.current.reconcileStartedAt).not.toBeNull();
   });
 });
 

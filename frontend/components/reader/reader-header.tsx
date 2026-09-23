@@ -6,7 +6,7 @@ import * as React from 'react';
 import { StatusDot, type StatusDotState } from '@/components/atoms/status-dot';
 import { ViewHeading } from '@/components/atoms/view-heading';
 import { formatElapsed } from '@/components/comms/comms-format';
-import { accountHealth } from '@/lib/comms';
+import { accountHealth, heldNow } from '@/lib/comms';
 import {
   type SummariserReading,
   type SummariserState,
@@ -141,18 +141,35 @@ export interface ReaderHeaderProperties {
   now: Date;
   /** The view's own count line, phrased by the view that owns the list. */
   description: string;
+  /**
+   * When the health snapshot's most recently STARTED reconcile attempt began, successful or not
+   * — `null` between attempts. Held against the mailbox dot for a short grace window (`heldNow`)
+   * so a returning tab's reconnect doesn't flash it offline for the moment the read itself takes
+   * — ALF-252.
+   */
+  reconcileStartedAt?: string | null | undefined;
 }
 
-export function ReaderHeader({ snapshot, posts, now, description }: ReaderHeaderProperties) {
+export function ReaderHeader({
+  snapshot,
+  posts,
+  now,
+  description,
+  reconcileStartedAt = null,
+}: ReaderHeaderProperties) {
   const { account, health } = snapshot;
   const stall = summariserStalled(health, posts, now);
-  const gmail = account === undefined ? undefined : accountHealth(account, now);
+  // The mailbox dot's own clock: held at a reconcile's own start for a short grace window so a
+  // returning tab's reconnect never flashes it offline — see `heldNow` / ALF-252. The summariser
+  // dot is untouched: its cron isn't governed by this tab's own reconnect at all.
+  const gmailNow = heldNow(now, reconcileStartedAt);
+  const gmail = account === undefined ? undefined : accountHealth(account, gmailNow);
 
   const notes: { key: string; tone: 'amber' | 'red'; text: string }[] = [];
   const summariser = summariserSentence(stall, now);
   if (summariser !== null) notes.push({ key: 'summariser', tone: 'amber', text: summariser });
   if (account !== undefined) {
-    const sentence = gmailSentence(account, now);
+    const sentence = gmailSentence(account, gmailNow);
     if (sentence !== null) {
       notes.push({
         key: 'gmail',
@@ -181,10 +198,10 @@ export function ReaderHeader({ snapshot, posts, now, description }: ReaderHeader
             <StatusDot
               state={gmail}
               label={GMAIL_LABEL}
-              title={gmailReason(account, now)}
+              title={gmailReason(account, gmailNow)}
               elapsed={
                 gmail !== 'live' && account.last_seen_at !== null
-                  ? formatElapsed(account.last_seen_at, now)
+                  ? formatElapsed(account.last_seen_at, gmailNow)
                   : undefined
               }
             />
