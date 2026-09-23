@@ -25,8 +25,11 @@ function domainOf(handle: string): string {
  * its exact handle — `*@theirdomain.com` would also catch senders on the same domain the roster
  * never claimed.
  *
- * Terms are ordered alphabetically by domain, then by handle, so the string is stable across
- * renders and diffable across pastes into gmail.com/settings/filters.
+ * Every other handle is ordered alphabetically, so the string is stable and diffable across
+ * pastes into gmail.com/settings/filters. The wildcard clause always sorts last, after every
+ * plain handle, rather than being sorted in: Gmail's filter parser misreads it as the leading
+ * term of an OR chain, confirmed against a real, hand-built filter — trailing it is the simplest
+ * rule that keeps it off the front.
  */
 export function gmailFilterQuery(publications: ReaderPublicationListItem[]): string | null {
   const enabledHandles = publications
@@ -38,11 +41,11 @@ export function gmailFilterQuery(publications: ReaderPublicationListItem[]): str
   const hasSubstack = enabledHandles.some((handle) => domainOf(handle) === SUBSTACK_DOMAIN);
   const otherHandles = stableSorted(
     enabledHandles.filter((handle) => domainOf(handle) !== SUBSTACK_DOMAIN),
-    (a, b) => domainOf(a).localeCompare(domainOf(b)) || a.localeCompare(b),
+    (a, b) => a.localeCompare(b),
   );
 
   const clauses = hasSubstack
-    ? [`*@${SUBSTACK_DOMAIN} AND -${SUBSTACK_STATS_HANDLE}`, ...otherHandles]
+    ? [...otherHandles, `*@${SUBSTACK_DOMAIN} AND -${SUBSTACK_STATS_HANDLE}`]
     : otherHandles;
 
   return clauses.join(' OR ');

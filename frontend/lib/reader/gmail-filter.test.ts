@@ -12,29 +12,27 @@ describe('gmailFilterQuery', () => {
     expect(gmailFilterQuery(publications)).toBe('*@substack.com AND -no-reply@substack.com');
   });
 
-  it('ORs the wildcard substack clause with every other handle', () => {
+  it('puts every other handle ahead of the wildcard substack clause, never leading with it', () => {
     const publications = [
       makeReaderPublicationListItem('Sub', { handle: 'sub@substack.com', enabled: true }),
       makeReaderPublicationListItem('Strat', { handle: 'email@stratechery.com', enabled: true }),
     ];
 
     expect(gmailFilterQuery(publications)).toBe(
-      '*@substack.com AND -no-reply@substack.com OR email@stratechery.com',
+      'email@stratechery.com OR *@substack.com AND -no-reply@substack.com',
     );
   });
 
-  it('sorts non-substack handles alphabetically by domain, not by the full handle', () => {
+  it('sorts non-substack handles alphabetically by the full address', () => {
     const publications = [
       makeReaderPublicationListItem('Z-local', { handle: 'zed@aaa.com', enabled: true }),
       makeReaderPublicationListItem('A-local', { handle: 'ay@zzz.com', enabled: true }),
     ];
 
-    // 'ay@zzz.com'.localeCompare('zed@aaa.com') would put the a-local handle first; sorting by
-    // domain reverses it, since aaa.com sorts ahead of zzz.com.
-    expect(gmailFilterQuery(publications)).toBe('zed@aaa.com OR ay@zzz.com');
+    expect(gmailFilterQuery(publications)).toBe('ay@zzz.com OR zed@aaa.com');
   });
 
-  it('produces the full mixed shape: the substack clause first, then others sorted by domain', () => {
+  it('produces the full mixed shape: others alphabetical, the substack clause trailing', () => {
     const publications = [
       makeReaderPublicationListItem('Sub2', { handle: 'sub2@substack.com', enabled: true }),
       makeReaderPublicationListItem('Zeta', { handle: 'hello@zeta.com', enabled: true }),
@@ -43,7 +41,7 @@ describe('gmailFilterQuery', () => {
     ];
 
     expect(gmailFilterQuery(publications)).toBe(
-      '*@substack.com AND -no-reply@substack.com OR hi@alpha.com OR hello@zeta.com',
+      'hello@zeta.com OR hi@alpha.com OR *@substack.com AND -no-reply@substack.com',
     );
   });
 
