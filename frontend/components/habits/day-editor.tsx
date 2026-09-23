@@ -52,6 +52,8 @@ interface DayEditorProperties {
   storedStatus?: DerivedStatus | undefined;
   /** Whether the day is currently excused — the header says so instead of a derived verdict. */
   isSkipped: boolean;
+  /** Why an excused day was skipped, if it is skipped and the reason was recorded. */
+  skipReason: string | null;
   /** Whether the day predates the habit's start, so recording it will move the start back. */
   isBeforeStart: boolean;
   onClose: () => void;
@@ -191,6 +193,7 @@ export function DayEditor({
   results,
   storedStatus,
   isSkipped,
+  skipReason,
   isBeforeStart,
   onClose,
 }: DayEditorProperties) {
@@ -267,16 +270,27 @@ export function DayEditor({
         </Badge>
       </div>
 
-      {criteria.map((criterion) => (
-        <CriterionRow
-          key={criterion.key}
-          criterion={criterion}
-          value={draft[criterion.key]}
-          onCommit={(next) => {
-            commit(criterion.key, next);
-          }}
-        />
-      ))}
+      {/* A skipped day's criteria never produced its verdict — Skipped is never derived — so
+          re-showing them as blank checkboxes would misrepresent why the day reads this way,
+          and toggling one would silently re-log the day out from under the skip. The reason
+          is what actually explains this square. */}
+      {isSkipped
+        ? skipReason !== null &&
+          skipReason.trim() !== '' && (
+            <p className="border-b border-border py-1.5 text-xs leading-relaxed text-foreground last:border-b-0">
+              {skipReason.trim()}
+            </p>
+          )
+        : criteria.map((criterion) => (
+            <CriterionRow
+              key={criterion.key}
+              criterion={criterion}
+              value={draft[criterion.key]}
+              onCommit={(next) => {
+                commit(criterion.key, next);
+              }}
+            />
+          ))}
 
       {rescore !== undefined && (
         <p className="mt-1.5 border-t border-border pt-1.5 text-[11px] leading-snug text-accent-amber">
