@@ -32,5 +32,7 @@ export const COMMS_LIVE_WINDOW_MS = 2 * COMMS_POLL_MS + 5000;
  */
 export function isCommsLive(loaded: boolean, lastReadAt: string | null, now: Date): boolean {
   if (!loaded || lastReadAt === null) return false;
-  return now.getTime() - Date.parse(lastReadAt) <= COMMS_LIVE_WINDOW_MS;
+  const elapsed = now.getTime() - Date.parse(lastReadAt);
+  // A read "from the future" means the clock stepped back since; it can't vouch for anything.
+  return elapsed >= 0 && elapsed <= COMMS_LIVE_WINDOW_MS;
 }

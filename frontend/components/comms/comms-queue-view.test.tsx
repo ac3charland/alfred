@@ -544,7 +544,7 @@ describe('CommsQueueView — a tab that has been away', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     // Sleep: the wall clock jumps 8h; no `visibilitychange`/`pageshow` fires on this wake, so
-    // only `useCommsLive`'s own 1s re-check can catch it.
+    // only the view's 1s re-checks (`useCommsLive`, and `useNow` changing bucket) can catch it.
     jest.setSystemTime(new Date(Date.now() + 8 * 3_600_000));
     await act(() => jest.advanceTimersByTimeAsync(1000));
 

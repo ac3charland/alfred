@@ -29,6 +29,10 @@ describe('isCommsLive', () => {
     expect(isCommsLive(true, before(COMMS_LIVE_WINDOW_MS), NOW)).toBe(true);
   });
 
+  it('is not live when the clock has stepped back past the last read', () => {
+    expect(isCommsLive(true, before(-60_000), NOW)).toBe(false);
+  });
+
   it('goes not live the instant the last read is older than the window', () => {
     expect(isCommsLive(true, before(COMMS_LIVE_WINDOW_MS + 1), NOW)).toBe(false);
   });
