@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 
 import * as apiClient from '@/lib/api-client';
 import { makeCommRubric, resetCommFixtureClock } from '@/lib/comms/fixtures';
-import { NOW_TICK_MS } from '@/lib/hooks/use-now';
 import { pinClock } from '@/lib/pin-clock';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { CommRubric } from '@/lib/types';
@@ -146,20 +145,19 @@ describe('CommsRubricView', () => {
   it('ticks a single clock for the whole view, not one per child', () => {
     // `comms-format.ts` names the convention: the view owns one ticking instant and hands the
     // same one to every consumer — so one `useNow` interval per mount is the signature of that
-    // being followed. The providers alone also mount the Comms store's own `setInterval` poll,
-    // which happens to run at `COMMS_POLL_MS === NOW_TICK_MS` — counted as a baseline first,
-    // rather than folded into a hard-coded total, so this stays meaningful if the two constants
-    // ever diverge.
+    // being followed. `useNow` re-checks every 1s (wake-robust — see its doc comment) regardless
+    // of its display bucket, so a 1s interval is what identifies a clock here; the providers'
+    // own Comms store poll runs at `COMMS_POLL_MS` (30s), not 1s, so it never shows up in this
+    // count — but it's still measured as a baseline first, rather than assumed zero, so this
+    // stays meaningful if some other 1s interval ever joins the providers.
     const setIntervalSpy = jest.spyOn(globalThis, 'setInterval');
     const providersOnly = renderWithProviders(<></>);
-    const baseline = setIntervalSpy.mock.calls.filter(([, ms]) => ms === NOW_TICK_MS).length;
+    const baseline = setIntervalSpy.mock.calls.filter(([, ms]) => ms === 1000).length;
     providersOnly.unmount();
     setIntervalSpy.mockClear();
 
     renderView([V2, V1]);
 
-    expect(setIntervalSpy.mock.calls.filter(([, ms]) => ms === NOW_TICK_MS)).toHaveLength(
-      baseline + 1,
-    );
+    expect(setIntervalSpy.mock.calls.filter(([, ms]) => ms === 1000)).toHaveLength(baseline + 1);
   });
 });

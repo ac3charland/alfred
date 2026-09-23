@@ -9,8 +9,9 @@
  * no event to miss firing and no channel state to fall out of sync with — a dead network or a
  * frozen tab shows up the moment anything re-renders, because the check is just a subtraction
  * against `now`. A machine actually asleep is its own case: JS timers are monotonic and don't run
- * while suspended, so nothing re-renders on its own to notice the wall clock jumped — `useCommsLive`
- * (`lib/hooks/use-comms-live.ts`) covers that by re-checking on `visibilitychange`/`pageshow`.
+ * while suspended, so a timer armed for a single future deadline can sit pending for hours past
+ * it — `useCommsLive` (`lib/hooks/use-comms-live.ts`) covers that with a plain 1s re-check
+ * instead, which is due again within a second of any wake regardless of what caused it.
  */
 
 /** How often the Comms view re-reads the snapshot while the tab is visible. */

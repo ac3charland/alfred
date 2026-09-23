@@ -402,7 +402,7 @@ describe('CommsQueueView — a tab that has been away', () => {
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
     jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('offline'));
-    // No `now` prop: liveness is `useCommsLive`'s own precise timer, independent of the pinned
+    // No `now` prop: liveness is `useCommsLive`'s own 1s re-check, independent of the pinned
     // `now` that drives everything else drawn here.
     renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -412,11 +412,11 @@ describe('CommsQueueView — a tab that has been away', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
   });
 
-  it('flips to not-live exactly at the window, even mounted off a 30s tick boundary', async () => {
+  it('flips to not-live within 1s of the window, even mounted off a 30s tick boundary', async () => {
     jest.useFakeTimers();
     // 26s past the read the mount seed lands at — deliberately NOT a multiple of 30s, so a
     // liveness check still riding `useNow`'s bucketed, unaligned-interval clock flips late
-    // (as late as ~120s here) instead of exactly at `COMMS_LIVE_WINDOW_MS`.
+    // (as late as ~120s here) instead of within 1s of `COMMS_LIVE_WINDOW_MS`.
     jest.setSystemTime(new Date(OPENED.getTime() + 26_000));
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
@@ -428,7 +428,8 @@ describe('CommsQueueView — a tab that has been away', () => {
     await act(() => jest.advanceTimersByTimeAsync(COMMS_LIVE_WINDOW_MS));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    await act(() => jest.advanceTimersByTimeAsync(1));
+    // `useCommsLive`'s own re-check runs every 1s, not on an exact deadline — 1s covers it.
+    await act(() => jest.advanceTimersByTimeAsync(1000));
     expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here/);
   });
 
@@ -489,7 +490,9 @@ describe('CommsQueueView — a tab that has been away', () => {
     // clock, the same clock the bug rode.
     renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
 
-    await act(() => jest.advanceTimersByTimeAsync(COMMS_LIVE_WINDOW_MS + 1));
+    // `useCommsLive` re-checks every 1s rather than on an exact deadline, so the flip lands
+    // within 1s of the window rather than exactly +1ms past it.
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_LIVE_WINDOW_MS + 1000));
 
     expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here 1m ago/);
   });
@@ -500,10 +503,51 @@ describe('CommsQueueView — a tab that has been away', () => {
     jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('down'));
     renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
 
-    // An hour of every poll failing in turn: the anchor is the last read that WORKED (the mount
-    // seed), not the most recent attempt — so the "ago" grows with the whole hour, not resets.
-    await act(() => jest.advanceTimersByTimeAsync(60 * 60 * 1000));
+    // Several polls fail in turn, then an hour passes: the anchor is the last read that WORKED
+    // (the mount seed), not the most recent attempt — so the "ago" grows with the whole hour.
+    await act(() => jest.advanceTimersByTimeAsync(3 * COMMS_POLL_MS));
+    jest.setSystemTime(new Date(OPENED.getTime() + 60 * 60 * 1000));
+    await act(() => jest.advanceTimersByTimeAsync(1000));
 
+    expect(jest.mocked(api).fetchCommsSnapshot).toHaveBeenCalledTimes(3);
     expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here 1h ago/);
+  });
+
+  it('an already not-live view updates its "ago" and account dot within ~1s of waking from sleep', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(OPENED);
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('offline'));
+    renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
+
+    // Already not-live before the sleep.
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_LIVE_WINDOW_MS + 1000));
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here 1m ago/);
+
+    // Sleep: the wall clock jumps 8h, but monotonic timers don't advance for the gap itself —
+    // only the ~1s of real timer advance below runs, the same as a real wake.
+    jest.setSystemTime(new Date(Date.now() + 8 * 3_600_000));
+    await act(() => jest.advanceTimersByTimeAsync(1000));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here 8h ago/);
+    expect(screen.getByLabelText('RealPlay · stale')).toBeInTheDocument();
+  });
+
+  it('a live view that sleeps 8h with no visibility/pageshow event still flips within ~1s', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(OPENED);
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('offline'));
+    renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    // Sleep: the wall clock jumps 8h; no `visibilitychange`/`pageshow` fires on this wake, so
+    // only `useCommsLive`'s own 1s re-check can catch it.
+    jest.setSystemTime(new Date(Date.now() + 8 * 3_600_000));
+    await act(() => jest.advanceTimersByTimeAsync(1000));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here 8h ago/);
   });
 });

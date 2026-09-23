@@ -63,4 +63,25 @@ describe('useNow', () => {
 
     expect(clearSpy).toHaveBeenCalled();
   });
+
+  it('notices a wall-clock jump (sleep) within 1s, without a full interval elapsing', () => {
+    const { result } = renderHook(() => useNow());
+    expect(result.current.toISOString()).toBe('2026-09-09T12:00:00.000Z');
+
+    // Sleep: the wall clock jumps 8h but the monotonic interval doesn't fire for it — only the
+    // next 1s re-check does.
+    act(() => {
+      setClockNow('2026-09-09T20:00:10.500Z');
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(result.current.toISOString()).toBe('2026-09-09T20:00:00.000Z');
+  });
+
+  it('checks every 1s even for an interval much longer than that', () => {
+    const setSpy = jest.spyOn(globalThis, 'setInterval');
+    renderHook(() => useNow(60_000));
+
+    expect(setSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
+  });
 });

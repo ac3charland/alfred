@@ -74,7 +74,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   // asserted and snapshotted at all.
   const ticking = useNow();
   const now = pinnedNow ?? ticking;
-  // Live/not-live is its own precise timer rather than a comparison against `now`: `now` is
+  // Live/not-live is its own 1s re-check rather than a comparison against `now`: `now` is
   // coalesced to a 30s bucket for display, which is too coarse for a boundary a viewer watches
   // cross — see `useCommsLive`.
   const live = useCommsLive(loaded, lastReadAt);

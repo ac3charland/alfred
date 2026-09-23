@@ -18,11 +18,18 @@ export const NOW_TICK_MS = 30_000;
  * - The server and the hydrating client read the clock milliseconds apart, so a raw reading
  *   makes every clock-derived string a hydration coin-flip. Snapped to the same boundary they
  *   agree unless the render straddles one.
+ *
+ * `subscribe` re-checks every second (never slower than `intervalMs`) rather than on an
+ * `intervalMs`-long timer, so a laptop wake is noticed within a second: `setInterval` is
+ * monotonic and doesn't run while suspended, so a timer set for the full `intervalMs` can sit
+ * pending for hours past a sleep before it next fires. The faster check doesn't mean faster
+ * renders, though — `getSnapshot` still snaps to the `intervalMs` bucket, and
+ * `useSyncExternalStore` only re-renders when that snapped value actually changes.
  */
 export function useNow(intervalMs: number = NOW_TICK_MS): Date {
   const subscribe = React.useCallback(
     (callback: () => void) => {
-      const id = setInterval(callback, intervalMs);
+      const id = setInterval(callback, Math.min(1000, intervalMs));
       return () => {
         clearInterval(id);
       };

@@ -101,7 +101,7 @@ export function CommsHeader({
     );
   }
 
-  // The flip to not-live happens on its own precise timer (`useCommsLive`), which can land
+  // The flip to not-live happens on its own 1s re-check (`useCommsLive`), which can land
   // between two ticks of `now` — the view's own clock, coalesced to a 30s bucket for display.
   // Reading the "ago" straight off `now` can then undercount: caught right after the flip, fewer
   // than 60s of it may show on the bucketed clock even though the live window itself is over a

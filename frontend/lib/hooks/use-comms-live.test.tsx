@@ -27,48 +27,51 @@ describe('useCommsLive', () => {
     expect(result.current).toBe(true);
   });
 
-  it('flips to not-live exactly at the window, mounted off a 30s tick boundary', () => {
-    // 26s past the read — deliberately not a multiple of 30s, so a fix that still rode a
-    // bucketed clock would flip late instead of exactly at the window.
-    jest.setSystemTime(new Date(Date.parse(READ_AT) + 26_000));
+  it('flips to not-live within 1s of the window elapsing', () => {
+    jest.setSystemTime(new Date(READ_AT));
     const { result } = renderHook(() => useCommsLive(true, READ_AT));
 
     // `isCommsLive` treats an elapsed time equal to the window as still live.
     act(() => {
-      jest.advanceTimersByTime(COMMS_LIVE_WINDOW_MS - 26_000);
+      jest.advanceTimersByTime(COMMS_LIVE_WINDOW_MS);
     });
     expect(result.current).toBe(true);
 
     act(() => {
-      jest.advanceTimersByTime(1);
+      jest.advanceTimersByTime(1000);
     });
     expect(result.current).toBe(false);
   });
 
-  it('re-arms the timer when a later read lands, rather than firing on the earlier one', () => {
+  it('flips within 1s of a wall-clock jump (sleep) with no elapsed real interval', () => {
+    jest.setSystemTime(new Date(READ_AT));
+    const { result } = renderHook(() => useCommsLive(true, READ_AT));
+    expect(result.current).toBe(true);
+
+    // Sleep: the wall clock jumps 8h but no monotonic timer fires for the jump itself — only
+    // the next 1s re-check notices.
+    jest.setSystemTime(new Date(Date.parse(READ_AT) + 8 * 3_600_000));
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(result.current).toBe(false);
+  });
+
+  it('goes live again once a new read lands', () => {
     jest.setSystemTime(new Date(READ_AT));
     const { result, rerender } = renderHook(({ lastReadAt }) => useCommsLive(true, lastReadAt), {
       initialProps: { lastReadAt: READ_AT },
     });
 
-    const laterRead = new Date(Date.parse(READ_AT) + 40_000).toISOString();
     act(() => {
-      jest.setSystemTime(new Date(laterRead));
-    });
-    rerender({ lastReadAt: laterRead });
-
-    // Past when the FIRST read's timer would have fired (65s after it, i.e. 25s after this
-    // read) — still live proves that timer was cleared on re-subscribe, not merely not-yet-due.
-    act(() => {
-      jest.advanceTimersByTime(30_000);
-    });
-    expect(result.current).toBe(true);
-
-    // Now past the SECOND read's own window (65s after it).
-    act(() => {
-      jest.advanceTimersByTime(35_001);
+      jest.advanceTimersByTime(COMMS_LIVE_WINDOW_MS + 1000);
     });
     expect(result.current).toBe(false);
+
+    const laterRead = new Date(Date.now()).toISOString();
+    rerender({ lastReadAt: laterRead });
+    expect(result.current).toBe(true);
   });
 
   it('is never live while nothing has loaded', () => {
@@ -83,57 +86,23 @@ describe('useCommsLive', () => {
     expect(result.current).toBe(false);
   });
 
-  it('clears its own deadline timer on unmount, not just some timer', () => {
+  it('clears its own interval on unmount, not just some timer', () => {
     jest.setSystemTime(new Date(READ_AT));
-    const setSpy = jest.spyOn(globalThis, 'setTimeout');
-    const clearSpy = jest.spyOn(globalThis, 'clearTimeout');
-    const { unmount } = renderHook(() => useCommsLive(true, READ_AT));
-    // The id THIS hook's deadline `setTimeout` returned — asserting `clearTimeout` was called at
-    // all proves nothing, since any of the tree's own timers could account for that.
-    const armedId = setSpy.mock.results.at(-1)?.value as ReturnType<typeof setTimeout> | undefined;
+    const setSpy = jest.spyOn(globalThis, 'setInterval');
+    const clearSpy = jest.spyOn(globalThis, 'clearInterval');
+    const { result, unmount } = renderHook(() => useCommsLive(true, READ_AT));
+    const armedId = setSpy.mock.results.at(-1)?.value as ReturnType<typeof setInterval> | undefined;
 
     unmount();
 
     expect(clearSpy).toHaveBeenCalledWith(armedId);
-  });
 
-  it('re-checks against the wall clock on visibilitychange, e.g. after sleep freezes timers', () => {
-    jest.setSystemTime(new Date(READ_AT));
-    const { result } = renderHook(() => useCommsLive(true, READ_AT));
-    expect(result.current).toBe(true);
-
-    // Suspend: the wall clock jumps 8h but no timer fires — a monotonic clock doesn't advance
-    // while the machine is asleep, so the armed deadline timer stays pending on its old schedule.
-    jest.setSystemTime(new Date(Date.parse(READ_AT) + 8 * 3_600_000));
+    // Belt-and-braces on the same assertion: nothing flips the value after unmount either,
+    // since `result.current` is frozen at the last render.
+    const before = result.current;
     act(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
+      jest.advanceTimersByTime(COMMS_LIVE_WINDOW_MS + 1000);
     });
-
-    expect(result.current).toBe(false);
-  });
-
-  it('re-checks against the wall clock on pageshow, e.g. a bfcache restore', () => {
-    jest.setSystemTime(new Date(READ_AT));
-    const { result } = renderHook(() => useCommsLive(true, READ_AT));
-    expect(result.current).toBe(true);
-
-    jest.setSystemTime(new Date(Date.parse(READ_AT) + 8 * 3_600_000));
-    act(() => {
-      globalThis.dispatchEvent(new Event('pageshow'));
-    });
-
-    expect(result.current).toBe(false);
-  });
-
-  it('removes its visibilitychange/pageshow listeners on unmount', () => {
-    jest.setSystemTime(new Date(READ_AT));
-    const removeDocSpy = jest.spyOn(document, 'removeEventListener');
-    const removeWinSpy = jest.spyOn(globalThis, 'removeEventListener');
-    const { unmount } = renderHook(() => useCommsLive(true, READ_AT));
-
-    unmount();
-
-    expect(removeDocSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
-    expect(removeWinSpy).toHaveBeenCalledWith('pageshow', expect.any(Function));
+    expect(result.current).toBe(before);
   });
 });
