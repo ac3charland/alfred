@@ -152,7 +152,7 @@ view's own coarser, 30s-bucketed `useNow`: a `useSyncExternalStore` whose `subsc
 `setInterval(onChange, 1000)` and whose `getSnapshot` re-derives the boolean from `Date.now()`
 every time, so React only re-renders on an actual flip. A deadline `setTimeout` would be more
 "precise" on paper but doesn't survive a real sleep/suspend — it's monotonic and doesn't run while
-the machine is asleep, so it can wake hours late — where a 1s re-check is simply due again within
+the machine is asleep, so it can fire up to its full delay after a wake — where a 1s re-check is simply due again within
 a second of any wake, sleep or not, with no `visibilitychange`/`pageshow` listener needed to catch
 that case specially. While not live the header dates the line to `lastReadAt`. A shell whose seed
 read failed isn't *loaded* at all — it says it couldn't load and draws no queue (an unread queue is

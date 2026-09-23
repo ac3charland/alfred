@@ -21,8 +21,8 @@ export const NOW_TICK_MS = 30_000;
  *
  * `subscribe` re-checks every second (never slower than `intervalMs`) rather than on an
  * `intervalMs`-long timer, so a laptop wake is noticed within a second: `setInterval` is
- * monotonic and doesn't run while suspended, so a timer set for the full `intervalMs` can sit
- * pending for hours past a sleep before it next fires. The faster check doesn't mean faster
+ * monotonic and doesn't run while suspended, so a timer set for the full `intervalMs` can fire
+ * up to a whole interval after a wake. The faster check doesn't mean faster
  * renders, though — `getSnapshot` still snaps to the `intervalMs` bucket, and
  * `useSyncExternalStore` only re-renders when that snapped value actually changes.
  */
