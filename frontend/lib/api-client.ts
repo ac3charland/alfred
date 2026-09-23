@@ -57,6 +57,7 @@ import type {
   ReaderPublicationListItem,
   WeeklyPlan,
 } from '@/lib/types';
+import type { WeeklyPlanItemsPayload } from '@/lib/weekly-plan-items/payload';
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -560,6 +561,17 @@ export async function getLocVelocity(): Promise<LocVelocityResult> {
  */
 export function fetchWeeklyPlan(id: string): Promise<WeeklyPlan> {
   return apiRequest<WeeklyPlan>(`/api/weekly-plans/${id}`);
+}
+
+/**
+ * Fetch the tasks and code stories a review created against one archived plan — the same
+ * cohort `create_weekly_plan_items` wrote, read back with the counts and factory state each
+ * row is in now. Unlike the document itself this is never cached by a store: a row's `done`/
+ * `state` can move while the tab is open (completing a task, a story shipping), so the Week
+ * Plan view re-reads it on every visit rather than serving a stale answer from a cache.
+ */
+export function fetchWeeklyPlanItems(id: string): Promise<WeeklyPlanItemsPayload> {
+  return apiRequest<WeeklyPlanItemsPayload>(`/api/weekly-plans/${id}/items`);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
+import { stubEndpoint } from '@/lib/storybook/stub-fetch';
 import type { WeeklyPlan } from '@/lib/types';
+import type { WeeklyPlanItemsPayload } from '@/lib/weekly-plan-items/payload';
 
 import { WeeklyPlanView } from './weekly-plan-view';
 
@@ -41,6 +43,69 @@ const OLDER: WeeklyPlan = {
 
 const summary = (plan: WeeklyPlan) => ({ id: plan.id, uploaded_at: plan.uploaded_at });
 
+/** What the review created against the latest plan — the section rendered underneath it. */
+const ITEMS: WeeklyPlanItemsPayload = {
+  plan: summary(LATEST),
+  counts: { total: 3, done: 1, open: 2, abandoned: 0, untriaged: 2 },
+  items: [
+    {
+      id: 'root-1',
+      item_type: 'task',
+      title: 'Ship the weekly plan view',
+      notes: null,
+      due_date: '2026-07-25',
+      priority: 'high',
+      state: 'completed',
+      done: true,
+      done_at: '2026-07-24T18:00:00Z',
+      created_at: '2026-07-24T09:00:00Z',
+      folder: null,
+      in_inbox: false,
+      code: null,
+      children: [],
+    },
+    {
+      id: 'root-2',
+      item_type: 'code',
+      title: 'Per-voice mute in the mixer',
+      notes: null,
+      due_date: null,
+      priority: null,
+      state: 'ready_for_review',
+      done: false,
+      done_at: null,
+      created_at: '2026-07-24T09:00:00Z',
+      folder: null,
+      in_inbox: true,
+      code: { ref: 'RPL-142', lane: 'human' },
+      children: [],
+    },
+    {
+      id: 'root-3',
+      item_type: 'unclassified',
+      title: "Decide what Q4's third rock actually is",
+      notes: null,
+      due_date: null,
+      priority: null,
+      state: 'active',
+      done: false,
+      done_at: null,
+      created_at: '2026-07-24T09:00:00Z',
+      folder: null,
+      in_inbox: true,
+      code: null,
+      children: [],
+    },
+  ],
+};
+
+/**
+ * `WeeklyPlanItems` fetches its own cohort on mount, so every story that renders a selected
+ * plan (all but `Empty`, where there is no plan to read a cohort for) stubs `fetch` for it —
+ * same reasoning as `PrRatio` / `LocVelocity`.
+ */
+const withItemsFetch = stubEndpoint(200, ITEMS);
+
 const meta = {
   title: 'Tasks/WeeklyPlanView',
   component: WeeklyPlanView,
@@ -56,11 +121,13 @@ export const Populated: Story = {
   parameters: {
     store: { weeklyPlans: { index: [summary(LATEST), summary(OLDER)], latest: LATEST } },
   },
+  decorators: [withItemsFetch],
 };
 
 /** A single upload — nothing to pick between, so the picker is hidden. */
 export const SinglePlan: Story = {
   parameters: { store: { weeklyPlans: { index: [summary(LATEST)], latest: LATEST } } },
+  decorators: [withItemsFetch],
 };
 
 /** Nothing uploaded yet: the empty state carries the upload instruction, not an error. */

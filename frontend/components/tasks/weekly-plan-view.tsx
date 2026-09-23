@@ -1,17 +1,20 @@
 'use client';
 
-import { CalendarRange, Maximize2 } from 'lucide-react';
+import { CalendarRange, ChevronDown, ChevronRight, Maximize2 } from 'lucide-react';
 import * as React from 'react';
 
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { FullScreenDialog } from '@/components/atoms/dialog';
+import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { ViewHeading } from '@/components/atoms/view-heading';
+import { WeeklyPlanItems } from '@/components/tasks/weekly-plan-items';
 import { formatMonthDay } from '@/lib/date-utils';
 import {
   useSelectedWeeklyPlan,
   useWeeklyPlanActions,
   useWeeklyPlanIndex,
 } from '@/lib/stores/weekly-plan-store';
+import { cn } from '@/lib/utils';
 
 /** The call that fills this view — shown as the empty state, host and key elided. */
 const UPLOAD_SNIPPET = String.raw`curl -X POST https://<alfred-host>/api/weekly-plans \
@@ -65,12 +68,21 @@ function PlanFrame({
  *
  * On a phone the inline frame is too cramped for a plan drawn at desktop widths, so below `md`
  * the whole plan is a tap target that reopens it full screen (see the tap layer below).
+ *
+ * The frame itself opens **shortened** — a preview height, not the whole document — with the
+ * tasks and code stories the review created against it (ALF-235's {@link WeeklyPlanItems})
+ * sitting underneath, so a glance at the view answers "what came of this week's plan?" without
+ * scrolling a full-height document first. "Show full plan" grows the frame in place; the
+ * mobile full-screen dialog below is a separate, orthogonal affordance (the widest reading
+ * surface), unaffected by whether the inline frame is expanded.
  */
 export function WeeklyPlanView() {
   const index = useWeeklyPlanIndex();
   const selected = useSelectedWeeklyPlan();
   const { selectPlan } = useWeeklyPlanActions();
   const [isFullScreen, setIsFullScreen] = React.useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const frameRegionId = React.useId();
 
   return (
     <>
@@ -114,33 +126,62 @@ export function WeeklyPlanView() {
           </pre>
         </div>
       ) : (
-        <div className="relative flex flex-1 flex-col">
-          <PlanFrame
-            testId="weekly-plan-html"
-            html={selected.html}
-            className="min-h-[40rem] w-full flex-1 rounded-md border border-border/60"
-          />
+        <div className="flex flex-1 flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            {/* Shortened by default — a preview, not the whole document — and expandable in
+                place. The height (not visibility) is what changes, so this is a plain
+                transition rather than the app's 0-based reveal/collapse pattern. */}
+            <div
+              id={frameRegionId}
+              className={cn(
+                'relative w-full overflow-hidden rounded-md border border-border/60',
+                'transition-[height] duration-200 ease-out motion-reduce:transition-none',
+                isExpanded ? 'h-[40rem]' : 'h-64',
+              )}
+            >
+              <PlanFrame testId="weekly-plan-html" html={selected.html} className="h-full w-full" />
 
-          {/* The mobile tap layer. It sits OVER the frame because a tap inside a sandboxed
-              iframe never reaches the app — the frame swallows it — so the plan can only be
-              "tappable" via something covering it. That trades the inline frame's own
-              interactivity on mobile for the tap, which is the point: the plan is read full
-              screen, where its controls are actually reachable. Gone at md+, where the inline
-              frame is roomy and stays directly interactive. */}
-          <ClickableCard
-            aria-label="View the week plan full screen"
-            onClick={() => {
-              setIsFullScreen(true);
-            }}
-            className="absolute inset-0 flex items-end justify-end rounded-md p-3 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue md:hidden"
-          >
-            {/* The visible half of the affordance: an invisible tap layer alone would leave
-                nothing to signal the plan opens. Inert so the tap lands on the layer itself. */}
-            <span className="pointer-events-none inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-              <Maximize2 size={12} aria-hidden="true" />
-              Full screen
-            </span>
-          </ClickableCard>
+              {/* The mobile tap layer. It sits OVER the frame because a tap inside a sandboxed
+                  iframe never reaches the app — the frame swallows it — so the plan can only be
+                  "tappable" via something covering it. That trades the inline frame's own
+                  interactivity on mobile for the tap, which is the point: the plan is read full
+                  screen, where its controls are actually reachable. Gone at md+, where the
+                  inline frame is roomy and stays directly interactive. */}
+              <ClickableCard
+                aria-label="View the week plan full screen"
+                onClick={() => {
+                  setIsFullScreen(true);
+                }}
+                className="absolute inset-0 flex items-end justify-end p-3 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue md:hidden"
+              >
+                {/* The visible half of the affordance: an invisible tap layer alone would leave
+                    nothing to signal the plan opens. Inert so the tap lands on the layer itself. */}
+                <span className="pointer-events-none inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+                  <Maximize2 size={12} aria-hidden="true" />
+                  Full screen
+                </span>
+              </ClickableCard>
+            </div>
+
+            <DisclosureToggle
+              variant="inline"
+              aria-expanded={isExpanded}
+              aria-controls={frameRegionId}
+              className="self-start gap-1"
+              onClick={() => {
+                setIsExpanded((open) => !open);
+              }}
+            >
+              {isExpanded ? (
+                <ChevronDown size={14} aria-hidden="true" />
+              ) : (
+                <ChevronRight size={14} aria-hidden="true" />
+              )}
+              {isExpanded ? 'Show less' : 'Show full plan'}
+            </DisclosureToggle>
+          </div>
+
+          <WeeklyPlanItems planId={selected.id} />
 
           <FullScreenDialog
             open={isFullScreen}

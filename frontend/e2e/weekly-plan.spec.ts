@@ -1,4 +1,10 @@
-import { makeWeeklyPlan } from './support/constants';
+import {
+  makeCodeStory,
+  makeEpic,
+  makeItem,
+  makeProject,
+  makeWeeklyPlan,
+} from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -85,4 +91,66 @@ test('shows the upload instruction when no plan has been uploaded', async ({ pag
   await expect(page.getByText(/no week plan uploaded yet/i)).toBeVisible();
   await expect(page.getByTestId('weekly-plan-html')).toHaveCount(0);
   await expect(page.getByTestId('weekly-plan-upload-hint')).toContainText('/api/weekly-plans');
+});
+
+test('shows the tasks and code stories the review created against the plan (ALF-235)', async ({
+  page,
+  seed,
+}) => {
+  const plan = makeWeeklyPlan(planDocument('Week 12: Jul 18 – Jul 25, 2026'));
+  const project = makeProject('RealPlay');
+  const epic = makeEpic('Mixer', { project_id: project.id });
+  const task = makeItem('Ship the motivic harness spike', {
+    item_type: 'task',
+    weekly_plan_id: plan.id,
+    status: 'completed',
+    completed_at: '2026-07-20T12:00:00Z',
+  });
+  const codeItem = makeItem('Per-voice mute in the mixer', {
+    item_type: 'code',
+    weekly_plan_id: plan.id,
+  });
+
+  await seed({
+    weeklyPlans: [plan],
+    projects: [project],
+    epics: [epic],
+    items: [task, codeItem],
+    codeItems: [
+      makeCodeStory({
+        item_id: codeItem.id,
+        project_id: project.id,
+        epic_id: epic.id,
+        ref_number: 142,
+        ref: 'RPL-142',
+        factory_state: 'ready_for_review',
+      }),
+    ],
+  });
+
+  await page.goto('/plan');
+
+  const section = page.getByRole('region', { name: 'From this plan' });
+  await expect(section.getByText('Ship the motivic harness spike')).toBeVisible();
+  await expect(section.getByText('Per-voice mute in the mixer')).toBeVisible();
+  await expect(section.getByText('RPL-142')).toBeVisible();
+  await expect(section.getByText('Ready for Review')).toBeVisible();
+});
+
+test('expands the shortened frame to full height in place', async ({ page, seed }) => {
+  await seed({ weeklyPlans: [makeWeeklyPlan(planDocument('Week 12'))] });
+  await page.goto('/plan');
+
+  const frame = page.getByTestId('weekly-plan-html');
+  const collapsedBox = await frame.boundingBox();
+
+  await page.getByRole('button', { name: 'Show full plan' }).click();
+  // The height transition is 200ms; wait for the taller layout to settle before measuring.
+  await expect(page.getByRole('button', { name: 'Show less' })).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await frame.boundingBox();
+      return box?.height;
+    })
+    .toBeGreaterThan(collapsedBox?.height ?? 0);
 });

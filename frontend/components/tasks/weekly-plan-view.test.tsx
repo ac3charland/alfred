@@ -10,6 +10,17 @@ import { WeeklyPlanView } from './weekly-plan-view';
 
 jest.mock('@/lib/api-client');
 const mockFetchWeeklyPlan = jest.mocked(apiClient.fetchWeeklyPlan);
+const mockFetchWeeklyPlanItems = jest.mocked(apiClient.fetchWeeklyPlanItems);
+
+beforeEach(() => {
+  // An empty cohort by default — the item-section's own content is pinned in
+  // weekly-plan-items.test.tsx; this file only needs the fetch to resolve.
+  mockFetchWeeklyPlanItems.mockResolvedValue({
+    plan: null,
+    counts: { total: 0, done: 0, open: 0, abandoned: 0, untriaged: 0 },
+    items: [],
+  });
+});
 
 const LATEST: WeeklyPlan = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -246,6 +257,60 @@ describe('WeeklyPlanView', () => {
       });
       // Back to the inline frame, still showing the plan.
       expect(screen.getByTestId('weekly-plan-html')).toHaveAttribute('srcdoc', LATEST.html);
+    });
+  });
+
+  // The frame opens as a short preview rather than the whole document, with a control that
+  // grows it in place — distinct from (and unaffected by) the mobile full-screen dialog above.
+  describe('shortening and expanding the inline frame', () => {
+    it('opens shortened, with a control offering the full plan', () => {
+      renderView([LATEST]);
+
+      const toggle = screen.getByRole('button', { name: 'Show full plan' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('expands the frame in place when the toggle is clicked', async () => {
+      const user = userEvent.setup();
+      renderView([LATEST]);
+
+      await user.click(screen.getByRole('button', { name: 'Show full plan' }));
+
+      expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+    });
+
+    it('collapses again on a second click', async () => {
+      const user = userEvent.setup();
+      renderView([LATEST]);
+
+      await user.click(screen.getByRole('button', { name: 'Show full plan' }));
+      await user.click(screen.getByRole('button', { name: 'Show less' }));
+
+      expect(screen.getByRole('button', { name: 'Show full plan' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+    });
+  });
+
+  // ALF-235: the tasks and code stories the review created against the plan, read back
+  // underneath it — the item list's own content is pinned in weekly-plan-items.test.tsx.
+  describe('the item cohort underneath the plan', () => {
+    it("fetches the selected plan's cohort and renders the section under the frame", async () => {
+      renderView([LATEST]);
+
+      expect(await screen.findByRole('heading', { name: 'From this plan' })).toBeInTheDocument();
+      expect(mockFetchWeeklyPlanItems).toHaveBeenCalledWith(LATEST.id);
+    });
+
+    it('offers no item section in the empty state — there is no plan to read a cohort for', () => {
+      renderView([]);
+
+      expect(screen.queryByRole('heading', { name: 'From this plan' })).not.toBeInTheDocument();
+      expect(mockFetchWeeklyPlanItems).not.toHaveBeenCalled();
     });
   });
 });
