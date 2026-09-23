@@ -159,6 +159,32 @@ read failed isn't *loaded* at all — it says it couldn't load and draws no queu
 not an empty one) until a read lands, which it asks for on mount without waiting for the poll
 interval.
 
+## Navigation refetch: a per-screen fallback reconcile (ALF-69, ALF-246)
+
+Realtime and Comms'/Reader's foreground-return listeners still miss the case where the tab never
+hides or loses focus: an in-app module switch is a client-side `pushState`, so
+`visibilitychange`/`focus`/`online` never fire, and a seed-once store would otherwise sit on
+whatever it last held for the rest of the session. Every module's view-router (`TaskViews` /
+`CodeView` / `CommsView` / `ReaderView`) fires a lightweight reconcile keyed on `usePathname()` —
+covering both entry to the module and every navigation within it — so a screen the owner lands on
+is never staler than the *next* scheduled trigger would have made it anyway. The effect lives in
+the view-router, not the provider: the router only mounts while its module is the active one, so
+the trigger fires exactly on that module's own navigations, not on every app-wide route change a
+provider mounted at the shell would otherwise see.
+
+The reconcile itself stays as narrow as the store's own invariants demand. Tasks
+(`refreshVerdicts`) and Code (`refreshStatuses`) hold heavy optimistic state, so they PATCH only
+the columns a second writer can touch (classifier verdict fields; factory status fields) onto rows
+already held — never a full replace, and never an insert (a race-rule no-op for any id not already
+in the store, same as a dropped realtime UPDATE). Comms and Reader already reconcile by full
+snapshot replace for their other triggers (poll; tab return), so their pathname effect just calls
+that same `reconcile`/`refresh` action again — one more trigger source into machinery already
+built to coalesce concurrent calls, not new reconciliation logic.
+
+This is the one sanctioned exception to "never refetch per view" below: it fires once per
+*module* navigation as a drift reconcile, never per component render, and the store — seeded once
+— stays the view's primary read.
+
 ## A derived status must mirror the query that does the work
 
 Wherever the browser derives "is the Worker keeping up?" from rows it already holds, it is
@@ -370,7 +396,8 @@ action closures can fire it without it becoming a memo dep.
   route through a store action so the change is optimistic and reconciles locally. A
   `router.refresh()` in a mutation handler is a refactor target.
 - **Never prop-drill entity lists or refetch per view.** Read the store and derive with a
-  selector.
+  selector — the one sanctioned exception is the per-module navigation reconcile above, which
+  fires once per module navigation, not per component render.
 - **Never fake optimism with a local `dismissed`/`isPending` flag** to hide a row mid-flight
   — change the data; the filtered view updates, and a rollback brings it back.
 - **Never `await` the mutation before closing a local edit UI.** An inline editor that
