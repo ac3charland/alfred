@@ -115,16 +115,54 @@ describe('buildResults', () => {
     expect(results.truncated.tasks).toBe(3);
   });
 
-  it('flags completed tasks and terminal stories as de-emphasized', () => {
+  it('flags completed tasks and terminal stories as de-emphasized when included', () => {
     const done = makeItem({ id: 'done', title: 'firewall done', status: 'completed' });
     const abandoned = makeStory({
       item_id: 'ab',
       title: 'firewall abandoned',
       factory_state: 'abandoned',
     });
-    const results = buildResults('firewall', [done], [abandoned]);
+    const results = buildResults('firewall', [done], [abandoned], [], true);
     expect(results.tasks[0]?.completed).toBe(true);
     expect(results.stories[0]?.completed).toBe(true);
+  });
+
+  it('hides completed tasks and terminal stories by default', () => {
+    const active = makeItem({ id: 'active', title: 'firewall active' });
+    const done = makeItem({ id: 'done', title: 'firewall done', status: 'completed' });
+    const ready = makeStory({ item_id: 'ready', title: 'firewall ready' });
+    const abandoned = makeStory({
+      item_id: 'ab',
+      title: 'firewall abandoned',
+      factory_state: 'abandoned',
+    });
+    const doneStory = makeStory({ item_id: 'ds', title: 'firewall done', factory_state: 'done' });
+    const results = buildResults('firewall', [active, done], [ready, abandoned, doneStory]);
+    expect(results.tasks.map((result) => result.id)).toEqual(['active']);
+    expect(results.stories.map((result) => result.id)).toEqual(['ready']);
+  });
+
+  it('includes completed tasks and terminal stories when includeCompleted is set', () => {
+    const active = makeItem({ id: 'active', title: 'firewall active' });
+    const done = makeItem({ id: 'done', title: 'firewall done', status: 'completed' });
+    const abandoned = makeStory({
+      item_id: 'ab',
+      title: 'firewall abandoned',
+      factory_state: 'abandoned',
+    });
+    const results = buildResults('firewall', [active, done], [abandoned], [], true);
+    expect(results.tasks.map((result) => result.id)).toEqual(['active', 'done']);
+    expect(results.stories.map((result) => result.id)).toEqual(['ab']);
+  });
+
+  it('does not count a hidden completed match toward the truncated total', () => {
+    const active = Array.from({ length: 8 }, (_, index) =>
+      makeItem({ id: `a${String(index)}`, title: `firewall ${String(index)}` }),
+    );
+    const done = makeItem({ id: 'done', title: 'firewall done', status: 'completed' });
+    const results = buildResults('firewall', [...active, done], []);
+    expect(results.tasks).toHaveLength(8);
+    expect(results.truncated.tasks).toBe(0);
   });
 });
 

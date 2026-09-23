@@ -16,6 +16,7 @@ import { expect, test } from './support/fixtures';
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const EPIC_ID = '22222222-2222-4222-8222-222222222222';
 const STORY_ITEM_ID = '44444444-4444-4444-8444-444444444444';
+const DONE_STORY_ITEM_ID = '55555555-5555-4555-8555-555555555555';
 
 test('⌘P focuses the field; selecting a task jumps to its folder view', async ({ page, seed }) => {
   const folder = makeFolder('Software');
@@ -80,4 +81,61 @@ test('selecting a story opens the board with its detail modal', async ({ page, s
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('ALF-31')).toBeVisible();
   await expect(dialog.getByText('Message triage queue')).toBeVisible();
+});
+
+test('hides completed tasks and terminal stories by default, revealed by "Show completed"', async ({
+  page,
+  seed,
+}) => {
+  const folder = makeFolder('Software');
+  const active = makeItem('Firewall active task', { item_type: 'task', folder_id: folder.id });
+  const done = makeItem('Firewall done task', {
+    item_type: 'task',
+    folder_id: folder.id,
+    status: 'completed',
+  });
+
+  const project = makeProject('Alfred', { id: PROJECT_ID, key: 'ALF' });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const doneStoryItem = makeItem('Firewall done story', {
+    id: DONE_STORY_ITEM_ID,
+    item_type: 'code',
+  });
+  const doneStory = makeCodeStory({
+    item_id: DONE_STORY_ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 99,
+    ref: 'ALF-99',
+    factory_state: 'done',
+  });
+
+  await seed({
+    folders: [folder],
+    items: [active, done, doneStoryItem],
+    projects: [project],
+    epics: [epic],
+    codeItems: [doneStory],
+  });
+  await page.goto('/');
+
+  await page.keyboard.press('ControlOrMeta+KeyP');
+  await page.keyboard.type('firewall');
+
+  const listbox = page.getByRole('listbox');
+  await expect(listbox.getByText('Firewall active task')).toBeVisible();
+  await expect(listbox.getByText('Firewall done task')).toBeHidden();
+  await expect(listbox.getByText('Firewall done story')).toBeHidden();
+
+  // Even with completed matches hidden, the checkbox itself stays offered so a search that
+  // ONLY matches something done isn't a silent dead end.
+  await page.getByRole('checkbox', { name: 'Show completed' }).click();
+
+  await expect(listbox.getByText('Firewall done task')).toBeVisible();
+  await expect(listbox.getByText('Firewall done story')).toBeVisible();
 });

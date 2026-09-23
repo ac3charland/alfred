@@ -25,7 +25,7 @@ export type SearchResult =
       subtitle: string;
       /** The client-side destination view (ViewLink convention). */
       href: string;
-      /** Completed/terminal items are shown but visually de-emphasized. */
+      /** Completed/terminal items are hidden by default; shown de-emphasized when revealed. */
       completed: boolean;
       item: Item;
     }
@@ -104,12 +104,17 @@ function isStoryTerminal(story: CodeStory): boolean {
  *
  * Tasks match on title + notes; stories also match on `ref` (so `ALF-31` finds that story
  * directly, and an exact ref match sorts to the very top of the Stories group).
+ *
+ * Completed tasks and terminal (done/abandoned) stories are excluded unless `includeCompleted`
+ * is set — a search is usually chasing something still live, and a done item that shares the
+ * query term would otherwise crowd out the active matches the search is actually for.
  */
 export function buildResults(
   query: string,
   tasks: readonly Item[],
   stories: readonly CodeStory[],
   folders: readonly Folder[] = [],
+  includeCompleted = false,
 ): SearchResults {
   const q = normalize(query);
   if (q === '') return EMPTY;
@@ -118,6 +123,8 @@ export function buildResults(
 
   const scoredTasks: { result: SearchResult; rank: number; createdAt: string }[] = [];
   for (const item of tasks) {
+    const completed = item.status === 'completed';
+    if (completed && !includeCompleted) continue;
     const rank = rankTitleNotes(q, item.title.toLowerCase(), (item.notes ?? '').toLowerCase());
     if (rank === null) continue;
     scoredTasks.push({
@@ -129,7 +136,7 @@ export function buildResults(
         title: item.title,
         subtitle: taskSubtitle(item, byId, folders),
         href: taskDestination(item, tasks),
-        completed: item.status === 'completed',
+        completed,
         item,
       },
     });
@@ -137,6 +144,8 @@ export function buildResults(
 
   const scoredStories: { result: SearchResult; rank: number; createdAt: string }[] = [];
   for (const story of stories) {
+    const completed = isStoryTerminal(story);
+    if (completed && !includeCompleted) continue;
     const ref = (story.ref ?? '').toLowerCase();
     const titleNotesRank = rankTitleNotes(
       q,
@@ -156,7 +165,7 @@ export function buildResults(
         ref: story.ref ?? '',
         subtitle: storySubtitle(story),
         href: storyBoardHref(story.project_id ?? '', story.ref ?? ''),
-        completed: isStoryTerminal(story),
+        completed,
         story,
       },
     });
