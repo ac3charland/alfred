@@ -10,6 +10,7 @@ import { InboxScreen } from '@/components/tasks/inbox-screen';
 import { PriorityView } from '@/components/tasks/priority-view';
 import { TodayView } from '@/components/tasks/today-view';
 import { WeeklyPlanView } from '@/components/tasks/weekly-plan-view';
+import { useTaskActions } from '@/lib/stores/tasks-store';
 
 const FOLDER_PREFIX = '/folders/';
 
@@ -21,10 +22,25 @@ const FOLDER_PREFIX = '/folders/';
  * the already-seeded stores. The nav links switch the URL via the History API (see
  * ViewLink) rather than an RSC navigation, so this re-renders the new view with no
  * server round-trip; a hard load of any of those paths renders the same view server-side.
+ *
+ * The seed-once store means a classifier verdict can drift after a long-lived session (a
+ * realtime UPDATE dropped by a stale or backgrounded connection — Tasks has no tab-return
+ * trigger of its own, unlike Comms/Reader). So on every navigation within the module — keyed on
+ * `pathname` AND the `view` search param, since entry to the Inbox list toggles `?view=inbox`
+ * without changing `pathname` (see the landing-route comment below) — refetch and reconcile
+ * those verdicts (ALF-246, mirroring the Code module's `refreshStatuses`, ALF-69).
+ * `refreshVerdicts` is stable and swallows its own errors, so this is a fire-and-forget reconcile
+ * that never blocks the view.
  */
 export function TaskViews() {
   const pathname = usePathname();
   const searchParameters = useSearchParams();
+  const view = searchParameters.get('view');
+  const { refreshVerdicts } = useTaskActions();
+
+  React.useEffect(() => {
+    void refreshVerdicts();
+  }, [pathname, view, refreshVerdicts]);
 
   if (pathname === '/priority') {
     return <PriorityView />;

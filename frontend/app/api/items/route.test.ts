@@ -44,7 +44,10 @@ function makeQueryChain(result: MockResult) {
     delete: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     is: jest.fn().mockReturnThis(),
-    order: jest.fn().mockResolvedValue(result),
+    // The GET /api/items read path (lib/data/items#getItems) chains `.overrideTypes()` after
+    // `.order()` — a type-only passthrough over the `task_items` view (see getItems's doc
+    // comment) — so `.order()` returns an object with that tail rather than resolving directly.
+    order: jest.fn().mockReturnValue({ overrideTypes: jest.fn().mockResolvedValue(result) }),
     single: jest.fn().mockResolvedValue(result),
   };
   return chain;
@@ -91,14 +94,15 @@ describe('GET /api/items', () => {
     expect(body).toStrictEqual(items);
   });
 
-  it('queries the "items" table with select(*)', async () => {
+  it('queries the "task_items" view (not the raw "items" table) with select(*)', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: [], error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await GET(makeRequest('http://localhost/api/items'), STUB_CONTEXT);
 
     const chain = mockSupabase._chain;
-    expect(mockSupabase.from).toHaveBeenCalledWith('items');
+    expect(mockSupabase.from).toHaveBeenCalledWith('task_items');
+    expect(mockSupabase.from).not.toHaveBeenCalledWith('items');
     expect(chain.select).toHaveBeenCalledWith('*');
   });
 

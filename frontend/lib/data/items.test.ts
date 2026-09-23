@@ -1,7 +1,7 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { createClient } from '@/lib/supabase/server';
 
-import { getAllItems } from './items';
+import { getAllItems, getItems } from './items';
 
 // `import 'server-only'` throws outside a Server Component context; neutralise it under Jest.
 jest.mock('server-only', () => ({}));
@@ -57,5 +57,62 @@ describe('getAllItems', () => {
   it('returns an empty array when there is no data', async () => {
     mockClient({ data: null });
     expect(await getAllItems()).toStrictEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getItems — the keyed GET /api/items reader. Reads `task_items` unconditionally (the same
+// view getAllItems reads — see the doc comment on getItems for why the raw `items` table is
+// never exposed through this endpoint).
+// ---------------------------------------------------------------------------
+
+/** A chain with the extra filter methods `getItems` calls (`.eq` / `.is`), tailed by
+ * `.overrideTypes()` after `.order()` (mirroring `getAllItems`'s `makeChain` above). */
+function makeItemsChain(result: MockResult) {
+  const builder = { overrideTypes: jest.fn().mockResolvedValue(result) };
+  const chain = {
+    select: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
+    order: jest.fn().mockReturnValue(builder),
+  };
+  return { chain, builder };
+}
+
+function mockItemsClient(result: MockResult) {
+  const { chain, builder } = makeItemsChain(result);
+  const client = { from: jest.fn().mockReturnValue(chain), _chain: chain, _builder: builder };
+  mockCreateClient.mockResolvedValue(client as never);
+  return client;
+}
+
+describe('getItems', () => {
+  it('reads the "task_items" view, not the raw "items" table', async () => {
+    // task_items already excludes any item gated into the Software Factory. GET /api/items is
+    // reachable only through a browser session (withSession — see lib/api/auth), and nothing
+    // in the app needs to see a gated item back out through this list, so this is unconditional
+    // rather than opt-in — see the doc comment on getItems.
+    const client = mockItemsClient({ data: [ITEM] });
+
+    const result = await getItems({ status: 'all' });
+
+    expect(client.from).toHaveBeenCalledWith('task_items');
+    expect(client.from).not.toHaveBeenCalledWith('items');
+    expect(client._chain.select).toHaveBeenCalledWith('*');
+    expect(client._chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    // Same nullable-view-column override getAllItems applies, at the same spot in the chain.
+    expect(client._builder.overrideTypes).toHaveBeenCalled();
+    expect(result).toStrictEqual({ data: [ITEM] });
+  });
+
+  it('applies the inbox/folder/status filters', async () => {
+    const client = mockItemsClient({ data: [] });
+
+    await getItems({ inbox: true });
+
+    expect(client._chain.is).toHaveBeenCalledWith('dispatched_at', null);
+    expect(client._chain.eq).not.toHaveBeenCalledWith('folder_id', expect.anything());
+    // Default status is 'active' — filtered unless 'all'.
+    expect(client._chain.eq).toHaveBeenCalledWith('status', 'active');
   });
 });

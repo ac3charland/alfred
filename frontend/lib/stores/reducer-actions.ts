@@ -53,7 +53,18 @@ export function keyedReducer<T>(
       return [...state, action.item];
     }
     case 'replace': {
-      return state.map((row) => (keyOf(row) === action.id ? action.item : row));
+      const index = state.findIndex((row) => keyOf(row) === action.id);
+      if (index === -1) return state;
+      const newKey = keyOf(action.item);
+      const withReplacement = state.map((row, i) => (i === index ? action.item : row));
+      // A replace can retarget a row's key (an optimistic temp id swapped for the server's real
+      // id on reconcile). If that real id already landed elsewhere in the array by some OTHER
+      // path — e.g. a background refetch upserting a second writer's row before this reconcile
+      // ran — drop that other copy so a replace never leaves two rows sharing the same resulting
+      // key. The row keeps the SAME slot the replaced row held (not the other copy's), so array
+      // order (capture order) is unaffected.
+      if (newKey === action.id) return withReplacement;
+      return withReplacement.filter((row, i) => i === index || keyOf(row) !== newKey);
     }
     case 'patch': {
       const ids = new Set(action.ids);

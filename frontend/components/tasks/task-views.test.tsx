@@ -1,6 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import * as React from 'react';
+
+import * as api from '@/lib/api-client';
+import { renderWithProviders } from '@/lib/test-utils';
 
 import { TaskViews } from './task-views';
 
@@ -36,6 +39,10 @@ jest.mock('@/components/habits/habits-view', () => ({
   },
 }));
 
+// The navigation refetch goes through the store → api-client.listItems; mock the seam.
+jest.mock('@/lib/api-client');
+const mockListItems = jest.mocked(api.listItems);
+
 const mockPathname = jest.mocked(usePathname);
 const mockSearchParams = jest.mocked(useSearchParams);
 
@@ -46,14 +53,70 @@ function setLocation(pathname: string, query = ''): void {
   );
 }
 
-describe('TaskViews', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+beforeEach(() => {
+  mockListItems.mockResolvedValue([]);
+  setLocation('/');
+});
+
+describe('TaskViews navigation refetch (ALF-246)', () => {
+  it('refetches classifier verdicts when the module is entered', async () => {
+    renderWithProviders(<TaskViews />);
+
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(1);
+    });
+    expect(mockListItems).toHaveBeenCalledWith({ status: 'all' });
   });
 
+  it('refetches again on each in-module navigation', async () => {
+    const { rerender } = renderWithProviders(<TaskViews />);
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(1);
+    });
+
+    setLocation('/today');
+    rerender(<TaskViews />);
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(2);
+    });
+
+    setLocation('/completed');
+    rerender(<TaskViews />);
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  it('does not refetch on a re-render that leaves the path unchanged', async () => {
+    const { rerender } = renderWithProviders(<TaskViews />);
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(<TaskViews />);
+    // Give any stray effect a chance to fire before asserting it did not.
+    await Promise.resolve();
+    expect(mockListItems).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches when the inbox list is revealed via ?view=inbox, even though pathname stays `/`', async () => {
+    const { rerender } = renderWithProviders(<TaskViews />);
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(1);
+    });
+
+    setLocation('/', 'view=inbox');
+    rerender(<TaskViews />);
+    await waitFor(() => {
+      expect(mockListItems).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+describe('TaskViews view routing', () => {
   it('renders the inbox (closed) on the bare landing route', () => {
     setLocation('/');
-    render(<TaskViews />);
+    renderWithProviders(<TaskViews />);
 
     expect(screen.getByTestId('inbox-screen')).toHaveAttribute('data-open', 'false');
     expect(screen.queryByTestId('folder-view')).not.toBeInTheDocument();
@@ -62,14 +125,14 @@ describe('TaskViews', () => {
 
   it('opens the inbox list when ?view=inbox is present', () => {
     setLocation('/', 'view=inbox');
-    render(<TaskViews />);
+    renderWithProviders(<TaskViews />);
 
     expect(screen.getByTestId('inbox-screen')).toHaveAttribute('data-open', 'true');
   });
 
   it('renders the folder view for a /folders/<id> path, passing the id', () => {
     setLocation('/folders/f1');
-    render(<TaskViews />);
+    renderWithProviders(<TaskViews />);
 
     expect(screen.getByTestId('folder-view')).toHaveAttribute('data-folder-id', 'f1');
     expect(screen.queryByTestId('inbox-screen')).not.toBeInTheDocument();
@@ -77,7 +140,7 @@ describe('TaskViews', () => {
 
   it('renders the habits view on /habits', () => {
     setLocation('/habits');
-    render(<TaskViews />);
+    renderWithProviders(<TaskViews />);
 
     expect(screen.getByTestId('habits-view')).toBeInTheDocument();
     expect(screen.queryByTestId('inbox-screen')).not.toBeInTheDocument();
@@ -85,7 +148,7 @@ describe('TaskViews', () => {
 
   it('renders the today view on /today', () => {
     setLocation('/today');
-    render(<TaskViews />);
+    renderWithProviders(<TaskViews />);
 
     expect(screen.getByTestId('today-view')).toBeInTheDocument();
     expect(screen.queryByTestId('inbox-screen')).not.toBeInTheDocument();
@@ -93,7 +156,7 @@ describe('TaskViews', () => {
 
   it('renders the completed view on /completed', () => {
     setLocation('/completed');
-    render(<TaskViews />);
+    renderWithProviders(<TaskViews />);
 
     expect(screen.getByTestId('completed-view')).toBeInTheDocument();
     expect(screen.queryByTestId('inbox-screen')).not.toBeInTheDocument();

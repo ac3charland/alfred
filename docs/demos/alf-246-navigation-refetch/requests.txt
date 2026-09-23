@@ -1,0 +1,8 @@
+GET /api/items
+GET /api/code/loc-velocity
+GET /api/code/pr-ratio
+GET /api/code
+GET /api/comms/snapshot
+GET /api/reader/posts
+GET /api/reader/health
+GET /api/items

@@ -159,6 +159,81 @@ read failed isn't *loaded* at all — it says it couldn't load and draws no queu
 not an empty one) until a read lands, which it asks for on mount without waiting for the poll
 interval.
 
+## Navigation refetch: a per-screen fallback reconcile (ALF-69, ALF-246)
+
+Realtime and Comms'/Reader's foreground-return listeners still miss the case where the tab never
+hides or loses focus: an in-app module switch is a client-side `pushState`, so
+`visibilitychange`/`focus`/`online` never fire, and a seed-once store would otherwise sit on
+stale data until its next scheduled trigger (Tasks and Code have none at all outside this;
+Comms' 30s poll and Reader's tab-return listener are the other two). Every module's view-router
+(`TaskViews` / `CodeView` / `CommsView` / `ReaderView`) fires a lightweight reconcile keyed on
+`usePathname()` (Tasks also keys on the `view` search param — see below) — covering both entry to
+the module and every navigation within it, not just once per entry — so a screen the owner lands
+on is never staler than the *next* scheduled trigger would have made it anyway. The effect lives
+in the view-router, not the provider: the router only mounts while its module is the active one,
+so the trigger fires exactly on that module's own navigations, not on every app-wide route change
+a provider mounted at the shell would otherwise see.
+
+The reconcile itself stays as narrow as the store's own invariants demand. Code (`refreshStatuses`)
+holds heavy optimistic state, so it PATCHES only a small, deliberately-chosen field set (factory
+status fields) onto rows already held — never a full replace, and never an insert (a story created
+elsewhere is out of scope for this reconcile; a race-rule no-op for any id not already in the
+store, same as a dropped realtime UPDATE). Comms and Reader already reconcile by full snapshot
+replace for their other triggers (poll; tab return), so their pathname effect just calls that same
+`reconcile`/`refresh` action again — one more trigger source into machinery already built to
+coalesce concurrent calls, not new reconciliation logic.
+
+Tasks (`refreshVerdicts`) does both: it PATCHES the classifier verdict's field set onto rows
+already held (mirroring Code's narrow patch), AND inserts a row the fetch returns that this store
+has never held — a second writer's new item (Comms' "Make Inbox item", a Siri capture) would
+otherwise stay invisible until a hard reload, even right after navigating to the Inbox. Two things
+make the insert safe:
+
+- **It reads `task_items`, not the raw `items` table.** `GET /api/items` (`getItems` in
+  `lib/data/items`) reads the SAME gated-item-excluding view `getAllItems` seeds the store from —
+  unconditionally, not opt-in — so the fetch this reconcile inserts from can never hand back a
+  story already gated into the Code module (removed from this store on its way out via
+  `removeGatedItem`/`settleEpicConversion`).
+- **The insert guard is a persistent "ever held" set, not a fetch-scoped snapshot.** A ref
+  (`everHeldIdsRef`) accumulates every id this store has ever held since mount and never forgets
+  one, synced by its own effect exactly like `tasksRef`. Insert only an id absent from that set. A
+  fetch-scoped pair of snapshots (held-at-start, held-at-resolve — which is what the PATCH path's
+  own race guard below uses) is NOT enough here: it only proves nothing touched a row WHILE one
+  particular fetch was in flight, missing a row this tab deleted or gated away just BEFORE the
+  fetch started — such a row is absent from both snapshots, so a fetch-scoped guard alone lets a
+  stale read insert it right back. An id that has ever been seen is excluded forever, which closes
+  that gap regardless of when the removal happened.
+
+`refreshVerdicts` additionally snapshots the rows it's about to PATCH (a different set of
+snapshots from the insert guard above) BEFORE its fetch goes out, not after, and only applies a
+fetched row's patch if that row is still reference-equal to the snapshot once the fetch resolves —
+otherwise a concurrent optimistic edit (or that edit's rollback) landing mid-flight can be
+overwritten by the now-stale fetch. Every reducer move (`patch`/`upsert`/`replace`/`remove`)
+replaces a touched row's object identity, so this reference check is a cheap, correct "did
+anything touch this row while I was reading it" test — the general shape any per-row
+snapshot-then-async-reconcile action needs, not just this one.
+
+**A duplicate can still slip in from the OTHER direction — a concurrent create reconciling to an
+id this reconcile just inserted — and that one isn't this action's to guard.** If a create's
+optimistic row is still pending when the fetch resolves and inserts the same (not-yet-reconciled)
+server row, the create's own reconcile later does `replace(tempId, saved)` — and a naive
+`replace` only swaps the temp row's slot, leaving the earlier insert sitting there too. The fix
+lives in the shared reducer instead (`keyedReducer`'s `'replace'` case, `reducer-actions.ts`): a
+replace that retargets a row's key now drops any OTHER row already holding that key, keeping the
+replaced row's own slot (array order/capture order is unaffected). An unchanged-key replace (the
+common case, and Reader's own two `replace` sites) is an unaffected fast path. This is a
+store-agnostic invariant — "a replace never leaves two rows sharing a key" — not a Tasks-specific
+patch, so it lives in the reducer every store shares.
+
+The Tasks/Inbox screen needed one more subtlety: opening the Inbox list is `?view=inbox`, a search
+param, not a pathname change (see "Landing / inbox at `/`" below) — so `TaskViews` keys its effect
+on `[pathname, view]`, not `pathname` alone, or revealing the list without ever changing pathname
+would skip the reconcile.
+
+This is the one sanctioned exception to "never refetch per view" below: it fires on every
+navigation within a module, entry included, never on a component re-render with an unchanged key,
+and the store — seeded once — stays the view's primary read.
+
 ## A derived status must mirror the query that does the work
 
 Wherever the browser derives "is the Worker keeping up?" from rows it already holds, it is
@@ -270,7 +345,8 @@ Auth (login)?                        → the ONE exception: components/auth/logi
 Every store action follows the same shape — use it for a new mutation **or when
 refactoring a hard-refresh one**. Stores hold flat arrays; the pure helpers live in
 `lib/tree.ts` (`buildTree`, `collectSubtree`, `makeOptimisticItem`). A small reducer
-exposes five moves: `insert`, `replace` (swap one by id), `patch` (merge into a set of
+exposes five moves: `insert`, `replace` (swap one by id, deduping if the incoming item's own key
+already exists elsewhere — see "Navigation refetch" above), `patch` (merge into a set of
 ids — single edit or cascade), `upsert` (replace present + add missing), `remove`.
 
 1. **Capture** the rows you're about to change for rollback — read the latest state from a
@@ -370,7 +446,8 @@ action closures can fire it without it becoming a memo dep.
   route through a store action so the change is optimistic and reconciles locally. A
   `router.refresh()` in a mutation handler is a refactor target.
 - **Never prop-drill entity lists or refetch per view.** Read the store and derive with a
-  selector.
+  selector — the one sanctioned exception is the per-module navigation reconcile above, which
+  fires on every navigation within a module, not on a component re-render with an unchanged key.
 - **Never fake optimism with a local `dismissed`/`isPending` flag** to hide a row mid-flight
   — change the data; the filtered view updates, and a rollback brings it back.
 - **Never `await` the mutation before closing a local edit UI.** An inline editor that
