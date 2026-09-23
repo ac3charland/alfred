@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import * as React from 'react';
 
+import { stubEndpoint } from '@/lib/storybook/stub-fetch';
 import type { LocVelocityResponse, LocWeek } from '@/lib/types';
 
 import { LocVelocity } from './loc-velocity';
@@ -32,26 +32,6 @@ function velocity(values: number[]): LocVelocityResponse {
     weeks: weeks(values),
     repos: ['ac3charland/realplay', 'ac3charland/alfred'],
     averageWeeks: 4,
-  };
-}
-
-/**
- * The card fetches on mount, so each story pins what the endpoint answers by stubbing `fetch`
- * for the duration of the story — no network, no clock, a deterministic snapshot. `undefined`
- * body means "never settles", which parks the card in its loading state.
- */
-function stubEndpoint(status: number, body?: unknown) {
-  return (Story: React.ComponentType) => {
-    globalThis.fetch = (() =>
-      body === undefined && status === 200
-        ? new Promise(() => {})
-        : Promise.resolve({
-            ok: status < 400,
-            status,
-            json: () => Promise.resolve(body),
-            text: () => Promise.resolve(JSON.stringify(body)),
-          })) as unknown as typeof fetch;
-    return <Story />;
   };
 }
 

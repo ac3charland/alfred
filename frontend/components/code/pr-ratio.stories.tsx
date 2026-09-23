@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import * as React from 'react';
 
+import { stubEndpoint } from '@/lib/storybook/stub-fetch';
 import type { PrRatioResponse } from '@/lib/types';
 
 import { PrRatio } from './pr-ratio';
@@ -37,26 +37,6 @@ const EMPTY_WINDOW: PrRatioResponse = {
   repos: SPLIT.repos.map((repo) => ({ ...repo, count: 0, percentage: 0 })),
   other: { count: 0, percentage: 0 },
 };
-
-/**
- * The card fetches on mount, so each story pins what the endpoint answers by stubbing
- * `fetch` for the duration of the story — no network, no clock, a deterministic snapshot.
- * `undefined` body means "never settles", which parks the card in its loading state.
- */
-function stubEndpoint(status: number, body?: unknown) {
-  return (Story: React.ComponentType) => {
-    globalThis.fetch = (() =>
-      body === undefined
-        ? new Promise(() => {})
-        : Promise.resolve({
-            ok: status < 400,
-            status,
-            json: () => Promise.resolve(body),
-            text: () => Promise.resolve(JSON.stringify(body)),
-          })) as unknown as typeof fetch;
-    return <Story />;
-  };
-}
 
 const meta = {
   title: 'Code/PrRatio',
