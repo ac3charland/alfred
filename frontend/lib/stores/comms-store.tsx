@@ -64,6 +64,14 @@ export interface CommsState {
    * store itself tracks no such flag.
    */
   lastReadAt: string | null;
+  /**
+   * The client clock's time the most recently STARTED reconcile attempt began, successful or
+   * not. Cleared back to `null` the moment a fresh snapshot lands — nothing left to hold for —
+   * but left standing after a failed attempt, so a retry still gets a short grace period. Read by
+   * `lib/comms/health.ts`'s `heldNow`, which is what stops a returning tab's account dots from
+   * flashing offline for the fraction of a second the read itself takes — see ALF-252.
+   */
+  lastReconcileAttemptAt: string | null;
 }
 
 export interface CommsActions {
@@ -126,7 +134,9 @@ type CommsAction =
    */
   | { type: 'snapshot'; seed: CommsSeed; keep: ReadonlySet<string> }
   /** A read that started at `startedAt` landed successfully. */
-  | { type: 'read'; startedAt: string };
+  | { type: 'read'; startedAt: string }
+  /** A reconcile attempt was just launched — see {@link CommsState.lastReconcileAttemptAt}. */
+  | { type: 'reconcileAttempt'; startedAt: string };
 
 /** The store's state for a seed, before any change arrives — nothing loaded if its read failed. */
 export function stateFromSeed(seed: CommsSeed, failed = false): CommsState {
@@ -142,6 +152,7 @@ export function stateFromSeed(seed: CommsSeed, failed = false): CommsState {
     // The client's own clock — the window this dates is measured against the client's later
     // reads, so it has to share their clock rather than the server's.
     lastReadAt: failed ? null : new Date().toISOString(),
+    lastReconcileAttemptAt: null,
   };
 }
 
@@ -180,6 +191,9 @@ export function commsReducer(state: CommsState, action: CommsAction): CommsState
     }
     case 'read': {
       return { ...state, loaded: true, lastReadAt: action.startedAt };
+    }
+    case 'reconcileAttempt': {
+      return { ...state, lastReconcileAttemptAt: action.startedAt };
     }
     default: {
       return assertNever(action, 'comms action');
@@ -258,6 +272,7 @@ export function CommsProvider({
         const keep = new Set(writesInFlightRef.current.keys());
         // What the read can vouch for is decided as it starts, on this tab's clock.
         const startedAt = new Date().toISOString();
+        dispatch({ type: 'reconcileAttempt', startedAt });
         try {
           const seed = await api.fetchCommsSnapshot(shelfLimitRef.current);
           for (const id of writesInFlightRef.current.keys()) keep.add(id);
@@ -527,11 +542,13 @@ export function useCommsSync(): {
   loaded: boolean;
   lastReadAt: string | null;
   lastClassifiedAt: string | null;
+  lastReconcileAttemptAt: string | null;
 } {
-  const { loaded, lastReadAt, lastClassifiedAt } = useStateValue('useCommsSync');
+  const { loaded, lastReadAt, lastClassifiedAt, lastReconcileAttemptAt } =
+    useStateValue('useCommsSync');
   return React.useMemo(
-    () => ({ loaded, lastReadAt, lastClassifiedAt }),
-    [loaded, lastReadAt, lastClassifiedAt],
+    () => ({ loaded, lastReadAt, lastClassifiedAt, lastReconcileAttemptAt }),
+    [loaded, lastReadAt, lastClassifiedAt, lastReconcileAttemptAt],
   );
 }
 

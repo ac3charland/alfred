@@ -799,6 +799,30 @@ describe('CommsProvider — polling and recovery', () => {
     });
   });
 
+  it('marks a reconcile attempt as it launches, and clears it once a fresh snapshot lands', async () => {
+    const read = holdSnapshot();
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    expect(result.current.sync.lastReconcileAttemptAt).toBeNull();
+
+    await fireOnline();
+    expect(result.current.sync.lastReconcileAttemptAt).not.toBeNull();
+
+    await read.resolve(makeCommsSeed());
+    expect(result.current.sync.lastReconcileAttemptAt).toBeNull();
+  });
+
+  it('leaves the attempt marked after a failed reconcile — the next retry still gets its grace', async () => {
+    const read = holdSnapshot();
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+
+    await fireOnline();
+    const attemptedAt = result.current.sync.lastReconcileAttemptAt;
+    expect(attemptedAt).not.toBeNull();
+
+    await read.reject();
+    expect(result.current.sync.lastReconcileAttemptAt).toBe(attemptedAt);
+  });
+
   it('starts a shell whose read failed unloaded, and reads on mount without waiting for a poll', async () => {
     const failing = holdSnapshot();
     const failed = makeCommsSeed();

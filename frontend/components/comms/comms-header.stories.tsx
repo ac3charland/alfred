@@ -118,3 +118,23 @@ export const NotLive: Story = {
 export const NotLoaded: Story = {
   args: { accounts: [], loaded: false },
 };
+
+/**
+ * The account's own interval has technically lapsed, but the module's reconnect — the read a
+ * returning tab kicks off — only just launched. The dot holds the live reading it had right
+ * before that read began instead of flashing stale for the fraction of a second the read takes
+ * (ALF-252). Contrast `EverySourceStale`: there nothing has looked live in hours and there is no
+ * read in flight for the dot to hold against.
+ */
+export const ReconnectingHoldsLive: Story = {
+  args: {
+    accounts: [
+      makeCommAccount('personal', {
+        id: 'acct-personal',
+        expected_interval_seconds: 60,
+        last_seen_at: ago(62 * 1000),
+      }),
+    ],
+    reconcileStartedAt: ago(2 * 1000),
+  },
+};

@@ -33,12 +33,14 @@ export {
 } from './markers';
 
 export {
+  ACCOUNT_RECONNECT_GRACE_MS,
   type AccountHealth,
   CLASSIFIER_STALL_MINUTES,
   type ClassifierStall,
   type LastPing,
   accountHealth,
   classifierStalled,
+  heldNow,
   lastPing,
 } from './health';
 

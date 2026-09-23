@@ -396,6 +396,48 @@ describe('CommsQueueView — a tab that has been away', () => {
     expect(await screen.findByText('Needs the contract signed before noon.')).toBeInTheDocument();
   });
 
+  it('holds an account dot live through the reconnect read, even as it crosses stale while out', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(OPENED);
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    const account = makeCommAccount('RealPlay', {
+      id: '00000000-0000-4000-8000-0000000000c1',
+      expected_interval_seconds: 60,
+      last_seen_at: new Date(OPENED.getTime() - 58_000).toISOString(),
+    });
+    const read = { resolve: (_seed: CommsSeed) => {} };
+    jest.mocked(api).fetchCommsSnapshot.mockReturnValue(
+      new Promise((resolve) => {
+        read.resolve = resolve;
+      }),
+    );
+    const { rerender } = renderWithProviders(<CommsQueueView now={OPENED} />, {
+      comms: { accounts: [account], messages: [] },
+    });
+    expect(screen.getByLabelText('RealPlay · live')).toBeInTheDocument();
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // The account's own 60s interval passes while the reconnect read this just launched is
+    // still out — inside the reconnect's own short grace window, not the (much longer) time it
+    // would take to make this account look overdue on its own.
+    const stillOut = new Date(OPENED.getTime() + 3000);
+    jest.setSystemTime(stillOut);
+    rerender(<CommsQueueView now={stillOut} />);
+    expect(screen.getByLabelText('RealPlay · live')).toBeInTheDocument();
+
+    await act(async () => {
+      read.resolve(makeCommsSeed({ accounts: [account], messages: [] }));
+      await Promise.resolve();
+    });
+
+    // The read landed and confirmed nothing new — now the true state shows for real.
+    expect(screen.getByLabelText('RealPlay · stale')).toBeInTheDocument();
+  });
+
   it('says it is not live once every poll has failed for long enough', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(OPENED);

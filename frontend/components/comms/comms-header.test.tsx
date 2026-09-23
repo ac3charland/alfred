@@ -14,6 +14,8 @@ import { CommsHeader } from './comms-header';
 
 const NOW = new Date('2026-09-09T12:00:00.000Z');
 const iso = (minutesAgo: number) => new Date(NOW.getTime() - minutesAgo * 60 * 1000).toISOString();
+/** An ISO timestamp `seconds` before {@link NOW}. */
+const secondsAgo = (seconds: number) => new Date(NOW.getTime() - seconds * 1000).toISOString();
 
 function renderHeader(properties: Partial<React.ComponentProps<typeof CommsHeader>> = {}) {
   return renderWithProviders(
@@ -25,6 +27,7 @@ function renderHeader(properties: Partial<React.ComponentProps<typeof CommsHeade
       lastClassifiedAt={properties.lastClassifiedAt}
       notLiveSince={properties.notLiveSince}
       loaded={properties.loaded}
+      reconcileStartedAt={properties.reconcileStartedAt}
     />,
   );
 }
@@ -209,5 +212,55 @@ describe('CommsHeader', () => {
     });
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+});
+
+describe('CommsHeader — holding a dot through a reconnect (ALF-252)', () => {
+  it('holds a dot live while a reconnect read is in flight, rather than flashing stale', () => {
+    renderHeader({
+      accounts: [
+        makeCommAccount('personal', {
+          expected_interval_seconds: 60,
+          last_seen_at: secondsAgo(62),
+        }),
+      ],
+      // The read that would refresh this row launched while it was still inside its interval —
+      // the dot holds that reading rather than the fresh "62s is over the 60s interval" one
+      // until the read actually lands.
+      reconcileStartedAt: secondsAgo(2),
+    });
+
+    expect(screen.getByLabelText('personal · live')).toBeInTheDocument();
+    expect(screen.queryByTestId('account-health-notes')).not.toBeInTheDocument();
+  });
+
+  it('does not fabricate liveness a reconnect began after it was already gone', () => {
+    renderHeader({
+      accounts: [
+        makeCommAccount('personal', {
+          expected_interval_seconds: 60,
+          last_seen_at: secondsAgo(600),
+        }),
+      ],
+      reconcileStartedAt: secondsAgo(2),
+    });
+
+    expect(screen.getByLabelText('personal · stale')).toBeInTheDocument();
+  });
+
+  it('stops holding once the reconnect has clearly had its chance', () => {
+    renderHeader({
+      accounts: [
+        makeCommAccount('personal', {
+          expected_interval_seconds: 60,
+          last_seen_at: secondsAgo(62),
+        }),
+      ],
+      // Well past ACCOUNT_RECONNECT_GRACE_MS (5s) — a read this old has had its chance, so the
+      // dot reads the true clock again rather than holding forever.
+      reconcileStartedAt: secondsAgo(30),
+    });
+
+    expect(screen.getByLabelText('personal · stale')).toBeInTheDocument();
   });
 });
