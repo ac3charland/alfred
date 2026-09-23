@@ -97,3 +97,24 @@ export const OneSourceErroring: Story = {
     ],
   },
 };
+
+/**
+ * The view could not re-read — offline, or the last few polls failing — so it says so above
+ * everything, with how old what it is showing is. Every source was fine when it last heard; that
+ * is exactly why the line is needed: green dots over a view that may be behind would read as
+ * all-clear.
+ */
+export const NotLive: Story = {
+  args: {
+    accounts: [live('personal'), live('RealPlay'), live('iMessage', DAEMON)],
+    notLiveSince: ago(12 * MINUTE),
+  },
+};
+
+/**
+ * The shell's read failed and no read has landed since: the view has nothing to show and nothing
+ * to date, so it says only that it is trying again.
+ */
+export const NotLoaded: Story = {
+  args: { accounts: [], loaded: false },
+};

@@ -32,6 +32,28 @@ export function accountHealth(account: CommAccount, now: Date): AccountHealth {
   return now.getTime() - lastSeen <= account.expected_interval_seconds * 1000 ? 'live' : 'stale';
 }
 
+/** The most recent successful poll across every account, and the account that made it. */
+export interface LastPing {
+  account: CommAccount;
+  at: string;
+}
+
+/**
+ * Which source checked in last, and when — `null` until any account has been polled. The dots say
+ * whether each source is inside its interval; this says the whole surface is still moving, which
+ * a row of green can't show on its own.
+ */
+export function lastPing(accounts: CommAccount[]): LastPing | null {
+  let latest: LastPing | null = null;
+  for (const account of accounts) {
+    if (account.last_seen_at === null) continue;
+    if (latest === null || Date.parse(account.last_seen_at) > Date.parse(latest.at)) {
+      latest = { account, at: account.last_seen_at };
+    }
+  }
+  return latest;
+}
+
 /**
  * How long an inbound message may sit with no tier before the classifier counts as stalled. The
  * sweep rides a cron in minutes, so a quarter of an hour is well past "the next run will get it".
@@ -77,6 +99,11 @@ export function classifierStalled(
   health: CommClassifierHealth | undefined,
   messages: CommMessage[],
   now: Date,
+  /**
+   * The newest verdict the server knows of. The client holds only a page of the shelf, so the
+   * held rows alone can miss the latest proof of life; this floors it.
+   */
+  lastClassifiedAt: string | null = null,
 ): ClassifierStall {
   const signals: string[] = [];
 
@@ -89,7 +116,7 @@ export function classifierStalled(
 
   const cutoff = now.getTime() - CLASSIFIER_STALL_MINUTES * MS_PER_MINUTE;
   let waitingSince: string | undefined;
-  let lastVerdict: string | undefined;
+  let lastVerdict: string | undefined = lastClassifiedAt ?? undefined;
   for (const message of messages) {
     if (
       message.classified_at !== null &&

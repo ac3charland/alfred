@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { SHELF_LIMIT_MAX, SHELF_PAGE_SIZE } from '@/lib/comms/queue';
+
 /**
  * Request shapes for the Comms module's routes — its own file rather than a section of
  * `schemas.ts`, because the queue and the settings surfaces are built independently and would
@@ -36,6 +38,16 @@ export const commMessagesQuerySchema = z.object({
 });
 
 export type CommMessagesQuery = z.infer<typeof commMessagesQuerySchema>;
+
+/**
+ * Query for GET /api/comms/snapshot. `shelf` is how many shelf rows the tab is showing — the
+ * first page by default, more after "Show more" — so a re-read keeps what is on screen.
+ */
+export const commsSnapshotQuerySchema = z.object({
+  shelf: z.coerce.number().int().min(1).max(SHELF_LIMIT_MAX).default(SHELF_PAGE_SIZE),
+});
+
+export type CommsSnapshotQuery = z.infer<typeof commsSnapshotQuerySchema>;
 
 /**
  * Body for POST /api/comms/messages/[id]/clear — the owner's two clearing verbs.

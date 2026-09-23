@@ -7,6 +7,7 @@
  */
 import {
   createReaderPublication,
+  fetchCommsSnapshot,
   fetchReaderCandidates,
   fetchReaderHealth,
   fetchReaderPublications,
@@ -111,5 +112,28 @@ describe('fetchReaderHealth', () => {
 
     await expect(fetchReaderHealth()).resolves.toEqual(snapshot);
     expect(requested(spy)).toMatchObject({ path: '/api/reader/health', method: 'GET' });
+  });
+});
+
+describe('fetchCommsSnapshot', () => {
+  it('gives up after 15s, so a hung read fails rather than holding the view', async () => {
+    const timeout = new AbortController();
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+    // A server that never answers: only the signal ends the request.
+    globalThis.fetch = jest.fn(
+      (_path: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation timed out.', 'TimeoutError'));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const read = fetchCommsSnapshot(50);
+    timeout.abort();
+
+    await expect(read).rejects.toThrow('timed out');
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+    timeoutSpy.mockRestore();
   });
 });

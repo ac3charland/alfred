@@ -2,7 +2,7 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
 import type { CommMessagesQuery } from '@/lib/api/schemas';
-import { QUEUED_TIERS } from '@/lib/comms/queue';
+import { QUEUED_TIERS, SHELF_ELIGIBLE_FILTER } from '@/lib/comms/queue';
 import type { Database } from '@/lib/database.types';
 import type { CommAccount, CommCorrection, CommMessage, CommTier } from '@/lib/types';
 
@@ -68,7 +68,7 @@ export async function getCommMessagesByScope(
         // left the queue by one of its exits — minus anything the Reader has claimed, which
         // `isShelved` excludes for the same reason (a claimed newsletter lives in the reading
         // list; the shelf only counts it).
-        base.or('tier.eq.fyi,cleared_at.not.is.null').is('reader_claimed_at', null);
+        base.or(SHELF_ELIGIBLE_FILTER).is('reader_claimed_at', null);
 
   const ordered = scoped.order('received_at', { ascending: false });
   return query.limit === undefined ? await ordered : await ordered.limit(query.limit);

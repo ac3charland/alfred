@@ -22,6 +22,9 @@ function renderHeader(properties: Partial<React.ComponentProps<typeof CommsHeade
       messages={properties.messages ?? []}
       health={properties.health}
       now={NOW}
+      lastClassifiedAt={properties.lastClassifiedAt}
+      notLiveSince={properties.notLiveSince}
+      loaded={properties.loaded}
     />,
   );
 }
@@ -43,6 +46,23 @@ describe('CommsHeader', () => {
 
     expect(screen.getByLabelText('personal · live')).toBeInTheDocument();
     expect(screen.getByLabelText('iMessage · stale')).toBeInTheDocument();
+  });
+
+  it('says under the dots which source pinged last, and how long ago', () => {
+    renderHeader({
+      accounts: [
+        makeCommAccount('personal', { last_seen_at: iso(9) }),
+        makeCommAccount('iMessage', { home: 'daemon', last_seen_at: iso(3) }),
+      ],
+    });
+
+    expect(screen.getByTestId('last-ping')).toHaveTextContent('Last ping 3m ago · iMessage');
+  });
+
+  it('leaves the last-ping line off until some source has ever been polled', () => {
+    renderHeader({ accounts: [makeCommAccount('WorkMail', { home: 'daemon' })] });
+
+    expect(screen.queryByTestId('last-ping')).not.toBeInTheDocument();
   });
 
   it('separates a broken account from a quiet one — a green dot over a dead source is the failure', () => {
@@ -122,6 +142,63 @@ describe('CommsHeader', () => {
     });
 
     expect(screen.getByRole('status')).toHaveTextContent('Classifier stalled 45m ago');
+  });
+
+  it('says the view is not live, and what it is showing, when it may be behind', () => {
+    renderHeader({ notLiveSince: iso(12) });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Not live — this is what was here 12m ago. Anything since may be missing until it refreshes.',
+    );
+  });
+
+  it('says it could not load, rather than dating a view it never had', () => {
+    renderHeader({ loaded: false });
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Comms' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load Comms — retrying.");
+  });
+
+  it('shows only the heading and the retry line while unloaded — never partial dots or sentences', () => {
+    renderHeader({
+      loaded: false,
+      accounts: [
+        makeCommAccount('RealPlay', {
+          last_seen_at: iso(300),
+          last_error: 'the refresh token was rejected',
+          last_error_at: iso(40),
+        }),
+      ],
+      health: makeCommHealth({
+        last_success_at: iso(200),
+        last_error: 'ANTHROPIC_API_KEY missing',
+        last_error_at: iso(140),
+      }),
+      notLiveSince: iso(12),
+    });
+
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.queryByTestId('account-dots')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('last-ping')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-health-notes')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('says nothing about liveness while the view is live', () => {
+    renderHeader({ accounts: [makeCommAccount('personal', { last_seen_at: iso(1) })] });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('counts a verdict the server knows of as proof of life, even off the loaded page', () => {
+    renderHeader({
+      accounts: [makeCommAccount('personal', { last_seen_at: iso(1) })],
+      messages: [makeCommMessage('acct-1', { received_at: iso(45), tier: null })],
+      health: makeCommHealth({ last_success_at: iso(1) }),
+      lastClassifiedAt: iso(2),
+    });
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('leaves the banner off while the sweep is keeping up', () => {

@@ -2,6 +2,7 @@ import { type RenderOptions, render } from '@testing-library/react';
 import * as React from 'react';
 
 import { ToastViewport } from '@/components/shell/toast-viewport';
+import { makeCommsSeed } from '@/lib/comms/fixtures';
 import type { HabitStats } from '@/lib/habits';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
@@ -76,6 +77,8 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
     messages?: CommMessage[];
     verdicts?: CommVerdict[];
     health?: CommClassifierHealth;
+    /** The shell's read failed: nothing has loaded yet. */
+    failed?: boolean;
   };
   /** The Comms settings data: the roster, the rubric versions (newest first), the example set. */
   commsSettings?: {
@@ -144,10 +147,8 @@ export function renderWithProviders(
                               serverToday={habits.today}
                             >
                               <CommsProvider
-                                initialAccounts={comms.accounts ?? []}
-                                initialMessages={comms.messages ?? []}
-                                initialVerdicts={comms.verdicts ?? []}
-                                initialHealth={comms.health}
+                                initialSeed={makeCommsSeed(comms)}
+                                initialFailed={comms.failed ?? false}
                               >
                                 <CommsSettingsProvider
                                   initialPeople={commsSettings.people ?? []}

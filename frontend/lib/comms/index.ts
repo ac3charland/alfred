@@ -8,6 +8,9 @@
  */
 export {
   QUEUED_TIERS,
+  SHELF_ELIGIBLE_FILTER,
+  SHELF_LIMIT_MAX,
+  SHELF_PAGE_SIZE,
   type QueueByTier,
   type QueuedTier,
   groupByTier,
@@ -33,8 +36,12 @@ export {
   type AccountHealth,
   CLASSIFIER_STALL_MINUTES,
   type ClassifierStall,
+  type LastPing,
   accountHealth,
   classifierStalled,
+  lastPing,
 } from './health';
 
 export { normalizeHandle, resolvePerson } from './people';
+
+export { COMMS_LIVE_WINDOW_MS, COMMS_POLL_MS, isCommsLive } from './live';

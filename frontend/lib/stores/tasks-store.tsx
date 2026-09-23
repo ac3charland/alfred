@@ -13,6 +13,7 @@ import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { createClient } from '@/lib/supabase/client';
+import { joinWhenAuthenticated } from '@/lib/supabase/realtime';
 import { classifierVerdictPatch } from '@/lib/tasks/classification';
 import { dispatchReadiness } from '@/lib/tasks/dispatch';
 import { rankDueToday } from '@/lib/tasks/due-today';
@@ -360,10 +361,13 @@ export function TasksProvider({
 
     const channel = supabase
       .channel('items')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'items' }, handleUpdate)
-      .subscribe();
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'items' }, handleUpdate);
+    const cancelJoin = joinWhenAuthenticated(supabase.realtime, () => {
+      channel.subscribe();
+    });
 
     return () => {
+      cancelJoin();
       void supabase.removeChannel(channel);
     };
   }, []);

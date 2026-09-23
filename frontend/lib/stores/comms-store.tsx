@@ -1,23 +1,29 @@
 'use client';
 
-import { REALTIME_SUBSCRIBE_STATES } from '@supabase/supabase-js';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import type { ChangeTierInput, ClearMessageInput, PurgeInput } from '@/lib/api-client';
-import { type QueueByTier, groupByTier, queueCount, shelved } from '@/lib/comms';
+import {
+  COMMS_POLL_MS,
+  type QueueByTier,
+  SHELF_LIMIT_MAX,
+  SHELF_PAGE_SIZE,
+  groupByTier,
+  queueCount,
+  shelved,
+} from '@/lib/comms';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, capturedFields, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
-import { createClient } from '@/lib/supabase/client';
 import type {
   CommAccount,
   CommClassifierHealth,
   CommMessage,
   CommVerdict,
+  CommsSeed,
   Item,
 } from '@/lib/types';
 
@@ -26,26 +32,44 @@ import type {
  * them, and the classifier's own health.
  *
  * Two writers reach these tables and neither is this browser: the ingestion Worker writes
- * messages and account health, and the classifier sweep writes verdicts and tiers. So unlike
- * the seed-once stores this one carries a Realtime subscription — a message arriving, a verdict
- * landing and a dot changing colour all have to show up without a reload.
+ * messages and account health, and the classifier sweep writes verdicts and tiers. Every source
+ * is minutes-granular (the Gmail poll every 3 minutes, the classifier sweep every 2, the Mac
+ * daemon roughly once a minute), so rather than a Realtime subscription this store POLLS the
+ * snapshot on a timer — see {@link CommsProvider} and `lib/comms/live.ts`.
  */
 
 export interface CommsState {
   accounts: CommAccount[];
-  /** Every inbound message inside the retention window; the queue and shelf derive from it. */
+  /**
+   * Everything above FYI inside the retention window (the queue, and the rows not judged yet), in
+   * full, plus the shelf pages loaded so far. The queue and the shelf derive from it.
+   */
   messages: CommMessage[];
   /** The current verdict behind each judged message, keyed by verdict id. */
   verdictsById: Record<string, CommVerdict>;
   /** The classifier's singleton health row; absent until the sweep has ever run. */
   health: CommClassifierHealth | undefined;
+  /** Every row on the shelf — `messages` holds only the pages loaded so far. */
+  shelfCount: number;
+  /** Shelf-eligible newsletters the Reader claimed; counted, never held. */
+  readerClaimedCount: number;
+  /** The newest verdict across the whole window, as of the last snapshot. */
+  lastClassifiedAt: string | null;
+  /** Whether any read has landed — `false` only while the shell's failed read has no successor. */
+  loaded: boolean;
+  /**
+   * The client clock's own time when the last successful read STARTED — the server reports no
+   * read time of its own for this to compare against. `null` only while `loaded` is false.
+   * `lib/comms/live.ts`'s `isCommsLive` is what turns this into "is the view live right now"; the
+   * store itself tracks no such flag.
+   */
+  lastReadAt: string | null;
 }
 
 export interface CommsActions {
   /**
-   * Apply a message change in this tab only, with no server write — the seam for a change the
-   * server has already made (a realtime payload the caller has its own rule for) or one that
-   * exists purely to move a row out of view.
+   * Apply a message change in this tab only, with no server write — the seam for a change that
+   * exists purely to move a row out of view ahead of the server confirming it.
    */
   patchMessageLocally: (id: string, patch: Partial<CommMessage>) => void;
   /**
@@ -86,27 +110,64 @@ export interface CommsActions {
   /**
    * The deliberate "I want this gone" — one message, one account, or everything before a date.
    * Destructive and irreversible, so it is NOT optimistic: the rows leave the client only once
-   * the server says they left the database.
+   * the server says they left the database, and a re-read follows to pick up whatever an
+   * account or date-range purge matched that this tab has no id list for.
    */
   purge: (input: PurgeInput) => Promise<{ purged: number }>;
+  /** Load the next page of the shelf — the same re-read as recovery, asked for more rows. */
+  showMoreShelf: () => void;
 }
-
-/**
- * The verdict-store move an incoming `comm_verdicts` change makes: `upsert` adds/replaces
- * entries by verdict id, `remove` evicts them.
- */
-type VerdictStreamAction =
-  | { type: 'upsert'; verdicts: CommVerdict[] }
-  | { type: 'remove'; ids: string[] };
 
 type CommsAction =
   | { type: 'messages'; action: SimpleAction<CommMessage> }
-  | { type: 'accounts'; action: SimpleAction<CommAccount> }
-  | { type: 'verdicts'; action: VerdictStreamAction }
-  | { type: 'health'; health: CommClassifierHealth | undefined };
+  /**
+   * Replace the view with a server snapshot — except the rows in `keep`, which have a write in
+   * flight: the snapshot may predate it, and the write reconciles them itself when it lands.
+   */
+  | { type: 'snapshot'; seed: CommsSeed; keep: ReadonlySet<string> }
+  /** A read that started at `startedAt` landed successfully. */
+  | { type: 'read'; startedAt: string };
+
+/** The store's state for a seed, before any change arrives — nothing loaded if its read failed. */
+export function stateFromSeed(seed: CommsSeed, failed = false): CommsState {
+  return {
+    accounts: seed.accounts,
+    messages: seed.messages,
+    verdictsById: Object.fromEntries(seed.verdicts.map((verdict) => [verdict.id, verdict])),
+    health: seed.health,
+    shelfCount: seed.shelfCount,
+    readerClaimedCount: seed.readerClaimedCount,
+    lastClassifiedAt: seed.lastClassifiedAt,
+    loaded: !failed,
+    // The client's own clock — the window this dates is measured against the client's later
+    // reads, so it has to share their clock rather than the server's.
+    lastReadAt: failed ? null : new Date().toISOString(),
+  };
+}
+
+/** {@link CommsAction}'s snapshot move: the seed wins, but a row with a write in flight holds. */
+function applySnapshot(state: CommsState, seed: CommsSeed, keep: ReadonlySet<string>): CommsState {
+  // Loadedness and the read clock are this tab's own bookkeeping, not something a server read
+  // carries — only the `read` action that follows a snapshot moves them.
+  const next = { ...stateFromSeed(seed), loaded: state.loaded, lastReadAt: state.lastReadAt };
+  const held = state.messages.filter((message) => keep.has(message.id));
+  if (held.length === 0) return next;
+  const heldIds = new Set(held.map((message) => message.id));
+  const verdictsById = { ...next.verdictsById };
+  for (const message of held) {
+    const verdict =
+      message.verdict_id === null ? undefined : state.verdictsById[message.verdict_id];
+    if (verdict !== undefined) verdictsById[verdict.id] = verdict;
+  }
+  return {
+    ...next,
+    messages: [...next.messages.filter((message) => !heldIds.has(message.id)), ...held],
+    verdictsById,
+  };
+}
 
 /**
- * Pure reducer. The two row lists delegate to the shared flat-list reducer, so the race rule
+ * Pure reducer. The message list delegates to the shared flat-list reducer, so the race rule
  * (a patch for an id the store no longer holds is a no-op) holds here for free.
  */
 export function commsReducer(state: CommsState, action: CommsAction): CommsState {
@@ -114,235 +175,14 @@ export function commsReducer(state: CommsState, action: CommsAction): CommsState
     case 'messages': {
       return { ...state, messages: simpleReducer(state.messages, action.action, 'comms message') };
     }
-    case 'accounts': {
-      return { ...state, accounts: simpleReducer(state.accounts, action.action, 'comms account') };
+    case 'snapshot': {
+      return applySnapshot(state, action.seed, action.keep);
     }
-    case 'verdicts': {
-      if (action.action.type === 'upsert') {
-        const verdictsById = { ...state.verdictsById };
-        for (const verdict of action.action.verdicts) verdictsById[verdict.id] = verdict;
-        return { ...state, verdictsById };
-      }
-      // Object.fromEntries + filter, not `delete`, so this stays clear of
-      // @typescript-eslint/no-dynamic-delete.
-      const removed = new Set(action.action.ids);
-      const verdictsById = Object.fromEntries(
-        Object.entries(state.verdictsById).filter(([id]) => !removed.has(id)),
-      );
-      return { ...state, verdictsById };
-    }
-    case 'health': {
-      return { ...state, health: action.health };
+    case 'read': {
+      return { ...state, loaded: true, lastReadAt: action.startedAt };
     }
     default: {
       return assertNever(action, 'comms action');
-    }
-  }
-}
-
-/**
- * Every column an UPDATE actually writes to `comm_messages` — the whole of what
- * {@link messageStreamAction} may patch onto a row from a live UPDATE. Checked against every
- * writer: the owner's three row-verb routes (tier / clear / reclassify), the
- * `comm_create_inbox_item` RPC, and the ingestion Worker's newsletter filter and classifier
- * sweep (`gmail.ts`/`ingest.ts`'s `shelveNewsletters`, `sweep.ts`'s `file`/`countAttempt`/
- * `writeVerdict`, `sweep-store.ts`'s `clearReclassifyRequest`), and the Reader intake's claim
- * stamp (`workers/src/reader/`, `reader_claimed_at`). None of them ever touches `body`,
- * `subject`, `participants`, or any other ingest-only column — see {@link messageUpdatePatch}.
- */
-type MessageUpdateColumns = Pick<
-  CommMessage,
-  | 'tier'
-  | 'judged_by'
-  | 'ask'
-  | 'verdict_id'
-  | 'classified_at'
-  | 'cleared_at'
-  | 'cleared_by'
-  | 'inbox_item_id'
-  | 'filtered_reason'
-  | 'classify_attempts'
-  | 'reclassify_requested_at'
-  | 'reader_claimed_at'
->;
-
-/**
- * Narrow a `comm_messages` UPDATE's new row to the columns an UPDATE can actually touch.
- *
- * `comm_messages` carries no `REPLICA IDENTITY FULL`, and `body` — a full email body — is a
- * TOASTed column every write here leaves untouched. Postgres logical replication does not
- * reliably carry an unchanged TOASTed column's true value in an UPDATE's new row, so Realtime's
- * decoder can (and does) substitute `null` for it — while the column's TypeScript type still
- * claims `string`. Spreading the whole payload would carry that lie straight onto the stored
- * row, and the next render would crash: `message-detail.tsx` and `markers.ts` both call
- * `message.body.trim()` unconditionally. Whitelisting the columns an UPDATE can actually write
- * (verified against every writer above) sidesteps the trap entirely rather than special-casing
- * `body` — the same pattern `classifierVerdictPatch` (`lib/tasks/classification.ts`) uses for
- * the `items` stream.
- *
- * TRADEOFF: a column a future writer adds to one of those UPDATEs won't stream into an open tab
- * until this list is updated too — a silently-stale field rather than a crash. That is the
- * right default for this store: every column above is metadata the row already shows optimistically
- * to the tab that wrote it, so a missed addition here degrades to "reload to see it," while the
- * status quo (spread the whole row) is a null crash on `body` on effectively every UPDATE this
- * module issues. The alternative — `REPLICA IDENTITY FULL` on `comm_messages` — would let the
- * store go back to spreading the row safely (the decoder would carry `body`'s real value), but
- * that is a migration and this module does not own the schema; flagging it here for whoever
- * does, not applying it.
- */
-function messageUpdatePatch(row: CommMessage): MessageUpdateColumns {
-  return {
-    tier: row.tier,
-    judged_by: row.judged_by,
-    ask: row.ask,
-    verdict_id: row.verdict_id,
-    classified_at: row.classified_at,
-    cleared_at: row.cleared_at,
-    cleared_by: row.cleared_by,
-    inbox_item_id: row.inbox_item_id,
-    filtered_reason: row.filtered_reason,
-    classify_attempts: row.classify_attempts,
-    reclassify_requested_at: row.reclassify_requested_at,
-    // The Reader's claim, so a newsletter leaves the shelf in an open tab the moment the Worker
-    // stamps it — the shelf count beneath it would otherwise be wrong for the life of the tab.
-    reader_claimed_at: row.reader_claimed_at,
-  };
-}
-
-/**
- * Every column an UPDATE actually writes to `comm_accounts` — the account analogue of
- * {@link MessageUpdateColumns}. Checked against every writer in `workers/src/comms/store.ts`:
- * `upsertAccount` (self-registration, which merges via `on_conflict: 'key'` and so counts as an
- * UPDATE on every re-register — `key`/`kind`/`label`/`home`, plus `owner_handles` and
- * `expected_interval_seconds` when the caller sends them) and `patchAccount`'s two callers,
- * `recordPollSuccess` (`last_seen_at`, and `cursor` when the poll produced one) and
- * `recordPollError` (`last_error`/`last_error_at`). None of them ever touches `enabled` or
- * `created_at` — see {@link accountUpdatePatch}.
- *
- * `comm_accounts` carries no column large enough to be TOASTed today, so unlike
- * {@link messageUpdatePatch} this whitelist isn't fixing a currently-exploitable bug. It exists
- * so the two sibling stream handlers derive from the SAME rule instead of disagreeing with each
- * other in this file — which is exactly how the `comm_messages` gap went unnoticed for as long as
- * it did. The same TRADEOFF applies: a column a future writer adds to `comm_accounts` (an
- * `enabled` toggle, say) won't stream into an open tab until this list is updated too.
- */
-type AccountUpdateColumns = Pick<
-  CommAccount,
-  | 'key'
-  | 'kind'
-  | 'label'
-  | 'home'
-  | 'owner_handles'
-  | 'expected_interval_seconds'
-  | 'cursor'
-  | 'last_seen_at'
-  | 'last_error'
-  | 'last_error_at'
->;
-
-/** Narrow a `comm_accounts` UPDATE's new row to the columns an UPDATE can actually touch. */
-function accountUpdatePatch(row: CommAccount): AccountUpdateColumns {
-  return {
-    key: row.key,
-    kind: row.kind,
-    label: row.label,
-    home: row.home,
-    owner_handles: row.owner_handles,
-    expected_interval_seconds: row.expected_interval_seconds,
-    cursor: row.cursor,
-    last_seen_at: row.last_seen_at,
-    last_error: row.last_error,
-    last_error_at: row.last_error_at,
-  };
-}
-
-/**
- * Which store move an incoming `comm_messages` change is — `null` to ignore it.
- *
- * The stream carries every write to the table, so the "may this payload touch the store?" rule
- * lives here as a pure function rather than in branches inside the subscription callback. An
- * INSERT upserts (an echo of a row already held re-applies identical values, so it is
- * idempotent); an UPDATE patches ONLY the columns an UPDATE can touch (see
- * {@link messageUpdatePatch}), which the flat-list reducer skips for an id it no longer holds; a
- * DELETE removes. Outbound rows are dropped on arrival — they are mirrored only as the
- * reply-detection signal and are never rendered.
- */
-export function messageStreamAction(
-  payload: RealtimePostgresChangesPayload<CommMessage>,
-): SimpleAction<CommMessage> | null {
-  switch (payload.eventType) {
-    case 'INSERT': {
-      return payload.new.direction === 'inbound' ? { type: 'upsert', items: [payload.new] } : null;
-    }
-    case 'UPDATE': {
-      return { type: 'patch', ids: [payload.new.id], patch: messageUpdatePatch(payload.new) };
-    }
-    case 'DELETE': {
-      const { id } = payload.old;
-      // A DELETE payload carries only the replica identity — without the id there is no row to
-      // remove, and removing nothing is safer than guessing.
-      return id === undefined ? null : { type: 'remove', ids: [id] };
-    }
-  }
-}
-
-/**
- * The account analogue of {@link messageStreamAction} — accounts self-register, so INSERT
- * counts. An UPDATE patches only the columns an UPDATE can touch (see {@link accountUpdatePatch}),
- * mirroring {@link messageStreamAction}'s own UPDATE case.
- */
-export function accountStreamAction(
-  payload: RealtimePostgresChangesPayload<CommAccount>,
-): SimpleAction<CommAccount> | null {
-  switch (payload.eventType) {
-    case 'INSERT': {
-      return { type: 'upsert', items: [payload.new] };
-    }
-    case 'UPDATE': {
-      return { type: 'patch', ids: [payload.new.id], patch: accountUpdatePatch(payload.new) };
-    }
-    case 'DELETE': {
-      const { id } = payload.old;
-      return id === undefined ? null : { type: 'remove', ids: [id] };
-    }
-  }
-}
-
-/**
- * The classifier-health row after an incoming change: the new row, or `undefined` once it is
- * deleted. A singleton, so there is no id to match — the latest payload simply wins.
- */
-export function healthStreamValue(
-  payload: RealtimePostgresChangesPayload<CommClassifierHealth>,
-): CommClassifierHealth | undefined {
-  return payload.eventType === 'DELETE' ? undefined : payload.new;
-}
-
-/**
- * The verdict-store move an incoming `comm_verdicts` change makes — `null` to ignore it.
- *
- * `comm_verdicts` is append-only from the classifier's side (a re-classification writes a new
- * row rather than revising an old one, per the 0034 migration), so an UPDATE never lands and is
- * ignored. But the table is NOT append-only end to end: `comm_verdicts.message_id references
- * comm_messages (id) on delete cascade` (0034_comms.sql), and both the 60-day retention sweep
- * and a manual purge delete `comm_messages` rows — each cascading a DELETE onto every verdict
- * that judged them. Miss that and `verdictsById` leaks forever: an entry pointing at a message
- * that no longer exists. Mirrors {@link messageStreamAction}: a DELETE payload carries only the
- * replica identity, so a payload with no id removes nothing rather than guessing.
- */
-export function verdictStreamAction(
-  payload: RealtimePostgresChangesPayload<CommVerdict>,
-): VerdictStreamAction | null {
-  switch (payload.eventType) {
-    case 'INSERT': {
-      return { type: 'upsert', verdicts: [payload.new] };
-    }
-    case 'UPDATE': {
-      return null;
-    }
-    case 'DELETE': {
-      const { id } = payload.old;
-      return id === undefined ? null : { type: 'remove', ids: [id] };
     }
   }
 }
@@ -353,24 +193,18 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 >('a CommsProvider');
 
 export function CommsProvider({
-  initialAccounts,
-  initialMessages,
-  initialVerdicts,
-  initialHealth,
+  initialSeed,
+  initialFailed = false,
   children,
 }: {
-  initialAccounts: CommAccount[];
-  initialMessages: CommMessage[];
-  initialVerdicts: CommVerdict[];
-  initialHealth?: CommClassifierHealth | undefined;
+  initialSeed: CommsSeed;
+  /** The shell's read failed, so the seed is empty and nothing has loaded until a read lands. */
+  initialFailed?: boolean;
   children: React.ReactNode;
 }) {
-  const [state, dispatch] = React.useReducer(commsReducer, {
-    accounts: initialAccounts,
-    messages: initialMessages,
-    verdictsById: Object.fromEntries(initialVerdicts.map((verdict) => [verdict.id, verdict])),
-    health: initialHealth,
-  });
+  const [state, dispatch] = React.useReducer(commsReducer, initialSeed, (seed) =>
+    stateFromSeed(seed, initialFailed),
+  );
 
   // Latest state, readable inside the stable action closures so they can capture pre-mutation
   // values for rollback without going stale. Synced via an effect, like the other stores.
@@ -386,258 +220,252 @@ export function CommsProvider({
   }, [showToast]);
 
   /**
-   * Re-read the health surface and replace it with what the server currently holds.
+   * The view has to be a true reflection of the server however the tab got here (ALF-258): it
+   * polls the whole view ({@link api.fetchCommsSnapshot}) and replaces what it holds, rather than
+   * trusting a push it might have missed.
    *
-   * Realtime is fire-and-forget: a socket that lapses — a backgrounded tab whose timers are
-   * throttled past the heartbeat, a machine that slept — drops every change made in the gap and
-   * replays none of them on reconnect. Health is the surface that shows it, because it is the
-   * one thing read against a TICKING CLOCK: a `last_seen_at` frozen at the seed decays into
-   * "stale" on its own, so a tab left open long enough reports every source as disconnected
-   * while all of them are polling fine (ALF-227).
+   * Two things keep a re-read from being wrong itself:
+   * - a change dispatched locally WHILE it is in flight is recorded and replayed over the
+   *   snapshot, which may predate it (a written-but-not-yet-reconciled optimistic patch);
+   * - a row with a write in flight keeps its optimistic value (see the `snapshot` action) — and
+   *   a trigger that lands mid-read runs one more read after it, rather than being dropped.
    *
-   * A failed re-read changes nothing and says nothing: the stale reading it would have replaced
-   * is still better than a blanked roster, and the next trigger tries again. This is recovery,
-   * not a user action — there is nothing for the owner to do about it.
+   * A hidden tab doesn't re-read — coming back to the front does. Whether the view is LIVE is
+   * derived from `lastReadAt`'s age, not tracked here at all — see `lib/comms/live.ts`.
    */
-  const reconcilingRef = React.useRef(false);
-  const reconcileHealth = React.useCallback(() => {
-    if (reconcilingRef.current || document.hidden) return;
-    reconcilingRef.current = true;
-    void api
-      .fetchCommsHealth()
-      .then((snapshot) => {
-        // Upsert rather than replace: this read is about freshness, and an account leaving is
-        // the realtime DELETE's business.
-        dispatch({ type: 'accounts', action: { type: 'upsert', items: snapshot.accounts } });
-        dispatch({ type: 'health', health: snapshot.health });
-      })
-      .catch(() => {
-        // Deliberately silent — see above.
-      })
-      .finally(() => {
-        reconcilingRef.current = false;
-      });
+  const recordingRef = React.useRef<CommsAction[] | null>(null);
+  const apply = React.useCallback((action: CommsAction) => {
+    dispatch(action);
+    recordingRef.current?.push(action);
   }, []);
 
-  // The two ways a tab learns it may have missed something. The tab coming back to the front is
-  // the one the owner feels; the channel REJOINING is the one that catches a socket that dropped
-  // and recovered while the tab sat in the foreground the whole time (a machine waking). One
-  // channel carries that signal for all four — the socket they share is what lapses.
+  const writesInFlightRef = React.useRef(new Map<string, number>());
+  const shelfLimitRef = React.useRef(SHELF_PAGE_SIZE);
+  const syncRef = React.useRef({ running: false, again: false });
+
+  const reconcile = React.useCallback(() => {
+    const sync = syncRef.current;
+    if (document.hidden) return;
+    if (sync.running) {
+      sync.again = true;
+      return;
+    }
+    sync.running = true;
+    void (async () => {
+      do {
+        sync.again = false;
+        recordingRef.current = [];
+        const keep = new Set(writesInFlightRef.current.keys());
+        // What the read can vouch for is decided as it starts, on this tab's clock.
+        const startedAt = new Date().toISOString();
+        try {
+          const seed = await api.fetchCommsSnapshot(shelfLimitRef.current);
+          for (const id of writesInFlightRef.current.keys()) keep.add(id);
+          dispatch({ type: 'snapshot', seed, keep });
+          for (const action of recordingRef.current) dispatch(action);
+          dispatch({ type: 'read', startedAt });
+        } catch {
+          // Nothing to toast or record — there is nothing for the owner to do. The header's
+          // "Not live" line is driven by `lastReadAt`'s own age, so a failed read simply lets
+          // that age grow until the next poll or trigger tries again.
+        }
+        recordingRef.current = null;
+        // Read through the ref: a trigger may have set it while the read was awaited.
+      } while (syncRef.current.again && !document.hidden);
+      sync.running = false;
+    })();
+  }, []);
+
+  // A shell whose read failed doesn't wait for the next poll.
   React.useEffect(() => {
-    const onReturn = () => {
-      if (!document.hidden) reconcileHealth();
-    };
+    if (initialFailed) reconcile();
+  }, [initialFailed, reconcile]);
 
-    document.addEventListener('visibilitychange', onReturn);
-    globalThis.addEventListener('focus', onReturn);
-    return () => {
-      document.removeEventListener('visibilitychange', onReturn);
-      globalThis.removeEventListener('focus', onReturn);
-    };
-  }, [reconcileHealth]);
-
-  // The push channel. All four tables are written out of band — the poller inserts messages
-  // and stamps account health, the classifier sweep writes a verdict and (via a separate write
-  // to comm_messages) fills in the message's tier — so a browser that only ever read its seed
-  // would show a stale queue, a green dot over a dead account, and no "Why:" explanation until
-  // a hard reload.
+  // The poll, for the provider's whole lifetime. `reconcile` itself no-ops while the tab is
+  // hidden, so this is inert in the background rather than needing to be paused and resumed.
   React.useEffect(() => {
-    const supabase = createClient();
-    // Whether the accounts channel has completed a join, so a later one can be told apart as a
-    // rejoin (see its subscribe callback below).
-    let joined = false;
-
-    const channel = supabase
-      .channel('comm_messages')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'comm_messages' },
-        (payload: RealtimePostgresChangesPayload<CommMessage>) => {
-          const action = messageStreamAction(payload);
-          if (action !== null) dispatch({ type: 'messages', action });
-        },
-      )
-      .subscribe();
-
-    const accountsChannel = supabase
-      .channel('comm_accounts')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'comm_accounts' },
-        (payload: RealtimePostgresChangesPayload<CommAccount>) => {
-          const action = accountStreamAction(payload);
-          if (action !== null) dispatch({ type: 'accounts', action });
-        },
-      )
-      // The first SUBSCRIBED is this channel's initial join, and the seed it arrives beside is
-      // already current; every one after it is a REJOIN, which means the socket was down and
-      // whatever changed while it was is lost. That is exactly when to re-read.
-      .subscribe((status) => {
-        if (status !== REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) return;
-        if (joined) reconcileHealth();
-        joined = true;
-      });
-
-    const healthChannel = supabase
-      .channel('comm_classifier_health')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'comm_classifier_health' },
-        (payload: RealtimePostgresChangesPayload<CommClassifierHealth>) => {
-          dispatch({ type: 'health', health: healthStreamValue(payload) });
-        },
-      )
-      .subscribe();
-
-    const verdictsChannel = supabase
-      .channel('comm_verdicts')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'comm_verdicts' },
-        (payload: RealtimePostgresChangesPayload<CommVerdict>) => {
-          const action = verdictStreamAction(payload);
-          if (action !== null) dispatch({ type: 'verdicts', action });
-        },
-      )
-      .subscribe();
-
+    const id = setInterval(reconcile, COMMS_POLL_MS);
     return () => {
-      void supabase.removeChannel(channel);
-      void supabase.removeChannel(accountsChannel);
-      void supabase.removeChannel(healthChannel);
-      void supabase.removeChannel(verdictsChannel);
+      clearInterval(id);
     };
-  }, [reconcileHealth]);
+  }, [reconcile]);
 
-  const actions = React.useMemo<CommsActions>(
-    () => {
-      /**
-       * The one optimistic write every row verb runs through, generic over what the endpoint
-       * hands back: most return the message itself, but making an Inbox item returns the item
-       * beside it, and both reconcile from the same server-canonical row.
-       */
-      async function writeAndReconcile<R>(
-        id: string,
-        patch: Partial<CommMessage>,
-        apiCall: () => Promise<R>,
-        toMessage: (result: R) => CommMessage,
-        errorMessage: string,
-      ): Promise<R> {
-        const current = stateRef.current.messages.find((message) => message.id === id);
-        // Selective-field capture: only the keys this write touches, so a rollback restores
-        // exactly what it changed and can't clobber a realtime change to another field.
-        const captured = current === undefined ? {} : capturedFields(current, patch);
-        return runOptimisticMutation({
+  // The ways a tab learns it may have missed something sooner than the next poll: coming back to
+  // the front, being restored from the back/forward cache, and coming back online. A window that
+  // merely lost focus stayed visible and missed nothing.
+  React.useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) reconcile();
+    };
+
+    document.addEventListener('visibilitychange', reconcile);
+    globalThis.addEventListener('pageshow', onPageShow);
+    globalThis.addEventListener('online', reconcile);
+    return () => {
+      document.removeEventListener('visibilitychange', reconcile);
+      globalThis.removeEventListener('pageshow', onPageShow);
+      globalThis.removeEventListener('online', reconcile);
+    };
+  }, [reconcile]);
+
+  const actions = React.useMemo<CommsActions>(() => {
+    /**
+     * The one optimistic write every row verb runs through, generic over what the endpoint
+     * hands back: most return the message itself, but making an Inbox item returns the item
+     * beside it, and both reconcile from the same server-canonical row.
+     */
+    async function writeAndReconcile<R>(
+      id: string,
+      patch: Partial<CommMessage>,
+      apiCall: () => Promise<R>,
+      toMessage: (result: R) => CommMessage,
+      errorMessage: string,
+    ): Promise<R> {
+      const current = stateRef.current.messages.find((message) => message.id === id);
+      // Selective-field capture: only the keys this write touches, so a rollback restores
+      // exactly what it changed and can't clobber a change a re-read brought in on another field.
+      const captured = current === undefined ? {} : capturedFields(current, patch);
+      // Held while in flight, so a re-read landing meanwhile doesn't revert the optimistic row.
+      const inFlight = writesInFlightRef.current;
+      inFlight.set(id, (inFlight.get(id) ?? 0) + 1);
+      const release = () => {
+        const left = (inFlight.get(id) ?? 1) - 1;
+        if (left === 0) inFlight.delete(id);
+        else inFlight.set(id, left);
+      };
+      try {
+        const result = await runOptimisticMutation({
           optimistic: () => {
-            dispatch({ type: 'messages', action: { type: 'patch', ids: [id], patch } });
+            apply({ type: 'messages', action: { type: 'patch', ids: [id], patch } });
           },
           apiCall,
           reconcile: (saved) => {
             const patchFromServer = toMessage(saved);
-            dispatch({
+            apply({
               type: 'messages',
               action: { type: 'patch', ids: [id], patch: patchFromServer },
             });
           },
           rollback: () => {
-            dispatch({ type: 'messages', action: { type: 'patch', ids: [id], patch: captured } });
+            apply({ type: 'messages', action: { type: 'patch', ids: [id], patch: captured } });
           },
           onError: () => {
             showToastRef.current(errorMessage);
           },
         });
+        release();
+        return result;
+      } catch (error) {
+        release();
+        // The rollback restores what the row was before the write, but a read that landed
+        // meanwhile held the row back — so whatever the server changed on it is still missing.
+        reconcile();
+        throw error;
       }
+    }
 
-      /** The row leaves the queue the instant the verb is pressed; the clock is the server's. */
-      const identity = (message: CommMessage): CommMessage => message;
+    /** The row leaves the queue the instant the verb is pressed; the clock is the server's. */
+    const identity = (message: CommMessage): CommMessage => message;
 
-      return {
-        patchMessageLocally(id, patch) {
-          dispatch({ type: 'messages', action: { type: 'patch', ids: [id], patch } });
-        },
-        async writeMessage(id, patch, apiCall, errorMessage) {
-          return writeAndReconcile(id, patch, apiCall, identity, errorMessage);
-        },
-        async clearMessage(id, exit) {
-          const patch: Partial<CommMessage> = {
-            cleared_at: new Date().toISOString(),
-            cleared_by: exit,
-          };
-          // "Nothing to answer" is also a re-judgment: the owner has just said this belongs on
-          // the shelf, so the row shows the tier they chose rather than the one they rejected.
-          if (exit === 'nothing_to_answer') {
-            patch.tier = 'fyi';
-            patch.judged_by = 'owner';
-          }
-          return writeAndReconcile(
-            id,
-            patch,
-            () => api.clearCommMessage(id, exit),
-            identity,
-            "Couldn't clear that message",
-          );
-        },
-        async changeTier(id, tier) {
-          const patch: Partial<CommMessage> = { tier, judged_by: 'owner' };
-          // A promotion out of the shelf is also a re-opening — otherwise the correction lands
-          // and the row stays exactly as invisible as it was.
-          if (tier !== 'fyi') {
-            patch.cleared_at = null;
-            patch.cleared_by = null;
-          }
-          return writeAndReconcile(
-            id,
-            patch,
-            () => api.changeCommTier(id, tier),
-            identity,
-            "Couldn't change that tier",
-          );
-        },
-        async makeInboxItem(id) {
-          const result = await writeAndReconcile(
-            id,
-            { cleared_at: new Date().toISOString(), cleared_by: 'inbox_item' },
-            () => api.makeInboxItemFromMessage(id),
-            (saved) => saved.message,
-            "Couldn't add that to the Inbox",
-          );
-          // Said out loud because the obligation moved MODULES: the row is gone from Comms and
-          // the only thing still tracking it is an item the owner is not currently looking at.
-          showToastRef.current('Added to Inbox');
-          return result;
-        },
-        async requestReclassify(id) {
-          return writeAndReconcile(
-            id,
-            { reclassify_requested_at: new Date().toISOString(), classify_attempts: 0 },
-            () => api.requestReclassify(id),
-            identity,
-            "Couldn't ask for a re-run",
-          );
-        },
-        async purge(input) {
-          try {
-            const result = await api.purgeComms(input);
-            // Only a single-message purge can be reflected locally: an account-wide or
-            // date-range purge has no id list to remove, and guessing which rows the RPC
-            // matched would be a client re-implementation of the server's own predicate.
-            if (input.message_id !== undefined) {
-              dispatch({
-                type: 'messages',
-                action: { type: 'remove', ids: [input.message_id] },
-              });
-            }
-            return result;
-          } catch (error) {
-            showToastRef.current("Couldn't purge those messages");
-            throw error;
-          }
-        },
-      };
-    },
-    // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].
-    [],
-  );
+    return {
+      patchMessageLocally(id, patch) {
+        apply({ type: 'messages', action: { type: 'patch', ids: [id], patch } });
+      },
+      async writeMessage(id, patch, apiCall, errorMessage) {
+        return writeAndReconcile(id, patch, apiCall, identity, errorMessage);
+      },
+      async clearMessage(id, exit) {
+        const patch: Partial<CommMessage> = {
+          cleared_at: new Date().toISOString(),
+          cleared_by: exit,
+        };
+        // "Nothing to answer" is also a re-judgment: the owner has just said this belongs on
+        // the shelf, so the row shows the tier they chose rather than the one they rejected.
+        if (exit === 'nothing_to_answer') {
+          patch.tier = 'fyi';
+          patch.judged_by = 'owner';
+        }
+        return writeAndReconcile(
+          id,
+          patch,
+          () => api.clearCommMessage(id, exit),
+          identity,
+          "Couldn't clear that message",
+        );
+      },
+      async changeTier(id, tier) {
+        const patch: Partial<CommMessage> = { tier, judged_by: 'owner' };
+        // A promotion out of the shelf is also a re-opening — otherwise the correction lands
+        // and the row stays exactly as invisible as it was.
+        if (tier !== 'fyi') {
+          patch.cleared_at = null;
+          patch.cleared_by = null;
+        }
+        return writeAndReconcile(
+          id,
+          patch,
+          () => api.changeCommTier(id, tier),
+          identity,
+          "Couldn't change that tier",
+        );
+      },
+      async makeInboxItem(id) {
+        const result = await writeAndReconcile(
+          id,
+          { cleared_at: new Date().toISOString(), cleared_by: 'inbox_item' },
+          () => api.makeInboxItemFromMessage(id),
+          (saved) => saved.message,
+          "Couldn't add that to the Inbox",
+        );
+        // Said out loud because the obligation moved MODULES: the row is gone from Comms and
+        // the only thing still tracking it is an item the owner is not currently looking at.
+        showToastRef.current('Added to Inbox');
+        return result;
+      },
+      async requestReclassify(id) {
+        return writeAndReconcile(
+          id,
+          { reclassify_requested_at: new Date().toISOString(), classify_attempts: 0 },
+          () => api.requestReclassify(id),
+          identity,
+          "Couldn't ask for a re-run",
+        );
+      },
+      async purge(input) {
+        // No toast here: purge's only caller (`PurgePanel`) shows a failure inline, in the
+        // confirm dialog it happened in — a toast would just say the same thing twice. The
+        // rejection still propagates (no try/catch to swallow it) for that caller to show.
+        const result = await api.purgeComms(input);
+        // A single-message purge is removed locally too, ahead of the reconcile below: the id
+        // is right here, unlike an account-wide or date-range purge (which has no id list to
+        // remove without a client re-implementation of the server's own predicate), and the
+        // row was very likely the one the owner was just looking at.
+        if (input.message_id !== undefined) {
+          apply({
+            type: 'messages',
+            action: { type: 'remove', ids: [input.message_id] },
+          });
+        }
+        // Every selector reconciles: this is what brings an account-wide or date-range purge
+        // into view, and it costs the single-message case nothing since the removal above
+        // already applied.
+        reconcile();
+        return result;
+      },
+      showMoreShelf() {
+        const { messages, shelfCount } = stateRef.current;
+        if (shelved(messages).length >= shelfCount) return;
+        // Never past the shelf's own last page, nor past what the snapshot route will serve.
+        const lastPage = Math.ceil(shelfCount / SHELF_PAGE_SIZE) * SHELF_PAGE_SIZE;
+        shelfLimitRef.current = Math.min(
+          shelfLimitRef.current + SHELF_PAGE_SIZE,
+          lastPage,
+          SHELF_LIMIT_MAX,
+        );
+        reconcile();
+      },
+    };
+  }, [apply, reconcile]);
 
   return (
     <ActionsContext.Provider value={actions}>
@@ -662,16 +490,49 @@ export function useQueuedByTier(): QueueByTier {
   return React.useMemo(() => groupByTier(messages), [messages]);
 }
 
-/** How many messages are waiting for an answer — the sidebar badge's number. */
+/**
+ * How many messages are waiting for an answer — the sidebar badge's number. Zero while nothing
+ * has loaded yet, so the badge stays hidden rather than counting a shell's empty seed as "all
+ * clear".
+ */
 export function useQueueCount(): number {
-  const { messages } = useStateValue('useQueueCount');
-  return React.useMemo(() => queueCount(messages), [messages]);
+  const { messages, loaded } = useStateValue('useQueueCount');
+  return React.useMemo(() => (loaded ? queueCount(messages) : 0), [loaded, messages]);
 }
 
-/** The FYI shelf: everything judged that owes no reply, newest first. Deliberately uncounted. */
+/**
+ * The shelf rows held so far — the pages loaded, not the whole shelf (see {@link useShelfCounts}
+ * for its size) — newest first. Deliberately uncounted.
+ */
 export function useShelf(): CommMessage[] {
   const { messages } = useStateValue('useShelf');
   return React.useMemo(() => shelved(messages), [messages]);
+}
+
+/** The shelf's size and the Reader's share of it — the server's counts, not the held rows. */
+export function useShelfCounts(): { shelfCount: number; readerClaimedCount: number } {
+  const { shelfCount, readerClaimedCount } = useStateValue('useShelfCounts');
+  return React.useMemo(
+    () => ({ shelfCount, readerClaimedCount }),
+    [shelfCount, readerClaimedCount],
+  );
+}
+
+/**
+ * Whether anything has loaded, when the last successful read started, and the newest verdict the
+ * server knows of. What the header (and `lib/comms/live.ts`'s `isCommsLive`) need to say whether
+ * the page can be trusted right now — the view computes liveness itself, against its own clock.
+ */
+export function useCommsSync(): {
+  loaded: boolean;
+  lastReadAt: string | null;
+  lastClassifiedAt: string | null;
+} {
+  const { loaded, lastReadAt, lastClassifiedAt } = useStateValue('useCommsSync');
+  return React.useMemo(
+    () => ({ loaded, lastReadAt, lastClassifiedAt }),
+    [loaded, lastReadAt, lastClassifiedAt],
+  );
 }
 
 /** The current verdict behind each judged message, keyed by verdict id. */

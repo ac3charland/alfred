@@ -14,8 +14,8 @@ import { readCommMessage } from '@/lib/data/comms-messages';
 //
 // The attempt counter is reset with the request, which is what makes this reach a row the
 // classification ceiling has already given up on — the marked, unjudged rows this verb exists
-// for. The new verdict arrives later, over the realtime stream; the response is just the row
-// carrying its pending request.
+// for. The new verdict arrives later, on the next poll; the response is just the row carrying
+// its pending request.
 // ---------------------------------------------------------------------------
 
 export const POST = withSession(

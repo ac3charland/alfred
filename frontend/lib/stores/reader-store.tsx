@@ -17,9 +17,8 @@ import type { ReaderHealthSnapshot, ReaderPostListItem } from '@/lib/types';
  * Unlike Comms, nothing pushes into this browser out of band yet: no realtime channel, because
  * no surface needs one so far. The one writer besides
  * this tab is the Worker's tick, landing a summary or a health stamp on a row this tab already
- * holds — so `refresh()` re-reads the list on the same two signals Comms' `reconcileHealth` uses
- * (a tab returning to the foreground, a socket-equivalent "might have missed something" moment
- * here being simply "some time has passed"), rather than a subscription.
+ * holds — so `refresh()` re-reads the list when the tab returns to the foreground (the Comms
+ * store's re-read has the same shape, on more signals), rather than a subscription.
  */
 
 /**
@@ -115,8 +114,7 @@ export interface ReaderActions {
    * is kept WHOLE, field for field — so a summary the Worker landed on one of those rows while
    * this tab's own write was in the air is discarded with the rest of the read's copy, and
    * arrives at the next refetch. A failed read changes nothing and says nothing — the stale list
-   * it would have replaced is still better than a blanked one, and the next trigger tries again
-   * (mirrors Comms' `reconcileHealth`).
+   * it would have replaced is still better than a blanked one, and the next trigger tries again.
    */
   refresh: () => void;
 }

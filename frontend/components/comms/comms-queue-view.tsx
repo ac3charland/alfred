@@ -6,16 +6,19 @@ import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
 import { QUEUED_TIERS } from '@/lib/comms';
 import { rowHotkeyAction } from '@/lib/comms/hotkeys';
-import { readerClaimedCount } from '@/lib/comms/queue';
+import { useCommsLive } from '@/lib/hooks/use-comms-live';
 import { useNow } from '@/lib/hooks/use-now';
 import { useCommsPeople } from '@/lib/stores/comms-settings-store';
 import {
   useCommsAccounts,
+  useCommsActions,
   useCommsHealth,
   useCommsMessages,
+  useCommsSync,
   useCommsVerdicts,
   useQueuedByTier,
   useShelf,
+  useShelfCounts,
 } from '@/lib/stores/comms-store';
 import type { CommMessage } from '@/lib/types';
 
@@ -35,16 +38,11 @@ import { TierSection } from './tier-section';
  * an FYI shelf in the thousands sitting beneath a queue of nothing is the module working, not a
  * backlog.
  *
- * Everything is derived from the one seeded message list: the tiers, the shelf, the health
- * indicators, and every row marker. Nothing here fetches.
+ * Everything above FYI is held in full, so the tiers, the badge and every row marker are derived
+ * from complete data. The shelf is sixty days of FYI — thousands of rows, opened to spot-check the
+ * rubric rather than to read — so the store holds it a page at a time and knows its size as a
+ * count; "Show more" asks the store for the next page. Nothing here fetches directly.
  */
-
-/**
- * How many shelf rows are drawn at a time. Sixty days of FYI is thousands of rows and
- * the shelf is opened to spot-check the rubric, not to read — so it pages, and the promotion
- * path stays reachable through "Show more" rather than through mounting the whole archive.
- */
-const SHELF_PAGE = 50;
 
 /** Shown when the queue is empty AND the shelf is too — a genuinely empty module. */
 const EMPTY_DESCRIPTION =
@@ -64,6 +62,9 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   const messages = useCommsMessages();
   const byTier = useQueuedByTier();
   const shelf = useShelf();
+  const { shelfCount, readerClaimedCount } = useShelfCounts();
+  const { loaded, lastClassifiedAt, lastReadAt } = useCommsSync();
+  const { showMoreShelf } = useCommsActions();
   const verdicts = useCommsVerdicts();
   const health = useCommsHealth();
   const people = useCommsPeople();
@@ -73,20 +74,21 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   // asserted and snapshotted at all.
   const ticking = useNow();
   const now = pinnedNow ?? ticking;
+  // Live/not-live is its own 1s re-check rather than a comparison against `now`: `now` is
+  // coalesced to a 30s bucket for display, which is too coarse for a boundary a viewer watches
+  // cross — see `useCommsLive`.
+  const live = useCommsLive(loaded, lastReadAt);
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [addingSenderFor, setAddingSenderFor] = React.useState<CommMessage | undefined>();
   const [shelfOpen, setShelfOpen] = React.useState(false);
-  const [shelfLimit, setShelfLimit] = React.useState(SHELF_PAGE);
-
-  const visibleShelf = React.useMemo(() => shelf.slice(0, shelfLimit), [shelf, shelfLimit]);
 
   // The order `j`/`k` walk: the queue as drawn, then the shelf if it has been opened. Built from
   // the same lists the sections render, so navigation can never disagree with the page.
   const orderedIds = React.useMemo(() => {
     const queued = QUEUED_TIERS.flatMap((tier) => byTier[tier].map((message) => message.id));
-    return shelfOpen ? [...queued, ...visibleShelf.map((message) => message.id)] : queued;
-  }, [byTier, visibleShelf, shelfOpen]);
+    return shelfOpen ? [...queued, ...shelf.map((message) => message.id)] : queued;
+  }, [byTier, shelf, shelfOpen]);
 
   // Navigation and Escape live here rather than on a row, because they have to work when
   // nothing is selected at all — `j` on a fresh page selects the first row. The verbs are the
@@ -140,50 +142,56 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
     );
   };
 
-  const queueEmpty = orderedIds.length === 0 && shelf.length === 0;
+  // A live row can land on the shelf between re-reads, so never claim fewer than are drawn.
+  const shelfTotal = Math.max(shelfCount, shelf.length);
+  const queueEmpty = orderedIds.length === 0 && shelfTotal === 0;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <CommsHeader accounts={accounts} messages={messages} health={health} now={now} />
+      <CommsHeader
+        accounts={accounts}
+        messages={messages}
+        health={health}
+        now={now}
+        lastClassifiedAt={lastClassifiedAt}
+        notLiveSince={live ? undefined : (lastReadAt ?? undefined)}
+        loaded={loaded}
+      />
 
-      {queueEmpty ? (
-        <EmptyState title="Nothing to answer." description={EMPTY_DESCRIPTION} />
-      ) : (
-        <div className="flex flex-col gap-4">
-          {QUEUED_TIERS.map((tier) => (
-            <TierSection
-              key={tier}
-              tier={tier}
-              count={byTier[tier].length}
-              // Only Today says anything when it is empty: that is the sentence the
-              // module is built to be able to show.
-              emptyLabel={tier === 'today' ? 'Nothing to answer today.' : undefined}
-            >
-              {byTier[tier].map((message) => renderRow(message, false))}
-            </TierSection>
-          ))}
-
-          <FyiShelf
-            count={shelf.length}
-            claimedCount={readerClaimedCount(messages)}
-            onOpenChange={setShelfOpen}
-          >
-            {visibleShelf.map((message) => renderRow(message, true))}
-            {shelf.length > visibleShelf.length && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start"
-                onClick={() => {
-                  setShelfLimit((current) => current + SHELF_PAGE);
-                }}
+      {/* A queue that was never read is not an empty one: nothing is drawn until a read lands. */}
+      {loaded ? (
+        queueEmpty ? (
+          <EmptyState title="Nothing to answer." description={EMPTY_DESCRIPTION} />
+        ) : (
+          <div className="flex flex-col gap-4">
+            {QUEUED_TIERS.map((tier) => (
+              <TierSection
+                key={tier}
+                tier={tier}
+                count={byTier[tier].length}
+                // Only Today says anything when it is empty: that is the sentence the
+                // module is built to be able to show.
+                emptyLabel={tier === 'today' ? 'Nothing to answer today.' : undefined}
               >
-                Show more ({String(shelf.length - visibleShelf.length)} older)
-              </Button>
-            )}
-          </FyiShelf>
-        </div>
-      )}
+                {byTier[tier].map((message) => renderRow(message, false))}
+              </TierSection>
+            ))}
+
+            <FyiShelf
+              count={shelfTotal}
+              claimedCount={readerClaimedCount}
+              onOpenChange={setShelfOpen}
+            >
+              {shelf.map((message) => renderRow(message, true))}
+              {shelfTotal > shelf.length && (
+                <Button variant="ghost" size="sm" className="self-start" onClick={showMoreShelf}>
+                  Show more ({String(shelfTotal - shelf.length)} older)
+                </Button>
+              )}
+            </FyiShelf>
+          </div>
+        )
+      ) : null}
 
       <AddSenderDialog
         message={addingSenderFor}

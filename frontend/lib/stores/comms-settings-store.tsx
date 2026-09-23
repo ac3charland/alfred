@@ -32,9 +32,9 @@ import type { CommCorrection, CommHandle, CommPersonWithHandles, CommRubric } fr
  * messages matter, the versioned rubric, and the example set the corrections double as.
  *
  * Kept apart from the queue store because the two change on entirely different clocks. Messages
- * and account health move every few minutes and arrive over a push channel; the roster and the
- * rubric change only when a human edits them, so this store is pure seed-once with optimistic
- * writes — no subscription.
+ * and account health move every few minutes and the queue store polls for them; the roster and
+ * the rubric change only when a human edits them, so this store is pure seed-once with
+ * optimistic writes — no polling needed.
  */
 
 export interface CommsSettingsState {

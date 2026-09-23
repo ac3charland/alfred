@@ -18,6 +18,8 @@ interface RealtimeStub {
   deliver: ((frame: unknown) => void) | undefined;
   /** Binding topic + id per subscribed table, filled in as each channel joins. */
   bindings: Record<string, { topic: string; id: number }>;
+  /** The `access_token` each table's join carried — absent means it joined as `anon`. */
+  joinTokens: Record<string, string | undefined>;
 }
 
 const STUB_KEY = '__realtimeStub';
@@ -25,7 +27,7 @@ const STUB_KEY = '__realtimeStub';
 /** Install the stub. Call before `page.goto` — it runs as an init script on every navigation. */
 export async function installRealtimeStub(page: Page): Promise<void> {
   await page.addInitScript((key: string) => {
-    const stub: RealtimeStub = { deliver: undefined, bindings: {} };
+    const stub: RealtimeStub = { deliver: undefined, bindings: {}, joinTokens: {} };
     (globalThis as unknown as Record<string, RealtimeStub>)[key] = stub;
 
     /** One shape for all four slots, so a listener can be routed to any of them. */
@@ -68,7 +70,7 @@ export async function installRealtimeStub(page: Page): Promise<void> {
           string | null,
           string,
           string,
-          { config?: { postgres_changes?: { table?: string }[] } } | null,
+          { config?: { postgres_changes?: { table?: string }[] }; access_token?: string } | null,
         ];
         if (event === 'phx_join') {
           const changes = (payload?.config?.postgres_changes ?? []).map((filter, index) => ({
@@ -76,7 +78,9 @@ export async function installRealtimeStub(page: Page): Promise<void> {
             ...filter,
           }));
           for (const change of changes) {
-            if (change.table !== undefined) stub.bindings[change.table] = { topic, id: change.id };
+            if (change.table === undefined) continue;
+            stub.bindings[change.table] = { topic, id: change.id };
+            stub.joinTokens[change.table] = payload?.access_token;
           }
           stub.deliver?.([
             joinRef,
@@ -130,7 +134,22 @@ export async function waitForRealtimeJoin(page: Page, table: string): Promise<vo
   );
 }
 
-/** Push one UPDATE down the faked socket, as the database would when a Worker writes a row. */
+/**
+ * The `access_token` a table's channel joined with — `undefined` when the join carried none, so
+ * the server would have subscribed it as `anon` and RLS would have delivered it nothing (ALF-258).
+ */
+export async function realtimeJoinToken(page: Page, table: string): Promise<string | undefined> {
+  return page.evaluate(
+    ({ key, name }) =>
+      (globalThis as unknown as Record<string, RealtimeStub | undefined>)[key]?.joinTokens[name],
+    { key: STUB_KEY, name: table },
+  );
+}
+
+/**
+ * Push one UPDATE down the faked socket, as the database would when a Worker writes a row — and,
+ * like the real server under RLS, deliver nothing to a channel that joined without a token.
+ */
 export async function pushRowUpdate(
   page: Page,
   table: string,
@@ -141,6 +160,9 @@ export async function pushRowUpdate(
       const stub = (globalThis as unknown as Record<string, RealtimeStub | undefined>)[key];
       const binding = stub?.bindings[name];
       if (stub === undefined || binding === undefined) throw new Error(`no binding for ${name}`);
+      // What RLS does to a channel that joined as `anon`: every table here is `to authenticated`,
+      // so the server delivers it nothing — silently (ALF-258).
+      if (stub.joinTokens[name] === undefined) return;
       stub.deliver?.([
         null,
         null,

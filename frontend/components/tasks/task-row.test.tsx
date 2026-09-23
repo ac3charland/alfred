@@ -31,7 +31,11 @@ jest.mock('@/lib/supabase/client', () => ({
       },
       subscribe: () => channel,
     };
-    return { channel: () => channel, removeChannel: () => Promise.resolve('ok') };
+    return {
+      realtime: { setAuth: () => Promise.resolve() },
+      channel: () => channel,
+      removeChannel: () => Promise.resolve('ok'),
+    };
   },
 }));
 
@@ -5102,8 +5106,9 @@ describe('a verdict landing live', () => {
       emitVerdict();
       expect(rowBody('call the dentist')).toHaveClass('ring-muted-foreground/50');
 
+      // Only the pending ones: the Comms store the providers mount keeps an interval running.
       act(() => {
-        jest.runAllTimers();
+        jest.runOnlyPendingTimers();
       });
       expect(rowBody('call the dentist')).not.toHaveClass('ring-muted-foreground/50');
     } finally {

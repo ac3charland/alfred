@@ -67,7 +67,11 @@ the nextjs skill, "Client-side view switching." **Revisit** (scoped/paginated se
 or a normalized cache) only when the dataset grows large enough that filtering everything in
 memory hurts.
 
-**The one exception: big documents seed lazily.** `weekly_plans` rows are ~40 KB of HTML each
+**Comms pages its archive.** Its store holds everything above FYI in full but the 60-day shelf a
+page at a time, with the shelf's size as a server count — so the re-read above stays ~100 KB, not
+megabytes. "Show more" is that same read asked for more rows.
+
+**Big documents seed lazily.** `weekly_plans` rows are ~40 KB of HTML each
 and the archive grows by one a week, so seeding them all would inflate *every* page load,
 including the ones that never open `/plan`. The layout seeds the **index** (ids + timestamps,
 `html` excluded from the select) plus the **latest** document; `WeeklyPlanProvider` pulls an
@@ -117,19 +121,43 @@ writer and stay pure seed-once.
 The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
 suite gates, not in branches inside the subscription callback.
 
-**Realtime is fire-and-forget, so a store it keeps current needs a way back from a gap.** A socket
-that lapses — a backgrounded tab throttled past the heartbeat, a machine that slept — drops every
-change made while it was down and replays none on reconnect, leaving the seed frozen for as long
-as the tab stays open. Anything read against a TICKING CLOCK then turns that silence into a false
-alarm on its own: a `last_seen_at` the tab stopped hearing about decays into "stale" while the
-source polls fine (ALF-227 — the Comms health dots). So pair the subscription with a re-read of
-whatever the gap can stale-end, on both signals: the tab returning to the foreground
-(`visibilitychange` / `focus`), and the channel REJOINING, which is the one a machine waking with
-the tab in front gives you (`subscribe(status)`, ignoring the first `SUBSCRIBED` — that is the
-initial join, beside a fresh seed). `CommsProvider` re-reads `GET /api/comms/health` that way.
-Recovery must not be worse than the staleness: **upsert, never replace** (a row leaving is the
-DELETE payload's business), and a **failed re-read changes nothing and toasts nothing** — a
-stale reading beats a blanked roster, and the next trigger retries.
+**Comms polls instead of subscribing — its sources are minutes-granular, so a socket buys almost
+nothing.** The split isn't who writes — a Worker writes both groups — it's what a stale view
+costs. The three tables above get Realtime not because delivery is instant — the classifier sweep
+above still lands a row's verdict a minute or two after it arrives — but because each update is a
+narrow patch onto a row the tab already holds (a lane, a spec column, one verdict), so a push
+applies it directly with nothing else to reconcile. Comms needs a whole trustworthy VIEW across
+four tables (is it loaded, is it fresh) rather than one row's patch, which a full re-read produces
+more simply than a channel per table would. Comms' four (`comm_messages`,
+`comm_accounts`, `comm_classifier_health`, `comm_verdicts`) are written by a Worker or the Mac
+daemon on a 1–3 minute cadence regardless of transport, so nothing there is time-critical at
+second granularity, and the machinery a Realtime subscription needs to stay honest (join
+bookkeeping, reconnect/backoff handling, a settle debounce) bought seconds of latency at the cost
+of a class of bugs review kept finding. `CommsProvider` instead re-reads the whole view
+(`GET /api/comms/snapshot`) and **replaces** it on a `setInterval` (`COMMS_POLL_MS`, `lib/comms/live.ts`)
+while the tab is visible, plus whenever it may have missed something sooner: the tab returns
+(`visibilitychange`, or a bfcache-restored `pageshow`; not `focus`, which a visible tab fires
+without having missed anything), the browser comes back `online`, a failed optimistic write
+(after releasing its in-flight hold), and "Show more" paging the shelf. Two guards keep the
+re-read itself honest: local dispatches made while it is in flight are recorded and replayed over
+the snapshot; rows with a write in flight keep their optimistic value. A trigger mid-read runs one
+more read after it (a loop — recursion trips `react-hooks/immutability`).
+
+**Liveness is recency, not an event log.** The store holds only `loaded` (false until the first
+successful read, forever if the shell's own seed read failed) and `lastReadAt` (the client's own
+clock, captured when a successful read *started*; a failed read moves neither). The view is live
+iff `loaded && now - lastReadAt <= COMMS_LIVE_WINDOW_MS` (`isCommsLive`, `lib/comms/live.ts`, ~2
+polls + slack), computed by `useCommsLive` (`lib/hooks/use-comms-live.ts`) rather than the queue
+view's own coarser, 30s-bucketed `useNow`: a `useSyncExternalStore` whose `subscribe` arms a plain
+`setInterval(onChange, 1000)` and whose `getSnapshot` re-derives the boolean from `Date.now()`
+every time, so React only re-renders on an actual flip. A deadline `setTimeout` would be more
+"precise" on paper but doesn't survive a real sleep/suspend — it's monotonic and doesn't run while
+the machine is asleep, so it can fire up to its full delay after a wake — where a 1s re-check is simply due again within
+a second of any wake, sleep or not, with no `visibilitychange`/`pageshow` listener needed to catch
+that case specially. While not live the header dates the line to `lastReadAt`. A shell whose seed
+read failed isn't *loaded* at all — it says it couldn't load and draws no queue (an unread queue is
+not an empty one) until a read lands, which it asks for on mount without waiting for the poll
+interval.
 
 ## A derived status must mirror the query that does the work
 

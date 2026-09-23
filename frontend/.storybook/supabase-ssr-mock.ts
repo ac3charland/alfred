@@ -18,7 +18,11 @@ function fakeClient() {
     },
     subscribe: () => channel,
   };
-  return { channel: () => channel, removeChannel: () => Promise.resolve('ok') };
+  return {
+    realtime: { setAuth: () => Promise.resolve() },
+    channel: () => channel,
+    removeChannel: () => Promise.resolve('ok'),
+  };
 }
 
 export function createBrowserClient() {

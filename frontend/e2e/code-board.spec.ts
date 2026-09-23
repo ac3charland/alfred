@@ -1,5 +1,6 @@
 import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/constants';
 import { expect, test } from './support/fixtures';
+import { installRealtimeStub, realtimeJoinToken, waitForRealtimeJoin } from './support/realtime';
 
 /**
  * The Code module (shell + board): the Tasks ⇄ Code switcher reaches the `(code)` route
@@ -11,6 +12,27 @@ import { expect, test } from './support/fixtures';
  * id is ALSO seeded (the view's inner join), so each story is seeded as an item + a
  * code_items sidecar.
  */
+
+/**
+ * ALF-258. A channel's join payload is frozen at `subscribe()`, and on a fresh page load the
+ * socket does not hold the session's JWT yet — so a channel that joined too early carries no
+ * token, joins as `anon`, and `to authenticated` RLS delivers it nothing.
+ */
+test('the code_items and epics channels join as the signed-in user, never anon', async ({
+  page,
+  seed,
+}) => {
+  await seed({ projects: [makeProject('Alfred', { id: 'p1', key: 'ALF' })] });
+  await installRealtimeStub(page);
+  await page.goto('/code/p1');
+
+  for (const table of ['code_items', 'epics']) {
+    await waitForRealtimeJoin(page, table);
+    const token = await realtimeJoinToken(page, table);
+    expect(token, `${table} joined with no session token`).toBeDefined();
+    expect(token).not.toBe('sb_publishable_mock');
+  }
+});
 
 test('switches from Tasks to Code via the header switcher', async ({ page, seed }) => {
   await seed({});

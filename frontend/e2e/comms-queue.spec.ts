@@ -173,12 +173,15 @@ test.describe('the Comms triage queue', () => {
 
     await expect(page.getByLabel('1 in Today')).toHaveText('1');
 
-    const { commCorrections, commMessages } = await storedState(request);
+    // The count moves optimistically, before the write lands — poll the store for it.
+    await expect
+      .poll(async () => {
+        const { commMessages } = await storedState(request);
+        return commMessages.find((row) => row.id === TODAY_ROW.id);
+      })
+      .toMatchObject({ tier: 'today', cleared_by: 'not_replying' });
+    const { commCorrections } = await storedState(request);
     expect(commCorrections).toHaveLength(0);
-    expect(commMessages.find((row) => row.id === TODAY_ROW.id)).toMatchObject({
-      tier: 'today',
-      cleared_by: 'not_replying',
-    });
   });
 
   test('the tier picker moves a row between sections and records the correction', async ({

@@ -4,7 +4,7 @@ import { Inbox } from 'lucide-react';
 import * as React from 'react';
 
 import { ViewHeading } from '@/components/atoms/view-heading';
-import { accountHealth, classifierStalled } from '@/lib/comms';
+import { COMMS_LIVE_WINDOW_MS, accountHealth, classifierStalled, lastPing } from '@/lib/comms';
 import type { CommAccount, CommClassifierHealth, CommMessage } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -15,11 +15,14 @@ import { formatElapsed } from './comms-format';
 /**
  * The module's masthead: what it is, and whether anything about it can be trusted right now.
  *
- * Three layers, in the order a reader needs them. The classifier banner sits ABOVE the dots
- * because it is not one of the source states and its fix is different. The dots are one per
- * ACCOUNT rather than one per ingestion home — a green dot over a dead mailbox is exactly the
- * failure the health surface exists to prevent, and two accounts sharing a poller can still
- * fail apart. Below them, a sentence per account that is not live, because a coloured dot says
+ * Above everything, whether the page itself is live: a view that may have missed something says
+ * so rather than passing off what it last read as the present. Then three layers, in the order a
+ * reader needs them. The classifier banner sits ABOVE the dots because it is not one of the
+ * source states and its fix is different. The dots are one per ACCOUNT rather than one per
+ * ingestion home — a green dot over a dead mailbox is exactly the failure the health surface
+ * exists to prevent, and two accounts sharing a poller can still fail apart. Directly beneath the
+ * dots, which source pinged last and how long ago — the one number that shows the surface is
+ * still moving. Below them, a sentence per account that is not live, because a coloured dot says
  * that something is wrong and never what or what to do about it.
  */
 
@@ -28,6 +31,15 @@ interface CommsHeaderProperties {
   messages: CommMessage[];
   health: CommClassifierHealth | undefined;
   now: Date;
+  /** The newest verdict the server knows of — see `classifierStalled`. */
+  lastClassifiedAt?: string | null | undefined;
+  /**
+   * The last moment the view was current, and only while it is NOT live — `undefined` means live.
+   * A view that may be behind has to say so, or it is quietly lying about what needs answering.
+   */
+  notLiveSince?: string | undefined;
+  /** `false` while no read of the view has ever landed — there is nothing yet to show or date. */
+  loaded?: boolean | undefined;
 }
 
 /**
@@ -58,8 +70,52 @@ export function accountSentence(account: CommAccount, now: Date): string | null 
     : `${account.label} ${silence} — the poll has stopped running. Anything sent there since won't appear until it starts again.`;
 }
 
-export function CommsHeader({ accounts, messages, health, now }: CommsHeaderProperties) {
-  const stall = classifierStalled(health, messages, now);
+export function CommsHeader({
+  accounts,
+  messages,
+  health,
+  now,
+  lastClassifiedAt = null,
+  notLiveSince,
+  loaded = true,
+}: CommsHeaderProperties) {
+  const heading = (
+    <ViewHeading
+      icon={Inbox}
+      title="Comms"
+      description="Messages that ask something of you, in the order they need answering."
+      accent="comms"
+    />
+  );
+
+  // A page that never loaded has nothing to show beyond that — no dot, ping, account sentence
+  // or classifier banner, because every one of them would be partial data presented as fact.
+  if (!loaded) {
+    return (
+      <div className="flex flex-col gap-3">
+        {heading}
+        <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
+          Couldn&apos;t load Comms — retrying.
+        </p>
+      </div>
+    );
+  }
+
+  // The flip to not-live happens on its own 1s re-check (`useCommsLive`), which can land
+  // between two ticks of `now` — the view's own clock, coalesced to a 30s bucket for display.
+  // Reading the "ago" straight off `now` can then undercount: caught right after the flip, fewer
+  // than 60s of it may show on the bucketed clock even though the live window itself is over a
+  // minute, so it reads "just now" for data that just went stale. Floor the clock fed to
+  // `formatElapsed` at the flip instant itself (`notLiveSince + COMMS_LIVE_WINDOW_MS`) so the
+  // text never reads newer than the flip that produced it — `now` still wins once it catches up,
+  // which is what keeps a pinned `now` driving this in stories and tests.
+  const notLiveClock =
+    notLiveSince === undefined
+      ? now
+      : new Date(Math.max(now.getTime(), Date.parse(notLiveSince) + COMMS_LIVE_WINDOW_MS + 1));
+
+  const stall = classifierStalled(health, messages, now, lastClassifiedAt);
+  const ping = lastPing(accounts);
   const sentences = accounts.flatMap((account) => {
     const sentence = accountSentence(account, now);
     return sentence === null ? [] : [{ account, sentence }];
@@ -67,20 +123,28 @@ export function CommsHeader({ accounts, messages, health, now }: CommsHeaderProp
 
   return (
     <div className="flex flex-col gap-3">
+      {notLiveSince !== undefined && (
+        <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
+          Not live — this is what was here {formatElapsed(notLiveSince, notLiveClock)}. Anything
+          since may be missing until it refreshes.
+        </p>
+      )}
       {stall.stalled && stall.since !== null && <ClassifierBanner since={stall.since} now={now} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <ViewHeading
-          icon={Inbox}
-          title="Comms"
-          description="Messages that ask something of you, in the order they need answering."
-          accent="comms"
-        />
+        {heading}
         {accounts.length > 0 && (
-          <div className="flex flex-wrap items-center gap-3" data-testid="account-dots">
-            {accounts.map((account) => (
-              <AccountDot key={account.id} account={account} now={now} />
-            ))}
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-wrap items-center gap-3" data-testid="account-dots">
+              {accounts.map((account) => (
+                <AccountDot key={account.id} account={account} now={now} />
+              ))}
+            </div>
+            {ping !== null && (
+              <p className="text-[11px] text-muted-foreground/70" data-testid="last-ping">
+                Last ping {formatElapsed(ping.at, now)} · {ping.account.label}
+              </p>
+            )}
           </div>
         )}
       </div>

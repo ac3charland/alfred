@@ -7,7 +7,10 @@ import type {
   CommPerson,
   CommRubric,
   CommVerdict,
+  CommsSeed,
 } from '@/lib/types';
+
+import { SHELF_PAGE_SIZE, readerClaimedCount, shelved } from './queue';
 
 /**
  * Seed builders for the eight comms tables — one home, shared by the unit tests, the stories and
@@ -201,5 +204,38 @@ export function makeCommHealth(
     last_success_at: overrides.last_success_at ?? runAt,
     last_error: overrides.last_error ?? null,
     last_error_at: overrides.last_error_at ?? null,
+  };
+}
+
+/**
+ * A queue seed built the way the server builds one, from a plain list of rows: everything above
+ * FYI (uncleared, and not on the shelf — unjudged included), then the newest `shelfLimit` shelf
+ * rows (one page unless asked for more), with the shelf and the Reader counted from the whole list.
+ */
+export function makeCommsSeed(
+  input: {
+    accounts?: CommAccount[];
+    messages?: CommMessage[];
+    verdicts?: CommVerdict[];
+    health?: CommClassifierHealth;
+    shelfLimit?: number;
+  } = {},
+): CommsSeed {
+  const all = (input.messages ?? []).filter((message) => message.direction === 'inbound');
+  const active = all.filter((message) => message.cleared_at === null && message.tier !== 'fyi');
+  const shelf = shelved(all);
+  let lastClassifiedAt: string | null = null;
+  for (const message of all) {
+    if (message.classified_at !== null && (lastClassifiedAt ?? '') < message.classified_at)
+      lastClassifiedAt = message.classified_at;
+  }
+  return {
+    accounts: input.accounts ?? [],
+    messages: [...active, ...shelf.slice(0, input.shelfLimit ?? SHELF_PAGE_SIZE)],
+    verdicts: input.verdicts ?? [],
+    health: input.health,
+    shelfCount: shelf.length,
+    readerClaimedCount: readerClaimedCount(all),
+    lastClassifiedAt,
   };
 }
