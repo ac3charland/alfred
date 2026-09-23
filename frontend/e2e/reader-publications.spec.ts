@@ -193,6 +193,6 @@ test.describe('the publications roster', () => {
 
     await expect(page.getByText('Gmail filter query copied')).toBeVisible();
     const copied = await page.evaluate(() => navigator.clipboard.readText());
-    expect(copied).toBe('from:(secondthoughts@substack.com)');
+    expect(copied).toBe('*@substack.com AND -no-reply@substack.com');
   });
 });
