@@ -53,7 +53,7 @@ async function returnToTab(page: Page): Promise<void> {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await read;
-  }).toPass();
+  }).toPass({ timeout: 10_000 });
 }
 
 /** The next snapshot re-read the view makes — what it would replace a stale row with. */
