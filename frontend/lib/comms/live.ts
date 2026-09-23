@@ -6,9 +6,11 @@
  * classifier sweep every 2, the Mac daemon roughly once a minute), so a socket bought almost
  * nothing over polling — and it cost the machinery that kept it honest. Liveness is now pure
  * recency: a read that started recently enough is trusted, and one that didn't isn't. There is
- * no event to miss firing, no channel state to fall out of sync with, and no wake-from-sleep
- * detector to write — a dead network, a frozen tab, or a machine asleep all show up on their own
- * as time passes, because the check is just a subtraction against `now`.
+ * no event to miss firing and no channel state to fall out of sync with — a dead network or a
+ * frozen tab shows up the moment anything re-renders, because the check is just a subtraction
+ * against `now`. A machine actually asleep is its own case: JS timers are monotonic and don't run
+ * while suspended, so nothing re-renders on its own to notice the wall clock jumped — `useCommsLive`
+ * (`lib/hooks/use-comms-live.ts`) covers that by re-checking on `visibilitychange`/`pageshow`.
  */
 
 /** How often the Comms view re-reads the snapshot while the tab is visible. */

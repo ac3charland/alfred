@@ -20,6 +20,14 @@ import { COMMS_LIVE_WINDOW_MS, isCommsLive } from '@/lib/comms';
  * past — the tab was asleep well past the window — is clamped to 0 by `setTimeout` itself, so a
  * wake finds the flip firing on the very next tick rather than waiting out a window it already
  * missed.
+ *
+ * That deadline timer alone doesn't survive an actual sleep/suspend, though: `setTimeout` is
+ * monotonic and doesn't run while the machine is asleep, while `Date.now()` jumps by the whole
+ * gap the instant it wakes — so the armed timer can sit pending for hours past its real deadline,
+ * and nothing re-renders to notice until some unrelated trigger does. `subscribe` also listens
+ * for `visibilitychange` and `pageshow` — the same signals `CommsProvider` re-reads a snapshot
+ * on — and calls `onChange` on either, forcing `getSnapshot` to re-check against the current
+ * `Date.now()` the moment the tab is plausibly back, whether or not that read has landed yet.
  */
 export function useCommsLive(loaded: boolean, lastReadAt: string | null): boolean {
   const subscribe = React.useCallback(
@@ -36,8 +44,16 @@ export function useCommsLive(loaded: boolean, lastReadAt: string | null): boolea
         loaded && lastReadAt !== null
           ? setTimeout(onChange, Date.parse(lastReadAt) + COMMS_LIVE_WINDOW_MS - Date.now() + 1)
           : undefined;
+      // Sleep/suspend freezes this timer's monotonic clock while the wall clock keeps moving, so
+      // it can wake arbitrarily late relative to `Date.now()` — see the doc comment above. These
+      // are the browser's own "time may have jumped" signals: re-check the moment either fires,
+      // rather than trusting the deadline timer to still be honest.
+      document.addEventListener('visibilitychange', onChange);
+      window.addEventListener('pageshow', onChange);
       return () => {
         clearTimeout(id);
+        document.removeEventListener('visibilitychange', onChange);
+        window.removeEventListener('pageshow', onChange);
       };
     },
     [loaded, lastReadAt],

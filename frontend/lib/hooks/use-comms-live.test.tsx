@@ -83,13 +83,57 @@ describe('useCommsLive', () => {
     expect(result.current).toBe(false);
   });
 
-  it('clears its timer on unmount', () => {
+  it('clears its own deadline timer on unmount, not just some timer', () => {
     jest.setSystemTime(new Date(READ_AT));
+    const setSpy = jest.spyOn(globalThis, 'setTimeout');
     const clearSpy = jest.spyOn(globalThis, 'clearTimeout');
+    const { unmount } = renderHook(() => useCommsLive(true, READ_AT));
+    // The id THIS hook's deadline `setTimeout` returned — asserting `clearTimeout` was called at
+    // all proves nothing, since any of the tree's own timers could account for that.
+    const armedId = setSpy.mock.results.at(-1)?.value as ReturnType<typeof setTimeout> | undefined;
+
+    unmount();
+
+    expect(clearSpy).toHaveBeenCalledWith(armedId);
+  });
+
+  it('re-checks against the wall clock on visibilitychange, e.g. after sleep freezes timers', () => {
+    jest.setSystemTime(new Date(READ_AT));
+    const { result } = renderHook(() => useCommsLive(true, READ_AT));
+    expect(result.current).toBe(true);
+
+    // Suspend: the wall clock jumps 8h but no timer fires — a monotonic clock doesn't advance
+    // while the machine is asleep, so the armed deadline timer stays pending on its old schedule.
+    jest.setSystemTime(new Date(Date.parse(READ_AT) + 8 * 3_600_000));
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(result.current).toBe(false);
+  });
+
+  it('re-checks against the wall clock on pageshow, e.g. a bfcache restore', () => {
+    jest.setSystemTime(new Date(READ_AT));
+    const { result } = renderHook(() => useCommsLive(true, READ_AT));
+    expect(result.current).toBe(true);
+
+    jest.setSystemTime(new Date(Date.parse(READ_AT) + 8 * 3_600_000));
+    act(() => {
+      globalThis.dispatchEvent(new Event('pageshow'));
+    });
+
+    expect(result.current).toBe(false);
+  });
+
+  it('removes its visibilitychange/pageshow listeners on unmount', () => {
+    jest.setSystemTime(new Date(READ_AT));
+    const removeDocSpy = jest.spyOn(document, 'removeEventListener');
+    const removeWinSpy = jest.spyOn(globalThis, 'removeEventListener');
     const { unmount } = renderHook(() => useCommsLive(true, READ_AT));
 
     unmount();
 
-    expect(clearSpy).toHaveBeenCalled();
+    expect(removeDocSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+    expect(removeWinSpy).toHaveBeenCalledWith('pageshow', expect.any(Function));
   });
 });

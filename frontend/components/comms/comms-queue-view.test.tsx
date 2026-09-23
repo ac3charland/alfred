@@ -476,6 +476,24 @@ describe('CommsQueueView — a tab that has been away', () => {
     expect(screen.queryByText(/Couldn't load Comms/)).not.toBeInTheDocument();
   });
 
+  it('reads the flip as "1m ago", never "just now", even when the view\'s own 30s clock lags', async () => {
+    jest.useFakeTimers();
+    // 3s past a 30s boundary — deliberately not aligned, so the view's own bucketed clock
+    // (`useNow`) can still read under a minute past the mount's read even though the live window
+    // itself is over a minute (`COMMS_LIVE_WINDOW_MS` = 65s) — the exact gap that read "just now".
+    jest.setSystemTime(new Date(OPENED.getTime() + 3000));
+    jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
+    jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchCommsSnapshot.mockRejectedValue(new Error('offline'));
+    // No `now` prop: the header's "ago" text has to come out right off the view's own ticking
+    // clock, the same clock the bug rode.
+    renderWithProviders(<CommsQueueView />, { comms: { accounts: [LIVE], messages: [] } });
+
+    await act(() => jest.advanceTimersByTimeAsync(COMMS_LIVE_WINDOW_MS + 1));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here 1m ago/);
+  });
+
   it('dates "not live" from the last successful read, not from a failed retry since', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(OPENED);

@@ -4,7 +4,7 @@ import { Inbox } from 'lucide-react';
 import * as React from 'react';
 
 import { ViewHeading } from '@/components/atoms/view-heading';
-import { accountHealth, classifierStalled, lastPing } from '@/lib/comms';
+import { COMMS_LIVE_WINDOW_MS, accountHealth, classifierStalled, lastPing } from '@/lib/comms';
 import type { CommAccount, CommClassifierHealth, CommMessage } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -101,6 +101,19 @@ export function CommsHeader({
     );
   }
 
+  // The flip to not-live happens on its own precise timer (`useCommsLive`), which can land
+  // between two ticks of `now` — the view's own clock, coalesced to a 30s bucket for display.
+  // Reading the "ago" straight off `now` can then undercount: caught right after the flip, fewer
+  // than 60s of it may show on the bucketed clock even though the live window itself is over a
+  // minute, so it reads "just now" for data that just went stale. Floor the clock fed to
+  // `formatElapsed` at the flip instant itself (`notLiveSince + COMMS_LIVE_WINDOW_MS`) so the
+  // text never reads newer than the flip that produced it — `now` still wins once it catches up,
+  // which is what keeps a pinned `now` driving this in stories and tests.
+  const notLiveClock =
+    notLiveSince === undefined
+      ? now
+      : new Date(Math.max(now.getTime(), Date.parse(notLiveSince) + COMMS_LIVE_WINDOW_MS + 1));
+
   const stall = classifierStalled(health, messages, now, lastClassifiedAt);
   const ping = lastPing(accounts);
   const sentences = accounts.flatMap((account) => {
@@ -112,8 +125,8 @@ export function CommsHeader({
     <div className="flex flex-col gap-3">
       {notLiveSince !== undefined && (
         <p role="alert" className="text-[13px] leading-relaxed text-accent-amber">
-          Not live — this is what was here {formatElapsed(notLiveSince, now)}. Anything since may be
-          missing until it refreshes.
+          Not live — this is what was here {formatElapsed(notLiveSince, notLiveClock)}. Anything
+          since may be missing until it refreshes.
         </p>
       )}
       {stall.stalled && stall.since !== null && <ClassifierBanner since={stall.since} now={now} />}
