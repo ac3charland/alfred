@@ -306,6 +306,15 @@ describe('HistoryGrid — opening the editor', () => {
     expect(screen.getByText('Logging this moves the start back')).toBeInTheDocument();
   });
 
+  it('shows the skip reason when opening an already-skipped day', async () => {
+    const user = userEvent.setup();
+    renderGrid(Object.fromEntries([entry('2026-07-14', 'skipped', { note: 'flu, off all week' })]));
+
+    await user.click(screen.getByRole('button', { name: /Tuesday 14 July/ }));
+
+    expect(screen.getByText('flu, off all week')).toBeInTheDocument();
+  });
+
   it('opens on Enter from the keyboard and returns focus to the cell on Escape', async () => {
     const user = userEvent.setup();
     renderGrid(Object.fromEntries([entry('2026-07-13', 'met')]));

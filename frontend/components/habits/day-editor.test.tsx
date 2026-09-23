@@ -60,6 +60,7 @@ function renderEditor(properties: Partial<React.ComponentProps<typeof DayEditor>
       criteria={[WAKE, LIGHT]}
       results={{}}
       isSkipped={false}
+      skipReason={null}
       isBeforeStart={false}
       onClose={onClose}
       {...properties}
@@ -102,6 +103,23 @@ describe('DayEditor — the derived header', () => {
     renderEditor({ isSkipped: true });
     expect(screen.getByText('Skipped')).toBeInTheDocument();
     expect(screen.queryByText('Missed')).not.toBeInTheDocument();
+  });
+
+  it('shows the reason a skipped day was excused, in place of the criteria', () => {
+    renderEditor({ isSkipped: true, skipReason: 'flu, off all week' });
+
+    expect(screen.getByText('flu, off all week')).toBeInTheDocument();
+    // The criteria never produced this verdict, so re-showing them would misrepresent why the
+    // day reads Skipped.
+    expect(screen.queryByRole('button', { name: 'Outside for light' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Up by 6:15')).not.toBeInTheDocument();
+  });
+
+  it('shows no reason line on a skipped day that was excused without one', () => {
+    renderEditor({ isSkipped: true, skipReason: null });
+
+    expect(screen.getByText('Skipped')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Outside for light' })).not.toBeInTheDocument();
   });
 
   it('names the allowance cost only when there is one', async () => {
@@ -207,6 +225,7 @@ describe('DayEditor — committing a day', () => {
         criteria={[WAKE, LIGHT]}
         results={{}}
         isSkipped={false}
+        skipReason={null}
         isBeforeStart={false}
         onClose={jest.fn()}
       />,

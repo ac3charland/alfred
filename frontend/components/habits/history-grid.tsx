@@ -155,6 +155,7 @@ export function HistoryGrid({
             results={parseResults(openEntry?.results ?? null)}
             storedStatus={openEntry?.status === 'skipped' ? undefined : openEntry?.status}
             isSkipped={openEntry?.status === 'skipped'}
+            skipReason={openEntry?.note ?? null}
             isBeforeStart={openDate < habit.started_on}
             onClose={() => {
               setOpenDate(undefined);
