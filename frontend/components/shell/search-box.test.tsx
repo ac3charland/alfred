@@ -207,4 +207,57 @@ describe('SearchBox', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(input).toHaveValue('');
   });
+
+  describe('completed items', () => {
+    it('does not show the "Show completed" checkbox before typing a query', async () => {
+      const user = userEvent.setup();
+      renderSearchBox({ tasks: [makeItem({ id: 't1', title: 'Firewall triage UI' })] });
+
+      await user.click(screen.getByRole('combobox'));
+      expect(screen.queryByRole('checkbox', { name: 'Show completed' })).not.toBeInTheDocument();
+    });
+
+    it('hides completed tasks and terminal stories by default, revealing them via the checkbox', async () => {
+      const user = userEvent.setup();
+      renderSearchBox({
+        tasks: [
+          makeItem({ id: 't1', title: 'Firewall active task' }),
+          makeItem({ id: 't2', title: 'Firewall done task', status: 'completed' }),
+        ],
+        stories: [
+          makeStory({ item_id: 's1', title: 'Firewall done story', factory_state: 'done' }),
+        ],
+      });
+
+      await user.click(screen.getByRole('combobox'));
+      await user.keyboard('firewall');
+
+      const listbox = await screen.findByRole('listbox');
+      expect(within(listbox).getByText('Firewall active task')).toBeInTheDocument();
+      expect(within(listbox).queryByText('Firewall done task')).not.toBeInTheDocument();
+      expect(within(listbox).queryByText('Firewall done story')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('checkbox', { name: 'Show completed' }));
+
+      const revealed = await screen.findByRole('listbox');
+      expect(within(revealed).getByText('Firewall done task')).toBeInTheDocument();
+      expect(within(revealed).getByText('Firewall done story')).toBeInTheDocument();
+    });
+
+    it('shows the checkbox even with zero visible results, so a hidden match can be revealed', async () => {
+      const user = userEvent.setup();
+      renderSearchBox({
+        tasks: [makeItem({ id: 't1', title: 'Firewall done task', status: 'completed' })],
+      });
+
+      await user.click(screen.getByRole('combobox'));
+      await user.keyboard('firewall');
+
+      expect(await screen.findByText(/no matches/i)).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: 'Show completed' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('checkbox', { name: 'Show completed' }));
+      expect(await screen.findByText('Firewall done task')).toBeInTheDocument();
+    });
+  });
 });
