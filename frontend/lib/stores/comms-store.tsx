@@ -116,6 +116,15 @@ export interface CommsActions {
   purge: (input: PurgeInput) => Promise<{ purged: number }>;
   /** Load the next page of the shelf — the same re-read as recovery, asked for more rows. */
   showMoreShelf: () => void;
+  /**
+   * Re-read the whole snapshot immediately — the same reconcile the poll and tab-return
+   * listeners already trigger (see the module doc comment), now also fired by `CommsView` on
+   * every navigation within the module (ALF-246, mirroring the Code module's `refreshStatuses`,
+   * ALF-69), so a screen the owner lands on is never stale until the next poll tick. No-ops
+   * while the tab is hidden and coalesces with a read already in flight, like every other
+   * trigger.
+   */
+  reconcile: () => void;
 }
 
 type CommsAction =
@@ -464,6 +473,7 @@ export function CommsProvider({
         );
         reconcile();
       },
+      reconcile,
     };
   }, [apply, reconcile]);
 

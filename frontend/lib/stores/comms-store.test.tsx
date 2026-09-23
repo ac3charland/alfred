@@ -689,6 +689,19 @@ describe('CommsProvider — polling and recovery', () => {
     expect(mockApi.fetchCommsSnapshot).not.toHaveBeenCalled();
   });
 
+  it('reconcile() re-reads immediately — the action CommsView fires on navigation (ALF-246)', async () => {
+    mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    expect(mockApi.fetchCommsSnapshot).not.toHaveBeenCalled();
+
+    await act(async () => {
+      result.current.actions.reconcile();
+      await Promise.resolve();
+    });
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('brings the view up to date on a re-read — new rows in, purged rows out', async () => {
     mockApi.fetchCommsSnapshot.mockResolvedValue(LATER);
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
