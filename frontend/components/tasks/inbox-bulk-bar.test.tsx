@@ -178,39 +178,39 @@ describe('Inbox select mode', () => {
     expect(screen.getByRole('region', { name: 'Bulk actions' })).toHaveTextContent('1 selected');
   });
 
-  it('gates Classify to an all-unclassified selection, and Move by type (task/unclassified)', async () => {
-    // Classifying is one-way: a flip after the fields are filled drops the ones the new type
-    // forbids, so Classify is live only while every selected row still has no type. Move widens
-    // to unclassified rows (filing classifies them) but still refuses a code row.
+  it('gates Classify by shape (childless roots) and Move by type (task/unclassified)', async () => {
+    // ALF-253 re-derived the gates: correcting a type is the common case now, so Classify is
+    // enabled on any selection of childless roots whatever their current types; Move widens to
+    // unclassified rows (filing classifies them) but still refuses a code row.
     const user = userEvent.setup();
     renderInbox([
       makeItem('u1', { item_type: 'unclassified' }),
-      makeItem('u2', { item_type: 'unclassified' }),
       makeItem('t1', { item_type: 'task' }),
-      makeItem('parent', { item_type: 'unclassified' }),
+      makeItem('c1', { item_type: 'code' }),
+      makeItem('parent', { item_type: 'task' }),
       makeItem('child', { item_type: 'task', parent_id: 'parent' }),
     ]);
 
     await user.click(screen.getByRole('button', { name: 'Select' }));
 
-    // An all-unclassified selection: both actions live.
+    // A mixed unclassified + task selection: both actions live (all childless roots, all fileable).
     await user.click(screen.getByRole('button', { name: /select "u1"/i }));
-    await user.click(screen.getByRole('button', { name: /select "u2"/i }));
+    await user.click(screen.getByRole('button', { name: /select "t1"/i }));
     expect(screen.getByRole('button', { name: /classify as/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /move to folder/i })).toBeEnabled();
 
-    // The moment a typed row joins, Classify disables with the new hint; Move still takes it.
-    await user.click(screen.getByRole('button', { name: /select "t1"/i }));
-    const classify = screen.getByRole('button', { name: /classify as/i });
-    expect(classify).toBeDisabled();
-    expect(classify).toHaveAttribute('title', 'Only unclassified items can be classified');
-    expect(screen.getByRole('button', { name: /move to folder/i })).toBeEnabled();
+    // Adding a code row: Classify stays live (a childless root carries a type to correct);
+    // Move disables — folders hold tasks.
+    await user.click(screen.getByRole('button', { name: /select "c1"/i }));
+    expect(screen.getByRole('button', { name: /classify as/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /move to folder/i })).toBeDisabled();
 
-    // The structural guard survives too: an unclassified row WITH subtasks can't be classified
-    // either — a parent's flip is the one the database can't catch.
-    await user.click(screen.getByRole('button', { name: /deselect "t1"/i }));
+    // Swapping in a decomposed task: Classify disables (the shape gate — a parent's flip is
+    // the one the database can't catch); Move re-enables.
+    await user.click(screen.getByRole('button', { name: /deselect "c1"/i }));
     await user.click(screen.getByRole('button', { name: /select "parent"/i }));
     expect(screen.getByRole('button', { name: /classify as/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /move to folder/i })).toBeEnabled();
   });
 
   it('disables Send to Code with a hint when any selected row has children (ALF-129)', async () => {

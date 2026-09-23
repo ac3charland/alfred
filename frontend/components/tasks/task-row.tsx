@@ -502,6 +502,7 @@ export function TaskRow({
   // reduced motion it commits immediately. See useAnimatedRowExit.
 
   const handleClassify = async (itemType: 'task' | 'code') => {
+    if (itemType === node.item_type) return;
     try {
       await classifyItem(node.id, itemType);
     } catch {
@@ -1092,6 +1093,7 @@ export function TaskRow({
                   isCode={isCode}
                   canAddSubtask={canAddSubtask}
                   isCompletedView={isCompletedView}
+                  isInboxRow={isInboxRow}
                   dispatch={dispatchAction}
                   folders={folders}
                   editing={metaEditing}

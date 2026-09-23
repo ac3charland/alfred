@@ -88,4 +88,30 @@ test.describe('inbox classification', () => {
     await page.getByRole('menuitem', { name: 'Open details' }).click();
     await expect(page.getByRole('button', { name: 'Due date', exact: true })).toBeVisible();
   });
+
+  // ALF-253: a misclassification (the LLM classifier's guess, or a human's) is fixable from the
+  // Inbox — Classify as… stays offered once a row already has a type, in either direction.
+  test('reclassifying Code back to Task drops the checkbox loss and reveals task affordances', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ items: [makeItem('Add the retry backoff', { item_type: 'code' })] });
+    await page.goto('/?view=inbox');
+
+    const row = page.getByRole('listitem').filter({ hasText: 'Add the retry backoff' });
+    await expect(row.getByRole('img', { name: 'Code' })).toBeVisible();
+
+    // Classify as… is still offered — this is the correction the ticket restores.
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Classify as…' }).hover();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('menuitem', { name: 'Task', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    // Back to a task: the checkbox returns, and the Code icon is gone.
+    await expect(
+      page.getByRole('button', { name: 'Mark "Add the retry backoff" complete' }),
+    ).toBeVisible();
+    await expect(row.getByRole('img', { name: 'Code' })).toBeHidden();
+  });
 });

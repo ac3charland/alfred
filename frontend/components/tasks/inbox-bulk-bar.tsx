@@ -29,7 +29,7 @@ import {
   readinessLineClass,
 } from './inbox-bulk-bar.styles';
 
-const CLASSIFY_DISABLED_HINT = 'Only unclassified items can be classified';
+const CLASSIFY_DISABLED_HINT = 'Only a top-level item with no subtasks can change type';
 const MOVE_DISABLED_HINT = 'Only tasks and unclassified items can be filed into a folder';
 const SEND_DISABLED_HINT = 'An item with subtasks is dispatched from its own row menu';
 // Lower-cased mid-sentence — DISPATCH_READY_LABEL itself is the row's title-cased cue (ALF-178).
@@ -64,9 +64,11 @@ export function InboxSelectToggle() {
  * selected item to its own destination in one press (a task to its labelled folder, a code item
  * through the factory gate), leaving unready items selected with the readiness line naming what
  * each is missing. The other actions are gated on the selection's composition: Classify needs
- * every selected row to still be unclassified, Move needs tasks/unclassified rows, Send-to-Code stays the "choose the project and epic now" path. A full success clears
- * the selection and exits mode — except after Dispatch, which stays in select mode for the next
- * batch; a partial outcome keeps the unfinished items selected. Done or Esc exits.
+ * every row to be a childless root (the type-change shape gate, whatever the current type —
+ * ALF-253), Move needs tasks/unclassified rows, Send-to-Code stays the "choose the project and
+ * epic now" path. A full success clears the selection and exits mode — except after Dispatch,
+ * which stays in select mode for the next batch; a partial outcome keeps the unfinished items
+ * selected. Done or Esc exits.
  *
  * The effective selection is the stored ids intersected with the items still in the Inbox, so
  * an item that has left (gated/moved away) simply stops counting — and a prune keeps the store
@@ -109,16 +111,15 @@ export function InboxBulkBar() {
 
   const ids = selectedItems.map((item) => item.id);
   const count = selectedItems.length;
-  // Classify is for rows that have no type yet. A flip after a type is set would silently drop
-  // the fields the new type forbids (a task→code flip drops the due date and recurrence), and
-  // `bulkClassify` runs the same `classifyPatch` the row menu does — so leaving the bulk bar
-  // able to re-type a filled row would leave that hole open behind a second door. The
-  // childless-root terms stay as the structural guard the database can't enforce on a parent.
-  const allUnclassified =
-    count > 0 &&
-    selectedItems.every(
-      (i) => i.item_type === 'unclassified' && i.parent_id === null && i.children.length === 0,
-    );
+  // Classify's gate is the type-change SHAPE gate (a childless top-level row), whatever the
+  // current type (ALF-253) — reclassifying a mis-triaged row is an ordinary correction, and
+  // `bulkClassify` runs the same `classifyPatch` the row menu does, which already drops exactly
+  // the fields the new type forbids in the same write. `selectedItems` is already Inbox-only
+  // (this bar's whole pool comes from `useScopedTasks({ type: 'inbox' })`), so there is no
+  // separate dispatched check to make here — only the shape gate the database can't enforce on
+  // a parent.
+  const allChildlessRoots =
+    count > 0 && selectedItems.every((i) => i.parent_id === null && i.children.length === 0);
   // Move's gate widens to unclassified rows — the smallest honest widening: moveTask already
   // classifies an unclassified row to task as it files it. A code row still can't be filed.
   const allFileable =
@@ -232,16 +233,16 @@ export function InboxBulkBar() {
               Dispatch
             </Button>
 
-            {/* Classify as — every selected row must still be unclassified (a typed row's
-              fields are not worth converting), and a childless root (the shape gate the
-              database can't enforce on a parent). */}
+            {/* Classify as — every selected row must be a childless root (the shape gate the
+              database can't enforce on a parent), whatever its current type — reclassifying a
+              mis-triaged row is an ordinary correction (ALF-253). */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!allUnclassified}
-                  title={allUnclassified ? undefined : CLASSIFY_DISABLED_HINT}
+                  disabled={!allChildlessRoots}
+                  title={allChildlessRoots ? undefined : CLASSIFY_DISABLED_HINT}
                 >
                   Classify as
                   <ChevronDown size={14} />

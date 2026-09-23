@@ -47,14 +47,14 @@ interface TaskRowMenuProperties {
   /** The row itself — the menu derives its own pure shape gates (root, childless, temp id). */
   node: ItemNode;
   /**
-   * True when the row's type may change: a top-level row with no subtasks. A structural guard
-   * on Classify as…, not the whole gate — the type also has to be unset (`isUnclassified`).
-   * The dangerous flip is a PARENT's, which nothing below the UI catches; see useTaskRowFlags.
+   * True when the row's type may change: a top-level row with no subtasks. The SHAPE half of
+   * Classify as…'s gate — `isInboxRow` below is the other half. The dangerous flip is a
+   * PARENT's, which nothing below the UI catches; see useTaskRowFlags.
    */
   canChangeType: boolean;
   /** True for a `task` row (Due date / Priority are task-only, as the DB CHECK has it). */
   isTask: boolean;
-  /** True while the row still has no type — the one state that offers Classify as…. */
+  /** True while the row still has no type. */
   isUnclassified: boolean;
   /** True for a code row (its subtask affordance is "Add story"). */
   isCode: boolean;
@@ -65,6 +65,13 @@ interface TaskRowMenuProperties {
    * already names where the item lives (the same rule the row's folder chip follows).
    */
   isCompletedView: boolean;
+  /**
+   * True for a top-level row still in the Inbox — not yet dispatched (to a folder or the code
+   * factory) and not a Completed-view history row. The OTHER half of Classify as…'s gate: once
+   * a row has left the Inbox its type is settled along with everything else about it, so a
+   * mis-triage is only fixable while the row is still sitting in the Inbox waiting on Dispatch.
+   */
+  isInboxRow: boolean;
   /**
    * What Dispatch would do on this row, or `null` when the row offers no Dispatch at all — a
    * subtask (residency travels with its root), a row that has already left the Inbox, or a
@@ -116,12 +123,18 @@ interface TaskRowMenuProperties {
  * one entry for every destination (a folder, the factory, a new epic), disabled with the
  * blocker as its hint until the labels are complete (ALF-185).
  *
- * The label group is what a row's type has to say about it, so it is per-type and it *replaces*
- * **Classify as…**: a typed row has no type left to change (correcting one after the fields are
- * filled would silently drop them — Delete and re-capture is the way back), and an untyped row
- * has no fields to hang a label on, so it carries Classify as… instead. One slot, two
- * occupants, never both. A row still carrying a temp id shows neither: a PATCH by that id would
- * 400 and roll back, so every entry here waits out the reconcile.
+ * The label group is what a row's type has to say about it, so it is per-type — Due date /
+ * Priority / Folder for a task, Project / Epic for a code story, nothing for an unclassified
+ * row. **Classify as…** sits ALONGSIDE it (ALF-253), not in its place: reclassifying a
+ * mis-triaged row is an ordinary Inbox correction, and `classifyItem`'s `classifyPatch` already
+ * drops exactly the fields the new type forbids (a task's due date/recurrence, a code row's
+ * project/epic hints) in the same write — so nothing is silently stranded by the flip. It is
+ * gated to an **Inbox row** (`isInboxRow`) — once a row has left the Inbox (filed to a folder,
+ * sent to the factory) or is Completed-view history, its type is settled along with the rest of
+ * it — AND the SHAPE gate (`canChangeType`): a top-level row with no subtasks, since a parent's
+ * flip is the one `enforce_subtask_shape` can't catch. A row still carrying a temp id shows
+ * neither the label group nor Classify as…: a PATCH by that id would 400 and roll back, so every
+ * entry here waits out the reconcile.
  *
  * A row that has already left the Inbox offers **Move to…** in place of the Folder submenu — the
  * only place a folder is a move rather than a label. Finally a destructive Delete below a
@@ -136,6 +149,7 @@ export function TaskRowMenu({
   isCode,
   canAddSubtask,
   isCompletedView,
+  isInboxRow,
   dispatch,
   folders,
   canMoveToFolder,
@@ -213,7 +227,13 @@ export function TaskRowMenu({
   // Only a code STORY carries an epic hint. A code root with children is an epic-in-waiting —
   // the conversion creates its epic — and a code child becomes a story under it and inherits it.
   const showEpic = !isSaving && isCode && isRoot && isChildless;
-  const showClassify = !isSaving && isUnclassified && canChangeType;
+  // Classify as… (ALF-253): live for unclassified, task AND code rows alike — reclassifying a
+  // mis-triaged row (e.g. the LLM classifier guessed wrong) is an ordinary correction, not a
+  // one-way door. Gated on BOTH halves: `isInboxRow` (once a row has left the Inbox its type is
+  // settled) and `canChangeType` (the shape guard a parent's flip needs, which the DB can't
+  // enforce). `knowledge` is deliberately excluded — reserved, not a destination this menu offers.
+  const showClassify =
+    !isSaving && isInboxRow && canChangeType && (isUnclassified || isTask || isCode);
 
   const epicsForProject = epics.filter((e) => e.project_id === node.intended_project_id);
 
@@ -365,10 +385,10 @@ export function TaskRowMenu({
             />
           )}
 
-          {/* Classify as ▸ — sets the row's type (the single coherent classifyItem write). Task
-            and Code only: unclassified is a starting state, not a destination. Absent once a
-            type is set — a flip after the fields are filled would drop what the new type
-            forbids, so the way back is Delete and re-capture. */}
+          {/* Classify as ▸ — sets or corrects the row's type (the single coherent classifyItem
+            write, which drops whatever the new type forbids in the same PATCH). Task and Code
+            only: unclassified is a starting state, not a destination. Live for the whole time
+            the row sits in the Inbox, whatever its current type — see showClassify above. */}
           {showClassify && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
