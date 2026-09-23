@@ -132,7 +132,7 @@ more simply than a channel per table would. Comms' four (`comm_messages`,
 `comm_accounts`, `comm_classifier_health`, `comm_verdicts`) are written by a Worker or the Mac
 daemon on a 1–3 minute cadence regardless of transport, so nothing there is time-critical at
 second granularity, and the machinery a Realtime subscription needs to stay honest (join
-bookkeeping, a wake-from-sleep detector, a settle debounce) bought seconds of latency at the cost
+bookkeeping, reconnect/backoff handling, a settle debounce) bought seconds of latency at the cost
 of a class of bugs review kept finding. `CommsProvider` instead re-reads the whole view
 (`GET /api/comms/snapshot`) and **replaces** it on a `setInterval` (`COMMS_POLL_MS`, `lib/comms/live.ts`)
 while the tab is visible, plus whenever it may have missed something sooner: the tab returns
@@ -148,15 +148,16 @@ successful read, forever if the shell's own seed read failed) and `lastReadAt` (
 clock, captured when a successful read *started*; a failed read moves neither). The view is live
 iff `loaded && now - lastReadAt <= COMMS_LIVE_WINDOW_MS` (`isCommsLive`, `lib/comms/live.ts`, ~2
 polls + slack), computed by `useCommsLive` (`lib/hooks/use-comms-live.ts`) rather than the queue
-view's own coarser, 30s-bucketed `useNow`: a `useSyncExternalStore` armed with one `setTimeout` for
-the window's own deadline, so a dead network or a frozen tab flips the instant its deadline passes
-rather than waiting on some unrelated render. A machine actually asleep needs its own check — JS
-timers are monotonic and don't run while suspended, so the deadline timer can wake hours late —
-`useCommsLive` also re-checks against the wall clock on `visibilitychange` and `pageshow`, the same
-signals `CommsProvider` re-reads a snapshot on. While not live the header dates the line to
-`lastReadAt`. A shell whose seed read failed isn't *loaded* at all — it says it couldn't load and
-draws no queue (an unread queue is not an empty one) until a read lands, which it asks for on mount
-without waiting for the poll interval.
+view's own coarser, 30s-bucketed `useNow`: a `useSyncExternalStore` whose `subscribe` arms a plain
+`setInterval(onChange, 1000)` and whose `getSnapshot` re-derives the boolean from `Date.now()`
+every time, so React only re-renders on an actual flip. A deadline `setTimeout` would be more
+"precise" on paper but doesn't survive a real sleep/suspend — it's monotonic and doesn't run while
+the machine is asleep, so it can wake hours late — where a 1s re-check is simply due again within
+a second of any wake, sleep or not, with no `visibilitychange`/`pageshow` listener needed to catch
+that case specially. While not live the header dates the line to `lastReadAt`. A shell whose seed
+read failed isn't *loaded* at all — it says it couldn't load and draws no queue (an unread queue is
+not an empty one) until a read lands, which it asks for on mount without waiting for the poll
+interval.
 
 ## A derived status must mirror the query that does the work
 
