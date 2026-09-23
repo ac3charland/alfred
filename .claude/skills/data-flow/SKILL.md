@@ -164,26 +164,45 @@ interval.
 Realtime and Comms'/Reader's foreground-return listeners still miss the case where the tab never
 hides or loses focus: an in-app module switch is a client-side `pushState`, so
 `visibilitychange`/`focus`/`online` never fire, and a seed-once store would otherwise sit on
-whatever it last held for the rest of the session. Every module's view-router (`TaskViews` /
-`CodeView` / `CommsView` / `ReaderView`) fires a lightweight reconcile keyed on `usePathname()` —
-covering both entry to the module and every navigation within it — so a screen the owner lands on
-is never staler than the *next* scheduled trigger would have made it anyway. The effect lives in
-the view-router, not the provider: the router only mounts while its module is the active one, so
-the trigger fires exactly on that module's own navigations, not on every app-wide route change a
-provider mounted at the shell would otherwise see.
+stale data until its next scheduled trigger (Tasks and Code have none at all outside this;
+Comms' 30s poll and Reader's tab-return listener are the other two). Every module's view-router
+(`TaskViews` / `CodeView` / `CommsView` / `ReaderView`) fires a lightweight reconcile keyed on
+`usePathname()` (Tasks also keys on the `view` search param — see below) — covering both entry to
+the module and every navigation within it, not just once per entry — so a screen the owner lands
+on is never staler than the *next* scheduled trigger would have made it anyway. The effect lives
+in the view-router, not the provider: the router only mounts while its module is the active one,
+so the trigger fires exactly on that module's own navigations, not on every app-wide route change
+a provider mounted at the shell would otherwise see.
 
 The reconcile itself stays as narrow as the store's own invariants demand. Tasks
-(`refreshVerdicts`) and Code (`refreshStatuses`) hold heavy optimistic state, so they PATCH only
-the columns a second writer can touch (classifier verdict fields; factory status fields) onto rows
+(`refreshVerdicts`) and Code (`refreshStatuses`) hold heavy optimistic state, so each PATCHES only
+a small, deliberately-chosen field set (classifier verdict fields; factory status fields) onto rows
 already held — never a full replace, and never an insert (a race-rule no-op for any id not already
-in the store, same as a dropped realtime UPDATE). Comms and Reader already reconcile by full
-snapshot replace for their other triggers (poll; tab return), so their pathname effect just calls
-that same `reconcile`/`refresh` action again — one more trigger source into machinery already
-built to coalesce concurrent calls, not new reconciliation logic.
+in the store, same as a dropped realtime UPDATE). **This is a real scope gap, not just a safety
+margin:** a row inserted by another writer (a Siri capture, Comms' "Make Inbox item") stays
+invisible until a hard reload, even right after navigating to the Inbox — expanding either
+reconcile to also insert unseen rows is a deliberate, bigger design decision (matching Code's own
+scope), not something to add casually. Comms and Reader already reconcile by full snapshot replace
+for their other triggers (poll; tab return), so their pathname effect just calls that same
+`reconcile`/`refresh` action again — one more trigger source into machinery already built to
+coalesce concurrent calls, not new reconciliation logic.
 
-This is the one sanctioned exception to "never refetch per view" below: it fires once per
-*module* navigation as a drift reconcile, never per component render, and the store — seeded once
-— stays the view's primary read.
+`refreshVerdicts` additionally snapshots the rows it's about to patch BEFORE its fetch goes out
+(not after), and only applies a fetched row's patch if that row is still reference-equal to the
+snapshot once the fetch resolves — otherwise a concurrent optimistic edit (or that edit's
+rollback) landing mid-flight can be overwritten by the now-stale fetch. Every reducer move
+(`patch`/`upsert`/`replace`/`remove`) replaces a touched row's object identity, so this reference
+check is a cheap, correct "did anything touch this row while I was reading it" test — the general
+shape any per-row snapshot-then-async-reconcile action needs, not just this one.
+
+The Tasks/Inbox screen needed one more subtlety: opening the Inbox list is `?view=inbox`, a search
+param, not a pathname change (see "Landing / inbox at `/`" below) — so `TaskViews` keys its effect
+on `[pathname, view]`, not `pathname` alone, or revealing the list without ever changing pathname
+would skip the reconcile.
+
+This is the one sanctioned exception to "never refetch per view" below: it fires on every
+navigation within a module, entry included, never on a component re-render with an unchanged key,
+and the store — seeded once — stays the view's primary read.
 
 ## A derived status must mirror the query that does the work
 
@@ -397,7 +416,7 @@ action closures can fire it without it becoming a memo dep.
   `router.refresh()` in a mutation handler is a refactor target.
 - **Never prop-drill entity lists or refetch per view.** Read the store and derive with a
   selector — the one sanctioned exception is the per-module navigation reconcile above, which
-  fires once per module navigation, not per component render.
+  fires on every navigation within a module, not on a component re-render with an unchanged key.
 - **Never fake optimism with a local `dismissed`/`isPending` flag** to hide a row mid-flight
   — change the data; the filtered view updates, and a rollback brings it back.
 - **Never `await` the mutation before closing a local edit UI.** An inline editor that
