@@ -8,12 +8,7 @@ export interface TaskRowFlags {
    * structurally in the DB (the CHECK constraint).
    */
   isTask: boolean;
-  /**
-   * An `unclassified` row (what capture creates). The Classify-as submenu is inbox triage,
-   * offered ONLY while still unclassified: once a type is set the row's per-type label submenus
-   * take that slot, and the way back from a wrong type is Delete and re-capture — a flip after
-   * the fields are filled would silently drop whatever the new type forbids.
-   */
+  /** An `unclassified` row (what capture creates) — the one state with no type-specific fields. */
   isUnclassified: boolean;
   /** A `code`-classified-but-not-yet-sent row — still in the inbox, awaiting its dispatch. */
   isCode: boolean;
@@ -31,13 +26,13 @@ export interface TaskRowFlags {
    */
   isValidDropTarget: boolean;
   /**
-   * The row's SHAPE permits a type change: a top-level row with no subtasks. A render gate on
-   * Classify as… (alongside `isUnclassified`), not a disabled state — an entry that is never
-   * going to work is simply not offered. The dangerous flip is a PARENT's —
-   * `enforce_subtask_shape` returns early on a parentless row and never re-validates the
-   * untouched children, so a code root would silently acquire task children; the database
-   * cannot catch that one, so the UI must. A subtask's flip is caught by the DB, but the UI
-   * shouldn't offer it either.
+   * The row's SHAPE permits a type change: a top-level row with no subtasks. One of Classify
+   * as…'s two gates (the other is being an Inbox row — see `TaskRowMenu`'s `isInboxRow`); a
+   * render gate, not a disabled state — an entry that is never going to work is simply not
+   * offered. The dangerous flip is a PARENT's — `enforce_subtask_shape` returns early on a
+   * parentless row and never re-validates the untouched children, so a code root would silently
+   * acquire task children; the database cannot catch that one, so the UI must. A subtask's flip
+   * is caught by the DB, but the UI shouldn't offer it either.
    */
   canChangeType: boolean;
 }

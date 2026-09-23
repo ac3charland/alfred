@@ -55,9 +55,10 @@ test('classify as Task → set the folder from the ⋯ menu → dispatch into th
   await expect(page.getByRole('menuitem', { name: 'Task', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
 
-  // 2. Unlabelled, Dispatch names what is missing — and Classify as… is gone for good.
+  // 2. Unlabelled, Dispatch names what is missing — and Classify as… is still there (ALF-253),
+  //    a correction away, for as long as the row sits in the Inbox.
   await page.getByRole('button', { name: 'More actions' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Classify as…' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Classify as…' })).toHaveCount(1);
   const blocked = page.getByRole('menuitem', { name: 'Dispatch', exact: true });
   await expect(blocked).toHaveAttribute('title', 'Not ready — needs a folder');
   await page.keyboard.press('Escape');

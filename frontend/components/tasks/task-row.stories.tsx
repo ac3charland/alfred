@@ -665,8 +665,8 @@ export const MenuUnclassified: Story = {
 };
 
 /**
- * An undispatched task root: Due date · Priority · Folder in the slot Classify as… vacated, and
- * Dispatch still reading "needs a folder" below them.
+ * An undispatched task root: Due date · Priority · Folder, Classify as… still offered alongside
+ * them (ALF-253), and Dispatch reading "needs a folder" below.
  */
 export const MenuTask: Story = {
   ...menuStory,

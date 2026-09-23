@@ -2478,15 +2478,30 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
     });
 
-    // The type is one-way now: a flip after the fields are filled would silently drop the ones
-    // the new type forbids, so a typed row simply has no Classify entry — its per-type label
-    // submenus take that slot, and Delete + re-capture is the way back.
+    // ALF-253: reclassifying a mis-triaged row (e.g. the LLM classifier guessed wrong) is an
+    // ordinary Inbox correction, not a one-way door — Classify as… stays offered alongside the
+    // row's per-type label group once it has a type, as long as the row is still in the Inbox.
     it.each([
       ['task', BASE_ITEM],
       ['code', CODE_ITEM],
-    ])('hides Classify as… once the row is typed (%s)', async (_type, item) => {
+    ])(
+      'still offers Classify as… once the row is typed, in the Inbox (%s)',
+      async (_type, item) => {
+        const user = userEvent.setup();
+        renderTasks([item]);
+
+        await user.click(screen.getByRole('button', { name: /more actions/i }));
+        await screen.findByRole('menu');
+
+        expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
+      },
+    );
+
+    // Once a row has left the Inbox its type is settled along with everything else about it
+    // (ALF-253): only mis-triage still inside the Inbox is fixable this way.
+    it('offers no Classify as… on a task that has already been dispatched to a folder', async () => {
       const user = userEvent.setup();
-      renderTasks([item]);
+      renderTasks([FILED_ITEM], ARCHIVE_VIEW);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
@@ -2598,6 +2613,85 @@ describe('TaskRow — classification & type-gating', () => {
       expect(
         screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
       ).not.toBeInTheDocument();
+    });
+
+    // ALF-253: reclassifying a task already carrying task-only fields drops exactly what the
+    // new type forbids, in the SAME PATCH `classifyPatch` builds — the fix that restores the
+    // ability described in the ticket (an LLM code-classification corrected back to a task, and
+    // the reverse) without stranding data the new type can't hold.
+    it('reclassifying a task as Code drops its due date and recurrence in one write', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...BASE_ITEM,
+        item_type: 'code',
+        due_date: null,
+        recurrence: null,
+      });
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2026-08-14', recurrence: 'FREQ=DAILY' }]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Task' });
+      await user.keyboard('[ArrowDown]');
+      await screen.findByRole('menuitem', { name: 'Code' });
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          item_type: 'code',
+          due_date: null,
+          recurrence: null,
+        });
+      });
+      expect(screen.getByRole('img', { name: 'Code' })).toBeInTheDocument();
+    });
+
+    it('reclassifying a code row as Task drops its project and epic hints in one write', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...BASE_ITEM,
+        item_type: 'task',
+        intended_project_id: null,
+        intended_epic_id: null,
+      });
+      const user = userEvent.setup();
+      renderTasks([{ ...CODE_ITEM, intended_project_id: 'project-1', intended_epic_id: 'epic-1' }]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Task' });
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          item_type: 'task',
+          intended_project_id: null,
+          intended_epic_id: null,
+        });
+      });
+      expect(
+        screen.getByRole('button', { name: 'Mark "Write tests" complete' }),
+      ).toBeInTheDocument();
+    });
+
+    it('reselecting the row’s current type is a no-op — no write at all', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Task' });
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      });
+      expect(mockUpdateItem).not.toHaveBeenCalled();
     });
   });
 
@@ -4028,10 +4122,13 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
       expect(screen.getByRole('menuitem', { name: 'Folder…' })).toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: 'Project…' })).not.toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: /^epic/i })).not.toBeInTheDocument();
+      // ALF-253: Classify as… sits ALONGSIDE the label group in the Inbox, not in its place.
+      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
     });
 
-    it('a task SUBTASK: Due date and Priority, but no Folder', async () => {
-      // A subtask's residency travels with its root, so it has no folder of its own to label.
+    it('a task SUBTASK: Due date and Priority, but no Folder, and no Classify as…', async () => {
+      // A subtask's residency travels with its root, so it has no folder of its own to label —
+      // and no type of its own to change (canChangeType is root-only, ALF-253).
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM], seeds);
       await expandRow(user, 'Write tests');
@@ -4040,9 +4137,11 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
       expect(screen.getByRole('menuitem', { name: 'Due date…' })).toBeInTheDocument();
       expect(screen.getByRole('menuitem', { name: 'Priority…' })).toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: 'Folder…' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
     });
 
-    it('a DISPATCHED task: Move to… owns the folder, so no Folder submenu', async () => {
+    it('a DISPATCHED task: Move to… owns the folder, no Folder submenu, and no Classify as…', async () => {
+      // ALF-253: once a row has left the Inbox its type is settled — Classify as… is Inbox-only.
       const user = userEvent.setup();
       renderTasks([FILED_ITEM], ARCHIVE_VIEW);
       await user.click(screen.getByRole('button', { name: /more actions/i }));
@@ -4051,6 +4150,7 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
       expect(screen.getByRole('menuitem', { name: 'Due date…' })).toBeInTheDocument();
       expect(screen.getByRole('menuitem', { name: 'Move to…' })).toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: 'Folder…' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
     });
 
     it('a task in the Completed view: no Folder submenu whatever its residency', async () => {
@@ -4062,6 +4162,8 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
       await screen.findByRole('menu');
 
       expect(screen.queryByRole('menuitem', { name: 'Folder…' })).not.toBeInTheDocument();
+      // History, not Inbox — ALF-253's isInboxRow gate keeps Classify as… off it too.
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
     });
 
     it('a childless code root: Project and Epic — no task fields', async () => {
@@ -4075,9 +4177,11 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
       expect(screen.queryByRole('menuitem', { name: 'Due date…' })).not.toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: 'Priority…' })).not.toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: 'Folder…' })).not.toBeInTheDocument();
+      // ALF-253: Classify as… sits ALONGSIDE the label group in the Inbox, not in its place.
+      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
     });
 
-    it('a code root WITH children: Project but no Epic (the conversion creates its epic)', async () => {
+    it('a code root WITH children: Project but no Epic, and no Classify as… (the shape gate)', async () => {
       const user = userEvent.setup();
       renderTasks([CODE_ROOT, { ...CHILD_ITEM, item_type: 'code' }], seeds);
       await user.click(screen.getByRole('button', { name: /more actions/i }));
@@ -4085,9 +4189,11 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
 
       expect(screen.getByRole('menuitem', { name: 'Project…' })).toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: /^epic/i })).not.toBeInTheDocument();
+      // A parent's flip is the one enforce_subtask_shape can't catch — canChangeType forbids it.
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
     });
 
-    it('a code CHILD: neither Project nor Epic (it inherits its parent-turned-epic)', async () => {
+    it('a code CHILD: neither Project nor Epic (it inherits its parent-turned-epic), no Classify as…', async () => {
       const user = userEvent.setup();
       renderTasks([CODE_ROOT, { ...CHILD_ITEM, item_type: 'code' }], seeds);
       await expandRow(user, 'Write tests');
@@ -4095,6 +4201,7 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
 
       expect(screen.queryByRole('menuitem', { name: 'Project…' })).not.toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: /^epic/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
     });
 
     it('an unclassified row: none of the five — it carries Classify as… instead', async () => {
