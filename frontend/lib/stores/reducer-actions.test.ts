@@ -24,6 +24,42 @@ describe('simpleReducer', () => {
     );
   });
 
+  it('replace never leaves two rows sharing the resulting key, keeping the replaced slot', () => {
+    // A replace can retarget a row's key (an optimistic temp id swapped for the server's real
+    // id on reconcile). If that real id already landed elsewhere in the array by some other
+    // path (e.g. a background refetch upserting the same server row before the reconcile ran),
+    // the OTHER copy is dropped — the replaced row keeps ITS slot, not the other copy's, so
+    // array order (capture order) is unaffected.
+    const tempRow = { id: 'temp-1', value: 'optimistic' };
+    const alreadyLanded = { id: 'server-1', value: 'from refetch' };
+    const reconciled = { id: 'server-1', value: 'from reconcile' };
+
+    const result = simpleReducer(
+      [tempRow, alreadyLanded],
+      { type: 'replace', id: 'temp-1', item: reconciled },
+      'row',
+    );
+
+    expect(result).toStrictEqual([reconciled]);
+  });
+
+  it('replace with an unchanged key never touches another row, even one sharing that key', () => {
+    // The common case (id and item.id are the same) must stay untouched by the de-dup — a row
+    // elsewhere in the array sharing that key (an existing, unrelated duplicate) is not this
+    // action's concern, and the fast path must not go looking for it.
+    const first = { id: 'a', value: 'first' };
+    const second = { id: 'a', value: 'second' };
+    const renamed = { id: 'a', value: 'renamed' };
+
+    const result = simpleReducer(
+      [first, second],
+      { type: 'replace', id: 'a', item: renamed },
+      'row',
+    );
+
+    expect(result).toStrictEqual([renamed, second]);
+  });
+
   it('patch merges into every id in the set (race rule: absent ids skipped)', () => {
     const result = simpleReducer(
       [A, B],
