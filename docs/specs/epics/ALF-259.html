@@ -386,7 +386,7 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   <div class="scroll">
   <table>
     <tr><th>Producer lives in</th><th>Suits</th><th>In this epic</th><th>Later, for example</th></tr>
-    <tr><td><b>Alfred</b> (it already holds the content)</td><td>Things Alfred captures</td><td>Reader picks; captured ideas</td><td>Non-Reader newsletters</td></tr>
+    <tr><td><b>Alfred</b> (it already holds the content)</td><td>Things Alfred captures</td><td>Reader picks; captured ideas</td><td>Non-Reader newsletters; Instapaper tag sync (<a href="#instapaper">follow-up</a>)</td></tr>
     <tr><td><b>The ingest session</b> (completes a <code>pointer</code>)</td><td>Anything reachable by URL</td><td>Swept Reader posts</td><td>Articles, arXiv, transcripts</td></tr>
     <tr><td><b>Alex's Mac</b> (a script, or a dropped folder)</td><td>Local files and exports</td><td>The Obsidian book importer (<a href="#books">books</a>); Instapaper highlights</td><td>Kindle / Readwise exports, PDFs</td></tr>
   </table>
@@ -765,17 +765,55 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   pasted in by hand. That session won't have Alfred's <code>CLAUDE.md</code>, skills, hooks,
   <code>check</code> gates, demo docs, or this epic spec. So that spec must be <b>self-contained</b>:
   it inlines every decision it depends on from this document (envelope, immutability, fidelity,
-  registry, picks, books, crosslinks, skill, format, store). It should also include the
-  <i>Brain Rules</i> sample (Alex supplies it; it isn't committed here), since that is the
-  importer's reference input, assumes no Alfred conventions or tooling, and doesn't
-  carry Alfred's implementation-PR machinery (the <code>alfred</code> block, spec archiving) into
-  the wiki repo.
+  registry, picks, books, crosslinks, skill, format, store), assumes no Alfred conventions or
+  tooling, and doesn't carry Alfred's implementation-PR machinery (the <code>alfred</code> block,
+  spec archiving) into the wiki repo. It should also include the <i>Brain Rules</i> sample (Alex
+  supplies it; it isn't committed here), since that is the importer's reference input.
+</div>
+
+<h3 id="followups">Follow-ups outside this build</h3>
+<div class="dec" id="instapaper">
+  <h3><span class="n">instapaper</span>Instapaper tag sync: tag an article and it files itself <span class="tag new">follow-up</span></h3>
+  <p><b>The goal:</b> Alex tags an article in Instapaper. Its body and his highlights land in the
+    wiki, the tag changes so the article isn't sent twice, and an ingest of it starts. No Mac, no
+    session, and no click in Alfred.</p>
+  <p>It needs nothing new from this epic's architecture, only a new producer:</p>
+  <ul>
+    <li><b>A poller</b> checks Instapaper on a schedule for bookmarks carrying the "send" tag,
+      fetches each article's text and highlights through Instapaper's API, and commits one folder
+      per article to <code>inbox/</code>.</li>
+    <li><b>The folder:</b>
+      <ul>
+        <li><code>source.md</code>: the article body (<code>full-text</code>, with <code>source_url</code>).</li>
+        <li><code>excerpts-&lt;date&gt;.md</code>: the highlights, verbatim. They are the author's
+          words, but Alex chose them, so they carry the same signal as a Reader pick.</li>
+        <li><code>notes-&lt;date&gt;.md</code>: any note Alex attached to a highlight, if the API
+          returns them.</li>
+      </ul>
+      Identity is the Instapaper bookmark id. Re-tagging an article after highlighting more adds only
+      the new highlights (<a href="#immutability">immutability</a>).</li>
+    <li><b>The tag changes only after the commit lands.</b> The "send" tag is swapped for a "filed"
+      one. If the commit fails, the tag stays, and the next poll retries.</li>
+    <li><b>Kickoff is the existing one.</b> The commit to <code>inbox/</code> is an ordinary push, so
+      the article joins the next batch under the lock (<a href="#kickoff">kickoff</a>).</li>
+  </ul>
+  <div class="why"><b>Left for its own refinement:</b>
+    <ul>
+      <li>Where the poller runs: an Alfred Worker cron beside the Reader's, or a scheduled Action in
+        the wiki repo, which would keep Alfred out of it entirely.</li>
+      <li>Whether Instapaper's API exposes tags or only folders. If only folders, the fallback is a
+        "To wiki" folder whose items move to "Filed".</li>
+      <li>API access: the Full API needs an approved consumer key and xAuth.</li>
+    </ul>
+    This replaces the spike's deferred "Instapaper sync script" row. Once it exists, the Instapaper
+    part of the seed could become "tag the backlog".</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <h2 id="open">10. Open questions</h2>
 <ul>
-  <li><b>Batching Instapaper, for the Wiki repo spec.</b> Is <code>ingest: file-only</code> the
+  <li><b>Batching Instapaper, for the Wiki repo spec.</b> This is about the one-time seed; ongoing
+    Instapaper is the <a href="#instapaper">follow-up</a>. Is <code>ingest: file-only</code> the
     right valve for a bulk Instapaper import, or is it better to group several highlights into one
     synthesis pass? Batching may not save much, since the synthesis cost scales with pages touched
     rather than sessions started.</li>
