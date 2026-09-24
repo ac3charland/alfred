@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- ALF-259 — Wiki Module. Epic spec: durable context for the epic. -->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-259 — Wiki Module</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #1f8a5b; --accent-bg: #e3f5ec;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --good: #2ea36b; --bad: #d1544a; --partial: #d99b2b; --blue: #2f6fb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #4cc98e; --accent-bg: #123424;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --good: #3fbf82; --bad: #e8776a; --partial: #e0ab48; --blue: #6ea8e8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  td code, p code, li code { overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .toc { columns: 2; column-gap: 2rem; font-size: .92rem; }
+  .toc li { break-inside: avoid; }
+  @media (max-width: 640px) { .toc { columns: 1; } }
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .8rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .dec.lock { border-left-color: var(--bad); }
+  .tag { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+         text-transform: uppercase; border: 1px solid; border-radius: 999px; padding: 0 .45rem;
+         margin-left: .4rem; vertical-align: middle; }
+  .tag.lock { color: var(--bad); }
+  .tag.spike { color: var(--blue); }
+  .tag.new { color: var(--partial); }
+  /* ── Diagram ─────────────────────────────────────────────────── */
+  .fig { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: .8rem; margin: 1rem 0; }
+  .fig .box { fill: var(--bg); stroke: var(--faint); stroke-width: 1.4; }
+  .fig .box.alfred { stroke: var(--blue); }
+  .fig .box.wiki { stroke: var(--accent); }
+  .fig .box.you { stroke: var(--partial); }
+  .fig .zone { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .fig text { fill: var(--fg); font: 13px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .fig text.t { font-weight: 600; }
+  .fig text.m { fill: var(--muted); font-size: 11.5px; }
+  .fig text.z { fill: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+  .fig .ln { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .fig .ln.dash { stroke-dasharray: 4 4; }
+  .fig .ah { fill: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-259 — Wiki Module</h1>
+<p class="sub">
+  <span class="pill">Epic spec</span>
+  The shared context for the wiki epic: what the wiki is, how primary sources are shaped and how
+  new kinds get added, how something moves from Alfred into the wiki, and what starts an ingest
+  session. Story sessions read this before refining their own slice.
+</p>
+<p class="sub">
+  <b>First refinement, 2026-09-24.</b> Built on the spike
+  <a href="../../spikes/llm-wiki-spike.html"><code>docs/spikes/llm-wiki-spike.html</code></a>. The
+  spike's overall shape is kept: a private git repo of markdown, written by a Claude session, fed by
+  Alfred, and read in Alfred. Where this spec settles something differently from the spike, the
+  decision is tagged <span class="tag spike">changes spike</span> and <b>this document wins</b>.
+  Decisions this session added are tagged <span class="tag new">new</span>.
+</p>
+
+<div class="card">
+  <b>One-paragraph version.</b> The wiki is Karpathy's LLM-wiki pattern: a private GitHub repo of
+  plain markdown that a Claude session keeps compiling from the sources Alex chooses to send it.
+  Every source is <b>one folder</b> with a fixed shape: the frozen original text, Alex's own notes,
+  and the summary bullets Alex picked. That shape doesn't care where the source came from, so a new
+  kind of source only needs a producer and one registry row. Alfred feeds the wiki by
+  <b>committing those folders into the wiki repo's <code>inbox/</code></b>: bullets picked in the
+  Reader's "Novel ideas" section, and captured ideas the classifier marks as knowledge. A push that
+  touches <code>inbox/</code> starts a <b>Claude Code Routine</b>. The Routine drains the whole inbox
+  following a committed ingest skill and opens a PR, and <b>Alex merging the PR is the review</b>.
+  Alfred's read-only reading room comes last.
+</div>
+
+<h3>Contents</h3>
+<ol class="toc">
+  <li><a href="#problem">Problem space &amp; why now</a></li>
+  <li><a href="#spike">What changed from the spike</a></li>
+  <li><a href="#arch">Architecture</a></li>
+  <li><a href="#sources">Decisions — primary sources</a></li>
+  <li><a href="#flow">Decisions — the path into the wiki</a></li>
+  <li><a href="#ingest">Decisions — ingest sessions</a></li>
+  <li><a href="#rest">Decisions — privacy, format, reading</a></li>
+  <li><a href="#nongoals">Constraints &amp; non-goals</a></li>
+  <li><a href="#stories">How the work splits</a></li>
+  <li><a href="#open">Open questions</a></li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="problem">1. Problem space &amp; why now</h2>
+<p>
+  Alex reads a lot, through the Reader, Instapaper, and books, and has ideas worth keeping. Today none
+  of it compounds. A Reader post's text is swept after 90 days, Instapaper highlights sit in
+  Instapaper, book notes sit in Obsidian, and a captured idea is just an inbox item. Asking Claude
+  about any of it means rediscovering it from scratch each time, which is RAG's failure mode. The
+  <a href="../../knowledge-base/llm-wiki.md">LLM-wiki pattern</a> fixes this by having a model
+  <i>compile</i> sources into an interlinked set of pages once, then keep those pages current.
+</p>
+<p>
+  Why now: the Reader already does the expensive part, reading every newsletter and extracting its
+  novel ideas. That compute currently expires with the post. Sending Alex's picks from it into a
+  wiki turns a disposable summary into lasting knowledge. The spike settled the high-level shape;
+  this epic settles primary sources and the ingestion workflow, which the spike left thin.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="spike">2. What changed from the spike</h2>
+<div class="scroll">
+<table>
+  <tr><th>Topic</th><th>Spike</th><th>This epic</th></tr>
+  <tr><td>Raw source shape</td><td>One file per capture in <code>raw/YYYY/</code></td><td>One <b>folder</b> per source, holding separate files for the source text, Alex's notes, and his picks (<a href="#envelope">envelope</a>)</td></tr>
+  <tr><td>Alfred → wiki handoff</td><td>Supabase inbox plus a keyed <code>GET /api/knowledge/inbox</code> that the ingest skill pulls</td><td>Alfred <b>commits into the wiki repo's <code>inbox/</code></b>; no queue table and no pull endpoint (<a href="#handoff">handoff</a>)</td></tr>
+  <tr><td>Reader integration</td><td>A "Send to wiki" verb on a post</td><td>Send <b>individual or all "Novel ideas" bullets</b>; the post's text rides along (<a href="#reader">reader</a>)</td></tr>
+  <tr><td>Automatic ingest</td><td>Deferred until "a month of reviewed ingests"</td><td>In this epic, but <b>it only drafts a PR</b>; Alex's merge is the review (<a href="#autonomy">autonomy</a>, <a href="#kickoff">kickoff</a>)</td></tr>
+  <tr><td>Sensitivity / visibility scripts</td><td>Built on Day 1</td><td>Their <b>inputs</b> are recorded and linted from the start; the scripts ship with public export (<a href="#privacy">privacy</a>)</td></tr>
+  <tr><td>Comms as a source</td><td>Never</td><td><b>No denylist.</b> Sending is always explicit, so any source Alex sends is allowed (<a href="#registry">registry</a>)</td></tr>
+  <tr><td>Build order</td><td>Wiki repo, then the Alfred Knowledge module (reading room plus inbox)</td><td>Wiki repo → Alfred handoff → auto-ingest → reading room (<a href="#stories">§9</a>)</td></tr>
+</table>
+</div>
+<p class="small">
+  Kept from the spike without change: the private-repo store and the reasons Supabase and the Alfred
+  monorepo were rejected (spike §2.2), the one-way coach → wiki split (§2.4), the link and
+  frontmatter format rules (§2.5), and the deferred-with-triggers list (§5.2), apart from the rows
+  this table changes.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="arch">3. Architecture</h2>
+<div class="fig">
+<svg viewBox="0 0 960 470" role="img" aria-label="Data flow. Alfred: Reader bullet picks and dispatched knowledge items go through a GitHub write into the wiki repo's inbox folder. Alex can also drop folders into inbox from the Mac or through an interactive session. A push to main that touches inbox starts a GitHub Action, which does nothing while an ingest PR is open and otherwise fires a Claude Code Routine. The Routine session follows the committed ingest skill: it moves inbox folders into raw, writes wiki pages, index and log, and opens a PR on a claude/ingest branch. Alex merges the PR into main. Merging is a push, which can start the next run. Later, the reading room in Alfred snapshots main.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="ah" d="M 0 0 L 10 5 L 0 10 z"/>
+    </marker>
+  </defs>
+  <!-- zones -->
+  <rect class="zone" x="8" y="18" width="250" height="300" rx="10"/>
+  <text class="z" x="22" y="38">ALFRED</text>
+  <rect class="zone" x="300" y="18" width="650" height="440" rx="10"/>
+  <text class="z" x="314" y="38">WIKI REPO (PRIVATE, GITHUB)</text>
+
+  <!-- alfred boxes -->
+  <rect class="box alfred" x="24" y="54" width="218" height="58" rx="7"/>
+  <text class="t" x="36" y="77">Reader · "Novel ideas"</text>
+  <text class="m" x="36" y="96">pick one bullet or all</text>
+  <rect class="box alfred" x="24" y="124" width="218" height="58" rx="7"/>
+  <text class="t" x="36" y="147">Inbox · knowledge item</text>
+  <text class="m" x="36" y="166">classifier suggests, Alex dispatches</text>
+  <rect class="box alfred" x="24" y="206" width="218" height="58" rx="7"/>
+  <text class="t" x="36" y="229">GitHub writer</text>
+  <text class="m" x="36" y="248">Contents:write, wiki repo only</text>
+  <path class="ln" d="M24 83 H16 V235 H24" marker-end="url(#ar)"/>
+  <path class="ln" d="M24 153 H16" />
+
+  <rect class="box alfred" x="24" y="386" width="218" height="58" rx="7"/>
+  <text class="t" x="36" y="409">Reading room (last)</text>
+  <text class="m" x="36" y="428">read-only snapshot of main</text>
+
+  <!-- inbox -->
+  <rect class="box wiki" x="318" y="54" width="190" height="72" rx="7"/>
+  <text class="t" x="330" y="77">inbox/</text>
+  <text class="m" x="330" y="96">one folder per source,</text>
+  <text class="m" x="330" y="112">waiting to be ingested</text>
+  <path class="ln" d="M242 235 H280 V90 H318" marker-end="url(#ar)"/>
+
+  <rect class="box you" x="318" y="150" width="190" height="58" rx="7"/>
+  <text class="t" x="330" y="173">Alex (Mac / session)</text>
+  <text class="m" x="330" y="192">drops folders, or ingests live</text>
+  <path class="ln dash" d="M413 150 V126" marker-end="url(#ar)"/>
+
+  <!-- action -->
+  <rect class="box wiki" x="560" y="54" width="170" height="72" rx="7"/>
+  <text class="t" x="572" y="77">GitHub Action</text>
+  <text class="m" x="572" y="96">push touching inbox/**</text>
+  <text class="m" x="572" y="112">skip if ingest PR open</text>
+  <path class="ln" d="M508 90 H560" marker-end="url(#ar)"/>
+
+  <!-- routine -->
+  <rect class="box wiki" x="770" y="54" width="166" height="72" rx="7"/>
+  <text class="t" x="782" y="77">Routine /fire</text>
+  <text class="m" x="782" y="96">cloud session,</text>
+  <text class="m" x="782" y="112">subscription-billed</text>
+  <path class="ln" d="M730 90 H770" marker-end="url(#ar)"/>
+
+  <!-- ingest -->
+  <rect class="box wiki" x="620" y="180" width="316" height="110" rx="7"/>
+  <text class="t" x="632" y="203">Ingest session (follows the ingest skill)</text>
+  <text class="m" x="632" y="224">drain all of inbox/ → git mv to raw/YYYY/…</text>
+  <text class="m" x="632" y="242">verify picks · write/update wiki pages</text>
+  <text class="m" x="632" y="260">index.md + log.md · lint</text>
+  <text class="m" x="632" y="278">push claude/ingest-… · open PR</text>
+  <path class="ln" d="M853 126 V180" marker-end="url(#ar)"/>
+
+  <!-- PR -->
+  <rect class="box you" x="620" y="330" width="150" height="58" rx="7"/>
+  <text class="t" x="632" y="353">PR review</text>
+  <text class="m" x="632" y="372">Alex merges</text>
+  <path class="ln" d="M695 290 V330" marker-end="url(#ar)"/>
+
+  <!-- main -->
+  <rect class="box wiki" x="318" y="330" width="220" height="100" rx="7"/>
+  <text class="t" x="330" y="353">main</text>
+  <text class="m" x="330" y="373">raw/  wiki/  index.md  log.md</text>
+  <text class="m" x="330" y="391">CLAUDE.md  .claude/skills/ingest</text>
+  <text class="m" x="330" y="409">source-types registry</text>
+  <path class="ln" d="M620 359 H538" marker-end="url(#ar)"/>
+  <!-- merge re-triggers -->
+  <path class="ln dash" d="M538 410 H585 V126" marker-end="url(#ar)"/>
+  <text class="m" x="596" y="418">a merge is a push → the Action runs again</text>
+  <text class="m" x="596" y="434">if inbox/ isn't empty</text>
+
+  <!-- reading room -->
+  <path class="ln dash" d="M318 415 H242" marker-end="url(#ar)"/>
+</svg>
+<p class="diagram-cap">
+  Solid lines are the automatic path; dashed lines are Alex, a re-trigger, or the later reading
+  room. Git is the only queue.
+</p>
+</div>
+
+<p>What the architecture commits to:</p>
+<ul>
+  <li><b>Git is the queue, the store, and the audit log.</b> Nothing about the wiki lives in
+    Supabase. A write that fails or a run that gets rejected leaves its folder sitting in
+    <code>inbox/</code>, and nothing is lost.</li>
+  <li><b>Alfred is a producer and, eventually, a reader, never a writer of wiki pages.</b> The only
+    thing Alfred writes into the wiki repo is <code>inbox/</code> folders. The model writes pages,
+    and only through git.</li>
+  <li><b>Every way of running an ingest does the same job.</b> A Routine, <code>claude -p</code>, and
+    an interactive session all follow one committed ingest skill, so swapping the runner doesn't
+    touch the wiki.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="sources">4. Decisions — primary sources</h2>
+
+<div class="dec lock" id="envelope">
+  <h3><span class="n">envelope</span>Every source is one folder with a fixed shape <span class="tag spike">changes spike</span> <span class="tag lock">costly to reverse</span></h3>
+  <p>A source is a folder, not a file. It lands in <code>inbox/</code>; ingest moves it
+    (<code>git mv</code>, contents unchanged) into <code>raw/</code>, sorted by year:</p>
+<pre><code>inbox/2026-09-24-why-habits-stick/            ← waiting
+raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
+    source.md               the author's words as markdown; body frozen   (optional)
+    notes-2026-09-24.md     Alex's own words, one file per sitting        (optional)
+    picks-2026-09-24.md     summary bullets Alex picked, model-worded     (optional)
+    assets/                 original binary the text was extracted from   (optional)</code></pre>
+  <p>Every file is optional, but a folder must contain at least one of them. Different kinds of
+    source use the same shape and leave pieces out:</p>
+  <ul>
+    <li><b>Reader post:</b> <code>source.md</code> (the post text) plus <code>picks-…</code> (the bullets Alex sent).</li>
+    <li><b>Book:</b> <code>notes-…</code> files only, which keep accumulating as he reads. The book's text is never stored.</li>
+    <li><b>Captured idea:</b> a single <code>notes-…</code> file.</li>
+    <li><b>PDF:</b> <code>source.md</code> holds the extracted text; the PDF itself goes in <code>assets/</code>.</li>
+  </ul>
+  <p>Every file carries YAML frontmatter with a small fixed core: <code>source_type</code>,
+    <code>origin</code>, <code>title</code>, <code>author</code>, <code>source_url</code>,
+    <code>published</code>, <code>captured</code>, <code>via</code>, <code>external_id</code>. A
+    <code>source.md</code> also carries <code>fidelity</code> (see <a href="#fidelity">fidelity</a>).
+    <code>origin</code> is one of:</p>
+  <ul>
+    <li><code>third-party</code>: someone else's words</li>
+    <li><code>mine</code>: Alex's words</li>
+    <li><code>model-derived</code>: the model's words, picked by Alex</li>
+  </ul>
+  <p class="why"><b>Why a folder:</b> the author's words, Alex's words, and the model's words have
+    different provenance. That matters for trust (a pick can misquote), for licensing (a paid
+    Substack post), and for any later public export. Separate files let a wiki page cite exactly the
+    kind of material it used. A folder also gives notes that grow over time (a book read across six
+    weeks) somewhere to accumulate.<br/>
+    <b>Why costly to reverse:</b> every wiki page's <code>sources:</code> list points at these
+    paths. Changing the scheme later means rewriting citations across the whole tree, the same
+    class of cost as the spike's link-syntax rule.</p>
+</div>
+
+<div class="dec" id="immutability">
+  <h3><span class="n">immutability</span>Only the body is frozen; frontmatter can be amended by script, and a source can keep growing <span class="tag new">new</span></h3>
+  <ul>
+    <li><b>The body of <code>source.md</code> is never edited.</b> It is the record of what Alex read. Frontmatter may be amended <i>by scripts</i> (a backfilled field, a later sensitivity label), never by the model's judgment.</li>
+    <li><b>Identity is <code>external_id</code></b>, or the canonical URL when there is no id. A later send for a source that's already filed arrives as an <code>inbox/</code> folder holding only the new files (say, one more <code>picks-…</code>). Ingest merges those files into the existing <code>raw/</code> folder and never creates a duplicate.</li>
+    <li><b>A materially revised source is a new capture</b>, whose frontmatter names the earlier folder with <code>supersedes: &lt;path&gt;</code>.</li>
+  </ul>
+  <p class="why"><b>Why:</b> the spike's "raw is write-once" rule conflicts with its own script
+    setting <code>sensitivity</code> on raw files. Scoping "write-once" to the body resolves that,
+    and it is also what lets a source type add fields later without breaking the rule.</p>
+</div>
+
+<div class="dec" id="fidelity">
+  <h3><span class="n">fidelity</span>A fidelity field records how much of the source was captured <span class="tag new">new</span></h3>
+  <div class="scroll">
+  <table>
+    <tr><th><code>fidelity</code></th><th>Meaning</th><th>Typical case</th></tr>
+    <tr><td><code>full-text</code></td><td>The whole source, converted to markdown</td><td>Reader post, web article, extracted PDF</td></tr>
+    <tr><td><code>excerpt</code></td><td>Verbatim highlights only</td><td>Instapaper / Kindle highlights</td></tr>
+    <tr><td><code>pointer</code></td><td>Metadata and a URL only; the ingest session should try to fetch it</td><td>A Reader post whose text has already been swept; a bare link</td></tr>
+    <tr><td><code>notes-only</code></td><td>No <code>source.md</code> by rule</td><td>Books, captured ideas</td></tr>
+  </table>
+  </div>
+  <p>Given a <code>pointer</code>, the ingest session tries to fetch the text and upgrades the
+    folder to <code>full-text</code>. If it can't (a paywall, a network block), it leaves the
+    folder at <code>pointer</code> and says so in the PR.</p>
+  <p class="why"><b>Why:</b> <code>pointer</code> is what keeps adding a source type cheap. A
+    producer that only has a URL can still hand one off, and the hard part (fetching) happens in
+    one place.</p>
+</div>
+
+<div class="dec" id="registry">
+  <h3><span class="n">registry</span>A new source type is a producer plus one registry row; there's no denylist <span class="tag spike">changes spike</span></h3>
+  <p>A <code>source-types</code> registry file in the wiki repo lists each <code>source_type</code>
+    with its highest allowed fidelity (books cap at <code>notes-only</code>), its default
+    <code>origin</code>, and, once export exists, its default sensitivity. Lint checks every folder
+    against its row. <b>Adding a source type means writing a producer and adding a row</b>; the
+    ingest skill, lint, and reading room don't change.</p>
+  <p>Producers can live in three places:</p>
+  <div class="scroll">
+  <table>
+    <tr><th>Producer lives in</th><th>Suits</th><th>In this epic</th><th>Later, for example</th></tr>
+    <tr><td><b>Alfred</b> (it already holds the content)</td><td>Things Alfred captures</td><td>Reader picks; captured ideas</td><td>Non-Reader newsletters</td></tr>
+    <tr><td><b>The ingest session</b> (completes a <code>pointer</code>)</td><td>Anything reachable by URL</td><td>Swept Reader posts</td><td>Articles, arXiv, transcripts</td></tr>
+    <tr><td><b>Alex / the Mac</b> (drops a folder)</td><td>Exports and one-offs</td><td>The seed: Obsidian book notes and Instapaper highlights</td><td>Kindle / Readwise exports, PDFs</td></tr>
+  </table>
+  </div>
+  <p class="why"><b>Why no denylist:</b> Alex is the only builder and the only sender, and every
+    source reaches the wiki through an explicit act of sending. A standing ban (the spike's "comms
+    are never a source") would only be friction. Sending a message to the wiki is a deliberate
+    choice to keep it, and it doesn't change the fact that Alfred's own copy of comms is still
+    swept at 60 days.</p>
+  <p class="why"><b>Two things producers must do:</b> split mixed provenance (Kindle quotes go in
+    <code>source.md</code> at <code>excerpt</code>; Alex's comments go in <code>notes-…</code>), and
+    never put an LLM summary in <code>source.md</code>. Model-written text only ever enters as
+    picks.</p>
+</div>
+
+<div class="dec" id="bar">
+  <h3><span class="n">bar</span>Sending is the ingest bar; filing is not ingesting <span class="tag new">new</span></h3>
+  <p>Nothing reaches the wiki automatically. A source enters only because Alex sent it, dispatched
+    it, or dropped it in. There's no "ingest everything I saved". A producer may mark a folder
+    <code>ingest: file-only</code>: ingest moves it into <code>raw/</code> and logs it, but doesn't
+    synthesize pages from it. Those pages get written later, when a question or a newer source
+    touches it.</p>
+  <p class="why"><b>Why:</b> this keeps the wiki about what was new to Alex (the spike's first
+    anti-goal) while still letting bulk imports get archived without a synthesis session per item.
+    Whether this valve is also the right way to batch Instapaper is <a href="#open">open</a>.</p>
+</div>
+
+<div class="dec" id="picks">
+  <h3><span class="n">picks</span>Picked bullets are model-derived, and ingest checks them against the source <span class="tag new">new</span></h3>
+  <p>A <code>picks-…</code> file holds the "Novel ideas" bullets Alex chose, word for word, with
+    <code>origin: model-derived</code>. The signal is that <i>Alex found these insightful</i>; the
+    wording is the summarizer's. Before building on a pick, the ingest session checks it against
+    <code>source.md</code>. A pick the source doesn't support gets flagged in the PR, not
+    synthesized.</p>
+  <p class="why"><b>Why not <code>origin: mine</code>:</b> a summarizer can misstate an article,
+    and a paraphrase of a paid post is still derived from that post. Labelling the picks as Alex's
+    own words would launder both problems. The source text sitting next to the picks is what makes
+    the check cheap.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="flow">5. Decisions — the path into the wiki</h2>
+
+<div class="dec" id="handoff">
+  <h3><span class="n">handoff</span>Alfred commits folders to <code>inbox/</code> through the GitHub API <span class="tag spike">changes spike</span></h3>
+  <p>Alfred writes each envelope straight into the wiki repo's <code>inbox/</code> on
+    <code>main</code>, as a commit made through the GitHub Contents API. It uses a <b>separate
+    fine-grained token with Contents:write on the wiki repo only</b>; the existing read-only
+    <code>GITHUB_TOKEN</code> stays read-only. There's no Supabase queue and no keyed inbox
+    endpoint.</p>
+  <p class="why"><b>Why:</b> the queue then lives in git, with no sweep and no expiry, and it's
+    visible as <code>ls inbox/</code>. Ingest sessions need no Alfred API key and no network route
+    to Alfred, and they behave the same on the Mac and in the cloud. The commit is also the event
+    that starts <a href="#kickoff">kickoff</a>. The cost is a write token, kept to the smallest
+    scope that works.</p>
+</div>
+
+<div class="dec" id="reader">
+  <h3><span class="n">reader</span>Reader → wiki sends picked "Novel ideas" bullets, and the post text rides along <span class="tag spike">changes spike</span></h3>
+  <p>In a post's "Novel ideas" section (<code>overview.novel_ideas</code>), Alex can send a single
+    bullet or all of them. A send produces an envelope containing:</p>
+  <ul>
+    <li><code>source.md</code>, built from <code>reader_posts.text</code> (<code>fidelity: full-text</code>), plus the post's metadata; and</li>
+    <li>a <code>picks-…</code> file with the chosen bullets.</li>
+  </ul>
+  <p>Sending more bullets from the same post later adds only a new picks file
+    (<a href="#immutability">immutability</a>). Once the 90-day sweep has nulled the text, a send
+    still works: <code>source.md</code> becomes a <code>pointer</code> at
+    <code>canonical_url</code>. Paywalled posts may fail to fetch at that point, and the PR will say
+    so.</p>
+  <p class="why"><b>Why:</b> Alex doesn't want the whole article dumped into the wiki. The
+    summarizer has already done the work of finding what's new, and Alex's pick is the strongest
+    signal of what mattered. The full text rides along so the picks can be checked and so later
+    synthesis has the original to go back to.</p>
+  <p class="small">How the picker looks (per-bullet affordance, "send all", sent state) belongs to
+    the handoff story, which draws it in the Reader's own design system. This spec only fixes the
+    behavior.</p>
+</div>
+
+<div class="dec" id="ideas">
+  <h3><span class="n">ideas</span>Captured ideas: the classifier suggests <code>knowledge</code>, and Alex dispatches</h3>
+  <p>The ALF-158 classifier gains <code>knowledge</code> as a third <code>item_type</code> (today
+    it only picks <code>task</code> and <code>code</code>). The enum value has been reserved since
+    <code>0001_initial_schema.sql</code>. It's still only a suggestion. <b>Dispatching</b> a
+    knowledge item from the Inbox commits a <code>notes-only</code> envelope (<code>origin:
+    mine</code>) to <code>inbox/</code> and takes the item out of Alfred. From then on the wiki is
+    the record, consistent with ALF-7 D2: Alfred mirrors, it is never the store of record.</p>
+  <p class="why"><b>Why not auto-send:</b> it would break <a href="#bar">bar</a>. The click is the
+    decision to keep something.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="ingest">6. Decisions — ingest sessions</h2>
+
+<div class="dec" id="skill">
+  <h3><span class="n">skill</span>One committed ingest skill guides every ingest <span class="tag new">new</span></h3>
+  <p>The wiki repo carries an ingest skill (<code>.claude/skills/ingest/SKILL.md</code>, referenced
+    from its <code>CLAUDE.md</code>). It is the step-by-step ingest procedure:</p>
+  <ol>
+    <li>Pull.</li>
+    <li>Drain <code>inbox/</code> and complete any <code>pointer</code>s.</li>
+    <li>Merge folders into existing <code>raw/</code> folders by identity.</li>
+    <li>Verify picks.</li>
+    <li>Write and update pages.</li>
+    <li>Update <code>index.md</code> and <code>log.md</code>.</li>
+    <li>Lint.</li>
+    <li>Commit, one commit per source.</li>
+    <li>Push and open the PR, whose description lists the pages touched, flagged picks, failed fetches, and questions for Alex.</li>
+  </ol>
+  <p>The Routine's saved prompt, a <code>claude -p</code> invocation, and an interactive session all
+    just say "follow the ingest skill".</p>
+  <p class="why"><b>Why:</b> the procedure is the part that will keep getting tuned, and it needs
+    one home. With the procedure in the repo, changing runners never changes behavior, and
+    improving ingest is an ordinary reviewed commit.</p>
+</div>
+
+<div class="dec" id="autonomy">
+  <h3><span class="n">autonomy</span>Automatic sessions draft a PR; Alex's merge is the review <span class="tag spike">changes spike</span></h3>
+  <p>An automatically started session works on a <code>claude/ingest-&lt;date&gt;</code> branch and
+    opens a PR in the wiki repo. It never pushes to <code>main</code>. An <b>interactive</b> ingest,
+    with Alex in the session, may commit straight to <code>main</code>, because he is reviewing as it
+    happens (Karpathy's "stay involved" mode).</p>
+  <p class="why"><b>Why:</b> this keeps the reason behind the spike's "no autonomous ingest before a
+    month of reviewed ingests" (every change is reviewed) without the delay. The review moves from
+    "Alex starts the session" to "Alex merges the PR", which he can do from the GitHub app.
+    <code>claude/</code> branches are also the ones a Routine can always push to.</p>
+</div>
+
+<div class="dec" id="kickoff">
+  <h3><span class="n">kickoff</span>An Action in the wiki repo fires a Routine; each run drains the whole inbox, and only one ingest is in flight at a time</h3>
+  <ul>
+    <li><b>Trigger:</b> a GitHub Action in the wiki repo runs on pushes to <code>main</code> that
+      touch <code>inbox/**</code>. It POSTs to the Routine's <code>/fire</code> endpoint; the
+      Routine's token lives only in the wiki repo's secrets. Any writer triggers it: Alfred, a
+      folder dropped from the Mac, or an interactive session. Alfred never needs to know Routines
+      exist.</li>
+    <li><b>One run in flight at a time:</b> the Action does nothing while an ingest PR is open.
+      Merging that PR is itself a push to <code>main</code>, so if items arrived during review, the
+      merge starts the next run.</li>
+    <li><b>Drain everything:</b> each run processes all of <code>inbox/</code>, not only the item that
+      triggered it. The result is at most about one run per merged PR, and a burst of sends becomes
+      one PR.</li>
+    <li><b>Fallback runner:</b> if the Routine's daily cap ever bites, the Action's one step switches
+      to <code>claude -p</code> (<code>claude-code-action</code> with the subscription OAuth token).
+      Nothing on the wiki side changes (<a href="#skill">skill</a>).</li>
+  </ul>
+  <p class="why"><b>Why a Routine:</b> it runs in the cloud whether or not the Mac is awake, it
+    bills to the subscription like any interactive session (not per token), and it leaves a real
+    claude.ai/code session Alex can open and continue from his phone. Routine GitHub triggers only
+    fire on PR and release events, not pushes, which is why the Action sits in between.<br/>
+    <b>Why not a local model:</b> an ingest revises 10–15 interlinked pages without contradicting
+    earlier ones. That is exactly where small models are weakest, and a wiki quietly degraded by its
+    model is worse than none. The cheap steps (moving files, checking links) are scripts that need no
+    model. Batching, which the drain rule provides, is the cost lever that actually works.<br/>
+    <b>Why the caps don't threaten correctness:</b> Routines have a daily run cap per account (the
+    number isn't published) and preview-era rate limits. A rejected fire leaves the folders in
+    <code>inbox/</code>, and the next push or merge retries.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="rest">7. Decisions — privacy, format, reading</h2>
+
+<div class="dec" id="store">
+  <h3><span class="n">store</span>A private GitHub repo of plain markdown, separate from the coach folder</h3>
+  <p>As the spike decided (§2.2–2.4): a new private repo, cloned on the Mac as a sibling of the
+    Productivity Coach folder, with links running coach → wiki only. The layout is
+    <code>CLAUDE.md</code>, <code>index.md</code>, <code>log.md</code> (merge=union),
+    <code>inbox/</code>, <code>raw/</code>, <code>wiki/{concepts,entities,sources,questions}/</code>,
+    <code>scripts/</code>, <code>.claude/skills/ingest/</code>, and the source-types registry. The
+    repo's name is <a href="#open">open</a>.</p>
+</div>
+
+<div class="dec" id="privacy">
+  <h3><span class="n">privacy</span>Record the inputs now; the sensitivity and visibility scripts ship with export <span class="tag spike">changes spike</span></h3>
+  <p>From the first ingest, the schema requires, and lint enforces, <code>source_type</code> and
+    <code>origin</code> on every raw file and a non-empty <code>sources:</code> list on every wiki
+    page. The sensitivity mapper and the visibility computer ship together with the (still
+    deferred) public export step. <b>The model never writes <code>sensitivity</code> or
+    <code>visibility</code></b>; until those scripts exist, the fields simply don't exist.</p>
+  <p class="why"><b>Why:</b> both scripts are deterministic functions of data we record anyway, so
+    running them the day export arrives gives the same result as running them now. The spike's core
+    principle survives intact: the model that saw the sources never decides what is safe to
+    publish.</p>
+</div>
+
+<div class="dec lock" id="format">
+  <h3><span class="n">format</span>Relative markdown links, YAML frontmatter, no Obsidian-only syntax <span class="tag lock">costly to reverse</span></h3>
+  <p>As the spike decided (§2.5). Three consumers read the same files unconverted: Obsidian, the
+    Reading room's react-markdown, and a future static site generator. Link syntax is written into
+    every page body, so it can't be migrated cheaply.</p>
+</div>
+
+<div class="dec" id="reading">
+  <h3><span class="n">reading</span>The reading room is read-only and built last</h3>
+  <p>A thin Knowledge module in Alfred, using the spike's shape (§3.7): a snapshot of
+    <code>main</code> taken on push (the <code>fetchSpec</code> pattern), rendered with
+    react-markdown with relative links resolved inside Alfred, plus search and backlinks computed
+    from the snapshot. There's no write path through Alfred and no graph view. Until it exists,
+    Alex reads in Obsidian or the GitHub app.</p>
+  <p class="why"><b>Why last:</b> ingestion is this epic's center of gravity, and reading already
+    works without it. It is still in scope, but it's the first slice to move to a follow-up epic if
+    the others run long.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="nongoals">8. Constraints &amp; non-goals</h2>
+<ul>
+  <li><b>No LLM writes through Alfred.</b> Alfred only ever writes <code>inbox/</code> folders; pages are written in git by a session.</li>
+  <li><b>No automatic merges.</b> Automatic sessions stop at an open PR.</li>
+  <li><b>No automatic sending.</b> Every source gets there through Alex's explicit act (<a href="#bar">bar</a>).</li>
+  <li><b>No wiki storage in Supabase</b>, and no Supabase queue.</li>
+  <li><b>No public export, static site, or garden</b> in this epic. That stays deferred with the spike's triggers, and the privacy scripts ship with it.</li>
+  <li><b>No graph view</b> (the spike's reasons: an unseeded layout can't pass the Storybook snapshot gate, and there aren't enough pages yet).</li>
+  <li><b>No local model</b> for synthesis (<a href="#kickoff">kickoff</a>).</li>
+  <li><b>Live data isn't a source.</b> The wiki compiles documents. A spreadsheet, a calendar, or Alfred's own history gets in only as a dated snapshot document that a producer writes.</li>
+  <li><b>No changes to Alfred's retention.</b> The Reader's 90-day and comms' 60-day sweeps stay as they are. The wiki's copy of anything is deliberate and separate.</li>
+  <li><b>No tasks or habits in the wiki.</b> Alfred owns anything with a date. Coach files are never ingested.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="stories">9. How the work splits</h2>
+<p>This is a sketch, not a set of specs. Each slice gets its own refinement session. The order is
+  settled.</p>
+<div class="scroll">
+<table>
+  <tr><th>Slice</th><th>What it covers</th><th>Where the code lives</th></tr>
+  <tr>
+    <td><b>Wiki repo</b></td>
+    <td>
+      <ul>
+        <li>The private repo and skeleton</li>
+        <li><code>CLAUDE.md</code> (layout, frontmatter, link rules, router, house style)</li>
+        <li>The source-types registry</li>
+        <li>The <b>ingest skill</b></li>
+        <li>Lint (frontmatter per registry, links resolve, index coverage, orphans)</li>
+        <li>The Mac clone and the coach pointer row</li>
+        <li>A hand-run, interactive seed ingest from Obsidian book notes and Instapaper highlights, proving the path inbox → raw → pages → index → log → lint end to end</li>
+      </ul>
+    </td>
+    <td>The <b>new wiki repo</b>; no Alfred code</td>
+  </tr>
+  <tr>
+    <td><b>Alfred → wiki handoff</b></td>
+    <td>
+      <ul>
+        <li>The scoped write token and the shared GitHub writer that builds an envelope</li>
+        <li>The Reader "Novel ideas" picker (single bullet or all), including the swept-text <code>pointer</code> case</li>
+        <li>The classifier's <code>knowledge</code> suggestion and knowledge-item dispatch</li>
+      </ul>
+      This may split into two stories, Reader picks and captured ideas, around the shared writer.
+    </td>
+    <td>Alfred (<code>frontend/</code>, <code>workers/</code> classifier)</td>
+  </tr>
+  <tr>
+    <td><b>Auto-ingest</b></td>
+    <td>
+      <ul>
+        <li>The Action (inbox trigger, open-PR guard)</li>
+        <li>The Routine and its environment (network access for <code>pointer</code> fetches)</li>
+        <li>The ingest skill's PR mode</li>
+        <li>The <code>claude -p</code> fallback, documented and ready to swap in</li>
+      </ul>
+    </td>
+    <td>Wiki repo, plus Routine setup on claude.ai</td>
+  </tr>
+  <tr>
+    <td><b>Reading room</b></td>
+    <td>
+      <ul>
+        <li>The Knowledge module shell</li>
+        <li>Snapshot on push, with the read token's scope extended to the wiki repo</li>
+        <li>The markdown view with relative-link resolution</li>
+        <li>Search and backlinks</li>
+      </ul>
+    </td>
+    <td>Alfred (<code>frontend/</code>, <code>workers/</code>)</td>
+  </tr>
+</table>
+</div>
+<div class="callout">
+  <b>The Wiki repo slice's spec is written for a different reader.</b> It will be refined in Alfred,
+  like any story, but <b>built by a session in the new, empty wiki repo</b>, where it will be
+  pasted in by hand. That session won't have Alfred's <code>CLAUDE.md</code>, skills, hooks,
+  <code>check</code> gates, demo docs, or this epic spec. So that spec must be <b>self-contained</b>:
+  it inlines every decision it depends on from this document (envelope, immutability, fidelity,
+  registry, picks, skill, format, store), assumes no Alfred conventions or tooling, and doesn't
+  carry Alfred's implementation-PR machinery (the <code>alfred</code> block, spec archiving) into
+  the wiki repo.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="open">10. Open questions</h2>
+<ul>
+  <li><b>Batching Instapaper, for the Wiki repo spec.</b> Is <code>ingest: file-only</code> the
+    right valve for a bulk Instapaper import, or is it better to group several highlights into one
+    synthesis pass? Batching may not save much, since the synthesis cost scales with pages touched
+    rather than sessions started.</li>
+  <li><b>Email other than Reader posts, for a later handoff spec.</b> Reader posts are covered by
+    <code>reader_posts.text</code> (90 days). Other mail sits in <code>comm_messages.body</code>
+    for 60 days, so Alfred already stores the text. Still open: whether that body's extraction
+    quality is good enough to serve as <code>source.md</code>, and what the send affordance
+    looks like.</li>
+  <li><b>The repo's name.</b> It will show up in URLs if a public export ever happens.</li>
+  <li><b>Media that isn't a document.</b> The design assumes every source reduces to markdown with a
+    stable identity. Audio kept as audio, or a dataset, would break that. Revisit when one comes
+    up; R2 for large binaries stays deferred under the spike's trigger.</li>
+  <li><b>The Routine's actual daily cap</b> (shown at claude.ai/code/routines, not published).
+    Check it when the auto-ingest slice is refined.</li>
+  <li><b>Network policy for <code>pointer</code> fetches.</b> The default Trusted environment
+    blocks arbitrary hosts, so the Routine's environment needs custom or full network access.
+    Decide which in the auto-ingest story.</li>
+  <li><b>Carried over from the spike:</b> whether Rock 2's "LLM-wiki implemented in Alfred" needs
+    rewording, and whether the Motivic/Chad reference docs migrate out of the coach folder. Both are
+    Alex's decisions and don't block any slice.</li>
+</ul>
+
+<p class="small" style="margin-top:3rem">
+  Sources: <code>docs/spikes/llm-wiki-spike.html</code>; <code>docs/knowledge-base/llm-wiki.md</code>;
+  <code>docs/specs/epics/ALF-232.html</code> (Reader), <code>ALF-158.html</code> (classifier),
+  <code>ALF-7.html</code> D2; <code>workers/src/reader/schema.ts</code> (<code>novel_ideas</code>),
+  <code>workers/src/reader/retention.ts</code> (90 days), <code>workers/src/comms/retention.ts</code>
+  (60 days), <code>workers/src/prompt.ts</code> (<code>ITEM_TYPES</code>),
+  <code>workers/src/github.ts</code> (<code>fetchSpec</code>),
+  <code>frontend/lib/code/links.ts</code>; Claude Code Routines docs
+  (<a href="https://code.claude.com/docs/en/routines">code.claude.com/docs/en/routines</a>).
+</p>
+
+</div>
+</body>
+</html>
