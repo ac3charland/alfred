@@ -124,7 +124,8 @@
   kind of file, like a new kind of source, only needs a registry row. The folder's contract doesn't
   care where the source came from. Alfred feeds the wiki by
   <b>committing those folders into the wiki repo's <code>inbox/</code></b>: bullets picked in the
-  Reader's "Novel ideas" section, and captured ideas the classifier marks as knowledge. A push that
+  Reader's "Novel ideas" section, and captured ideas the classifier marks as knowledge. Book notes
+  come from a script on the Mac that converts Alex's Obsidian notes into the same folders. A push that
   touches <code>inbox/</code> starts a <b>Claude Code Routine</b>. The Routine drains the whole inbox
   following a committed ingest skill and opens a PR, and <b>Alex merging the PR is the review</b>.
   Alfred's read-only reading room comes last.
@@ -167,6 +168,7 @@
 <table>
   <tr><th>Topic</th><th>Spike</th><th>This epic</th></tr>
   <tr><td>Raw source shape</td><td>One file per capture in <code>raw/YYYY/</code></td><td>One <b>folder</b> per source, holding separate files for the source text, Alex's notes, and his picks, and open to new file kinds (<a href="#envelope">envelope</a>)</td></tr>
+  <tr><td>Book notes</td><td>Seeded by hand as <code>origin: mine</code>; "his own notes, never the book text"</td><td>A deterministic <b>importer</b> splits each quote (the author's words) from Alex's commentary, re-runs incrementally on books still being read, and hands off to auto-ingest. Alex's Obsidian links are kept and drive synthesis (<a href="#books">books</a>, <a href="#crosslinks">crosslinks</a>)</td></tr>
   <tr><td>Alfred → wiki handoff</td><td>Supabase inbox plus a keyed <code>GET /api/knowledge/inbox</code> that the ingest skill pulls</td><td>Alfred <b>commits into the wiki repo's <code>inbox/</code></b>; no queue table and no pull endpoint (<a href="#handoff">handoff</a>)</td></tr>
   <tr><td>Reader integration</td><td>A "Send to wiki" verb on a post</td><td>Send <b>individual or all "Novel ideas" bullets</b>; the post's text rides along (<a href="#reader">reader</a>)</td></tr>
   <tr><td>Automatic ingest</td><td>Deferred until "a month of reviewed ingests"</td><td>In this epic, but <b>it only drafts a PR</b>; Alex's merge is the review (<a href="#autonomy">autonomy</a>, <a href="#kickoff">kickoff</a>)</td></tr>
@@ -222,8 +224,8 @@
   <path class="ln" d="M242 235 H280 V90 H318" marker-end="url(#ar)"/>
 
   <rect class="box you" x="318" y="150" width="190" height="58" rx="7"/>
-  <text class="t" x="330" y="173">Alex (Mac / session)</text>
-  <text class="m" x="330" y="192">drops folders, or ingests live</text>
+  <text class="t" x="330" y="173">Alex's Mac</text>
+  <text class="m" x="330" y="192">book importer · live ingest</text>
   <path class="ln dash" d="M413 150 V126" marker-end="url(#ar)"/>
 
   <!-- action -->
@@ -305,7 +307,8 @@
 <pre><code>inbox/2026-09-24-why-habits-stick/            ← waiting
 raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     source.md               the author's words as markdown; body frozen   (optional)
-    notes-2026-09-24.md     Alex's own words, one file per sitting        (optional)
+    excerpts-2026-09-24.md  quotes Alex chose (books); frozen, one per send (optional)
+    notes-2026-09-24.md     Alex's own words, one file per send           (optional)
     picks-2026-09-24.md     summary bullets Alex picked, model-worded     (optional)
     assets/                 original binary the text was extracted from   (optional)
     …                       any file kind the registry adds later</code></pre>
@@ -313,14 +316,15 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     source use the same contract with different files:</p>
   <ul>
     <li><b>Reader post:</b> <code>source.md</code> (the post text) plus <code>picks-…</code> (the bullets Alex sent).</li>
-    <li><b>Book:</b> <code>notes-…</code> files only, which keep accumulating as he reads. The book's text is never stored.</li>
+    <li><b>Book:</b> <code>excerpts-…</code> (the quotes Alex chose, with their chapter) plus <code>notes-…</code> (his commentary on them), both accumulating as he reads. Never the book's full text (<a href="#books">books</a>).</li>
     <li><b>Captured idea:</b> a single <code>notes-…</code> file.</li>
     <li><b>PDF:</b> <code>source.md</code> holds the extracted text; the PDF itself goes in <code>assets/</code>.</li>
   </ul>
   <p>Every file carries YAML frontmatter with a small fixed core: <code>source_type</code>,
     <code>origin</code>, <code>title</code>, <code>author</code>, <code>source_url</code>,
-    <code>published</code>, <code>captured</code>, <code>via</code>, <code>external_id</code>. A
-    <code>source.md</code> also carries <code>fidelity</code> (see <a href="#fidelity">fidelity</a>).
+    <code>published</code>, <code>captured</code>, <code>via</code>, <code>external_id</code>. Every file
+    holding the author's words (<code>source.md</code>, <code>excerpts-…</code>) also carries
+    <code>fidelity</code> (see <a href="#fidelity">fidelity</a>).
     <code>origin</code> is one of:</p>
   <ul>
     <li><code>third-party</code>: someone else's words</li>
@@ -355,9 +359,9 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   <table>
     <tr><th><code>fidelity</code></th><th>Meaning</th><th>Typical case</th></tr>
     <tr><td><code>full-text</code></td><td>The whole source, converted to markdown</td><td>Reader post, web article, extracted PDF</td></tr>
-    <tr><td><code>excerpt</code></td><td>Verbatim highlights only</td><td>Instapaper / Kindle highlights</td></tr>
+    <tr><td><code>excerpt</code></td><td>Verbatim highlights only</td><td>Book quotes; Instapaper / Kindle highlights</td></tr>
     <tr><td><code>pointer</code></td><td>Metadata and a URL only; the ingest session should try to fetch it</td><td>A Reader post whose text has already been swept; a bare link</td></tr>
-    <tr><td><code>notes-only</code></td><td>No <code>source.md</code> by rule</td><td>Books, captured ideas</td></tr>
+    <tr><td><code>notes-only</code></td><td>No author's text at all; only Alex's words</td><td>Captured ideas</td></tr>
   </table>
   </div>
   <p>Given a <code>pointer</code>, the ingest session tries to fetch the text and upgrades the
@@ -372,9 +376,9 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   <h3><span class="n">registry</span>New source types and new file kinds are registry rows; there's no denylist <span class="tag spike">changes spike</span></h3>
   <p>A registry file in the wiki repo has two lists. <b>Source types</b>: each
     <code>source_type</code> with its highest allowed fidelity (books cap at
-    <code>notes-only</code>), its default <code>origin</code>, and, once export exists, its default
+    <code>excerpt</code>), its default <code>origin</code>, and, once export exists, its default
     sensitivity. <b>File kinds</b>: each file name pattern a folder may hold (<code>source.md</code>,
-    <code>notes-*.md</code>, <code>picks-*.md</code>, <code>assets/</code>, …) with its
+    <code>excerpts-*.md</code>, <code>notes-*.md</code>, <code>picks-*.md</code>, <code>assets/</code>, …) with its
     <code>origin</code> and whether its body is frozen. Lint checks every folder against both.
     <b>Adding a source type means writing a producer and adding a row; adding a file kind means
     adding a row.</b> The ingest skill, lint, and reading room don't change.</p>
@@ -384,7 +388,7 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     <tr><th>Producer lives in</th><th>Suits</th><th>In this epic</th><th>Later, for example</th></tr>
     <tr><td><b>Alfred</b> (it already holds the content)</td><td>Things Alfred captures</td><td>Reader picks; captured ideas</td><td>Non-Reader newsletters</td></tr>
     <tr><td><b>The ingest session</b> (completes a <code>pointer</code>)</td><td>Anything reachable by URL</td><td>Swept Reader posts</td><td>Articles, arXiv, transcripts</td></tr>
-    <tr><td><b>Alex / the Mac</b> (drops a folder)</td><td>Exports and one-offs</td><td>The seed: Obsidian book notes and Instapaper highlights</td><td>Kindle / Readwise exports, PDFs</td></tr>
+    <tr><td><b>Alex's Mac</b> (a script, or a dropped folder)</td><td>Local files and exports</td><td>The Obsidian book importer (<a href="#books">books</a>); Instapaper highlights</td><td>Kindle / Readwise exports, PDFs</td></tr>
   </table>
   </div>
   <p class="why"><b>Why no denylist:</b> Alex is the only builder and the only sender, and every
@@ -421,6 +425,72 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     and a paraphrase of a paid post is still derived from that post. Labelling the picks as Alex's
     own words would launder both problems. The source text sitting next to the picks is what makes
     the check cheap.</p>
+</div>
+
+<div class="dec" id="books">
+  <h3><span class="n">books</span>Book notes come in through a deterministic importer on the Mac, then auto-ingest <span class="tag spike">changes spike</span></h3>
+  <p>Alex's book notes live in his Obsidian vault in a regular format (the <i>Brain Rules</i>
+    sample):</p>
+  <ul>
+    <li>A <b>book note</b> tagged <code>#book</code>, with <code>Author</code> /
+      <code>Published</code> / <code>Read</code> lines and a link to one note per quote.</li>
+    <li>A <b>quote note</b> per quote, named after the quote. Its body holds some of: a longer
+      verbatim passage, a chapter locator (<code>Ch. 3 - Stress</code>), Alex's commentary, and
+      links to other notes.</li>
+  </ul>
+  <p>A <b>book importer</b> script in the wiki repo's <code>scripts/</code>, run on the Mac against
+    the vault, turns one <code>#book</code> note into a folder and pushes it to <code>inbox/</code>.
+    Auto-ingest takes it from there; Alex doesn't need to be in a session.</p>
+  <ul>
+    <li><b>It splits provenance per quote.</b> The quote and any longer passage go in
+      <code>excerpts-&lt;date&gt;.md</code> (<code>origin: third-party</code>, frozen) under a stable
+      id taken from the quote note's name, with the chapter locator. The commentary goes in
+      <code>notes-&lt;date&gt;.md</code> (<code>origin: mine</code>) under the same id. Anything
+      it can't classify, it flags rather than guesses.</li>
+    <li><b>It is incremental.</b> It records which quote notes, and which versions of them, it has
+      filed. Re-running it on a book still being read files only the new or changed quote notes, as
+      new dated files in the same folder. That handles "a book note is a living document" without a
+      model deciding what's new.</li>
+    <li><b>No model runs in the importer.</b> Conversion is mechanical; synthesis is ingest's
+      job.</li>
+    <li><b>The seed is the same importer run over every <code>#book</code> note.</b> How it walks
+      the vault and the exact splitting rules belong to the Wiki repo spec.</li>
+  </ul>
+  <p class="why"><b>Why a script, not a session:</b> the format is regular enough to convert
+    mechanically, and a script can tell what's new by quote-note identity, which a model can only
+    approximate.<br/>
+    <b>Why books can hold quotes:</b> the spike's "his own notes, never the book text" assumed the
+    notes were only Alex's words. The sample shows they are built from verbatim quotes. So books cap
+    at <code>excerpt</code> (the quotes Alex chose, never the full text), and the quotes are
+    labelled third-party so they never pass for his words.</p>
+</div>
+
+<div class="dec" id="crosslinks">
+  <h3><span class="n">crosslinks</span>Alex's own links are kept as written, resolved by script, and treated by ingest as synthesis cues <span class="tag new">new</span></h3>
+  <ul>
+    <li><b>Kept as written.</b> A link Alex wrote (<code>Same as Chesterton! [[The Everlasting
+      Man]]</code>) stays in his notes file exactly as he wrote it. The relative-links-only rule
+      (<a href="#format">format</a>) covers the wiki pages the model writes, not Alex's words in
+      <code>raw/</code>.</li>
+    <li><b>Resolved in frontmatter.</b> A script-maintained <code>links:</code> map in the notes
+      file's frontmatter records where each link points (<code>The Everlasting Man:
+      raw/…/the-everlasting-man/</code>). If the target isn't in the wiki yet, the map records the
+      link as unresolved and the importer tags it in the body with a comment marker to address
+      later. When the target arrives, a script fills in the map entry without editing the body
+      (<a href="#immutability">immutability</a>). The map is the current truth, and lint lists
+      whatever is still unresolved. The same treatment applies to a link to a note that isn't a
+      book.</li>
+    <li><b>Treated as synthesis cues.</b> Every link in Alex's notes is a connection he made
+      himself, the most valuable thing in the folder. Ingest must reflect each one: the two sources'
+      pages link to each other, and a concept page for the shared idea cites both, with Alex's
+      remark as the reason.</li>
+    <li><b>Plain-text mentions are the model's job.</b> "See Outlive" isn't a link. Ingest treats it
+      like any mention in the text, and the importer doesn't try to resolve it.</li>
+  </ul>
+  <p class="why"><b>Why:</b> Alex wants his backlinks preserved and reflected in what the wiki
+    writes. Rewriting them to relative paths at import time would break for any book imported
+    before its target, because the body can't be edited later. Resolving them in script-owned
+    frontmatter means the order of imports doesn't matter.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -516,8 +586,8 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   <ul>
     <li><b>Trigger:</b> a GitHub Action in the wiki repo runs on pushes to <code>main</code> that
       touch <code>inbox/**</code>. It POSTs to the Routine's <code>/fire</code> endpoint; the
-      Routine's token lives only in the wiki repo's secrets. Any writer triggers it: Alfred, a
-      folder dropped from the Mac, or an interactive session. Alfred never needs to know Routines
+      Routine's token lives only in the wiki repo's secrets. Any writer triggers it: Alfred, the
+      book importer, a folder dropped from the Mac, or an interactive session. Alfred never needs to know Routines
       exist.</li>
     <li><b>One run in flight at a time:</b> the Action does nothing while an ingest PR is open.
       Merging that PR is itself a push to <code>main</code>, so if items arrived during review, the
@@ -572,7 +642,9 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   <h3><span class="n">format</span>Relative markdown links, YAML frontmatter, no Obsidian-only syntax <span class="tag lock">costly to reverse</span></h3>
   <p>As the spike decided (§2.5). Three consumers read the same files unconverted: Obsidian, the
     Reading room's react-markdown, and a future static site generator. Link syntax is written into
-    every page body, so it can't be migrated cheaply.</p>
+    every page body, so it can't be migrated cheaply. The rule covers the pages the model writes in
+    <code>wiki/</code>. Alex's own words in <code>raw/</code> keep his links as written
+    (<a href="#crosslinks">crosslinks</a>).</p>
 </div>
 
 <div class="dec" id="reading">
@@ -619,7 +691,8 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
         <li>The <b>ingest skill</b></li>
         <li>Lint (frontmatter per registry, links resolve, index coverage, orphans)</li>
         <li>The Mac clone and the coach pointer row</li>
-        <li>A hand-run, interactive seed ingest from Obsidian book notes and Instapaper highlights, proving the path inbox → raw → pages → index → log → lint end to end</li>
+        <li>The <b>Obsidian book importer</b> and the link-resolution script</li>
+        <li>The seed: the importer run over the vault's <code>#book</code> notes, plus Instapaper highlights. Auto-ingest arrives in a later slice, so the seed ingests in hand-run sessions, in batches, proving inbox → raw → pages → index → log → lint end to end</li>
       </ul>
     </td>
     <td>The <b>new wiki repo</b>; no Alfred code</td>
@@ -668,7 +741,9 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   pasted in by hand. That session won't have Alfred's <code>CLAUDE.md</code>, skills, hooks,
   <code>check</code> gates, demo docs, or this epic spec. So that spec must be <b>self-contained</b>:
   it inlines every decision it depends on from this document (envelope, immutability, fidelity,
-  registry, picks, skill, format, store), assumes no Alfred conventions or tooling, and doesn't
+  registry, picks, books, crosslinks, skill, format, store). It should also include the
+  <i>Brain Rules</i> sample (Alex supplies it; it isn't committed here), since that is the
+  importer's reference input, assumes no Alfred conventions or tooling, and doesn't
   carry Alfred's implementation-PR machinery (the <code>alfred</code> block, spec archiving) into
   the wiki repo.
 </div>
@@ -685,6 +760,9 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     for 60 days, so Alfred already stores the text. Still open: whether that body's extraction
     quality is good enough to serve as <code>source.md</code>, and what the send affordance
     looks like.</li>
+  <li><b>Variation in older book notes, for the Wiki repo spec.</b> The importer is designed from
+    one sample. Running the seed over the whole vault will show how far older notes drift from that
+    format; the importer flags what it can't classify rather than guessing.</li>
   <li><b>The repo's name.</b> It will show up in URLs if a public export ever happens.</li>
   <li><b>Media that isn't a document.</b> The design assumes every source reduces to markdown with a
     stable identity. Audio kept as audio, or a dataset, would break that. Revisit when one comes
@@ -706,7 +784,8 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   <code>workers/src/reader/retention.ts</code> (90 days), <code>workers/src/comms/retention.ts</code>
   (60 days), <code>workers/src/prompt.ts</code> (<code>ITEM_TYPES</code>),
   <code>workers/src/github.ts</code> (<code>fetchSpec</code>),
-  <code>frontend/lib/code/links.ts</code>; Claude Code Routines docs
+  <code>frontend/lib/code/links.ts</code>; Alex's <i>Brain Rules</i> Obsidian notes (a sample book
+  directory shared in this session, not committed); Claude Code Routines docs
   (<a href="https://code.claude.com/docs/en/routines">code.claude.com/docs/en/routines</a>).
 </p>
 
