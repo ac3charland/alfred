@@ -1,7 +1,7 @@
 # Lint-suggestion inbox
 
 When a lint rule — or a *combination* of rules — fights you in a context where it
-genuinely doesn't make sense, **don't silently work around it.** The back-pressure
+genuinely does not make sense, **don't silently work around it.** The back-pressure
 hard rules in [`CLAUDE.md`](../../CLAUDE.md) still hold: no `eslint-disable`, no
 `@ts-expect-error`, no weakening tooling config as a reaction to a red check, no
 `--no-verify`.
