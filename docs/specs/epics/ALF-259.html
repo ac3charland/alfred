@@ -126,7 +126,7 @@
   <b>committing those folders into the wiki repo's <code>inbox/</code></b>: bullets picked in the
   Reader's "Novel ideas" section, and captured ideas the classifier marks as knowledge. Book notes
   come from a script on the Mac that converts Alex's Obsidian notes into the same folders. A push that
-  touches <code>inbox/</code> starts a <b>Claude Code Routine</b>. The Routine drains the whole inbox
+  touches <code>inbox/</code> starts a <b>Claude Code Routine</b>. The Routine takes everything in the inbox at that moment as one batch
   following a committed ingest skill and opens a PR, and <b>Alex merging the PR is the review</b>.
   Alfred's read-only reading room comes last.
 </div>
@@ -187,7 +187,7 @@
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <h2 id="arch">3. Architecture</h2>
 <div class="fig">
-<svg viewBox="0 0 960 470" role="img" aria-label="Data flow. Alfred: Reader bullet picks and dispatched knowledge items go through a GitHub write into the wiki repo's inbox folder. Alex can also drop folders into inbox from the Mac or through an interactive session. A push to main that touches inbox starts a GitHub Action, which does nothing while an ingest PR is open and otherwise fires a Claude Code Routine. The Routine session follows the committed ingest skill: it moves inbox folders into raw, writes wiki pages, index and log, and opens a PR on a claude/ingest branch. Alex merges the PR into main. Merging is a push, which can start the next run. Later, the reading room in Alfred snapshots main.">
+<svg viewBox="0 0 960 470" role="img" aria-label="Data flow. Alfred: Reader bullet picks and dispatched knowledge items go through a GitHub write into the wiki repo's inbox folder. Alex can also drop folders into inbox from the Mac or through an interactive session. A push to main that touches inbox starts a GitHub Action. If no claude/ingest lock branch exists, the Action creates one at main's current commit and fires a Claude Code Routine; otherwise it does nothing. The Routine session follows the committed ingest skill: it takes the inbox folders as of the lock commit, moves them into raw, writes wiki pages, index and log, and opens a PR from the lock branch. Alex merges the PR into main, which releases the lock and, being a push, starts the next batch if items are waiting. Later, the reading room in Alfred snapshots main.">
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path class="ah" d="M 0 0 L 10 5 L 0 10 z"/>
@@ -232,7 +232,7 @@
   <rect class="box wiki" x="560" y="54" width="170" height="72" rx="7"/>
   <text class="t" x="572" y="77">GitHub Action</text>
   <text class="m" x="572" y="96">push touching inbox/**</text>
-  <text class="m" x="572" y="112">skip if ingest PR open</text>
+  <text class="m" x="572" y="112">take lock branch or skip</text>
   <path class="ln" d="M508 90 H560" marker-end="url(#ar)"/>
 
   <!-- routine -->
@@ -245,10 +245,10 @@
   <!-- ingest -->
   <rect class="box wiki" x="620" y="180" width="316" height="110" rx="7"/>
   <text class="t" x="632" y="203">Ingest session (follows the ingest skill)</text>
-  <text class="m" x="632" y="224">drain all of inbox/ → git mv to raw/YYYY/…</text>
+  <text class="m" x="632" y="224">batch = inbox/ at lock → git mv to raw/…</text>
   <text class="m" x="632" y="242">verify picks · write/update wiki pages</text>
   <text class="m" x="632" y="260">index.md + log.md · lint</text>
-  <text class="m" x="632" y="278">push claude/ingest-… · open PR</text>
+  <text class="m" x="632" y="278">push lock branch · open PR</text>
   <path class="ln" d="M853 126 V180" marker-end="url(#ar)"/>
 
   <!-- PR -->
@@ -266,8 +266,8 @@
   <path class="ln" d="M620 359 H538" marker-end="url(#ar)"/>
   <!-- merge re-triggers -->
   <path class="ln dash" d="M538 410 H585 V126" marker-end="url(#ar)"/>
-  <text class="m" x="596" y="418">a merge is a push → the Action runs again</text>
-  <text class="m" x="596" y="434">if inbox/ isn't empty</text>
+  <text class="m" x="596" y="418">merge releases the lock and is a push →</text>
+  <text class="m" x="596" y="434">the next batch starts if inbox/ isn't empty</text>
 
   <!-- reading room -->
   <path class="ln dash" d="M318 415 H242" marker-end="url(#ar)"/>
@@ -553,7 +553,7 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     from its <code>CLAUDE.md</code>). It is the step-by-step ingest procedure:</p>
   <ol>
     <li>Pull.</li>
-    <li>Drain <code>inbox/</code> and complete any <code>pointer</code>s.</li>
+    <li>Take the batch: the <code>inbox/</code> folders at the lock branch's commit. Complete any <code>pointer</code>s.</li>
     <li>Merge folders into existing <code>raw/</code> folders by identity.</li>
     <li>Verify picks.</li>
     <li>Write and update pages.</li>
@@ -571,10 +571,12 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
 
 <div class="dec" id="autonomy">
   <h3><span class="n">autonomy</span>Automatic sessions draft a PR; Alex's merge is the review <span class="tag spike">changes spike</span></h3>
-  <p>An automatically started session works on a <code>claude/ingest-&lt;date&gt;</code> branch and
-    opens a PR in the wiki repo. It never pushes to <code>main</code>. An <b>interactive</b> ingest,
+  <p>An automatically started session works on the <code>claude/ingest-&lt;timestamp&gt;</code> lock
+    branch the Action created for it (<a href="#kickoff">kickoff</a>) and opens a PR in the wiki repo. It never pushes to <code>main</code>. An <b>interactive</b> ingest,
     with Alex in the session, may commit straight to <code>main</code>, because he is reviewing as it
-    happens (Karpathy's "stay involved" mode).</p>
+    happens (Karpathy's "stay involved" mode). The interactive session checks for a lock branch
+    first. If a batch is in flight, it leaves that batch's <code>inbox/</code> items alone and warns
+    Alex that its page edits may conflict with the batch's PR.</p>
   <p class="why"><b>Why:</b> this keeps the reason behind the spike's "no autonomous ingest before a
     month of reviewed ingests" (every change is reviewed) without the delay. The review moves from
     "Alex starts the session" to "Alex merges the PR", which he can do from the GitHub app.
@@ -582,19 +584,33 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
 </div>
 
 <div class="dec" id="kickoff">
-  <h3><span class="n">kickoff</span>An Action in the wiki repo fires a Routine; each run drains the whole inbox, and only one ingest is in flight at a time</h3>
+  <h3><span class="n">kickoff</span>An Action in the wiki repo fires a Routine; a lock branch makes each run's batch exact, and only one batch is in flight at a time</h3>
   <ul>
     <li><b>Trigger:</b> a GitHub Action in the wiki repo runs on pushes to <code>main</code> that
       touch <code>inbox/**</code>. It POSTs to the Routine's <code>/fire</code> endpoint; the
       Routine's token lives only in the wiki repo's secrets. Any writer triggers it: Alfred, the
       book importer, a folder dropped from the Mac, or an interactive session. Alfred never needs to know Routines
       exist.</li>
-    <li><b>One run in flight at a time:</b> the Action does nothing while an ingest PR is open.
-      Merging that PR is itself a push to <code>main</code>, so if items arrived during review, the
-      merge starts the next run.</li>
-    <li><b>Drain everything:</b> each run processes all of <code>inbox/</code>, not only the item that
-      triggered it. The result is at most about one run per merged PR, and a burst of sends becomes
-      one PR.</li>
+    <li><b>The lock is a branch, taken before the Routine starts.</b> Before firing, the Action
+      creates the run's branch, <code>claude/ingest-&lt;timestamp&gt;</code>, at <code>main</code>'s
+      current commit. If any <code>claude/ingest-*</code> branch already exists, a run is in flight
+      (still working, or its PR awaits review), and the Action does nothing. Creating a branch that
+      already exists fails, so two Actions can't both take the lock. The Action also runs in a
+      single concurrency group.</li>
+    <li><b>The batch is exactly what was in <code>inbox/</code> at the lock's commit.</b> The session
+      checks out the lock branch and ingests those folders, all of them and only them. It never
+      pulls newer items from <code>main</code>. The Action passes the branch name in the fire payload.
+      One run takes every waiting item, so a burst of sends becomes one PR.</li>
+    <li><b>Items that arrive mid-run wait for the next batch.</b> They sit in <code>inbox/</code> on
+      <code>main</code>, untouched by the running session. Merging the PR moves that batch's folders
+      out of <code>inbox/</code>, deletes the branch (which releases the lock), and is itself a push to
+      <code>main</code>. The Action runs again, finds the waiting items, and starts the next batch. No
+      item is ever in two runs.</li>
+    <li><b>The lock can't wedge.</b> If <code>/fire</code> is rejected (a cap, an outage), the Action
+      deletes the branch it just made. A lock branch that has no PR after a few hours is treated as a
+      dead run: the next Action deletes it and proceeds. Closing an ingest PR without merging releases
+      the lock but doesn't re-fire. That batch's items stay in <code>inbox/</code> for the next run,
+      and Alex removes any he doesn't want redone.</li>
     <li><b>Fallback runner:</b> if the Routine's daily cap ever bites, the Action's one step switches
       to <code>claude -p</code> (<code>claude-code-action</code> with the subscription OAuth token).
       Nothing on the wiki side changes (<a href="#skill">skill</a>).</li>
@@ -606,10 +622,18 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     <b>Why not a local model:</b> an ingest revises 10–15 interlinked pages without contradicting
     earlier ones. That is exactly where small models are weakest, and a wiki quietly degraded by its
     model is worse than none. The cheap steps (moving files, checking links) are scripts that need no
-    model. Batching, which the drain rule provides, is the cost lever that actually works.<br/>
+    model. Batching, which the one-batch-in-flight rule provides, is the cost lever that actually works.<br/>
     <b>Why the caps don't threaten correctness:</b> Routines have a daily run cap per account (the
     number isn't published) and preview-era rate limits. A rejected fire leaves the folders in
-    <code>inbox/</code>, and the next push or merge retries.</p>
+    <code>inbox/</code>, and the next push or merge retries.<br/>
+    <b>Why a lock taken before firing:</b> "Skip while an ingest PR is open" alone leaves a gap. A
+    session runs for many minutes before its PR exists, and an item arriving in that window would
+    fire a second session, which would re-ingest the first batch (still in <code>inbox/</code> on
+    <code>main</code>) and open a conflicting PR. Taking the lock before firing closes the gap.
+    Pinning the batch to the lock's commit means a session never sees items that arrive mid-run.<br/>
+    <b>Why queue rather than stack onto an open PR:</b> the PR Alex is reviewing never changes under
+    him, and each merge is one coherent batch. The cost is latency: an item sent while a PR awaits
+    review waits for that merge plus one more run.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
