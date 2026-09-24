@@ -105,7 +105,7 @@
   <span class="pill">Epic spec</span>
   The shared context for the wiki epic: what the wiki is, how primary sources are shaped and how
   new kinds get added, how something moves from Alfred into the wiki, and what starts an ingest
-  session. Story sessions read this before refining their own slice.
+  session. The Day 1 and Day 2 refinement sessions read this before writing their own specs.
 </p>
 <p class="sub">
   <b>First refinement, 2026-09-24.</b> Built on the spike
@@ -128,7 +128,7 @@
   come from a script on the Mac that converts Alex's Obsidian notes into the same folders. A push that
   touches <code>inbox/</code> starts a <b>Claude Code Routine</b>. The Routine takes everything in the inbox at that moment as one batch
   following a committed ingest skill and opens a PR, and <b>Alex merging the PR is the review</b>.
-  Alfred's read-only reading room comes last.
+  Day 2 also gives Alfred a read-only reading room and puts wiki pages in its global search.
 </div>
 
 <h3>Contents</h3>
@@ -141,7 +141,7 @@
   <li><a href="#ingest">Decisions — ingest sessions</a></li>
   <li><a href="#rest">Decisions — privacy, format, reading</a></li>
   <li><a href="#nongoals">Constraints &amp; non-goals</a></li>
-  <li><a href="#stories">How the work splits</a></li>
+  <li><a href="#stories">The two-day split</a></li>
   <li><a href="#open">Open questions</a></li>
 </ol>
 
@@ -174,7 +174,7 @@
   <tr><td>Automatic ingest</td><td>Deferred until "a month of reviewed ingests"</td><td>In this epic, but <b>it only drafts a PR</b>; Alex's merge is the review (<a href="#autonomy">autonomy</a>, <a href="#kickoff">kickoff</a>)</td></tr>
   <tr><td>Sensitivity / visibility scripts</td><td>Built on Day 1</td><td>Their <b>inputs</b> are recorded and linted from the start; the scripts ship with public export (<a href="#privacy">privacy</a>)</td></tr>
   <tr><td>Comms as a source</td><td>Never</td><td><b>No denylist.</b> Sending is always explicit, so any source Alex sends is allowed (<a href="#registry">registry</a>)</td></tr>
-  <tr><td>Build order</td><td>Wiki repo, then the Alfred Knowledge module (reading room plus inbox)</td><td>Wiki repo → Alfred handoff → auto-ingest → reading room (<a href="#stories">§9</a>)</td></tr>
+  <tr><td>Build order</td><td>Wiki repo, then the Alfred Knowledge module (reading room plus inbox)</td><td>Day 1: the whole wiki, outside Alfred (repo, schema, importer, ingest skill, auto-ingest, seed). Day 2: every Alfred-side integration (Reader send, knowledge classification, snapshot, reading room, global search). Each day's spec carries an explicit subagent plan (<a href="#stories">§9</a>)</td></tr>
 </table>
 </div>
 <p class="small">
@@ -187,7 +187,7 @@
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <h2 id="arch">3. Architecture</h2>
 <div class="fig">
-<svg viewBox="0 0 960 470" role="img" aria-label="Data flow. Alfred: Reader bullet picks and dispatched knowledge items go through a GitHub write into the wiki repo's inbox folder. Alex can also drop folders into inbox from the Mac or through an interactive session. A push to main that touches inbox starts a GitHub Action. If no claude/ingest lock branch exists, the Action creates one at main's current commit and fires a Claude Code Routine; otherwise it does nothing. The Routine session follows the committed ingest skill: it takes the inbox folders as of the lock commit, moves them into raw, writes wiki pages, index and log, and opens a PR from the lock branch. Alex merges the PR into main, which releases the lock and, being a push, starts the next batch if items are waiting. Later, the reading room in Alfred snapshots main.">
+<svg viewBox="0 0 960 470" role="img" aria-label="Data flow. Alfred: Reader bullet picks and dispatched knowledge items go through a GitHub write into the wiki repo's inbox folder. Alex can also drop folders into inbox from the Mac or through an interactive session. A push to main that touches inbox starts a GitHub Action. If no claude/ingest lock branch exists, the Action creates one at main's current commit and fires a Claude Code Routine; otherwise it does nothing. The Routine session follows the committed ingest skill: it takes the inbox folders as of the lock commit, moves them into raw, writes wiki pages, index and log, and opens a PR from the lock branch. Alex merges the PR into main, which releases the lock and, being a push, starts the next batch if items are waiting. Alfred snapshots main for its reading room and global search.">
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path class="ah" d="M 0 0 L 10 5 L 0 10 z"/>
@@ -213,7 +213,7 @@
   <path class="ln" d="M24 153 H16" />
 
   <rect class="box alfred" x="24" y="386" width="218" height="58" rx="7"/>
-  <text class="t" x="36" y="409">Reading room (last)</text>
+  <text class="t" x="36" y="409">Reading room + search</text>
   <text class="m" x="36" y="428">read-only snapshot of main</text>
 
   <!-- inbox -->
@@ -273,8 +273,8 @@
   <path class="ln dash" d="M318 415 H242" marker-end="url(#ar)"/>
 </svg>
 <p class="diagram-cap">
-  Solid lines are the automatic path; dashed lines are Alex, a re-trigger, or the later reading
-  room. Git is the only queue.
+  Solid lines are the automatic path; dashed lines are Alex, a re-trigger, or
+  Alfred's read path. Git is the only queue.
 </p>
 </div>
 
@@ -454,7 +454,7 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     <li><b>No model runs in the importer.</b> Conversion is mechanical; synthesis is ingest's
       job.</li>
     <li><b>The seed is the same importer run over every <code>#book</code> note.</b> How it walks
-      the vault and the exact splitting rules belong to the Wiki repo spec.</li>
+      the vault and the exact splitting rules belong to the Day 1 spec.</li>
   </ul>
   <p class="why"><b>Why a script, not a session:</b> the format is regular enough to convert
     mechanically, and a script can tell what's new by quote-note identity, which a model can only
@@ -528,7 +528,7 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     signal of what mattered. The full text rides along so the picks can be checked and so later
     synthesis has the original to go back to.</p>
   <p class="small">How the picker looks (per-bullet affordance, "send all", sent state) belongs to
-    the handoff story, which draws it in the Reader's own design system. This spec only fixes the
+    the Day 2 spec, which draws it in the Reader's own design system. This spec only fixes the
     behavior.</p>
 </div>
 
@@ -672,15 +672,15 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
 </div>
 
 <div class="dec" id="reading">
-  <h3><span class="n">reading</span>The reading room is read-only and built last</h3>
+  <h3><span class="n">reading</span>The reading room is read-only, and wiki pages join Alfred's global search</h3>
   <p>A thin Knowledge module in Alfred, using the spike's shape (§3.7): a snapshot of
     <code>main</code> taken on push (the <code>fetchSpec</code> pattern), rendered with
     react-markdown with relative links resolved inside Alfred, plus search and backlinks computed
-    from the snapshot. There's no write path through Alfred and no graph view. Until it exists,
-    Alex reads in Obsidian or the GitHub app.</p>
-  <p class="why"><b>Why last:</b> ingestion is this epic's center of gravity, and reading already
-    works without it. It is still in scope, but it's the first slice to move to a follow-up epic if
-    the others run long.</p>
+    from the snapshot. Wiki pages also appear as their own group in ⌘P global search, and
+    Knowledge is a ⌘K destination. There's no write path through Alfred and no graph view. It ships
+    on Day 2; until then, Alex reads in Obsidian or the GitHub app.</p>
+  <p class="why"><b>Why in Alfred at all:</b> Alfred is meant to be the single place Alex goes (spike
+    §2.3). A wiki he can only read somewhere else is a wiki he'll forget to read.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -699,77 +699,106 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
 </ul>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<h2 id="stories">9. How the work splits</h2>
-<p>This is a sketch, not a set of specs. Each slice gets its own refinement session. The order is
-  settled.</p>
+<h2 id="stories">9. The two-day split</h2>
+<p>The epic ships as <b>two tickets, one per day</b>. Each gets its own refinement session and spec,
+  and each is built by <b>one implementer session that dispatches subagents</b>. The split is by
+  where the code lives. Day 1 is the wiki itself, entirely outside Alfred. Day 2 is every Alfred-side
+  integration. Day 2 depends on Day 1: it writes into the inbox contract and reads the pages Day 1
+  creates.</p>
+
+<div class="callout">
+  <b>To the refiner of the Day 1 and Day 2 tickets: your spec must contain an explicit subagent
+  plan for the implementer.</b> The breakdowns below are a starting point, not that plan. Check them
+  against the code (for Day 2) or the empty repo (for Day 1), then write a plan the implementer can
+  follow without re-deriving it. It must say:
+  <ol>
+    <li><b>Foundations the lead builds first, alone:</b> the shared types, contracts, migrations, and
+      shell wiring that more than one subagent needs, so the fan-out starts from a repo that already
+      has them.</li>
+    <li><b>Each subagent:</b> the behavior it owns (a vertical slice, not a layer), its file
+      boundary (the files it may touch and the neighbours it must not), its acceptance criteria, and
+      the tests that pin them.</li>
+    <li><b>Order:</b> which subagents run in parallel (disjoint files), which wait for another, and
+      why.</li>
+    <li><b>The seams</b> the lead reconciles after each batch: names, types, or files two subagents
+      both depend on.</li>
+    <li><b>What the lead keeps:</b> integration, the full check run, commits, and the PR. On Day 1
+      it also keeps anything that needs Alex's accounts or his Mac.</li>
+    <li><b>Model tier per role</b>, following Alfred's CLAUDE.md: the lead on the strongest model,
+      implementer subagents on the mid tier, lookups on the fast tier.</li>
+  </ol>
+  Alfred's <a href="../../../.claude/skills/implement-epic/SKILL.md"><code>implement-epic</code></a>
+  skill already covers how to dispatch well: build foundations first, give each subagent its own
+  files, brief each one as if it can't ask a question, and don't let subagents commit. The Day 2
+  plan should point the implementer at that skill. The Day 1 plan must restate those rules inline,
+  because the wiki repo won't have the skill.
+</div>
+
+<h3 id="day1">Day 1 — the wiki itself, outside Alfred</h3>
+<div class="card">
+  <b>Caveats: this ticket is built outside Alfred.</b>
+  <ul>
+    <li><b>Refined in Alfred, built in the new wiki repo.</b> Alex creates the empty private repo
+      and pastes the spec into a session there. That session has none of Alfred's
+      <code>CLAUDE.md</code>, skills, hooks, <code>check</code> gates, or demo docs, and it can't
+      read this epic spec.</li>
+    <li><b>So the Day 1 spec must be self-contained.</b> It restates every decision it depends on
+      (envelope, immutability, fidelity, registry, picks, books, crosslinks, skill, autonomy,
+      kickoff, format, store) and the subagent-dispatch rules. It also includes the <i>Brain
+      Rules</i> sample, which Alex supplies because it isn't committed here, as the importer's
+      reference input. It leaves out Alfred's PR machinery: the <code>alfred</code> block and
+      spec archiving.</li>
+    <li><b>Its guardrails are its own.</b> Alfred's back-pressure doesn't exist in the wiki repo. The
+      spec sets up the repo's own lightweight gate, the scripts' tests plus lint, so the scripts
+      aren't unguarded.</li>
+    <li><b>Some steps need Alex and can't be delegated:</b>
+      <ul>
+        <li>creating the repo;</li>
+        <li>creating the Routine on claude.ai and putting its token into the repo's secrets;</li>
+        <li>cloning the repo on the Mac;</li>
+        <li>running the importer against the real vault. A cloud session can't reach the vault, so it
+          builds and tests the importer against the sample, and Alex runs it.</li>
+      </ul>
+      The spec lists these as a checklist for Alex, not as agent work.</li>
+  </ul>
+</div>
 <div class="scroll">
 <table>
-  <tr><th>Slice</th><th>What it covers</th><th>Where the code lives</th></tr>
-  <tr>
-    <td><b>Wiki repo</b></td>
-    <td>
-      <ul>
-        <li>The private repo and skeleton</li>
-        <li><code>CLAUDE.md</code> (layout, frontmatter, link rules, router, house style)</li>
-        <li>The source-types registry</li>
-        <li>The <b>ingest skill</b></li>
-        <li>Lint (frontmatter per registry, links resolve, index coverage, orphans)</li>
-        <li>The Mac clone and the coach pointer row</li>
-        <li>The <b>Obsidian book importer</b> and the link-resolution script</li>
-        <li>The seed: the importer run over the vault's <code>#book</code> notes, plus Instapaper highlights. Auto-ingest arrives in a later slice, so the seed ingests in hand-run sessions, in batches, proving inbox → raw → pages → index → log → lint end to end</li>
-      </ul>
-    </td>
-    <td>The <b>new wiki repo</b>; no Alfred code</td>
-  </tr>
-  <tr>
-    <td><b>Alfred → wiki handoff</b></td>
-    <td>
-      <ul>
-        <li>The scoped write token and the shared GitHub writer that builds an envelope</li>
-        <li>The Reader "Novel ideas" picker (single bullet or all), including the swept-text <code>pointer</code> case</li>
-        <li>The classifier's <code>knowledge</code> suggestion and knowledge-item dispatch</li>
-      </ul>
-      This may split into two stories, Reader picks and captured ideas, around the shared writer.
-    </td>
-    <td>Alfred (<code>frontend/</code>, <code>workers/</code> classifier)</td>
-  </tr>
-  <tr>
-    <td><b>Auto-ingest</b></td>
-    <td>
-      <ul>
-        <li>The Action (inbox trigger, open-PR guard)</li>
-        <li>The Routine and its environment (network access for <code>pointer</code> fetches)</li>
-        <li>The ingest skill's PR mode</li>
-        <li>The <code>claude -p</code> fallback, documented and ready to swap in</li>
-      </ul>
-    </td>
-    <td>Wiki repo, plus Routine setup on claude.ai</td>
-  </tr>
-  <tr>
-    <td><b>Reading room</b></td>
-    <td>
-      <ul>
-        <li>The Knowledge module shell</li>
-        <li>Snapshot on push, with the read token's scope extended to the wiki repo</li>
-        <li>The markdown view with relative-link resolution</li>
-        <li>Search and backlinks</li>
-      </ul>
-    </td>
-    <td>Alfred (<code>frontend/</code>, <code>workers/</code>)</td>
-  </tr>
+  <tr><th>Candidate subagent</th><th>Owns</th><th>Depends on</th></tr>
+  <tr><td><b>Foundation</b> (the lead, first, alone)</td><td>Repo skeleton; <code>CLAUDE.md</code> (layout, frontmatter, link rules, router, house style); the registry file and its format; the envelope and frontmatter schema as one shared module the scripts import; the repo's test and lint gate</td><td>Nothing</td></tr>
+  <tr><td><b>Lint</b></td><td>The lint script: frontmatter per registry, wiki-page links resolve, every page is in <code>index.md</code>, no orphans, the unresolved cross-link report. Tested against fixture folders</td><td>Foundation</td></tr>
+  <tr><td><b>Importer</b></td><td>The Obsidian book importer and the link-resolution script: provenance split, incremental state, unresolved-link markers. Tested against the <i>Brain Rules</i> sample</td><td>Foundation</td></tr>
+  <tr><td><b>Ingest skill</b></td><td><code>.claude/skills/ingest/SKILL.md</code>: batch at the lock, pointer completion, merging folders by identity, verifying picks, cross-link cues, <code>index</code>/<code>log</code>, the PR description, and interactive mode versus PR mode. This is the file every future ingest follows, so the lead reviews it closely</td><td>Foundation</td></tr>
+  <tr><td><b>Auto-ingest</b></td><td>The GitHub Action: <code>inbox/**</code> trigger, lock-branch take or skip, stale-lock sweep, release on a rejected fire, the fire call. Plus the documented <code>claude -p</code> fallback. The lock logic lives in a testable script, not inline YAML</td><td>Foundation</td></tr>
+  <tr><td><b>Seed</b> (the lead, with Alex, last)</td><td>Alex runs the importer over the vault. The lead runs hand-run interactive ingests in batches and the first lint pass, then fires the Routine once end to end</td><td>All of the above</td></tr>
 </table>
 </div>
-<div class="callout">
-  <b>The Wiki repo slice's spec is written for a different reader.</b> It will be refined in Alfred,
-  like any story, but <b>built by a session in the new, empty wiki repo</b>, where it will be
-  pasted in by hand. That session won't have Alfred's <code>CLAUDE.md</code>, skills, hooks,
-  <code>check</code> gates, demo docs, or this epic spec. So that spec must be <b>self-contained</b>:
-  it inlines every decision it depends on from this document (envelope, immutability, fidelity,
-  registry, picks, books, crosslinks, skill, format, store), assumes no Alfred conventions or
-  tooling, and doesn't carry Alfred's implementation-PR machinery (the <code>alfred</code> block,
-  spec archiving) into the wiki repo. It should also include the <i>Brain Rules</i> sample (Alex
-  supplies it; it isn't committed here), since that is the importer's reference input.
+<p class="small">Once the foundation exists, Lint, Importer, Ingest skill, and Auto-ingest touch
+  disjoint files and can run as one parallel batch.</p>
+
+<h3 id="day2">Day 2 — the Alfred-side integrations</h3>
+<div class="card">
+  <b>An ordinary Alfred story.</b> Alfred's <code>CLAUDE.md</code>, TDD, <code>check</code> gates,
+  demo doc, and PR conventions all apply. It needs two new secrets: the wiki write token (Contents:
+  write, wiki repo only) for sends, and the existing read token's scope extended to the wiki repo for
+  the snapshot. It builds against Day 1's registry and <code>inbox/</code> contract, so it starts
+  after Day 1 is merged.
 </div>
+<div class="scroll">
+<table>
+  <tr><th>Candidate subagent</th><th>Owns</th><th>Depends on</th></tr>
+  <tr><td><b>Foundation</b> (the lead, first, alone)</td><td>The shared <b>wiki writer</b>: envelope types, the envelope builder, and the GitHub Contents commit. The <b>snapshot migration</b>, using the next available number. The <b>Knowledge module's shell wiring</b>: <code>modules.ts</code>, the switcher, nav, mobile nav, router, the ⌘K destination, and the view heading. A seeded, empty <b>knowledge store</b></td><td>Day 1 merged</td></tr>
+  <tr><td><b>Reader send</b></td><td>The "Novel ideas" picker (one bullet or all), its sent state, the swept-text <code>pointer</code> case, and its route through the writer. Files under <code>components/reader/</code> plus its API route</td><td>Foundation</td></tr>
+  <tr><td><b>Knowledge classification</b></td><td>The classifier learns <code>knowledge</code>: <code>workers/src/prompt.ts</code> and <code>verdict.ts</code>, with a prompt-version bump. Dispatching a knowledge item from the Inbox sends it through the writer and removes it from Alfred. It spans <code>workers/</code> and the Inbox dispatch in <code>frontend/</code>; the refiner decides whether that is one subagent or two</td><td>Foundation</td></tr>
+  <tr><td><b>Snapshot</b></td><td>A wiki-repo push reaches the Worker, which fetches the changed pages (the <code>fetchSpec</code> pattern) and upserts them into the snapshot table</td><td>Foundation</td></tr>
+  <tr><td><b>Reading room</b></td><td>The Knowledge view: the page rendered with react-markdown, relative links resolved inside Alfred, backlinks, and search within the module. Built against seeded fixtures, so it doesn't wait for Snapshot. Files under <code>components/knowledge/</code></td><td>Foundation</td></tr>
+  <tr><td><b>Global search</b></td><td>A wiki-pages group in ⌘P global search (<code>components/shell/search-results.ts</code> and its combobox), reading the knowledge store</td><td>Foundation</td></tr>
+</table>
+</div>
+<p class="small">Once the foundation exists, all five subagents can run in parallel. The seams to
+  watch are the knowledge store's shape, which Reading room and Global search both read, and the
+  writer's API, which Reader send and Knowledge classification both call. Both belong in the
+  foundation, fixed before the fan-out.</p>
 
 <h3 id="followups">Follow-ups outside this build</h3>
 <div class="dec" id="instapaper">
@@ -812,17 +841,17 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <h2 id="open">10. Open questions</h2>
 <ul>
-  <li><b>Batching Instapaper, for the Wiki repo spec.</b> This is about the one-time seed; ongoing
+  <li><b>Batching Instapaper, for the Day 1 spec.</b> This is about the one-time seed; ongoing
     Instapaper is the <a href="#instapaper">follow-up</a>. Is <code>ingest: file-only</code> the
     right valve for a bulk Instapaper import, or is it better to group several highlights into one
     synthesis pass? Batching may not save much, since the synthesis cost scales with pages touched
     rather than sessions started.</li>
-  <li><b>Email other than Reader posts, for a later handoff spec.</b> Reader posts are covered by
+  <li><b>Email other than Reader posts, for a later spec.</b> Reader posts are covered by
     <code>reader_posts.text</code> (90 days). Other mail sits in <code>comm_messages.body</code>
     for 60 days, so Alfred already stores the text. Still open: whether that body's extraction
     quality is good enough to serve as <code>source.md</code>, and what the send affordance
     looks like.</li>
-  <li><b>Variation in older book notes, for the Wiki repo spec.</b> The importer is designed from
+  <li><b>Variation in older book notes, for the Day 1 spec.</b> The importer is designed from
     one sample. Running the seed over the whole vault will show how far older notes drift from that
     format; the importer flags what it can't classify rather than guessing.</li>
   <li><b>The repo's name.</b> It will show up in URLs if a public export ever happens.</li>
@@ -830,13 +859,13 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     stable identity. Audio kept as audio, or a dataset, would break that. Revisit when one comes
     up; R2 for large binaries stays deferred under the spike's trigger.</li>
   <li><b>The Routine's actual daily cap</b> (shown at claude.ai/code/routines, not published).
-    Check it when the auto-ingest slice is refined.</li>
+    Check it when Day 1 is refined.</li>
   <li><b>Network policy for <code>pointer</code> fetches.</b> The default Trusted environment
     blocks arbitrary hosts, so the Routine's environment needs custom or full network access.
-    Decide which in the auto-ingest story.</li>
+    Decide which in the Day 1 spec.</li>
   <li><b>Carried over from the spike:</b> whether Rock 2's "LLM-wiki implemented in Alfred" needs
     rewording, and whether the Motivic/Chad reference docs migrate out of the coach folder. Both are
-    Alex's decisions and don't block any slice.</li>
+    Alex's decisions and don't block either day.</li>
 </ul>
 
 <p class="small" style="margin-top:3rem">
