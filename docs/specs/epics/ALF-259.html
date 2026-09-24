@@ -453,8 +453,9 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
       model deciding what's new.</li>
     <li><b>No model runs in the importer.</b> Conversion is mechanical; synthesis is ingest's
       job.</li>
-    <li><b>The seed is the same importer run over every <code>#book</code> note.</b> How it walks
-      the vault and the exact splitting rules belong to the Day 1 spec.</li>
+    <li><b>The seed uses the same importer</b>, run first on a hand-picked calibration cluster and
+      then in bulk (<a href="#seed">seed</a>). How it walks the vault and the exact splitting rules
+      belong to the Day 1 spec.</li>
   </ul>
   <p class="why"><b>Why a script, not a session:</b> the format is regular enough to convert
     mechanically, and a script can tell what's new by quote-note identity, which a model can only
@@ -744,7 +745,7 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
       read this epic spec.</li>
     <li><b>So the Day 1 spec must be self-contained.</b> It restates every decision it depends on
       (envelope, immutability, fidelity, registry, picks, books, crosslinks, skill, autonomy,
-      kickoff, format, store) and the subagent-dispatch rules. It also includes the <i>Brain
+      kickoff, format, store, seed) and the subagent-dispatch rules. It also includes the <i>Brain
       Rules</i> sample, which Alex supplies because it isn't committed here, as the importer's
       reference input. It leaves out Alfred's PR machinery: the <code>alfred</code> block and
       spec archiving.</li>
@@ -770,11 +771,74 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
   <tr><td><b>Importer</b></td><td>The Obsidian book importer and the link-resolution script: provenance split, incremental state, unresolved-link markers. Tested against the <i>Brain Rules</i> sample</td><td>Foundation</td></tr>
   <tr><td><b>Ingest skill</b></td><td><code>.claude/skills/ingest/SKILL.md</code>: batch at the lock, pointer completion, merging folders by identity, verifying picks, cross-link cues, <code>index</code>/<code>log</code>, the PR description, and interactive mode versus PR mode. This is the file every future ingest follows, so the lead reviews it closely</td><td>Foundation</td></tr>
   <tr><td><b>Auto-ingest</b></td><td>The GitHub Action: <code>inbox/**</code> trigger, lock-branch take or skip, stale-lock sweep, release on a rejected fire, the fire call. Plus the documented <code>claude -p</code> fallback. The lock logic lives in a testable script, not inline YAML</td><td>Foundation</td></tr>
-  <tr><td><b>Seed</b> (the lead, with Alex, last)</td><td>Alex runs the importer over the vault. The lead runs hand-run interactive ingests in batches and the first lint pass, then fires the Routine once end to end</td><td>All of the above</td></tr>
+  <tr><td><b>Not a subagent: the seed</b> (Alex, by hand, after the build)</td><td>The implementation ends when every component above is built and passing its tests against fixtures and the <i>Brain Rules</i> sample. Everything in the <a href="#seed">seed plan</a>, starting with the smoke test, is Alex's manual work, not agent work in the ticket</td><td>All of the above</td></tr>
 </table>
 </div>
 <p class="small">Once the foundation exists, Lint, Importer, Ingest skill, and Auto-ingest touch
   disjoint files and can run as one parallel batch.</p>
+
+<div class="dec" id="seed">
+  <h3><span class="n">seed</span>The seed plan: how the wiki starts from empty <span class="tag new">new</span></h3>
+  <p><b>What an early ingest actually produces.</b> A wiki page is about an idea, a person, or a
+    question, never about a book. A book is an input. Ingesting <i>Brain Rules</i> into an empty
+    wiki gives:</p>
+  <ul>
+    <li>one source page (what the book argues and what Alex marked in it);</li>
+    <li>concept pages only for the ideas Alex's quotes touch;</li>
+    <li>entity pages (Medina, Gottman, the <i>Bringing Baby Home</i> study);</li>
+    <li>an index line and a log entry.</li>
+  </ul>
+  <p>A related second book adds to those concept pages: new claims, another citation, and a note
+    where the two books agree or disagree. An unrelated one starts its own cluster. For the first
+    handful of sources the wiki looks like book summaries with extra steps. It turns into a wiki
+    once several sources share concepts. The seed's job is to get there quickly, and to settle
+    conventions while they're still cheap to change.</p>
+  <p><b>Every step below is manual and done by Alex</b>, after Day 1's mostly autonomous code
+    build is finished. No implementer or subagent runs the seed. Once every Day 1 component is in
+    place:</p>
+  <ol>
+    <li><b>Smoke test: the LLM-wiki document.</b> Karpathy's idea file
+      (<code>docs/knowledge-base/llm-wiki.md</code>) goes in as a <code>full-text</code> web article
+      and runs through the whole pipeline: <code>inbox/</code> → lock → Routine → PR → merge. Alex
+      knows it cold, so he can judge whether the output is <i>right</i>, not just whether it ran. It
+      also gives the wiki a page describing its own pattern. Passing it is how Alex accepts the
+      Day 1 build.</li>
+    <li><b>Alex's questions, before any more sources.</b> Alex writes 3–5 questions he actually
+      cares about as pages in <code>wiki/questions/</code>. The philosophical and meta-level layer
+      enters as <i>his questions</i>, not as abstract sources. Sources attach to the questions over
+      time, and central hub pages are earned from the bottom up.</li>
+    <li><b>A calibration cluster of about five related books, one book per PR.</b> Alex picks a
+      tightly linked group; the importer can list the most-connected groups among the
+      <code>#book</code> notes to help. He imports one book, waits for its PR, and reviews it closely.
+      Then he adjusts the ingest skill and <code>CLAUDE.md</code> in the repo, merges, and only then
+      imports the next book. Waiting for the merge matters: a book imported while a PR is open
+      queues into the <i>next</i> batch (<a href="#kickoff">kickoff</a>), so importing ahead would
+      merge two books into one PR and skip a calibration round. The second and third books should
+      visibly update pages the first one created; that is the check that compounding works. What
+      to look at in each PR:
+      <ul>
+        <li>page granularity: when an idea earns its own page;</li>
+        <li>page naming;</li>
+        <li>whether Alex's cross-links became links between pages;</li>
+        <li>whether quotes, picks, and commentary stayed attributed to the right origin;</li>
+        <li>whether the index and log entries are useful.</li>
+      </ul></li>
+    <li><b>Bulk import, after calibration settles.</b> The rest of the vault goes in. Books outside
+      any cluster are marked <code>ingest: file-only</code> (<a href="#bar">bar</a>) and wait in
+      <code>raw/</code> until a question or a newer source reaches them.</li>
+    <li><b>Optional: measure it.</b> For the first sessions after the seed, log each question asked
+      of the wiki as a hit, a miss, or wrong in <code>log.md</code> (the spike's §5.5 experiment).
+      That tells Alex whether the seed worked, instead of relying on his impression.</li>
+  </ol>
+  <p class="why"><b>Why this order:</b> the first ingests set the conventions (page size, naming,
+    when an idea gets a page) that every later ingest copies. Fixing them at source 5 is a
+    <code>CLAUDE.md</code> edit; fixing them at source 150 is a reorganization.<br/>
+    <b>Why cluster-first:</b> connected books compound from the second ingest, instead of piling up
+    as islands.<br/>
+    <b>Why not philosophical sources first:</b> they tend to produce vague hub pages that everything
+    links to, which drains the links of meaning. They are also where model synthesis is most prone
+    to confident mush.</p>
+</div>
 
 <h3 id="day2">Day 2 — the Alfred-side integrations</h3>
 <div class="card">
