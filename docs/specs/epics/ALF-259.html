@@ -119,9 +119,10 @@
 <div class="card">
   <b>One-paragraph version.</b> The wiki is Karpathy's LLM-wiki pattern: a private GitHub repo of
   plain markdown that a Claude session keeps compiling from the sources Alex chooses to send it.
-  Every source is <b>one folder</b> with a fixed shape: the frozen original text, Alex's own notes,
-  and the summary bullets Alex picked. That shape doesn't care where the source came from, so a new
-  kind of source only needs a producer and one registry row. Alfred feeds the wiki by
+  Every source is <b>one folder</b>. Today a folder can hold the frozen original text, Alex's own
+  notes, and the summary bullets Alex picked, but the set of files is <b>open by design</b>: a new
+  kind of file, like a new kind of source, only needs a registry row. The folder's contract doesn't
+  care where the source came from. Alfred feeds the wiki by
   <b>committing those folders into the wiki repo's <code>inbox/</code></b>: bullets picked in the
   Reader's "Novel ideas" section, and captured ideas the classifier marks as knowledge. A push that
   touches <code>inbox/</code> starts a <b>Claude Code Routine</b>. The Routine drains the whole inbox
@@ -165,7 +166,7 @@
 <div class="scroll">
 <table>
   <tr><th>Topic</th><th>Spike</th><th>This epic</th></tr>
-  <tr><td>Raw source shape</td><td>One file per capture in <code>raw/YYYY/</code></td><td>One <b>folder</b> per source, holding separate files for the source text, Alex's notes, and his picks (<a href="#envelope">envelope</a>)</td></tr>
+  <tr><td>Raw source shape</td><td>One file per capture in <code>raw/YYYY/</code></td><td>One <b>folder</b> per source, holding separate files for the source text, Alex's notes, and his picks, and open to new file kinds (<a href="#envelope">envelope</a>)</td></tr>
   <tr><td>Alfred → wiki handoff</td><td>Supabase inbox plus a keyed <code>GET /api/knowledge/inbox</code> that the ingest skill pulls</td><td>Alfred <b>commits into the wiki repo's <code>inbox/</code></b>; no queue table and no pull endpoint (<a href="#handoff">handoff</a>)</td></tr>
   <tr><td>Reader integration</td><td>A "Send to wiki" verb on a post</td><td>Send <b>individual or all "Novel ideas" bullets</b>; the post's text rides along (<a href="#reader">reader</a>)</td></tr>
   <tr><td>Automatic ingest</td><td>Deferred until "a month of reviewed ingests"</td><td>In this epic, but <b>it only drafts a PR</b>; Alex's merge is the review (<a href="#autonomy">autonomy</a>, <a href="#kickoff">kickoff</a>)</td></tr>
@@ -292,17 +293,24 @@
 <h2 id="sources">4. Decisions — primary sources</h2>
 
 <div class="dec lock" id="envelope">
-  <h3><span class="n">envelope</span>Every source is one folder with a fixed shape <span class="tag spike">changes spike</span> <span class="tag lock">costly to reverse</span></h3>
-  <p>A source is a folder, not a file. It lands in <code>inbox/</code>; ingest moves it
+  <h3><span class="n">envelope</span>Every source is one folder: the contract is fixed, the files inside it are open <span class="tag spike">changes spike</span> <span class="tag lock">costly to reverse</span></h3>
+  <p><b>Fixed (the contract):</b> one folder per source; the path scheme below; every file in the
+    folder carries frontmatter declaring its <code>origin</code>; the author's text is never
+    edited. <b>Open (by design):</b> which files a folder holds. The kinds below are the ones this
+    epic needs. A new kind (a <code>transcript.md</code>, an audio asset) is added the way a new
+    source type is: one entry in the <a href="#registry">registry</a> naming the file kind and its
+    origin. Ingest, lint, and the reading room keep working unchanged.</p>
+  <p>A folder lands in <code>inbox/</code>; ingest moves it
     (<code>git mv</code>, contents unchanged) into <code>raw/</code>, sorted by year:</p>
 <pre><code>inbox/2026-09-24-why-habits-stick/            ← waiting
 raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
     source.md               the author's words as markdown; body frozen   (optional)
     notes-2026-09-24.md     Alex's own words, one file per sitting        (optional)
     picks-2026-09-24.md     summary bullets Alex picked, model-worded     (optional)
-    assets/                 original binary the text was extracted from   (optional)</code></pre>
+    assets/                 original binary the text was extracted from   (optional)
+    …                       any file kind the registry adds later</code></pre>
   <p>Every file is optional, but a folder must contain at least one of them. Different kinds of
-    source use the same shape and leave pieces out:</p>
+    source use the same contract with different files:</p>
   <ul>
     <li><b>Reader post:</b> <code>source.md</code> (the post text) plus <code>picks-…</code> (the bullets Alex sent).</li>
     <li><b>Book:</b> <code>notes-…</code> files only, which keep accumulating as he reads. The book's text is never stored.</li>
@@ -361,12 +369,15 @@ raw/2026/2026-09-24-why-habits-stick/         ← after ingest; permanent
 </div>
 
 <div class="dec" id="registry">
-  <h3><span class="n">registry</span>A new source type is a producer plus one registry row; there's no denylist <span class="tag spike">changes spike</span></h3>
-  <p>A <code>source-types</code> registry file in the wiki repo lists each <code>source_type</code>
-    with its highest allowed fidelity (books cap at <code>notes-only</code>), its default
-    <code>origin</code>, and, once export exists, its default sensitivity. Lint checks every folder
-    against its row. <b>Adding a source type means writing a producer and adding a row</b>; the
-    ingest skill, lint, and reading room don't change.</p>
+  <h3><span class="n">registry</span>New source types and new file kinds are registry rows; there's no denylist <span class="tag spike">changes spike</span></h3>
+  <p>A registry file in the wiki repo has two lists. <b>Source types</b>: each
+    <code>source_type</code> with its highest allowed fidelity (books cap at
+    <code>notes-only</code>), its default <code>origin</code>, and, once export exists, its default
+    sensitivity. <b>File kinds</b>: each file name pattern a folder may hold (<code>source.md</code>,
+    <code>notes-*.md</code>, <code>picks-*.md</code>, <code>assets/</code>, …) with its
+    <code>origin</code> and whether its body is frozen. Lint checks every folder against both.
+    <b>Adding a source type means writing a producer and adding a row; adding a file kind means
+    adding a row.</b> The ingest skill, lint, and reading room don't change.</p>
   <p>Producers can live in three places:</p>
   <div class="scroll">
   <table>
