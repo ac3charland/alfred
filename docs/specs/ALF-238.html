@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-238 — Add "Send to Instapaper" button in Reader</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0f8a5f; --accent-bg: #e1f5ec;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #3fcf95; --accent-bg: #10301f;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: .75rem 1rem;
+    margin: 1rem 0; font-size: .92rem; border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .callout code { background: color-mix(in srgb, var(--warn-fg) 12%, transparent); color: inherit; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  nav.toc ol { columns: 2; column-gap: 2rem; font-size: .92rem; }
+  @media (max-width: 640px) { nav.toc ol { columns: 1; } }
+
+  /* Decision blocks */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec h3 .who { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+                 color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: .05rem .5rem; margin-left: .4rem; vertical-align: middle; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* Acceptance-criteria checklist */
+  ul.ac { list-style: none; padding-left: 0; }
+  ul.ac li { position: relative; padding-left: 1.7rem; margin: .4rem 0; font-size: .93rem; }
+  ul.ac li::before { content: ""; position: absolute; left: 0; top: .35rem; width: 1rem; height: 1rem;
+                     border: 1px solid var(--faint); border-radius: 3px; }
+  ul.ac li.h { padding-left: 0; margin: 1.3rem 0 .4rem; font-weight: 700; font-size: .8rem;
+               text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  ul.ac li.h::before { content: none; }
+
+  /* Diagram (document chrome, both themes) */
+  svg.flow { width: 100%; min-width: 760px; height: auto; display: block; margin: 1rem 0 .3rem; }
+  svg.flow .box { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+  svg.flow .box.new { stroke: var(--accent); stroke-width: 2; }
+  svg.flow .box.ext { stroke-dasharray: 5 4; stroke: var(--faint); }
+  svg.flow text { fill: var(--fg); font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  svg.flow text.t { font-weight: 700; }
+  svg.flow text.s { fill: var(--muted); font-size: 11.5px; }
+  svg.flow text.lane { fill: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+  svg.flow .arrow { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#ah); }
+  svg.flow .arrow.new { stroke: var(--accent); }
+  svg.flow .ahead { fill: var(--muted); }
+  .cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+
+  /* ── App mockups ──────────────────────────────────────────────────────
+     Scoped to .app. Every value is taken from source, never from memory:
+     colours, radius and fonts from frontend/app/globals.css; the row's
+     geometry from components/reader/post-row.styles.ts; buttons from
+     atoms/button.tsx (outline / ghost, size sm); badges from atoms/badge.tsx;
+     the overview from components/reader/post-overview.tsx; the toast from
+     components/shell/toast-viewport.tsx. The app is dark-only, so the canvas
+     stays dark whichever theme this document is read in. */
+  .app {
+    --a-bg: #0a0e17; --a-fg: #e8edf5; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-muted: #8a96a8; --a-secondary: #1e2a3f; --a-green: #34d399; --a-red: #f87171;
+    --a-amber400: #fbbf24; --a-amber500: #f59e0b;
+    --a-radius: 0.5rem;
+    background: var(--a-bg); color: var(--a-fg); border: 1px solid var(--a-border);
+    border-radius: 12px; padding: 1rem; margin: 1rem 0;
+    font: 14px/1.5 "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .app * { box-sizing: border-box; }
+  .app code, .app kbd { font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .app .lbl { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+              color: var(--a-muted); margin: .9rem 0 .35rem; }
+  .app .lbl:first-child { margin-top: 0; }
+  .app .lbl b { color: var(--a-green); font-weight: 700; }
+
+  /* rowShellClass: w-full rounded-lg border px-3 py-2 */
+  .app .row { width: 100%; border-radius: var(--a-radius); border: 1px solid transparent; padding: 8px 12px; }
+  .app .row.hover { background: rgba(30, 42, 63, .25); }
+  .app .row.expanded { border-color: rgba(52, 211, 153, .6); background: rgba(30, 42, 63, .4); }
+  .app .row.selected { box-shadow: 0 0 0 1px rgba(52, 211, 153, .6); }
+  .app .row.dimmed { opacity: .7; }
+  .app .top { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; }
+  .app .eyebrow { font-size: 12px; font-weight: 600; color: var(--a-green); }
+  .app .meta { font-size: 12px; color: var(--a-muted); }
+  .app .title { margin: 6px 0 0; font-family: "Instrument Serif", Georgia, "Times New Roman", serif;
+                font-size: 18px; line-height: 1.375; color: var(--a-fg); }
+  .app .gist { margin: 4px 0 0; font-size: 14px; line-height: 1.625; color: var(--a-fg); }
+  .app .gist.ph { font-style: italic; color: var(--a-muted); }
+  /* verbRowClass: mt-2 flex flex-wrap items-center gap-2 */
+  .app .verbs { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  /* button: inline-flex gap-2 rounded-sm font-medium; size sm: h-8 px-3 text-xs */
+  .app .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px;
+              padding: 0 12px; border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap;
+              color: var(--a-fg); background: transparent; border: 1px solid transparent; }
+  .app .btn.outline { border-color: var(--a-border); }
+  .app .btn.ghost { border-color: transparent; }
+  .app .btn.quiet { color: var(--a-muted); }
+  .app .btn.icon-gap { gap: 6px; }
+  .app .btn.disabled { opacity: .5; }
+  .app .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2;
+                  stroke-linecap: round; stroke-linejoin: round; }
+  /* hintClass: md:inline-flex rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] */
+  .app kbd { display: inline-flex; border-radius: 4px; border: 1px solid var(--a-border); background: var(--a-bg);
+             padding: 2px 4px; font-size: 10px; line-height: 1; color: var(--a-muted); }
+  /* badge: rounded-full px-2 py-0.5 text-xs */
+  .app .badge { flex-shrink: 0; border-radius: 999px; padding: 2px 8px; font-size: 12px; line-height: 1.33; }
+  .app .badge.muted { border: 1px solid rgba(30, 42, 63, .7); color: var(--a-muted); }
+  .app .badge.secondary { background: var(--a-secondary); color: var(--a-muted); }
+  .app .badge.alert { background: rgba(245, 158, 11, .15); color: var(--a-amber400); }
+  /* post-overview.tsx: mt-3 flex-col gap-3 border-t border-border/60 pt-3 */
+  .app .ov { margin-top: 12px; display: flex; flex-direction: column; gap: 12px;
+             border-top: 1px solid rgba(30, 42, 63, .6); padding-top: 12px; }
+  .app .ov h4 { margin: 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--a-muted); }
+  .app .ov ul { margin: 4px 0 0; padding-left: 20px; font-size: 14px; }
+  .app .ov ul li { margin: 4px 0 0; }
+  .app .ov p { margin: 4px 0 0; font-size: 14px; }
+  /* overviewFooterClass: mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3 */
+  .app .foot { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+               gap: 8px; border-top: 1px solid rgba(30, 42, 63, .6); padding-top: 12px; }
+  .app .foot .l { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .app .stamp { font-size: 12px; color: var(--a-muted); }
+  /* toast: rounded-lg border border-border bg-surface px-4 py-3 text-sm max-w-xs */
+  .app .toast { max-width: 320px; margin-left: auto; display: flex; align-items: center; justify-content: space-between;
+                gap: 12px; border: 1px solid var(--a-border); background: var(--a-surface); border-radius: var(--a-radius);
+                padding: 12px 16px; font-size: 14px; box-shadow: 0 8px 32px 0 rgba(0,0,0,.4); }
+  .app .toast .x { color: var(--a-muted); font-size: 14px; }
+  .app .tip { display: inline-block; margin-left: 4px; font-size: 11px; color: var(--a-muted);
+              border: 1px dashed var(--a-border); border-radius: 4px; padding: 1px 6px; }
+  .app .sep { height: 1px; background: rgba(30, 42, 63, .6); margin: .9rem 0; }
+  .app .new { outline: 1.5px dashed rgba(52, 211, 153, .75); outline-offset: 2px; }
+  .phone { max-width: 345px; margin: 1rem auto; padding: 0; } /* 343 px list column + border: a 375 px viewport minus module-router's px-4 */
+  .legend { font-size: .86rem; }
+  .legend .swatch { display: inline-block; width: 1.4rem; height: .8rem; vertical-align: middle; margin-right: .35rem;
+                    outline: 1.5px dashed #34d399; outline-offset: -1px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-238 — Add "Send to Instapaper" button in Reader</h1>
+<p class="sub">
+  <span class="pill">Refinement spec</span>
+  Story in epic <a href="epics/ALF-232.html">ALF-232 · Reader Module</a>. Both of the epic's stories are built and merged
+  (read <a href="epics/ALF-232-notes.md"><code>ALF-232-notes.md</code></a> for where the build moved from the epic).
+  Written 2026-09-24.
+</p>
+
+<div class="card">
+  <p style="margin-top:0"><b>In short.</b> The Reader row's primary verb stops being <b>Open</b> and becomes
+  <b>Send to Instapaper</b>. One press saves the post to the owner's Instapaper account and archives it in
+  the Reader. It uses Instapaper's Full API, and the request carries <b>the post's own email HTML</b>, so a paid
+  post the owner subscribes to arrives in full rather than as the web paywall's teaser. The original stays
+  reachable through a quiet <b>Original ↗</b> link. The Instapaper call runs server-side in a Next.js route
+  handler. Its four OAuth credentials live in Vercel env, and nothing Instapaper-related ever reaches the
+  browser.</p>
+  <p style="margin-bottom:0" class="small">This is one story across three layers: a migration, a small Worker change so
+  intake keeps the email HTML, and the frontend (Instapaper client, route, store action, row).</p>
+</div>
+
+<nav class="toc">
+  <ol>
+    <li><a href="#context">Context &amp; problem</a></li>
+    <li><a href="#decisions">Decisions</a></li>
+    <li><a href="#flow">How a send flows</a></li>
+    <li><a href="#data">Data model</a></li>
+    <li><a href="#worker">Worker: keep the email HTML</a></li>
+    <li><a href="#client">The Instapaper client</a></li>
+    <li><a href="#route">The route</a></li>
+    <li><a href="#ui">Store, row &amp; keyboard</a></li>
+    <li><a href="#mockups">Mockups</a></li>
+    <li><a href="#setup">Credentials &amp; setup</a></li>
+    <li><a href="#tests">Tests &amp; demo</a></li>
+    <li><a href="#ac">Acceptance criteria</a></li>
+    <li><a href="#out">Out of scope &amp; open questions</a></li>
+  </ol>
+</nav>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="context">1 · Context &amp; problem</h2>
+
+<p>The Reader's two verbs came from Steve Newman's reader. <b>Open</b> goes to the original, and
+<b>Archive</b> dismisses the post (ALF-232 D11). The owner doesn't read sources where they live. They
+collect them in Instapaper and read there. So the useful verb for a post worth reading is "put this in my
+Instapaper", not "open it in a browser tab". Opening a tab today means copying the link into Instapaper by
+hand.</p>
+
+<p>The owner also noted it "will play nicer with the eventual wiki". The LLM-wiki epic
+(<a href="epics/ALF-259.html">ALF-259</a>) already plans an <b>Instapaper tag-sync</b> producer as a
+follow-up. The owner tags an article in Instapaper, and its body and highlights file themselves into the
+wiki's inbox. A post sent from the Reader joins that same pipe, so Instapaper becomes the single place
+reading happens and the wiki's one source for highlights.</p>
+
+<h3>What exists today</h3>
+<div class="scroll"><table>
+  <tr><th>Piece</th><th>Where</th><th>What it does now</th></tr>
+  <tr><td>The Open verb</td><td><code>components/reader/post-row.tsx</code></td>
+      <td><code>Button variant="outline" size="sm" asChild</code> wrapping an <code>&lt;a target="_blank"&gt;</code>. Clicking it
+        stamps <code>opened_at</code> through <code>actions.markOpened</code>. When there's no link, the button renders disabled
+        with a <code>title</code>.</td></tr>
+  <tr><td>Open's target</td><td><code>lib/reader/open-link.ts</code> · <code>postOpenLink</code></td>
+      <td>The <code>http(s)</code> <code>canonical_url</code>, else a Gmail permalink built from <code>rfc822_message_id</code>, else
+        nothing (ALF-232 D12).</td></tr>
+  <tr><td>Hotkey</td><td><code>lib/reader/hotkeys.ts</code></td>
+      <td><code>o</code> → <code>'open'</code>, which clicks the row's anchor through <code>linkRef</code>.</td></tr>
+  <tr><td>Post body</td><td><code>reader_posts.text</code></td>
+      <td>The HTML part put through <code>htmlToText</code>: paragraph breaks survive, while images, headings, lists and
+        links don't. It is swept at 90 days (<code>reader_sweep_text</code>). The list payload never carries it
+        (<code>READER_POST_LIST_COLUMNS</code>).</td></tr>
+  <tr><td>Email HTML</td><td><code>workers/src/reader/extract.ts</code></td>
+      <td>Decoded at intake to produce <code>text</code>, title and URL, then <b>discarded</b>.</td></tr>
+  <tr><td>Server-only third-party credential</td><td><code>lib/github/config.ts</code> + <code>/api/code/pr-ratio</code></td>
+      <td>The precedent: env read by literal name, never <code>NEXT_PUBLIC_</code>; unset → <code>501</code>, upstream trouble →
+        <code>502</code>.</td></tr>
+</table></div>
+
+<p class="small">Measured against the live mirror on 2026-09-24 (read-only): 55 posts since 2026-09-12, which is 20–29 a week.
+The average stored text is 12.9 K characters and the largest is 72.6 K. The <code>reader_posts</code> table is 856 kB and the
+database 21 MB. 6 of the 55 posts have no <code>canonical_url</code>, and every post has a Message-ID.</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="decisions">2 · Decisions</h2>
+<p class="small">The owner settled D1–D5 in this refinement session. D6–D10 follow from them and from the code as it stands.</p>
+
+<div class="dec">
+  <h3><span class="n">D1</span>Instapaper's Full API, signed with OAuth 1.0a <span class="who">owner</span></h3>
+  <p><code>POST https://www.instapaper.com/api/1/bookmarks/add</code>, signed HMAC-SHA1 with four server-only values:
+  <code>INSTAPAPER_CONSUMER_KEY</code>, <code>INSTAPAPER_CONSUMER_SECRET</code>, <code>INSTAPAPER_ACCESS_TOKEN</code>,
+  <code>INSTAPAPER_ACCESS_TOKEN_SECRET</code>. A fifth, optional <code>INSTAPAPER_API_URL</code> (default
+  <code>https://www.instapaper.com</code>) exists so the E2E mock can stand in. No password is ever stored. Instapaper's terms
+  allow one only for the one-time xAuth exchange, which happens outside the app (§10).</p>
+  <p class="why"><b>Why not the Simple API:</b> it takes a username and password and only a URL. Instapaper then fetches the page
+  itself, so a paid post saves as its public teaser, a post with no web link can't be sent at all, and no bookmark id comes back.
+  An app registered in Instapaper's <i>Owner Only</i> mode works for its owner's account with no review, which is all a
+  single-user system needs.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>A send carries the post's body, and that body is the email HTML, kept at intake <span class="who">owner</span></h3>
+  <p>A new nullable column, <code>reader_posts.html</code>, holds the decoded <code>text/html</code> part that the Worker
+  already has in hand. The route sends it as Instapaper's <code>content</code> parameter, and Instapaper parses the article
+  out of it, the same way its own email-in feature handles a forwarded newsletter. The body falls back down a ladder:</p>
+  <ol>
+    <li><code>html</code> when present;</li>
+    <li>else <code>text</code> rendered as HTML paragraphs, for posts ingested before this ships;</li>
+    <li>else no body. With a link, Instapaper fetches the URL itself. Without one, nothing is sent (D7).</li>
+  </ol>
+  <p>The 90-day sweep nulls <code>html</code> in the same statement that nulls <code>text</code>.</p>
+  <p class="why"><b>Why the HTML rather than the stored text:</b> the stored text loses images, headings, lists and links. The owner
+  reads in Instapaper, so the body should read like the post. <b>Why store it rather than re-fetch:</b> Gmail credentials live only
+  in the Worker, and a send is a browser-initiated act on Vercel. Storage is small at the measured volume: at a guessed 5–10×
+  HTML-to-text ratio, it's roughly 65–130 KB a post × ~4 a day × 90 days ≈ 25–50 MB before Postgres' TOAST compression, which
+  shrinks inline-styled markup several-fold. That is set against a 21 MB database.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>Sending archives the post <span class="who">owner</span></h3>
+  <p>One press does both. On the reading list the row plays the same exit collapse as Archive and leaves. The post is then in the
+  archive carrying an <b>in Instapaper</b> badge. Sending from the archive view doesn't move the row, and the badge appears in
+  place. A sent post that is later unarchived keeps its badge.</p>
+  <p class="why"><b>Why:</b> once a post is in Instapaper, that's where it lives. Leaving it on the list would make the owner dismiss
+  every sent post twice.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>Open becomes a quiet "Original ↗" link <span class="who">owner</span></h3>
+  <p>The outline <b>Open</b> button is removed. The same target (<code>postOpenLink</code>, unchanged: canonical URL → Gmail
+  permalink → nothing) is reached through a <b>ghost</b>, muted-text <b>Original ↗</b> link. It sits in the overview panel's
+  footer, next to Re-summarise, whenever the row has a panel. A row with <i>no</i> panel (a first-time
+  pending post, or a failed or refused one) carries the link at the end of its verb row instead. Every row with a link therefore has
+  exactly one way out. Clicking it still stamps <code>opened_at</code>.</p>
+  <p class="why"><b>Why two placements:</b> today a row only gets a panel when it has an overview, a stamp or a re-run verb
+  (<code>hasPanel</code>). Adding a panel just to hold a link would put an "Overview" toggle on rows that have no overview,
+  and the link can't sit on the gist line because that line is inside the card's <code>&lt;button&gt;</code>. D12's rule
+  that a post is never left without a way out still holds: when Send fails or can't run, Original is the way out.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>No tag and no folder; the gist is the bookmark's description <span class="who">owner</span></h3>
+  <p>Sent posts land in Instapaper's Unread list like anything else the owner saves. The request passes <code>title</code> (the
+  post's title, so Instapaper skips its synchronous title lookup) and, when a summary exists, <code>description</code> = the gist,
+  so the Instapaper list shows alfred's one-paragraph take under each post. No <code>tags</code>, no <code>folder_id</code>.</p>
+  <p class="why"><b>Why:</b> ALF-259's tag-sync keys on a tag the owner applies by hand as an act of choosing. An automatic tag
+  would either do nothing or send everything to the wiki.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span>The call runs in a Next.js route handler, never in the browser and never in the Worker</h3>
+  <p><code>POST /api/reader/posts/[id]/instapaper</code>, session-gated through <code>withSession</code>, on the Node runtime
+  (<code>node:crypto</code> for HMAC-SHA1 and the nonce). The route reads the body server-side, signs, sends, and on
+  success stamps the row. It is the <b>only</b> reader of <code>html</code>/<code>text</code> outside the Worker.</p>
+  <p class="why"><b>Why:</b> the credentials can't reach the browser, and a send is a synchronous act the owner is waiting on. The
+  Worker is cron-driven and has no endpoint the browser calls. The PR-ratio route is the house pattern for exactly this shape.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span>A post with no web link goes as a private bookmark</h3>
+  <p>When <code>canonical_url</code> isn't an <code>http(s)</code> URL but a body exists, the request sets
+  <code>is_private_from_source=email</code> and omits <code>url</code>. That is Instapaper's own mechanism for mail with no
+  permanent URL. The Gmail permalink is <b>never</b> sent as a URL, because it would save a login wall. When there's neither a link
+  nor a body, the verb is disabled (D8). All 6 of today's link-less posts have text.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D8</span>When the verb can't work, it is disabled and says why</h3>
+  <p>The Send button renders disabled (<code>disabled:opacity-50</code>) with a <code>title</code> in two cases:</p>
+  <ul>
+    <li><b>This deployment has no Instapaper credentials.</b> The Work instance and local dev are both in this case. Title:
+      "Instapaper isn't set up on this deployment." The shell layout passes
+      <code>instapaperConfigured = getInstapaperConfig() !== null</code> into <code>ReaderProvider</code>.</li>
+    <li><b>The post has nothing to send:</b> no <code>http(s)</code> link, and either <code>text_swept_at</code> is set or
+      <code>word_count === 0</code>. Title: "No link and no stored text to send."</li>
+  </ul>
+  <p class="why"><b>Why not fall back to the old Open button when unconfigured:</b> the old button would be a second row shape to
+  keep alive for deployments that don't use the Reader. Original ↗ still works everywhere.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D9</span>Keyboard: <code>i</code> sends, <code>o</code> still opens the original</h3>
+  <p><code>ReaderHotkeyAction</code> gains <code>'send'</code> on <code>i</code>, which runs the same function as the button and
+  does nothing when the button is disabled. <code>o</code> keeps <code>'open'</code> and opens the Original target even when that link sits
+  inside a collapsed panel. That panel is <code>inert</code> (<code>AnimatedHeightCollapse</code>), so the key can't just
+  click the anchor the way it does today. Instead the key and the link share one <code>openOriginal()</code>:
+  <code>window.open(href, '_blank', 'noopener,noreferrer')</code> for the key, the anchor's native navigation for a click, and
+  <code>markOpened</code> for both. Hints (desktop, selected row only, as today) show <code>i</code> beside Send and
+  <code>o</code> beside Original when it's visible.</p>
+  <p class="why"><b>Why <code>i</code>:</b> in Comms, <code>i</code> already means "send this somewhere else" (to the Inbox). Moving
+  <code>o</code> to Send would break the one mnemonic the list already teaches.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D10</span>Failures roll back and give the reason; there's no retry queue</h3>
+  <p>The store action is optimistic (<code>runOptimisticMutation</code>), like Archive. If the send fails, the row comes back and a
+  toast states the route's reason (§7), such as "This publication has opted out of Instapaper". Nothing retries on its own, and
+  nothing is written to the row unless Instapaper confirms the save. A second press while a send is in flight is ignored.</p>
+  <p class="why"><b>Why:</b> the owner is watching. A send that quietly retries later would be a verb whose outcome they can't see.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="flow">3 · How a send flows</h2>
+
+<div class="scroll"><svg class="flow" viewBox="0 0 960 400" role="img" aria-label="Intake keeps the email HTML; a send reads it, signs, posts to Instapaper, then stamps and archives the row">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="ahead" d="M0,0 L10,5 L0,10 z" />
+    </marker>
+  </defs>
+
+  <text class="lane" x="10" y="22">INTAKE · WORKER CRON (EXISTING, ONE FIELD ADDED)</text>
+  <rect class="box" x="10" y="34" width="200" height="62" rx="8" />
+  <text class="t" x="24" y="58">Gmail messages.get</text>
+  <text class="s" x="24" y="78">format=full, as today</text>
+
+  <rect class="box new" x="270" y="34" width="250" height="62" rx="8" />
+  <text class="t" x="284" y="58">extractPost</text>
+  <text class="s" x="284" y="78">+ html: the text/html part, ≤ 1 M chars</text>
+
+  <rect class="box new" x="580" y="34" width="370" height="62" rx="8" />
+  <text class="t" x="594" y="58">insert reader_posts</text>
+  <text class="s" x="594" y="78">text · html (new) · same one fetch, no new subrequest</text>
+
+  <path class="arrow" d="M210,65 L268,65" />
+  <path class="arrow new" d="M520,65 L578,65" />
+
+  <text class="lane" x="10" y="140">SEND · BROWSER → NEXT.JS ROUTE (NEW)</text>
+  <rect class="box new" x="10" y="152" width="200" height="74" rx="8" />
+  <text class="t" x="24" y="176">PostRow</text>
+  <text class="s" x="24" y="196">Send to Instapaper / i</text>
+  <text class="s" x="24" y="213">exit collapse starts</text>
+
+  <rect class="box new" x="270" y="152" width="250" height="74" rx="8" />
+  <text class="t" x="284" y="176">store.sendToInstapaper</text>
+  <text class="s" x="284" y="196">optimistic: archived_at,</text>
+  <text class="s" x="284" y="213">instapaper_sent_at</text>
+
+  <rect class="box new" x="580" y="152" width="370" height="74" rx="8" />
+  <text class="t" x="594" y="176">POST /api/reader/posts/[id]/instapaper</text>
+  <text class="s" x="594" y="196">withSession · 501 if unconfigured · reads html, text,</text>
+  <text class="s" x="594" y="213">url, title, gist server-side</text>
+
+  <path class="arrow new" d="M210,189 L268,189" />
+  <path class="arrow new" d="M520,189 L578,189" />
+
+  <rect class="box ext" x="580" y="268" width="370" height="74" rx="8" />
+  <text class="t" x="594" y="292">Instapaper · /api/1/bookmarks/add</text>
+  <text class="s" x="594" y="312">OAuth 1.0a HMAC-SHA1 · url | private · title ·</text>
+  <text class="s" x="594" y="329">description = gist · content = html ▸ text ▸ none</text>
+  <path class="arrow new" d="M765,226 L765,266" />
+
+  <rect class="box new" x="270" y="268" width="250" height="74" rx="8" />
+  <text class="t" x="284" y="292">update reader_posts</text>
+  <text class="s" x="284" y="312">instapaper_sent_at · bookmark_id ·</text>
+  <text class="s" x="284" y="329">archived_at (kept if already set)</text>
+  <path class="arrow new" d="M578,305 L522,305" />
+  <text class="s" x="528" y="296">saved</text>
+
+  <rect class="box" x="10" y="268" width="200" height="74" rx="8" />
+  <text class="t" x="24" y="292">reconcile · or rollback</text>
+  <text class="s" x="24" y="312">+ toast in the route's</text>
+  <text class="s" x="24" y="329">own words</text>
+  <path class="arrow" d="M268,305 L212,305" />
+
+  <text class="s" x="10" y="376">An error from Instapaper means no DB write: the route answers 409 / 422 / 429 / 502 with a sentence for the owner (§7).</text>
+</svg></div>
+<p class="cap">Green-bordered boxes are new or changed; the dashed box is Instapaper. The intake lane's one change is a field on an insert it already makes.</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="data">4 · Data model</h2>
+
+<p>One migration, <code>database/migrations/&lt;next&gt;_reader_instapaper.sql</code>. Take the next free number at build time.
+Don't pin one here.</p>
+
+<pre><code>alter table reader_posts
+  add column html                   text,         -- the email's text/html part; never in the list payload
+  add column instapaper_sent_at     timestamptz,  -- last successful send
+  add column instapaper_bookmark_id bigint;       -- Instapaper's id; the tag-sync follow-up's identity
+
+-- reader_sweep_text: same signature, same batching, same guards — one more column in the SET.
+create or replace function reader_sweep_text(p_days int default 90, p_limit int default 5000) …
+  update reader_posts set text = null, html = null, text_swept_at = now()
+   where id in (… unchanged …);</code></pre>
+
+<ul>
+  <li>No new table, view or sequence, so migration-lint has nothing new to grant. The existing <code>reader_posts</code> RLS
+    and grants cover the new columns. Re-state the function's <code>comment on</code> so it names <code>html</code>.</li>
+  <li><b>Sweep invariant:</b> intake writes <code>html</code> only when the HTML produced prose (<code>html_extracted</code>),
+    so every row with <code>html</code> also has non-empty <code>text</code>, and the sweep's unchanged <code>where</code> clause
+    reaches it. The existing "never had a body" rule (empty text is never stamped) is untouched.</li>
+  <li><code>frontend/lib/database.types.ts</code> is regenerated, never hand-edited. The Worker's
+    <code>ReaderPostInsert</code> (<code>workers/src/reader/store.ts</code>) gains <code>html?: string | null</code>.</li>
+  <li><code>ReaderPostListItem</code> becomes <code>Omit&lt;ReaderPost, 'text' | 'html'&gt;</code>.
+    <code>READER_POST_LIST_COLUMNS</code> gains <code>instapaper_sent_at</code> and <code>instapaper_bookmark_id</code>, and
+    <b>not</b> <code>html</code>. The existing pinning test in <code>lib/data/reader.test.ts</code> is updated so it asserts
+    both omissions.</li>
+  <li><code>database/README.md</code>'s schema summary gains the three columns. <code>database/src/assertions.ts</code>'s
+    <code>reader_sweep_text</code> assertion seeds <code>html</code> on its three rows and asserts that the old row loses it
+    while the recent row keeps it.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="worker">5 · Worker: keep the email HTML</h2>
+
+<p><code>workers/src/reader/extract.ts</code> already decodes the <code>text/html</code> part (<code>firstDecodable(leaves,
+'text/html')</code>) and throws it away after <code>htmlToText</code>. Keep it:</p>
+
+<pre><code>/** The ceiling on the STORED HTML. Markup is never truncated — past this, keep none and let the
+ *  send fall back to the stored text. Sized ~14× the largest post measured (72.6 K text chars). */
+export const READER_HTML_CHARS = 1_000_000;
+
+export interface ExtractedPost {
+  …
+  /** The decoded text/html part, raw, when it produced the stored text and fits the ceiling. */
+  html?: string | undefined;
+}
+
+// in extractPost:
+html: htmlExtracted &amp;&amp; html !== undefined &amp;&amp; html.length &lt;= READER_HTML_CHARS ? html : undefined,</code></pre>
+
+<ul>
+  <li><code>intake.ts</code> writes <code>html: post.html ?? null</code> on the insert it already makes. The tick's subrequest
+    arithmetic (<code>READER_TICK_LIMIT</code>'s doc comment, 45 worst case) is <b>unchanged</b>: same fetch, larger body.</li>
+  <li>Raw means raw. No sanitising and no stripping of the email chrome (preheaders, "READ IN APP", unsubscribe footer).
+    Instapaper's parser extracts the article, and the app never renders this column.</li>
+  <li>Posts already in the table keep <code>html = null</code>, and their sends take the text ladder rung (D2). No backfill.</li>
+  <li>No summariser change: <code>prompt.ts</code> still reads <code>text</code>.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="client">6 · The Instapaper client</h2>
+
+<p class="small"><b>Source:</b> Instapaper's developer docs (<code>instapaper.com/developers/v1/full-api/…</code>) as of
+2026-09-24. The pages are rendered client-side, so a fetcher sees only a title. The markdown behind them is served as
+<code>/assets/&lt;page&gt;-&lt;hash&gt;.md</code>, and the hashed names are listed in the site's <code>/js/appCollectionManagement-*.js</code>
+bundle. The pages used here are <code>bookmark-api</code>, <code>authentication</code>, <code>responses</code> and
+<code>api-terms</code>.</p>
+
+<p>A new server-only folder, <code>frontend/lib/instapaper/</code>, with each file co-located with its test:</p>
+
+<div class="scroll"><table>
+  <tr><th>File</th><th>Exports</th><th>Behaviour</th></tr>
+  <tr><td><code>config.ts</code></td><td><code>getInstapaperConfig()</code></td>
+    <td>Reads the four credential vars and <code>INSTAPAPER_API_URL</code> by literal name, as in <code>lib/github/config.ts</code>.
+      Returns <code>null</code> unless all four credentials are non-empty. <code>import 'server-only'</code>.</td></tr>
+  <tr><td><code>oauth.ts</code></td><td><code>signRequest(method, url, params, creds, { nonce, timestamp })</code> →
+    <code>Authorization</code> header</td>
+    <td>OAuth 1.0a HMAC-SHA1 per RFC 5849: percent-encode per §3.6, and build the base string from the method, the base URL, and
+      the sorted <code>oauth_*</code> <b>plus form-body</b> parameters (§3.4.1.3). The key is <code>consumerSecret&amp;tokenSecret</code>.
+      <code>nonce</code>/<code>timestamp</code> are injectable so the signature is deterministic under test.</td></tr>
+  <tr><td><code>content.ts</code></td><td><code>textToHtml(text)</code></td>
+    <td>HTML-escapes the text, then wraps each non-empty line in <code>&lt;p&gt;</code> (the stored text keeps one line per block).</td></tr>
+  <tr><td><code>bookmark.ts</code></td><td><code>buildBookmarkParams(post)</code>, <code>addBookmark(config, params)</code></td>
+    <td>Builds the form params (table below) and POSTs them <code>application/x-www-form-urlencoded; charset=utf-8</code> with a
+      15 s abort. The result is a discriminated outcome:
+      <code>{ kind: 'saved', bookmarkId }</code> | <code>{ kind: 'refused', code }</code> | <code>{ kind: 'unavailable' }</code>.</td></tr>
+</table></div>
+
+<h3>Request parameters</h3>
+<div class="scroll"><table>
+  <tr><th>Param</th><th>Value</th><th>When</th></tr>
+  <tr><td><code>url</code></td><td><code>canonical_url</code></td><td>When it parses as <code>http:</code>/<code>https:</code>, the same
+    <code>isWebUrl</code> rule <code>open-link.ts</code> uses (share it; don't copy it).</td></tr>
+  <tr><td><code>is_private_from_source</code></td><td><code>email</code></td><td>No <code>url</code> and a body exists (D7).</td></tr>
+  <tr><td><code>title</code></td><td><code>reader_posts.title</code></td><td>Always.</td></tr>
+  <tr><td><code>description</code></td><td><code>gist</code></td><td>When non-null (D5).</td></tr>
+  <tr><td><code>content</code></td><td><code>html</code> ▸ <code>textToHtml(text)</code> ▸ omitted</td><td>The first that exists (D2).</td></tr>
+  <tr><td><code>resolve_final_url</code></td><td>omitted (Instapaper's default, <code>1</code>)</td>
+    <td>Substack's canonical links are <code>open.substack.com/pub/…/p/…</code>, which redirect.</td></tr>
+</table></div>
+<p class="small">If there's no <code>url</code> and no body, <code>buildBookmarkParams</code> returns <code>null</code> and the route
+answers 409 without calling Instapaper.</p>
+
+<h3>Reading Instapaper's answer</h3>
+<p>Instapaper answers with a JSON array. A success holds a <code>{ "type": "bookmark", "bookmark_id": … }</code> object, and a
+failure holds <code>{ "type": "error", "error_code": …, "message": … }</code>. Its <code>message</code> is "not intended to be
+displayed to users", so it's logged and never shown. Instapaper's docs say to treat a body that isn't JSON as a 503.</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="route">7 · The route</h2>
+
+<p><code>frontend/app/api/reader/posts/[id]/instapaper/route.ts</code> — <code>POST</code>, no body, <code>withSession</code>.</p>
+
+<ol>
+  <li><code>parseUUID</code>; then <code>getInstapaperConfig()</code>, which answers <b>501</b> when unset <i>before</i> any read.</li>
+  <li>Read the post with a new data function in <code>lib/data/reader.ts</code>, <code>getReaderPostForSend(supabase, id)</code>,
+    which selects <code>title, canonical_url, gist, html, text, archived_at</code>. It is the only frontend read of
+    <code>html</code>/<code>text</code>, and its result never leaves the route. Missing → <b>404</b>.</li>
+  <li><code>buildBookmarkParams</code> → <code>null</code> → <b>409</b>.</li>
+  <li><code>addBookmark</code>, then map the outcome (table). If there's no bookmark, nothing is written.</li>
+  <li>On <code>saved</code>, run a new <code>markReaderPostSent(supabase, id, bookmarkId, now, alreadyArchivedAt)</code>, which writes
+    <code>instapaper_sent_at = now</code>, <code>instapaper_bookmark_id</code> and <code>archived_at = alreadyArchivedAt ?? now</code>,
+    selecting <code>READER_POST_LIST_COLUMNS</code>. Return <b>200</b> with the row.</li>
+</ol>
+
+<div class="scroll"><table>
+  <tr><th>Instapaper said</th><th>Route answers</th><th>Toast (the route's <code>detail</code>)</th></tr>
+  <tr><td>a bookmark</td><td>200 + list row</td><td>—</td></tr>
+  <tr><td>(not configured)</td><td>501</td><td>Instapaper isn't set up on this deployment</td></tr>
+  <tr><td>(nothing to send)</td><td>409</td><td>Nothing to send — this post has no link and no stored text</td></tr>
+  <tr><td><code>1221</code> opted out</td><td>422</td><td>This publication has opted out of Instapaper</td></tr>
+  <tr><td><code>1220</code> needs content</td><td>422</td><td>Instapaper can't fetch this post itself, and its stored text is gone</td></tr>
+  <tr><td><code>1240</code> invalid URL</td><td>422</td><td>Instapaper didn't accept this post's link</td></tr>
+  <tr><td><code>1040</code> rate limit</td><td>429</td><td>Instapaper is rate-limiting — try again in a minute</td></tr>
+  <tr><td>HTTP 401/403, <code>1042</code> suspended</td><td>502</td><td>Instapaper rejected alfred's credentials</td></tr>
+  <tr><td><code>1041</code> premium required</td><td>502</td><td>Instapaper says this needs a Premium account</td></tr>
+  <tr><td>timeout, network error, 5xx, non-JSON, <code>1246</code>, any other code</td><td>502</td><td>Instapaper didn't answer — try again</td></tr>
+</table></div>
+
+<ul>
+  <li>If the DB write fails after Instapaper saved the post, the error goes through <code>mapSupabaseError</code> as usual.
+    The toast says the store's generic line, and re-sending is safe for a public URL, because Instapaper moves an existing
+    bookmark to the top rather than duplicating it.</li>
+  <li><b>Never log</b> the credentials, the <code>Authorization</code> header, or <code>content</code>. Log the post id, the
+    outcome kind and the error code only.</li>
+  <li><code>lib/api-client.ts</code> gains <code>sendReaderPostToInstapaper(id)</code>, which throws <code>ApiError</code> like its
+    siblings.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="ui">8 · Store, row &amp; keyboard</h2>
+
+<h3>Store — <code>lib/stores/reader-store.tsx</code></h3>
+<ul>
+  <li><code>ReaderProvider</code> takes <code>instapaperConfigured: boolean</code>. The shell layout passes it, and
+    <code>renderWithProviders</code>' <code>reader</code> seed and the Reader stories' decorators gain the option, defaulting to
+    <code>true</code>. The row reads it through a hook such as <code>useInstapaperConfigured()</code>.</li>
+  <li><code>ReaderActions.sendToInstapaper(id): Promise&lt;ReaderPostListItem&gt;</code>. It follows <code>setArchived</code>'s shape
+    exactly: capture only the touched fields, <code>beginWrite</code>/<code>endWrite</code>, and <code>runOptimisticMutation</code>
+    with an optimistic patch of <code>{ instapaper_sent_at: now, archived_at: current.archived_at ?? now }</code>. It reconciles by
+    <code>replace</code> and rolls back the captured fields. <code>onError</code> toasts the route's <code>detail</code> for 409 /
+    422 / 429 / 501 / 502, and "Couldn't send that post to Instapaper" otherwise, following the pattern of today's
+    <code>refusal()</code>.</li>
+  <li>The <code>replaceAll</code> keep-rule needs nothing new, because a sent post is archived, and archived rows already
+    survive an active read.</li>
+</ul>
+
+<h3>Row — <code>components/reader/post-row.tsx</code></h3>
+<ul>
+  <li><b>Verb row order:</b> <b>Send to Instapaper</b> (outline, sm, hint <code>i</code>) · Overview/Hide overview (ghost) ·
+    Retry summary (outline, failed/refused only) · Archive/Unarchive (outline) · <b>Original ↗</b> (ghost, muted, only when the
+    row has no panel).</li>
+  <li><b>List variant:</b> Send begins the exit (<code>onExit</code> then <code>begin()</code>), with
+    <code>commitRef</code> = <code>actions.sendToInstapaper</code>, reusing the archive's animate-then-commit path. If it fails, the
+    rollback remounts the row, as Archive's does.</li>
+  <li><b>Archive variant:</b> no exit. It calls the action directly, and the badge appears optimistically.</li>
+  <li><b>Original ↗</b>: a ghost <code>Button size="sm" asChild</code> wrapping the anchor, with <code>text-muted-foreground</code>
+    and lucide <code>ArrowUpRight</code> at 14 px, in the same icon+label form as Re-summarise's <code>RotateCw</code>. Its target is
+    <code>postOpenLink(post)</code>, and it's absent when there's no <code>href</code>. <code>onClick</code> selects the row and calls
+    <code>actions.markOpened</code>, as Open does today. <code>linkRef</code> and its <code>.click()</code> are
+    retired in favour of <code>openOriginal()</code> (D9).</li>
+  <li><b>Footer:</b> the left side becomes a group of <code>[Original ↗] [Re-summarise]</code>, and the stamp stays right.
+    <code>hasPanel</code> is <b>unchanged</b>, so Original doesn't create a panel.</li>
+  <li><b>Marker:</b> <code>PostMarkers</code> takes the post (or an extra prop) and adds a <code>secondary</code> badge
+    <b>in Instapaper</b> whenever <code>instapaper_sent_at</code> is set, beside any summary-state badge.</li>
+  <li><b>Copy:</b> the pending placeholder becomes "…send it now, or check back in a few minutes." The failed/refused tail becomes
+    "The post is still here; send it or archive it." The swept tail becomes "…so it can't be retried; send it or archive it."</li>
+  <li><code>lib/data/reader.ts</code>'s module comment ("the 'Open' verb sends the owner to the original") is updated to match.</li>
+</ul>
+
+<h3>Keyboard — <code>lib/reader/hotkeys.ts</code></h3>
+<div class="scroll"><table>
+  <tr><th>Key</th><th>Action</th><th>Change</th></tr>
+  <tr><td><code>i</code></td><td><code>'send'</code></td><td>New. Runs the Send handler, and does nothing when the button is disabled.</td></tr>
+  <tr><td><code>o</code></td><td><code>'open'</code></td><td>Opens the Original target through the shared <code>openOriginal()</code>, not by clicking the anchor, which may be
+    <code>inert</code> in a collapsed panel. Does nothing when there's no link.</td></tr>
+  <tr><td><code>e</code> · <code>v</code> · <code>j</code>/<code>k</code> · Esc</td><td>—</td><td>Unchanged.</td></tr>
+</table></div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="mockups">9 · Mockups</h2>
+<p class="small">These are drawn in the app's own tokens: <code>globals.css</code>, <code>post-row.styles.ts</code>, and the
+button, badge, overview and toast atoms. Dashed green outlines mark what is new or moved. They aren't part of the UI.
+These are layout and behaviour intent, not a pixel spec: padding, radius and hover may differ, but nothing drawn may be missing
+and nothing missing may be added.</p>
+
+<div class="app">
+  <div class="lbl">A · Reading list — done row, selected, desktop (hints shown)</div>
+  <div class="row selected">
+    <div class="top"><span class="eyebrow">Second Thoughts</span><span class="meta">Sep 16 · 14 min</span></div>
+    <p class="title">How near is the intelligence explosion, really?</p>
+    <p class="gist">Argues the "recursive self-improvement" debate conflates three different feedback loops and that only one of them (automated ML research) has any evidence behind it. A genuinely new framing — worth reading if you follow the RSI argument.</p>
+    <div class="verbs">
+      <span class="btn outline new">Send to Instapaper <kbd>i</kbd></span>
+      <span class="btn ghost">Overview <kbd>v</kbd></span>
+      <span class="btn outline">Archive <kbd>e</kbd></span>
+    </div>
+  </div>
+
+  <div class="lbl">B · Same row, overview open — Original ↗ joins the footer</div>
+  <div class="row expanded selected">
+    <div class="top"><span class="eyebrow">Import AI</span><span class="meta">Sep 16 · 9 min</span></div>
+    <p class="title">Import AI 412: three new evals, and a robot that folds</p>
+    <p class="gist">Roundup issue. Most of it restates last week's benchmark releases; the one new item is a robotics dexterity eval with a surprising sim-to-real gap.</p>
+    <div class="verbs">
+      <span class="btn outline new">Send to Instapaper <kbd>i</kbd></span>
+      <span class="btn ghost">Hide overview <kbd>v</kbd></span>
+      <span class="btn outline">Archive <kbd>e</kbd></span>
+    </div>
+    <div class="ov">
+      <section><h4>Novel ideas</h4><ul><li>Dexterity evals show a 30–40 point sim-to-real gap that scaling the simulator does not close.</li></ul></section>
+      <section><h4>Evidence</h4><ul><li>Three eval releases with links; the robotics one includes raw per-task numbers.</li></ul></section>
+      <section><h4>The argument</h4><p>The issue opens with the week's benchmark releases, notes that two of the three are re-releases, and spends its length on the robotics result…</p></section>
+      <section><h4>Who should read it</h4><p>Anyone tracking robotics benchmarks. Everyone else has the gist.</p></section>
+    </div>
+    <div class="foot">
+      <div class="l">
+        <span class="btn ghost quiet icon-gap new"><svg viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg>Original <kbd>o</kbd></span>
+        <span class="btn ghost icon-gap"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>Re-summarise</span>
+      </div>
+      <span class="stamp">claude-sonnet-5 · prompt v2 · Sep 16</span>
+    </div>
+  </div>
+
+  <div class="lbl">C · Failed row — no panel, so Original ↗ ends the verb row</div>
+  <div class="row dimmed">
+    <div class="top"><span class="eyebrow">Astral Codex Ten</span><span class="meta">Sep 15 · 31 min</span><span class="badge alert">summary failed</span></div>
+    <p class="title">Open Thread 348</p>
+    <p class="gist ph">No summary — the model's output didn't fit the schema. The post is still here; <span class="new">send it</span> or archive it.</p>
+    <div class="verbs">
+      <span class="btn outline new">Send to Instapaper</span>
+      <span class="btn outline icon-gap"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>Retry summary</span>
+      <span class="btn outline">Archive</span>
+      <span class="btn ghost quiet icon-gap new"><svg viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg>Original</span>
+    </div>
+  </div>
+
+  <div class="lbl">D · Pending row (first summary) — same placement, new copy</div>
+  <div class="row">
+    <div class="top"><span class="eyebrow">Second Thoughts</span><span class="meta">Sep 24 · 11 min</span><span class="badge muted">summarising…</span></div>
+    <p class="title">The case against the case against scaling</p>
+    <p class="gist ph">The summary is on its way — <span class="new">send it now</span>, or check back in a few minutes.</p>
+    <div class="verbs">
+      <span class="btn outline new">Send to Instapaper</span>
+      <span class="btn outline">Archive</span>
+      <span class="btn ghost quiet icon-gap new"><svg viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg>Original</span>
+    </div>
+  </div>
+
+  <div class="lbl">E · Send disabled — nothing to send, or an unconfigured deployment (tooltip shown dashed)</div>
+  <div class="row dimmed">
+    <div class="top"><span class="eyebrow">Stratechery</span><span class="meta">Sep 14 · 1 min</span><span class="badge alert">summary failed</span></div>
+    <p class="title">(untitled)</p>
+    <p class="gist ph">No summary — no readable body. The post is still here; send it or archive it.</p>
+    <div class="verbs">
+      <span class="btn outline disabled new">Send to Instapaper</span>
+      <span class="btn outline">Archive</span>
+      <span class="btn ghost quiet icon-gap"><svg viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg>Original</span>
+    </div>
+    <div style="margin-top:6px">
+      <span class="tip">title: No link and no stored text to send.</span>
+      <span class="tip">or: Instapaper isn't set up on this deployment.</span>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="lbl">F · Archive view — the same post after sending: <b>in Instapaper</b> badge, Unarchive in place of Archive</div>
+  <div class="row">
+    <div class="top"><span class="eyebrow">Second Thoughts</span><span class="meta">Sep 16 · 14 min</span><span class="badge secondary new">in Instapaper</span></div>
+    <p class="title">How near is the intelligence explosion, really?</p>
+    <p class="gist">Argues the "recursive self-improvement" debate conflates three different feedback loops and that only one of them (automated ML research) has any evidence behind it.</p>
+    <div class="verbs">
+      <span class="btn outline new">Send to Instapaper</span>
+      <span class="btn ghost">Overview</span>
+      <span class="btn outline">Unarchive</span>
+    </div>
+  </div>
+
+  <div class="lbl">G · A send that failed — the row is back on the list, and a toast says why</div>
+  <div class="toast new"><span>This publication has opted out of Instapaper</span><span class="x">✕</span></div>
+</div>
+
+<p class="small" style="text-align:center">Phone width: a 375 px viewport leaves a 343 px list column (<code>module-router.tsx</code>'s <code>px-4</code>). Hints are hidden below <code>md</code>, and the three verbs still fit on one line.</p>
+<div class="app phone">
+  <div class="row">
+    <div class="top"><span class="eyebrow">Import AI</span><span class="meta">Sep 16 · 9 min</span></div>
+    <p class="title">Import AI 412: three new evals, and a robot that folds</p>
+    <p class="gist">Roundup issue. Most of it restates last week's benchmark releases; the one new item is a robotics dexterity eval.</p>
+    <div class="verbs">
+      <span class="btn outline new">Send to Instapaper</span>
+      <span class="btn ghost">Overview</span>
+      <span class="btn outline">Archive</span>
+    </div>
+  </div>
+</div>
+
+<div class="legend card">
+  <b>Legend, reconciled against the states above.</b>
+  <ul>
+    <li><span class="swatch"></span>New or moved in this story: the Send verb (A–F), Original ↗ in the footer (B) or at the end of
+      the verb row (C–E), the "send" wording in the placeholders (C, D), the disabled Send and its two titles (E), the
+      <b>in Instapaper</b> badge (F), and the failure toast (G).</li>
+    <li><b>Sending from the list</b> (A–E, enabled): the row plays Archive's existing collapse and leaves. It reappears as F in the
+      archive. If the send fails, it comes back where it was, with G.</li>
+    <li><b>Sending from the archive</b> (F): no collapse. The badge is already there after a previous send, and a first send from
+      the archive adds it in place.</li>
+    <li>Everything not outlined (eyebrow, meta, title, gist, the overview's four sections, the stamp, Re-summarise, Retry summary,
+      Archive/Unarchive, the summary-state badges, the selected ring, the expanded border) is today's UI, unchanged.</li>
+  </ul>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="setup">10 · Credentials &amp; setup</h2>
+
+<p>The owner has a "send to Instapaper" skill in their Claude account that holds a token. A Full API token is bound to the
+consumer key that issued it, so it can be reused only together with that key and its secret.</p>
+<ol>
+  <li><b>If the skill holds all four values</b> (consumer key/secret, token/secret), reuse them as they are.</li>
+  <li><b>Otherwise:</b> register an application at <code>instapaper.com/developers/applications/create</code>. It starts in
+    <i>Owner Only</i> mode, which is enough and needs no review. Then run the one-off exchange,
+    <code>npm run instapaper:token -w frontend</code>. It prompts for the consumer key/secret and the Instapaper username/password,
+    POSTs a signed <code>/api/1/oauth/access_token</code> with <code>x_auth_mode=client_auth</code>, and prints
+    <code>oauth_token</code>/<code>oauth_token_secret</code>. It reuses <code>lib/instapaper/oauth.ts</code> rather than keeping a
+    second signer, and it never writes the password anywhere (Instapaper's API terms).</li>
+  <li>Set the four vars on the <b>Personal</b> instance's Vercel project (Production), then redeploy. The Work instance stays unset
+    and gets D8's disabled verb.</li>
+  <li>Document the four vars and <code>INSTAPAPER_API_URL</code> in <code>frontend/.env.example</code> in the PR-ratio block's
+    style: server-side only, never <code>NEXT_PUBLIC_</code>, and what "unset" means.</li>
+</ol>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="tests">11 · Tests &amp; demo</h2>
+
+<div class="scroll"><table>
+  <tr><th>Layer</th><th>Suite</th><th>Pins</th></tr>
+  <tr><td>OAuth</td><td><code>lib/instapaper/oauth.test.ts</code></td>
+    <td>A published OAuth 1.0a HMAC-SHA1 test vector (RFC 5849's worked example, checked against the RFC's errata) reproduces
+      its published signature. Take the fixture and the expected value from the source text, not from memory. Form-body params are in the base string. The header is <code>OAuth</code> with the seven
+      <code>oauth_*</code> fields, percent-encoded.</td></tr>
+  <tr><td>Params</td><td><code>lib/instapaper/bookmark.test.ts</code></td>
+    <td>The content ladder (html ▸ text ▸ none), a URL versus a private bookmark, <code>null</code> when there's nothing,
+      <code>description</code> only when there's a gist, and <code>javascript:</code>/Gmail URLs never sent as <code>url</code>.
+      Response mapping: every row of §7's table, a timeout, and a non-JSON body.</td></tr>
+  <tr><td>Config</td><td><code>lib/instapaper/config.test.ts</code></td><td><code>null</code> with any of the four unset.
+    The default and overridden API URL.</td></tr>
+  <tr><td>Route</td><td><code>app/api/reader/posts/[id]/instapaper/route.test.ts</code></td>
+    <td>Uses the Supabase route double and a mocked <code>fetch</code>. 501 with no Instapaper call and no read, 404, 409, success
+      stamps (including an already-archived post keeping its <code>archived_at</code>), no write on any failure, a body that
+      carries neither <code>text</code> nor <code>html</code>, and no log line containing content or credentials.</td></tr>
+  <tr><td>Data</td><td><code>lib/data/reader.test.ts</code></td><td>The list-columns pin now excludes <code>html</code> as well as
+    <code>text</code>, and <code>markReaderPostSent</code>'s write shape.</td></tr>
+  <tr><td>Worker</td><td><code>extract.test.ts</code>, <code>scheduled.test.ts</code></td>
+    <td>The essay fixture keeps its HTML, the plain-text-only fixture gets none, anything over <code>READER_HTML_CHARS</code> gets none,
+      and the insert body carries <code>html</code>. Subrequest counts are unchanged.</td></tr>
+  <tr><td>DB</td><td><code>database/src/assertions.ts</code></td><td>The sweep nulls <code>html</code> with <code>text</code>, and
+    leaves the recent post's alone.</td></tr>
+  <tr><td>Store</td><td><code>reader-store.test.tsx</code></td><td>Optimistic send archives, reconcile, rollback + the route's
+    toast, the generic toast for other failures, and a focus refetch mid-send not undoing it.</td></tr>
+  <tr><td>Row</td><td><code>post-row.test.tsx</code>, <code>hotkeys.test.ts</code></td>
+    <td>Verb order, both Original placements, <code>markOpened</code> on Original, both disabled reasons, the list exit versus the
+      in-place archive send, <code>i</code> sends, <code>o</code> opens, disabled means the key does nothing, and the new placeholder copy.</td></tr>
+  <tr><td>Visual</td><td><code>post-row.stories.tsx</code> (+ archive/list stories)</td>
+    <td>A story per drawn state A–F, plus G via the toast viewport's story if one exists. Moved baselines are approved per the
+      <code>storybook</code> skill.</td></tr>
+  <tr><td>E2E</td><td><code>e2e/reader-instapaper.spec.ts</code></td>
+    <td>Send from the list: the row leaves, <code>/reader/archive</code> shows <b>in Instapaper</b>, and the mock recorded one
+      signed request carrying <code>content</code>. A failure (the mock answers <code>1221</code>): the row returns and the toast
+      reads the refusal.</td></tr>
+</table></div>
+
+<div class="callout">
+  <b>E2E needs a stand-in for Instapaper.</b> The route calls Instapaper from the Next server, where <code>page.route</code> can't
+  reach it. So <code>scripts/mock-supabase.mjs</code> gains an <code>/api/1/bookmarks/add</code> handler, which records each
+  request for <code>/__mock__/state</code> and answers a bookmark or a seeded error code. <code>playwright.config.ts</code>'s
+  <code>mockEnvironment</code> gains fake <code>INSTAPAPER_*</code> credentials plus <code>INSTAPAPER_API_URL = MOCK_URL</code>.
+  That config edit is a deliberate addition for a new feature, not a change made to turn a red check green. Name it in the PR.
+</div>
+
+<p><b>Demo doc</b>: <code>docs/demos/</code>, following the <code>showboat</code> skill's evidence rules (this spec doesn't restate
+them). This change moves committed Storybook baselines, so the diff images are the visual evidence. The route and client
+tests' output covers the request shape. A real send can only be proved after deploy (below).</p>
+
+<p><b>After deploy (owner, listed in the PR):</b> send one free post, one paid post, and one link-less post, then confirm in
+Instapaper that the paid post arrived complete, not as a teaser, and that the link-less post arrived as a private article. Also
+check whether the email chrome ("READ IN APP", the footer) crowds the article (see open question 1).</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="ac">12 · Acceptance criteria</h2>
+<ul class="ac">
+  <li class="h">Instapaper client</li>
+  <li><code>getInstapaperConfig()</code> is <code>null</code> unless all four credential vars are set. None of them is <code>NEXT_PUBLIC_</code>, and nothing under <code>lib/instapaper/</code> is importable from a client component (<code>server-only</code>).</li>
+  <li>The signer reproduces a published OAuth 1.0a HMAC-SHA1 test vector and includes form-body parameters in the base string.</li>
+  <li>The request follows §6's parameter table: content ladder html ▸ text-as-paragraphs ▸ none, a private bookmark when there's no <code>http(s)</code> link, the gist as <code>description</code>, and no tags or folder.</li>
+  <li>Every row of §7's outcome table maps as written. Instapaper's own <code>message</code> is never shown to the owner.</li>
+
+  <li class="h">Route</li>
+  <li><code>POST /api/reader/posts/[id]/instapaper</code> is session-gated. It answers 501 with no read and no outbound call when unconfigured, 404 for an unknown post, and 409 when there's nothing to send.</li>
+  <li>On success it stamps <code>instapaper_sent_at</code>, <code>instapaper_bookmark_id</code>, and <code>archived_at</code> (keeping an existing value), and returns the row with neither <code>text</code> nor <code>html</code>.</li>
+  <li>On any Instapaper failure the row is not written.</li>
+  <li>No log line contains credentials, the <code>Authorization</code> header, or post content.</li>
+
+  <li class="h">Data &amp; Worker</li>
+  <li>The migration (next free number) adds <code>html</code>, <code>instapaper_sent_at</code>, and <code>instapaper_bookmark_id</code>, and <code>reader_sweep_text</code> nulls <code>html</code> with <code>text</code>. The DB assertion proves it.</li>
+  <li>Types are regenerated. <code>ReaderPostListItem</code> omits <code>text</code> and <code>html</code>. <code>READER_POST_LIST_COLUMNS</code> carries the two Instapaper columns and not <code>html</code>.</li>
+  <li><code>extractPost</code> returns the raw HTML for an HTML-extracted post within <code>READER_HTML_CHARS</code>, and none otherwise. The intake insert stores it, and the tick's subrequest count is unchanged.</li>
+
+  <li class="h">Row, store &amp; keyboard (the mockups)</li>
+  <li>Open is gone. <b>Send to Instapaper</b> leads the verb row in every state A–F.</li>
+  <li><b>Original ↗</b> sits in the panel footer when the row has a panel (B), and at the end of the verb row otherwise (C–E). It points at <code>postOpenLink</code>'s target, stamps <code>opened_at</code>, and is absent when there's no link.</li>
+  <li>Sending from the list collapses the row out, and it appears in the archive with <b>in Instapaper</b> (F). Sending from the archive adds the badge in place.</li>
+  <li>A failed send restores the row and toasts the route's sentence (G). A second press while a send is in flight does nothing.</li>
+  <li>Send is disabled, with the matching title, on an unconfigured deployment and on a post with no link and no stored text (E).</li>
+  <li>The placeholder copy says "send", not "open" (C, D, and the swept tail).</li>
+  <li><code>i</code> sends the selected row and <code>o</code> opens its original, including a done row whose panel is closed. Neither does anything when its target is unavailable. Hints show <code>i</code> on Send and <code>o</code> on a visible Original, on desktop only.</li>
+  <li>At 375 px the three verbs fit on one line with no horizontal scroll (phone mockup).</li>
+
+  <li class="h">Tests, docs, demo</li>
+  <li>§11's suites exist and are green, the moved Storybook baselines are approved, and the E2E covers a send and a refusal against the mock.</li>
+  <li><code>.env.example</code> documents the five vars. <code>database/README.md</code> lists the new columns. <code>npm run instapaper:token -w frontend</code> exists and uses the shared signer.</li>
+  <li>A demo doc under <code>docs/demos/</code> follows the showboat skill. The PR lists the owner's after-deploy checks (§11).</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="out">13 · Out of scope &amp; open questions</h2>
+
+<h3>Out of scope</h3>
+<ul>
+  <li><b>Instapaper → wiki.</b> Tag-sync, pulling highlights, and the bookmark-id identity it will key on are ALF-259's follow-up.
+    This story only stores the id so that producer has something to match.</li>
+  <li><b>Batch send</b> ("send every unread post") and auto-send. Instapaper's terms forbid adding bookmarks without a
+    per-item user action anyway.</li>
+  <li><b>Reading Instapaper back:</b> read progress, "read in Instapaper" status, un-sending.</li>
+  <li><b>A backfill of <code>html</code></b> for posts ingested before this ships. They take the text rung.</li>
+  <li><b>Cleaning the email HTML</b> before sending (stripping Substack's chrome). It depends on open question 1.</li>
+  <li><b>Comms.</b> Nothing in Comms changes.</li>
+</ul>
+
+<h3>Open questions</h3>
+<ol>
+  <li><b>Does Instapaper's parser pick the article out of Substack's email HTML cleanly?</b> Its email-in feature suggests yes, and the
+    after-deploy check answers it. If the "READ IN APP" buttons or the footer dominate, a follow-up can send only the post's body
+    container. Nothing in this story blocks on it.</li>
+  <li><b>Should <code>html</code> be swept sooner than <code>text</code>?</b> Sends happen within days of arrival, so a 30-day
+    <code>html</code> window would cut its storage by about two-thirds. At the measured volume (§2 D2) it isn't worth a second sweep
+    parameter. Revisit if <code>reader_posts</code> passes ~100 MB.</li>
+</ol>
+
+</div>
+</body>
+</html>
