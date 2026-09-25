@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-261 — Day 2 wiki setup</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #6d4fd6; --accent-bg: #efeafd;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a; --blue: #2f6fb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #a78bfa; --accent-bg: #231b3d;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a; --blue: #6ea8e8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .87rem; }
+  th, td { text-align: left; padding: .5rem .65rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card h4 { margin-top: 0; }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .tag { display: inline-block; font-size: .68rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+         border-radius: 999px; padding: .05rem .5rem; margin-left: .35rem; vertical-align: middle; border: 1px solid; }
+  .tag.dep { color: var(--warn-fg); border-color: color-mix(in srgb, var(--warn-fg) 50%, transparent); }
+  .tag.new { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+  .tag.ask { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .8rem 1.05rem; margin: .8rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .3rem; font-size: .98rem; }
+  .dec p { margin: .3rem 0; font-size: .92rem; }
+  .dec .why { color: var(--muted); font-size: .88rem; }
+  .dec .why b { color: var(--fg); }
+  .ac { list-style: none; padding-left: 0; }
+  .ac li { margin: .42rem 0; padding-left: 1.7rem; position: relative; font-size: .92rem; }
+  .ac li::before { content: "☐"; position: absolute; left: 0; color: var(--accent); font-size: 1.05rem; }
+  .ac li.grp { padding-left: 0; font-weight: 600; margin-top: 1.1rem; color: var(--muted);
+               text-transform: uppercase; letter-spacing: .04em; font-size: .78rem; }
+  .ac li.grp::before { content: ""; }
+  .toc { columns: 2; column-gap: 2rem; font-size: .9rem; padding-left: 1.2rem; }
+  @media (max-width: 640px) { .toc { columns: 1; } }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  .dg-box { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+  .dg-hot { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+  .dg-t { fill: var(--fg); font: 600 12px -apple-system, "Segoe UI", sans-serif; }
+  .dg-s { fill: var(--muted); font: 11px -apple-system, "Segoe UI", sans-serif; }
+  .dg-l { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .dg-d { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .dg-a { fill: var(--muted); }
+
+  /* ── App-palette mockups ───────────────────────────────────────────────────────────
+     Every value is lifted from source so the canvas reads as alfred whichever mode this document
+     is in. Tokens are scoped to .app, not :root — the prose keeps the document's own chrome.
+       palette, radius, fonts            → frontend/app/globals.css (dark-only palette)
+       violet accent (NEW, this spec)    → --color-accent-violet #a78bfa + glow-violet, added by
+                                           the foundation; the four existing module hues are taken
+       view heading (40px circle, serif) → components/atoms/view-heading.tsx
+       switcher segment / container      → components/shell/view-switcher.tsx (segmentClass)
+       sidebar nav link                  → lib/ui/nav-link-class.ts (navLinkClass)
+       post row shell (expanded)         → components/reader/post-row.styles.ts (rowShellClass)
+       overview section heading / bullets→ components/reader/post-overview.tsx
+       buttons (ghost / outline / accent)→ components/atoms/button.tsx
+       checklist tick box                → components/tasks/task-row.styles.ts (checkboxSizeClass,
+                                           checkboxIncompleteClass) + task-row.tsx's select-mode tick
+       selection bar counter             → components/tasks/inbox-bulk-bar.tsx ("n selected")
+       badges                            → components/atoms/badge.tsx (+ NEW `wiki` variant)
+       dropdown content / item           → components/atoms/dropdown-menu.tsx
+       bulk bar                          → components/tasks/inbox-bulk-bar.styles.ts
+       ⌘P rows / group label / footer    → components/shell/search-results-popover.tsx
+       ⌘K rows                           → components/shell/command-palette.tsx
+       toast                             → components/shell/toast-viewport.tsx
+       input                             → components/atoms/input.tsx
+       empty state                       → components/atoms/empty-state.tsx
+     `font-serif` renders Georgia today (--font-instrument-serif is never defined), so the mockups
+     use Georgia too. */
+  .app {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f; --a-secondary: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8; --a-input: #1e2a3f;
+    --a-teal: #4fd1e0; --a-green: #34d399; --a-blue: #60a5fa; --a-amber: #f0b429; --a-red: #f87171;
+    --a-violet: #a78bfa;
+    --a-radius: 0.5rem;
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1rem; margin: 1rem 0 .3rem; color: var(--a-text); font-size: 14px; line-height: 1.45;
+    font-family: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow-x: auto;
+  }
+  .app * { box-sizing: border-box; }
+  .app code { background: rgba(255,255,255,.06); color: var(--a-text); font-size: 12px; }
+  .app a { color: inherit; text-decoration: none; }
+  .mockcap { color: var(--muted); font-size: .82rem; margin: .3rem 0 1.4rem; }
+  .serif { font-family: Georgia, "Times New Roman", serif; }
+  .i { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; }
+  .i svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .heading { display: flex; align-items: center; gap: 12px; }
+  .glyph { width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--a-border); background: var(--a-surface);
+           display: flex; align-items: center; justify-content: center; flex: none; }
+  .glyph .i { width: 20px; height: 20px; }
+  .heading h5 { margin: 0; font: 400 24px/1.2 Georgia, "Times New Roman", serif; color: var(--a-text); }
+  .heading p { margin: 0; font-size: 14px; color: var(--a-muted); }
+  .t-violet { color: var(--a-violet); } .t-green { color: var(--a-green); } .t-amber { color: var(--a-amber); }
+  .t-muted { color: var(--a-muted); } .t-teal { color: var(--a-teal); }
+  .shell { display: grid; grid-template-columns: 256px 1fr; gap: 0; border: 1px solid var(--a-border); border-radius: 10px; overflow: hidden; min-width: 760px; }
+  .side { background: var(--a-surface); border-right: 1px solid var(--a-border); padding: 12px 16px; }
+  .main { padding: 24px 28px; background: var(--a-bg); min-width: 0; }
+  .switcher { display: flex; gap: 2px; border: 1px solid var(--a-border); background: rgba(10,14,23,.6); border-radius: 8px; padding: 4px; margin-bottom: 10px; }
+  .seg { flex: 1 1 auto; text-align: center; font-size: 13px; font-weight: 500; padding: 4px 4px; border-radius: 6px; color: var(--a-muted); white-space: nowrap; }
+  .seg.on { background: var(--a-surface); box-shadow: 0 1px 2px 0 rgba(0,0,0,.4); }
+  .navl { display: flex; align-items: center; gap: 10px; border-radius: 2px; padding: 8px 12px; font-size: 14px; color: var(--a-muted); }
+  .navl.on { background: var(--a-secondary); color: var(--a-text); font-weight: 500; }
+  .navl .n { margin-left: auto; font-size: 12px; color: var(--a-muted); }
+  .input { display: flex; align-items: center; gap: 8px; height: 36px; border: 1px solid var(--a-border); background: var(--a-input);
+           border-radius: 2px; padding: 0 12px; color: var(--a-text); font-size: 14px; }
+  .input .ph { color: var(--a-muted); }
+  .sect { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--a-muted); display: flex; align-items: center; gap: 8px; }
+  .sect .cnt { letter-spacing: 0; font-weight: 400; color: color-mix(in srgb, var(--a-muted) 70%, transparent); }
+  .prow { border: 1px solid transparent; border-radius: var(--a-radius); padding: 8px 12px; }
+  .prow.hover { background: color-mix(in srgb, var(--a-secondary) 25%, transparent); }
+  .prow .pt { font-size: 14px; font-weight: 500; color: var(--a-text); }
+  .prow .ps { font-size: 13px; color: var(--a-muted); margin-top: 2px; }
+  .prow .snip { font-size: 13px; color: var(--a-muted); margin-top: 4px; }
+  mark.hl { background: color-mix(in srgb, var(--a-violet) 22%, transparent); color: var(--a-text); border-radius: 2px; padding: 0 1px; }
+  .badge { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; white-space: nowrap; }
+  .b-muted { border: 1px solid color-mix(in srgb, var(--a-border) 70%, transparent); color: var(--a-muted); }
+  .b-wiki { background: color-mix(in srgb, var(--a-violet) 15%, transparent); color: var(--a-violet); font-weight: 500; }
+  .b-accent { background: color-mix(in srgb, var(--a-teal) 15%, transparent); color: var(--a-teal); font-weight: 500; }
+  .b-alert { background: rgba(245,158,11,.15); color: #fbbf24; font-weight: 500; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 2px; font-size: 12px; font-weight: 500; height: 32px; padding: 0 12px; white-space: nowrap; }
+  .btn.ghost { color: var(--a-text); }
+  .btn.ghost.hov { background: var(--a-secondary); }
+  .btn.outline { border: 1px solid var(--a-border); color: var(--a-text); }
+  .btn.accent { background: var(--a-teal); color: var(--a-bg); }
+  .ib { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px; color: var(--a-muted); flex: none; }
+  .ib.hov { color: var(--a-violet); }
+  .row-exp { border: 1px solid color-mix(in srgb, var(--a-green) 60%, transparent); background: color-mix(in srgb, var(--a-secondary) 40%, transparent);
+             border-radius: var(--a-radius); padding: 8px 12px; }
+  .eb { font-size: 12px; font-weight: 600; color: var(--a-green); }
+  .meta { font-size: 12px; color: var(--a-muted); }
+  .rtitle { margin-top: 6px; font: 18px/1.35 Georgia, serif; color: var(--a-text); }
+  .gist { margin-top: 4px; font-size: 14px; line-height: 1.6; }
+  .verbs { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .ov { margin-top: 12px; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent); padding-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+  .ovh { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+  .ovh h6 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--a-muted); }
+  .ideas { margin: 4px 0 0; padding-left: 20px; list-style: disc; font-size: 14px; }
+  .ideas li { margin: 4px 0; }
+  .idea { display: flex; align-items: flex-start; gap: 8px; }
+  .idea .tx { flex: 1; min-width: 0; }
+  .idea .st { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--a-muted); margin-top: 1px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--a-muted) 40%, transparent); border-top-color: var(--a-muted); border-radius: 999px; }
+  .picks { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+  .pick { display: flex; align-items: flex-start; gap: 10px; padding: 4px 6px; border-radius: 6px; font-size: 14px; }
+  .pick .tx { flex: 1; min-width: 0; }
+  .pick .st { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--a-muted); margin-top: 1px; }
+  .tick { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 4px; border: 1px solid rgba(138,150,168,.5); display: inline-flex; align-items: center; justify-content: center; }
+  .tick.on { border-color: var(--a-teal); background: var(--a-teal); }
+  .tick.sentmark { border-color: transparent; }
+  .selbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding: 6px 6px 0; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent); }
+  .plist { margin: 4px 0 0; padding-left: 20px; list-style: disc; font-size: 14px; }
+  .trow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 14px; }
+  .trow.sel { background: color-mix(in srgb, var(--a-secondary) 40%, transparent); }
+  .menu { background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 6px; padding: 4px; min-width: 176px; box-shadow: 0 4px 12px rgba(0,0,0,.35); font-size: 14px; }
+  .mi { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 2px; }
+  .mi.foc { background: var(--a-secondary); }
+  .mi .chev { margin-left: auto; color: var(--a-muted); }
+  .msep { height: 1px; background: var(--a-border); margin: 4px -4px; }
+  .bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px solid var(--a-teal); border-radius: 12px; padding: 10px 12px;
+          background: rgba(15,22,38,.95); box-shadow: 0 18px 40px -12px rgba(0,0,0,.7); }
+  .toast { display: inline-flex; align-items: center; gap: 12px; border: 1px solid var(--a-border); background: var(--a-surface); border-radius: 8px;
+           padding: 12px 16px; font-size: 14px; box-shadow: 0 8px 32px 0 rgba(0,0,0,.4); }
+  .pop { background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 6px; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+  .glabel { padding: 8px 8px 4px; font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--a-muted) 70%, transparent); }
+  .opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+  .opt.act { background: var(--a-secondary); box-shadow: inset 0 0 0 1px var(--a-teal); }
+  .opt .ot { font-size: 14px; color: var(--a-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .opt .os { font-size: 12px; color: var(--a-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .popfoot { margin-top: 4px; display: flex; gap: 12px; border-top: 1px solid var(--a-border); padding: 6px 8px; font-size: 11px; color: color-mix(in srgb, var(--a-muted) 70%, transparent); }
+  .pg-eb { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--a-violet); }
+  .pg-title { margin: 4px 0 0; font: 400 24px/1.25 Georgia, serif; color: var(--a-text); }
+  .pg-sum { margin-top: 4px; font-size: 14px; color: var(--a-muted); }
+  .pg-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .md { margin-top: 18px; font-size: 14px; line-height: 1.65; }
+  .md h2 { font: 600 16px/1.3 inherit; margin: 18px 0 6px; padding: 0; border: 0; color: var(--a-text); font-family: inherit; }
+  .md p { margin: 8px 0; }
+  .md blockquote { margin: 8px 0; padding-left: 12px; border-left: 2px solid var(--a-border); color: var(--a-muted); }
+  .app .lk { color: var(--a-violet); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: color-mix(in srgb, var(--a-violet) 45%, transparent); }
+  .app .lk-broken { color: var(--a-muted); text-decoration: underline dotted; text-underline-offset: 2px; }
+  .ext { display: inline-block; width: 11px; height: 11px; vertical-align: 0; margin-left: 2px; }
+  .ext svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 2; }
+  .foot { margin-top: 22px; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent); padding-top: 14px; display: flex; flex-direction: column; gap: 14px; }
+  .empty { text-align: center; padding: 48px 8px; }
+  .empty .et { font: 400 24px/1.3 Georgia, serif; color: color-mix(in srgb, var(--a-muted) 50%, transparent); }
+  .empty .ed { margin-top: 8px; font-size: 14px; color: color-mix(in srgb, var(--a-muted) 40%, transparent); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .phone { width: 375px; border: 1px solid var(--a-border); border-radius: 18px; padding: 16px; background: var(--a-bg); }
+  .panel-label { font-size: 11px; color: var(--a-muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Story spec · Epic ALF-259 · Wiki Module · Day 2</p>
+<h1>ALF-261 — Day 2 wiki setup</h1>
+<p class="sub">
+  Every Alfred-side piece of the wiki. You can send picked Reader "Novel ideas" bullets and
+  classified <code>knowledge</code> captures into <code>ac3charland/knowledge</code>'s
+  <code>inbox/</code>. A push to the wiki repo snapshots its pages into Supabase. A new read-only
+  <strong>Wiki</strong> module renders those pages, with links, backlinks and search over titles
+  and bodies. Wiki pages also appear in ⌘P and ⌘K. The spec ends with a subagent plan: Sonnet
+  implementers, and an Opus adversarial reviewer on every slice.
+</p>
+
+<div class="callout">
+  <strong>Read first:</strong> the epic spec <code>docs/specs/epics/ALF-259.html</code>. It is
+  background, not this spec, so don't edit, move or archive it. Day 1 (ALF-260) has merged:
+  <code>ac3charland/knowledge</code> exists with its registry, lint, filing, kickoff and ingest
+  skill, and has already ingested one source. This story builds against that repo as it stands.
+  Where this spec departs from the epic, the decision is tagged
+  <span class="tag dep">departs from epic</span>. Decisions Alex made in this refinement are tagged
+  <span class="tag ask">Alex</span>.
+</div>
+
+<ol class="toc">
+  <li><a href="#s1">Context</a></li>
+  <li><a href="#s2">What this refinement settled</a></li>
+  <li><a href="#s3">Architecture</a></li>
+  <li><a href="#s4">The wiki writer</a></li>
+  <li><a href="#s5">Reader send</a></li>
+  <li><a href="#s6">Knowledge captures</a></li>
+  <li><a href="#s7">The snapshot</a></li>
+  <li><a href="#s8">The Wiki module</a></li>
+  <li><a href="#s9">⌘P and ⌘K</a></li>
+  <li><a href="#s10">Data model</a></li>
+  <li><a href="#s11">Subagent plan</a></li>
+  <li><a href="#s12">Acceptance criteria</a></li>
+  <li><a href="#s13">Demo evidence</a></li>
+  <li><a href="#s14">Alex's checklist</a></li>
+  <li><a href="#s15">Out of scope, risks, open questions</a></li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s1">1 · Context</h2>
+
+<p>
+  Day 1 built the wiki itself, outside Alfred. A private repo holds sources in
+  <code>inbox/</code> → <code>raw/</code> and pages in <code>wiki/</code>. A push that touches
+  <code>inbox/**</code> takes a lock branch and fires a Routine. The Routine follows the ingest
+  skill and opens a PR, and Alex's merge is the review. Right now the only way in is
+  <code>npm run add</code> or the book importer on the Mac, and the only way to read is Obsidian
+  or GitHub.
+</p>
+<p>
+  Day 2 connects Alfred at both ends. <strong>In:</strong> the Reader has already done the
+  expensive part, finding each newsletter's novel ideas, and that work expires with the post.
+  Captured ideas are just Inbox rows. Both should flow into the wiki with one click.
+  <strong>Out:</strong> Alfred is meant to be the one place Alex goes. A wiki he can only read
+  elsewhere is a wiki he'll forget to read.
+</p>
+
+<h3>What Day 1 fixed that this builds against</h3>
+<div class="scroll"><table>
+  <tr><th>Contract</th><th>As built in <code>ac3charland/knowledge</code></th><th>Consequence here</th></tr>
+  <tr><td>Registry rows</td><td><code>reader-post</code> (max <code>full-text</code>) and <code>idea</code> (max <code>notes-only</code>) already exist, marked "Day 2"</td><td>No wiki-repo change is needed. Alfred writes against these two rows.</td></tr>
+  <tr><td>Every send is a new folder</td><td>A producer never adds files to an existing <code>inbox/</code> folder, because git's directory-rename detection would turn an in-flight batch's merge into a conflict. Filing merges folders by identity.</td><td>Alfred always writes a fresh <code>inbox/&lt;date&gt;-&lt;slug&gt;[-n]/</code>. That folder's files must land in <strong>one commit</strong> (§4).</td></tr>
+  <tr><td>Core frontmatter</td><td><code>scripts/lib/schema.ts</code>: <code>source_type, origin, title, author, source_url, published, captured, via, external_id</code>, plus <code>fidelity</code> on author-text files</td><td>Alfred's envelope builder mirrors this module. <code>via</code> is <code>alfred-reader</code> or <code>alfred-inbox</code>.</td></tr>
+  <tr><td>Identity and merge</td><td>Identity is <code>external_id</code>, or else the canonical <code>source_url</code>. A re-sent <code>source.md</code> with the same or an empty body is dropped. A dated file with identical bytes is dropped; a differing one is renamed <code>-2</code>.</td><td>A re-send or a retried request is harmless: identical files dedupe at filing.</td></tr>
+  <tr><td>Lint on every push</td><td>CI runs <code>npm run check</code> on <code>main</code></td><td>A malformed Alfred send shows up as a red check in the wiki repo. The lead proves the envelopes pass the wiki's own lint before shipping (§11.6).</td></tr>
+  <tr><td>Pages</td><td><code>wiki/{concepts,entities,sources,questions}/&lt;kebab&gt;.md</code>, with frontmatter <code>title, summary, sources, created, updated, tags?</code>. Only relative links; anchors follow GitHub's heading rule.</td><td>The snapshot reads exactly those four folders. The renderer mirrors the heading-anchor rule.</td></tr>
+</table></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s2">2 · What this refinement settled</h2>
+
+<div class="dec"><h3>D1 · One send is one commit, through the Git Data API <span class="tag dep">departs from epic</span></h3>
+  <p>The epic names the GitHub Contents API, but that API writes <em>one file per commit</em>. A
+  Reader send has two files. Its first commit is a push to <code>main</code> touching
+  <code>inbox/**</code>, which can start kickoff. Kickoff can then take the lock with only
+  <code>source.md</code> in the batch, and the <code>picks-…</code> file lands in that same folder on
+  <code>main</code> while the batch is moving it to <code>raw/</code>. That is exactly the conflict
+  Day 1's "every send is a new folder" rule exists to prevent. So the writer builds one tree and
+  one commit, then fast-forwards <code>main</code> (§4.4).</p>
+  <p class="why"><b>Cost:</b> seven requests instead of two per send, plus a retry loop when
+  <code>main</code> moved underneath us. Both are cheap on Vercel.</p></div>
+
+<div class="dec"><h3>D2 · The module is called <em>Wiki</em> on screen <span class="tag ask">Alex</span> <span class="tag dep">departs from epic</span></h3>
+  <p>The switcher has about 47px spare at the sidebar's 256px width. "Wiki" fits and "Knowledge"
+  does not. The module id is <code>wiki</code>, its URL is <code>/wiki</code>, its code lives in
+  <code>components/wiki/</code>, and the switcher, heading, ⌘K and ⌘P all say "Wiki". The item type
+  keeps the DB's reserved <code>knowledge</code> value: an Inbox row is <em>classified as
+  Knowledge</em> and <em>dispatched to the wiki</em>.</p></div>
+
+<div class="dec"><h3>D3 · The snapshot is pages only; raw citations open on GitHub <span class="tag ask">Alex</span></h3>
+  <p>Only <code>wiki/*/*.md</code> is snapshotted. A citation into <code>raw/</code> (a quote, a
+  notes file, a source folder) becomes a GitHub link in a new tab. Raw sources are large, never
+  searched, and a bulk import can move hundreds of them in one merge, which would blow the Worker's
+  budget (D4).</p></div>
+
+<div class="dec"><h3>D4 · The snapshot reconciles to the repo's tree, in two GraphQL calls <span class="tag new">new</span></h3>
+  <p>The epic's "fetchSpec pattern" fetches one file per REST call. The Worker runs on the Free plan:
+  50 subrequests and 10ms CPU per invocation. An ingest merge touches 10–30 pages. So the sync
+  (a) asks GraphQL for the current tree's blob ids, (b) diffs them against the stored ids, and
+  (c) fetches every changed page's text in <em>one</em> aliased GraphQL query. That is about six
+  subrequests whatever the size, and each run is capped by CPU instead (60 pages, §7.3). A tree
+  diff is self-healing: a missed webhook is repaired by the next push or by a daily safety-net run
+  on the existing retention cron. No new cron slot is used; the Free plan's last one stays free.</p></div>
+
+<div class="dec"><h3>D5 · The store seeds an index; bodies load on demand <span class="tag new">new</span></h3>
+  <p>The shell layout seeds every module on every load, so wiki bodies must not ride along. The
+  store seeds each page's path, section, title, summary, tags, dates and outbound links. A body is
+  fetched when a page opens and cached by blob id. This is the <code>weekly_plans</code> precedent
+  in the <code>data-flow</code> skill ("big documents seed lazily").</p></div>
+
+<div class="dec"><h3>D6 · Search depth: the module searches bodies too; ⌘P stays titles <span class="tag ask">Alex</span></h3>
+  <p>Inside the Wiki module, typing gives instant title, summary and tag matches from the store,
+  plus body matches from Postgres full-text search with highlighted snippets. ⌘P global search
+  matches only title, summary and tags, instantly and client-side, the same way its other groups
+  work.</p></div>
+
+<div class="dec"><h3>D7 · A knowledge dispatch stamps, then deletes, in one RPC <span class="tag new">new</span></h3>
+  <p>"Takes the item out of Alfred" is a hard delete, which is the epic's rule and ALF-7 D2. The
+  classifier's learning loop (<code>classification_corrections</code>) only logs when
+  <code>dispatched_at</code> goes from null to set. So the RPC <code>send_items_to_wiki</code>
+  stamps <code>dispatched_at</code> first, which logs any correction such as "the classifier said
+  task, Alex said knowledge", and only then deletes. <code>convert_to_code_epic</code> is the
+  precedent for consume-and-delete. The <code>items_dispatched_needs_folder</code> CHECK is relaxed
+  to exempt <code>knowledge</code>, as it already exempts <code>code</code>.</p></div>
+
+<div class="dec"><h3>D8 · Sent state is stored as the bullet's text <span class="tag new">new</span></h3>
+  <p>A <code>novel_ideas</code> bullet is a bare string with no id, and re-summarising a post
+  rewrites the whole list. So <code>reader_posts.wiki_sent_ideas text[]</code> records the exact
+  strings that were sent. A bullet shows as sent when its text is in that array. An index would
+  point at the wrong bullet after a re-summarise.</p></div>
+
+<div class="dec"><h3>D9 · Wiki writes are Personal-only <span class="tag new">new</span></h3>
+  <p>Both instances run identical code. The write token is set only on the Personal Vercel
+  project, and the snapshot Worker already writes only the Personal Supabase. When the writer isn't
+  configured, the layout seeds <code>writable: false</code>, and every send affordance disappears:
+  the Reader's controls and the Inbox's <em>Classify as → Knowledge</em>. The Work instance can
+  never write into the personal wiki.</p></div>
+
+<div class="dec"><h3>D10 · A fifth module hue: violet <span class="tag new">new</span></h3>
+  <p><code>modules.ts</code> requires one distinct hue per module. Teal, green, blue and amber are
+  taken, and red means danger. The foundation adds <code>--color-accent-violet: #a78bfa</code>
+  (Tailwind violet-400, from the same -400 family as green, blue and red) and
+  <code>glow-violet</code>. The wiki's own marks wear violet, including inside the Reader: the sent
+  checks, and the glyph on Send all. Selection and primary actions keep the app's standard teal,
+  exactly as the Inbox's select-and-Dispatch does.</p></div>
+
+<div class="dec"><h3>D11 · Reader posts get a producer-scoped identity <span class="tag new">new</span></h3>
+  <p><code>external_id: "alfred:reader-post:&lt;uuid&gt;"</code> keeps a post's sends stable even
+  when <code>canonical_url</code> is null (email-only newsletters). It follows Day 1's
+  <code>alfred:item:&lt;uuid&gt;</code> and the Instapaper follow-up's bookmark id.
+  <code>source_url</code> still carries the canonical URL, so <code>fetch-pointers</code> can
+  complete a swept post.</p></div>
+
+<div class="dec"><h3>D12 · Reader send is a checklist: tick, then send once <span class="tag ask">Alex</span></h3>
+  <p>The epic's "send a single bullet or all of them" becomes <em>tick any subset, then send it
+  in one press</em>, with <strong>Send all</strong> kept as the shortcut (§5.1). One ticked bullet
+  still covers the single-bullet case. What goes away is sending bullets one press at a time.</p>
+  <p class="why"><b>Why:</b> every send is a push to <code>inbox/</code>, and every push can take
+  kickoff's lock. Per-bullet sends wouldn't start one Routine run per bullet, because the lock
+  queues everything after the first send into one next batch. But they would still split an
+  article: the first run ingests a lone bullet without its siblings, and Alex reviews two PRs for
+  one article. Ticking first makes one article one send.</p></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s3">3 · Architecture</h2>
+
+<svg viewBox="0 0 940 420" role="img" aria-label="Data flow between Alfred and the knowledge repo">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="dg-a"/></marker></defs>
+  <!-- Alfred frontend column -->
+  <rect x="20" y="20" width="250" height="380" rx="10" class="dg-box"/>
+  <text x="36" y="44" class="dg-t">Alfred · Next.js (Vercel, Personal)</text>
+  <rect x="36" y="62" width="218" height="46" rx="7" class="dg-hot"/>
+  <text x="48" y="82" class="dg-t">Reader · Novel ideas</text>
+  <text x="48" y="98" class="dg-s">tick · send selected · send all</text>
+  <rect x="36" y="118" width="218" height="46" rx="7" class="dg-hot"/>
+  <text x="48" y="138" class="dg-t">Inbox · Knowledge row</text>
+  <text x="48" y="154" class="dg-s">classify · dispatch</text>
+  <rect x="36" y="186" width="218" height="58" rx="7" class="dg-box"/>
+  <text x="48" y="206" class="dg-t">lib/wiki writer</text>
+  <text x="48" y="222" class="dg-s">envelope → tree → commit →</text>
+  <text x="48" y="236" class="dg-s">fast-forward main (retry)</text>
+  <rect x="36" y="268" width="218" height="116" rx="7" class="dg-hot"/>
+  <text x="48" y="288" class="dg-t">Wiki module · ⌘P · ⌘K</text>
+  <text x="48" y="306" class="dg-s">index seeded by layout</text>
+  <text x="48" y="322" class="dg-s">body on demand (cached)</text>
+  <text x="48" y="338" class="dg-s">body search → RPC</text>
+  <text x="48" y="354" class="dg-s">raw citations → GitHub ↗</text>
+  <!-- GitHub column -->
+  <rect x="345" y="20" width="250" height="380" rx="10" class="dg-box"/>
+  <text x="361" y="44" class="dg-t">ac3charland/knowledge (GitHub)</text>
+  <rect x="361" y="62" width="218" height="46" rx="7" class="dg-box"/>
+  <text x="373" y="82" class="dg-t">main · inbox/&lt;date&gt;-&lt;slug&gt;/</text>
+  <text x="373" y="98" class="dg-s">source.md · picks-… · notes-…</text>
+  <rect x="361" y="126" width="218" height="58" rx="7" class="dg-box"/>
+  <text x="373" y="146" class="dg-t">kickoff → lock → Routine</text>
+  <text x="373" y="162" class="dg-s">ingest skill · draft PR</text>
+  <text x="373" y="176" class="dg-s">(Day 1, unchanged)</text>
+  <rect x="361" y="202" width="218" height="46" rx="7" class="dg-box"/>
+  <text x="373" y="222" class="dg-t">Alex merges the PR</text>
+  <text x="373" y="238" class="dg-s">push to main: wiki/ pages change</text>
+  <rect x="361" y="266" width="218" height="46" rx="7" class="dg-box"/>
+  <text x="373" y="286" class="dg-t">webhook: push event</text>
+  <text x="373" y="302" class="dg-s">shared secret · main only</text>
+  <!-- Worker + Supabase column -->
+  <rect x="670" y="20" width="250" height="380" rx="10" class="dg-box"/>
+  <text x="686" y="44" class="dg-t">Worker · Supabase (Personal)</text>
+  <rect x="686" y="62" width="218" height="72" rx="7" class="dg-hot"/>
+  <text x="698" y="82" class="dg-t">syncWiki</text>
+  <text x="698" y="98" class="dg-s">GraphQL: tree oids → diff →</text>
+  <text x="698" y="112" class="dg-s">changed blobs (≤60) → parse</text>
+  <text x="698" y="126" class="dg-s">≈6 subrequests per run</text>
+  <rect x="686" y="152" width="218" height="46" rx="7" class="dg-box"/>
+  <text x="698" y="172" class="dg-t">daily retention cron</text>
+  <text x="698" y="188" class="dg-s">+ syncWiki safety net</text>
+  <rect x="686" y="216" width="218" height="72" rx="7" class="dg-box"/>
+  <text x="698" y="236" class="dg-t">wiki_pages · wiki_sync</text>
+  <text x="698" y="252" class="dg-s">index cols + body + tsvector</text>
+  <text x="698" y="268" class="dg-s">reader_posts.wiki_sent_ideas</text>
+  <text x="698" y="282" class="dg-s">send_items_to_wiki()</text>
+  <!-- arrows -->
+  <path d="M254 85 H300 V85 H361" class="dg-l" marker-end="url(#ar)"/>
+  <path d="M145 108 V118" class="dg-d"/>
+  <path d="M145 164 V186" class="dg-l" marker-end="url(#ar)"/>
+  <path d="M254 212 H310 V92 H361" class="dg-l" marker-end="url(#ar)"/>
+  <path d="M470 108 V126" class="dg-l" marker-end="url(#ar)"/>
+  <path d="M470 184 V202" class="dg-d" marker-end="url(#ar)"/>
+  <path d="M470 248 V266" class="dg-l" marker-end="url(#ar)"/>
+  <path d="M579 289 H630 V98 H686" class="dg-l" marker-end="url(#ar)"/>
+  <path d="M795 134 V152" class="dg-d"/>
+  <path d="M795 198 V216" class="dg-l" marker-end="url(#ar)"/>
+  <path d="M686 260 H620 V330 H254" class="dg-d" marker-end="url(#ar)"/>
+  <path d="M254 238 H330 V330" class="dg-d"/>
+  <text x="280" y="78" class="dg-s">① commit</text>
+  <text x="590" y="352" class="dg-s">④ seed · refresh · body · search</text>
+  <text x="600" y="92" class="dg-s">③</text>
+  <text x="478" y="198" class="dg-s">②</text>
+</svg>
+<p class="diagram-cap">① A send commits one folder to <code>main</code>. ② Day 1's pipeline runs
+unchanged up to Alex's merge. ③ The merge's push reaches the Worker, which reconciles the page
+snapshot. ④ The Wiki module reads the snapshot. Dashed lines are reads, the safety net, or a human
+step.</p>
+
+<p>What the architecture keeps from the epic:</p>
+<ul class="tight">
+  <li><strong>Alfred only ever writes <code>inbox/</code> folders.</strong> It never writes a page and never pushes anywhere else.</li>
+  <li><strong>Git stays the queue.</strong> A failed send leaves nothing behind. A failed sync leaves the previous snapshot and a <code>last_error</code>.</li>
+  <li><strong>No LLM runs in Alfred's path.</strong> The classifier only suggests <code>knowledge</code>; Alex's dispatch is the decision.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s4">4 · The wiki writer (foundation)</h2>
+
+<p>This is server-only code in <code>frontend/lib/wiki/writer/</code>, and it is the one seam two
+slices call (Reader send and knowledge dispatch). The lead builds it before the fan-out.</p>
+
+<h3>4.1 Configuration</h3>
+<div class="scroll"><table>
+  <tr><th>Env var (frontend, server)</th><th>Value</th><th>Notes</th></tr>
+  <tr><td><code>WIKI_GITHUB_TOKEN</code></td><td>fine-grained PAT, <code>ac3charland/knowledge</code> only, Contents: read and write</td><td>Personal Vercel project only (D9). Never <code>NEXT_PUBLIC_</code>, and never sent to the client.</td></tr>
+  <tr><td><code>WIKI_REPO</code></td><td><code>ac3charland/knowledge</code></td><td>Parsed as <code>owner/name</code>. It also builds the GitHub links for raw citations.</td></tr>
+  <tr><td><code>WIKI_GITHUB_API_URL</code></td><td>default <code>https://api.github.com</code></td><td>Set only by the Playwright harness, to the mock server (§11.2).</td></tr>
+</table></div>
+<p><code>getWikiConfig()</code> in <code>writer/config.ts</code> returns <code>{ owner, name, token, apiUrl }</code>,
+or <code>undefined</code> unless the token and a parseable repo are both present. The layout seeds
+the client with <code>{ repo: "owner/name" | null, writable: boolean }</code> and nothing else. All
+three vars go in <code>types/env.d.ts</code> and <code>.env.example</code>, documented as above.</p>
+
+<h3>4.2 Envelopes</h3>
+<p><code>writer/envelope.ts</code> is pure. An <code>Envelope</code> is
+<code>{ title, captured, files: { name, content }[] }</code>, and the folder name is chosen at
+commit time. Frontmatter is serialized by <code>writer/frontmatter.ts</code>:</p>
+<ul class="tight">
+  <li>Keys follow Day 1's order: <code>source_type, origin, title, author, source_url, published, captured, via, external_id, fidelity</code>.</li>
+  <li>Every string is written as a JSON-quoted YAML double-quoted scalar. That is always valid YAML and never needs a library. <code>null</code> is written bare.</li>
+  <li>A blank line separates frontmatter from the body. An empty body ends the file at the closing <code>---\n</code>, which is Day 1's pointer shape.</li>
+</ul>
+<p>Alfred's frontmatter does not need to be byte-identical to the wiki's own serializer: filing
+compares <code>source.md</code> by body only, and dated files only against Alfred's own earlier
+output. A header comment names <code>scripts/lib/schema.ts</code> and
+<code>scripts/lib/frontmatter.ts</code> in the wiki repo as the source of truth.</p>
+
+<div class="scroll"><table>
+  <tr><th>Field</th><th>Reader send: <code>source.md</code> · <code>picks-&lt;captured&gt;.md</code></th><th>Knowledge item: <code>notes-&lt;captured&gt;.md</code></th></tr>
+  <tr><td>source_type</td><td><code>reader-post</code></td><td><code>idea</code></td></tr>
+  <tr><td>origin</td><td><code>third-party</code> · <code>model-derived</code></td><td><code>mine</code></td></tr>
+  <tr><td>title</td><td><code>reader_posts.title</code></td><td><code>items.title</code></td></tr>
+  <tr><td>author</td><td><code>reader_posts.author</code> (nullable)</td><td><code>null</code></td></tr>
+  <tr><td>source_url</td><td><code>canonical_url</code> if <code>URL.canParse</code>, else <code>null</code></td><td><code>items.source_url</code> if <code>URL.canParse</code>, else <code>null</code></td></tr>
+  <tr><td>published</td><td><code>received_at</code> as a UTC <code>"YYYY-MM-DD"</code>. This is the newsletter's send date, the nearest thing the row has.</td><td><code>null</code></td></tr>
+  <tr><td>captured</td><td colspan="2">today, UTC <code>YYYY-MM-DD</code> (Day 1's <code>todayUtc</code>)</td></tr>
+  <tr><td>via</td><td><code>alfred-reader</code></td><td><code>alfred-inbox</code></td></tr>
+  <tr><td>external_id</td><td><code>alfred:reader-post:&lt;uuid&gt;</code> (D11)</td><td><code>alfred:item:&lt;uuid&gt;</code></td></tr>
+  <tr><td>fidelity</td><td><code>source.md</code> only: <code>full-text</code> when <code>text</code> is non-empty, else <code>pointer</code></td><td>(none: a notes-only folder)</td></tr>
+  <tr><td>Body</td><td><code>source.md</code>: <code>reader_posts.text</code> verbatim, or empty for a pointer.<br><code>picks-…</code>: one <code>- </code> bullet per chosen idea, verbatim, with internal newlines folded to spaces, ending in <code>\n</code></td><td><code>title</code>, then a blank line and <code>notes</code> when notes are non-empty, ending in <code>\n</code></td></tr>
+</table></div>
+<p>If the text has been swept <em>and</em> <code>canonical_url</code> is null, <code>source.md</code>
+is omitted. The folder holds only the picks, and the ingest session marks them uncheckable. Every
+other case writes <code>source.md</code> on every send; filing drops a duplicate with the same or
+an empty body.</p>
+
+<pre><code>inbox/2026-10-03-why-habits-stick/source.md
+---
+source_type: "reader-post"
+origin: "third-party"
+title: "Why habits stick"
+author: "Jane Doe"
+source_url: "https://janedoe.substack.com/p/why-habits-stick"
+published: "2026-10-02"
+captured: "2026-10-03"
+via: "alfred-reader"
+external_id: "alfred:reader-post:6f1c…"
+fidelity: "full-text"
+---
+
+&lt;reader_posts.text, verbatim&gt;
+
+inbox/2026-10-03-why-habits-stick/picks-2026-10-03.md
+---
+source_type: "reader-post"
+origin: "model-derived"
+… same core, no fidelity …
+---
+
+- Habit stacking works because the cue is an existing routine, not a time of day.
+- Environment design beats willpower for the first thirty days.</code></pre>
+
+<h3>4.3 Folder names</h3>
+<p><code>writer/paths.ts</code> mirrors the wiki's <code>scripts/lib/paths.ts</code>
+<code>slugify</code> / <code>folderName</code> / <code>uniqueFolderName</code> exactly: NFKD
+fold, lower-case, every run of non-alphanumerics becomes <code>-</code>, a word-boundary cut at 60
+characters, and an empty slug becomes <code>untitled</code>. It carries a comment naming that file.
+Uniqueness is checked against the <code>inbox/</code> names at the base commit <em>and</em> the
+other folders in the same commit.</p>
+
+<h3>4.4 The commit</h3>
+<p><code>commitEnvelopes(config, envelopes, { fetch?, now? })</code> in
+<code>writer/commit.ts</code> takes an injectable <code>fetch</code>. It returns
+<code>{ commitSha, folders }</code> after seven requests:</p>
+<ol class="tight">
+  <li><code>GET /repos/{o}/{r}/git/ref/heads/main</code> gives the head commit.</li>
+  <li><code>GET /repos/{o}/{r}/git/commits/{head}</code> gives the base tree. Then <code>GET /git/trees/{base}</code> finds <code>inbox</code>, and <code>GET /git/trees/{inbox}</code> lists the names already taken.</li>
+  <li><code>POST /git/trees</code> sends <code>{ base_tree, tree: [{ path, mode: "100644", type: "blob", content }] }</code>, one entry per file across every envelope.</li>
+  <li><code>POST /git/commits</code> sends <code>{ message, tree, parents: [head] }</code>. The message is <code>add: &lt;title&gt;</code> for one folder, or <code>add: &lt;n&gt; sources</code> for several, matching <code>npm run add</code>.</li>
+  <li><code>PATCH /git/refs/heads/main</code> sends <code>{ sha, force: false }</code>. A <code>422</code> <em>from this PATCH</em> means <code>main</code> moved, so the writer re-runs from step 1, at most 3 attempts in total. Any other non-2xx fails at once as <code>rejected</code>, and that includes a 422 from the tree or commit POST (a malformed path is never "busy").</li>
+</ol>
+<p>Every request sends the headers <code>workers/src/github.ts</code> uses (Bearer,
+<code>application/vnd.github+json</code>, <code>X-GitHub-Api-Version: 2022-11-28</code>), with
+<code>User-Agent: alfred-wiki</code>. Failures throw a typed <code>WikiWriteError</code>
+(<code>kind: 'unauthorized' | 'rejected' | 'busy' | 'unreachable'</code>). Routes map the first,
+second and fourth to <code>502 {error: "Couldn't reach the wiki repo"}</code>, and <code>busy</code> to
+<code>503 {error: "The wiki repo was busy — try again"}</code> after the third 422. An unconfigured
+writer is <code>501</code>, following the <code>pr-ratio</code> precedent. The token never appears
+in an error or a log line.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s5">5 · Reader send (slice A)</h2>
+
+<h3>5.1 What Alex sees</h3>
+<p>The Novel ideas section becomes a <strong>checklist with one dispatch</strong>. Alex ticks the
+bullets worth keeping, then sends them together, so each article reaches the wiki as one send: one
+folder, one commit, and one kickoff trigger. It is the Inbox's select-then-Dispatch gesture in
+miniature, reusing its vocabulary. <strong>Send all</strong> stays as the one-press shortcut. None
+of this appears unless <code>writable</code> is true and the list is non-empty.</p>
+<ul class="tight">
+  <li><strong>Each unsent bullet is a checklist row</strong> with <code>role="checkbox"</code> and <code>aria-checked</code>. Its leading tick box replaces the disc marker and uses the Inbox select-mode tick box's classes: <code>checkboxSizeClass</code> (24px on a phone, 16px from <code>md</code>), <code>checkboxIncompleteClass</code> when empty, and <code>border-accent-teal bg-accent-teal</code> with a 10px <code>Check</code> when ticked. A click or tap anywhere on the row toggles it, and so does <kbd>Space</kbd> when focused. The whole row is the hit target, so it works on a phone.</li>
+  <li><strong>A sent bullet is not selectable.</strong> Its tick-box slot holds a borderless violet <code>Check</code>, and a trailing <code>Sent</code> in <code>text-xs</code> muted confirms it.</li>
+  <li><strong>The selection bar</strong> appears under the list once one or more bullets are ticked. It reveals through <code>AnimatedHeightCollapse</code>, honoring reduced motion. It holds:
+    <ul class="tight">
+      <li><code>n selected</code> in <code>text-sm font-semibold text-accent-teal</code>, the bulk bar's counter;</li>
+      <li><code>Button variant="accent" size="sm"</code> with <code>BookPlus</code> + <strong>Send to wiki</strong>, which sends exactly the ticked bullets in one request;</li>
+      <li><code>Button variant="ghost" size="sm"</code> <strong>Clear</strong>, which unticks everything.</li>
+    </ul>
+    Selection and the primary action wear the app's standard teal, as the Inbox does. Violet is kept for the wiki's own marks: the sent checks and the <code>BookPlus</code> glyph on Send all.</li>
+  <li><strong>Send all to wiki</strong> keeps its place on the section heading row: a ghost <code>Button size="sm"</code>, violet <code>BookPlus</code>. It sends every unsent bullet whatever is ticked, and clears the selection on success. When every bullet is sent, it becomes muted <code>text-xs</code> "All sent to wiki" with the violet check.</li>
+  <li><strong>While either send is in flight</strong>, every tick box, Send all, and Clear are disabled (the atoms' 50% opacity). The pressed button shows a 14px <code>Spinner</code> and reads <strong>Sending…</strong>. Only one send per post can run at a time.
+    <ul class="tight">
+      <li>On success, the sent bullets flip to their sent state, the selection empties, and the bar folds away.</li>
+      <li>On failure, a toast shows, and the ticks stay exactly as they were, so the retry is one press. This is the Inbox's "failed rows stay selected".</li>
+    </ul></li>
+  <li><strong>Selection is transient</strong>: it is the list's own <code>useState</code>, keyed by bullet text. Collapsing the overview drops it. There is no hotkey.</li>
+  <li><strong>No other change.</strong> Not writable, an empty list, and the other three sections all look exactly as they do today.</li>
+</ul>
+
+<div class="app">
+  <div class="grid2">
+    <div>
+      <p class="panel-label">Nothing ticked (one bullet sent earlier)</p>
+      <div class="row-exp">
+        <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="eb">Jane Doe</span><span class="meta">Oct 2 · 7 min</span></div>
+        <div class="rtitle">Why habits stick</div>
+        <div class="gist">Routines anchored to an existing cue survive; routines anchored to a clock time don't.</div>
+        <div class="verbs"><span class="btn outline">Open</span><span class="btn ghost">Hide overview</span><span class="btn outline">Archive</span></div>
+        <div class="ov">
+          <section>
+            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
+            <div class="picks"><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick"><span class="tick"></span><span class="tx">Environment design beats willpower for the first thirty days.</span></div><div class="pick"><span class="tick"></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></div><div class="pick"><span class="tick"></span><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span></div></div>
+          </section>
+          <section><div class="ovh" style="min-height:0"><h6>Evidence</h6></div><ul class="plist"><li>Lally et al. (2010): median 66 days to automaticity.</li></ul></section>
+        </div>
+      </div>
+      <p class="panel-label" style="margin-top:16px">Two ticked: the selection bar</p>
+      <div class="row-exp">
+        <div class="ov" style="margin-top:0;border-top:0;padding-top:0">
+          <section>
+            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
+            <div class="picks"><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick"><span class="tick on"><span class="i" style="width:10px;height:10px;color:var(--a-bg)"><svg viewBox="0 0 24 24" style="stroke-width:3"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Environment design beats willpower for the first thirty days.</span></div><div class="pick"><span class="tick on"><span class="i" style="width:10px;height:10px;color:var(--a-bg)"><svg viewBox="0 0 24 24" style="stroke-width:3"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></div><div class="pick"><span class="tick"></span><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span></div></div>
+            <div class="selbar"><span style="font-size:14px;font-weight:600;color:var(--a-teal)">2 selected</span><span class="btn accent"><span class="i"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send to wiki</span><span class="btn ghost">Clear</span></div>
+          </section>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="panel-label">Sending the two</p>
+      <div class="row-exp">
+        <div class="ov" style="margin-top:0;border-top:0;padding-top:0">
+          <section>
+            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost" style="opacity:.5"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
+            <div class="picks"><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick"><span class="tick on" style="opacity:.5"><span class="i" style="width:10px;height:10px;color:var(--a-bg)"><svg viewBox="0 0 24 24" style="stroke-width:3"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Environment design beats willpower for the first thirty days.</span></div><div class="pick"><span class="tick on" style="opacity:.5"><span class="i" style="width:10px;height:10px;color:var(--a-bg)"><svg viewBox="0 0 24 24" style="stroke-width:3"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></div><div class="pick"><span class="tick" style="opacity:.5"></span><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span></div></div>
+            <div class="selbar"><span style="font-size:14px;font-weight:600;color:var(--a-teal)">2 selected</span><span class="btn accent" style="opacity:.5"><span class="spin" style="border-color:rgba(10,14,23,.35);border-top-color:var(--a-bg)"></span>Sending…</span><span class="btn ghost" style="opacity:.5">Clear</span></div>
+          </section>
+        </div>
+      </div>
+      <p class="panel-label" style="margin-top:16px">All sent</p>
+      <div class="row-exp">
+        <div class="ov" style="margin-top:0;border-top:0;padding-top:0">
+          <section>
+            <div class="ovh"><h6>Novel ideas</h6><span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--a-muted)"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>All sent to wiki</span></div>
+            <div class="picks"><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Environment design beats willpower for the first thirty days.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div></div>
+          </section>
+        </div>
+      </div>
+      <p class="panel-label" style="margin-top:16px">Wiki not connected (Work instance): today's section, unchanged</p>
+      <div class="row-exp">
+        <div class="ov" style="margin-top:0;border-top:0;padding-top:0">
+          <section>
+            <div class="ovh" style="min-height:0"><h6>Novel ideas</h6></div>
+            <ul class="plist"><li>Habit stacking works because the cue is an existing routine, not a time of day.</li><li>Environment design beats willpower for the first thirty days.</li></ul>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">The row is <code>rowShellClass({expanded: true})</code>, the post's module-green
+border. The section heading keeps <code>post-overview.tsx</code>'s own classes. Checklist rows are
+the Inbox select-mode tick box beside the bullet's <code>text-sm</code> text. The selection bar is
+the Inbox bulk bar's counter and accent button, laid inline under the list instead of floating.
+The heading row gets a 32px <code>min-height</code>, the Send all button's height, <em>only while
+the wiki controls render</em>. That stops the heading jumping when the button swaps for "All
+sent", and with no controls the row keeps today's height, so the not-connected case stays
+pixel-identical.</p>
+
+<h3>5.2 Behavior</h3>
+<ul class="tight">
+  <li><strong>Not optimistic, by design.</strong> A send is a commit to another system: it takes 1–2s and fails for reasons the store can't reconcile, such as a bad token or GitHub being down. So the pressed button reads <em>Sending…</em> until the server confirms, and only then do the ticked bullets flip to <em>sent</em>. It never claims success first and snaps back afterwards. The in-flight flag and the selection are the list's own <code>useState</code>. The write lives in the store action, so a row collapsed mid-send still lands, and its bullets read as sent when reopened.</li>
+  <li><strong>Store action</strong>: <code>sendIdeasToWiki(postId, ideas)</code> in <code>reader-store.tsx</code>.
+    <ul class="tight">
+      <li>It calls <code>beginWrite(postId)</code>, so a focus refresh keeps the local row.</li>
+      <li>It calls <code>api.sendReaderIdeasToWiki</code>, and on success reconciles with <code>{type: 'replace', item: saved}</code>.</li>
+      <li>On error it toasts the route's own sentence when the response carries one (the 409, 501, 502 and 503 bodies below), else <code>Couldn't send to the wiki</code>. It then rethrows, so the list re-enables its controls and keeps the ticks. The existing <code>refusal()</code> helper surfaces only a 409's detail, so this action reads <code>ApiError.detail</code> whatever the status.</li>
+      <li><code>endWrite</code> runs in <code>finally</code>.</li>
+    </ul></li>
+  <li><strong>Route</strong>: <code>POST /api/reader/posts/[id]/wiki</code>, body <code>{ ideas: string[] }</code> (1–6 non-empty strings, <code>.strict()</code>), through <code>withSession</code>.
+    <ul class="tight">
+      <li>It returns 501 if the writer isn't configured and 404 for an unknown post.</li>
+      <li>It returns 409 <code>"That idea isn't in this post's overview any more"</code> if any idea isn't in the current <code>overview.novel_ideas</code>. That happens when a re-summarise ran underneath.</li>
+      <li>It drops ideas already in <code>wiki_sent_ideas</code>. If none are left, it returns 200 with the row unchanged and makes no commit.</li>
+      <li>Otherwise it builds the envelope, commits, then appends the new ideas through the RPC <code>append_wiki_sent_ideas(p_post, p_ideas)</code> (§10). That RPC is one atomic <code>update</code> that adds only strings not already present. The UI allows one send per post at a time, but two tabs or devices can still race, and a read-modify-write here would let the later send erase the earlier one's bullets.</li>
+      <li>It returns the row with list columns only, so <code>text</code> never reaches the client.</li>
+    </ul></li>
+  <li><strong>Reading the row with text.</strong> The route uses a new <code>getReaderPostForWiki(id)</code> in <code>lib/data/reader.ts</code>, the only reader that selects <code>text</code> for this purpose.</li>
+  <li><strong>If the append fails after the commit</strong>, the route returns 500 and the bullet reads unsent, although it reached the wiki.
+    <ul class="tight">
+      <li>A same-day retry commits a byte-identical picks file, which filing drops.</li>
+      <li>A retry on a later day commits <code>picks-&lt;later date&gt;.md</code>, so the ingest session sees that bullet twice. The cost is a repeated citation, never a lost idea.</li>
+      <li>Committing first is deliberate. Reserving the bullet first and un-reserving on failure risks the opposite: a bullet marked sent that never reached the wiki.</li>
+    </ul></li>
+  <li><strong>Re-summarise</strong> can reword bullets. A reworded bullet reads as unsent because its text isn't in the array. Old strings stay in the array harmlessly.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s6">6 · Knowledge captures (slices B1 and B2)</h2>
+
+<h3>6.1 B1 · The classifier learns <code>knowledge</code> (Worker)</h3>
+<div class="scroll"><table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>workers/src/prompt.ts</code></td><td>
+    <ul class="tight" style="margin:0">
+      <li><code>ITEM_TYPES = ['task', 'code', 'knowledge']</code>, and <code>PROMPT_VERSION = 3</code>.</li>
+      <li><code>SYSTEM_PREAMBLE</code>'s type sentence becomes: <em>"…so a capture is sometimes an ordinary to-do (<code>task</code>), sometimes a piece of work on alfred's own codebase (<code>code</code>), and sometimes an idea or piece of knowledge worth keeping, with nothing to do about it (<code>knowledge</code>)."</em></li>
+      <li><code>ABSTENTION_RULES</code>' item_type line becomes: <em>"item_type: answer only when the text clearly reads as a task, as work on alfred itself, or as an idea to keep with no action in it. A capture that asks the owner to read, look up, try, or do something with an idea is a task, not knowledge. It may stay null."</em></li>
+    </ul></td></tr>
+  <tr><td><code>workers/src/verdict.ts</code></td><td>
+    <ul class="tight" style="margin:0">
+      <li><code>ItemType</code> adds <code>'knowledge'</code>, and <code>parseVerdict</code> accepts it.</li>
+      <li><code>validateVerdict</code> keeps only <code>item_type</code> for knowledge, dropping priority, due_date, folder, project and epic.</li>
+      <li><code>decidedType</code> returns <code>knowledge</code>, so a held knowledge row's schema is pinned and never overwritten.</li>
+      <li><code>mergeIntoItem</code> treats knowledge as having no other legal fields.</li>
+    </ul></td></tr>
+  <tr><td>Tests</td><td>
+    <ul class="tight" style="margin:0">
+      <li><code>verdict.test.ts:101-105</code> flips: <code>knowledge</code> is now kept.</li>
+      <li>Every <code>it.each(['task','code'])</code> in <code>prompt.test.ts</code> gains <code>knowledge</code>, and the exact-schema assertion shows the three-value enum.</li>
+      <li>The <code>classified_prompt_version: 2</code> literals in <code>sweep.test.ts</code> become 3.</li>
+      <li>New tests cover a held knowledge row that stays knowledge through <code>mergeIntoItem</code>, and a knowledge verdict that drops a model-supplied priority and folder.</li>
+    </ul></td></tr>
+</table></div>
+<p class="small">The Inbox classifier has no eval harness (only <code>eval:comms</code> and
+<code>eval:reader</code> exist). The feedback loop is <code>classification_corrections</code>, which
+D7 keeps intact for knowledge.</p>
+
+<h3>6.2 B2 · Knowledge rows in the Inbox (frontend)</h3>
+<ul class="tight">
+  <li><strong>Type glyph</strong>: <code>TypeGlyph</code> maps <code>knowledge</code> to lucide <code>Lightbulb</code> with the label <code>Knowledge</code>. In <code>task-row.tsx</code> a knowledge row takes the code row's glyph branch in the checkbox slot, because a knowledge row can't be completed. Today it falls through to the unclassified spacer. The glyph uses the same classes as the code glyph, and the select-mode mount site gets it too.</li>
+  <li><strong>Not draggable</strong>: <code>canDrag</code> excludes knowledge roots, as it already excludes code roots. A drop onto a folder would run <code>moveTask</code>, which stamps <code>folder_id</code> and <code>dispatched_at</code> and files the idea like a task instead of sending it to the wiki.</li>
+  <li><strong>Labels</strong>: a knowledge row shows no label chips. <code>classifyPatch</code> lives in <code>lib/stores/tasks-store.tsx</code>. Its <code>(current, 'knowledge')</code> case clears <code>due_date</code>, <code>recurrence</code>, <code>intended_project_id</code> and <code>intended_epic_id</code> (the DB constraints require it), and also <code>folder_id</code>. <code>row-meta-cluster.tsx</code> draws the folder chip for any undispatched row with a folder, whatever its type, so a leftover folder would put an editable chip on the row. <code>priority</code> stays, per the function's existing rule, because the priority chip is task-gated.</li>
+  <li><strong>Classify as</strong>, in the row's ⋯ submenu and the bulk bar's dropdown, gains <strong>Knowledge</strong> after Code, only when <code>writable</code>. <code>showClassify</code> also admits knowledge rows, so a wrong guess can be flipped back to Task or Code. The comment calling knowledge "reserved" goes, and so does the matching line in <code>type-glyph.tsx</code>.</li>
+  <li><strong>Readiness</strong> (<code>lib/tasks/dispatch.ts</code>): <code>dispatchReadiness</code> and <code>rowDispatchAction</code> take a new <code>{ wikiWritable }</code> option at all four call sites (<code>task-row.tsx</code> twice, <code>inbox-bulk-bar.tsx</code>, <code>tasks-store.tsx</code>).
+    <ul class="tight">
+      <li>A childless knowledge row is ready when the wiki is writable.</li>
+      <li>A knowledge row with children is blocked by a new <code>'has subtasks'</code> blocker ("has subtasks" / "have subtasks").</li>
+      <li>A knowledge row on a non-writable instance is blocked by a new <code>'wiki not connected'</code> blocker ("wiki not connected" for one and for many). So a misconfigured Personal deploy shows no green pip and a disabled Dispatch with that hint, rather than a 501.</li>
+    </ul>
+    When both apply, "wiki not connected" wins, because it is the gap Alex can't fix from the row. Both new blockers sit after "needs an epic" in <code>BLOCKER_ORDER</code>. <code>WikiProvider</code> is mounted outside every other store (§8.2), so <code>TasksProvider</code> can read <code>writable</code>.</li>
+  <li><strong>Dispatch</strong> (<code>dispatchItems</code>):
+    <ul class="tight">
+      <li>Every ready knowledge id in a dispatch goes in <em>one</em> <code>api.sendItemsToWiki(ids)</code> call, which is one commit with one folder per item. That means a bulk dispatch starts one kickoff batch, not N.</li>
+      <li><code>applyBulkSettled</code> reports failure per unit, so the knowledge ids become N units whose <code>request</code>s all await one shared promise. They succeed or fail together, and on failure all N roll back and stay selected.</li>
+      <li>Optimistic removal and the <code>send-off</code> departure follow the code branch.</li>
+      <li>Toasts:
+        <ul class="tight">
+          <li>The row menu's single dispatch (<code>task-row.tsx</code>) says <code>Sent to the wiki</code>.</li>
+          <li>The bulk bar says <code>Sent n idea(s) to the wiki</code> when every item that went was knowledge. Otherwise it keeps today's <code>Dispatched n item(s)</code>, which already counts every destination.</li>
+        </ul></li>
+      <li>The ⋯ entry keeps the label <strong>Dispatch</strong>, the existing "one entry for every destination".</li>
+    </ul></li>
+  <li><strong>Live verdicts</strong>: <code>classifierVerdictPatch</code> already copies <code>item_type</code> generically. A test pins that a <code>knowledge</code> verdict lands on an unjudged row.</li>
+  <li><strong>Route</strong>: <code>POST /api/wiki/items</code>, body <code>{ ids: uuid[] }</code> (1–50).
+    <ul class="tight">
+      <li>It returns 501 when unconfigured.</li>
+      <li>It reads each item's <code>title, notes, source_url, item_type, parent_id, dispatched_at</code> and whether it has children.</li>
+      <li>It returns 409 naming the first bad id if any item is not knowledge, has a parent or children, or is already dispatched.</li>
+      <li>Otherwise it builds one envelope per item, calls <code>commitEnvelopes</code> once, then calls the RPC <code>send_items_to_wiki(p_ids)</code> (§10), and returns <code>{ sent: ids }</code>.</li>
+      <li>If the RPC fails after the commit, the rows roll back. A same-day retry's identical notes files dedupe at filing. A later day's retry files a second <code>notes-&lt;date&gt;.md</code> into the same source folder (merged by identity). That duplicates the note but never loses it.</li>
+    </ul></li>
+</ul>
+
+<div class="app">
+  <div class="grid2">
+    <div>
+      <p class="panel-label">A knowledge row, its ⋯ menu open</p>
+      <div class="trow sel">
+        <span class="i t-muted"><svg viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg></span>
+        <span style="flex:1">Spaced repetition works because forgetting is the signal, not the failure</span>
+        <span title="Ready to dispatch" style="width:6px;height:6px;border-radius:999px;background:rgba(52,211,153,.8);flex:none"></span>
+        <span class="t-muted">⋯</span>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;flex-wrap:wrap">
+        <div class="menu">
+          <div class="mi foc">Classify as… <span class="chev">›</span></div>
+          <div class="mi"><span class="i t-muted" style="width:16px;height:16px"><svg viewBox="0 0 24 24"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg></span>Dispatch</div>
+          <div class="msep"></div>
+          <div class="mi" style="color:var(--a-red)">Delete</div>
+        </div>
+        <div class="menu" style="min-width:128px;align-self:flex-start;margin-top:4px">
+          <div class="mi">Task</div>
+          <div class="mi">Code</div>
+          <div class="mi foc">Knowledge</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="panel-label">Bulk bar · Classify as open</p>
+      <div class="bulk">
+        <span style="font-size:14px;font-weight:600;color:var(--a-teal);margin-right:4px">3 selected</span>
+        <span class="btn accent">Dispatch</span>
+        <span class="btn outline">Classify as ▾</span>
+        <span class="btn outline">Move to folder ▾</span>
+      </div>
+      <div class="menu" style="width:150px;margin:4px 0 0 118px">
+        <div class="mi">Task</div>
+        <div class="mi">Code</div>
+        <div class="mi foc">Knowledge</div>
+      </div>
+      <p class="panel-label" style="margin-top:14px">Readiness line: one selected knowledge row has a subtask</p>
+      <div style="border:1px solid rgba(30,42,63,.6);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--a-muted);background:rgba(15,22,38,.95)">1 not ready — 1 has subtasks</div>
+      <p class="panel-label" style="margin-top:10px">Readiness line: wiki not connected (misconfigured deploy)</p>
+      <div style="border:1px solid rgba(30,42,63,.6);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--a-muted);background:rgba(15,22,38,.95)">3 not ready — 3 wiki not connected</div>
+      <p class="panel-label" style="margin-top:18px">After Dispatch</p>
+      <div class="toast">Sent 3 ideas to the wiki</div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">Row, menu, bulk bar and toast chrome come from their atoms and styles files. The
+Lightbulb glyph sits in the type-glyph slot with the same muted colour as task and code glyphs.
+The green pip is the existing <code>DispatchReadyMark</code>, and the readiness lines are the
+bulk bar's existing <code>readinessLineClass</code> strip with the two new blocker phrases. A knowledge row carries no label
+chips and its menu has no label submenus: Due date, Priority and Folder are task-only, and Project
+and Epic are code-only, each gated as today. Entries that aren't label submenus (Add subtask and
+so on) are unchanged and not drawn.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s7">7 · The snapshot (slice C)</h2>
+
+<h3>7.1 Trigger</h3>
+<ul class="tight">
+  <li><strong>Push.</strong> <code>handleWebhook</code> (<code>workers/src/index.ts</code>) keeps its signature check. It gains a branch for <code>X-GitHub-Event: push</code> where <code>repository.full_name === env.WIKI_REPO</code> and <code>ref === "refs/heads/main"</code>, which runs <code>ctx.waitUntil(syncWiki(env))</code> and answers <code>202 {sync: "queued"}</code>. Every other push, and a <code>ping</code>, is still answered <code>200 {ignored}</code>. The <code>pull_request</code> path is untouched.</li>
+  <li><strong>Safety net.</strong> The <code>RETENTION_CRON</code> (<code>17 9 * * *</code>) dispatch runs <code>syncWiki</code> after the two retention sweeps. Its budget comment is updated.</li>
+  <li><strong>Config.</strong> <code>WIKI_REPO = "ac3charland/knowledge"</code> goes in <code>wrangler.toml</code> <code>[vars]</code> and in <code>Env</code>. It reuses <code>GITHUB_TOKEN</code> (Alex extends its repo list; §14) and <code>GITHUB_WEBHOOK_SECRET</code>.</li>
+</ul>
+
+<h3>7.2 <code>syncWiki(env, { fetch?, now? })</code>: one run</h3>
+<ol class="tight">
+  <li><strong>GraphQL #1</strong> (<code>POST https://api.github.com/graphql</code>): <code>ref(qualifiedName: "refs/heads/main") { target { oid } }</code>, plus four aliased <code>object(expression: "main:wiki/&lt;section&gt;") { ... on Tree { entries { name type oid } } }</code>. Keep only <code>type: "blob"</code> and names ending <code>.md</code>. <strong>A response carrying an <code>errors</code> array, or a null <code>ref</code>, is a failure (step 7), never an empty tree.</strong> A partial or rate-limited answer must never read as "every page was deleted". A null section object counts as an empty section only in an error-free response.</li>
+  <li><strong>Supabase</strong>: <code>select=path,blob_oid</code> from <code>wiki_pages</code>.</li>
+  <li><strong>Diff.</strong> <em>changed</em> is every tree entry whose oid differs from, or is missing in, the table, sorted by path. <em>removed</em> is every row whose path left the tree. The first <code>WIKI_SYNC_PAGE_CAP = 60</code> changed paths are taken, and <code>pending</code> is the remainder.</li>
+  <li><strong>GraphQL #2</strong> (only if there are changes): one aliased <code>p&lt;i&gt;: object(oid: "&lt;blob oid&gt;") { ... on Blob { text isBinary isTruncated } }</code> per taken path. Fetching by <em>oid</em> means the text is exactly the blob that was diffed. A binary or truncated blob is stored with <code>parse_error</code> set and an empty body.</li>
+  <li><strong>Parse</strong> each page (§7.4).</li>
+  <li><strong>Upsert</strong> the parsed rows in one request (<code>on_conflict=path</code>, <code>resolution=merge-duplicates</code>). <strong>Delete</strong> the removed paths in one request (<code>path=in.(…)</code>, each value double-quoted).</li>
+  <li><strong>State.</strong> Upsert <code>wiki_sync</code> row 1 with <code>{commit_oid, synced_at, pending, last_error: null}</code>. On any thrown failure, write <code>{last_error, last_error_at}</code> and leave the pages untouched.</li>
+</ol>
+<p class="small">That is at most six subrequests per run. The 60-page cap is the CPU ceiling:
+parsing a few-hundred-byte YAML block and scanning a page's links costs roughly 0.1ms per page,
+leaving headroom under the Free plan's 10ms. The arithmetic goes in the cap's doc comment, following
+the <code>cloudflare-workers</code> skill. Once more than 60 pages have changed, the rest converge
+on the next trigger, and the Wiki header says so (§8.4).</p>
+
+<h3>7.3 Why not <code>fetchSpec</code></h3>
+<p><code>fetchSpec</code> is one REST call per file, so the budget would cap a run at about 40
+pages. It also depends on the push payload's file lists, which can be truncated. The tree diff
+needs neither. <code>fetchSpec</code> itself stays untouched. The Worker gains a
+<code>yaml</code> dependency (foundation).</p>
+
+<h3>7.4 Parsing a page (<code>workers/src/wiki/page.ts</code>, pure)</h3>
+<ul class="tight">
+  <li>Frontmatter is split the way the wiki's <code>parseFile</code> does it (a leading <code>---\n</code>, the next <code>\n---</code>, and CRLF normalized), then parsed with <code>yaml</code>. If the YAML is invalid, <code>parse_error</code> is set and the whole text becomes the body.</li>
+  <li><code>title</code>: the frontmatter title, or the file stem when it is missing or blank (the wiki's <code>titleFor</code>). <code>summary</code>: a string, or <code>''</code>. <code>tags</code> and <code>sources</code>: string lists, filtered to non-empty strings. <code>created</code> and <code>updated</code>: kept when they are real <code>YYYY-MM-DD</code> dates, else null.</li>
+  <li><code>links</code>: extract link targets the way the wiki's <code>extractLinks</code> does, masking fenced and inline code. Resolve each relative to the page's folder <em>literally, with no URL-decoding</em> (the wiki's lint resolves targets the same way), strip the <code>#anchor</code>, and keep only <code>wiki/&lt;section&gt;/&lt;name&gt;.md</code> targets that don't escape the repo. Dedupe, drop the page itself, and sort. Missing targets are kept, since a backlink doesn't care whether the target exists.</li>
+  <li><code>section</code> comes from the path.</li>
+</ul>
+
+<h3>7.5 Link resolution: one table for the Worker and the renderer</h3>
+<p>Slice C's <code>links</code> and slice D's renderer resolve hrefs independently: C runs in the
+Worker, D in the browser. Both pin this exact table in their tests, and the lead diffs the two at
+integration. The page is <code>wiki/concepts/habit-stacking.md</code>.</p>
+<div class="scroll"><table>
+  <tr><th>href</th><th>C · <code>links</code> entry</th><th>D · renders as</th></tr>
+  <tr><td><code>../entities/james-clear.md</code></td><td><code>wiki/entities/james-clear.md</code></td><td>in-app <code>/wiki/entities/james-clear</code></td></tr>
+  <tr><td><code>../entities/james-clear.md#early-life</code></td><td><code>wiki/entities/james-clear.md</code></td><td>in-app <code>/wiki/entities/james-clear#early-life</code></td></tr>
+  <tr><td><code>habit-loop.md</code></td><td><code>wiki/concepts/habit-loop.md</code></td><td>in-app <code>/wiki/concepts/habit-loop</code></td></tr>
+  <tr><td><code>habit%20loop.md</code></td><td><code>wiki/concepts/habit%20loop.md</code> (literal)</td><td>broken, unless a page file is literally named that. No decoding, like the wiki's lint.</td></tr>
+  <tr><td><code>#how-it-works</code></td><td>(none)</td><td>same-page anchor</td></tr>
+  <tr><td><code>../concepts/not-yet.md</code> (not in the index)</td><td><code>wiki/concepts/not-yet.md</code></td><td>broken: muted, dotted underline, <code>title="Not in the wiki snapshot"</code>, not a link</td></tr>
+  <tr><td><code>../../raw/2026/2026-10-01-atomic-habits/excerpts-2026-10-01.md#q-…</code></td><td>(none)</td><td>GitHub <code>https://github.com/&lt;repo&gt;/blob/main/raw/…#q-…</code>, new tab, ↗</td></tr>
+  <tr><td><code>../../raw/2026/2026-10-01-atomic-habits/</code></td><td>(none)</td><td>GitHub <code>…/tree/main/raw/2026/2026-10-01-atomic-habits</code>, new tab, ↗</td></tr>
+  <tr><td><code>../../index.md</code>, or any other in-repo path</td><td>(none)</td><td>GitHub blob link, new tab, ↗</td></tr>
+  <tr><td><code>../../../elsewhere.md</code> (escapes the repo)</td><td>(none)</td><td>broken</td></tr>
+  <tr><td><code>https://…</code>, <code>mailto:…</code></td><td>(none)</td><td>external, new tab, <code>rel="noopener noreferrer"</code>, ↗</td></tr>
+  <tr><td><code>![alt](../../raw/…/assets/fig.png)</code></td><td>(none: images aren't links)</td><td>never loaded (private repo). Rendered as a GitHub link reading <code>alt</code> and marked ↗</td></tr>
+</table></div>
+<p>When <code>repo</code> is null (Work instance), every GitHub-bound row renders as broken instead.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s8">8 · The Wiki module (foundation shell + slice D)</h2>
+
+<h3>8.1 Routes and views</h3>
+<div class="scroll"><table>
+  <tr><th>URL</th><th>View</th></tr>
+  <tr><td><code>/wiki</code></td><td>Index: every page, grouped Concepts · Entities · Sources · Questions (the wiki's own order). Rows within a section are sorted like <code>index.md</code>: lower-cased title, ties by path.</td></tr>
+  <tr><td><code>/wiki/&lt;section&gt;</code></td><td>The same list, one section only. An unknown section is the not-found state.</td></tr>
+  <tr><td><code>/wiki/&lt;section&gt;/&lt;name&gt;</code></td><td>The page for <code>wiki/&lt;section&gt;/&lt;name&gt;.md</code>. A path not in the index is the not-found state. A <code>#hash</code> scrolls to the heading once the body renders.</td></tr>
+</table></div>
+<p>The server route is <code>app/(shell)/(wiki)/wiki/[[...path]]/page.tsx</code> →
+<code>&lt;ModuleRouter /&gt;</code>. <code>WikiView</code> parses <code>usePathname()</code>, as
+<code>ReaderView</code> does, and keys the store's <code>refresh()</code> on the pathname (the
+navigation-refetch pattern). In-app links use <code>ViewLink</code>. The Wiki module shares the
+centered <code>max-w-3xl</code> column.</p>
+
+<h3>8.2 Shell (foundation)</h3>
+<ul class="tight">
+  <li><code>lib/modules.ts</code>: <code>ModuleId</code> adds <code>'wiki'</code>, with an <code>ownsPath(…, '/wiki')</code> branch, <code>isWikiPath</code>, and <code>MODULE_ACCENT.wiki</code> in violet (static class strings). The hue-count test goes from 4 to 5.</li>
+  <li>Switcher <code>SEGMENTS</code>: Tasks · Code · Reader · <strong>Wiki</strong> (<code>/wiki</code>) · Comms. Comms stays last so its badge sits at the end.</li>
+  <li><code>shell-nav</code> and <code>shell-mobile-nav</code> render <code>WikiNav</code>: <em>All pages</em> (<code>Library</code>), <em>Concepts</em> (<code>Shapes</code>), <em>Entities</em> (<code>Users</code>), <em>Sources</em> (<code>FileText</code>) and <em>Questions</em> (<code>CircleHelp</code>), each with its count, styled with <code>navLinkClass</code>.</li>
+  <li><code>module-router</code> gains a wiki branch. The layout adds <code>getWikiSeed()</code> to its <code>Promise.all</code> and mounts <code>WikiProvider</code> directly inside <code>ToastProvider</code>, outside every other store (it depends on none). That lets ⌘P, the Reader, and <code>TasksProvider</code> itself read it.</li>
+  <li>⌘K gets a new <code>wiki</code> destination group after Reader: <em>Wiki</em>, <em>Concepts</em>, <em>Entities</em>, <em>Sources</em> and <em>Questions</em>, with the same icons (§9).</li>
+</ul>
+
+<h3>8.3 The store (foundation) — <code>lib/stores/wiki-store.tsx</code></h3>
+<ul class="tight">
+  <li><code>WikiProvider({ initialPages, initialSync, config })</code> is built on <code>createContextPair</code>. Its state is <code>pages: WikiPageIndexRow[]</code>, <code>sync: WikiSync | null</code> and <code>config: { repo, writable }</code>.</li>
+  <li><code>refresh()</code> calls <code>GET /api/wiki/pages</code> and replaces <code>pages</code> and <code>sync</code>. It drops any cached body whose <code>blob_oid</code> changed and coalesces concurrent calls. It runs on the view's pathname change and on tab return (<code>visibilitychange</code>, <code>pageshow</code>), as Reader does. There is no Realtime: the snapshot changes a few times a day, and D5 makes the refresh a small read.</li>
+  <li><code>useWikiPageBody(path)</code> returns <code>{ status: 'loading' | 'ready' | 'error', body? , retry }</code>. It reads through a ref cache keyed by <code>path@blob_oid</code> and fetches <code>GET /api/wiki/page?path=…</code>.</li>
+  <li>Other hooks: <code>useWikiPages</code>, <code>useWikiSync</code>, <code>useWikiConfig</code>, <code>useWikiActions</code>. <code>lib/wiki/match.ts</code> <code>rankWikiPage(q, page)</code> returns 0 for a title prefix, 1 for a title substring, 2 for a summary or tag match, else null. It is the one matcher ⌘P and the module's instant search share.</li>
+  <li>Routes (foundation):
+    <ul class="tight">
+      <li><code>GET /api/wiki/pages</code> returns <code>{pages, sync}</code>.</li>
+      <li><code>GET /api/wiki/page?path=</code> returns <code>{path, blob_oid, body}</code>. The path must match <code>^wiki/(concepts|entities|sources|questions)/[^/]+\.md$</code>, else 400, and an unknown page is 404.</li>
+    </ul></li>
+</ul>
+
+<h3>8.4 What Alex sees (slice D)</h3>
+<ul class="tight">
+  <li><strong>Header</strong>: <code>ViewHeading icon={Library} title="Wiki" accent="wiki"</code>. The description is <em>"&lt;n&gt; pages · synced &lt;relative&gt;"</em>, or <em>"0 pages · not synced yet"</em> before the first sync (no <code>wiki_sync</code> row). It adds <em>" · &lt;k&gt; pages still syncing"</em> when <code>pending &gt; 0</code>. When <code>last_error_at</code> is newer than <code>synced_at</code>, an amber line below reads <em>"The last sync failed &lt;relative&gt; — showing the snapshot from &lt;relative&gt;."</em></li>
+  <li><strong>Search box</strong> (<code>Input</code> with a <code>Search</code> glyph, placeholder <em>"Search the wiki"</em>) on the index and section views. It always searches the whole wiki, and each result carries a section chip.
+    <ul class="tight">
+      <li><em>Titles &amp; summaries</em>: instant, from <code>rankWikiPage</code>.</li>
+      <li><em>In page text</em>: <code>GET /api/wiki/search?q=</code>, debounced 250ms, at least 2 characters, excluding pages already listed above. Each row shows the title and a snippet, with the matched words in <code>&lt;mark&gt;</code> (a violet 22% wash).</li>
+      <li>While pending, <em>"Searching page text…"</em> shows with a spinner. On failure, a muted <em>"Couldn't search page text"</em> line appears and title matches still show. With no matches in either group: <em>No pages match "q"</em>.</li>
+    </ul></li>
+  <li><strong>Page</strong>, top to bottom:
+    <ul class="tight">
+      <li>a <code>ViewLink</code> back to the section ("← Concepts");</li>
+      <li>an eyebrow with the singular section name in violet uppercase;</li>
+      <li>the serif title, and the summary in muted text;</li>
+      <li>a meta row of tag badges (<code>muted</code>) and "Updated &lt;date&gt;";</li>
+      <li>the body;</li>
+      <li><strong>Sources</strong>: the frontmatter list, each item a GitHub link labelled <code>&lt;folder&gt; / &lt;file&gt;</code> with its anchor kept;</li>
+      <li><strong>Linked from</strong>: every page whose <code>links</code> include this path, as title + summary rows, or "No other page links here yet."</li>
+    </ul></li>
+  <li><strong>Body rendering</strong>: <code>react-markdown</code> + <code>remark-gfm</code> with three things added.
+    <ul class="tight">
+      <li>Heading ids mirror the wiki's <code>headingAnchors</code> (<code>scripts/lib/wiki.ts</code>) exactly, so <code>#anchors</code> match what the wiki's lint checked.
+        <ul class="tight">
+          <li>They are computed from the page's <em>raw source</em>, not the rendered text, over ATX headings only, after the same code masking. So <code>## The `yaml` parser</code> gets <code>the--parser</code>, as the wiki sees it.</li>
+          <li>A pure <code>headingAnchors(body)</code> in <code>lib/wiki/heading-ids.ts</code> produces the ordered list. A small remark plugin hands it out in order to the heading nodes whose source starts with <code>#</code>.</li>
+          <li>Setext headings get no id, because the wiki doesn't count them either.</li>
+        </ul></li>
+      <li>An <code>a</code> override applies §7.5.</li>
+      <li>An <code>img</code> override also applies §7.5.</li>
+    </ul>
+    Prose classes live in <code>components/wiki/wiki-markdown.styles.ts</code>. <code>spec-view.tsx</code> is not touched.</li>
+  <li><strong>States</strong>:
+    <ul class="tight">
+      <li>A body loading shows a muted "Loading page…" with a spinner.</li>
+      <li>A body that fails to load shows an <code>EmptyState</code> "Couldn't load this page" with a Retry button.</li>
+      <li>Not found shows <code>EmptyState</code> "No page at this path", "It may have been renamed or removed in the wiki.", and a link back to the index.</li>
+      <li>An empty snapshot shows <code>EmptyState</code> "Nothing synced yet", "Pages appear here after the wiki's next push reaches Alfred."</li>
+    </ul></li>
+</ul>
+
+<div class="app">
+  <p class="panel-label">Desktop · index · switcher and nav</p>
+  <div class="shell">
+    <div class="side">
+      <div class="switcher"><span class="seg">Tasks</span><span class="seg">Code</span><span class="seg">Reader</span><span class="seg on t-violet">Wiki</span><span class="seg">Comms</span></div>
+      <div class="navl on"><span class="i"><svg viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></span>All pages<span class="n">42</span></div>
+      <div class="navl"><span class="i"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1"/><circle cx="17" cy="17" r="4"/><path d="m14 3 7 7"/></svg></span>Concepts<span class="n">19</span></div>
+      <div class="navl"><span class="i"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span>Entities<span class="n">11</span></div>
+      <div class="navl"><span class="i"><svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/></svg></span>Sources<span class="n">9</span></div>
+      <div class="navl"><span class="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span>Questions<span class="n">3</span></div>
+    </div>
+    <div class="main">
+      <div class="heading"><div class="glyph t-violet"><span class="i"><svg viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></span></div>
+        <div><h5>Wiki</h5><p>42 pages · synced 2 h ago</p></div></div>
+      <div class="input" style="margin-top:20px"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><span class="ph">Search the wiki</span></div>
+      <div style="margin-top:22px">
+        <div class="sect">Concepts <span class="cnt">19</span></div>
+        <div class="prow hover" style="margin-top:6px"><div class="pt">Emotional regulation</div><div class="ps">How stable caregivers shape an infant's stress response.</div></div>
+        <div class="prow"><div class="pt">Habit stacking</div><div class="ps">Anchoring a new behaviour to an existing routine rather than a clock time.</div></div>
+        <div class="prow"><div class="pt">LLM-maintained knowledge</div><div class="ps">Having a model compile sources into interlinked pages once, then keep them current.</div></div>
+        <div class="sect" style="margin-top:16px">Entities <span class="cnt">11</span></div>
+        <div class="prow"><div class="pt">John Gottman</div><div class="ps">Psychologist whose couples research anchors the parenting chapters of Brain Rules.</div></div>
+        <div class="sect" style="margin-top:16px">Sources <span class="cnt">9</span></div>
+        <div class="prow"><div class="pt">LLM Wiki</div><div class="ps">Karpathy's pattern for having an LLM incrementally compile sources into a persistent wiki.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">The switcher has five segments, with Wiki active in violet. <em>Fit</em>: today's
+four labels leave about 47px spare in the 256px sidebar, and "Wiki" at 13px Geist medium costs
+about 36px with its padding and gap. This document's fallback font is wider than Geist, so the
+mockup looks tighter than the app will be. The real gate is <code>e2e/module-switcher.spec.ts</code>'s
+existing "no label truncated, inside the border" check with the fifth label added. If that check
+fails, the lead stops and asks Alex; it doesn't shrink the labels. Nav links are <code>navLinkClass</code> with counts. Section headings reuse
+the Reader overview's uppercase heading classes, and rows are title (<code>text-sm
+font-medium</code>) over summary (muted) with the Reader row's hover wash.</p>
+
+<div class="app">
+  <div class="grid2">
+    <div>
+      <p class="panel-label">Search: "forgetting" · body results pending</p>
+      <div class="input"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>forgetting</div>
+      <div style="margin-top:14px">
+        <div class="sect">Titles &amp; summaries</div>
+        <div class="prow hover" style="margin-top:6px"><div class="pt">Forgetting curve <span class="badge b-muted" style="margin-left:6px;font-size:11px">Concept</span></div><div class="ps">Ebbinghaus's decay of recall over time, and why spaced review flattens it.</div></div>
+        <div class="sect" style="margin-top:14px">In page text</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:13px;color:var(--a-muted)"><span class="spin"></span>Searching page text…</div>
+      </div>
+    </div>
+    <div>
+      <p class="panel-label">Search: "forgetting" · body results in</p>
+      <div class="input"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>forgetting</div>
+      <div style="margin-top:14px">
+        <div class="sect">Titles &amp; summaries</div>
+        <div class="prow" style="margin-top:6px"><div class="pt">Forgetting curve <span class="badge b-muted" style="margin-left:6px;font-size:11px">Concept</span></div><div class="ps">Ebbinghaus's decay of recall over time, and why spaced review flattens it.</div></div>
+        <div class="sect" style="margin-top:14px">In page text</div>
+        <div class="prow" style="margin-top:6px"><div class="pt">Brain Rules <span class="badge b-muted" style="margin-left:6px;font-size:11px">Source</span></div><div class="snip">…Medina argues that <mark class="hl">forgetting</mark> is the brain pruning what it wasn't asked to retrieve, so repetition…</div></div>
+        <div class="prow"><div class="pt">Spaced repetition <span class="badge b-muted" style="margin-left:6px;font-size:11px">Concept</span></div><div class="snip">…schedules each review just before <mark class="hl">forgetting</mark> would set in…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">Both groups use the index-row geometry. The section chip is a <code>muted</code>
+<code>Badge</code>. Snippet highlight markers come back from Postgres as control characters and are
+split into <code>&lt;mark&gt;</code> spans. No HTML from the server is ever injected.</p>
+
+<div class="app">
+  <div class="grid2">
+    <div>
+      <p class="panel-label">Page · wiki/concepts/habit-stacking.md</p>
+      <div class="t-muted" style="font-size:14px">← Concepts</div>
+      <div class="pg-eb" style="margin-top:14px">Concept</div>
+      <div class="pg-title">Habit stacking</div>
+      <div class="pg-sum">Anchoring a new behaviour to an existing routine rather than a clock time.</div>
+      <div class="pg-meta"><span class="badge b-muted">habits</span><span class="badge b-muted">behaviour</span><span class="meta" style="margin-left:4px">Updated Oct 3, 2026</span></div>
+      <div class="md">
+        <p>A new habit survives when its cue is something you already do. <a class="lk">James Clear</a> names the pattern; the <a class="lk">habit loop</a> explains why it works.</p>
+        <blockquote>"After I pour my coffee, I will meditate for one minute."<a class="lk" style="margin-left:4px">excerpt<span class="ext"><svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span></a></blockquote>
+        <h2>Where the sources disagree</h2>
+        <p>Medina's account leans on <span class="lk-broken" title="Not in the wiki snapshot">implementation intentions</span>, which has no page yet.</p>
+      </div>
+      <div class="foot">
+        <div><div class="sect">Sources</div>
+          <ul class="plist" style="font-size:13px"><li><a class="lk">2026-10-01-atomic-habits / excerpts-2026-10-01.md#q-after-i-pour</a><span class="ext t-violet"><svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span></li>
+          <li><a class="lk">2026-10-03-why-habits-stick / picks-2026-10-03.md</a><span class="ext t-violet"><svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span></li></ul></div>
+        <div><div class="sect">Linked from</div>
+          <div class="prow" style="margin-top:4px"><div class="pt">Atomic Habits</div><div class="ps">Clear's system for small, compounding behaviour change.</div></div>
+          <div class="prow"><div class="pt">Spaced repetition</div><div class="ps">Reviewing just before recall would fail.</div></div></div>
+      </div>
+    </div>
+    <div>
+      <p class="panel-label">Empty snapshot</p>
+      <div class="heading"><div class="glyph t-violet"><span class="i"><svg viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></span></div>
+        <div><h5>Wiki</h5><p>0 pages · not synced yet</p></div></div>
+      <div class="empty"><div class="et">Nothing synced yet</div><div class="ed">Pages appear here after the wiki's next push reaches Alfred.</div></div>
+      <p class="panel-label">Sync failed</p>
+      <div class="heading"><div class="glyph t-violet"><span class="i"><svg viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></span></div>
+        <div><h5>Wiki</h5><p>42 pages · synced 2 d ago · 12 pages still syncing</p></div></div>
+      <p class="t-amber" style="font-size:13px;margin:8px 0 18px">The last sync failed 3 h ago — showing the snapshot from 2 d ago.</p>
+      <p class="panel-label">Not found</p>
+      <div class="empty" style="padding:28px 8px"><div class="et">No page at this path</div><div class="ed">It may have been renamed or removed in the wiki.</div><div style="margin-top:14px"><span class="btn outline">Back to the wiki</span></div></div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">The page view is shown at column width, and on a phone it is the same single
+column. The link treatments follow §7.5: an in-app page link is violet and underlined; a citation
+into <code>raw/</code> adds ↗ and opens GitHub; a link to a page not in the snapshot is muted and
+dotted, and not clickable. The amber sync line uses <code>text-accent-amber</code>. Empty states are
+the <code>EmptyState</code> atom.</p>
+
+<div class="app">
+  <div class="grid2">
+    <div>
+      <p class="panel-label">Section view · /wiki/concepts (nav: Concepts active)</p>
+      <div class="heading"><div class="glyph t-violet"><span class="i"><svg viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></span></div>
+        <div><h5>Wiki</h5><p>42 pages · synced 2 h ago</p></div></div>
+      <div class="input" style="margin-top:16px"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><span class="ph">Search the wiki</span></div>
+      <div style="margin-top:16px">
+        <div class="sect">Concepts <span class="cnt">19</span></div>
+        <div class="prow" style="margin-top:6px"><div class="pt">Emotional regulation</div><div class="ps">How stable caregivers shape an infant's stress response.</div></div>
+        <div class="prow"><div class="pt">Habit stacking</div><div class="ps">Anchoring a new behaviour to an existing routine rather than a clock time.</div></div>
+      </div>
+      <p class="panel-label" style="margin-top:18px">Search: no matches</p>
+      <div class="input"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>zettelkasten</div>
+      <p style="margin:12px 12px 0;font-size:13px;color:var(--a-muted)">No pages match “zettelkasten”</p>
+      <p class="panel-label" style="margin-top:18px">Search: body search failed</p>
+      <div class="input"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>forgetting</div>
+      <div style="margin-top:12px">
+        <div class="sect">Titles &amp; summaries</div>
+        <div class="prow" style="margin-top:6px"><div class="pt">Forgetting curve <span class="badge b-muted" style="margin-left:6px;font-size:11px">Concept</span></div><div class="ps">Ebbinghaus's decay of recall over time, and why spaced review flattens it.</div></div>
+        <div class="sect" style="margin-top:12px">In page text</div>
+        <p style="margin:6px 12px 0;font-size:13px;color:var(--a-muted)">Couldn't search page text</p>
+      </div>
+    </div>
+    <div>
+      <p class="panel-label">Page · body loading</p>
+      <div class="t-muted" style="font-size:14px">← Concepts</div>
+      <div class="pg-eb" style="margin-top:14px">Concept</div>
+      <div class="pg-title">Habit stacking</div>
+      <div class="pg-sum">Anchoring a new behaviour to an existing routine rather than a clock time.</div>
+      <div class="pg-meta"><span class="badge b-muted">habits</span><span class="meta" style="margin-left:4px">Updated Oct 3, 2026</span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:18px;font-size:13px;color:var(--a-muted)"><span class="spin"></span>Loading page…</div>
+      <p class="panel-label" style="margin-top:26px">Page · body failed to load</p>
+      <div class="t-muted" style="font-size:14px">← Concepts</div>
+      <div class="pg-eb" style="margin-top:14px">Concept</div>
+      <div class="pg-title">Habit stacking</div>
+      <div class="pg-sum">Anchoring a new behaviour to an existing routine rather than a clock time.</div>
+      <div class="empty" style="padding:28px 8px"><div class="et">Couldn't load this page</div><div style="margin-top:14px"><span class="btn outline">Retry</span></div></div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">The section view is the index filtered to one section, and the search box
+still searches the whole wiki. The no-match and body-search-failure lines are muted
+<code>text-sm</code>. When the body search fails, the title matches stay. While a body loads or
+fails, the page header still draws from the index, since title, summary, tags and date are all
+seeded. Only the body slot changes: a spinner line while loading, and an <code>EmptyState</code>
+with an outline Retry button on failure.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s9">9 · ⌘P and ⌘K (slice E + foundation)</h2>
+<ul class="tight">
+  <li><strong>⌘P (slice E).</strong> <code>SearchResult</code> gains <code>{ kind: 'wiki', id: path, title, subtitle: summary, href: '/wiki/&lt;section&gt;/&lt;name&gt;', completed: false, page }</code>. <code>SearchResults</code> gains <code>wiki</code> and <code>truncated.wiki</code>, and <code>buildResults</code> takes <code>pages</code> as a new trailing parameter.
+    <ul class="tight">
+      <li>Ranking is <code>rankWikiPage</code>, then <code>updated</code> descending, capped at 8. Flatten order is tasks, then stories, then wiki.</li>
+      <li>The popover renders a third <code>Group label="Wiki"</code>. The row badge becomes a lookup: Task (accent), Code (alert), Wiki (the new <code>wiki</code> variant).</li>
+      <li>The empty-query copy becomes "Search tasks, stories, and wiki pages", and the input's <code>aria-label</code> becomes "Search tasks, stories, and wiki pages".</li>
+      <li>"Show completed" doesn't apply to wiki results.</li>
+    </ul></li>
+  <li><strong>⌘K (foundation).</strong> A <code>wiki</code> <code>DestinationGroup</code>, labelled "Wiki", comes after Reader with five destinations (§8.2). <code>ICONS</code> gains <code>wiki</code>, <code>concepts</code>, <code>entities</code>, <code>sources</code> and <code>questions</code>.</li>
+</ul>
+
+<div class="app">
+  <div class="grid2">
+    <div>
+      <p class="panel-label">⌘P · "habit"</p>
+      <div class="input" style="height:32px"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>habit</div>
+      <div class="pop" style="margin-top:4px">
+        <div class="glabel">Tasks</div>
+        <div class="opt"><div style="flex:1;min-width:0"><div class="ot">Log habit data for October</div></div><span class="badge b-accent">Task</span></div>
+        <div class="glabel">Wiki</div>
+        <div class="opt act"><div style="flex:1;min-width:0"><div class="ot">Habit stacking</div><div class="os">Anchoring a new behaviour to an existing routine rather than a clock time.</div></div><span class="badge b-wiki">Wiki</span></div>
+        <div class="opt"><div style="flex:1;min-width:0"><div class="ot">Atomic Habits</div><div class="os">Clear's system for small, compounding behaviour change.</div></div><span class="badge b-wiki">Wiki</span></div>
+        <div class="popfoot"><span>↑↓ navigate</span><span>↵ open</span><span>esc close</span></div>
+      </div>
+    </div>
+    <div>
+      <p class="panel-label">⌘K · "con"</p>
+      <div class="pop">
+        <div class="glabel">Wiki</div>
+        <div class="opt act"><span class="i t-muted"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1"/><circle cx="17" cy="17" r="4"/><path d="m14 3 7 7"/></svg></span><span class="ot">Concepts</span></div>
+        <div class="glabel">Folders</div>
+        <div class="opt"><span class="i t-muted"><svg viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></span><span class="ot">Contracts</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">⌘P rows keep the popover's two-line title and subtitle with the active teal
+inset ring. Only the badge is new: <code>Badge variant="wiki"</code>, filled violet 15% with violet
+text, mirroring the filled <code>accent</code> Task badge. ⌘K rows are the palette's icon + label
+rows under a new "Wiki" group label.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s10">10 · Data model: one migration, <code>&lt;next&gt;_wiki.sql</code></h2>
+<p>This file takes the next available migration number when the build starts. Don't pin one: other
+work merges while this spec waits.</p>
+<pre><code>-- Reader: which Novel-ideas bullets have been sent (their exact text; D8)
+alter table reader_posts add column wiki_sent_ideas text[] not null default '{}';
+
+-- Atomic append, so two concurrent sends (two tabs) can't erase each other (§5.2).
+create function append_wiki_sent_ideas(p_post uuid, p_ideas text[]) returns setof reader_posts …
+  -- update reader_posts set wiki_sent_ideas = wiki_sent_ideas ||
+  --   array(select i from unnest(p_ideas) i where not (i = any(wiki_sent_ideas)))
+  -- where id = p_post returning *;
+
+-- The page snapshot (D3–D6). Written only by the Worker (service role); read by the app.
+create table wiki_pages (
+  path        text primary key,            -- wiki/&lt;section&gt;/&lt;name&gt;.md
+  section     text not null check (section in ('concepts','entities','sources','questions')),
+  title       text not null,
+  summary     text not null default '',
+  tags        text[] not null default '{}',
+  sources     text[] not null default '{}',
+  links       text[] not null default '{}',  -- outbound wiki page paths (§7.4)
+  created     date,
+  updated     date,
+  body        text not null default '',
+  parse_error text,
+  blob_oid    text not null,
+  commit_oid  text not null,
+  synced_at   timestamptz not null default now(),
+  search      tsvector generated always as (
+                setweight(to_tsvector('english', title), 'A') ||
+                setweight(to_tsvector('english', summary), 'B') ||
+                setweight(to_tsvector('english', body), 'C')) stored
+);
+create index wiki_pages_search_idx on wiki_pages using gin (search);
+
+create table wiki_sync (
+  id int primary key default 1 check (id = 1),
+  commit_oid text, synced_at timestamptz, pending int not null default 0,
+  last_error text, last_error_at timestamptz
+);
+-- both: enable RLS, "authenticated full access" policy, explicit DML grants to
+-- anon/authenticated/service_role (the 0035_reader.sql template). No realtime.
+
+-- D7: a knowledge row may be dispatched without a folder, like a code row.
+alter table items drop constraint items_dispatched_needs_folder,
+  add constraint items_dispatched_needs_folder
+  check (dispatched_at is null or folder_id is not null or item_type in ('code','knowledge'));
+
+-- D7: stamp (fires the corrections trigger) then delete. All-or-nothing.
+create function send_items_to_wiki(p_ids uuid[]) returns int …
+  -- raises unless every id is a root, undispatched, childless knowledge row;
+  -- update items set dispatched_at = now() where id = any(p_ids);
+  -- delete from items where id = any(p_ids); returns the count.
+
+-- D6: body search. Snippet delimiters are chr(2)/chr(3), which never occur in markdown.
+create function search_wiki_pages(p_query text, p_limit int default 20)
+  returns table (path text, snippet text, rank real) language sql stable …
+  -- websearch_to_tsquery('english', p_query); ts_rank ordering;
+  -- ts_headline('english', body, q, 'StartSel=' || chr(2) || ', StopSel=' || chr(3) ||
+  --   ', MaxWords=24, MinWords=10, MaxFragments=1')
+
+-- grant execute on all three functions to authenticated, service_role
+notify pgrst, 'reload schema';</code></pre>
+<p>After it: regenerate <code>frontend/lib/database.types.ts</code> with <code>npm run gen-types -w database</code>
+and add aliases in <code>lib/types.ts</code> (<code>WikiPageRow</code>, <code>WikiPageIndexRow =
+Omit&lt;…, 'body' | 'search'&gt;</code>, <code>WikiSync</code>). Add <code>wiki_sent_ideas</code> to
+<code>READER_POST_LIST_COLUMNS</code> (its pin test enforces this). Add integration assertions to
+<code>database/src/assertions.ts</code> covering:</p>
+<ul class="tight">
+  <li>the grants;</li>
+  <li>the relaxed CHECK;</li>
+  <li>the RPC's refusals;</li>
+  <li><code>append_wiki_sent_ideas</code> adding only new strings, and leaving an already-sent one single;</li>
+  <li>the RPC logging a correction <em>before</em> the delete (the <code>classification_corrections</code> row survives with <code>item_id</code> null);</li>
+  <li>search ranking a title hit above a body hit;</li>
+  <li>snippet delimiters.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s11">11 · Subagent plan</h2>
+
+<p>The implementer is the <strong>lead</strong>. It reads the <code>implement-epic</code> skill for
+how to dispatch well, and the <code>implement-spec</code> skill for spec hygiene and archiving. This
+is still one story with one spec, so the PR block is the ordinary <code>phase: implementation</code>
+one with <code>spec-path: docs/specs/ALF-261.html</code>. From <code>implement-epic</code>, only the
+dispatch discipline applies, not its PR block. The rules that matter most here:</p>
+<ul class="tight">
+  <li>Foundations first, alone.</li>
+  <li>Slice by behavior.</li>
+  <li>Every slice gets its own files.</li>
+  <li>Brief each subagent as if it can't ask a question.</li>
+  <li>Subagents never commit, push or open a PR.</li>
+  <li>A green subagent report is not a green repo.</li>
+</ul>
+
+<h3>11.1 Roles and models</h3>
+<div class="scroll"><table>
+  <tr><th>Role</th><th>Agent tool call</th><th>Does</th><th>Never</th></tr>
+  <tr><td><strong>Lead</strong></td><td>the session itself (strongest model)</td><td>Builds the foundation, dispatches, reads every diff, reconciles seams, runs the full <code>check</code>, runs the cross-repo contract check, writes the demo doc, commits, opens the PR.</td><td>Hand integration to a fix-it agent working in a file three slices touched.</td></tr>
+  <tr><td><strong>Implementer</strong>, one per slice</td><td><code>subagent_type: "general-purpose"</code>, <code>model: "sonnet"</code></td><td>Red/green TDD inside its file boundary. Runs its package's <code>check:fast</code> subset. Reports its diff, its tests, and anything it needed outside its boundary but didn't touch.</td><td>Edit outside its boundary. Commit. Weaken a guardrail (CLAUDE.md hard rules).</td></tr>
+  <tr><td><strong>Adversarial reviewer</strong>, one per slice plus one for the foundation</td><td><code>model: "opus"</code>, on a read-only agent type: <code>subagent_type: "Plan"</code> (no Edit or Write, but can read, grep and run tests). If none is available, <code>general-purpose</code> with an explicit no-edit rule.</td><td>Tries to break the slice (brief in §11.4). Returns findings, each one blocking or non-blocking.</td><td>Edit a file, or "fix it quickly". Praise. Report a finding it hasn't verified.</td></tr>
+  <tr><td><strong>Lookups</strong></td><td><code>subagent_type: "Explore"</code>, <code>model: "haiku"</code></td><td>"Where is X", "which tests pin Y".</td><td>Judge code.</td></tr>
+</table></div>
+
+<h3>11.2 Foundation (the lead, first, alone)</h3>
+<p>Everything two or more slices touch. The foundation ends with <code>npm run check</code> green
+and an Opus review (§11.4) with no blocking findings.</p>
+<ol class="tight">
+  <li><strong>Database</strong>: the migration (§10), <code>gen-types</code>, <code>lib/types.ts</code> aliases, <code>READER_POST_LIST_COLUMNS</code>, and the <code>assertions.ts</code> entries.</li>
+  <li><strong>Writer</strong>: <code>lib/wiki/writer/{config,frontmatter,paths,envelope,commit}.ts</code> with tests:
+    <ul class="tight">
+      <li>golden files for a full-text send, a pointer send, a no-URL swept send, and a notes send;</li>
+      <li>the slug table copied from the wiki's <code>paths</code> tests;</li>
+      <li>commit sequences on an injected fetch: fast-forward, a 422 then success, three 422s (busy), 401, an inbox name collision (<code>-2</code>), and two envelopes with one slug.</li>
+    </ul>
+    Also <code>env.d.ts</code> and <code>.env.example</code>.</li>
+  <li><strong>Read side</strong>:
+    <ul class="tight">
+      <li><code>lib/data/wiki.ts</code> (<code>getWikiSeed</code>, <code>getWikiPageBody</code>);</li>
+      <li><code>GET /api/wiki/pages</code> and <code>GET /api/wiki/page</code>, with tests;</li>
+      <li><code>lib/stores/wiki-store.tsx</code> (§8.3), with tests;</li>
+      <li><code>lib/wiki/match.ts</code> (<code>rankWikiPage</code>), with tests.</li>
+    </ul></li>
+  <li><strong>Shared client plumbing</strong>, which every slice calls but none edits:
+    <ul class="tight">
+      <li><code>lib/api-client.ts</code> wrappers: <code>fetchWikiPages</code>, <code>fetchWikiPageBody</code>, <code>searchWikiBodies</code>, <code>sendReaderIdeasToWiki</code>, <code>sendItemsToWiki</code>;</li>
+      <li>their zod schemas in <code>lib/api/</code>.</li>
+    </ul></li>
+  <li><strong>Atoms and tokens</strong>:
+    <ul class="tight">
+      <li><code>globals.css</code>: <code>--color-accent-violet</code> and <code>glow-violet</code>;</li>
+      <li><code>Badge</code>: variant <code>wiki</code>, i.e. <code>bg-accent-violet/15 text-accent-violet</code>.</li>
+    </ul>
+    Each gets a test and an atoms-gallery story.</li>
+  <li><strong>Shell</strong> (§8.2):
+    <ul class="tight">
+      <li><code>modules.ts</code>, the switcher (its story <code>WikiActive</code> gets a new baseline), <code>shell-nav</code>, <code>shell-mobile-nav</code>, <code>module-router</code>;</li>
+      <li>the route file, and <code>components/wiki/wiki-nav.tsx</code>, which is complete;</li>
+      <li><code>components/wiki/wiki-view.tsx</code> as a <em>stub</em> (heading plus the empty state), which slice D replaces;</li>
+      <li>the ⌘K destinations and palette group;</li>
+      <li>the layout seed and provider;</li>
+      <li><code>lib/test-utils.tsx</code>'s <code>wiki</code> option and a <code>WikiProvider</code> in <code>.storybook/preview.ts</code>'s decorator (seeded from <code>parameters.store.wiki</code>). Both default to <code>{ pages: [], repo: null, writable: false }</code>. The Reader overview and the Inbox menus now read <code>useWikiConfig()</code>, whose guard throws outside a provider, and a not-writable default is what keeps every existing story and test rendering exactly as today. This is deliberate wiring for a new app-level provider, not a guardrail change. Stories that show the wiki affordances opt in with <code>writable: true</code>.</li>
+      <li>e2e <code>module-switcher.spec.ts</code> (labels) and <code>mobile-module-switch.spec.ts</code> (count 5);</li>
+      <li>a new <code>e2e/wiki-shell.spec.ts</code>: switch in and out, ⌘K to Concepts, and a hard load of <code>/wiki/concepts/x</code>.</li>
+    </ul></li>
+  <li><strong>E2E harness</strong>:
+    <ul class="tight">
+      <li><code>scripts/mock-supabase.mjs</code> gains the new tables and column, both RPCs (search as a case-insensitive substring match with the same delimiters), the <code>append_wiki_sent_ideas</code> RPC, and a <code>/__mock__/github/*</code> emulation of the six Git Data endpoints. It records every commit's tree in <code>/__mock__/state</code>, and can be told to answer the ref PATCH with a 422 once.</li>
+      <li><code>e2e/support/{constants,fixtures}.ts</code> gain wiki seeding and fixtures (<code>lib/wiki/fixtures.ts</code>).</li>
+      <li>The Playwright web-server env gets <code>WIKI_GITHUB_TOKEN</code>, <code>WIKI_REPO</code> and <code>WIKI_GITHUB_API_URL</code> pointing at the mock. This is deliberate feature wiring, not a reaction to a red check.</li>
+    </ul></li>
+  <li><strong>Worker plumbing</strong>: the <code>yaml</code> dependency, <code>WIKI_REPO</code> in <code>wrangler.toml</code> and <code>Env</code>, and an empty <code>workers/src/wiki/</code> for slice C.</li>
+</ol>
+
+<h3>11.3 The fan-out: six slices, one parallel batch</h3>
+<p>Every slice starts from the reviewed foundation. File sets are disjoint, so all six run at
+once. <strong>No slice edits a foundation file.</strong> If one needs a change there, it stops and
+reports the exact change, and the lead makes it and re-briefs any affected slice. That covers
+<code>api-client.ts</code>, <code>lib/api/*</code>, <code>mock-supabase.mjs</code>,
+<code>e2e/support/*</code>, <code>test-utils.tsx</code>, <code>wiki-store.tsx</code>,
+<code>lib/wiki/writer/*</code>, <code>lib/wiki/match.ts</code>, <code>layout.tsx</code>, atoms,
+<code>globals.css</code>, the migration and the shell files.</p>
+<div class="scroll"><table>
+  <tr><th>Slice</th><th>Owns (the only files it touches)</th><th>Acceptance</th><th>Tests that pin it</th></tr>
+  <tr><td><strong>A · Reader send</strong></td>
+    <td><code>components/reader/post-overview.tsx</code> and a new <code>components/reader/novel-idea-list.tsx</code>; <code>post-row.tsx</code> (passes the post and <code>writable</code>); <code>post-row.stories.tsx</code>; <code>components/reader/test-helpers.tsx</code> (adds <code>WikiProvider</code> to <code>renderReader</code>); <code>lib/stores/reader-store.tsx</code>; <code>lib/data/reader.ts</code> (<code>getReaderPostForWiki</code>); <code>app/api/reader/posts/[id]/wiki/route.ts</code>; their tests; <code>e2e/reader-wiki-send.spec.ts</code>; regenerated reader baselines.</td>
+    <td>§5 in full, and the §5.1 mockup's four states.</td>
+    <td>RTL covers:
+      <ul class="tight">
+        <li>ticking by click and by <kbd>Space</kbd>, with <code>aria-checked</code>;</li>
+        <li>sent bullets not being selectable;</li>
+        <li>the bar appearing at one tick with the right count, and Clear;</li>
+        <li>Send to wiki sending exactly the ticked bullets in one call;</li>
+        <li>Send all sending every unsent bullet regardless of ticks;</li>
+        <li>everything disabled in flight, a failure keeping the ticks, and All sent;</li>
+        <li>the unchanged not-writable and empty cases.</li>
+      </ul> The store covers success, and an error that toasts the route's sentence, rethrows, and leaves the row unchanged. It also covers <code>beginWrite</code>. The route covers 501, 404, 409, already-sent (no commit), and success with a mock writer, asserting the envelope and that <code>text</code> never appears in the response. Stories, one per mockup panel: <code>WikiNothingTicked</code>, <code>WikiTwoTicked</code>, <code>WikiSending</code>, <code>WikiAllSent</code>.
+      E2E:
+      <ul class="tight">
+        <li>Tick two, send, and a reload keeps the sent state. The mock's recorded tree shows one commit holding one folder, with <code>source.md</code> plus a <code>picks-…</code> file listing exactly those two bullets.</li>
+        <li>Send all sends the rest in a second commit.</li>
+        <li>A failure (the mock answers 502) keeps the ticks.</li>
+      </ul></td></tr>
+  <tr><td><strong>B1 · Classifier</strong></td>
+    <td><code>workers/src/prompt.ts</code>, <code>verdict.ts</code>, their tests, and <code>sweep.test.ts</code> (version literals).</td>
+    <td>§6.1.</td>
+    <td>As listed in §6.1.</td></tr>
+  <tr><td><strong>B2 · Inbox knowledge</strong></td>
+    <td><code>components/tasks/type-glyph.tsx</code>; <code>task-row/task-row-menu.tsx</code>; <code>task-row.tsx</code> (only <code>handleClassify</code>'s type, the knowledge glyph branch, <code>canDrag</code>, the readiness option, and the dispatch toast); <code>inbox-bulk-bar.tsx</code>; <code>lib/tasks/dispatch.ts</code>; <code>lib/tasks/classification.ts</code> (test only, unless the patch needs a change); <code>lib/hooks/use-task-row-flags.ts</code>; <code>lib/stores/tasks-store.tsx</code>; <code>app/api/wiki/items/route.ts</code>; their tests and stories; <code>e2e/inbox-knowledge.spec.ts</code>; regenerated inbox and bulk-bar baselines.</td>
+    <td>§6.2 and its mockup.</td>
+    <td>Readiness rows for knowledge: childless and writable is ready; with children, "has subtasks"; not writable, "wiki not connected". <code>canDrag</code> is false for a knowledge root. The glyph renders in the checkbox slot. <code>classifyPatch</code> clears the right fields, <code>folder_id</code> included. The menus offer Knowledge only when writable. A bulk dispatch sends one request for N knowledge ids and rolls back all of them on failure. The route covers 501, 409 for each refusal, and success calling the writer once then the RPC. E2E: classify as Knowledge, dispatch, the row leaves, the toast, and the mock's state shows one commit and the item deleted.</td></tr>
+  <tr><td><strong>C · Snapshot</strong></td>
+    <td><code>workers/src/wiki/{sync,graphql,page,store}.ts</code> and tests; <code>workers/src/index.ts</code> (the push branch and the retention-cron call); <code>index.test.ts</code>.</td>
+    <td>§7 in full.</td>
+    <td><code>page.ts</code> is table-driven over §7.5 and §7.4 (bad YAML, blank title, bad dates, code-masked links). <code>sync.ts</code> runs on a stubbed fetch and covers: first sync, no change (three subrequests: GraphQL #1, the select, the sync-state write), an edit, a rename (delete plus insert), 61 changed (pending 1), a binary blob, a GraphQL error and a GraphQL <code>errors</code>-with-partial-data response (both write <code>last_error</code> and delete nothing), and a subrequest count ≤ 6 asserted. The webhook covers push on main, push on another branch, a push from another repo, a bad signature, and pull_request unchanged. The cron runs sync after retention.</td></tr>
+  <tr><td><strong>D · Reading room</strong></td>
+    <td><code>components/wiki/**</code> except <code>wiki-nav.tsx</code>; <code>lib/wiki/{links,heading-ids,snippet,github-url}.ts</code>; <code>app/api/wiki/search/route.ts</code>; their tests and stories; <code>e2e/wiki-reading-room.spec.ts</code>.</td>
+    <td>§8.1 and §8.4 in full, including every state in the three mockups.</td>
+    <td>These are pure functions in <code>lib/wiki/*</code>, because react-markdown is ESM and Jest doesn't transform it: components that render Markdown mock it as existing tests do, and the rendered wiring is proven in stories and e2e, with no Jest config change. Links are table-driven over §7.5. Heading ids are table-driven against the wiki's rule, including repeats, inline code, and a Setext heading. Snippet splitting never injects HTML. The search route covers 400 under 2 characters, and results. Stories (each a baseline): <code>Index</code>, <code>Section</code>, <code>SearchPending</code>, <code>SearchResults</code>, <code>Page</code>, <code>PageLoading</code>, <code>PageError</code>, <code>NotFound</code>, <code>Empty</code>, <code>SyncFailed</code>. E2E: open a page from the index, follow an in-app link, a backlink, the raw citation's <code>href</code> and <code>target</code>, a hash scroll, body search, and a phone viewport.</td></tr>
+  <tr><td><strong>E · ⌘P wiki group</strong></td>
+    <td><code>components/shell/search-results.ts</code>, <code>search-box.tsx</code>, <code>search-results-popover.tsx</code>, their tests and story; <code>e2e/global-search.spec.ts</code>; the search-label queries in <code>shell-mobile-nav.test.tsx</code> (that file's foundation edits land first).</td>
+    <td>§9 ⌘P and its mockup.</td>
+    <td>Ranking and cap for wiki. Flatten order. Keyboard navigation across three groups. The badge per kind. The new copy. Selecting a wiki result pushes <code>/wiki/…</code>. The story <code>OpenWithResults</code> baseline gains the group. E2E: ⌘P "habit" and Enter opens the page.</td></tr>
+</table></div>
+
+<h3>11.4 Each slice's loop: implement → antagonize → fix</h3>
+<ol class="tight">
+  <li><strong>Dispatch the implementer</strong> (Sonnet). Its brief carries:
+    <ul class="tight">
+      <li>this spec's path and its section numbers;</li>
+      <li>the slice's behavior and acceptance criteria in the lead's own words;</li>
+      <li>the exact file boundary and the foundation files it must not touch;</li>
+      <li>the relevant skills to read first (<code>data-flow</code>, <code>frontend-architecture</code>, <code>react</code>, <code>storybook</code>, <code>playwright</code>, <code>jest</code>, <code>cloudflare-workers</code>, <code>supabase</code>, as they apply);</li>
+      <li>"TDD; pin every behavior with a test; never commit; report what you needed outside your boundary".</li>
+    </ul></li>
+  <li><strong>As soon as it reports, dispatch its reviewer</strong> (Opus, read-only). Pipeline, don't wait for the batch: slice C's review can run while D is still building. The reviewer's brief:
+    <ul class="tight">
+      <li><em>Posture</em>: "Assume this slice is wrong and find out how. You are not here to approve. Every finding needs a concrete failure: a file:line, the input or state that breaks it, and what happens. Verify it by reading the code path or running the test before you report it. Mark each finding <b>blocking</b> (spec drift, a missing or toothless test, a bug, a guardrail bypass, a boundary breach, security) or <b>non-blocking</b> (naming, a clearer comment). If you find nothing blocking, say so in one line. Do not edit any file."</li>
+      <li><em>Hunt list</em>:
+        <ul class="tight">
+          <li>Every acceptance line has a test that <em>would fail</em> if the behavior broke. Mutation thinking: delete the line, and see whether anything goes red.</li>
+          <li>The mockup's states are all drawn in stories.</li>
+          <li>No <code>eslint-disable</code>, <code>@ts-*</code>, <code>.skip</code>, or config edits.</li>
+          <li>No file outside the boundary.</li>
+          <li>The data-flow patterns: store actions through <code>api-client</code>, no <code>router.refresh</code>, no Supabase in components.</li>
+          <li>The token or <code>text</code> never reaches the client. The body route's path is validated.</li>
+          <li>The Worker's subrequest and CPU arithmetic holds.</li>
+          <li>Icon-only buttons have accessible names.</li>
+          <li>Mobile width.</li>
+          <li>Reduced motion.</li>
+          <li>§7.5 rows implemented identically.</li>
+        </ul></li>
+    </ul></li>
+  <li><strong>Fix round.</strong> The lead forwards the <em>blocking</em> findings to the same implementer via <code>SendMessage</code>, so its context survives. Non-blocking findings are the lead's call. The reviewer is resumed with the delta and re-checks each earlier blocker plus anything the fix touched.</li>
+  <li><strong>Exit</strong>: the reviewer reports no blocking findings. The cap is <strong>three rounds</strong>. After that the lead reads the dispute and decides, fixing it itself if the fix is small. A disagreement about intent goes to Alex in the tab, not into the code.</li>
+</ol>
+
+<h3>11.5 Order</h3>
+<ol class="tight">
+  <li>Foundation (the lead), then <code>npm run check</code> green, then the foundation review loop.</li>
+  <li>A, B1, B2, C, D and E in parallel, each through its own §11.4 loop as it finishes.</li>
+  <li>Integration (§11.6).</li>
+  <li>Demo doc, <code>batch-commits</code>, push, PR.</li>
+</ol>
+
+<h3>11.6 Seams the lead reconciles, and what it keeps</h3>
+<ul class="tight">
+  <li><strong>Writer API</strong>: A and B2 must both call <code>commitEnvelopes</code> and the envelope builders. Neither may rebuild frontmatter itself.</li>
+  <li><strong>§7.5</strong>: diff C's <code>page.test.ts</code> table against D's <code>links.test.ts</code>. The rows must be the same cases with consistent outcomes.</li>
+  <li><strong>Store shape</strong>: D and E both read <code>useWikiPages</code> and <code>rankWikiPage</code>. Neither may keep a private matcher.</li>
+  <li><strong><code>writable</code></strong>: A and B2 both hide their affordances the same way.</li>
+  <li><strong>Baselines</strong>: regenerate every moved snapshot once, at the end (<code>npm run test:storybook:update -w frontend</code>), and look at each diff image.</li>
+  <li><strong>Cross-repo contract check</strong>, which the lead runs itself:
+    <ol class="tight">
+      <li><code>add_repo</code> <code>ac3charland/knowledge</code> (read) and clone it to the scratchpad.</li>
+      <li>Write the writer's four golden folders into the clone's <code>inbox/</code>. They are four different sources, with distinct <code>external_id</code>s, or filing would merge them in memory.</li>
+      <li>Run the wiki's <code>npm ci</code>, <code>npm run lint</code>, and <code>npm run file-batch -- --dry-run --json</code>. Lint must exit 0 with no E findings (the repo's existing <code>orphan-page</code> warning is expected), and every folder must file as <code>new</code>.</li>
+      <li>Then add a second envelope for one of those posts: its <code>source.md</code> with the same body, plus a new picks file. Run filing for real in the scratch clone, then dry-run the new folder. It must file as <code>merged</code>, with <code>source.md</code> dropped as the same body.</li>
+    </ol>
+    Don't push to the wiki repo.</li>
+  <li><strong>The lead keeps</strong>: the foundation, integration, the full <code>npm run check</code> (both tiers), the contract check, the demo doc, every commit, the PR, and archiving this spec. Anything that needs Alex's accounts is §14, not agent work.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s12">12 · Acceptance criteria</h2>
+<ul class="ac">
+  <li class="grp">Writer</li>
+  <li>One send is one commit on <code>main</code> in a brand-new <code>inbox/</code> folder, even when the post has an earlier send. A moved <code>main</code> is retried up to three times.</li>
+  <li>Golden envelopes pass the wiki repo's own <code>npm run lint</code>, and file as <code>new</code>, then <code>merged</code>, under <code>file-batch --dry-run</code> (§11.6).</li>
+  <li>The token is never sent to the client, logged, or echoed in an error. An unconfigured writer returns 501, and every send affordance is hidden.</li>
+  <li class="grp">Reader send</li>
+  <li>With the wiki connected, the Novel-ideas bullets are a checklist. Ticking any number and pressing <strong>Send to wiki</strong> sends exactly those bullets in one commit. <strong>Send all to wiki</strong> sends every unsent bullet in one commit.</li>
+  <li>The nothing-ticked, ticked, sending, all-sent and not-connected states render exactly as the mockup draws them. Only one send per post runs at a time. A failed send keeps the ticks. Concurrent sends from one post never lose a sent mark. When every bullet is sent the button becomes "All sent to wiki". The sent state survives a reload.</li>
+  <li>A swept post sends a pointer <code>source.md</code> (or picks alone when it has no URL). A reworded bullet reads as unsent. A failed send toasts and returns the bullet to unsent.</li>
+  <li>Without the wiki connected, and on a post with no novel ideas, the overview is pixel-identical to today.</li>
+  <li class="grp">Knowledge captures</li>
+  <li>The classifier can suggest <code>knowledge</code> (prompt v3). A held knowledge row is never retyped by the sweep, and a knowledge verdict carries no other labels.</li>
+  <li>An Inbox row can be classified as Knowledge from the ⋯ menu and the bulk bar. It shows the Lightbulb glyph and no label chips.</li>
+  <li>Dispatching knowledge rows commits one <code>notes-…</code> folder per row in one commit, deletes the rows, logs a classifier correction when Alex overrode the guess, and toasts "Sent to the wiki" or "Sent n ideas to the wiki". A knowledge row with subtasks is blocked with "has subtasks". Without the wiki connected, a knowledge row is blocked with "wiki not connected". A knowledge row can't be dragged into a folder, and classifying a row as Knowledge clears its folder label.</li>
+  <li class="grp">Snapshot</li>
+  <li>A push to the wiki's <code>main</code> updates <code>wiki_pages</code> to match its <code>wiki/</code> tree: new, edited, renamed and deleted pages, at most 60 per run, with the remainder counted as pending. Pushes to other branches or repos are ignored.</li>
+  <li>A run makes at most six subrequests. A GraphQL failure records <code>last_error</code> and leaves the pages untouched. The daily retention cron also runs the sync.</li>
+  <li class="grp">Wiki module</li>
+  <li>A fifth switcher segment, <strong>Wiki</strong>, in violet, fits the sidebar without truncating any label. It has a sidebar nav with counts, mobile nav, ⌘K destinations, and deep links that survive a hard load.</li>
+  <li>The index, section, page, search, loading, error, not-found, empty and sync-failed states render as the mockups draw them.</li>
+  <li>Links behave per §7.5, including heading anchors that match the wiki's rule. Backlinks list every page linking in.</li>
+  <li>Module search shows instant title, summary and tag matches plus body matches with highlighted snippets. ⌘P shows a Wiki group matching title, summary and tags.</li>
+  <li class="grp">Process</li>
+  <li>Every slice passed its Opus review with no blocking findings. <code>npm run check</code> is green on the final tree. There is a demo doc (§13). This spec is archived in the implementation PR.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s13">13 · Demo evidence</h2>
+<p>Follow the <code>showboat</code> skill's evidence rules; they are the source of truth, and this
+list only names what must be covered. One demo doc covers:</p>
+<ul class="tight">
+  <li>the Reader journey: collapsed, then overview, then tick two, then Send to wiki, then Sending…, then sent, then Send all, then all sent. The selection bar's reveal is motion, so it is shown as a GIF.</li>
+  <li>the Inbox journey (classify as Knowledge, then dispatch, then the row leaves and the toast shows);</li>
+  <li>the Wiki module (index, search with body hits, a page with each link kind and its backlinks, empty, and sync-failed);</li>
+  <li>⌘P and ⌘K;</li>
+  <li>two non-visual pieces: the send route's request and the committed tree it produced against the mock GitHub, and the Worker sync's before and after rows on a stubbed run.</li>
+</ul>
+<p>Every moved Storybook baseline is shown as its diff image, then approved.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s14">14 · Alex's checklist (after the implementation PR merges; not agent work)</h2>
+<ol class="tight">
+  <li><strong>Write token.</strong> Create a fine-grained PAT with the repository <code>ac3charland/knowledge</code> only and the permission <em>Contents: Read and write</em>. On the <strong>Personal</strong> Vercel project only, set <code>WIKI_GITHUB_TOKEN</code> to the token and <code>WIKI_REPO</code> to <code>ac3charland/knowledge</code>, then redeploy.</li>
+  <li><strong>Read token.</strong> Edit the Worker's existing fine-grained <code>GITHUB_TOKEN</code> and add <code>ac3charland/knowledge</code> to its repositories, with <em>Contents: Read</em>. The secret value doesn't change.</li>
+  <li><strong>Webhook.</strong> On <code>ac3charland/knowledge</code>, go to Settings → Webhooks and add the Worker's <code>/github/webhook</code> URL. Use <code>application/json</code>, the same secret as the alfred repo's webhook (<code>GITHUB_WEBHOOK_SECRET</code>), and <em>Just the push event</em>.</li>
+  <li><strong>Smoke test.</strong>
+    <ol class="tight">
+      <li>Push anything to the wiki's <code>main</code> (or wait for the next merge), and check that the Wiki module shows the LLM Wiki page and says "synced just now".</li>
+      <li>Tick two ideas on a Reader post and send them. Check that one folder appears in <code>inbox/</code>, holding both picks, and that kickoff runs once.</li>
+      <li>Dispatch one knowledge capture.</li>
+      <li>Merge the resulting ingest PR and watch its pages arrive.</li>
+    </ol>
+    If the header says the sync failed, <code>wiki_sync.last_error</code> names the reason. The likeliest cause is that the read token doesn't cover the repo (step 2).</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<h2 id="s15">15 · Out of scope, risks, open questions</h2>
+<h3>Deliberately out</h3>
+<ul class="tight">
+  <li>Rendering <code>raw/</code> files inside Alfred (D3). Revisit if following citations to GitHub on the phone proves annoying.</li>
+  <li>Body search in ⌘P (D6).</li>
+  <li>A graph view, and any write path to pages (epic non-goals).</li>
+  <li>Alex's own note attached to a Reader send (a <code>notes-…</code> file beside the picks). The contract already allows it, so it can be a small follow-up.</li>
+  <li>A keyboard shortcut for sending ideas.</li>
+  <li>Hiding the Wiki module on the Work instance, where it is always empty (both instances run identical code; Reader is the precedent).</li>
+  <li>Realtime push of snapshot changes. The navigation and tab-return refresh is enough at a few merges a day.</li>
+  <li>Instapaper tag sync (the epic's follow-up).</li>
+</ul>
+<h3>Risks</h3>
+<ul class="tight">
+  <li><strong>Size.</strong> The spike put Day 2 at about the Reader's whole build (≈14.6k lines with tests). One PR of that size is a long review. The per-slice Opus loop is there to make sure that review isn't where bugs are first found.</li>
+  <li><strong>GraphQL with a fine-grained PAT.</strong> This spec assumes the Worker's fine-grained token can read the repo through GraphQL. If the smoke test shows an auth error that step 2 of §14 doesn't fix, <code>graphql.ts</code> falls back to REST (<code>git/trees?recursive=1</code> plus one <code>git/blobs/{sha}</code> per page, capped at 40). That is a contained change behind <code>syncWiki</code>.</li>
+  <li><strong>Worker CPU.</strong> The 60-page cap is an estimate. If a run hits the CPU limit, lower the constant; the remainder converges on later triggers.</li>
+  <li><strong>Classifier drift.</strong> With no eval harness, <code>knowledge</code> may be over- or under-suggested at first. The corrections table (D7) is the signal to watch.</li>
+</ul>
+<h3>Open questions</h3>
+<p>None block the build. Alex settled the three scoping calls in the refinement session (D2, D3,
+D6). Everything else is decided above, where a reviewer can overturn it in PR comments.</p>
+
+<p class="small" style="margin-top:2.5rem">Sources:</p>
+<ul class="small tight">
+  <li><code>docs/specs/epics/ALF-259.html</code>, <code>docs/specs/archive/ALF-260.html</code> and <code>docs/spikes/llm-wiki-spike.html</code> §3.7.</li>
+  <li>From <code>ac3charland/knowledge</code> @ <code>main</code>: <code>registry.yaml</code>, <code>scripts/lib/{schema,frontmatter,paths,sources,wiki}.ts</code>, <code>scripts/{add-source,file-batch}.ts</code>, <code>.claude/skills/ingest/SKILL.md</code> and <code>README.md</code>.</li>
+  <li>Alfred Reader: <code>components/reader/{post-overview,post-row}.tsx</code>, <code>lib/stores/reader-store.tsx</code>, <code>lib/data/reader.ts</code>, <code>database/migrations/0035_reader.sql</code> and <code>0036</code>.</li>
+  <li>Alfred classifier: <code>workers/src/{prompt,verdict,sweep,index,github,supabase}.ts</code> and <code>workers/wrangler.toml</code>.</li>
+  <li>Alfred Inbox: <code>lib/tasks/dispatch.ts</code>, <code>lib/stores/tasks-store.tsx</code>, <code>components/tasks/{type-glyph,inbox-bulk-bar}.tsx</code> and <code>task-row/task-row-menu.tsx</code>.</li>
+  <li>Alfred shell: <code>lib/modules.ts</code> and <code>components/shell/{view-switcher,search-results,search-results-popover,command-destinations,command-palette,module-router}.tsx</code>.</li>
+  <li>Migrations <code>0026</code>, <code>0029</code> and <code>0032</code>, and the skills <code>data-flow</code>, <code>frontend-architecture</code>, <code>cloudflare-workers</code>, <code>implement-epic</code>, <code>implement-spec</code> and <code>showboat</code>.</li>
+</ul>
+
+</div>
+</body>
+</html>
