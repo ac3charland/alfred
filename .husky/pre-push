@@ -1,1 +1,4 @@
+# Git exports GIT_DIR / GIT_INDEX_FILE into hooks. A test that `git init`s a temp repo would
+# inherit them and write to THIS repo instead — see the commitlint skill.
+unset $(git rev-parse --local-env-vars)
 npm run check:slow
