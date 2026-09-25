@@ -305,7 +305,7 @@
   <code>main</code> while the batch is moving it to <code>raw/</code>. That is exactly the conflict
   Day 1's "every send is a new folder" rule exists to prevent. So the writer builds one tree and
   one commit, then fast-forwards <code>main</code> (§4.4).</p>
-  <p class="why"><b>Cost:</b> five API calls instead of two per send, plus a retry loop when
+  <p class="why"><b>Cost:</b> seven requests instead of two per send, plus a retry loop when
   <code>main</code> moved underneath us. Both are cheap on Vercel.</p></div>
 
 <div class="dec"><h3>D2 · The module is called <em>Wiki</em> on screen <span class="tag ask">Alex</span> <span class="tag dep">departs from epic</span></h3>
@@ -552,19 +552,19 @@ other folders in the same commit.</p>
 <h3>4.4 The commit</h3>
 <p><code>commitEnvelopes(config, envelopes, { fetch?, now? })</code> in
 <code>writer/commit.ts</code> takes an injectable <code>fetch</code>. It returns
-<code>{ commitSha, folders }</code>:</p>
+<code>{ commitSha, folders }</code> after seven requests:</p>
 <ol class="tight">
   <li><code>GET /repos/{o}/{r}/git/ref/heads/main</code> gives the head commit.</li>
   <li><code>GET /repos/{o}/{r}/git/commits/{head}</code> gives the base tree. Then <code>GET /git/trees/{base}</code> finds <code>inbox</code>, and <code>GET /git/trees/{inbox}</code> lists the names already taken.</li>
   <li><code>POST /git/trees</code> sends <code>{ base_tree, tree: [{ path, mode: "100644", type: "blob", content }] }</code>, one entry per file across every envelope.</li>
   <li><code>POST /git/commits</code> sends <code>{ message, tree, parents: [head] }</code>. The message is <code>add: &lt;title&gt;</code> for one folder, or <code>add: &lt;n&gt; sources</code> for several, matching <code>npm run add</code>.</li>
-  <li><code>PATCH /git/refs/heads/main</code> sends <code>{ sha, force: false }</code>. A <code>422</code> means <code>main</code> moved, so the writer re-runs from step 1, at most 3 attempts in total.</li>
+  <li><code>PATCH /git/refs/heads/main</code> sends <code>{ sha, force: false }</code>. A <code>422</code> <em>from this PATCH</em> means <code>main</code> moved, so the writer re-runs from step 1, at most 3 attempts in total. Any other non-2xx fails at once as <code>rejected</code>, and that includes a 422 from the tree or commit POST (a malformed path is never "busy").</li>
 </ol>
 <p>Every request sends the headers <code>workers/src/github.ts</code> uses (Bearer,
 <code>application/vnd.github+json</code>, <code>X-GitHub-Api-Version: 2022-11-28</code>), with
 <code>User-Agent: alfred-wiki</code>. Failures throw a typed <code>WikiWriteError</code>
-(<code>kind: 'unauthorized' | 'busy' | 'unreachable'</code>). Routes map those to
-<code>502 {error: "Couldn't reach the wiki repo"}</code>, or to
+(<code>kind: 'unauthorized' | 'rejected' | 'busy' | 'unreachable'</code>). Routes map the first,
+second and fourth to <code>502 {error: "Couldn't reach the wiki repo"}</code>, and <code>busy</code> to
 <code>503 {error: "The wiki repo was busy — try again"}</code> after the third 422. An unconfigured
 writer is <code>501</code>, following the <code>pr-ratio</code> precedent. The token never appears
 in an error or a log line.</p>
@@ -583,14 +583,14 @@ only when <code>writable</code> is true and the list is non-empty:</p>
       <li><em>sent</em>: a violet 12px <code>Check</code> and <code>Sent</code> in <code>text-xs</code> muted.</li>
     </ul>
     The bullet keeps its disc marker and text.</li>
-  <li><strong>The section heading row</strong> gains a right-aligned ghost <code>Button size="sm"</code>, <code>BookPlus</code> + <strong>Send all to wiki</strong>, which sends every unsent bullet in one request. It is disabled while any send from this post is in flight. When every bullet is sent it is replaced by muted <code>text-xs</code> "All sent to wiki" with the violet check.</li>
+  <li><strong>The section heading row</strong> gains a right-aligned ghost <code>Button size="sm"</code>, <code>BookPlus</code> + <strong>Send all to wiki</strong>, which sends every unsent bullet in one request. It is disabled while any send from this post is in flight, and while it runs, every bullet it covers shows its spinner. When every bullet is sent it is replaced by muted <code>text-xs</code> "All sent to wiki" with the violet check.</li>
   <li><strong>No other change.</strong> Not writable, an empty list, and the other three sections all look exactly as they do today.</li>
 </ul>
 
 <div class="app">
   <div class="grid2">
     <div>
-      <p class="panel-label">Mixed: sent · sending · unsent (hover on the third)</p>
+      <p class="panel-label">Mixed: sent · sending · unsent (hover on the third). Send all is disabled while a send is in flight</p>
       <div class="row-exp">
         <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="eb">Jane Doe</span><span class="meta">Oct 2 · 7 min</span></div>
         <div class="rtitle">Why habits stick</div>
@@ -598,7 +598,7 @@ only when <code>writable</code> is true and the list is non-empty:</p>
         <div class="verbs"><span class="btn outline">Open</span><span class="btn ghost">Hide overview</span><span class="btn outline">Archive</span></div>
         <div class="ov">
           <section>
-            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 21V7"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
+            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost" style="opacity:.5"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 21V7"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
             <ul class="ideas">
               <li><div class="idea"><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div></li>
               <li><div class="idea"><span class="tx">Environment design beats willpower for the first thirty days.</span><span class="st"><span class="spin"></span></span></div></li>
@@ -638,9 +638,11 @@ only when <code>writable</code> is true and the list is non-empty:</p>
 <p class="mockcap">The row is <code>rowShellClass({expanded: true})</code>, the post's module-green
 border. Everything that means "wiki" is violet: the icon button's hover, the spinner slot and the
 checks. The section heading and bullets keep <code>post-overview.tsx</code>'s own classes. The
-"Send all" button (ghost, <code>size="sm"</code>) sits on the heading row, whose
-<code>min-height</code> is set to the button's 32px so the heading doesn't jump when the button
-swaps for the "All sent" text.</p>
+"Send all" button (ghost, <code>size="sm"</code>, drawn at the atom's disabled 50% opacity) sits
+on the heading row. That row gets a 32px <code>min-height</code>, the button's height, <em>only
+while the wiki controls render</em>, so the heading doesn't jump when the button swaps for the
+"All sent" text. With no controls the row keeps today's height, which is what keeps the
+not-connected case pixel-identical.</p>
 
 <h3>5.2 Behavior</h3>
 <ul class="tight">
@@ -649,7 +651,7 @@ swaps for the "All sent" text.</p>
     <ul class="tight">
       <li>It calls <code>beginWrite(postId)</code>, so a focus refresh keeps the local row.</li>
       <li>It calls <code>api.sendReaderIdeasToWiki</code>, and on success reconciles with <code>{type: 'replace', item: saved}</code>.</li>
-      <li>On error it toasts <code>Couldn't send to the wiki</code> plus the route's sentence (<code>refusal(error)</code>), and rethrows so the list clears its spinners.</li>
+      <li>On error it toasts the route's own sentence when the response carries one (the 409, 501, 502 and 503 bodies below), else <code>Couldn't send to the wiki</code>. It then rethrows so the list clears its spinners. The existing <code>refusal()</code> helper surfaces only a 409's detail, so this action reads <code>ApiError.detail</code> whatever the status.</li>
       <li><code>endWrite</code> runs in <code>finally</code>.</li>
     </ul></li>
   <li><strong>Route</strong>: <code>POST /api/reader/posts/[id]/wiki</code>, body <code>{ ideas: string[] }</code> (1–6 non-empty strings, <code>.strict()</code>), through <code>withSession</code>.
@@ -657,11 +659,16 @@ swaps for the "All sent" text.</p>
       <li>It returns 501 if the writer isn't configured and 404 for an unknown post.</li>
       <li>It returns 409 <code>"That idea isn't in this post's overview any more"</code> if any idea isn't in the current <code>overview.novel_ideas</code>. That happens when a re-summarise ran underneath.</li>
       <li>It drops ideas already in <code>wiki_sent_ideas</code>. If none are left, it returns 200 with the row unchanged and makes no commit.</li>
-      <li>Otherwise it builds the envelope, commits, and writes <code>wiki_sent_ideas</code> as the ordered union.</li>
+      <li>Otherwise it builds the envelope, commits, then appends the new ideas through the RPC <code>append_wiki_sent_ideas(p_post, p_ideas)</code> (§10). That RPC is one atomic <code>update</code> that adds only strings not already present. Two single-bullet sends from one post can run at once, and a read-modify-write here would let the later one erase the earlier one's bullet.</li>
       <li>It returns the row with list columns only, so <code>text</code> never reaches the client.</li>
     </ul></li>
   <li><strong>Reading the row with text.</strong> The route uses a new <code>getReaderPostForWiki(id)</code> in <code>lib/data/reader.ts</code>, the only reader that selects <code>text</code> for this purpose.</li>
-  <li><strong>If the DB write fails after the commit</strong>, the route returns 500 and the bullet shows as unsent. A retry commits an identical picks file on the same day, which filing drops as a duplicate, and a different day's retry merges as a <code>-2</code> file that the ingest skill's "latest wins" handles.</li>
+  <li><strong>If the append fails after the commit</strong>, the route returns 500 and the bullet reads unsent, although it reached the wiki.
+    <ul class="tight">
+      <li>A same-day retry commits a byte-identical picks file, which filing drops.</li>
+      <li>A retry on a later day commits <code>picks-&lt;later date&gt;.md</code>, so the ingest session sees that bullet twice. The cost is a repeated citation, never a lost idea.</li>
+      <li>Committing first is deliberate. Reserving the bullet first and un-reserving on failure risks the opposite: a bullet marked sent that never reached the wiki.</li>
+    </ul></li>
   <li><strong>Re-summarise</strong> can reword bullets. A reworded bullet reads as unsent because its text isn't in the array. Old strings stay in the array harmlessly.</li>
 </ul>
 
@@ -698,15 +705,27 @@ D7 keeps intact for knowledge.</p>
 
 <h3>6.2 B2 · Knowledge rows in the Inbox (frontend)</h3>
 <ul class="tight">
-  <li><strong>Type glyph</strong>: <code>TypeGlyph</code> maps <code>knowledge</code> to lucide <code>Lightbulb</code> with the label <code>Knowledge</code>, at both mount sites and with the same classes as task and code.</li>
-  <li><strong>Labels</strong>: a knowledge row shows no folder, project or epic chips. <code>classifyPatch(current, 'knowledge')</code> clears <code>due_date</code>, <code>recurrence</code>, <code>intended_project_id</code> and <code>intended_epic_id</code>, as the DB constraints require, and leaves <code>folder_id</code> alone because it is hidden and harmless.</li>
+  <li><strong>Type glyph</strong>: <code>TypeGlyph</code> maps <code>knowledge</code> to lucide <code>Lightbulb</code> with the label <code>Knowledge</code>. In <code>task-row.tsx</code> a knowledge row takes the code row's glyph branch in the checkbox slot, because a knowledge row can't be completed. Today it falls through to the unclassified spacer. The glyph uses the same classes as the code glyph, and the select-mode mount site gets it too.</li>
+  <li><strong>Not draggable</strong>: <code>canDrag</code> excludes knowledge roots, as it already excludes code roots. A drop onto a folder would run <code>moveTask</code>, which stamps <code>folder_id</code> and <code>dispatched_at</code> and files the idea like a task instead of sending it to the wiki.</li>
+  <li><strong>Labels</strong>: a knowledge row shows no label chips. <code>classifyPatch</code> lives in <code>lib/stores/tasks-store.tsx</code>. Its <code>(current, 'knowledge')</code> case clears <code>due_date</code>, <code>recurrence</code>, <code>intended_project_id</code> and <code>intended_epic_id</code> (the DB constraints require it), and also <code>folder_id</code>. <code>row-meta-cluster.tsx</code> draws the folder chip for any undispatched row with a folder, whatever its type, so a leftover folder would put an editable chip on the row. <code>priority</code> stays, per the function's existing rule, because the priority chip is task-gated.</li>
   <li><strong>Classify as</strong>, in the row's ⋯ submenu and the bulk bar's dropdown, gains <strong>Knowledge</strong> after Code, only when <code>writable</code>. <code>showClassify</code> also admits knowledge rows, so a wrong guess can be flipped back to Task or Code. The comment calling knowledge "reserved" goes, and so does the matching line in <code>type-glyph.tsx</code>.</li>
-  <li><strong>Readiness</strong> (<code>lib/tasks/dispatch.ts</code>): a childless knowledge row is ready. A knowledge row with children is blocked by a new <code>'has subtasks'</code> blocker (phrases "has subtasks" / "have subtasks", ordered after "needs an epic"). <code>rowDispatchAction</code> returns <code>send</code> for a ready one.</li>
+  <li><strong>Readiness</strong> (<code>lib/tasks/dispatch.ts</code>): <code>dispatchReadiness</code> and <code>rowDispatchAction</code> take a new <code>{ wikiWritable }</code> option at all four call sites (<code>task-row.tsx</code> twice, <code>inbox-bulk-bar.tsx</code>, <code>tasks-store.tsx</code>).
+    <ul class="tight">
+      <li>A childless knowledge row is ready when the wiki is writable.</li>
+      <li>A knowledge row with children is blocked by a new <code>'has subtasks'</code> blocker ("has subtasks" / "have subtasks").</li>
+      <li>A knowledge row on a non-writable instance is blocked by a new <code>'wiki not connected'</code> blocker ("wiki not connected" for one and for many). So a misconfigured Personal deploy shows no green pip and a disabled Dispatch with that hint, rather than a 501.</li>
+    </ul>
+    When both apply, "wiki not connected" wins, because it is the gap Alex can't fix from the row. Both new blockers sit after "needs an epic" in <code>BLOCKER_ORDER</code>. <code>WikiProvider</code> is mounted outside every other store (§8.2), so <code>TasksProvider</code> can read <code>writable</code>.</li>
   <li><strong>Dispatch</strong> (<code>dispatchItems</code>):
     <ul class="tight">
       <li>Every ready knowledge id in a dispatch goes in <em>one</em> <code>api.sendItemsToWiki(ids)</code> call, which is one commit with one folder per item. That means a bulk dispatch starts one kickoff batch, not N.</li>
-      <li>Optimistic removal, the <code>send-off</code> departure, and rollback of the whole knowledge group on failure all follow the code branch.</li>
-      <li>Toasts: <code>Sent to the wiki</code> for one item and <code>Sent n ideas to the wiki</code> for several. A mixed dispatch appends the wiki clause to the existing dispatch summary.</li>
+      <li><code>applyBulkSettled</code> reports failure per unit, so the knowledge ids become N units whose <code>request</code>s all await one shared promise. They succeed or fail together, and on failure all N roll back and stay selected.</li>
+      <li>Optimistic removal and the <code>send-off</code> departure follow the code branch.</li>
+      <li>Toasts:
+        <ul class="tight">
+          <li>The row menu's single dispatch (<code>task-row.tsx</code>) says <code>Sent to the wiki</code>.</li>
+          <li>The bulk bar says <code>Sent n idea(s) to the wiki</code> when every item that went was knowledge. Otherwise it keeps today's <code>Dispatched n item(s)</code>, which already counts every destination.</li>
+        </ul></li>
       <li>The ⋯ entry keeps the label <strong>Dispatch</strong>, the existing "one entry for every destination".</li>
     </ul></li>
   <li><strong>Live verdicts</strong>: <code>classifierVerdictPatch</code> already copies <code>item_type</code> generically. A test pins that a <code>knowledge</code> verdict lands on an unjudged row.</li>
@@ -716,7 +735,7 @@ D7 keeps intact for knowledge.</p>
       <li>It reads each item's <code>title, notes, source_url, item_type, parent_id, dispatched_at</code> and whether it has children.</li>
       <li>It returns 409 naming the first bad id if any item is not knowledge, has a parent or children, or is already dispatched.</li>
       <li>Otherwise it builds one envelope per item, calls <code>commitEnvelopes</code> once, then calls the RPC <code>send_items_to_wiki(p_ids)</code> (§10), and returns <code>{ sent: ids }</code>.</li>
-      <li>If the RPC fails after the commit, the rows roll back. A retry's identical notes files dedupe at filing.</li>
+      <li>If the RPC fails after the commit, the rows roll back. A same-day retry's identical notes files dedupe at filing. A later day's retry files a second <code>notes-&lt;date&gt;.md</code> into the same source folder (merged by identity). That duplicates the note but never loses it.</li>
     </ul></li>
 </ul>
 
@@ -757,6 +776,10 @@ D7 keeps intact for knowledge.</p>
         <div class="mi">Code</div>
         <div class="mi foc">Knowledge</div>
       </div>
+      <p class="panel-label" style="margin-top:14px">Readiness line: one selected knowledge row has a subtask</p>
+      <div style="border:1px solid rgba(30,42,63,.6);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--a-muted);background:rgba(15,22,38,.95)">1 not ready — 1 has subtasks</div>
+      <p class="panel-label" style="margin-top:10px">Readiness line: wiki not connected (misconfigured deploy)</p>
+      <div style="border:1px solid rgba(30,42,63,.6);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--a-muted);background:rgba(15,22,38,.95)">3 not ready — 3 wiki not connected</div>
       <p class="panel-label" style="margin-top:18px">After Dispatch</p>
       <div class="toast">Sent 3 ideas to the wiki</div>
     </div>
@@ -764,7 +787,8 @@ D7 keeps intact for knowledge.</p>
 </div>
 <p class="mockcap">Row, menu, bulk bar and toast chrome come from their atoms and styles files. The
 Lightbulb glyph sits in the type-glyph slot with the same muted colour as task and code glyphs.
-The green pip is the existing <code>DispatchReadyMark</code>. A knowledge row carries no label
+The green pip is the existing <code>DispatchReadyMark</code>, and the readiness lines are the
+bulk bar's existing <code>readinessLineClass</code> strip with the two new blocker phrases. A knowledge row carries no label
 chips and its menu has no label submenus: Due date, Priority and Folder are task-only, and Project
 and Epic are code-only, each gated as today. Entries that aren't label submenus (Add subtask and
 so on) are unchanged and not drawn.</p>
@@ -805,7 +829,7 @@ needs neither. <code>fetchSpec</code> itself stays untouched. The Worker gains a
 <ul class="tight">
   <li>Frontmatter is split the way the wiki's <code>parseFile</code> does it (a leading <code>---\n</code>, the next <code>\n---</code>, and CRLF normalized), then parsed with <code>yaml</code>. If the YAML is invalid, <code>parse_error</code> is set and the whole text becomes the body.</li>
   <li><code>title</code>: the frontmatter title, or the file stem when it is missing or blank (the wiki's <code>titleFor</code>). <code>summary</code>: a string, or <code>''</code>. <code>tags</code> and <code>sources</code>: string lists, filtered to non-empty strings. <code>created</code> and <code>updated</code>: kept when they are real <code>YYYY-MM-DD</code> dates, else null.</li>
-  <li><code>links</code>: extract link targets the way the wiki's <code>extractLinks</code> does, masking fenced and inline code. Resolve each relative to the page's folder, URL-decode it, strip the <code>#anchor</code>, and keep only <code>wiki/&lt;section&gt;/&lt;name&gt;.md</code> targets that don't escape the repo. Dedupe, drop the page itself, and sort. Missing targets are kept, since a backlink doesn't care whether the target exists.</li>
+  <li><code>links</code>: extract link targets the way the wiki's <code>extractLinks</code> does, masking fenced and inline code. Resolve each relative to the page's folder <em>literally, with no URL-decoding</em> (the wiki's lint resolves targets the same way), strip the <code>#anchor</code>, and keep only <code>wiki/&lt;section&gt;/&lt;name&gt;.md</code> targets that don't escape the repo. Dedupe, drop the page itself, and sort. Missing targets are kept, since a backlink doesn't care whether the target exists.</li>
   <li><code>section</code> comes from the path.</li>
 </ul>
 
@@ -818,7 +842,7 @@ integration. The page is <code>wiki/concepts/habit-stacking.md</code>.</p>
   <tr><td><code>../entities/james-clear.md</code></td><td><code>wiki/entities/james-clear.md</code></td><td>in-app <code>/wiki/entities/james-clear</code></td></tr>
   <tr><td><code>../entities/james-clear.md#early-life</code></td><td><code>wiki/entities/james-clear.md</code></td><td>in-app <code>/wiki/entities/james-clear#early-life</code></td></tr>
   <tr><td><code>habit-loop.md</code></td><td><code>wiki/concepts/habit-loop.md</code></td><td>in-app <code>/wiki/concepts/habit-loop</code></td></tr>
-  <tr><td><code>habit%20loop.md</code></td><td><code>wiki/concepts/habit loop.md</code></td><td>in-app, if that page is in the index; broken otherwise</td></tr>
+  <tr><td><code>habit%20loop.md</code></td><td><code>wiki/concepts/habit%20loop.md</code> (literal)</td><td>broken, unless a page file is literally named that. No decoding, like the wiki's lint.</td></tr>
   <tr><td><code>#how-it-works</code></td><td>(none)</td><td>same-page anchor</td></tr>
   <tr><td><code>../concepts/not-yet.md</code> (not in the index)</td><td><code>wiki/concepts/not-yet.md</code></td><td>broken: muted, dotted underline, <code>title="Not in the wiki snapshot"</code>, not a link</td></tr>
   <tr><td><code>../../raw/2026/2026-10-01-atomic-habits/excerpts-2026-10-01.md#q-…</code></td><td>(none)</td><td>GitHub <code>https://github.com/&lt;repo&gt;/blob/main/raw/…#q-…</code>, new tab, ↗</td></tr>
@@ -851,7 +875,7 @@ centered <code>max-w-3xl</code> column.</p>
   <li><code>lib/modules.ts</code>: <code>ModuleId</code> adds <code>'wiki'</code>, with an <code>ownsPath(…, '/wiki')</code> branch, <code>isWikiPath</code>, and <code>MODULE_ACCENT.wiki</code> in violet (static class strings). The hue-count test goes from 4 to 5.</li>
   <li>Switcher <code>SEGMENTS</code>: Tasks · Code · Reader · <strong>Wiki</strong> (<code>/wiki</code>) · Comms. Comms stays last so its badge sits at the end.</li>
   <li><code>shell-nav</code> and <code>shell-mobile-nav</code> render <code>WikiNav</code>: <em>All pages</em> (<code>Library</code>), <em>Concepts</em> (<code>Shapes</code>), <em>Entities</em> (<code>Users</code>), <em>Sources</em> (<code>FileText</code>) and <em>Questions</em> (<code>CircleHelp</code>), each with its count, styled with <code>navLinkClass</code>.</li>
-  <li><code>module-router</code> gains a wiki branch. The layout adds <code>getWikiSeed()</code> to its <code>Promise.all</code> and mounts <code>WikiProvider</code> <em>outside</em> <code>SearchProvider</code>, so ⌘P can read it and so can the Reader and Tasks (for <code>writable</code>).</li>
+  <li><code>module-router</code> gains a wiki branch. The layout adds <code>getWikiSeed()</code> to its <code>Promise.all</code> and mounts <code>WikiProvider</code> directly inside <code>ToastProvider</code>, outside every other store (it depends on none). That lets ⌘P, the Reader, and <code>TasksProvider</code> itself read it.</li>
   <li>⌘K gets a new <code>wiki</code> destination group after Reader: <em>Wiki</em>, <em>Concepts</em>, <em>Entities</em>, <em>Sources</em> and <em>Questions</em>, with the same icons (§9).</li>
 </ul>
 
@@ -870,7 +894,7 @@ centered <code>max-w-3xl</code> column.</p>
 
 <h3>8.4 What Alex sees (slice D)</h3>
 <ul class="tight">
-  <li><strong>Header</strong>: <code>ViewHeading icon={Library} title="Wiki" accent="wiki"</code>. The description is <em>"&lt;n&gt; pages · synced &lt;relative&gt;"</em>. It adds <em>" · &lt;k&gt; pages still syncing"</em> when <code>pending &gt; 0</code>. When <code>last_error_at</code> is newer than <code>synced_at</code>, an amber line below reads <em>"The last sync failed &lt;relative&gt; — showing the snapshot from &lt;relative&gt;."</em></li>
+  <li><strong>Header</strong>: <code>ViewHeading icon={Library} title="Wiki" accent="wiki"</code>. The description is <em>"&lt;n&gt; pages · synced &lt;relative&gt;"</em>, or <em>"0 pages · not synced yet"</em> before the first sync (no <code>wiki_sync</code> row). It adds <em>" · &lt;k&gt; pages still syncing"</em> when <code>pending &gt; 0</code>. When <code>last_error_at</code> is newer than <code>synced_at</code>, an amber line below reads <em>"The last sync failed &lt;relative&gt; — showing the snapshot from &lt;relative&gt;."</em></li>
   <li><strong>Search box</strong> (<code>Input</code> with a <code>Search</code> glyph, placeholder <em>"Search the wiki"</em>) on the index and section views. It always searches the whole wiki, and each result carries a section chip.
     <ul class="tight">
       <li><em>Titles &amp; summaries</em>: instant, from <code>rankWikiPage</code>.</li>
@@ -889,7 +913,12 @@ centered <code>max-w-3xl</code> column.</p>
     </ul></li>
   <li><strong>Body rendering</strong>: <code>react-markdown</code> + <code>remark-gfm</code> with three things added.
     <ul class="tight">
-      <li>A small remark plugin assigns heading ids by the wiki's <code>slugifyHeading</code>/<code>headingAnchors</code> rule, including repeat suffixes, so <code>#anchors</code> match what the wiki's lint checked.</li>
+      <li>Heading ids mirror the wiki's <code>headingAnchors</code> (<code>scripts/lib/wiki.ts</code>) exactly, so <code>#anchors</code> match what the wiki's lint checked.
+        <ul class="tight">
+          <li>They are computed from the page's <em>raw source</em>, not the rendered text, over ATX headings only, after the same code masking. So <code>## The `yaml` parser</code> gets <code>the--parser</code>, as the wiki sees it.</li>
+          <li>A pure <code>headingAnchors(body)</code> in <code>lib/wiki/heading-ids.ts</code> produces the ordered list. A small remark plugin hands it out in order to the heading nodes whose source starts with <code>#</code>.</li>
+          <li>Setext headings get no id, because the wiki doesn't count them either.</li>
+        </ul></li>
       <li>An <code>a</code> override applies §7.5.</li>
       <li>An <code>img</code> override also applies §7.5.</li>
     </ul>
@@ -1013,6 +1042,54 @@ into <code>raw/</code> adds ↗ and opens GitHub; a link to a page not in the sn
 dotted, and not clickable. The amber sync line uses <code>text-accent-amber</code>. Empty states are
 the <code>EmptyState</code> atom.</p>
 
+<div class="app">
+  <div class="grid2">
+    <div>
+      <p class="panel-label">Section view · /wiki/concepts (nav: Concepts active)</p>
+      <div class="heading"><div class="glyph t-violet"><span class="i"><svg viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></span></div>
+        <div><h5>Wiki</h5><p>42 pages · synced 2 h ago</p></div></div>
+      <div class="input" style="margin-top:16px"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><span class="ph">Search the wiki</span></div>
+      <div style="margin-top:16px">
+        <div class="sect">Concepts <span class="cnt">19</span></div>
+        <div class="prow" style="margin-top:6px"><div class="pt">Emotional regulation</div><div class="ps">How stable caregivers shape an infant's stress response.</div></div>
+        <div class="prow"><div class="pt">Habit stacking</div><div class="ps">Anchoring a new behaviour to an existing routine rather than a clock time.</div></div>
+      </div>
+      <p class="panel-label" style="margin-top:18px">Search: no matches</p>
+      <div class="input"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>zettelkasten</div>
+      <p style="margin:12px 12px 0;font-size:13px;color:var(--a-muted)">No pages match “zettelkasten”</p>
+      <p class="panel-label" style="margin-top:18px">Search: body search failed</p>
+      <div class="input"><span class="i t-muted"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>forgetting</div>
+      <div style="margin-top:12px">
+        <div class="sect">Titles &amp; summaries</div>
+        <div class="prow" style="margin-top:6px"><div class="pt">Forgetting curve <span class="badge b-muted" style="margin-left:6px;font-size:11px">Concept</span></div><div class="ps">Ebbinghaus's decay of recall over time, and why spaced review flattens it.</div></div>
+        <div class="sect" style="margin-top:12px">In page text</div>
+        <p style="margin:6px 12px 0;font-size:13px;color:var(--a-muted)">Couldn't search page text</p>
+      </div>
+    </div>
+    <div>
+      <p class="panel-label">Page · body loading</p>
+      <div class="t-muted" style="font-size:14px">← Concepts</div>
+      <div class="pg-eb" style="margin-top:14px">Concept</div>
+      <div class="pg-title">Habit stacking</div>
+      <div class="pg-sum">Anchoring a new behaviour to an existing routine rather than a clock time.</div>
+      <div class="pg-meta"><span class="badge b-muted">habits</span><span class="meta" style="margin-left:4px">Updated Oct 3, 2026</span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:18px;font-size:13px;color:var(--a-muted)"><span class="spin"></span>Loading page…</div>
+      <p class="panel-label" style="margin-top:26px">Page · body failed to load</p>
+      <div class="t-muted" style="font-size:14px">← Concepts</div>
+      <div class="pg-eb" style="margin-top:14px">Concept</div>
+      <div class="pg-title">Habit stacking</div>
+      <div class="pg-sum">Anchoring a new behaviour to an existing routine rather than a clock time.</div>
+      <div class="empty" style="padding:28px 8px"><div class="et">Couldn't load this page</div><div style="margin-top:14px"><span class="btn outline">Retry</span></div></div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">The section view is the index filtered to one section, and the search box
+still searches the whole wiki. The no-match and body-search-failure lines are muted
+<code>text-sm</code>. When the body search fails, the title matches stay. While a body loads or
+fails, the page header still draws from the index, since title, summary, tags and date are all
+seeded. Only the body slot changes: a spinner line while loading, and an <code>EmptyState</code>
+with an outline Retry button on failure.</p>
+
 <!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
 <h2 id="s9">9 · ⌘P and ⌘K (slice E + foundation)</h2>
 <ul class="tight">
@@ -1063,6 +1140,12 @@ work merges while this spec waits.</p>
 <pre><code>-- Reader: which Novel-ideas bullets have been sent (their exact text; D8)
 alter table reader_posts add column wiki_sent_ideas text[] not null default '{}';
 
+-- Atomic append, so two concurrent single-bullet sends can't erase each other (§5.2).
+create function append_wiki_sent_ideas(p_post uuid, p_ideas text[]) returns setof reader_posts …
+  -- update reader_posts set wiki_sent_ideas = wiki_sent_ideas ||
+  --   array(select i from unnest(p_ideas) i where not (i = any(wiki_sent_ideas)))
+  -- where id = p_post returning *;
+
 -- The page snapshot (D3–D6). Written only by the Worker (service role); read by the app.
 create table wiki_pages (
   path        text primary key,            -- wiki/&lt;section&gt;/&lt;name&gt;.md
@@ -1112,7 +1195,7 @@ create function search_wiki_pages(p_query text, p_limit int default 20)
   -- ts_headline('english', body, q, 'StartSel=' || chr(2) || ', StopSel=' || chr(3) ||
   --   ', MaxWords=24, MinWords=10, MaxFragments=1')
 
--- grant execute on both functions to authenticated, service_role
+-- grant execute on all three functions to authenticated, service_role
 notify pgrst, 'reload schema';</code></pre>
 <p>After it: regenerate <code>frontend/lib/database.types.ts</code> with <code>npm run gen-types -w database</code>
 and add aliases in <code>lib/types.ts</code> (<code>WikiPageRow</code>, <code>WikiPageIndexRow =
@@ -1123,6 +1206,7 @@ Omit&lt;…, 'body' | 'search'&gt;</code>, <code>WikiSync</code>). Add <code>wik
   <li>the grants;</li>
   <li>the relaxed CHECK;</li>
   <li>the RPC's refusals;</li>
+  <li><code>append_wiki_sent_ideas</code> adding only new strings, and leaving an already-sent one single;</li>
   <li>the RPC logging a correction <em>before</em> the delete (the <code>classification_corrections</code> row survives with <code>item_id</code> null);</li>
   <li>search ranking a title hit above a body hit;</li>
   <li>snippet delimiters.</li>
@@ -1198,7 +1282,7 @@ and an Opus review (§11.4) with no blocking findings.</p>
     </ul></li>
   <li><strong>E2E harness</strong>:
     <ul class="tight">
-      <li><code>scripts/mock-supabase.mjs</code> gains the new tables and column, both RPCs (search as a case-insensitive substring match with the same delimiters), and a <code>/__mock__/github/*</code> emulation of the five Git Data endpoints that records every commit's tree in <code>/__mock__/state</code>.</li>
+      <li><code>scripts/mock-supabase.mjs</code> gains the new tables and column, both RPCs (search as a case-insensitive substring match with the same delimiters), the <code>append_wiki_sent_ideas</code> RPC, and a <code>/__mock__/github/*</code> emulation of the six Git Data endpoints. It records every commit's tree in <code>/__mock__/state</code>, and can be told to answer the ref PATCH with a 422 once.</li>
       <li><code>e2e/support/{constants,fixtures}.ts</code> gain wiki seeding and fixtures (<code>lib/wiki/fixtures.ts</code>).</li>
       <li>The Playwright web-server env gets <code>WIKI_GITHUB_TOKEN</code>, <code>WIKI_REPO</code> and <code>WIKI_GITHUB_API_URL</code> pointing at the mock. This is deliberate feature wiring, not a reaction to a red check.</li>
     </ul></li>
@@ -1218,25 +1302,25 @@ reports the exact change, and the lead makes it and re-briefs any affected slice
   <tr><td><strong>A · Reader send</strong></td>
     <td><code>components/reader/post-overview.tsx</code> and a new <code>components/reader/novel-idea-list.tsx</code>; <code>post-row.tsx</code> (passes the post and <code>writable</code>); <code>post-row.stories.tsx</code>; <code>components/reader/test-helpers.tsx</code> (adds <code>WikiProvider</code> to <code>renderReader</code>); <code>lib/stores/reader-store.tsx</code>; <code>lib/data/reader.ts</code> (<code>getReaderPostForWiki</code>); <code>app/api/reader/posts/[id]/wiki/route.ts</code>; their tests; <code>e2e/reader-wiki-send.spec.ts</code>; regenerated reader baselines.</td>
     <td>§5 in full, and the §5.1 mockup's four states.</td>
-    <td>RTL covers each bullet state, Send all, All sent, and the unchanged not-writable and empty cases. The store covers success, error with rollback, and <code>beginWrite</code>. The route covers 501, 404, 409, already-sent (no commit), and success with a mock writer, asserting the envelope and that <code>text</code> never appears in the response. Stories: <code>DoneExpandedWiki</code>, <code>AllSent</code>. E2E: send one, send all, and a reload keeps the sent state; the mock's recorded tree shows one folder with <code>source.md</code> + <code>picks-…</code> in one commit.</td></tr>
+    <td>RTL covers each bullet state, Send all, All sent, and the unchanged not-writable and empty cases. The store covers success, and an error that toasts the route's sentence, rethrows, and leaves the row unchanged. It also covers <code>beginWrite</code>. The route covers 501, 404, 409, already-sent (no commit), and success with a mock writer, asserting the envelope and that <code>text</code> never appears in the response. Stories: <code>DoneExpandedWiki</code>, <code>AllSent</code>. E2E: send one, send all, and a reload keeps the sent state; the mock's recorded tree shows one folder with <code>source.md</code> + <code>picks-…</code> in one commit.</td></tr>
   <tr><td><strong>B1 · Classifier</strong></td>
     <td><code>workers/src/prompt.ts</code>, <code>verdict.ts</code>, their tests, and <code>sweep.test.ts</code> (version literals).</td>
     <td>§6.1.</td>
     <td>As listed in §6.1.</td></tr>
   <tr><td><strong>B2 · Inbox knowledge</strong></td>
-    <td><code>components/tasks/type-glyph.tsx</code>; <code>task-row/task-row-menu.tsx</code>; <code>task-row.tsx</code> (the toast and dispatch wiring only); <code>inbox-bulk-bar.tsx</code>; <code>lib/tasks/dispatch.ts</code>; <code>lib/tasks/classification.ts</code> (test only, unless the patch needs a change); <code>lib/hooks/use-task-row-flags.ts</code>; <code>lib/stores/tasks-store.tsx</code>; <code>app/api/wiki/items/route.ts</code>; their tests and stories; <code>e2e/inbox-knowledge.spec.ts</code>; regenerated inbox and bulk-bar baselines.</td>
+    <td><code>components/tasks/type-glyph.tsx</code>; <code>task-row/task-row-menu.tsx</code>; <code>task-row.tsx</code> (only <code>handleClassify</code>'s type, the knowledge glyph branch, <code>canDrag</code>, the readiness option, and the dispatch toast); <code>inbox-bulk-bar.tsx</code>; <code>lib/tasks/dispatch.ts</code>; <code>lib/tasks/classification.ts</code> (test only, unless the patch needs a change); <code>lib/hooks/use-task-row-flags.ts</code>; <code>lib/stores/tasks-store.tsx</code>; <code>app/api/wiki/items/route.ts</code>; their tests and stories; <code>e2e/inbox-knowledge.spec.ts</code>; regenerated inbox and bulk-bar baselines.</td>
     <td>§6.2 and its mockup.</td>
-    <td>Readiness rows for knowledge (childless ready; with children, "has subtasks"). <code>classifyPatch</code> clears the right fields. The menus offer Knowledge only when writable. A bulk dispatch sends one request for N knowledge ids and rolls back all of them on failure. The route covers 501, 409 for each refusal, and success calling the writer once then the RPC. E2E: classify as Knowledge, dispatch, the row leaves, the toast, and the mock's state shows one commit and the item deleted.</td></tr>
+    <td>Readiness rows for knowledge: childless and writable is ready; with children, "has subtasks"; not writable, "wiki not connected". <code>canDrag</code> is false for a knowledge root. The glyph renders in the checkbox slot. <code>classifyPatch</code> clears the right fields, <code>folder_id</code> included. The menus offer Knowledge only when writable. A bulk dispatch sends one request for N knowledge ids and rolls back all of them on failure. The route covers 501, 409 for each refusal, and success calling the writer once then the RPC. E2E: classify as Knowledge, dispatch, the row leaves, the toast, and the mock's state shows one commit and the item deleted.</td></tr>
   <tr><td><strong>C · Snapshot</strong></td>
     <td><code>workers/src/wiki/{sync,graphql,page,store}.ts</code> and tests; <code>workers/src/index.ts</code> (the push branch and the retention-cron call); <code>index.test.ts</code>.</td>
     <td>§7 in full.</td>
-    <td><code>page.ts</code> is table-driven over §7.5 and §7.4 (bad YAML, blank title, bad dates, code-masked links). <code>sync.ts</code> runs on a stubbed fetch and covers: first sync, no change (two subrequests), an edit, a rename (delete plus insert), 61 changed (pending 1), a binary blob, a GraphQL error and a GraphQL <code>errors</code>-with-partial-data response (both write <code>last_error</code> and delete nothing), and a subrequest count ≤ 6 asserted. The webhook covers push on main, push on another branch, a push from another repo, a bad signature, and pull_request unchanged. The cron runs sync after retention.</td></tr>
+    <td><code>page.ts</code> is table-driven over §7.5 and §7.4 (bad YAML, blank title, bad dates, code-masked links). <code>sync.ts</code> runs on a stubbed fetch and covers: first sync, no change (three subrequests: GraphQL #1, the select, the sync-state write), an edit, a rename (delete plus insert), 61 changed (pending 1), a binary blob, a GraphQL error and a GraphQL <code>errors</code>-with-partial-data response (both write <code>last_error</code> and delete nothing), and a subrequest count ≤ 6 asserted. The webhook covers push on main, push on another branch, a push from another repo, a bad signature, and pull_request unchanged. The cron runs sync after retention.</td></tr>
   <tr><td><strong>D · Reading room</strong></td>
     <td><code>components/wiki/**</code> except <code>wiki-nav.tsx</code>; <code>lib/wiki/{links,heading-ids,snippet,github-url}.ts</code>; <code>app/api/wiki/search/route.ts</code>; their tests and stories; <code>e2e/wiki-reading-room.spec.ts</code>.</td>
     <td>§8.1 and §8.4 in full, including every state in the three mockups.</td>
-    <td>Links are table-driven over §7.5. Heading ids match the wiki's rule, including repeats. Snippet splitting never injects HTML. The search route covers 400 under 2 characters, and results. Stories (each a baseline): <code>Index</code>, <code>Section</code>, <code>SearchPending</code>, <code>SearchResults</code>, <code>Page</code>, <code>PageLoading</code>, <code>PageError</code>, <code>NotFound</code>, <code>Empty</code>, <code>SyncFailed</code>. E2E: open a page from the index, follow an in-app link, a backlink, the raw citation's <code>href</code> and <code>target</code>, a hash scroll, body search, and a phone viewport.</td></tr>
+    <td>These are pure functions in <code>lib/wiki/*</code>, because react-markdown is ESM and Jest doesn't transform it: components that render Markdown mock it as existing tests do, and the rendered wiring is proven in stories and e2e, with no Jest config change. Links are table-driven over §7.5. Heading ids are table-driven against the wiki's rule, including repeats, inline code, and a Setext heading. Snippet splitting never injects HTML. The search route covers 400 under 2 characters, and results. Stories (each a baseline): <code>Index</code>, <code>Section</code>, <code>SearchPending</code>, <code>SearchResults</code>, <code>Page</code>, <code>PageLoading</code>, <code>PageError</code>, <code>NotFound</code>, <code>Empty</code>, <code>SyncFailed</code>. E2E: open a page from the index, follow an in-app link, a backlink, the raw citation's <code>href</code> and <code>target</code>, a hash scroll, body search, and a phone viewport.</td></tr>
   <tr><td><strong>E · ⌘P wiki group</strong></td>
-    <td><code>components/shell/search-results.ts</code>, <code>search-box.tsx</code>, <code>search-results-popover.tsx</code>, their tests and story; <code>e2e/global-search.spec.ts</code>.</td>
+    <td><code>components/shell/search-results.ts</code>, <code>search-box.tsx</code>, <code>search-results-popover.tsx</code>, their tests and story; <code>e2e/global-search.spec.ts</code>; the search-label queries in <code>shell-mobile-nav.test.tsx</code> (that file's foundation edits land first).</td>
     <td>§9 ⌘P and its mockup.</td>
     <td>Ranking and cap for wiki. Flatten order. Keyboard navigation across three groups. The badge per kind. The new copy. Selecting a wiki result pushes <code>/wiki/…</code>. The story <code>OpenWithResults</code> baseline gains the group. E2E: ⌘P "habit" and Enter opens the page.</td></tr>
 </table></div>
@@ -1291,9 +1375,9 @@ reports the exact change, and the lead makes it and re-briefs any affected slice
   <li><strong>Cross-repo contract check</strong>, which the lead runs itself:
     <ol class="tight">
       <li><code>add_repo</code> <code>ac3charland/knowledge</code> (read) and clone it to the scratchpad.</li>
-      <li>Write the writer's four golden folders into the clone's <code>inbox/</code>.</li>
-      <li>Run the wiki's <code>npm ci</code>, <code>npm run lint</code>, and <code>npm run file-batch -- --dry-run --json</code>. They must lint clean, and file as <code>new</code>.</li>
-      <li>Then add a second send for the same post (only a new picks file) and re-run. It must file as <code>merged</code>.</li>
+      <li>Write the writer's four golden folders into the clone's <code>inbox/</code>. They are four different sources, with distinct <code>external_id</code>s, or filing would merge them in memory.</li>
+      <li>Run the wiki's <code>npm ci</code>, <code>npm run lint</code>, and <code>npm run file-batch -- --dry-run --json</code>. Lint must exit 0 with no E findings (the repo's existing <code>orphan-page</code> warning is expected), and every folder must file as <code>new</code>.</li>
+      <li>Then add a second envelope for one of those posts: its <code>source.md</code> with the same body, plus a new picks file. Run filing for real in the scratch clone, then dry-run the new folder. It must file as <code>merged</code>, with <code>source.md</code> dropped as the same body.</li>
     </ol>
     Don't push to the wiki repo.</li>
   <li><strong>The lead keeps</strong>: the foundation, integration, the full <code>npm run check</code> (both tiers), the contract check, the demo doc, every commit, the PR, and archiving this spec. Anything that needs Alex's accounts is §14, not agent work.</li>
@@ -1308,13 +1392,13 @@ reports the exact change, and the lead makes it and re-briefs any affected slice
   <li>The token is never sent to the client, logged, or echoed in an error. An unconfigured writer returns 501, and every send affordance is hidden.</li>
   <li class="grp">Reader send</li>
   <li>With the wiki connected, each Novel-ideas bullet can be sent alone, and <strong>Send all to wiki</strong> sends every unsent bullet in one commit.</li>
-  <li>Bullets show unsent, sending and sent states exactly as the mockup draws them. When every bullet is sent the button becomes "All sent to wiki". The sent state survives a reload.</li>
+  <li>Bullets show unsent, sending and sent states exactly as the mockup draws them. Concurrent sends from one post never lose a sent mark. When every bullet is sent the button becomes "All sent to wiki". The sent state survives a reload.</li>
   <li>A swept post sends a pointer <code>source.md</code> (or picks alone when it has no URL). A reworded bullet reads as unsent. A failed send toasts and returns the bullet to unsent.</li>
   <li>Without the wiki connected, and on a post with no novel ideas, the overview is pixel-identical to today.</li>
   <li class="grp">Knowledge captures</li>
   <li>The classifier can suggest <code>knowledge</code> (prompt v3). A held knowledge row is never retyped by the sweep, and a knowledge verdict carries no other labels.</li>
   <li>An Inbox row can be classified as Knowledge from the ⋯ menu and the bulk bar. It shows the Lightbulb glyph and no label chips.</li>
-  <li>Dispatching knowledge rows commits one <code>notes-…</code> folder per row in one commit, deletes the rows, logs a classifier correction when Alex overrode the guess, and toasts "Sent to the wiki" or "Sent n ideas to the wiki". A knowledge row with subtasks is blocked with "has subtasks".</li>
+  <li>Dispatching knowledge rows commits one <code>notes-…</code> folder per row in one commit, deletes the rows, logs a classifier correction when Alex overrode the guess, and toasts "Sent to the wiki" or "Sent n ideas to the wiki". A knowledge row with subtasks is blocked with "has subtasks". Without the wiki connected, a knowledge row is blocked with "wiki not connected". A knowledge row can't be dragged into a folder, and classifying a row as Knowledge clears its folder label.</li>
   <li class="grp">Snapshot</li>
   <li>A push to the wiki's <code>main</code> updates <code>wiki_pages</code> to match its <code>wiki/</code> tree: new, edited, renamed and deleted pages, at most 60 per run, with the remainder counted as pending. Pushes to other branches or repos are ignored.</li>
   <li>A run makes at most six subrequests. A GraphQL failure records <code>last_error</code> and leaves the pages untouched. The daily retention cron also runs the sync.</li>
