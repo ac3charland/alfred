@@ -258,6 +258,13 @@ expect(calls).toEqual([{ command: 'npm', args: ['run', 'check:slow'] }]);
 
 These CLIs take their side effects as parameters precisely so a plain function is enough.
 
+**A test's `process.env` never reaches a child process.** Jest gives each test file its own copy,
+while `child_process` inherits the real environment, so setting or deleting a variable in a test
+changes nothing a spawned command sees. Pass `env` explicitly to every spawn, the code under test's
+included (take it as a parameter defaulting to `process.env`). A test that drives a throwaway git
+repo also strips `git rev-parse --local-env-vars` from that env, or run inside a git hook it writes
+to the real repo — `tools/skill-lint/src/rename.test.ts` is the pattern.
+
 ---
 
 ## Version Gotchas (Jest 29 → Jest 30)
