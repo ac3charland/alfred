@@ -18,20 +18,24 @@ const SKILL_PATH = /(?:^|\/)\.claude\/skills\/([^/]+)\//;
  * `--no-renames` is load-bearing: git's default rename detection prints only a move's
  * destination, so a file moved out of a skill would leave that skill looking untouched and
  * silently unlinted.
+ *
+ * Git runs with `environment`, the caller's own by default — which is what lets it find the repo
+ * from inside the pre-commit hook. A test driving a throwaway repo passes one without the
+ * repo-pinning variables that hook exports, or git answers about the real repo instead.
  */
-export function changedPathsSinceTrunk(): readonly string[] | undefined {
-  const trunk = TRUNK_REFS.find((ref) => {
-    const probe = spawnSync('git', ['rev-parse', '--verify', '--quiet', ref], { encoding: 'utf8' });
-    return probe.status === 0;
-  });
+export function changedPathsSinceTrunk(
+  environment: NodeJS.ProcessEnv = process.env,
+): readonly string[] | undefined {
+  const run = (args: string[]) => spawnSync('git', args, { encoding: 'utf8', env: environment });
+  const trunk = TRUNK_REFS.find(
+    (ref) => run(['rev-parse', '--verify', '--quiet', ref]).status === 0,
+  );
   if (trunk === undefined) return undefined;
-  const base = spawnSync('git', ['merge-base', 'HEAD', trunk], { encoding: 'utf8' });
+  const base = run(['merge-base', 'HEAD', trunk]);
   if (base.status !== 0) return undefined;
   const mergeBase = base.stdout.trim();
   if (mergeBase.length === 0) return undefined;
-  const diff = spawnSync('git', ['diff', '--no-renames', '--name-only', mergeBase], {
-    encoding: 'utf8',
-  });
+  const diff = run(['diff', '--no-renames', '--name-only', mergeBase]);
   if (diff.status !== 0) return undefined;
   return diff.stdout
     .split(/\r?\n/)

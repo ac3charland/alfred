@@ -219,25 +219,29 @@ export function chooseTrunkRef(facts: TrunkRefFacts): string | undefined {
 }
 
 /** True when the git ref resolves to a commit. */
-function refExists(ref: string): boolean {
+function refExists(ref: string, environment: NodeJS.ProcessEnv): boolean {
   return (
-    spawnSync('git', ['rev-parse', '--verify', '--quiet', ref], { encoding: 'utf8' }).status === 0
+    spawnSync('git', ['rev-parse', '--verify', '--quiet', ref], {
+      encoding: 'utf8',
+      env: environment,
+    }).status === 0
   );
 }
 
 /** `origin/<branch>` from the remote's default-branch symbolic ref, when set and resolvable. */
-function resolveOriginHead(): string | undefined {
+function resolveOriginHead(environment: NodeJS.ProcessEnv): string | undefined {
   const result = spawnSync('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], {
     encoding: 'utf8',
+    env: environment,
   });
   if (result.status !== 0) return undefined;
   const ref = result.stdout.trim().replace(/^refs\/remotes\//, '');
-  return ref.length > 0 && refExists(ref) ? ref : undefined;
+  return ref.length > 0 && refExists(ref, environment) ? ref : undefined;
 }
 
 /** Whether an `origin` remote is configured. */
-function hasOriginRemote(): boolean {
-  const result = spawnSync('git', ['remote'], { encoding: 'utf8' });
+function hasOriginRemote(environment: NodeJS.ProcessEnv): boolean {
+  const result = spawnSync('git', ['remote'], { encoding: 'utf8', env: environment });
   if (result.status !== 0) return false;
   return result.stdout
     .split(/\r?\n/)
@@ -246,12 +250,12 @@ function hasOriginRemote(): boolean {
 }
 
 /** Gather the trunk-ref facts from git for {@link chooseTrunkRef}. */
-function gatherTrunkRefFacts(): TrunkRefFacts {
+function gatherTrunkRefFacts(environment: NodeJS.ProcessEnv = process.env): TrunkRefFacts {
   return {
-    originHead: resolveOriginHead(),
-    remote: REMOTE_TRUNK_REFS.filter((ref) => refExists(ref)),
-    local: LOCAL_TRUNK_REFS.filter((ref) => refExists(ref)),
-    hasOrigin: hasOriginRemote(),
+    originHead: resolveOriginHead(environment),
+    remote: REMOTE_TRUNK_REFS.filter((ref) => refExists(ref, environment)),
+    local: LOCAL_TRUNK_REFS.filter((ref) => refExists(ref, environment)),
+    hasOrigin: hasOriginRemote(environment),
   };
 }
 
@@ -266,16 +270,26 @@ function gatherTrunkRefFacts(): TrunkRefFacts {
  * and hand a code-deleting branch the `branch-folder` exemption. The CLI passes this into {@link gatherDemos}
  * (mirroring how it passes {@link currentBranch}); an `undefined` result yields the
  * conservative `hasChangesOutsideDocs === true` default.
+ *
+ * Git runs with `environment`, the caller's own by default — which is what lets it find the repo
+ * from inside a git hook. A test driving a throwaway repo passes one without the repo-pinning
+ * variables a hook exports, or git answers about the real repo instead.
  */
-export function changedPathsSinceTrunk(): readonly string[] | undefined {
-  const trunk = chooseTrunkRef(gatherTrunkRefFacts());
+export function changedPathsSinceTrunk(
+  environment: NodeJS.ProcessEnv = process.env,
+): readonly string[] | undefined {
+  const trunk = chooseTrunkRef(gatherTrunkRefFacts(environment));
   if (trunk === undefined) return undefined;
-  const base = spawnSync('git', ['merge-base', 'HEAD', trunk], { encoding: 'utf8' });
+  const base = spawnSync('git', ['merge-base', 'HEAD', trunk], {
+    encoding: 'utf8',
+    env: environment,
+  });
   if (base.status !== 0) return undefined;
   const mergeBase = base.stdout.trim();
   if (mergeBase.length === 0) return undefined;
   const diff = spawnSync('git', ['diff', '--no-renames', '--name-only', mergeBase, 'HEAD'], {
     encoding: 'utf8',
+    env: environment,
   });
   if (diff.status !== 0) return undefined;
   return diff.stdout
