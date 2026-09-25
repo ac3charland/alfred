@@ -97,7 +97,9 @@
        post row shell (expanded)         → components/reader/post-row.styles.ts (rowShellClass)
        overview section heading / bullets→ components/reader/post-overview.tsx
        buttons (ghost / outline / accent)→ components/atoms/button.tsx
-       icon button                       → components/atoms/icon-button.tsx (+ NEW `wiki` tone)
+       checklist tick box                → components/tasks/task-row.styles.ts (checkboxSizeClass,
+                                           checkboxIncompleteClass) + task-row.tsx's select-mode tick
+       selection bar counter             → components/tasks/inbox-bulk-bar.tsx ("n selected")
        badges                            → components/atoms/badge.tsx (+ NEW `wiki` variant)
        dropdown content / item           → components/atoms/dropdown-menu.tsx
        bulk bar                          → components/tasks/inbox-bulk-bar.styles.ts
@@ -181,6 +183,14 @@
   .idea .tx { flex: 1; min-width: 0; }
   .idea .st { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--a-muted); margin-top: 1px; }
   .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--a-muted) 40%, transparent); border-top-color: var(--a-muted); border-radius: 999px; }
+  .picks { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+  .pick { display: flex; align-items: flex-start; gap: 10px; padding: 4px 6px; border-radius: 6px; font-size: 14px; }
+  .pick .tx { flex: 1; min-width: 0; }
+  .pick .st { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--a-muted); margin-top: 1px; }
+  .tick { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 4px; border: 1px solid rgba(138,150,168,.5); display: inline-flex; align-items: center; justify-content: center; }
+  .tick.on { border-color: var(--a-teal); background: var(--a-teal); }
+  .tick.sentmark { border-color: transparent; }
+  .selbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding: 6px 6px 0; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent); }
   .plist { margin: 4px 0 0; padding-left: 20px; list-style: disc; font-size: 14px; }
   .trow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 14px; }
   .trow.sel { background: color-mix(in srgb, var(--a-secondary) 40%, transparent); }
@@ -368,8 +378,9 @@
   <p><code>modules.ts</code> requires one distinct hue per module. Teal, green, blue and amber are
   taken, and red means danger. The foundation adds <code>--color-accent-violet: #a78bfa</code>
   (Tailwind violet-400, from the same -400 family as green, blue and red) and
-  <code>glow-violet</code>. Everything that says "wiki" wears violet, including the send controls
-  inside the Reader.</p></div>
+  <code>glow-violet</code>. The wiki's own marks wear violet, including inside the Reader: the sent
+  checks, and the glyph on Send all. Selection and primary actions keep the app's standard teal,
+  exactly as the Inbox's select-and-Dispatch does.</p></div>
 
 <div class="dec"><h3>D11 · Reader posts get a producer-scoped identity <span class="tag new">new</span></h3>
   <p><code>external_id: "alfred:reader-post:&lt;uuid&gt;"</code> keeps a post's sends stable even
@@ -377,6 +388,16 @@
   <code>alfred:item:&lt;uuid&gt;</code> and the Instapaper follow-up's bookmark id.
   <code>source_url</code> still carries the canonical URL, so <code>fetch-pointers</code> can
   complete a swept post.</p></div>
+
+<div class="dec"><h3>D12 · Reader send is a checklist: tick, then send once <span class="tag ask">Alex</span></h3>
+  <p>The epic's "send a single bullet or all of them" becomes <em>tick any subset, then send it
+  in one press</em>, with <strong>Send all</strong> kept as the shortcut (§5.1). One ticked bullet
+  still covers the single-bullet case. What goes away is sending bullets one press at a time.</p>
+  <p class="why"><b>Why:</b> every send is a push to <code>inbox/</code>, and every push can take
+  kickoff's lock. Per-bullet sends wouldn't start one Routine run per bullet, because the lock
+  queues everything after the first send into one next batch. But they would still split an
+  article: the first run ingests a lone bullet without its siblings, and Alex reviews two PRs for
+  one article. Ticking first makes one article one send.</p></div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════════════════ -->
 <h2 id="s3">3 · Architecture</h2>
@@ -388,7 +409,7 @@
   <text x="36" y="44" class="dg-t">Alfred · Next.js (Vercel, Personal)</text>
   <rect x="36" y="62" width="218" height="46" rx="7" class="dg-hot"/>
   <text x="48" y="82" class="dg-t">Reader · Novel ideas</text>
-  <text x="48" y="98" class="dg-s">send one bullet · send all</text>
+  <text x="48" y="98" class="dg-s">tick · send selected · send all</text>
   <rect x="36" y="118" width="218" height="46" rx="7" class="dg-hot"/>
   <text x="48" y="138" class="dg-t">Inbox · Knowledge row</text>
   <text x="48" y="154" class="dg-s">classify · dispatch</text>
@@ -573,24 +594,35 @@ in an error or a log line.</p>
 <h2 id="s5">5 · Reader send (slice A)</h2>
 
 <h3>5.1 What Alex sees</h3>
-<p>These controls live in the <strong>Novel ideas</strong> section of a post's overview panel,
-only when <code>writable</code> is true and the list is non-empty:</p>
+<p>The Novel ideas section becomes a <strong>checklist with one dispatch</strong>. Alex ticks the
+bullets worth keeping, then sends them together, so each article reaches the wiki as one send: one
+folder, one commit, and one kickoff trigger. It is the Inbox's select-then-Dispatch gesture in
+miniature, reusing its vocabulary. <strong>Send all</strong> stays as the one-press shortcut. None
+of this appears unless <code>writable</code> is true and the list is non-empty.</p>
 <ul class="tight">
-  <li><strong>Each bullet</strong> gets a trailing control:
+  <li><strong>Each unsent bullet is a checklist row</strong> with <code>role="checkbox"</code> and <code>aria-checked</code>. Its leading tick box replaces the disc marker and uses the Inbox select-mode tick box's classes: <code>checkboxSizeClass</code> (24px on a phone, 16px from <code>md</code>), <code>checkboxIncompleteClass</code> when empty, and <code>border-accent-teal bg-accent-teal</code> with a 10px <code>Check</code> when ticked. A click or tap anywhere on the row toggles it, and so does <kbd>Space</kbd> when focused. The whole row is the hit target, so it works on a phone.</li>
+  <li><strong>A sent bullet is not selectable.</strong> Its tick-box slot holds a borderless violet <code>Check</code>, and a trailing <code>Sent</code> in <code>text-xs</code> muted confirms it.</li>
+  <li><strong>The selection bar</strong> appears under the list once one or more bullets are ticked. It reveals through <code>AnimatedHeightCollapse</code>, honoring reduced motion. It holds:
     <ul class="tight">
-      <li><em>unsent</em>: an <code>IconButton</code> (new <code>wiki</code> tone, size <code>sm</code>) with lucide <code>BookPlus</code>, <code>aria-label="Send this idea to the wiki"</code>. It is always visible, not hover-only, because it has to work on a phone.</li>
-      <li><em>sending</em>: a 12px <code>Spinner</code> in the same slot, which keeps the row from jumping.</li>
-      <li><em>sent</em>: a violet 12px <code>Check</code> and <code>Sent</code> in <code>text-xs</code> muted.</li>
+      <li><code>n selected</code> in <code>text-sm font-semibold text-accent-teal</code>, the bulk bar's counter;</li>
+      <li><code>Button variant="accent" size="sm"</code> with <code>BookPlus</code> + <strong>Send to wiki</strong>, which sends exactly the ticked bullets in one request;</li>
+      <li><code>Button variant="ghost" size="sm"</code> <strong>Clear</strong>, which unticks everything.</li>
     </ul>
-    The bullet keeps its disc marker and text.</li>
-  <li><strong>The section heading row</strong> gains a right-aligned ghost <code>Button size="sm"</code>, <code>BookPlus</code> + <strong>Send all to wiki</strong>, which sends every unsent bullet in one request. It is disabled while any send from this post is in flight, and while it runs, every bullet it covers shows its spinner. When every bullet is sent it is replaced by muted <code>text-xs</code> "All sent to wiki" with the violet check.</li>
+    Selection and the primary action wear the app's standard teal, as the Inbox does. Violet is kept for the wiki's own marks: the sent checks and the <code>BookPlus</code> glyph on Send all.</li>
+  <li><strong>Send all to wiki</strong> keeps its place on the section heading row: a ghost <code>Button size="sm"</code>, violet <code>BookPlus</code>. It sends every unsent bullet whatever is ticked, and clears the selection on success. When every bullet is sent, it becomes muted <code>text-xs</code> "All sent to wiki" with the violet check.</li>
+  <li><strong>While either send is in flight</strong>, every tick box, Send all, and Clear are disabled (the atoms' 50% opacity). The pressed button shows a 14px <code>Spinner</code> and reads <strong>Sending…</strong>. Only one send per post can run at a time.
+    <ul class="tight">
+      <li>On success, the sent bullets flip to their sent state, the selection empties, and the bar folds away.</li>
+      <li>On failure, a toast shows, and the ticks stay exactly as they were, so the retry is one press. This is the Inbox's "failed rows stay selected".</li>
+    </ul></li>
+  <li><strong>Selection is transient</strong>: it is the list's own <code>useState</code>, keyed by bullet text. Collapsing the overview drops it. There is no hotkey.</li>
   <li><strong>No other change.</strong> Not writable, an empty list, and the other three sections all look exactly as they do today.</li>
 </ul>
 
 <div class="app">
   <div class="grid2">
     <div>
-      <p class="panel-label">Mixed: sent · sending · unsent (hover on the third). Send all is disabled while a send is in flight</p>
+      <p class="panel-label">Nothing ticked (one bullet sent earlier)</p>
       <div class="row-exp">
         <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="eb">Jane Doe</span><span class="meta">Oct 2 · 7 min</span></div>
         <div class="rtitle">Why habits stick</div>
@@ -598,28 +630,40 @@ only when <code>writable</code> is true and the list is non-empty:</p>
         <div class="verbs"><span class="btn outline">Open</span><span class="btn ghost">Hide overview</span><span class="btn outline">Archive</span></div>
         <div class="ov">
           <section>
-            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost" style="opacity:.5"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 21V7"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
-            <ul class="ideas">
-              <li><div class="idea"><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div></li>
-              <li><div class="idea"><span class="tx">Environment design beats willpower for the first thirty days.</span><span class="st"><span class="spin"></span></span></div></li>
-              <li><div class="idea"><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span><span class="ib hov" title="Send this idea to the wiki"><span class="i" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span></span></div></li>
-              <li><div class="idea"><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span><span class="ib"><span class="i" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span></span></div></li>
-            </ul>
+            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
+            <div class="picks"><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick"><span class="tick"></span><span class="tx">Environment design beats willpower for the first thirty days.</span></div><div class="pick"><span class="tick"></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></div><div class="pick"><span class="tick"></span><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span></div></div>
           </section>
-          <section><div class="ovh"><h6>Evidence</h6></div><ul class="plist"><li>Lally et al. (2010): median 66 days to automaticity.</li></ul></section>
+          <section><div class="ovh" style="min-height:0"><h6>Evidence</h6></div><ul class="plist"><li>Lally et al. (2010): median 66 days to automaticity.</li></ul></section>
+        </div>
+      </div>
+      <p class="panel-label" style="margin-top:16px">Two ticked: the selection bar</p>
+      <div class="row-exp">
+        <div class="ov" style="margin-top:0;border-top:0;padding-top:0">
+          <section>
+            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
+            <div class="picks"><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick"><span class="tick on"><span class="i" style="width:10px;height:10px;color:var(--a-bg)"><svg viewBox="0 0 24 24" style="stroke-width:3"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Environment design beats willpower for the first thirty days.</span></div><div class="pick"><span class="tick on"><span class="i" style="width:10px;height:10px;color:var(--a-bg)"><svg viewBox="0 0 24 24" style="stroke-width:3"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></div><div class="pick"><span class="tick"></span><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span></div></div>
+            <div class="selbar"><span style="font-size:14px;font-weight:600;color:var(--a-teal)">2 selected</span><span class="btn accent"><span class="i"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send to wiki</span><span class="btn ghost">Clear</span></div>
+          </section>
         </div>
       </div>
     </div>
     <div>
-      <p class="panel-label">All sent</p>
+      <p class="panel-label">Sending the two</p>
       <div class="row-exp">
         <div class="ov" style="margin-top:0;border-top:0;padding-top:0">
           <section>
-            <div class="ovh"><h6>Novel ideas</h6><span class="st" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--a-muted)"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>All sent to wiki</span></div>
-            <ul class="ideas">
-              <li><div class="idea"><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div></li>
-              <li><div class="idea"><span class="tx">Environment design beats willpower for the first thirty days.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div></li>
-            </ul>
+            <div class="ovh"><h6>Novel ideas</h6><span class="btn ghost" style="opacity:.5"><span class="i t-violet"><svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>Send all to wiki</span></div>
+            <div class="picks"><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick"><span class="tick on" style="opacity:.5"><span class="i" style="width:10px;height:10px;color:var(--a-bg)"><svg viewBox="0 0 24 24" style="stroke-width:3"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Environment design beats willpower for the first thirty days.</span></div><div class="pick"><span class="tick on" style="opacity:.5"><span class="i" style="width:10px;height:10px;color:var(--a-bg)"><svg viewBox="0 0 24 24" style="stroke-width:3"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></div><div class="pick"><span class="tick" style="opacity:.5"></span><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span></div></div>
+            <div class="selbar"><span style="font-size:14px;font-weight:600;color:var(--a-teal)">2 selected</span><span class="btn accent" style="opacity:.5"><span class="spin" style="border-color:rgba(10,14,23,.35);border-top-color:var(--a-bg)"></span>Sending…</span><span class="btn ghost" style="opacity:.5">Clear</span></div>
+          </section>
+        </div>
+      </div>
+      <p class="panel-label" style="margin-top:16px">All sent</p>
+      <div class="row-exp">
+        <div class="ov" style="margin-top:0;border-top:0;padding-top:0">
+          <section>
+            <div class="ovh"><h6>Novel ideas</h6><span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--a-muted)"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>All sent to wiki</span></div>
+            <div class="picks"><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Environment design beats willpower for the first thirty days.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div><div class="pick sent"><span class="tick sentmark"><span class="i t-violet" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></span><span class="tx">Identity-based framing ("I'm a runner") outlasts outcome goals.</span><span class="st"><span class="i t-violet" style="width:12px;height:12px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Sent</span></div></div>
           </section>
         </div>
       </div>
@@ -627,7 +671,7 @@ only when <code>writable</code> is true and the list is non-empty:</p>
       <div class="row-exp">
         <div class="ov" style="margin-top:0;border-top:0;padding-top:0">
           <section>
-            <div class="ovh"><h6>Novel ideas</h6></div>
+            <div class="ovh" style="min-height:0"><h6>Novel ideas</h6></div>
             <ul class="plist"><li>Habit stacking works because the cue is an existing routine, not a time of day.</li><li>Environment design beats willpower for the first thirty days.</li></ul>
           </section>
         </div>
@@ -636,22 +680,22 @@ only when <code>writable</code> is true and the list is non-empty:</p>
   </div>
 </div>
 <p class="mockcap">The row is <code>rowShellClass({expanded: true})</code>, the post's module-green
-border. Everything that means "wiki" is violet: the icon button's hover, the spinner slot and the
-checks. The section heading and bullets keep <code>post-overview.tsx</code>'s own classes. The
-"Send all" button (ghost, <code>size="sm"</code>, drawn at the atom's disabled 50% opacity) sits
-on the heading row. That row gets a 32px <code>min-height</code>, the button's height, <em>only
-while the wiki controls render</em>, so the heading doesn't jump when the button swaps for the
-"All sent" text. With no controls the row keeps today's height, which is what keeps the
-not-connected case pixel-identical.</p>
+border. The section heading keeps <code>post-overview.tsx</code>'s own classes. Checklist rows are
+the Inbox select-mode tick box beside the bullet's <code>text-sm</code> text. The selection bar is
+the Inbox bulk bar's counter and accent button, laid inline under the list instead of floating.
+The heading row gets a 32px <code>min-height</code>, the Send all button's height, <em>only while
+the wiki controls render</em>. That stops the heading jumping when the button swaps for "All
+sent", and with no controls the row keeps today's height, so the not-connected case stays
+pixel-identical.</p>
 
 <h3>5.2 Behavior</h3>
 <ul class="tight">
-  <li><strong>Not optimistic, by design.</strong> A send is a commit to another system: it takes 1–2s and fails for reasons the store can't reconcile, such as a bad token or GitHub being down. So the bullet shows <em>sending</em> until the server confirms, then flips to <em>sent</em>. It never claims success first and snaps back afterwards. The in-flight set is the idea list's own <code>useState</code>. The write lives in the store action, so a row collapsed mid-send still lands, and it reads as sent when reopened.</li>
+  <li><strong>Not optimistic, by design.</strong> A send is a commit to another system: it takes 1–2s and fails for reasons the store can't reconcile, such as a bad token or GitHub being down. So the pressed button reads <em>Sending…</em> until the server confirms, and only then do the ticked bullets flip to <em>sent</em>. It never claims success first and snaps back afterwards. The in-flight flag and the selection are the list's own <code>useState</code>. The write lives in the store action, so a row collapsed mid-send still lands, and its bullets read as sent when reopened.</li>
   <li><strong>Store action</strong>: <code>sendIdeasToWiki(postId, ideas)</code> in <code>reader-store.tsx</code>.
     <ul class="tight">
       <li>It calls <code>beginWrite(postId)</code>, so a focus refresh keeps the local row.</li>
       <li>It calls <code>api.sendReaderIdeasToWiki</code>, and on success reconciles with <code>{type: 'replace', item: saved}</code>.</li>
-      <li>On error it toasts the route's own sentence when the response carries one (the 409, 501, 502 and 503 bodies below), else <code>Couldn't send to the wiki</code>. It then rethrows so the list clears its spinners. The existing <code>refusal()</code> helper surfaces only a 409's detail, so this action reads <code>ApiError.detail</code> whatever the status.</li>
+      <li>On error it toasts the route's own sentence when the response carries one (the 409, 501, 502 and 503 bodies below), else <code>Couldn't send to the wiki</code>. It then rethrows, so the list re-enables its controls and keeps the ticks. The existing <code>refusal()</code> helper surfaces only a 409's detail, so this action reads <code>ApiError.detail</code> whatever the status.</li>
       <li><code>endWrite</code> runs in <code>finally</code>.</li>
     </ul></li>
   <li><strong>Route</strong>: <code>POST /api/reader/posts/[id]/wiki</code>, body <code>{ ideas: string[] }</code> (1–6 non-empty strings, <code>.strict()</code>), through <code>withSession</code>.
@@ -659,7 +703,7 @@ not-connected case pixel-identical.</p>
       <li>It returns 501 if the writer isn't configured and 404 for an unknown post.</li>
       <li>It returns 409 <code>"That idea isn't in this post's overview any more"</code> if any idea isn't in the current <code>overview.novel_ideas</code>. That happens when a re-summarise ran underneath.</li>
       <li>It drops ideas already in <code>wiki_sent_ideas</code>. If none are left, it returns 200 with the row unchanged and makes no commit.</li>
-      <li>Otherwise it builds the envelope, commits, then appends the new ideas through the RPC <code>append_wiki_sent_ideas(p_post, p_ideas)</code> (§10). That RPC is one atomic <code>update</code> that adds only strings not already present. Two single-bullet sends from one post can run at once, and a read-modify-write here would let the later one erase the earlier one's bullet.</li>
+      <li>Otherwise it builds the envelope, commits, then appends the new ideas through the RPC <code>append_wiki_sent_ideas(p_post, p_ideas)</code> (§10). That RPC is one atomic <code>update</code> that adds only strings not already present. The UI allows one send per post at a time, but two tabs or devices can still race, and a read-modify-write here would let the later send erase the earlier one's bullets.</li>
       <li>It returns the row with list columns only, so <code>text</code> never reaches the client.</li>
     </ul></li>
   <li><strong>Reading the row with text.</strong> The route uses a new <code>getReaderPostForWiki(id)</code> in <code>lib/data/reader.ts</code>, the only reader that selects <code>text</code> for this purpose.</li>
@@ -1140,7 +1184,7 @@ work merges while this spec waits.</p>
 <pre><code>-- Reader: which Novel-ideas bullets have been sent (their exact text; D8)
 alter table reader_posts add column wiki_sent_ideas text[] not null default '{}';
 
--- Atomic append, so two concurrent single-bullet sends can't erase each other (§5.2).
+-- Atomic append, so two concurrent sends (two tabs) can't erase each other (§5.2).
 create function append_wiki_sent_ideas(p_post uuid, p_ideas text[]) returns setof reader_posts …
   -- update reader_posts set wiki_sent_ideas = wiki_sent_ideas ||
   --   array(select i from unnest(p_ideas) i where not (i = any(wiki_sent_ideas)))
@@ -1265,7 +1309,6 @@ and an Opus review (§11.4) with no blocking findings.</p>
   <li><strong>Atoms and tokens</strong>:
     <ul class="tight">
       <li><code>globals.css</code>: <code>--color-accent-violet</code> and <code>glow-violet</code>;</li>
-      <li><code>IconButton</code>: tone <code>wiki</code>, i.e. <code>text-muted-foreground hover:text-accent-violet focus-visible:ring-accent-violet</code>;</li>
       <li><code>Badge</code>: variant <code>wiki</code>, i.e. <code>bg-accent-violet/15 text-accent-violet</code>.</li>
     </ul>
     Each gets a test and an atoms-gallery story.</li>
@@ -1302,7 +1345,22 @@ reports the exact change, and the lead makes it and re-briefs any affected slice
   <tr><td><strong>A · Reader send</strong></td>
     <td><code>components/reader/post-overview.tsx</code> and a new <code>components/reader/novel-idea-list.tsx</code>; <code>post-row.tsx</code> (passes the post and <code>writable</code>); <code>post-row.stories.tsx</code>; <code>components/reader/test-helpers.tsx</code> (adds <code>WikiProvider</code> to <code>renderReader</code>); <code>lib/stores/reader-store.tsx</code>; <code>lib/data/reader.ts</code> (<code>getReaderPostForWiki</code>); <code>app/api/reader/posts/[id]/wiki/route.ts</code>; their tests; <code>e2e/reader-wiki-send.spec.ts</code>; regenerated reader baselines.</td>
     <td>§5 in full, and the §5.1 mockup's four states.</td>
-    <td>RTL covers each bullet state, Send all, All sent, and the unchanged not-writable and empty cases. The store covers success, and an error that toasts the route's sentence, rethrows, and leaves the row unchanged. It also covers <code>beginWrite</code>. The route covers 501, 404, 409, already-sent (no commit), and success with a mock writer, asserting the envelope and that <code>text</code> never appears in the response. Stories: <code>DoneExpandedWiki</code>, <code>AllSent</code>. E2E: send one, send all, and a reload keeps the sent state; the mock's recorded tree shows one folder with <code>source.md</code> + <code>picks-…</code> in one commit.</td></tr>
+    <td>RTL covers:
+      <ul class="tight">
+        <li>ticking by click and by <kbd>Space</kbd>, with <code>aria-checked</code>;</li>
+        <li>sent bullets not being selectable;</li>
+        <li>the bar appearing at one tick with the right count, and Clear;</li>
+        <li>Send to wiki sending exactly the ticked bullets in one call;</li>
+        <li>Send all sending every unsent bullet regardless of ticks;</li>
+        <li>everything disabled in flight, a failure keeping the ticks, and All sent;</li>
+        <li>the unchanged not-writable and empty cases.</li>
+      </ul> The store covers success, and an error that toasts the route's sentence, rethrows, and leaves the row unchanged. It also covers <code>beginWrite</code>. The route covers 501, 404, 409, already-sent (no commit), and success with a mock writer, asserting the envelope and that <code>text</code> never appears in the response. Stories, one per mockup panel: <code>WikiNothingTicked</code>, <code>WikiTwoTicked</code>, <code>WikiSending</code>, <code>WikiAllSent</code>.
+      E2E:
+      <ul class="tight">
+        <li>Tick two, send, and a reload keeps the sent state. The mock's recorded tree shows one commit holding one folder, with <code>source.md</code> plus a <code>picks-…</code> file listing exactly those two bullets.</li>
+        <li>Send all sends the rest in a second commit.</li>
+        <li>A failure (the mock answers 502) keeps the ticks.</li>
+      </ul></td></tr>
   <tr><td><strong>B1 · Classifier</strong></td>
     <td><code>workers/src/prompt.ts</code>, <code>verdict.ts</code>, their tests, and <code>sweep.test.ts</code> (version literals).</td>
     <td>§6.1.</td>
@@ -1391,8 +1449,8 @@ reports the exact change, and the lead makes it and re-briefs any affected slice
   <li>Golden envelopes pass the wiki repo's own <code>npm run lint</code>, and file as <code>new</code>, then <code>merged</code>, under <code>file-batch --dry-run</code> (§11.6).</li>
   <li>The token is never sent to the client, logged, or echoed in an error. An unconfigured writer returns 501, and every send affordance is hidden.</li>
   <li class="grp">Reader send</li>
-  <li>With the wiki connected, each Novel-ideas bullet can be sent alone, and <strong>Send all to wiki</strong> sends every unsent bullet in one commit.</li>
-  <li>Bullets show unsent, sending and sent states exactly as the mockup draws them. Concurrent sends from one post never lose a sent mark. When every bullet is sent the button becomes "All sent to wiki". The sent state survives a reload.</li>
+  <li>With the wiki connected, the Novel-ideas bullets are a checklist. Ticking any number and pressing <strong>Send to wiki</strong> sends exactly those bullets in one commit. <strong>Send all to wiki</strong> sends every unsent bullet in one commit.</li>
+  <li>The nothing-ticked, ticked, sending, all-sent and not-connected states render exactly as the mockup draws them. Only one send per post runs at a time. A failed send keeps the ticks. Concurrent sends from one post never lose a sent mark. When every bullet is sent the button becomes "All sent to wiki". The sent state survives a reload.</li>
   <li>A swept post sends a pointer <code>source.md</code> (or picks alone when it has no URL). A reworded bullet reads as unsent. A failed send toasts and returns the bullet to unsent.</li>
   <li>Without the wiki connected, and on a post with no novel ideas, the overview is pixel-identical to today.</li>
   <li class="grp">Knowledge captures</li>
@@ -1416,7 +1474,7 @@ reports the exact change, and the lead makes it and re-briefs any affected slice
 <p>Follow the <code>showboat</code> skill's evidence rules; they are the source of truth, and this
 list only names what must be covered. One demo doc covers:</p>
 <ul class="tight">
-  <li>the Reader journey (collapsed, then overview, then send one, then send all, then all sent);</li>
+  <li>the Reader journey: collapsed, then overview, then tick two, then Send to wiki, then Sending…, then sent, then Send all, then all sent. The selection bar's reveal is motion, so it is shown as a GIF.</li>
   <li>the Inbox journey (classify as Knowledge, then dispatch, then the row leaves and the toast shows);</li>
   <li>the Wiki module (index, search with body hits, a page with each link kind and its backlinks, empty, and sync-failed);</li>
   <li>⌘P and ⌘K;</li>
@@ -1433,7 +1491,7 @@ list only names what must be covered. One demo doc covers:</p>
   <li><strong>Smoke test.</strong>
     <ol class="tight">
       <li>Push anything to the wiki's <code>main</code> (or wait for the next merge), and check that the Wiki module shows the LLM Wiki page and says "synced just now".</li>
-      <li>Send one Reader idea, and check that the folder appears in <code>inbox/</code> and kickoff runs.</li>
+      <li>Tick two ideas on a Reader post and send them. Check that one folder appears in <code>inbox/</code>, holding both picks, and that kickoff runs once.</li>
       <li>Dispatch one knowledge capture.</li>
       <li>Merge the resulting ingest PR and watch its pages arrive.</li>
     </ol>
