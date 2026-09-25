@@ -141,11 +141,13 @@ npx --no -- commitlint --edit $1
 
 ```shell
 # .husky/pre-commit
+unset $(git rev-parse --local-env-vars)
 npm run check:fast
 ```
 
 ```shell
 # .husky/pre-push
+unset $(git rev-parse --local-env-vars)
 npm run check:slow
 ```
 
@@ -172,6 +174,8 @@ env:
 **Trailers count as a body.** `Co-Authored-By:`, `Claude-Session:` and friends sit after a blank line, so commitlint parses them as body/footer and `body-empty` rejects the commit — including the trailers an agent harness appends by default. Commits here are **subject-only**: drop the trailers rather than reaching for `--no-verify`.
 
 **`scope-case` is `'lower-case'`, NOT `'kebab-case'`.** commitlint's `kebab-case` check runs the scope through `lodash.kebabCase`, which inserts boundaries between letters and digits — so `kebabCase('e2e') === 'e-2-e'` and a scope of `e2e` (or `web3`, `oauth2`, …) is **rejected** with "scope must be kebab-case", demanding the absurd `e-2-e`. `lower-case` only checks `scope === scope.toLowerCase()`, so it accepts `e2e` and `back-pressure` alike while still rejecting `camelCase`/`PascalCase`/`UPPER`. The casing we actually care about is "not uppercased"; digit-as-boundary was never the intent. (This is the casing we want for scopes; subject already uses `lower-case` for the same reason.)
+
+**A hook that runs tests must first `unset $(git rev-parse --local-env-vars)`.** Git exports `GIT_DIR` / `GIT_INDEX_FILE` into hooks (and from a linked worktree they point at the shared repo), so a test that `git init`s a temp repo and commits in it silently writes to the real one: fixture commits on the branch being committed, junk branches, `user.name=test` and `core.bare=false` in the shared config. Keep the line in every hook that runs a suite.
 
 **husky v9 hook files are plain shell — no shebang required** but they must be executable. If `git commit` throws `permission denied` on a hook, run `chmod +x .husky/commit-msg`.
 
