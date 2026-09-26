@@ -57,22 +57,6 @@ function renderList(sent: string[] = [], ideas: readonly string[] = IDEAS) {
   });
 }
 
-/**
- * Force a `prefers-reduced-motion` result for the duration of a test. `restoreMocks`
- * (jest.config) reverts the spy to the jest.setup stub after each test.
- */
-function mockReducedMotion(matches: boolean): void {
-  const mql = {
-    matches,
-    media: '(prefers-reduced-motion: reduce)',
-    onchange: null,
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  } as unknown as MediaQueryList;
-  jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
-}
-
 /** A promise the test settles by hand, so one send can be held in flight. */
 function deferred<T>(): {
   promise: Promise<T>;
@@ -405,14 +389,13 @@ describe('NovelIdeaList — what it looks like', () => {
 });
 
 describe('NovelIdeaList — reduced motion', () => {
-  it('opens and folds the bar with no transition to wait on under prefers-reduced-motion', async () => {
-    mockReducedMotion(true);
+  // The collapse reads no media query itself: CSS does the work, so what jsdom can pin is the
+  // class that switches the height transition off, and that the count alone opens and folds it.
+  it('marks the collapse motion-reduce:transition-none, and opens and folds it on the count', async () => {
     const user = userEvent.setup();
     renderList();
 
     const collapse = screen.getByTestId('novel-ideas-selection');
-    // The height transition is switched off for reduced-motion users, so no transitionend is
-    // ever needed: the bar is open or folded the moment the count says so.
     expect(collapse).toHaveClass('motion-reduce:transition-none');
 
     await user.click(tick(ENVIRONMENT));

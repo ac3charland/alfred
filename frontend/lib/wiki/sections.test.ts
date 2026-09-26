@@ -42,7 +42,7 @@ describe('sections', () => {
     ['wiki/entities/café.md', '/wiki/entities/caf%C3%A9'],
   ])('encodes the stem of %s so the URL names it, not a query or anchor', (path, href) => {
     expect(wikiPageHref(path)).toBe(href);
-    // Next hands the route the decoded segment, so it decodes back to the stem.
+    // `usePathname` returns the encoded pathname and `parseWikiRoute` decodes it, back to the stem.
     expect(decodeURIComponent(href.split('/').at(-1) ?? '')).toBe(splitWikiPath(path)?.name);
   });
 });
