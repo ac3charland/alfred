@@ -15,7 +15,8 @@ import { NovelIdeaList } from './novel-idea-list';
  * Where this deployment can write into the wiki, Novel ideas becomes a checklist that sends
  * picked bullets there ({@link NovelIdeaList}). Everywhere else — the Work instance, or a post
  * with no novel ideas — the section, like the other three, is exactly the plain list it always
- * was.
+ * was. A bullet that is empty or only whitespace is no idea: a list of nothing else reads as the
+ * honest empty line, never as a checklist with nothing to tick ("All sent to wiki").
  */
 
 const BULLET_LIST_CLASS = 'mt-1 list-disc space-y-1 pl-5 text-sm text-foreground';
@@ -36,7 +37,8 @@ export interface PostOverviewProperties {
 
 export function PostOverview({ overview, post, writable }: PostOverviewProperties) {
   const novelHeading = <h3 className={SECTION_HEADING_CLASS}>Novel ideas</h3>;
-  const checklist = writable && overview.novel_ideas.length > 0;
+  const hasIdeas = overview.novel_ideas.some((idea) => idea.trim() !== '');
+  const checklist = writable && hasIdeas;
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-border/60 pt-3">
       <section>
@@ -50,14 +52,14 @@ export function PostOverview({ overview, post, writable }: PostOverviewPropertie
         ) : (
           <>
             {novelHeading}
-            {overview.novel_ideas.length === 0 ? (
-              <p className={PARAGRAPH_CLASS}>{EMPTY_NOVEL_IDEAS_LINE}</p>
-            ) : (
+            {hasIdeas ? (
               <ul className={BULLET_LIST_CLASS}>
                 {overview.novel_ideas.map((idea, index) => (
                   <li key={index}>{idea}</li>
                 ))}
               </ul>
+            ) : (
+              <p className={PARAGRAPH_CLASS}>{EMPTY_NOVEL_IDEAS_LINE}</p>
             )}
           </>
         )}

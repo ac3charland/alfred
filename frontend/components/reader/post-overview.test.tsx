@@ -79,6 +79,14 @@ describe('PostOverview', () => {
 });
 
 describe('PostOverview — the wiki not connected', () => {
+  it('states the honest empty line, not blank bullets, when every bullet is blank', () => {
+    renderPlain(makeReaderOverview({ novel_ideas: ['', '  '] }));
+
+    expect(
+      screen.getByText('Nothing new — the post restates what a well-read reader already knows.'),
+    ).toBeInTheDocument();
+  });
+
   it('keeps Novel ideas a plain bulleted list, with no send affordance and no taller heading row', () => {
     renderPlain(makeReaderOverview({ novel_ideas: ['Idea one', 'Idea two'] }));
 
@@ -114,6 +122,17 @@ describe('PostOverview — the wiki connected', () => {
       screen.getByText('Nothing new — the post restates what a well-read reader already knows.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /wiki/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('novel-ideas-heading-row')).not.toBeInTheDocument();
+  });
+
+  it('mounts no checklist when every bullet is blank, and states the honest empty line', () => {
+    renderWritable(makeReaderOverview({ novel_ideas: ['', ' '.repeat(3), '\n'] }));
+
+    expect(
+      screen.getByText('Nothing new — the post restates what a well-read reader already knows.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('All sent to wiki')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     expect(screen.queryByTestId('novel-ideas-heading-row')).not.toBeInTheDocument();
   });
 
