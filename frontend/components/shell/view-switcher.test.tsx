@@ -28,7 +28,7 @@ describe('ViewSwitcher', () => {
     jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
   });
 
-  it('renders a segment per module as a link', () => {
+  it('renders a segment per module as a link, found by its accessible name (ALF-270)', () => {
     render(<ViewSwitcher />);
 
     expect(screen.getByRole('link', { name: 'Tasks' })).toBeInTheDocument();
@@ -46,6 +46,18 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Comms' })).toHaveAttribute('href', '/comms');
     expect(screen.getByRole('link', { name: 'Reader' })).toHaveAttribute('href', '/reader');
     expect(screen.getByRole('link', { name: 'Wiki' })).toHaveAttribute('href', '/wiki');
+  });
+
+  it('shows no visible label text — each segment is an icon with a title hover hint (ALF-270)', () => {
+    render(<ViewSwitcher />);
+
+    for (const label of ['Tasks', 'Code', 'Comms', 'Reader', 'Wiki']) {
+      const segment = screen.getByRole('link', { name: label });
+      expect(segment).toHaveAttribute('title', label);
+      expect(segment).not.toHaveTextContent(label);
+      expect(segment.querySelector('svg')).toBeInTheDocument();
+      expect(segment.querySelector('svg')).toHaveAttribute('aria-hidden');
+    }
   });
 
   it('marks Wiki active on its landing route and on a page beneath it', () => {
@@ -157,7 +169,7 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('group', { name: /switch module/i })).toBeInTheDocument();
   });
 
-  it('fills its container rather than sizing to its text, so it cannot overflow (ALF-219)', () => {
+  it('fills its container rather than sizing to its content, so it cannot overflow (ALF-219)', () => {
     render(<ViewSwitcher />);
 
     const group = screen.getByRole('group', { name: /switch module/i });
@@ -168,43 +180,31 @@ describe('ViewSwitcher', () => {
     expect(group).not.toHaveClass('justify-between');
   });
 
-  it('grows each segment from its own label and shares out only the leftover width', () => {
+  it('gives every segment equal width, so no icon moves when the active module changes (ALF-270)', () => {
     render(<ViewSwitcher />);
 
     for (const label of ['Tasks', 'Code', 'Comms', 'Reader', 'Wiki']) {
       const segment = screen.getByRole('link', { name: label });
-      // `flex-auto` keeps each segment's own label as its starting width; `flex-1` would
-      // give all four equal quarters and clip the longest label ("Comms") in the sidebar.
-      expect(segment).toHaveClass('flex-auto');
-      expect(segment).not.toHaveClass('flex-1');
-      // Without `min-w-0` a flex item refuses to shrink below its text width, which is
-      // exactly how the control burst its container in the first place.
+      // `flex-1` (equal basis) replaces the old `flex-auto` (content-sized) now that there is
+      // no label whose own width the segment needs to start from — every cell is the same size
+      // regardless of which module is active.
+      expect(segment).toHaveClass('flex-1');
+      expect(segment).not.toHaveClass('flex-auto');
       expect(segment).toHaveClass('min-w-0');
-      expect(segment).toHaveClass('text-center');
-      // `truncate` lives on an inner span (ALF-222), not the anchor itself, so the Comms
-      // corner badge — an absolutely-positioned sibling — isn't clipped by the same
-      // overflow-hidden that keeps the label from wrapping.
-      expect(segment.querySelector('span')).toHaveClass('truncate');
-    }
-  });
-
-  it('sizes each segment at 13px/px-1, the type the widened 256px sidebar fits', () => {
-    render(<ViewSwitcher />);
-
-    for (const label of ['Tasks', 'Code', 'Comms', 'Reader', 'Wiki']) {
-      const segment = screen.getByRole('link', { name: label });
-      expect(segment).toHaveClass('text-[13px]');
-      expect(segment).toHaveClass('px-1');
-      expect(segment).not.toHaveClass('text-sm');
-      expect(segment).not.toHaveClass('px-1.5');
     }
   });
 
   it("puts Comms last, so its badge lands at the control's own end (ALF-222)", () => {
     render(<ViewSwitcher />);
 
-    const labels = screen.getAllByRole('link').map((link) => link.textContent);
-    expect(labels).toEqual(['Tasks', 'Code', 'Reader', 'Wiki', 'Comms']);
+    const links = screen.getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Tasks',
+      'Code',
+      'Reader',
+      'Wiki',
+      'Comms',
+    ]);
   });
 
   it('badges the Comms segment with how many messages are waiting for a reply (ALF-222)', () => {
