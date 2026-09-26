@@ -322,7 +322,7 @@ wiki_pages AFTER (3 rows)
   wiki/questions/do-streaks-help.md
     blob 3612906  commit 2222222  title "do-streaks-help"  updated null
     links []
-    parse_error "invalid frontmatter YAML: Flow sequence in block collection must be sufficiently indented and end with a ] at line 1, column 24:"
+    parse_error "invalid frontmatter YAML: Flow sequence in block collection must be sufficiently indented and end with a ] at line 2, column 1:"
 wiki_sync AFTER  {"commit_oid":"2222222","synced_at":"2026-09-25T09:17:00.000Z","pending":0,"last_error":null}
 ```
 
@@ -469,3 +469,13 @@ Twenty new baselines were captured: `reader-postrow--wiki-{nothing-ticked,two-ti
 `Wiki/WikiView › SyncFailed`:
 
 ![](alf-261-day-2-wiki-image-41.png)
+
+## 8. The cross-repo contract check, against the wiki repo
+
+Run by hand against a clone of the wiki repo, which CI doesn't have — so this section is notes, not `exec` blocks.
+
+- **Golden folders.** Alfred's own envelope and path code wrote four sends into the clone's `inbox/`: `2026-10-03-why-habits-stick` (full text + picks), `2026-10-03-why-habits-stick-2` (a swept post's pointer + picks), `2026-10-03-why-habits-stick-3` (picks alone) and `2026-10-03-spaced-repetition-works-because-forgetting-is-the-signal-not` (a knowledge dispatch's notes).
+- **Wiki lint** (`npm run lint`): 0 errors, and 0 findings of any severity on Alfred's four folders (the only warnings are on the wiki's own existing pages).
+- **File-batch dry run:** all four folders come back `new`.
+- **Re-send:** sending the full-text post again and filing it gives `merged`, with the note "dropped inbox source.md (same body as the filed copy)". The second send costs nothing.
+- **Read-side parity after this round:** Alfred's heading anchors (`lib/wiki/heading-ids.ts`) and the Worker's frontmatter and link parsing (`src/wiki/page.ts`) run through the same inputs as the wiki's own `headingAnchors`, `parseFile` and `extractLinks`. Result: 0 differences out of 52 heading bodies and 17 slugs, 0 out of 24 link-extraction bodies (the wiki's reading minus images, which the Worker skips on purpose), 0 out of 18 frontmatter splits, and 0 out of 18 renderer and Worker page-link checks.
