@@ -18,7 +18,8 @@ import { PostRow } from './post-row';
  * The `Wiki…` stories are the Novel-ideas checklist on a deployment that can write into the
  * wiki (the preview's `store.wiki.writable`), one per state it draws: nothing ticked beside a
  * bullet sent earlier, two ticked with the selection bar, the send in flight, and every bullet
- * sent. `DoneExpanded` is the same section with the wiki not connected — today's plain list.
+ * sent. `WikiNotConnected` is that same post with the wiki not connected — the plain list
+ * `DoneExpanded` also draws.
  */
 
 const NOW = new Date(2026, 8, 18, 9, 0);
@@ -360,5 +361,26 @@ export const WikiAllSent: Story = {
     await openOverview(canvasElement);
     const canvas = within(canvasElement);
     await expect(await canvas.findByText('All sent to wiki')).toBeInTheDocument();
+  },
+};
+
+/**
+ * The same post with the wiki NOT connected (the Work instance, `writable: false`): Novel ideas is
+ * the plain bulleted list, with no tick boxes, no Send all and no selection bar.
+ */
+export const WikiNotConnected: Story = {
+  args: { post: habitsPost([]) },
+  parameters: {
+    ...WIKI_PARAMETERS,
+    store: { wiki: { writable: false } },
+  },
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText(HABIT)).toBeInTheDocument();
+    await expect(canvas.queryByRole('checkbox')).not.toBeInTheDocument();
+    await expect(
+      canvas.queryByRole('button', { name: 'Send all to wiki' }),
+    ).not.toBeInTheDocument();
   },
 };
