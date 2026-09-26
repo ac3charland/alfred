@@ -32,6 +32,15 @@ function refusal(error: unknown): string | undefined {
 }
 
 /**
+ * What a failed wiki send says. Every refusal the send route writes (a bullet re-summarised
+ * away, no writer on this deployment, GitHub refusing or busy) is a sentence the owner can act
+ * on, so it is quoted whatever the status — unlike {@link refusal}, which only trusts a 409.
+ */
+function wikiSendFailure(error: unknown): string {
+  return (error instanceof api.ApiError ? error.detail : undefined) ?? "Couldn't send to the wiki";
+}
+
+/**
  * How many archived posts the archive read asks for. The archive is unbounded — every post ever
  * skimmed — while the app's fetch-everything default assumes a bounded table, so this is a
  * deliberate ceiling rather than a page size: the view says so out loud when it hits it, and a
@@ -65,6 +74,12 @@ export interface ReaderState {
    * read itself takes — see ALF-252.
    */
   healthReconcileStartedAt: string | null;
+  /**
+   * The posts with a wiki send in the air. Held here rather than in the checklist, because the
+   * checklist remounts each time its overview opens: a flag of its own would forget a send
+   * still running, and let a second press commit the same post again.
+   */
+  wikiSendsInFlight: string[];
 }
 
 export interface ReaderActions {
@@ -105,6 +120,15 @@ export interface ReaderActions {
    */
   resummarize: (id: string) => Promise<ReaderPostListItem>;
   /**
+   * Send picked Novel-ideas bullets into the wiki: one request, one commit. Deliberately NOT
+   * optimistic — the send is a commit to another system that takes a second or two and fails
+   * for reasons this store cannot reconcile (a bad token, GitHub down), so the row keeps reading
+   * unsent until the server confirms, then takes the server's row (with `wiki_sent_ideas`
+   * extended) whole. A failure toasts the route's own sentence when it wrote one, whatever the
+   * status, and rethrows so the list can keep its ticks for a one-press retry.
+   */
+  sendIdeasToWiki: (id: string, ideas: readonly string[]) => Promise<ReaderPostListItem>;
+  /**
    * Re-read the health snapshot and replace it whole. Runs beside `refresh()` on the same
    * return-to-the-foreground signals: the surface is derived against a ticking clock, so a seed
    * frozen at first paint decays into a stall that has since ended — or hides one that started
@@ -141,7 +165,9 @@ type ReaderAction =
    */
   | { type: 'archiveRead'; posts: ReaderPostListItem[]; full: boolean; keep: string[] }
   /** A health reconcile attempt was just launched — see {@link ReaderState.healthReconcileStartedAt}. */
-  | { type: 'healthReconcileAttempt'; startedAt: string };
+  | { type: 'healthReconcileAttempt'; startedAt: string }
+  /** A wiki send for `id` has started (`inFlight: true`) or settled either way. */
+  | { type: 'wikiSend'; id: string; inFlight: boolean };
 
 /** Pure reducer. The single row list delegates to the shared flat-list reducer. */
 export function readerReducer(state: ReaderState, action: ReaderAction): ReaderState {
@@ -193,6 +219,10 @@ export function readerReducer(state: ReaderState, action: ReaderAction): ReaderS
     case 'healthReconcileAttempt': {
       return { ...state, healthReconcileStartedAt: action.startedAt };
     }
+    case 'wikiSend': {
+      const others = state.wikiSendsInFlight.filter((id) => id !== action.id);
+      return { ...state, wikiSendsInFlight: action.inFlight ? [...others, action.id] : others };
+    }
     default: {
       return assertNever(action, 'reader action');
     }
@@ -219,6 +249,7 @@ export function ReaderProvider({
     archiveStatus: 'idle',
     archiveFull: false,
     healthReconcileStartedAt: null,
+    wikiSendsInFlight: [],
   });
 
   // Latest state, readable inside the stable action closures so they can capture pre-mutation
@@ -279,6 +310,12 @@ export function ReaderProvider({
       },
     };
   }, []);
+
+  /**
+   * The posts with a wiki send in the air, read synchronously by the action's guard — the
+   * state's `wikiSendsInFlight` mirrors it for rendering, but lags a render behind a double press.
+   */
+  const wikiSendsRef = React.useRef(new Set<string>());
 
   /**
    * Re-read the active list and replace it wholesale. `refreshingRef` collapses concurrent
@@ -464,6 +501,30 @@ export function ReaderProvider({
           endWrite(id);
         }
       },
+      async sendIdeasToWiki(id, ideas) {
+        // One send per post at a time: a second would commit the same bullets into a second
+        // folder. Refused before anything leaves the browser, and silently — nothing failed.
+        if (wikiSendsRef.current.has(id)) {
+          throw new Error(`A wiki send for post ${id} is already in flight`);
+        }
+        wikiSendsRef.current.add(id);
+        dispatch({ type: 'wikiSend', id, inFlight: true });
+        // Registered as a write in flight, so a focus refetch that left before the send landed
+        // cannot hand back the row with its bullets still unsent.
+        beginWrite(id);
+        try {
+          const saved = await api.sendReaderIdeasToWiki(id, { ideas: [...ideas] });
+          dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
+          return saved;
+        } catch (error) {
+          showToastRef.current(wikiSendFailure(error));
+          throw error;
+        } finally {
+          endWrite(id);
+          wikiSendsRef.current.delete(id);
+          dispatch({ type: 'wikiSend', id, inFlight: false });
+        }
+      },
       markOpened(id) {
         dispatch({
           type: 'posts',
@@ -551,6 +612,12 @@ export function useReaderHealth(): ReaderHealthSnapshot {
  */
 export function useReaderHealthReconcileStartedAt(): string | null {
   return useStateValue('useReaderHealthReconcileStartedAt').healthReconcileStartedAt;
+}
+
+/** Whether a wiki send for this post is in the air — every send control waits on it. */
+export function useWikiSendInFlight(postId: string): boolean {
+  const { wikiSendsInFlight } = useStateValue('useWikiSendInFlight');
+  return wikiSendsInFlight.includes(postId);
 }
 
 /** The Reader mutation actions. Throws outside a ReaderProvider. */

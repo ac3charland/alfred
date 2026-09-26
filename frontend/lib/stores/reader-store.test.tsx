@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as api from '@/lib/api-client';
 import {
   makeReaderHealth,
+  makeReaderOverview,
   makeReaderPost,
   makeReaderPublication,
   resetReaderFixtureClock,
@@ -22,6 +23,7 @@ import {
   useReaderHealth,
   useReaderHealthReconcileStartedAt,
   useReaderPosts,
+  useWikiSendInFlight,
 } from './reader-store';
 
 // A partial mock: the request wrappers are stubbed, but `ApiError` stays the real class, since
@@ -31,6 +33,7 @@ jest.mock('@/lib/api-client', () => ({
   fetchReaderPosts: jest.fn(),
   fetchReaderHealth: jest.fn(),
   patchReaderPost: jest.fn(),
+  sendReaderIdeasToWiki: jest.fn(),
 }));
 const mockApi = jest.mocked(api);
 
@@ -88,6 +91,7 @@ function state(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HE
     archiveStatus: 'idle',
     archiveFull: false,
     healthReconcileStartedAt: null,
+    wikiSendsInFlight: [],
   };
 }
 
@@ -1213,5 +1217,186 @@ describe('loadArchive', () => {
     });
 
     expect(result.current.archived.map((p) => p.title)).toEqual(['Held, as the server has it']);
+  });
+});
+
+describe('sendIdeasToWiki', () => {
+  const IDEAS = ['Idea one', 'Idea two', 'Idea three'];
+  const done = () =>
+    post({
+      id: 'p-1',
+      summary_state: 'done',
+      overview: makeReaderOverview({ novel_ideas: IDEAS }),
+      wiki_sent_ideas: [],
+    });
+
+  it('is not optimistic: the row reads unsent until the server confirms', () => {
+    const row = done();
+    mockApi.sendReaderIdeasToWiki.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      void result.current.actions.sendIdeasToWiki('p-1', ['Idea one']);
+    });
+
+    expect(result.current.posts[0]?.wiki_sent_ideas).toEqual([]);
+  });
+
+  it('sends exactly the bullets it is given and reconciles with the row the server wrote', async () => {
+    const row = done();
+    const saved: ReaderPostListItem = { ...row, wiki_sent_ideas: ['Idea one', 'Idea two'] };
+    mockApi.sendReaderIdeasToWiki.mockResolvedValue(saved);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.sendIdeasToWiki('p-1', ['Idea one', 'Idea two']),
+      ).resolves.toEqual(saved);
+    });
+
+    expect(mockApi.sendReaderIdeasToWiki).toHaveBeenCalledTimes(1);
+    expect(mockApi.sendReaderIdeasToWiki).toHaveBeenCalledWith('p-1', {
+      ideas: ['Idea one', 'Idea two'],
+    });
+    expect(result.current.posts[0]).toEqual(saved);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [409, "That idea isn't in this post's overview any more"],
+    [501, 'The wiki is not configured on this deployment'],
+    [502, "Couldn't reach the wiki repo"],
+    [503, 'The wiki repo was busy — try again'],
+  ])(
+    'toasts the route’s own %i sentence, rethrows, and leaves the row unchanged',
+    async (status, sentence) => {
+      const row = done();
+      mockApi.sendReaderIdeasToWiki.mockRejectedValue(
+        new api.ApiError(`API POST failed: ${String(status)}`, status, sentence),
+      );
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+      await act(async () => {
+        await expect(result.current.actions.sendIdeasToWiki('p-1', ['Idea one'])).rejects.toThrow();
+      });
+
+      expect(mockShowToast).toHaveBeenCalledWith(sentence);
+      expect(result.current.posts[0]).toEqual(row);
+    },
+  );
+
+  it('toasts its own line when the failure carried no sentence', async () => {
+    const row = done();
+    mockApi.sendReaderIdeasToWiki.mockRejectedValue(new Error('network down'));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(result.current.actions.sendIdeasToWiki('p-1', ['Idea one'])).rejects.toThrow(
+        'network down',
+      );
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't send to the wiki");
+    expect(result.current.posts[0]).toEqual(row);
+  });
+
+  it('refuses a second send for a post whose first is still in flight, without calling the API', async () => {
+    const row = done();
+    const sending = deferred<ReaderPostListItem>();
+    mockApi.sendReaderIdeasToWiki.mockReturnValue(sending.promise);
+    const { result } = renderHook(
+      () => ({
+        ...useStore(),
+        inFlight: useWikiSendInFlight('p-1'),
+        other: useWikiSendInFlight('p-2'),
+      }),
+      { wrapper: makeWrapper([row]) },
+    );
+
+    let first: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      first = result.current.actions.sendIdeasToWiki('p-1', ['Idea one']);
+    });
+    expect(result.current.inFlight).toBe(true);
+    expect(result.current.other).toBe(false);
+
+    await act(async () => {
+      await expect(result.current.actions.sendIdeasToWiki('p-1', ['Idea two'])).rejects.toThrow(
+        'already in flight',
+      );
+    });
+    expect(mockApi.sendReaderIdeasToWiki).toHaveBeenCalledTimes(1);
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      sending.settle({ ...row, wiki_sent_ideas: ['Idea one'] });
+      await first;
+    });
+    expect(result.current.inFlight).toBe(false);
+  });
+
+  it('clears the in-flight mark when a send fails, so the retry can go', async () => {
+    const row = done();
+    mockApi.sendReaderIdeasToWiki.mockRejectedValueOnce(new Error('boom'));
+    mockApi.sendReaderIdeasToWiki.mockResolvedValueOnce({ ...row, wiki_sent_ideas: ['Idea one'] });
+    const { result } = renderHook(() => ({ ...useStore(), inFlight: useWikiSendInFlight('p-1') }), {
+      wrapper: makeWrapper([row]),
+    });
+
+    await act(async () => {
+      await expect(result.current.actions.sendIdeasToWiki('p-1', ['Idea one'])).rejects.toThrow();
+    });
+    expect(result.current.inFlight).toBe(false);
+    await act(async () => {
+      await result.current.actions.sendIdeasToWiki('p-1', ['Idea one']);
+    });
+    expect(mockApi.sendReaderIdeasToWiki).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes the server row from a refresh issued after the send settled', async () => {
+    const row = done();
+    mockApi.sendReaderIdeasToWiki.mockResolvedValue({ ...row, wiki_sent_ideas: ['Idea one'] });
+    const later: ReaderPostListItem = { ...row, wiki_sent_ideas: ['Idea one', 'Idea two'] };
+    mockApi.fetchReaderPosts.mockResolvedValue([later]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.sendIdeasToWiki('p-1', ['Idea one']);
+    });
+    await act(async () => {
+      result.current.actions.refresh();
+      await flush();
+    });
+
+    expect(result.current.posts[0]?.wiki_sent_ideas).toEqual(['Idea one', 'Idea two']);
+  });
+
+  it('is not undone by a focus refetch that left before the send landed', async () => {
+    // The read left the server before the send's append reached it, so its answer still calls
+    // every bullet unsent — taking it would rub out the marks the send just reconciled.
+    const row = done();
+    const sending = deferred<ReaderPostListItem>();
+    const reading = deferred<ReaderPostListItem[]>();
+    mockApi.sendReaderIdeasToWiki.mockReturnValue(sending.promise);
+    mockApi.fetchReaderPosts.mockReturnValue(reading.promise);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let send: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      send = result.current.actions.sendIdeasToWiki('p-1', ['Idea one']);
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      sending.settle({ ...row, wiki_sent_ideas: ['Idea one'] });
+      await send;
+    });
+    await act(async () => {
+      reading.settle([row]);
+      await flush();
+    });
+
+    expect(result.current.posts[0]?.wiki_sent_ideas).toEqual(['Idea one']);
   });
 });

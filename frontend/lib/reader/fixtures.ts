@@ -107,6 +107,7 @@ export function makeReaderPost(
     opened_at: overrides.opened_at ?? null,
     archived_at: overrides.archived_at ?? null,
     text_swept_at: overrides.text_swept_at ?? null,
+    wiki_sent_ideas: overrides.wiki_sent_ideas ?? [],
     created_at: overrides.created_at ?? receivedAt,
   };
 }
