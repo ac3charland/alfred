@@ -1960,6 +1960,13 @@ function deleteRows(rest, matched) {
 /** The token the harness configures the Next server with; anything else is a 401. */
 const WIKI_TOKEN = process.env.WIKI_GITHUB_TOKEN ?? 'mock_wiki_token';
 
+/**
+ * The `owner/name` the harness configures the Next server with (e2e/support/constants.ts
+ * `WIKI_REPO`). A request for any other repo is a 404, as GitHub answers a repo the token can't
+ * see — so a writer that built the wrong repo path fails here instead of passing.
+ */
+const WIKI_REPO = process.env.WIKI_REPO ?? 'ac3charland/knowledge';
+
 function nextSha(prefix) {
   githubSequence += 1;
   return `${prefix}${String(githubSequence).padStart(6, '0')}`.padEnd(40, '0');
@@ -2029,13 +2036,17 @@ function handleGithub(req, res, url, body) {
     return;
   }
 
-  // Everything below hangs off /__mock__/github/repos/{owner}/{repo}/git/…
-  const match = /^\/__mock__\/github\/repos\/[^/]+\/[^/]+\/git\/(.*)$/.exec(url.pathname);
+  // Everything below hangs off /__mock__/github/repos/{owner}/{repo}/git/…, for the one repo.
+  const match = /^\/__mock__\/github\/repos\/([^/]+\/[^/]+)\/git\/(.*)$/.exec(url.pathname);
   if (match === null) {
     sendJson(res, 404, { message: `No GitHub route: ${req.method} ${url.pathname}` });
     return;
   }
-  const rest = match[1];
+  if (match[1] !== WIKI_REPO) {
+    sendJson(res, 404, { message: 'Not Found' });
+    return;
+  }
+  const rest = match[2];
 
   if (req.method === 'GET' && rest === 'ref/heads/main') {
     const failure = consumeFailure('ref-read');

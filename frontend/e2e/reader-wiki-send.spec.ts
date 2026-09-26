@@ -2,6 +2,9 @@ import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import {
   MOCK_URL,
+  WIKI_GITHUB_API_URL,
+  WIKI_GITHUB_TOKEN,
+  WIKI_REPO,
   makeReaderOverview,
   makeReaderPost,
   makeReaderPublication,
@@ -94,6 +97,11 @@ function picksOf(files: Record<string, string>): string {
   const names = Object.keys(files).filter((name) => /^picks-\d{4}-\d{2}-\d{2}\.md$/.test(name));
   expect(names).toHaveLength(1);
   return files[names[0] ?? ''] ?? '';
+}
+
+/** The mock GitHub's `main` ref for `repo` (`owner/name`). */
+function mainRefUrl(repo: string): string {
+  return `${WIKI_GITHUB_API_URL}/repos/${repo}/git/ref/heads/main`;
 }
 
 async function openRow(page: Page): Promise<Locator> {
@@ -210,5 +218,40 @@ test.describe('sending Novel ideas to the wiki', () => {
     await expect(row.getByRole('button', { name: 'Send to wiki' })).toBeEnabled();
     const after = await githubState(request);
     expect(after.head).toBe(before.head);
+  });
+
+  test('retries a send whose ref update meets a moved main (a 422), landing one commit', async ({
+    page,
+    seed,
+    request,
+  }) => {
+    await seed({ readerPublications: [PUBLICATION], readerPosts: [habitsPost()] });
+    await page.goto('/reader');
+    const before = await githubState(request);
+    await request.post(`${MOCK_URL}/__mock__/github/fail-next`, {
+      data: { step: 'ref', status: 422 },
+    });
+
+    const row = await openRow(page);
+    await row.getByRole('checkbox', { name: HABIT }).click();
+    await row.getByRole('button', { name: 'Send to wiki' }).click();
+
+    await expect(row.getByText('Sent', { exact: true })).toHaveCount(1);
+    const after = await githubState(request);
+    // Exactly one new commit on main: the head sits directly on the old head. The first
+    // attempt's commit is an orphan the ref never pointed at.
+    const commit = headCommit(after);
+    expect(commit.parents).toEqual([before.head]);
+    expect(after.commits.length).toBeGreaterThan(before.commits.length + 1);
+    expect(pickedBullets(picksOf(folderOf(commit).files))).toEqual([HABIT]);
+  });
+
+  test('the mock GitHub answers only the configured repo', async ({ request }) => {
+    const headers = { Authorization: `Bearer ${WIKI_GITHUB_TOKEN}` };
+
+    const configured = await request.get(mainRefUrl(WIKI_REPO), { headers });
+    expect(configured.status()).toBe(200);
+    const other = await request.get(mainRefUrl('someone/else'), { headers });
+    expect(other.status()).toBe(404);
   });
 });
