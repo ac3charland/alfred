@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-270 — Refactor module switcher</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em;
+    background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+  th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .tablewrap { overflow-x: auto; }
+  .callout { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: .8rem 1rem; margin: 1rem 0; font-size: .93rem; }
+  .callout.rec { background: var(--accent-bg); color: var(--fg); border-left: 4px solid var(--accent); }
+  ul.ac { list-style: none; padding-left: 0; }
+  ul.ac li { padding: .3rem 0 .3rem 1.8rem; position: relative; }
+  ul.ac li::before { content: "☐"; position: absolute; left: .2rem; color: var(--accent); }
+  .muted { color: var(--muted); }
+
+  /* ---------- playground chrome (document palette) ---------- */
+  .controls { display: grid; gap: .9rem; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 1rem; margin: 1rem 0; }
+  .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
+  .ctl > .lbl { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); min-width: 9.5rem; }
+  .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { font: inherit; font-size: .85rem; background: transparent; color: var(--fg); border: 0;
+    padding: .35rem .7rem; cursor: pointer; border-right: 1px solid var(--line); }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--bg); font-weight: 600; }
+  .ctl[hidden] { display: none; }
+  .presetbar { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .presetbar button { font: inherit; font-size: .82rem; padding: .35rem .75rem; border-radius: 999px;
+    border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  .fitnote { font-size: .88rem; margin: .4rem 0 0; min-height: 1.4em; }
+  .fitnote.bad { color: var(--no); font-weight: 600; }
+  .fitnote.good { color: var(--ok); }
+  .stage { overflow-x: auto; padding: .25rem 0 1rem; }
+  .cap { font-size: .82rem; color: var(--muted); margin: .35rem 0 0; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 1rem; }
+
+  /* ---------- APP MOCKUP — tokens from frontend/app/globals.css, scoped here only ---------- */
+  .app {
+    --background: #0a0e17; --foreground: #e8edf5; --surface: #0f1626; --border: #1e2a3f;
+    --muted-foreground: #8a96a8; --secondary: #1e2a3f;
+    --accent-teal: #4fd1e0; --accent-green: #34d399; --accent-blue: #60a5fa;
+    --accent-amber: #f0b429; --accent-red: #f87171; --accent-violet: #a78bfa;
+    --radius: 0.5rem;
+    font-family: Geist, "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--foreground); background: var(--background);
+    display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    width: max-content; line-height: 1.5;
+  }
+  .app code { background: var(--secondary); color: var(--foreground); font-size: 11px; padding: 0 .25rem; border-radius: 4px; }
+  .app .aside { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  .app .top { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  /* wordmark row: font-serif text-xl tracking-tight */
+  .app .wrow { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .app .wrow.right { justify-content: space-between; }
+  .app .wordmark { font-family: "Instrument Serif", Georgia, "Times New Roman", serif; font-size: 20px;
+    line-height: 28px; letter-spacing: -0.025em; color: var(--foreground); }
+  .app .slash { color: var(--muted-foreground); opacity: .5; font-size: 13px; }
+  .app .modlabel { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* switcher group: flex w-full items-center gap-0.5 rounded-lg border border-border bg-background/60 p-1 */
+  .app .sw { display: flex; width: 100%; align-items: center; gap: 2px; border-radius: 8px;
+    border: 1px solid var(--border); background: rgba(10,14,23,.6); padding: 4px; }
+  .app .segm { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px;
+    min-width: 0; border-radius: 6px; padding: 6px 4px; font-size: 13px; font-weight: 500;
+    color: var(--muted-foreground); cursor: pointer; border: 0; background: transparent; font-family: inherit;
+    transition: color 100ms, background-color 100ms; }
+  .app .segm:hover { color: var(--foreground); }
+    .app .segm.on { background: var(--surface); box-shadow: 0 1px 2px 0 rgba(0,0,0,.4); }
+  .app .segm svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .app .segm .word { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .app .segm:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--surface), 0 0 0 3px var(--accent-blue); }
+  /* FolderCountBadge tone=attention + queueBadgeClass */
+  .app .qbadge { position: absolute; right: -4px; top: -4px; display: flex; height: 14px; min-width: 14px;
+    align-items: center; justify-content: center; border-radius: 999px; background: var(--surface);
+    border: 1px solid rgba(240,180,41,.5); color: var(--accent-amber); padding: 0 2px; font-size: 9px;
+    line-height: 1; font-weight: 500; }
+  .app .t-tasks { color: var(--accent-amber); } .app .t-code { color: var(--accent-teal); }
+  .app .t-reader { color: var(--accent-green); } .app .t-wiki { color: var(--accent-violet); }
+  .app .t-comms { color: var(--accent-blue); }
+  /* navLinkClass rows, for context only */
+  .app .nav { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+  .app .navl { display: flex; align-items: center; gap: 10px; border-radius: 2px; padding: 8px 12px; font-size: 14px;
+    color: var(--muted-foreground); white-space: nowrap; overflow: hidden; }
+  .app .navl.on { background: var(--secondary); color: var(--foreground); font-weight: 500; }
+  .app .navl svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .app .main { width: 180px; background: var(--background); display: flex; flex-direction: column; }
+  .app .hdr { height: 56px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .app .ruler { font-size: 11px; color: var(--muted-foreground); padding: 10px 12px; }
+  .app.solo .main { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-270 — Refactor module switcher</h1>
+<p class="sub"><span class="pill">Refinement</span><span class="pill">Frontend / shell</span>
+Replace the five-word segmented control with an icon switcher, and give the sidebar back the width it grew to fit the words.</p>
+
+<h2 id="context">Context / problem</h2>
+<p>The module switcher (<code>frontend/components/shell/view-switcher.tsx</code>) sits under the
+<code>alfred</code> wordmark in the desktop sidebar's top block, and again in the mobile hamburger drawer
+(<code>shell-mobile-nav.tsx</code>). It is a segmented control with one <em>word</em> per module:
+<strong>Tasks · Code · Reader · Wiki · Comms</strong>. Each new module has pushed it past its budget, and the fix each time
+has been to widen the whole sidebar:</p>
+<div class="tablewrap"><table>
+  <tr><th>Ticket</th><th>Segments</th><th>Fix</th><th>Sidebar</th></tr>
+  <tr><td>ALF-219</td><td>3</td><td>fill container, <code>flex-auto</code> + <code>min-w-0</code></td><td>224px (<code>md:w-56</code>)</td></tr>
+  <tr><td>ALF-233</td><td>4</td><td>type 14→13px, padding cut</td><td>256px (<code>md:w-64</code>)</td></tr>
+  <tr><td>ALF-261</td><td>5</td><td>widen, then widen again</td><td>272px → <strong>280px</strong> (<code>md:w-70</code>)</td></tr>
+</table></div>
+<p>So the switcher is wide and wordy, and it also costs the main pane 56px on every screen. A sixth module
+would repeat the cycle. The ticket asks for one of two directions: <em>icons when unselected, the word when selected</em>,
+or <em>icons all the time, with the open module's name shown in nearby negative space</em>. It asks for the spec
+to be interactive so the choice can be made by trying both.</p>
+<p class="muted">Settled with the ticket owner before writing: the name goes in the sidebar's top block
+(the wordmark row), <strong>not</strong> in the header bar. The sidebar <strong>shrinks back</strong> once the switcher is compact.
+This spec recommends one design with full acceptance criteria. The playground lets the owner overrule it in PR comments.</p>
+
+<h2 id="playground">Playground</h2>
+<p>A mockup of the desktop sidebar's top block in the app's own tokens (<code>globals.css</code>, the switcher's
+classes, the <code>FolderCountBadge</code> attention pill). Click a segment to switch module. The fit line under the
+controls <strong>measures the rendered labels</strong>, using the same "no label clipped" check as
+<code>e2e/module-switcher.spec.ts</code>. The mockup falls back to system fonts when Geist isn't installed, so
+widths are within a few px of the app's.</p>
+
+<div class="controls" id="controls">
+  <div class="presetbar">
+    <button type="button" data-preset="rec">★ Chosen (B, right edge, 224px)</button>
+    <button type="button" data-preset="a">Variant A as the ticket described it</button>
+    <button type="button" data-preset="today">Today's control (for comparison)</button>
+  </div>
+  <div class="ctl"><span class="lbl">Design</span>
+    <span class="seg" data-knob="design">
+      <button type="button" data-v="b">B · icons + name by wordmark</button>
+      <button type="button" data-v="a">A · word when selected</button>
+      <button type="button" data-v="today">Today · all words</button>
+    </span></div>
+  <div class="ctl" data-for="a"><span class="lbl">A · active segment</span>
+    <span class="seg" data-knob="aStyle">
+      <button type="button" data-v="word">Word only</button>
+      <button type="button" data-v="both">Icon + word</button>
+    </span></div>
+  <div class="ctl" data-for="b"><span class="lbl">B · name placement</span>
+    <span class="seg" data-knob="bPlace">
+      <button type="button" data-v="after">After wordmark · alfred / Tasks</button>
+      <button type="button" data-v="right">Right edge of the row</button>
+    </span></div>
+  <div class="ctl" data-for="b"><span class="lbl">B · name colour</span>
+    <span class="seg" data-knob="bTone">
+      <button type="button" data-v="accent">Module accent</button>
+      <button type="button" data-v="muted">Muted (icon carries colour)</button>
+    </span></div>
+  <div class="ctl"><span class="lbl">Sidebar width</span>
+    <span class="seg" data-knob="width">
+      <button type="button" data-v="224">224 · w-56</button>
+      <button type="button" data-v="240">240 · w-60</button>
+      <button type="button" data-v="256">256 · w-64</button>
+      <button type="button" data-v="280">280 · w-70 (today)</button>
+    </span></div>
+  <div class="ctl"><span class="lbl">Comms queue</span>
+    <span class="seg" data-knob="queue">
+      <button type="button" data-v="0">0 (no badge)</button>
+      <button type="button" data-v="3">3</button>
+      <button type="button" data-v="12">12</button>
+    </span></div>
+  <p class="fitnote" id="fitnote" aria-live="polite"></p>
+</div>
+
+<div class="stage"><div id="live"></div></div>
+<noscript><p class="callout">The playground needs JavaScript. The chosen design is described in full below.</p></noscript>
+
+<h3>What the playground shows</h3>
+<ul>
+  <li><strong>Both A styles fit at 224px, but A · icon + word only just fits.</strong> Measured in Chromium with Reader active,
+    the icon-and-"Reader" segment is 73px wide and the other four cells shrink to 25px, against the 24px a 16px icon
+    and its padding need. That is the 1px of slack ALF-261 had before it clipped. A sixth module would break it. The fit line
+    reports "cramped" when an icon cell drops under 24px. B's cells are 35px at 224px.</li>
+  <li><strong>A moves its targets.</strong> The active segment is wider, so switching from Tasks to Wiki slides
+    Code and Reader sideways. Every icon's position depends on which module is open, and you can't click from muscle memory.
+    You can see this by clicking back and forth.</li>
+  <li><strong>B has fixed geometry.</strong> Five equal cells, so every icon stays in the same place in every module.
+    Adding a sixth module narrows every cell by a few px and never overflows.</li>
+</ul>
+
+<h2 id="recommendation">Decision: Variant B, name at the right edge of the wordmark row, 224px</h2>
+<div class="callout rec">
+  <strong>Build B, right-edge placement</strong> (confirmed by the ticket owner in PR review). Five icon-only segments at
+  equal width, the active one raised and tinted in its module accent. The open module's name sits at the right edge of the
+  wordmark row, opposite <code>alfred</code>, in that module's accent colour, with no separator.
+  The sidebar and the mobile drawer go back to 224px (<code>w-56</code>).
+</div>
+<p>Why B over A:</p>
+<ol>
+  <li><strong>Stable targets.</strong> A switcher is clicked many times a day, so fixed positions matter more than anything else.
+    A reflows on every switch. B never does.</li>
+  <li><strong>It scales.</strong> A's active segment must fit the longest word ("Reader") next to N−1 icons, and that
+    budget shrinks with each module. A · icon + word already has only 1px of slack at 224px. B needs 24px per icon and
+    has 35px, so six modules would still fit (about 29px each).</li>
+  <li><strong>It uses empty space.</strong> Everything to the right of the wordmark is empty today. Right-aligning the
+    name puts it on the same right edge as the switcher and leaves <code>alfred</code> standing alone.</li>
+</ol>
+<p><strong>Tradeoff:</strong> in B, the name and the icon you clicked are in different rows. The shared accent colour
+links them: the raised icon and the name are the same hue, and no other element in the block uses it.</p>
+<p class="muted">The owner considered the "after the wordmark" placement (<code>alfred / Tasks</code>) and chose the
+right edge instead. The playground still offers both.</p>
+
+<h3>Every state of the chosen design</h3>
+<p class="muted">One frame per active module at 224px, plus the Comms badge when the queue is non-empty (it sits on the
+Comms icon's top-right corner, overlapping it slightly, as it does today) and the hover state.</p>
+<div class="gallery" id="gallery"></div>
+
+<h2 id="change">Proposed change</h2>
+
+<h3>1. A shared module-icon table</h3>
+<p>The palette already maps modules to icons in <code>command-palette.tsx</code> (<code>ICONS</code>:
+<code>tasks: ListTodo</code>, <code>code: Code2</code>, <code>comms: MessagesSquare</code>,
+<code>reader: BookOpen</code>, <code>wiki: Library</code>). Move those five into a table next to
+<code>MODULE_ACCENT</code>, following the "one table per module fact" rule that <code>MODULE_ACCENT</code> set in ALF-219, so the
+switcher and the palette can't disagree.</p>
+<pre><code>// frontend/lib/module-icons.ts   (new — kept out of lib/modules.ts so that file stays React-free)
+import { BookOpen, Code2, Library, ListTodo, type LucideIcon, MessagesSquare } from 'lucide-react';
+import type { ModuleId } from '@/lib/modules';
+
+export const MODULE_ICON: Record&lt;ModuleId, LucideIcon&gt; = {
+  tasks: ListTodo, code: Code2, comms: MessagesSquare, reader: BookOpen, wiki: Library,
+};
+
+// command-palette.tsx ICONS then spreads it:  { ...MODULE_ICON, inbox: Inbox, … }</code></pre>
+<p>The table also needs the display name, which is <code>SEGMENTS[].label</code> today. Add a
+<code>MODULE_LABEL: Record&lt;ModuleId, string&gt;</code> to <code>lib/modules.ts</code> (it's plain data). The switcher's
+<code>aria-label</code>s and the wordmark-row name both read from it.</p>
+
+<h3>2. <code>ViewSwitcher</code> becomes icon-only</h3>
+<div class="tablewrap"><table>
+  <tr><th>Aspect</th><th>Today</th><th>After</th></tr>
+  <tr><td>Segment content</td><td><code>&lt;span class="block truncate"&gt;Tasks&lt;/span&gt;</code></td>
+      <td><code>&lt;Icon size={16} aria-hidden /&gt;</code></td></tr>
+  <tr><td>Accessible name</td><td>the visible word</td><td><code>aria-label={MODULE_LABEL[module]}</code> (same string, so
+      <code>getByRole('link', {name: 'Tasks'})</code> still works) plus <code>title</code> for a native hover hint</td></tr>
+  <tr><td>Sizing</td><td><code>flex-auto min-w-0</code>, 13px text, <code>px-1 py-1</code></td>
+      <td><code>flex-1 min-w-0</code> (equal cells), <code>py-1.5</code>, contents centered</td></tr>
+  <tr><td>Active</td><td><code>bg-surface</code> + shadow + <code>MODULE_ACCENT[m].text</code></td><td>unchanged (the icon strokes <code>currentColor</code>)</td></tr>
+  <tr><td>Order</td><td>Tasks, Code, Reader, Wiki, Comms</td><td>unchanged (Comms last, so its badge stays at the row's end)</td></tr>
+  <tr><td>Comms badge</td><td><code>queueBadgeClass</code>, <code>-right-1 -top-1</code></td><td>unchanged: still overlaps the segment's corner</td></tr>
+  <tr><td>Navigation</td><td><code>ViewLink</code>, <code>aria-current="page"</code></td><td>unchanged</td></tr>
+</table></div>
+<p>Delete the doc comment's width-fitting history and the <code>SEGMENTS</code> label-fit measurements (ALF-219/233/261).
+They describe a problem this change removes. Keep the notes on <code>ViewLink</code>, the drawer staying open, and the badge overlap.</p>
+
+<h3>3. The active-module name in the wordmark row <em>(B)</em></h3>
+<p>Add a new client component, <code>ActiveModuleLabel</code>, in <code>components/shell/active-module-label.tsx</code>. It reads
+<code>activeModule(usePathname())</code> and renders <code>MODULE_LABEL[current]</code> in <code>MODULE_ACCENT[current].text</code>
+at <code>text-[13px] font-medium</code>, baseline-aligned with the serif wordmark. There is no separator. <code>AppShell</code>
+(a Server Component) and the drawer each wrap their wordmark in a <code>flex items-baseline justify-between gap-2</code> row,
+so the label sits at the row's right edge, in line with the switcher's right border.</p>
+<pre><code>// app-shell.tsx — desktop sidebar top block
+&lt;div className="flex items-baseline justify-between gap-2 min-w-0"&gt;
+  &lt;AlfredLink …&gt;alfred&lt;/AlfredLink&gt;
+  &lt;ActiveModuleLabel /&gt;
+&lt;/div&gt;
+&lt;ViewSwitcher /&gt;</code></pre>
+<ul>
+  <li>It is plain text, not a link. The wordmark keeps its only job (back to capture).</li>
+  <li>The name is announced as plain text. The switcher's <code>aria-current</code> stays the programmatic source of truth.</li>
+  <li><code>min-w-0 truncate</code> on the name is the floor. At 224px the longest name ("Reader") has more than 100px free.</li>
+</ul>
+
+<h3>4. Sidebar and drawer width: 280px → 224px</h3>
+<p>Change <code>app-shell.tsx</code> <code>md:w-70</code> to <code>md:w-56</code>, change <code>shell-mobile-nav.tsx</code> <code>w-70</code> to <code>w-56</code>
+(its comment says it matches the sidebar), and change the story frame in <code>view-switcher.stories.tsx</code> to <code>w-56</code>. Replace the
+three-ticket width history in those comments with one line: the width is 224px, the switcher is icon-only so it has no label
+budget, and the module navs set the width (they fit at 224px before ALF-233). The implementer should check the nav
+with the longest label ("Needs human action" in <code>ProjectNav</code>) at 224px in the running app. If it clips, pick
+<code>w-60</code> and say so in the PR.</p>
+
+<h3>Files touched</h3>
+<div class="tablewrap"><table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>lib/modules.ts</code></td><td>+ <code>MODULE_LABEL</code></td></tr>
+  <tr><td><code>lib/module-icons.ts</code></td><td>new: <code>MODULE_ICON</code></td></tr>
+  <tr><td><code>components/shell/view-switcher.tsx</code></td><td>icon segments, <code>aria-label</code>/<code>title</code>, equal cells, trimmed doc</td></tr>
+  <tr><td><code>components/shell/active-module-label.tsx</code></td><td>new <em>(B)</em></td></tr>
+  <tr><td><code>components/shell/app-shell.tsx</code></td><td>wordmark row + label; <code>md:w-56</code></td></tr>
+  <tr><td><code>components/shell/shell-mobile-nav.tsx</code></td><td>wordmark row + label; <code>w-56</code></td></tr>
+  <tr><td><code>components/shell/command-palette.tsx</code></td><td><code>ICONS</code> spreads <code>MODULE_ICON</code></td></tr>
+  <tr><td><code>view-switcher.stories.tsx</code> + snapshots</td><td><code>w-56</code> frame, a story with a queued Comms badge, rebaseline</td></tr>
+  <tr><td><code>view-switcher.test.tsx</code>, <code>e2e/module-switcher.spec.ts</code>, <code>e2e/mobile-module-switch.spec.ts</code></td><td>see Tests</td></tr>
+</table></div>
+
+<h2 id="tests">Tests</h2>
+<ul>
+  <li><strong>Unit (<code>view-switcher.test.tsx</code>)</strong>: all five links are found by accessible name. Each renders an
+    <code>svg</code> and no visible label text. The route's module gets <code>aria-current="page"</code>. The Comms badge renders its
+    count label. A new <code>active-module-label.test.tsx</code> checks the name for each of the five routes, using the same
+    route table as the <code>activeModule</code> tests.</li>
+  <li><strong>Unit (palette)</strong>: the five module destinations still get their icon, now from <code>MODULE_ICON</code>.</li>
+  <li><strong>E2E (<code>module-switcher.spec.ts</code>)</strong>: keep "fits inside the sidebar" (every segment's right edge
+    stays within the border). Drop the "label not truncated" half because the segments have no label; the new label check
+    below replaces it. Keep the accent-colour tests, now asserted on the icon link. Add: the wordmark-row name reads "Tasks" on
+    <code>/priority</code> and "Code" after switching, in the Code teal (<code>rgb(79, 209, 224)</code>), it isn't clipped, and its right edge is within 1px of the
+    switcher group's right edge.
+    Add: the sidebar is 224px wide.</li>
+  <li><strong>E2E (<code>mobile-module-switch.spec.ts</code>)</strong>: unchanged apart from checking the drawer's wordmark-row
+    name as it swaps modules.</li>
+  <li><strong>Storybook snapshots</strong>: rebaseline the five <code>*Active</code> stories. Follow the <code>storybook</code> skill's
+    capture-then-approve flow.</li>
+</ul>
+<p><strong>Demo evidence</strong>: follow the <code>showboat</code> skill's evidence rules. This change moves committed visual snapshots and
+changes the live sidebar, so the demo uses the gate's diff images and an app screenshot, as that skill prescribes.</p>
+
+<h2 id="ac">Acceptance criteria</h2>
+<ul class="ac">
+  <li>The desktop switcher shows five icon-only segments in the order Tasks, Code, Reader, Wiki, Comms, using the lucide icons
+    ListTodo, Code2, BookOpen, Library, MessagesSquare. No visible words.</li>
+  <li>Each segment is a link with an accessible name (<code>aria-label</code>) and a <code>title</code> equal to the module name.</li>
+  <li>All segments have equal width, and no segment moves when the active module changes.</li>
+  <li>The active segment is raised (<code>bg-surface</code> + shadow) and its icon is in its module accent (amber, teal, green,
+    violet, blue). Inactive icons are muted and turn foreground on hover.</li>
+  <li><em>(B)</em> The wordmark row shows <code>alfred</code> on the left and the active module's name right-aligned (no separator),
+    with the name in the active module's accent and its right edge in line with the switcher's, in the desktop
+    sidebar and in the mobile drawer. The name is not a link. The wordmark still links to <code>/</code>.</li>
+  <li>The Comms queue badge still appears on the Comms segment's top-right corner when the count is above zero, and is not clipped.</li>
+  <li>The desktop sidebar and the mobile drawer are 224px wide (or 240px, with the reason given in the PR, if a module nav clips at 224).</li>
+  <li><code>MODULE_ICON</code> is the only source of the module icons. The ⌘K palette uses it.</li>
+  <li>Switching modules is still a <code>ViewLink</code> pushState (no reload), and the mobile drawer stays open across a switch.</li>
+  <li>The ALF-219/233/261 width-fitting comments are removed or replaced with the current rationale.</li>
+  <li><code>check</code> is green: the updated unit, E2E, and rebaselined snapshot tests pass, and there is a demo doc per the <code>showboat</code> skill.</li>
+</ul>
+
+<h2 id="open">Out of scope / open questions</h2>
+<ul>
+  <li><strong>A styled tooltip.</strong> There is no tooltip atom yet, so this spec uses the native <code>title</code> hover hint.
+    A real tooltip is a separate atom ticket.</li>
+  <li><strong>Keyboard shortcuts per module</strong> (for example ⌘1–⌘5) would fit icon segments well, but they are new behavior
+    and out of scope here.</li>
+  <li><strong>Moving the switcher to the header bar</strong> was considered and rejected with the ticket owner.</li>
+</ul>
+
+</div>
+
+<script>
+(() => {
+  // lucide icon nodes, copied from node_modules/lucide-react/dist/esm/icons/*.mjs
+  const ICON = {
+    tasks:  '<path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="m3 17 2 2 4-4"/><rect x="3" y="4" width="6" height="6" rx="1"/>',
+    code:   '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>',
+    reader: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+    wiki:   '<path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/>',
+    comms:  '<path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1"/>',
+  };
+  const NAV = { // first two nav rows per module, context only (navLinkClass)
+    tasks: [['Priority','<path d="M10 12h11"/><path d="M10 18h11"/><path d="M10 6h11"/><path d="M4 10h2"/><path d="M4 6h1v4"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>'],['Today','<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/>']],
+    code: [['Dashboard','<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>'],['Needs human action','<path d="m16 11 2 2 4-4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>']],
+    reader: [['Publications','<path d="M15 18h-5"/><path d="M18 14h-8"/><rect width="8" height="4" x="10" y="6" rx="1"/><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9"/>'],['Archive','<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>']],
+    wiki: [['Index', ICON.wiki],['Concepts','<circle cx="12" cy="12" r="10"/>']],
+    comms: [['Queue','<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>'],['People','<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>']],
+  };
+  const ORDER = ['tasks','code','reader','wiki','comms'];
+  const LABEL = { tasks:'Tasks', code:'Code', reader:'Reader', wiki:'Wiki', comms:'Comms' };
+  const svg = (inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
+  const PRESETS = {
+    rec:   { design:'b', aStyle:'word', bPlace:'right', bTone:'accent', width:'224', queue:'3' },
+    a:     { design:'a', aStyle:'word', bPlace:'after', bTone:'accent', width:'224', queue:'3' },
+    today: { design:'today', aStyle:'word', bPlace:'after', bTone:'accent', width:'280', queue:'3' },
+  };
+  const state = { ...PRESETS.rec, active:'tasks' };
+
+  function sidebar(s, { withMain = true, hover = null } = {}) {
+    const w = Number(s.width);
+    const tone = `t-${s.active}`;
+    const segs = ORDER.map((m) => {
+      const on = m === s.active;
+      const iconOnly = s.design === 'b' || (s.design === 'a' && !on);
+      const body = iconOnly ? svg(ICON[m])
+        : (s.design === 'a' && s.aStyle === 'both' ? svg(ICON[m]) : '') + `<span class="word">${LABEL[m]}</span>`;
+      // B: equal cells. A: icons share the leftover, the active segment takes its content width.
+      // Today: flex-auto, as view-switcher.tsx has it.
+      const flex = s.design === 'today' ? '1 1 auto' : (s.design === 'a' && on ? '0 0 auto' : '1 1 0');
+      const cls = `segm${on ? ` on t-${m}` : ''}`;
+      const colour = hover === m && !on ? ';color:var(--foreground)' : '';
+      const badge = m === 'comms' && s.queue !== '0' ? `<span class="qbadge" aria-label="${s.queue} waiting for a reply">${s.queue}</span>` : '';
+      const aria = iconOnly ? ` aria-label="${LABEL[m]}" title="${LABEL[m]}"` : '';
+      return `<button type="button" class="${cls}" data-m="${m}"${aria}${on ? ' aria-current="page"' : ''} style="flex:${flex}${colour}">${body}${badge}</button>`;
+    }).join('');
+    let wrow = `<span class="wordmark">alfred</span>`;
+    if (s.design === 'b') {
+      const nameCls = `modlabel ${s.bTone === 'accent' ? tone : ''}`;
+      const style = s.bTone === 'muted' ? ' style="color:var(--muted-foreground)"' : '';
+      wrow = s.bPlace === 'after'
+        ? `<div class="wrow"><span class="wordmark">alfred</span><span class="slash" aria-hidden="true">/</span><span class="${nameCls}"${style}>${LABEL[s.active]}</span></div>`
+        : `<div class="wrow right"><span class="wordmark">alfred</span><span class="${nameCls}"${style}>${LABEL[s.active]}</span></div>`;
+    } else wrow = `<div class="wrow">${wrow}</div>`;
+    const nav = NAV[s.active].map(([t, ic], i) => `<div class="navl${i === 0 ? ' on' : ''}">${svg(ic)}<span>${t}</span></div>`).join('');
+    const main = withMain ? `<div class="main"><div class="hdr"></div><div class="ruler">main pane gains <code>${280 - w}px</code> vs today</div></div>` : '';
+    return `<div class="app${withMain ? '' : ' solo'}"><div class="aside" style="width:${w}px"><div class="top">${wrow}<div class="sw" role="group" aria-label="Switch module">${segs}</div></div><div class="nav">${nav}</div></div>${main}</div>`;
+  }
+
+  function measure(root) {
+    const sw = root.querySelector('.sw');
+    const clipped = [...root.querySelectorAll('.word, .modlabel')].filter((e) => e.scrollWidth > e.clientWidth + 0.5).map((e) => e.textContent);
+    const overflow = sw.scrollWidth > sw.clientWidth + 0.5;
+    // An icon cell needs 24px: the 16px glyph + the segment's 4px side padding.
+    const narrowest = Math.min(...[...sw.querySelectorAll('.segm')].filter((e) => !e.querySelector('.word')).map((e) => e.getBoundingClientRect().width));
+    return { clipped, overflow, narrowest };
+  }
+
+  const live = document.getElementById('live');
+  const note = document.getElementById('fitnote');
+  function render() {
+    live.innerHTML = sidebar(state);
+    document.querySelectorAll('[data-knob]').forEach((g) => {
+      g.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(state[g.dataset.knob] === b.dataset.v)));
+    });
+    document.querySelectorAll('.ctl[data-for]').forEach((c) => { c.hidden = c.dataset.for !== state.design; });
+    const { clipped, overflow, narrowest } = measure(live);
+    const cramped = Number.isFinite(narrowest) && narrowest < 24;
+    if (overflow || clipped.length || cramped) {
+      note.className = 'fitnote bad';
+      note.textContent = `✗ Doesn't fit at ${state.width}px: ${overflow ? 'the control overflows its border' : ''}${overflow && clipped.length ? '; ' : ''}${clipped.length ? 'clipped: ' + clipped.join(', ') : ''}${cramped ? `cramped: icon cells are ${narrowest.toFixed(0)}px, under the 24px an icon needs` : ''}. Try another module or width.`;
+    } else {
+      note.className = 'fitnote good';
+      const cells = Number.isFinite(narrowest) ? `; narrowest icon cell ${narrowest.toFixed(0)}px` : '';
+      note.textContent = `✓ Fits at ${state.width}px with ${LABEL[state.active]} active: nothing clipped${cells}.`;
+    }
+  }
+  live.addEventListener('click', (e) => { const b = e.target.closest('[data-m]'); if (b) { state.active = b.dataset.m; render(); } });
+  document.querySelectorAll('[data-knob]').forEach((g) => g.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; state[g.dataset.knob] = b.dataset.v; render();
+  }));
+  document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+    Object.assign(state, PRESETS[b.dataset.preset]); render();
+  }));
+  render();
+
+  // static gallery of the chosen design
+  const g = document.getElementById('gallery');
+  const frames = ORDER.map((m) => [`${LABEL[m]} active${m === 'comms' ? ' · queue 3' : ''}`, { ...PRESETS.rec, active: m, queue: m === 'comms' ? '3' : '0' }, null]);
+  frames.push(['Tasks active · queue 12 · hover on Reader', { ...PRESETS.rec, active: 'tasks', queue: '12' }, 'reader']);
+  g.innerHTML = frames.map(([cap, s, hover]) => `<figure style="margin:0">${sidebar(s, { withMain: false, hover })}<figcaption class="cap">${cap}</figcaption></figure>`).join('');
+})();
+</script>
+</body>
+</html>
