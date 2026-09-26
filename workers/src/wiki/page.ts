@@ -51,19 +51,19 @@ const ENCODED_DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
 const SCHEME = /^[a-z][\d+.a-z-]*:/i;
 
 /**
- * A markdown link, `[text](target)` or `[text](target "title")`, and NOT an image: the lookbehind
- * refuses a `!` before the bracket, since `![alt](src)` embeds a file rather than linking a page.
+ * A markdown link or image, the wiki's own pattern (its `extractLinks`): `[text](target)` or
+ * `[text](target "title")`, the text on one line, the target a run of anything but `)` and
+ * whitespace, taken literally — so `<habit-loop.md>` is the target `<habit-loop.md>`, and a
+ * single-quoted title or a space inside the parens is no link at all. A match that starts with `!`
+ * is an image, which embeds a file rather than linking a page, and is skipped.
  */
-const LINK = /(?<!!)\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
+const LINK = /!?\[[^\]\n]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 /** A fence line: up to three spaces, then three or more backticks or tildes. */
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 
-/**
- * An inline code span: a backtick run, anything, the same-length run — never across a blank
- * line, since a code span, like CommonMark's, cannot cross a paragraph break.
- */
-const INLINE_CODE = /(`+)(?:(?!\n[\t ]*\n)[\s\S])*?\1/g;
+/** An inline code span, as the wiki masks it: one backtick, anything on the line, one backtick. */
+const INLINE_CODE = /`[^`\n]+`/g;
 
 /** The row fields `parsePage` derives. The sync adds `blob_oid`, `commit_oid` and `synced_at`. */
 export interface ParsedPage {
@@ -98,16 +98,22 @@ function stemOf(path: string): string {
 
 /**
  * Split the frontmatter off the way the wiki's `parseFile` does: CRLF normalised, a leading
- * `---\n`, then the next `\n---`. No closing fence means no frontmatter at all. The newline that
- * ends the closing fence line belongs to the fence, not the body.
+ * `---\n`, then the next `\n---` — which closes the block only when a newline or the end of the
+ * text follows it (`----` or `---x` means there is no frontmatter at all, and the whole text is
+ * body). No closing fence means no frontmatter either. The newline that ends the closing fence
+ * line belongs to the fence, and the one blank line that separates it from the body is dropped.
  */
 function splitFrontmatter(text: string): { yaml: string | undefined; body: string } {
   const normalised = text.replaceAll('\r\n', '\n');
   if (!normalised.startsWith('---\n')) return { yaml: undefined, body: normalised };
   const close = normalised.indexOf('\n---', 3);
   if (close === -1) return { yaml: undefined, body: normalised };
-  const yaml = normalised.slice(4, Math.max(4, close));
-  const rest = normalised.slice(close + '\n---'.length);
+  const after = close + '\n---'.length;
+  if (after < normalised.length && normalised.charAt(after) !== '\n') {
+    return { yaml: undefined, body: normalised };
+  }
+  const yaml = normalised.slice(4, Math.max(4, close + 1));
+  const rest = normalised.slice(after + 1);
   return { yaml, body: rest.startsWith('\n') ? rest.slice(1) : rest };
 }
 
@@ -117,8 +123,13 @@ function isMapping(value: unknown): value is Frontmatter {
   return typeof value === 'object' && value != undefined && !Array.isArray(value);
 }
 
-/** Parse the YAML block, or say why it is not a frontmatter mapping. An empty block is `{}`. */
+/**
+ * Parse the YAML block, or say why it is not a frontmatter mapping. A blank block is `{}`; any
+ * other block that is not a mapping — a list, a scalar, or YAML's null (`~`, or only a comment) —
+ * is an error, exactly as the wiki's `parseFile` throws on one.
+ */
 function readFrontmatter(yaml: string): { data: Frontmatter } | { error: string } {
+  if (yaml.trim() === '') return { data: {} };
   let value: unknown;
   try {
     value = parse(yaml);
@@ -126,7 +137,6 @@ function readFrontmatter(yaml: string): { data: Frontmatter } | { error: string 
     const reason = error instanceof Error ? error.message : String(error);
     return { error: `invalid frontmatter YAML: ${reason}` };
   }
-  if (value == undefined) return { data: {} };
   if (!isMapping(value)) return { error: 'frontmatter is not a YAML mapping' };
   return { data: value };
 }
@@ -165,40 +175,34 @@ function realDate(value: unknown): string | undefined {
 }
 
 /**
- * Blank out code so a link written inside it is not read as a link: fenced blocks first (a
- * backtick or tilde fence, closed by a same-character run at least as long, or by the end of the
- * page), then inline code spans. Every line of a fenced block, fences included, becomes an empty
- * line — which also stops an inline span from reaching across it; an inline span becomes spaces.
+ * Blank out code the wiki's way, line by line, so a link written inside it is not read as a link:
+ * a fenced block (a backtick or tilde fence, closed by any later fence line of the same character
+ * whatever its length, or by the end of the page) becomes empty lines, fences included, and on
+ * every other line each single-backtick span is removed — a span never reaches past its line.
  */
 function maskCode(text: string): string {
-  const lines = text.split('\n');
   let fence: string | undefined;
-  const masked = lines.map((line) => {
-    const open = FENCE.exec(line)?.[1];
-    if (fence === undefined) {
-      if (open === undefined) return line;
-      fence = open;
+  const masked = text.split('\n').map((line) => {
+    const open = FENCE.exec(line)?.[1]?.charAt(0);
+    if (open !== undefined && (fence === undefined || fence === open)) {
+      fence = fence === undefined ? open : undefined;
       return '';
     }
-    if (open !== undefined && open.startsWith(fence.charAt(0)) && open.length >= fence.length) {
-      fence = undefined;
-    }
-    return '';
+    return fence === undefined ? line.replaceAll(INLINE_CODE, '') : '';
   });
-  return masked.join('\n').replaceAll(INLINE_CODE, (span) => ' '.repeat(span.length));
+  return masked.join('\n');
 }
 
 /**
- * Every markdown link target in `text`, in order, with code masked and images skipped. Inline
- * `[text](target)` links only, mirroring the scope of the wiki's own `extractLinks`: a
- * reference-style `[text][ref]` link still renders as a link in the reading room, but produces no
- * backlink.
+ * Every markdown link target in `text`, in order, with code masked and images skipped: the wiki's
+ * `extractLinks`, less its image targets. Inline `[text](target)` links only, mirroring its scope:
+ * a reference-style `[text][ref]` link still renders as a link in the reading room, but produces
+ * no backlink.
  */
 export function extractLinks(text: string): string[] {
   const targets: string[] = [];
   for (const match of maskCode(text).matchAll(LINK)) {
-    const raw = match[1] ?? '';
-    targets.push(raw.startsWith('<') ? raw.slice(1, -1) : raw);
+    if (!match[0].startsWith('!')) targets.push(match[1] ?? '');
   }
   return targets;
 }

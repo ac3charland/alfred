@@ -63,10 +63,33 @@ describe('extractLinks', () => {
     expect(extractLinks('![alt](../entities/james-clear.md)')).toEqual([]);
   });
 
-  it('reads every markdown link target in order, titles and angle brackets stripped', () => {
-    expect(
-      extractLinks('[a](one.md) then [b](<two.md>) and [c](three.md "A title") [](four.md)'),
-    ).toEqual(['one.md', 'two.md', 'three.md', 'four.md']);
+  it('reads every markdown link target in order, a double-quoted title stripped', () => {
+    expect(extractLinks('[a](one.md) then [c](three.md "A title") [](four.md)')).toEqual([
+      'one.md',
+      'three.md',
+      'four.md',
+    ]);
+  });
+
+  // The wiki's own `extractLinks` reads each of these exactly so (scripts/lib/wiki.ts), and the
+  // snapshot's backlinks must never disagree with its lint about what a page links to.
+  it.each([
+    ['an angle-bracket target, literally', '[a](<habit-loop.md>)', ['<habit-loop.md>']],
+    ['no link when an angle-bracket target holds a space', '[b](<habit loop.md>)', []],
+    ['no link with a single-quoted title', "[a](habit-loop.md 'T')", []],
+    ['no link with spaces inside the parens', '[a]( habit-loop.md )', []],
+    ['no link when the text runs over a line', '[two\nlines](habit-loop.md)', []],
+    ['no reference-style link', 'See [the loop][loop].\n\n[loop]: habit-loop.md\n', []],
+    ['no link for bracketed link text', 'See [a [b] c](habit-loop.md).\n', []],
+    ['the image target inside a linked image', '[![alt](fig.png)](habit-loop.md)', ['fig.png']],
+    ['a target up to its first )', '[a](x_(y).md)', ['x_(y']],
+  ])('reads %s the way the wiki does', (_label, text, targets) => {
+    expect(extractLinks(text)).toEqual(targets);
+  });
+
+  it('resolves no backlink for an angle-bracket target, which the wiki reads literally', () => {
+    expect(resolveLink(PAGE, '<habit-loop.md>')).toBeUndefined();
+    expect(parsePage(PAGE, '[a](<habit-loop.md>)\n').links).toEqual([]);
   });
 
   it('masks a fenced code block, backtick or tilde, so a link inside one is not a link', () => {
@@ -97,8 +120,17 @@ describe('extractLinks', () => {
     ]);
   });
 
-  it('still masks an inline code span that wraps onto the next line', () => {
-    expect(extractLinks('Write `[x](a.md)\n[y](b.md)` then [z](z.md).')).toEqual(['z.md']);
+  it('never lets an inline code span reach past its line, as the wiki masks line by line', () => {
+    expect(extractLinks('Write `[x](a.md)\n[y](b.md)` then [z](z.md).')).toEqual([
+      'a.md',
+      'b.md',
+      'z.md',
+    ]);
+  });
+
+  it('closes a fence on any later fence line of the same character, whatever its length', () => {
+    expect(extractLinks('````\n[a](a.md)\n```\n[b](b.md)\n````\n[c](c.md)\n')).toEqual(['b.md']);
+    expect(extractLinks('```\n[a](a.md)\n~~~\n[b](b.md)\n```\n[c](c.md)\n')).toEqual(['c.md']);
   });
 
   it('masks an unclosed fence to the end of the page, as CommonMark does', () => {
@@ -182,6 +214,29 @@ describe('parsePage', () => {
     expect(page.body).toBe('---\ntitle: Never closed\n');
   });
 
+  it('drops the one blank line that separates the frontmatter from the body', () => {
+    expect(parsePage(PAGE, '---\ntitle: T\n---\n\nBody\n').body).toBe('Body\n');
+    expect(parsePage(PAGE, '---\ntitle: T\n---\n\n\nBody\n').body).toBe('\nBody\n');
+    expect(parsePage(PAGE, '---\ntitle: T\n---').body).toBe('');
+  });
+
+  it.each(['---\ntitle: T\n----\nBody\n', '---\ntitle: T\n---x\nBody\n'])(
+    'reads %j as all body: a closing fence needs a newline or the end after it',
+    (text) => {
+      const page = parsePage(PAGE, text);
+      expect(page.title).toBe('habit-stacking');
+      expect(page.body).toBe(text);
+      expect(page.parse_error).toBeUndefined();
+    },
+  );
+
+  it('reads only the first closing fence: a `----` there means no frontmatter at all', () => {
+    // The wiki's parseFile takes the FIRST `\n---`; when that is `----`, there is no frontmatter,
+    // even though a real `---` line follows.
+    const text = '---\ntitle: T\n----\n---\nBody\n';
+    expect(parsePage(PAGE, text).body).toBe(text);
+  });
+
   it('accepts an empty frontmatter block', () => {
     const page = parsePage(PAGE, '---\n---\nbody');
     expect(page.title).toBe('habit-stacking');
@@ -204,6 +259,23 @@ describe('parsePage', () => {
     const page = parsePage(PAGE, '---\n- just\n- a list\n---\nbody');
     expect(page.parse_error).toEqual(expect.stringContaining('mapping'));
     expect(page.body).toBe('---\n- just\n- a list\n---\nbody');
+  });
+
+  it.each([
+    ['YAML null', '~'],
+    ['a bare null', 'null'],
+    ['only a comment', '# nothing here'],
+    ['a scalar', 'just words'],
+  ])('sets parse_error for a frontmatter block that is %s, as the wiki does', (_label, yaml) => {
+    const page = parsePage(PAGE, `---\n${yaml}\n---\nbody`);
+    expect(page.parse_error).toBe('frontmatter is not a YAML mapping');
+    expect(page.title).toBe('habit-stacking');
+  });
+
+  it('reads a blank (whitespace-only) frontmatter block as {}', () => {
+    const page = parsePage(PAGE, '---\n   \n---\nbody');
+    expect(page.parse_error).toBeUndefined();
+    expect(page.body).toBe('body');
   });
 
   it.each([
