@@ -1,6 +1,6 @@
 'use client';
 
-import { RotateCw } from 'lucide-react';
+import { ArrowUpRight, RotateCw } from 'lucide-react';
 import * as React from 'react';
 
 import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
@@ -11,7 +11,8 @@ import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { readerHotkeyAction } from '@/lib/reader/hotkeys';
 import { postOpenLink } from '@/lib/reader/open-link';
 import { isReaderOverview } from '@/lib/reader/overview';
-import { useReaderActions } from '@/lib/stores/reader-store';
+import { sendUnavailable } from '@/lib/reader/send';
+import { useInstapaperConfigured, useReaderActions } from '@/lib/stores/reader-store';
 import { useWikiConfig } from '@/lib/stores/wiki-store';
 import type { ReaderPostListItem, ReaderSummaryState } from '@/lib/types';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
@@ -24,7 +25,9 @@ import {
   gistClass,
   hintClass,
   metaClass,
+  originalLinkClass,
   overviewFooterClass,
+  overviewFooterVerbsClass,
   placeholderGistClass,
   rowCollapseClass,
   rowCollapseInnerClass,
@@ -33,12 +36,14 @@ import {
   summaryStampClass,
   supersededGistClass,
   titleClass,
+  verbButtonClass,
   verbRowClass,
 } from './post-row.styles';
 
 /**
  * One row of the reading list: publication, arrival, title, gist — and once opened, the
- * overview.
+ * overview. Its primary verb sends the post to the owner's Instapaper, which is where they read;
+ * the original stays one quiet link away.
  *
  * The row owns its own exit animation (archiving collapses before the mutation commits, so the
  * list doesn't jump), its own overview toggle (local `useState`; no cross-row coordination
@@ -64,7 +69,7 @@ export interface PostRowProperties {
   /** Point the keyboard at this row, or clear the selection entirely. */
   onSelect?: (id: string | null) => void;
   /**
-   * The row has begun leaving (archived, or unarchived from the archive). Fired as the exit
+   * The row has begun leaving (archived or sent, or unarchived from the archive). Fired as the exit
    * STARTS, not when it commits, so the list can move the selection on while the collapse plays
    * rather than leaving it on a row that is halfway gone.
    */
@@ -98,9 +103,9 @@ function canResummarize(post: ReaderPostListItem): boolean {
  */
 function floorStateTail(post: ReaderPostListItem, now: Date): string {
   return post.text_swept_at === null
-    ? 'The post is still here; open it or archive it.'
+    ? 'The post is still here; send it or archive it.'
     : `Its text was swept on ${formatPostDate(post.text_swept_at, now)}, so it can't be retried; ` +
-        'open it or archive it.';
+        'send it or archive it.';
 }
 
 /**
@@ -124,7 +129,7 @@ function gistOrPlaceholder(post: ReaderPostListItem, state: ReaderSummaryState, 
   switch (state) {
     case 'pending': {
       return (
-        post.gist ?? 'The summary is on its way — open it now, or check back in a few minutes.'
+        post.gist ?? 'The summary is on its way — send it now, or check back in a few minutes.'
       );
     }
     case 'refused':
@@ -168,6 +173,7 @@ export function PostRow({
   onExit,
 }: PostRowProperties) {
   const actions = useReaderActions();
+  const instapaperConfigured = useInstapaperConfigured();
   const { writable } = useWikiConfig();
   const prefersReducedMotion = usePrefersReducedMotion();
   const [overviewOpen, setOverviewOpen] = React.useState(false);
@@ -175,12 +181,11 @@ export function PostRow({
   // nothing ticked while a closing one keeps its state through the fold (and a send in flight).
   const [openings, setOpenings] = React.useState(0);
   const shellRef = React.useRef<HTMLDivElement>(null);
-  const linkRef = React.useRef<HTMLAnchorElement>(null);
   // What the card and the Overview verb say they control, so a screen reader can follow the
   // disclosure to the region it opens rather than being told a state with no referent.
   const panelId = React.useId();
 
-  // The mutation the exit is playing for — archive is the row's only exit-animated verb.
+  // The mutation the exit is playing for — archiving, or sending (which archives too).
   const commitRef = React.useRef<(() => Promise<unknown>) | null>(null);
   const commit = React.useCallback(async () => {
     await commitRef.current?.();
@@ -200,6 +205,29 @@ export function PostRow({
     begin();
   }, [actions, archived, begin, exit.isExiting, onExit, post.id]);
 
+  const unavailable = sendUnavailable(post, instapaperConfigured);
+
+  /**
+   * Send to Instapaper. From the reading list it leaves the way Archive does — the same collapse,
+   * a different write at the end of it — because a sent post is archived. From the archive there
+   * is nowhere for it to go, so it sends in place and the badge appears on the row. A second press
+   * while a send is in flight is absorbed: the exit guard on the list, the store's own in-flight
+   * send in the archive.
+   */
+  const beginSend = React.useCallback(() => {
+    if (unavailable !== undefined) return;
+    if (archived) {
+      void actions.sendToInstapaper(post.id).catch(() => {
+        // Deliberately silent here: the store rolls the row back and toasts in the route's words.
+      });
+      return;
+    }
+    if (exit.isExiting) return;
+    commitRef.current = () => actions.sendToInstapaper(post.id);
+    onExit?.(post.id);
+    begin();
+  }, [actions, archived, begin, exit.isExiting, onExit, post.id, unavailable]);
+
   const resummarize = React.useCallback(() => {
     void actions.resummarize(post.id).catch(() => {
       // Deliberately silent here: the store rolls the row back and toasts, and the row has
@@ -208,6 +236,22 @@ export function PostRow({
   }, [actions, post.id]);
 
   const link = postOpenLink(post);
+  const href = link.href;
+
+  /**
+   * Follow the Original link. A click lets the anchor navigate natively; the `o` key opens the tab
+   * itself, because the anchor may sit inside a collapsed — inert — panel where a synthetic click
+   * would do nothing. Both stamp `opened_at`.
+   */
+  const openOriginal = React.useCallback(
+    (via: 'click' | 'key') => {
+      if (href === undefined) return;
+      if (via === 'key') globalThis.open(href, '_blank', 'noopener,noreferrer');
+      onSelect?.(post.id);
+      actions.markOpened(post.id);
+    },
+    [actions, href, onSelect, post.id],
+  );
   const state = summaryState(post);
   // A re-summarising row keeps its previous overview too: the panel is about the summary that is
   // being replaced, and pulling it out from under the owner mid-run would be the same blanking
@@ -229,6 +273,9 @@ export function PostRow({
    */
   const hasPanel = hasOverview || hasFooter;
   const panelOpen = hasPanel && overviewOpen;
+  // Original never makes a panel of its own: it rides in the footer of one that exists for other
+  // reasons, and otherwise ends the verb row — so every row with a link has exactly one way out.
+  const originalInPanel = hasPanel && href !== undefined;
 
   const toggleOverview = React.useCallback(() => {
     if (!hasPanel) return;
@@ -256,12 +303,19 @@ export function PostRow({
     const onKeyDown = (event: KeyboardEvent) => {
       const action = readerHotkeyAction(event);
       switch (action) {
-        case 'open': {
-          // The row's own anchor, clicked for real: the Gmail-permalink fallback and the
-          // opened_at stamp hang off it, so the key and the verb cannot drift apart. A post with
-          // nowhere to point renders a disabled button and no anchor, and the key does nothing.
+        case 'send': {
+          if (unavailable !== undefined) break;
           event.preventDefault();
-          linkRef.current?.click();
+          beginSend();
+          break;
+        }
+        case 'open': {
+          // The link's own target and stamp, through the function the link shares — so the key
+          // and the link cannot drift apart. A post with nowhere to point has no link, and the
+          // key does nothing.
+          if (href === undefined) break;
+          event.preventDefault();
+          openOriginal('key');
           break;
         }
         case 'archive': {
@@ -286,7 +340,16 @@ export function PostRow({
     return () => {
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [selected, hasPanel, beginArchive, toggleOverview]);
+  }, [
+    selected,
+    hasPanel,
+    unavailable,
+    href,
+    beginSend,
+    openOriginal,
+    beginArchive,
+    toggleOverview,
+  ]);
 
   /** The key that runs a verb, beside its label — on the selected row only, desktop only. */
   const hint = (key: string) =>
@@ -295,6 +358,25 @@ export function PostRow({
         {key}
       </kbd>
     ) : null;
+
+  /** The Original link, wherever it sits. Absent altogether when there is nowhere to point. */
+  const original =
+    href === undefined ? null : (
+      <Button variant="ghost" size="sm" className={cn(verbButtonClass, originalLinkClass)} asChild>
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => {
+            openOriginal('click');
+          }}
+        >
+          <ArrowUpRight size={14} />
+          Original
+          {hint('o')}
+        </a>
+      </Button>
+    );
 
   return (
     <div
@@ -329,40 +411,34 @@ export function PostRow({
                 <span className={metaClass}>
                   {formatPostDate(post.received_at, now)} · {formatReadMinutes(post.word_count)}
                 </span>
-                <PostMarkers state={state} />
+                <PostMarkers state={state} sent={post.instapaper_sent_at !== null} />
               </div>
               <p className={titleClass}>{post.title}</p>
               <p className={gistLineClass(post, state)}>{gistOrPlaceholder(post, state, now)}</p>
             </ClickableCard>
 
-            <div className={verbRowClass}>
-              {link.href === undefined ? (
-                <Button variant="outline" size="sm" type="button" disabled title={link.unavailable}>
-                  {/* No keycap: `o` runs the anchor, and there is no anchor to run. */}
-                  Open
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" asChild>
-                  <a
-                    ref={linkRef}
-                    href={link.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => {
-                      onSelect?.(post.id);
-                      actions.markOpened(post.id);
-                    }}
-                  >
-                    Open
-                    {hint('o')}
-                  </a>
-                </Button>
-              )}
+            <div className={verbRowClass} data-testid="reader-row-verbs">
+              <Button
+                variant="outline"
+                size="sm"
+                className={verbButtonClass}
+                disabled={unavailable !== undefined}
+                title={unavailable}
+                onClick={() => {
+                  onSelect?.(post.id);
+                  beginSend();
+                }}
+              >
+                Send to Instapaper
+                {/* No keycap on a disabled verb: `i` does nothing while it can't run. */}
+                {unavailable === undefined && hint('i')}
+              </Button>
 
               {hasPanel && (
                 <Button
                   variant="ghost"
                   size="sm"
+                  className={verbButtonClass}
                   aria-expanded={panelOpen}
                   aria-controls={panelId}
                   onClick={() => {
@@ -382,7 +458,7 @@ export function PostRow({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-1.5"
+                  className={cn(verbButtonClass, 'gap-1.5')}
                   onClick={() => {
                     onSelect?.(post.id);
                     resummarize();
@@ -396,6 +472,7 @@ export function PostRow({
               <Button
                 variant="outline"
                 size="sm"
+                className={verbButtonClass}
                 onClick={() => {
                   onSelect?.(post.id);
                   beginArchive();
@@ -404,6 +481,8 @@ export function PostRow({
                 {archiveLabel}
                 {hint('e')}
               </Button>
+
+              {!originalInPanel && original}
             </div>
 
             {/* The id the card and the Overview verb point at sits on a plain wrapper rather than
@@ -419,24 +498,25 @@ export function PostRow({
                       writable={writable}
                     />
                   )}
-                  {hasFooter && (
+                  {(hasFooter || originalInPanel) && (
                     <div className={overviewFooterClass}>
-                      {rerunnable ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5"
-                          onClick={() => {
-                            onSelect?.(post.id);
-                            resummarize();
-                          }}
-                        >
-                          <RotateCw size={14} />
-                          Re-summarise
-                        </Button>
-                      ) : (
-                        <span />
-                      )}
+                      <div className={overviewFooterVerbsClass}>
+                        {originalInPanel && original}
+                        {rerunnable && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() => {
+                              onSelect?.(post.id);
+                              resummarize();
+                            }}
+                          >
+                            <RotateCw size={14} />
+                            Re-summarise
+                          </Button>
+                        )}
+                      </div>
                       {stamp !== null && <span className={summaryStampClass}>{stamp}</span>}
                     </div>
                   )}

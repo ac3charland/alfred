@@ -96,6 +96,8 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   reader?: {
     posts?: ReaderPostListItem[];
     health?: ReaderHealth;
+    /** Whether the deployment can send to Instapaper. Defaults to true — the Personal instance. */
+    instapaperConfigured?: boolean;
   };
   /** The Reader's roster seed: the publications and the off-roster senders offered beside them. */
   readerSettings?: {
@@ -181,6 +183,7 @@ export function renderWithProviders(
                                     <ReaderProvider
                                       initialPosts={reader.posts ?? []}
                                       initialHealth={{ health: reader.health, account: undefined }}
+                                      instapaperConfigured={reader.instapaperConfigured ?? true}
                                     >
                                       <ReaderSettingsProvider
                                         initialPublications={readerSettings.publications ?? []}

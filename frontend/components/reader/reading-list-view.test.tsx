@@ -22,7 +22,7 @@ const mockApi = jest.mocked(api);
 
 /** The list read's own shape — every fixture post has to drop `text` before rendering. */
 function withoutText(post: ReaderPost): ReaderPostListItem {
-  const { text: _text, ...listItem } = post;
+  const { text: _text, html: _html, ...listItem } = post;
   return listItem;
 }
 
@@ -533,29 +533,26 @@ describe('ReadingListView — selection', () => {
 });
 
 describe('ReadingListView — the verb keys', () => {
-  it('opens the selected row through its own Open link, stamping opened_at', async () => {
+  it('opens the selected row’s original on o, with its panel shut, stamping opened_at', async () => {
     const user = userEvent.setup();
     const posts = oneRow();
-    mockApi.patchReaderPost.mockResolvedValue(
-      posts[0] ?? donePost('p-1', 'Alpha', NOW.toISOString()),
-    );
+    const post = posts[0] ?? donePost('p-1', 'Alpha', NOW.toISOString());
+    mockApi.patchReaderPost.mockResolvedValue(post);
+    const open = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
     renderReader(<ReadingListView now={NOW} />, posts);
-    const opened = jest.fn();
-    screen.getByRole('link', { name: 'Open' }).addEventListener('click', (event) => {
-      // jsdom refuses to navigate; the point is that the row's real anchor was the thing clicked.
-      event.preventDefault();
-      opened();
-    });
 
     await user.keyboard('j');
     await user.keyboard('o');
 
-    expect(opened).toHaveBeenCalledTimes(1);
+    // The Original link sits in the shut (inert) panel, so the key opens the tab itself rather
+    // than clicking an anchor that would do nothing.
+    expect(open).toHaveBeenCalledWith(post.canonical_url, '_blank', 'noopener,noreferrer');
     expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { opened: true });
   });
 
   it('does nothing on o when the row has nowhere to point', async () => {
     const user = userEvent.setup();
+    const open = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
     renderReader(
       <ReadingListView now={NOW} />,
       oneRow({ canonical_url: null, rfc822_message_id: null }),
@@ -564,7 +561,8 @@ describe('ReadingListView — the verb keys', () => {
     await user.keyboard('j');
     await user.keyboard('o');
 
-    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled();
+    expect(screen.queryByRole('link', { name: 'Original' })).not.toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
     expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
   });
 
@@ -675,7 +673,7 @@ const HINT_CLASS =
 
 /** Every key hint currently on screen, in document order. */
 function hints(): HTMLElement[] {
-  return screen.queryAllByText(/^[oev]$/, { selector: 'kbd' });
+  return screen.queryAllByText(/^[ioev]$/, { selector: 'kbd' });
 }
 
 /** A failed row: it carries a Retry summary verb, which deliberately has no key. */
@@ -689,13 +687,15 @@ describe('ReadingListView — the keyboard hints', () => {
     expect(hints()).toHaveLength(0);
   });
 
-  it('hints the three verb keys on the selected row, and only there', async () => {
+  it('hints the verb keys on the selected row, and only there', async () => {
     const user = userEvent.setup();
     renderReader(<ReadingListView now={NOW} />, threeRows());
 
     await user.keyboard('j');
 
-    expect(hints().map((hint) => hint.textContent)).toEqual(['o', 'v', 'e']);
+    // Send, Overview and Archive under the card; Original's `o` rides in the panel footer, drawn
+    // with the panel whenever it opens.
+    expect(hints().map((hint) => hint.textContent)).toEqual(['i', 'v', 'e', 'o']);
     for (const hint of hints()) {
       expect(rowFor('Alpha')).toContainElement(hint);
       expect(hint).toHaveAttribute('class', HINT_CLASS);
@@ -710,7 +710,8 @@ describe('ReadingListView — the keyboard hints', () => {
 
     await user.keyboard('j');
 
-    expect(hints().map((hint) => hint.textContent)).toEqual(['o', 'e']);
+    // A failed row has no panel, so Original ends the verb row, after Archive.
+    expect(hints().map((hint) => hint.textContent)).toEqual(['i', 'e', 'o']);
     expect(screen.getByRole('button', { name: 'Retry summary' })).toHaveTextContent(
       /^Retry summary$/,
     );
@@ -724,7 +725,8 @@ describe('ReadingListView — the keyboard hints', () => {
 
     // jsdom answers no media query, so the breakpoint itself is pinned by the class assertion
     // above; what matters here is that hiding the hints hides no verb with them.
-    expect(screen.getByRole('link', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send to Instapaper' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Original' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry summary' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Archive' })).toBeInTheDocument();
   });

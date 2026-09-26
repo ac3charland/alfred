@@ -100,8 +100,24 @@ export const supersededGistClass = 'mt-1 text-sm leading-relaxed text-foreground
 export const overviewFooterClass =
   'mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3';
 
+/** The footer's left side: the Original link (when the row has one) and the re-run verb. */
+export const overviewFooterVerbsClass = 'flex flex-wrap items-center gap-2';
+
+/**
+ * The Original link: a ghost verb in muted text with its arrow, deliberately quieter than Send —
+ * the owner reads in Instapaper, and the original is the way out when a send can't run.
+ */
+export const originalLinkClass = 'gap-1.5 text-muted-foreground';
+
 /** Which model wrote the summary, under which prompt, and when — the line a re-run visibly moves. */
 export const summaryStampClass = 'text-xs text-muted-foreground';
 
-/** The verb row beneath the card body. */
-export const verbRowClass = 'mt-2 flex flex-wrap items-center gap-2';
+/**
+ * The verb row beneath the card body. A 375 px phone leaves it 302 px, and the three verbs a done
+ * row carries (Send to Instapaper · Overview · Archive) need 310 px at desktop spacing — so below
+ * `md` the gap tightens, and with `verbButtonClass` the three fit on one line.
+ */
+export const verbRowClass = 'mt-2 flex flex-wrap items-center gap-1.5 md:gap-2';
+
+/** Each verb's padding: trimmed below `md` (see `verbRowClass`), the sm button's own from `md` up. */
+export const verbButtonClass = 'px-2.5 md:px-3';

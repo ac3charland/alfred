@@ -24,7 +24,11 @@ function archived(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  const {
+    text: _text,
+    html: _html,
+    ...listItem
+  } = makeReaderPost(PUBLICATION_ID, {
     archived_at: '2026-09-18T08:00:00.000Z',
     ...overrides,
   });
@@ -219,12 +223,12 @@ describe('ArchiveView — the rows', () => {
     overview: makeReaderOverview(),
   });
 
-  it('offers Open and Unarchive, never Archive', async () => {
+  it('offers Send and Unarchive, never Archive', async () => {
     mockApi.fetchReaderPosts.mockResolvedValue([POST]);
     renderReader(<ArchiveView now={NOW} />);
 
     expect(await screen.findByRole('button', { name: 'Unarchive' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send to Instapaper' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
   });
 

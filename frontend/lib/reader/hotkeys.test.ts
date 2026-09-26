@@ -18,6 +18,7 @@ describe('readerHotkeyAction — the key map', () => {
     ['ArrowDown', 'next'],
     ['k', 'previous'],
     ['ArrowUp', 'previous'],
+    ['i', 'send'],
     ['o', 'open'],
     ['e', 'archive'],
     ['v', 'overview'],
@@ -29,6 +30,7 @@ describe('readerHotkeyAction — the key map', () => {
   it('is case-insensitive, so a capital letter still lands', () => {
     expect(press('J')).toBe('next');
     expect(press('E')).toBe('archive');
+    expect(press('I')).toBe('send');
   });
 
   it(

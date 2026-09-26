@@ -14,6 +14,7 @@ import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans
 import { getWikiSeed } from '@/lib/data/wiki';
 import { todayIn } from '@/lib/habits';
 import { getInstanceConfig } from '@/lib/instance';
+import { getInstapaperConfig } from '@/lib/instapaper/config';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
@@ -87,7 +88,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     // polls to catch up, while the roster and the rubric change only when the owner edits them.
     getCommsSeed(),
     getCommsSettingsSeed(),
-    // The reading list, without post bodies: the row opens the original rather than showing them.
+    // The reading list, without post bodies: the owner reads in Instapaper, not in the row.
     getReaderSeed(),
     // Three Reader reads for the same reason Comms takes two: the list moves on the tick's
     // clock, the roster only when the owner edits it, and health is its own surface.
@@ -155,6 +156,10 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                                       <ReaderProvider
                                         initialPosts={readerSeed.posts}
                                         initialHealth={readerHealthSeed}
+                                        // Only whether the credentials exist crosses to the
+                                        // browser — never the credentials. Off draws the Send verb
+                                        // disabled.
+                                        instapaperConfigured={getInstapaperConfig() !== null}
                                       >
                                         <ReaderSettingsProvider
                                           initialPublications={readerSettingsSeed.publications}
