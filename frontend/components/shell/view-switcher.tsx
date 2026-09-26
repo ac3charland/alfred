@@ -16,7 +16,8 @@ import { cn } from '@/lib/utils';
  * rule, so URL, content, sidebar, and switcher highlight never disagree.
  *
  * The active segment wears its OWN module's accent, read from the shared accent table rather
- * than hard-coded — Tasks amber, Code teal, Comms blue, Reader green, no two alike (ALF-219).
+ * than hard-coded — Tasks amber, Code teal, Comms blue, Reader green, Wiki violet, no two alike
+ * (ALF-219).
  * One table means the switcher, the sidebar and a view heading can't drift on what colour a
  * module is.
  *
@@ -30,11 +31,18 @@ import { cn } from '@/lib/utils';
  * bundled Geist at 14px/500, "Tasks Code Comms Reader" is 181px of text against the 224px
  * sidebar's ~176px budget for all four segments — no padding change closes that gap without
  * truncating a label, which ALF-219 already ruled out. So the desktop sidebar widens to 256px
- * (`app-shell.tsx`, `md:w-64`) AND the segment type drops from 14px to 13px
+ * (`app-shell.tsx`, `md:w-64` at the time) AND the segment type drops from 14px to 13px
  * (`text-[13px] px-1`, down from `text-sm px-1.5`): at 256px the four 13px labels measure 161px
  * against a 208px budget, ~15px of slack — comfortably clear of a font-hinting difference.
  * Everything else about the control (`flex-auto`, `min-w-0`, `truncate` as the floor, `gap-0.5`,
  * `p-1`) is unchanged.
+ *
+ * A fifth segment (Wiki, ALF-261) ate that slack: measured at 13px, "Tasks Code Comms Reader
+ * Wiki" is ~187px of text against the 256px sidebar's budget, and every one of the five labels
+ * clipped by a few px. Rather than shrink the labels, type, or padding again, the sidebar widened
+ * a second time, from `md:w-64` to `md:w-68` (272px) — but that measured only 1px short per
+ * label, still clipping every one, so it widened once more to `md:w-70` (280px, `app-shell.tsx`)
+ * — see the `SEGMENTS` comment below for the per-label fit at that width.
  *
  * Tasks lands on the By-Priority list — the module's default view — rather than the `/`
  * capture screen; capture stays reachable via the `alfred` wordmark (see the app shell).
@@ -99,6 +107,16 @@ const SEGMENTS: readonly { module: ModuleId; label: string; href: string }[] = [
   { module: 'tasks', label: 'Tasks', href: '/priority' },
   { module: 'code', label: 'Code', href: '/code' },
   { module: 'reader', label: 'Reader', href: '/reader' },
+  // Wiki slots in before Comms (ALF-261): Comms stays last so its badge sits at the row's end.
+  // Against the 256px sidebar, all five 13px labels clipped: each one's rendered span was a
+  // few px narrower than its text needed (Tasks 33/37, Code 29/33, Comms 41/46, Reader 40/45,
+  // Wiki 23/26 — clientWidth/scrollWidth), ~187px of text against a budget the sidebar no
+  // longer had room for. Widening to 272px (`md:w-68`) closed most of that but left every
+  // label 1px short (Tasks 36/37, Code 32/33, Comms 45/46, Reader 44/45, Wiki 25/26) — still
+  // clipping all five, just barely. Rather than shrink the labels, type, or padding, the
+  // sidebar widened once more to 280px (`app-shell.tsx`, `md:w-70`) — the module-switcher E2E
+  // spec holds every label to "shown in full, inside the border" with the fifth added.
+  { module: 'wiki', label: 'Wiki', href: '/wiki' },
   { module: 'comms', label: 'Comms', href: '/comms' },
 ];
 

@@ -20,6 +20,7 @@ import { ReaderProvider } from '@/lib/stores/reader-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import { WeeklyPlanProvider } from '@/lib/stores/weekly-plan-store';
+import { WikiProvider } from '@/lib/stores/wiki-store';
 import type {
   CodeStory,
   CommAccount,
@@ -41,6 +42,8 @@ import type {
   ReaderPublicationListItem,
   WeeklyPlan,
   WeeklyPlanSummary,
+  WikiPageIndexRow,
+  WikiSync,
 } from '@/lib/types';
 
 /**
@@ -99,6 +102,17 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
     publications?: ReaderPublicationListItem[];
     candidates?: ReaderCandidate[];
   };
+  /**
+   * The wiki's page index and sync row, plus what the shell knows about the repo. The default —
+   * no pages, no repo, not writable — is the Work instance, and it is what keeps every existing
+   * test rendering exactly as before: a not-writable wiki shows no send affordance anywhere.
+   */
+  wiki?: {
+    pages?: WikiPageIndexRow[];
+    sync?: WikiSync | null;
+    repo?: string | null;
+    writable?: boolean;
+  };
 }
 
 export function renderWithProviders(
@@ -115,70 +129,80 @@ export function renderWithProviders(
     commsSettings = {},
     reader = {},
     readerSettings = {},
+    wiki = {},
     ...options
   }: ProviderRenderOptions = {},
 ) {
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <ToastProvider>
-        <FoldersProvider initialFolders={folders}>
-          {/* Above TasksProvider, as in the shell layout — the store calls its remapId when a
+        {/* Directly inside ToastProvider and outside every other store, as in the shell layout:
+        the Reader overview and the Inbox menus read `writable` from it, and TasksProvider does
+        too. */}
+        <WikiProvider
+          initialPages={wiki.pages ?? []}
+          initialSync={wiki.sync ?? null}
+          config={{ repo: wiki.repo ?? null, writable: wiki.writable ?? false }}
+        >
+          <FoldersProvider initialFolders={folders}>
+            {/* Above TasksProvider, as in the shell layout — the store calls its remapId when a
           create reconciles (ALF-199). */}
-          <ExpansionProvider>
-            <TasksProvider initialTasks={tasks}>
-              <ActiveEditorProvider>
-                <InboxSelectionProvider>
-                  <DepartingItemsProvider>
-                    <CodeProvider
-                      initialProjects={projects}
-                      initialEpics={epics}
-                      initialStories={stories}
-                    >
-                      <CodeFilterProvider>
-                        <FolderSortProvider>
-                          <WeeklyPlanProvider
-                            initialIndex={weeklyPlans.index}
-                            initialLatest={weeklyPlans.latest}
-                          >
-                            <HabitsProvider
-                              initialHabits={habits.habits}
-                              initialEntries={habits.entries}
-                              initialStats={habits.stats ?? {}}
-                              serverToday={habits.today}
+            <ExpansionProvider>
+              <TasksProvider initialTasks={tasks}>
+                <ActiveEditorProvider>
+                  <InboxSelectionProvider>
+                    <DepartingItemsProvider>
+                      <CodeProvider
+                        initialProjects={projects}
+                        initialEpics={epics}
+                        initialStories={stories}
+                      >
+                        <CodeFilterProvider>
+                          <FolderSortProvider>
+                            <WeeklyPlanProvider
+                              initialIndex={weeklyPlans.index}
+                              initialLatest={weeklyPlans.latest}
                             >
-                              <CommsProvider
-                                initialSeed={makeCommsSeed(comms)}
-                                initialFailed={comms.failed ?? false}
+                              <HabitsProvider
+                                initialHabits={habits.habits}
+                                initialEntries={habits.entries}
+                                initialStats={habits.stats ?? {}}
+                                serverToday={habits.today}
                               >
-                                <CommsSettingsProvider
-                                  initialPeople={commsSettings.people ?? []}
-                                  initialRubrics={commsSettings.rubrics ?? []}
-                                  initialCorrections={commsSettings.corrections ?? []}
+                                <CommsProvider
+                                  initialSeed={makeCommsSeed(comms)}
+                                  initialFailed={comms.failed ?? false}
                                 >
-                                  <ReaderProvider
-                                    initialPosts={reader.posts ?? []}
-                                    initialHealth={{ health: reader.health, account: undefined }}
+                                  <CommsSettingsProvider
+                                    initialPeople={commsSettings.people ?? []}
+                                    initialRubrics={commsSettings.rubrics ?? []}
+                                    initialCorrections={commsSettings.corrections ?? []}
                                   >
-                                    <ReaderSettingsProvider
-                                      initialPublications={readerSettings.publications ?? []}
-                                      initialCandidates={readerSettings.candidates ?? []}
+                                    <ReaderProvider
+                                      initialPosts={reader.posts ?? []}
+                                      initialHealth={{ health: reader.health, account: undefined }}
                                     >
-                                      {children}
-                                    </ReaderSettingsProvider>
-                                  </ReaderProvider>
-                                </CommsSettingsProvider>
-                              </CommsProvider>
-                            </HabitsProvider>
-                          </WeeklyPlanProvider>
-                        </FolderSortProvider>
-                      </CodeFilterProvider>
-                    </CodeProvider>
-                  </DepartingItemsProvider>
-                </InboxSelectionProvider>
-              </ActiveEditorProvider>
-            </TasksProvider>
-          </ExpansionProvider>
-        </FoldersProvider>
+                                      <ReaderSettingsProvider
+                                        initialPublications={readerSettings.publications ?? []}
+                                        initialCandidates={readerSettings.candidates ?? []}
+                                      >
+                                        {children}
+                                      </ReaderSettingsProvider>
+                                    </ReaderProvider>
+                                  </CommsSettingsProvider>
+                                </CommsProvider>
+                              </HabitsProvider>
+                            </WeeklyPlanProvider>
+                          </FolderSortProvider>
+                        </CodeFilterProvider>
+                      </CodeProvider>
+                    </DepartingItemsProvider>
+                  </InboxSelectionProvider>
+                </ActiveEditorProvider>
+              </TasksProvider>
+            </ExpansionProvider>
+          </FoldersProvider>
+        </WikiProvider>
         {/* The toast viewport (normally mounted in AppShell) so components that fire a
             toast — e.g. the gate in TaskRow — render their message under test. */}
         <ToastViewport />

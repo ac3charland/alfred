@@ -6,7 +6,8 @@ import { CodeProvider } from '@/lib/stores/code-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { SearchProvider, useSearchActions } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
-import type { CodeStory, Folder, Item } from '@/lib/types';
+import type { CodeStory, Folder, Item, WikiPageIndexRow } from '@/lib/types';
+import { makeWikiPage, toWikiIndexRow } from '@/lib/wiki/fixtures';
 
 const FOLDERS: Folder[] = [
   {
@@ -92,6 +93,15 @@ const STORY: CodeStory = {
   priority: 1,
 };
 
+const WIKI_PAGES: WikiPageIndexRow[] = [
+  toWikiIndexRow(
+    makeWikiPage('wiki/concepts/firewall-triage.md', {
+      title: 'Firewall triage',
+      summary: 'How incoming messages are screened before they reach the Inbox.',
+    }),
+  ),
+];
+
 /** Seed the live query so the anchored dropdown renders with mixed results for the snapshot. */
 function SeedQuery({ query }: { query: string }) {
   const { setQuery } = useSearchActions();
@@ -108,6 +118,9 @@ const meta = {
     layout: 'fullscreen',
     // The results panel is portaled to <body>, so capture the whole page, not just the field.
     visualTest: { target: 'body' },
+    // The global preview decorator already mounts WikiProvider, seeded from `store.wiki` here —
+    // no private WikiProvider needed in this file's own decorators below.
+    store: { wiki: { pages: WIKI_PAGES } },
   },
   decorators: [
     (Story) => (
@@ -132,5 +145,5 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** The top-bar field with its open results dropdown showing mixed Tasks + Stories matches. */
+/** The top-bar field with its open results dropdown showing mixed Tasks + Stories + Wiki matches. */
 export const OpenWithResults: Story = {};

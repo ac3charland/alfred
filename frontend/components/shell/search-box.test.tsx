@@ -10,7 +10,9 @@ import { FoldersProvider } from '@/lib/stores/folders-store';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
-import type { CodeStory, Item } from '@/lib/types';
+import { WikiProvider } from '@/lib/stores/wiki-store';
+import type { CodeStory, Item, WikiPageIndexRow } from '@/lib/types';
+import { makeWikiPage, toWikiIndexRow } from '@/lib/wiki/fixtures';
 
 // The desktop field renders its popover only on a desktop viewport; report a match for the
 // `(min-width: 768px)` query so the dropdown mounts under jsdom.
@@ -88,24 +90,32 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
   };
 }
 
-function renderSearchBox(seed: { tasks?: Item[]; stories?: CodeStory[] } = {}) {
+function renderSearchBox(
+  seed: { tasks?: Item[]; stories?: CodeStory[]; pages?: WikiPageIndexRow[] } = {},
+) {
   return render(
     <ToastProvider>
-      <FoldersProvider initialFolders={[]}>
-        <ExpansionProvider>
-          <TasksProvider initialTasks={seed.tasks ?? []}>
-            <CodeProvider
-              initialProjects={[]}
-              initialEpics={[]}
-              initialStories={seed.stories ?? []}
-            >
-              <SearchProvider>
-                <SearchBox placement="desktop" />
-              </SearchProvider>
-            </CodeProvider>
-          </TasksProvider>
-        </ExpansionProvider>
-      </FoldersProvider>
+      <WikiProvider
+        initialPages={seed.pages ?? []}
+        initialSync={null}
+        config={{ repo: null, writable: false }}
+      >
+        <FoldersProvider initialFolders={[]}>
+          <ExpansionProvider>
+            <TasksProvider initialTasks={seed.tasks ?? []}>
+              <CodeProvider
+                initialProjects={[]}
+                initialEpics={[]}
+                initialStories={seed.stories ?? []}
+              >
+                <SearchProvider>
+                  <SearchBox placement="desktop" />
+                </SearchProvider>
+              </CodeProvider>
+            </TasksProvider>
+          </ExpansionProvider>
+        </FoldersProvider>
+      </WikiProvider>
     </ToastProvider>,
   );
 }
@@ -138,7 +148,7 @@ describe('SearchBox', () => {
     expect(input).toHaveFocus();
   });
 
-  it('opens the dropdown and filters across tasks and stories as you type', async () => {
+  it('opens the dropdown and filters across tasks, stories and wiki pages as you type', async () => {
     const user = userEvent.setup();
     renderSearchBox({
       tasks: [
@@ -146,6 +156,7 @@ describe('SearchBox', () => {
         makeItem({ id: 't2', title: 'Buy groceries' }),
       ],
       stories: [makeStory()],
+      pages: [toWikiIndexRow(makeWikiPage('wiki/concepts/firewall.md', { title: 'Firewall' }))],
     });
 
     await user.click(screen.getByRole('combobox'));
@@ -154,7 +165,31 @@ describe('SearchBox', () => {
     const listbox = await screen.findByRole('listbox');
     expect(within(listbox).getByText('Firewall triage UI')).toBeInTheDocument();
     expect(within(listbox).getByText('Firewall triage story')).toBeInTheDocument();
+    expect(within(listbox).getByText('Firewall')).toBeInTheDocument();
     expect(within(listbox).queryByText('Buy groceries')).not.toBeInTheDocument();
+  });
+
+  it('shows a Wiki group with the wiki badge and the new empty-query copy', async () => {
+    const user = userEvent.setup();
+    renderSearchBox({
+      pages: [
+        toWikiIndexRow(
+          makeWikiPage('wiki/concepts/habit-stacking.md', { title: 'Habit stacking' }),
+        ),
+      ],
+    });
+
+    const input = screen.getByRole('combobox', { name: 'Search tasks, stories, and wiki pages' });
+    await user.click(input);
+    expect(screen.getByText('Search tasks, stories, and wiki pages')).toBeInTheDocument();
+
+    await user.keyboard('habit');
+    const listbox = await screen.findByRole('listbox');
+    // "Wiki" appears twice: the group label and the row's badge.
+    expect(within(listbox).getAllByText('Wiki')).toHaveLength(2);
+    const row = within(listbox).getByText('Habit stacking').closest('li');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText('Wiki')).toBeInTheDocument();
   });
 
   it('moves the active option with ArrowDown via aria-activedescendant', async () => {
@@ -173,6 +208,116 @@ describe('SearchBox', () => {
     expect(input).toHaveAttribute('aria-activedescendant', 'search-option-task-t1');
     await user.keyboard('{ArrowDown}');
     expect(input).toHaveAttribute('aria-activedescendant', 'search-option-task-t2');
+  });
+
+  it('moves the active option with ArrowDown across the tasks → wiki group boundary', async () => {
+    const user = userEvent.setup();
+    renderSearchBox({
+      tasks: [makeItem({ id: 't1', title: 'Firewall task' })],
+      pages: [
+        toWikiIndexRow(makeWikiPage('wiki/concepts/firewall.md', { title: 'Firewall page' })),
+      ],
+    });
+
+    const input = screen.getByRole('combobox');
+    await user.click(input);
+    await user.keyboard('firewall');
+
+    expect(input).toHaveAttribute('aria-activedescendant', 'search-option-task-t1');
+    await user.keyboard('{ArrowDown}');
+    expect(input).toHaveAttribute(
+      'aria-activedescendant',
+      `search-option-wiki-${encodeURIComponent('wiki/concepts/firewall.md')}`,
+    );
+  });
+
+  it('moves across all three groups, keeping each row aria-selected in sync with the activedescendant', async () => {
+    const user = userEvent.setup();
+    const pushState = jest.spyOn(globalThis.history, 'pushState');
+    renderSearchBox({
+      tasks: [makeItem({ id: 't1', title: 'Firewall task' })],
+      stories: [makeStory({ item_id: 's1', title: 'Firewall story' })],
+      pages: [
+        toWikiIndexRow(makeWikiPage('wiki/concepts/firewall.md', { title: 'Firewall page' })),
+      ],
+    });
+
+    const input = screen.getByRole('combobox');
+    await user.click(input);
+    await user.keyboard('firewall');
+
+    const wikiOptionId = `search-option-wiki-${encodeURIComponent('wiki/concepts/firewall.md')}`;
+    const wikiRow = screen.getByRole('option', { name: /Firewall page/ });
+    const storyRow = screen.getByRole('option', { name: /Firewall story/ });
+
+    // Task → Story → Wiki. Every group's baseIndex must land the wiki row at its own index,
+    // never overlapping the story group's — a wrong baseIndex would make two rows claim the
+    // same activedescendant, or leave a row's own aria-selected out of sync with it.
+    expect(input).toHaveAttribute('aria-activedescendant', 'search-option-task-t1');
+    await user.keyboard('{ArrowDown}');
+    expect(input).toHaveAttribute('aria-activedescendant', 'search-option-story-s1');
+    expect(storyRow).toHaveAttribute('aria-selected', 'true');
+    expect(wikiRow).toHaveAttribute('aria-selected', 'false');
+
+    await user.keyboard('{ArrowDown}');
+    expect(input).toHaveAttribute('aria-activedescendant', wikiOptionId);
+    expect(wikiRow).toHaveAttribute('aria-selected', 'true');
+    expect(storyRow).toHaveAttribute('aria-selected', 'false');
+
+    await user.keyboard('{ArrowUp}');
+    expect(input).toHaveAttribute('aria-activedescendant', 'search-option-story-s1');
+    expect(storyRow).toHaveAttribute('aria-selected', 'true');
+    expect(wikiRow).toHaveAttribute('aria-selected', 'false');
+
+    // Hovering the wiki row makes it active without the keyboard, and Enter opens it.
+    await user.hover(wikiRow);
+    expect(input).toHaveAttribute('aria-activedescendant', wikiOptionId);
+    await user.keyboard('{Enter}');
+
+    expect(pushState).toHaveBeenCalledWith(null, '', '/wiki/concepts/firewall');
+  });
+
+  it('gives each result kind its own badge variant class', async () => {
+    const user = userEvent.setup();
+    renderSearchBox({
+      tasks: [makeItem({ id: 't1', title: 'Firewall task' })],
+      stories: [makeStory({ item_id: 's1', title: 'Firewall story' })],
+      pages: [
+        toWikiIndexRow(makeWikiPage('wiki/concepts/firewall.md', { title: 'Firewall page' })),
+      ],
+    });
+
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('firewall');
+
+    const taskRow = screen.getByRole('option', { name: /Firewall task/ });
+    const storyRow = screen.getByRole('option', { name: /Firewall story/ });
+    const wikiRow = screen.getByRole('option', { name: /Firewall page/ });
+
+    // A swapped or missing entry in the kind→badge lookup shows up as the wrong variant class,
+    // not just the wrong label — pin the class, not only the text.
+    expect(within(taskRow).getByText('Task')).toHaveClass('bg-accent-teal/15');
+    expect(within(storyRow).getByText('Code')).toHaveClass('bg-amber-500/15');
+    expect(within(wikiRow).getByText('Wiki')).toHaveClass('bg-accent-violet/15');
+  });
+
+  it('selects a wiki result on Enter, pushing its /wiki/<section>/<name> href', async () => {
+    const user = userEvent.setup();
+    const pushState = jest.spyOn(globalThis.history, 'pushState');
+    renderSearchBox({
+      pages: [
+        toWikiIndexRow(
+          makeWikiPage('wiki/concepts/habit-stacking.md', { title: 'Habit stacking' }),
+        ),
+      ],
+    });
+
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('habit');
+    await user.keyboard('{Enter}');
+
+    expect(pushState).toHaveBeenCalledWith(null, '', '/wiki/concepts/habit-stacking');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
   it('navigates to a task and fires the row-focus event on Enter', async () => {

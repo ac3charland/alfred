@@ -35,6 +35,7 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Code' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Comms' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reader' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Wiki' })).toBeInTheDocument();
   });
 
   it('points each segment at its module default view', () => {
@@ -44,6 +45,19 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Code' })).toHaveAttribute('href', '/code');
     expect(screen.getByRole('link', { name: 'Comms' })).toHaveAttribute('href', '/comms');
     expect(screen.getByRole('link', { name: 'Reader' })).toHaveAttribute('href', '/reader');
+    expect(screen.getByRole('link', { name: 'Wiki' })).toHaveAttribute('href', '/wiki');
+  });
+
+  it('marks Wiki active on its landing route and on a page beneath it', () => {
+    mockPathname.mockReturnValue('/wiki');
+    const { rerender } = render(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Wiki' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Tasks' })).not.toHaveAttribute('aria-current');
+
+    mockPathname.mockReturnValue('/wiki/concepts/habit-stacking');
+    rerender(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Wiki' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Wiki' })).toHaveClass('text-accent-violet');
   });
 
   it('marks Tasks active on the inbox/landing route', () => {
@@ -157,7 +171,7 @@ describe('ViewSwitcher', () => {
   it('grows each segment from its own label and shares out only the leftover width', () => {
     render(<ViewSwitcher />);
 
-    for (const label of ['Tasks', 'Code', 'Comms', 'Reader']) {
+    for (const label of ['Tasks', 'Code', 'Comms', 'Reader', 'Wiki']) {
       const segment = screen.getByRole('link', { name: label });
       // `flex-auto` keeps each segment's own label as its starting width; `flex-1` would
       // give all four equal quarters and clip the longest label ("Comms") in the sidebar.
@@ -177,7 +191,7 @@ describe('ViewSwitcher', () => {
   it('sizes each segment at 13px/px-1, the type the widened 256px sidebar fits', () => {
     render(<ViewSwitcher />);
 
-    for (const label of ['Tasks', 'Code', 'Comms', 'Reader']) {
+    for (const label of ['Tasks', 'Code', 'Comms', 'Reader', 'Wiki']) {
       const segment = screen.getByRole('link', { name: label });
       expect(segment).toHaveClass('text-[13px]');
       expect(segment).toHaveClass('px-1');
@@ -190,7 +204,7 @@ describe('ViewSwitcher', () => {
     render(<ViewSwitcher />);
 
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
-    expect(labels).toEqual(['Tasks', 'Code', 'Reader', 'Comms']);
+    expect(labels).toEqual(['Tasks', 'Code', 'Reader', 'Wiki', 'Comms']);
   });
 
   it('badges the Comms segment with how many messages are waiting for a reply (ALF-222)', () => {

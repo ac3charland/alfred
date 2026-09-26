@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Check, MoreHorizontal, Plus } from 'lucide-react';
 import * as React from 'react';
 
+import { Badge } from './badge';
 import { FieldLabel } from './field-label';
 import { IconButton } from './icon-button';
 import { Spinner } from './spinner';
@@ -57,6 +58,22 @@ function GalleryPanel() {
       <section className="flex flex-col gap-2">
         <FieldLabel htmlFor="gallery-field">Text field</FieldLabel>
         <TextField id="gallery-field" defaultValue="Write the atoms audit" className="w-full" />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <FieldLabel>Badges</FieldLabel>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="accent" className="font-medium">
+            Task
+          </Badge>
+          <Badge variant="alert" className="font-medium">
+            Code
+          </Badge>
+          <Badge variant="wiki" className="font-medium">
+            Wiki
+          </Badge>
+          <Badge variant="muted">Concept</Badge>
+        </div>
       </section>
 
       <section className="flex items-center gap-4">

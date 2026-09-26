@@ -66,7 +66,9 @@ describe('ShellMobileNav', () => {
 
     // The drawer's search field must not steal focus on open — auto-focusing it pops the
     // mobile keyboard and (via onFocus) opens the results dropdown every time the drawer opens.
-    const search = await screen.findByRole('combobox', { name: 'Search tasks and stories' });
+    const search = await screen.findByRole('combobox', {
+      name: 'Search tasks, stories, and wiki pages',
+    });
     expect(search).not.toHaveFocus();
   });
 
@@ -75,7 +77,7 @@ describe('ShellMobileNav', () => {
     renderMobileNav();
 
     await user.click(screen.getByRole('button', { name: 'Open navigation' }));
-    await screen.findByRole('combobox', { name: 'Search tasks and stories' });
+    await screen.findByRole('combobox', { name: 'Search tasks, stories, and wiki pages' });
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
@@ -87,7 +89,7 @@ describe('ShellMobileNav', () => {
     await user.click(screen.getByRole('button', { name: 'Open navigation' }));
 
     expect(
-      await screen.findByRole('combobox', { name: 'Search tasks and stories' }),
+      await screen.findByRole('combobox', { name: 'Search tasks, stories, and wiki pages' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tasks' })).toBeInTheDocument();
   });
@@ -117,6 +119,18 @@ describe('ShellMobileNav', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Reader' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Navigation' })).not.toBeInTheDocument();
+  });
+
+  it('swaps in WikiNav when the switcher moves to Wiki', async () => {
+    const user = userEvent.setup();
+    renderMobileNav();
+
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await user.click(screen.getByRole('link', { name: 'Wiki' }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Wiki' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Navigation' })).not.toBeInTheDocument();
   });
 

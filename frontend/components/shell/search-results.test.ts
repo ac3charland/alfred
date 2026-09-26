@@ -1,5 +1,6 @@
 import { buildResults, flattenResults } from '@/components/shell/search-results';
-import type { CodeStory, Folder, Item } from '@/lib/types';
+import type { CodeStory, Folder, Item, WikiPageIndexRow } from '@/lib/types';
+import { makeWikiPage, toWikiIndexRow } from '@/lib/wiki/fixtures';
 
 /** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
 const DISPATCHED_AT = '2025-01-02T00:00:00Z';
@@ -167,14 +168,116 @@ describe('buildResults', () => {
 });
 
 describe('flattenResults', () => {
-  it('concatenates tasks then stories in order', () => {
+  it('concatenates tasks, then stories, then wiki, in order', () => {
     const results = buildResults(
       'firewall',
       [makeItem({ title: 'firewall task' })],
       [makeStory({ title: 'firewall story' })],
+      [],
+      false,
+      [toWikiIndexRow(makeWikiPage('wiki/concepts/firewall.md', { title: 'Firewall' }))],
     );
     const flat = flattenResults(results);
-    expect(flat.map((result) => result.kind)).toEqual(['task', 'story']);
+    expect(flat.map((result) => result.kind)).toEqual(['task', 'story', 'wiki']);
+  });
+});
+
+function wikiIndexPage(path: string, overrides: Partial<WikiPageIndexRow> = {}): WikiPageIndexRow {
+  return toWikiIndexRow(makeWikiPage(path, overrides));
+}
+
+describe('wiki results', () => {
+  it('matches on title, summary, and tags via rankWikiPage, ranked ahead of a summary/tag hit', () => {
+    const titlePrefix = wikiIndexPage('wiki/concepts/habit-stacking.md', {
+      title: 'Habit stacking',
+    });
+    const summaryOnly = wikiIndexPage('wiki/concepts/other.md', {
+      title: 'Unrelated',
+      summary: 'mentions habit here',
+    });
+    const tagOnly = wikiIndexPage('wiki/concepts/tagged.md', {
+      title: 'Unrelated too',
+      summary: 'nothing here',
+      tags: ['habit'],
+    });
+    const miss = wikiIndexPage('wiki/concepts/miss.md', { title: 'nope', summary: 'nothing' });
+    const results = buildResults('habit', [], [], [], false, [
+      summaryOnly,
+      titlePrefix,
+      tagOnly,
+      miss,
+    ]);
+    expect(results.wiki.map((result) => result.id)).toEqual([
+      titlePrefix.path,
+      summaryOnly.path,
+      tagOnly.path,
+    ]);
+  });
+
+  it('does not match on body text — the index row carries no body field to search', () => {
+    const bodyOnly = makeWikiPage('wiki/concepts/body-only.md', {
+      title: 'Unrelated title',
+      summary: 'unrelated summary',
+      tags: [],
+      body: 'mentions habit deep in the body text',
+    });
+    const results = buildResults('habit', [], [], [], false, [toWikiIndexRow(bodyOnly)]);
+    expect(results.wiki).toHaveLength(0);
+  });
+
+  it('ranks a title-prefix match ahead of an older-but-otherwise-newer summary/tag match', () => {
+    // Rank must win over recency: a plain updated-first tie-break would put the newer,
+    // worse-ranked summary hit ahead of the older, better-ranked title match.
+    const prefix = wikiIndexPage('wiki/concepts/habit-stacking.md', {
+      title: 'Habit stacking',
+      updated: '2026-01-01',
+    });
+    const summaryHit = wikiIndexPage('wiki/concepts/other.md', {
+      title: 'Unrelated',
+      summary: 'mentions habit here',
+      updated: '2026-09-01',
+    });
+    const results = buildResults('habit', [], [], [], false, [summaryHit, prefix]);
+    expect(results.wiki.map((result) => result.id)).toEqual([prefix.path, summaryHit.path]);
+  });
+
+  it('breaks a rank tie by `updated` descending, with a never-updated page last', () => {
+    const older = wikiIndexPage('wiki/concepts/a.md', { title: 'Habit a', updated: '2026-01-01' });
+    const newer = wikiIndexPage('wiki/concepts/b.md', { title: 'Habit b', updated: '2026-06-01' });
+    const never = wikiIndexPage('wiki/concepts/c.md', { title: 'Habit c', updated: null });
+    const results = buildResults('habit', [], [], [], false, [older, never, newer]);
+    expect(results.wiki.map((result) => result.id)).toEqual([newer.path, older.path, never.path]);
+  });
+
+  it('caps wiki matches at 8 and reports the truncated count', () => {
+    const pages = Array.from({ length: 11 }, (_, index) =>
+      wikiIndexPage(`wiki/concepts/habit-${String(index)}.md`, { title: `Habit ${String(index)}` }),
+    );
+    const results = buildResults('habit', [], [], [], false, pages);
+    expect(results.wiki).toHaveLength(8);
+    expect(results.truncated.wiki).toBe(3);
+  });
+
+  it('maps a page to a SearchResult with the wiki href, summary subtitle, and never completed', () => {
+    const habit = wikiIndexPage('wiki/concepts/habit-stacking.md', {
+      title: 'Habit stacking',
+      summary: 'Anchoring a habit.',
+    });
+    const results = buildResults('habit', [], [], [], false, [habit]);
+    expect(results.wiki[0]).toMatchObject({
+      kind: 'wiki',
+      id: 'wiki/concepts/habit-stacking.md',
+      title: 'Habit stacking',
+      subtitle: 'Anchoring a habit.',
+      href: '/wiki/concepts/habit-stacking',
+      completed: false,
+    });
+  });
+
+  it('is unaffected by includeCompleted, which only governs tasks and stories', () => {
+    const habit = wikiIndexPage('wiki/concepts/habit-stacking.md', { title: 'Habit stacking' });
+    const results = buildResults('habit', [], [], [], true, [habit]);
+    expect(results.wiki).toHaveLength(1);
   });
 });
 

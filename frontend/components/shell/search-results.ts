@@ -2,7 +2,9 @@ import { storyBoardHref } from '@/lib/code/board-links';
 import { FACTORY_STATE_LABELS } from '@/lib/stores/code-store';
 import { residentFolderId } from '@/lib/tasks/residency';
 import { resolveRoot, taskDestination } from '@/lib/tasks/task-location';
-import type { CodeStory, Folder, Item } from '@/lib/types';
+import type { CodeStory, Folder, Item, WikiPageIndexRow } from '@/lib/types';
+import { rankWikiPage } from '@/lib/wiki/match';
+import { wikiPageHref } from '@/lib/wiki/sections';
 
 /**
  * Global search — the pure filter/rank/cap layer, kept free of React and the DOM so the
@@ -38,16 +40,34 @@ export type SearchResult =
       href: string;
       completed: boolean;
       story: CodeStory;
+    }
+  | {
+      kind: 'wiki';
+      /** The page's path — also the ⌘P row's DOM id key. */
+      id: string;
+      title: string;
+      /** The page's summary. */
+      subtitle: string;
+      href: string;
+      /** A wiki page is never "completed"; kept so every result shares one row shape. */
+      completed: boolean;
+      page: WikiPageIndexRow;
     };
 
 export interface SearchResults {
   tasks: SearchResult[];
   stories: SearchResult[];
+  wiki: SearchResult[];
   /** How many further matches were dropped by the per-group cap, per group. */
-  truncated: { tasks: number; stories: number };
+  truncated: { tasks: number; stories: number; wiki: number };
 }
 
-const EMPTY: SearchResults = { tasks: [], stories: [], truncated: { tasks: 0, stories: 0 } };
+const EMPTY: SearchResults = {
+  tasks: [],
+  stories: [],
+  wiki: [],
+  truncated: { tasks: 0, stories: 0, wiki: 0 },
+};
 
 /** Trim + lowercase so matching is whitespace- and case-insensitive. */
 function normalize(query: string): string {
@@ -68,6 +88,21 @@ function rankTitleNotes(query: string, title: string, notes: string): number | n
 /** Sort by rank ascending, breaking ties by recency (created_at descending). */
 function byRankThenRecency(a: { rank: number; createdAt: string }, b: typeof a): number {
   return a.rank - b.rank || b.createdAt.localeCompare(a.createdAt);
+}
+
+/**
+ * Sort wiki matches by rank ascending, then `updated` descending, with a never-updated page
+ * (`null`) sorting last within its rank. Plain string comparison, never `localeCompare` — an
+ * ISO `YYYY-MM-DD` date orders correctly as a string and stays independent of the machine's
+ * locale (the `sections.ts` convention).
+ */
+function byWikiRankThenUpdated(a: { rank: number; updated: string | null }, b: typeof a): number {
+  if (a.rank !== b.rank) return a.rank - b.rank;
+  if (a.updated === b.updated) return 0;
+  if (a.updated === null) return 1;
+  if (b.updated === null) return -1;
+  if (a.updated > b.updated) return -1;
+  return 1;
 }
 
 /**
@@ -108,6 +143,10 @@ function isStoryTerminal(story: CodeStory): boolean {
  * Completed tasks and terminal (done/abandoned) stories are excluded unless `includeCompleted`
  * is set — a search is usually chasing something still live, and a done item that shares the
  * query term would otherwise crowd out the active matches the search is actually for.
+ *
+ * Wiki pages match on `rankWikiPage` — the same title/summary/tag matcher the Wiki module's
+ * instant search uses, never the body — ranked, then broken by `updated` descending.
+ * `includeCompleted` doesn't apply to wiki pages; there is no such state.
  */
 export function buildResults(
   query: string,
@@ -115,6 +154,7 @@ export function buildResults(
   stories: readonly CodeStory[],
   folders: readonly Folder[] = [],
   includeCompleted = false,
+  pages: readonly WikiPageIndexRow[] = [],
 ): SearchResults {
   const q = normalize(query);
   if (q === '') return EMPTY;
@@ -171,25 +211,52 @@ export function buildResults(
     });
   }
 
+  const scoredPages: { result: SearchResult; rank: number; updated: string | null }[] = [];
+  for (const page of pages) {
+    const rank = rankWikiPage(query, page);
+    if (rank === null) continue;
+    scoredPages.push({
+      rank,
+      updated: page.updated,
+      result: {
+        kind: 'wiki',
+        id: page.path,
+        title: page.title,
+        subtitle: page.summary,
+        href: wikiPageHref(page.path),
+        completed: false,
+        page,
+      },
+    });
+  }
+
   scoredTasks.sort(byRankThenRecency);
   scoredStories.sort(byRankThenRecency);
+  scoredPages.sort(byWikiRankThenUpdated);
 
   return {
     tasks: scoredTasks.slice(0, RESULTS_PER_GROUP).map((entry) => entry.result),
     stories: scoredStories.slice(0, RESULTS_PER_GROUP).map((entry) => entry.result),
+    wiki: scoredPages.slice(0, RESULTS_PER_GROUP).map((entry) => entry.result),
     truncated: {
       tasks: Math.max(0, scoredTasks.length - RESULTS_PER_GROUP),
       stories: Math.max(0, scoredStories.length - RESULTS_PER_GROUP),
+      wiki: Math.max(0, scoredPages.length - RESULTS_PER_GROUP),
     },
   };
 }
 
-/** The two groups concatenated into one ordered list for keyboard navigation. */
+/** The three groups concatenated into one ordered list for keyboard navigation. */
 export function flattenResults(results: SearchResults): SearchResult[] {
-  return [...results.tasks, ...results.stories];
+  return [...results.tasks, ...results.stories, ...results.wiki];
 }
 
-/** A stable DOM id for a result's `<li role="option">` (for `aria-activedescendant`). */
+/**
+ * A stable DOM id for a result's `<li role="option">` (for `aria-activedescendant`). A wiki
+ * result's id is its repo path, which — unlike a task/story UUID — can carry a character (a
+ * literal space, say) that isn't valid in an HTML id, so it's percent-encoded first.
+ */
 export function optionDomId(result: SearchResult): string {
-  return `search-option-${result.kind}-${result.id}`;
+  const key = result.kind === 'wiki' ? encodeURIComponent(result.id) : result.id;
+  return `search-option-${result.kind}-${key}`;
 }

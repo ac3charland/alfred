@@ -40,4 +40,12 @@ describe('ShellNav', () => {
     expect(screen.getByRole('navigation', { name: 'Reader' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reading list' })).toHaveAttribute('href', '/reader');
   });
+
+  it('renders WikiNav on a Wiki route', () => {
+    mockPathname.mockReturnValue('/wiki/concepts');
+    renderWithProviders(<ShellNav />);
+
+    expect(screen.getByRole('navigation', { name: 'Wiki' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'All pages' })).toHaveAttribute('href', '/wiki');
+  });
 });

@@ -343,10 +343,12 @@ describe('CommsQueueView — a tab that has been away', () => {
   it('re-reads the view on return, so an hour away does not read as an outage', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(OPENED);
-    // The Reader store the providers mount refreshes on the same signal, so the automocked
-    // client has to answer it too — otherwise its `undefined` return is awaited as a promise.
+    // The Reader and Wiki stores the providers mount refresh on the same signal, so the
+    // automocked client has to answer both too — otherwise their `undefined` return is awaited
+    // as a promise.
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchWikiPages.mockResolvedValue({ pages: [], sync: null });
     // What the poller has been doing the whole hour the tab was away.
     jest.mocked(api).fetchCommsSnapshot.mockResolvedValue(
       makeCommsSeed({
@@ -374,6 +376,7 @@ describe('CommsQueueView — a tab that has been away', () => {
   it('brings in a message that arrived while it was away', async () => {
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchWikiPages.mockResolvedValue({ pages: [], sync: null });
     const arrived = makeCommMessage(LIVE.id, {
       tier: 'asap',
       judged_by: 'model',
@@ -401,6 +404,7 @@ describe('CommsQueueView — a tab that has been away', () => {
     jest.setSystemTime(OPENED);
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchWikiPages.mockResolvedValue({ pages: [], sync: null });
     const account = makeCommAccount('RealPlay', {
       id: '00000000-0000-4000-8000-0000000000c1',
       expected_interval_seconds: 60,
@@ -478,6 +482,7 @@ describe('CommsQueueView — a tab that has been away', () => {
   it('shows nothing as the queue until a read lands when the shell could not load it', async () => {
     jest.mocked(api).fetchReaderPosts.mockResolvedValue([]);
     jest.mocked(api).fetchReaderHealth.mockResolvedValue({ health: undefined, account: undefined });
+    jest.mocked(api).fetchWikiPages.mockResolvedValue({ pages: [], sync: null });
     const arrived = makeCommMessage(LIVE.id, {
       tier: 'asap',
       judged_by: 'model',

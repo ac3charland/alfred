@@ -15,6 +15,7 @@ import { InboxSelectionProvider } from '../lib/stores/inbox-selection-store';
 import { TasksProvider } from '../lib/stores/tasks-store';
 import { ToastProvider } from '../lib/stores/toast-store';
 import { WeeklyPlanProvider } from '../lib/stores/weekly-plan-store';
+import { WikiProvider } from '../lib/stores/wiki-store';
 import type {
   CommAccount,
   CommClassifierHealth,
@@ -29,6 +30,8 @@ import type {
   Item,
   WeeklyPlan,
   WeeklyPlanSummary,
+  WikiPageIndexRow,
+  WikiSync,
 } from '../lib/types';
 
 /** Per-story seeds for the data providers, set via `parameters.store`. */
@@ -52,6 +55,17 @@ interface StoreSeed {
     rubrics?: CommRubric[];
     corrections?: CommCorrection[];
   };
+  /**
+   * The wiki's page index and what the shell knows about the repo. Defaults to no pages, no
+   * repo, not writable — so a story shows a send affordance only when it opts in with
+   * `writable: true`.
+   */
+  wiki?: {
+    pages?: WikiPageIndexRow[];
+    sync?: WikiSync | null;
+    repo?: string | null;
+    writable?: boolean;
+  };
 }
 
 const preview: Preview = {
@@ -64,63 +78,74 @@ const preview: Preview = {
       return React.createElement(
         ToastProvider,
         null,
+        // WikiProvider directly inside ToastProvider, outside every other store, as in the shell
+        // layout — the Reader and Inbox components read `writable` from it.
         React.createElement(
-          FoldersProvider,
-          { initialFolders: seed.folders ?? [] },
-          // ExpansionProvider wraps TasksProvider, as in the shell layout: the store calls its
-          // remapId when a create reconciles (ALF-199).
+          WikiProvider,
+          {
+            initialPages: seed.wiki?.pages ?? [],
+            initialSync: seed.wiki?.sync ?? null,
+            config: { repo: seed.wiki?.repo ?? null, writable: seed.wiki?.writable ?? false },
+          },
           React.createElement(
-            ExpansionProvider,
-            null,
+            FoldersProvider,
+            { initialFolders: seed.folders ?? [] },
+            // ExpansionProvider wraps TasksProvider, as in the shell layout: the store calls its
+            // remapId when a create reconciles (ALF-199).
             React.createElement(
-              TasksProvider,
-              { initialTasks: seed.tasks ?? [] },
+              ExpansionProvider,
+              null,
               React.createElement(
-                ActiveEditorProvider,
-                null,
+                TasksProvider,
+                { initialTasks: seed.tasks ?? [] },
                 React.createElement(
-                  InboxSelectionProvider,
+                  ActiveEditorProvider,
                   null,
                   React.createElement(
-                    DepartingItemsProvider,
+                    InboxSelectionProvider,
                     null,
-                    // CodeFilterProvider mirrors the shell layout: a server-data-free coordination
-                    // store the Backlog/board views read for their persisted status filter.
                     React.createElement(
-                      CodeFilterProvider,
+                      DepartingItemsProvider,
                       null,
+                      // CodeFilterProvider mirrors the shell layout: a server-data-free coordination
+                      // store the Backlog/board views read for their persisted status filter.
                       React.createElement(
-                        WeeklyPlanProvider,
-                        {
-                          initialIndex: seed.weeklyPlans?.index ?? [],
-                          initialLatest: seed.weeklyPlans?.latest,
-                        },
+                        CodeFilterProvider,
+                        null,
                         React.createElement(
-                          HabitsProvider,
+                          WeeklyPlanProvider,
                           {
-                            initialHabits: seed.habits?.habits ?? [],
-                            initialEntries: seed.habits?.entries ?? [],
-                            // A fixed date, so a grid baseline doesn't move with the calendar.
-                            serverToday: seed.habits?.today ?? '2026-07-30',
+                            initialIndex: seed.weeklyPlans?.index ?? [],
+                            initialLatest: seed.weeklyPlans?.latest,
                           },
                           React.createElement(
-                            CommsProvider,
+                            HabitsProvider,
                             {
-                              initialSeed: makeCommsSeed(seed.comms),
+                              initialHabits: seed.habits?.habits ?? [],
+                              initialEntries: seed.habits?.entries ?? [],
+                              // A fixed date, so a grid baseline doesn't move with the calendar.
+                              serverToday: seed.habits?.today ?? '2026-07-30',
                             },
                             React.createElement(
-                              CommsSettingsProvider,
+                              CommsProvider,
                               {
-                                initialPeople: seed.commsSettings?.people ?? [],
-                                initialRubrics: seed.commsSettings?.rubrics ?? [],
-                                initialCorrections: seed.commsSettings?.corrections ?? [],
+                                initialSeed: makeCommsSeed(seed.comms),
                               },
                               React.createElement(
-                                'div',
+                                CommsSettingsProvider,
                                 {
-                                  className: 'dark min-h-screen bg-background text-foreground p-8',
+                                  initialPeople: seed.commsSettings?.people ?? [],
+                                  initialRubrics: seed.commsSettings?.rubrics ?? [],
+                                  initialCorrections: seed.commsSettings?.corrections ?? [],
                                 },
-                                React.createElement(Story),
+                                React.createElement(
+                                  'div',
+                                  {
+                                    className:
+                                      'dark min-h-screen bg-background text-foreground p-8',
+                                  },
+                                  React.createElement(Story),
+                                ),
                               ),
                             ),
                           ),

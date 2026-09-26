@@ -92,6 +92,10 @@ describe('CommandPalette', () => {
     for (const label of ['Reading list', 'Archive', 'Publications']) {
       expect(within(listbox).getByText(label)).toBeInTheDocument();
     }
+    // And the static Wiki ones.
+    for (const label of ['Concepts', 'Entities', 'Sources', 'Questions']) {
+      expect(within(listbox).getByText(label)).toBeInTheDocument();
+    }
     expect(within(listbox).getByText('Software')).toBeInTheDocument();
     expect(within(listbox).getByText('Alfred')).toBeInTheDocument();
     expect(within(listbox).getByText('ALF')).toBeInTheDocument();
@@ -112,6 +116,23 @@ describe('CommandPalette', () => {
 
     await user.click(screen.getByRole('option', { name: 'Publications' }));
     expect(pushState).toHaveBeenCalledWith(null, '', '/reader/publications');
+  });
+
+  it('reaches the Wiki destinations, grouped under their own "Wiki" header', async () => {
+    const user = userEvent.setup();
+    const pushState = jest.spyOn(globalThis.history, 'pushState');
+    renderPalette();
+
+    pressCmdK();
+    await user.keyboard('Concepts');
+
+    const listbox = screen.getByRole('listbox');
+    expect(within(listbox).getByText('Wiki')).toBeInTheDocument();
+    expect(within(listbox).getByText('Concepts')).toBeInTheDocument();
+    expect(within(listbox).queryByText('Entities')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('option', { name: 'Concepts' }));
+    expect(pushState).toHaveBeenCalledWith(null, '', '/wiki/concepts');
   });
 
   it('toggles closed when ⌘K is pressed again while open', async () => {

@@ -19,6 +19,7 @@ import { ReaderNav } from '@/components/reader/reader-nav';
 import { SearchBox } from '@/components/shell/search-box';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { FolderNav } from '@/components/tasks/folder-nav';
+import { WikiNav } from '@/components/wiki/wiki-nav';
 import { type ModuleId, activeModule } from '@/lib/modules';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +28,7 @@ import { cn } from '@/lib/utils';
  * Replaces the per-module mobile-nav files: it carries the module switcher (which lives inside
  * the hamburger on small screens) above the module's nav, picked from the URL by
  * `activeModule` — `ProjectNav` for Code, `CommsNav` for Comms, `ReaderNav` for Reader,
- * `FolderNav` for Tasks.
+ * `WikiNav` for Wiki, `FolderNav` for Tasks.
  *
  * The sheet closes when the user *arrives* somewhere — a module-nav destination or a search
  * result — but NOT when the switcher flips module: that's still navigating the menu, so the
@@ -57,7 +58,7 @@ export function ShellMobileNav() {
             event.preventDefault();
           }}
           className={cn(
-            'fixed left-0 top-0 bottom-0 z-50 w-64 bg-surface border-r border-border',
+            'fixed left-0 top-0 bottom-0 z-50 w-70 bg-surface border-r border-border',
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
             'data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left',
             'duration-200 motion-reduce:animate-none',
@@ -86,5 +87,6 @@ function ModuleNav({ active, onClose }: { active: ModuleId; onClose: () => void 
   if (active === 'code') return <ProjectNav onClose={onClose} />;
   if (active === 'comms') return <CommsNav onClose={onClose} />;
   if (active === 'reader') return <ReaderNav onClose={onClose} />;
+  if (active === 'wiki') return <WikiNav onClose={onClose} />;
   return <FolderNav onClose={onClose} />;
 }

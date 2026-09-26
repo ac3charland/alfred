@@ -5,11 +5,14 @@ import {
   BookOpen,
   CalendarRange,
   Check,
+  CircleHelp,
   Code2,
+  FileText,
   FolderOpen,
   GitBranch,
   Inbox,
   LayoutDashboard,
+  Library,
   ListOrdered,
   ListTodo,
   type LucideIcon,
@@ -17,6 +20,7 @@ import {
   Repeat,
   ScrollText,
   Search,
+  Shapes,
   Sun,
   UserCheck,
   Users,
@@ -58,6 +62,11 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   rubric: ScrollText,
   examples: BookMarked,
   reader: BookOpen,
+  wiki: Library,
+  concepts: Shapes,
+  entities: Users,
+  sources: FileText,
+  questions: CircleHelp,
   folder: FolderOpen,
   project: GitBranch,
 };
@@ -66,6 +75,7 @@ const GROUP_LABELS = {
   go: 'Go to',
   comms: 'Comms',
   reader: 'Reader',
+  wiki: 'Wiki',
   folders: 'Folders',
   projects: 'Projects',
 } as const;
@@ -305,9 +315,22 @@ export function CommandPalette() {
               onHover={setActiveIndex}
             />
             <DestinationGroup
+              label={GROUP_LABELS.wiki}
+              destinations={grouped.wiki}
+              baseIndex={grouped.go.length + grouped.comms.length + grouped.reader.length}
+              activeIndex={clampedIndex}
+              onSelect={select}
+              onHover={setActiveIndex}
+            />
+            <DestinationGroup
               label={GROUP_LABELS.folders}
               destinations={grouped.folders}
-              baseIndex={grouped.go.length + grouped.comms.length + grouped.reader.length}
+              baseIndex={
+                grouped.go.length +
+                grouped.comms.length +
+                grouped.reader.length +
+                grouped.wiki.length
+              }
               activeIndex={clampedIndex}
               onSelect={select}
               onHover={setActiveIndex}
@@ -319,6 +342,7 @@ export function CommandPalette() {
                 grouped.go.length +
                 grouped.comms.length +
                 grouped.reader.length +
+                grouped.wiki.length +
                 grouped.folders.length
               }
               activeIndex={clampedIndex}

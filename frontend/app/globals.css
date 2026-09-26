@@ -69,6 +69,9 @@
   --color-accent-blue: #60a5fa;
   --color-accent-amber: #f0b429;
   --color-accent-red: #f87171;
+  /* The Wiki module's hue (Tailwind violet-400, the same -400 family as green, blue and red):
+     the fifth module accent, and the colour of the wiki's own marks inside the Reader. */
+  --color-accent-violet: #a78bfa;
 
   /* Habit-grid greys — the only two values the history grid needs that nothing else names.
      `habit-unknown` is the raised plate an unlogged day sits on; `habit-bridge` is the
@@ -198,6 +201,9 @@
 }
 @utility glow-red {
   box-shadow: 0 0 16px 2px rgba(248, 113, 113, 0.15);
+}
+@utility glow-violet {
+  box-shadow: 0 0 16px 2px rgba(167, 139, 250, 0.15);
 }
 /* A brighter, wider teal glow for the emphasis toast — distinct from the ambient 0.15-alpha
    glows above so their uses elsewhere stay unaffected. */
