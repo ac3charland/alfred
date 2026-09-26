@@ -1,15 +1,23 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
-import { MAX_COMMIT_ATTEMPTS, WikiWriteError, commitEnvelopes, commitMessage } from './commit';
+import {
+  MAX_COMMIT_ATTEMPTS,
+  WikiWriteError,
+  type WikiWriteErrorKind,
+  commitEnvelopes,
+  commitMessage,
+} from './commit';
 import type { WikiConfig } from './config';
 import type { Envelope } from './envelope';
 
 // `import 'server-only'` throws outside a Server Component context; neutralise it under Jest.
 jest.mock('server-only', () => ({}));
 
+const TOKEN = 'github_pat_secret';
+
 const CONFIG: WikiConfig = {
   owner: 'ac3charland',
   name: 'knowledge',
-  token: 'github_pat_secret',
+  token: TOKEN,
   apiUrl: 'https://api.github.test',
 };
 
@@ -302,17 +310,109 @@ describe('commitEnvelopes', () => {
     });
   });
 
-  it('never puts the token in an error message', async () => {
-    const { fetchImpl } = scripted({
-      'GET /git/ref/heads/main': [() => json(403, { message: 'Forbidden' })],
-    });
+  describe('never puts the token in an error, whatever the failure', () => {
+    /**
+     * The fetch for each failure kind. Where the failure carries text of its own (a thrown fetch
+     * error, a GitHub message), it quotes the token, so an error that passed that text through
+     * would be caught here.
+     */
+    const failures: [
+      name: string,
+      kind: WikiWriteErrorKind,
+      fetchFor: () => typeof globalThis.fetch,
+    ][] = [
+      [
+        'a 403 on the ref read',
+        'unauthorized',
+        () =>
+          scripted({
+            'GET /git/ref/heads/main': [() => json(403, { message: `Forbidden ${TOKEN}` })],
+          }).fetchImpl,
+      ],
+      [
+        'fetch itself throwing',
+        'unreachable',
+        () => jest.fn(() => Promise.reject(new Error(`ECONNRESET Bearer ${TOKEN}`))),
+      ],
+      [
+        'a 2xx body that cannot be read',
+        'unreachable',
+        () =>
+          scripted({
+            'GET /git/ref/heads/main': [
+              () =>
+                new Response(
+                  new ReadableStream({
+                    start(controller) {
+                      controller.error(new TypeError(`terminated ${TOKEN}`));
+                    },
+                  }),
+                  { status: 200, headers: { 'Content-Type': 'application/json' } },
+                ),
+            ],
+          }).fetchImpl,
+      ],
+      [
+        'a 2xx answer missing its field',
+        'rejected',
+        () =>
+          scripted({
+            'GET /git/ref/heads/main': [() => json(200, { object: {}, note: TOKEN })],
+          }).fetchImpl,
+      ],
+      [
+        'a 422 on the tree POST',
+        'rejected',
+        () =>
+          scripted({
+            'POST /git/trees': [() => json(422, { message: `Invalid tree ${TOKEN}` })],
+          }).fetchImpl,
+      ],
+      [
+        'a 422 on the commit POST',
+        'rejected',
+        () =>
+          scripted({
+            'POST /git/commits': [() => json(422, { message: `Invalid commit ${TOKEN}` })],
+          }).fetchImpl,
+      ],
+      [
+        `${String(MAX_COMMIT_ATTEMPTS)} ref-update 422s in a row`,
+        'busy',
+        () =>
+          scripted({
+            'PATCH /git/refs/heads/main': [
+              () => json(422, { message: `not a fast forward ${TOKEN}` }),
+            ],
+          }).fetchImpl,
+      ],
+    ];
 
-    const error = await commitEnvelopes(CONFIG, [HABITS], { fetch: fetchImpl }).catch(
-      (error_: unknown) => error_,
+    it.each(failures)(
+      '%s fails as %s, with the token in no part of the error',
+      async (_name, kind, fetchFor) => {
+        const error = await commitEnvelopes(CONFIG, [HABITS], { fetch: fetchFor() }).catch(
+          (error_: unknown) => error_,
+        );
+
+        expect(error).toBeInstanceOf(WikiWriteError);
+        expect(error).toMatchObject({ kind });
+        const thrown = error as WikiWriteError;
+        expect(thrown.message).not.toContain(TOKEN);
+        for (const [key, value] of Object.entries(thrown)) {
+          expect([key, String(value)].join(' ')).not.toContain(TOKEN);
+        }
+        expect(JSON.stringify(thrown)).not.toContain(TOKEN);
+      },
     );
-    expect(error).toBeInstanceOf(WikiWriteError);
-    expect((error as Error).message).not.toContain('github_pat_secret');
-    expect((error as Error).message).toContain('403');
+
+    it('still names the status it failed on', async () => {
+      const { fetchImpl } = scripted({
+        'GET /git/ref/heads/main': [() => json(403, { message: 'Forbidden' })],
+      });
+
+      await expect(commitEnvelopes(CONFIG, [HABITS], { fetch: fetchImpl })).rejects.toThrow('403');
+    });
   });
 
   it('suffixes a folder whose name inbox/ already holds', async () => {
