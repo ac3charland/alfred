@@ -280,7 +280,8 @@ function bare(path: string, body: string, parseError?: string): ParsedPage {
     created: undefined,
     updated: undefined,
     body,
-    parse_error: parseError,
+    // The reason can quote the page (the yaml library's code frame), so it is stored like the page.
+    parse_error: parseError === undefined ? undefined : storable(parseError),
   };
 }
 

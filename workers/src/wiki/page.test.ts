@@ -370,6 +370,16 @@ title: "\ud83d\ude00 smile"
     expect(page.title).toBe('\u{1F600} smile');
   });
 
+  it('stores a well-formed parse error when the YAML code frame splits a surrogate pair', () => {
+    // The yaml library cuts its code frame by UTF-16 unit, so it can halve the emoji's pair.
+    const page = parsePage(
+      PAGE,
+      '---\ntitle: [unclosed ' + 'a'.repeat(61) + '\u{1F600}tail\n---\nbody\n',
+    );
+    expect(page.parse_error).toBeDefined();
+    expect(() => encodeURIComponent(page.parse_error ?? '')).not.toThrow();
+  });
+
   it('strips NUL from the body kept by a page whose frontmatter failed to parse', () => {
     const page = parsePage(PAGE, '---\ntitle: [unclosed\n---\nx\u0000y');
     expect(page.parse_error).toBeDefined();
