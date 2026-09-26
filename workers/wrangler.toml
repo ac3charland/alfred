@@ -94,11 +94,16 @@ crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *"]
 #   not a positive integer rather than treat an unparsable ceiling as "unlimited". It counts model
 #   CALLS, not HTTP requests: the SDK retries a transport failure once, so a day of bad luck can
 #   reach twice the cap in requests. 30 is sized with that headroom already in it.
+# WIKI_REPO — the knowledge wiki's repo as `owner/name`. Two jobs: the push webhook acts only on
+#   a push to THIS repo's main (every other push is ignored), and the wiki sync reads its page tree
+#   through GraphQL with the existing GITHUB_TOKEN, whose repository list must include it with
+#   Contents: Read. The same GITHUB_WEBHOOK_SECRET signs the wiki repo's webhook.
 [vars]
 CLASSIFIER_MODEL = "claude-haiku-4-5"
 CLASSIFIER_TIMEZONE = "America/Chicago"
 READER_MODEL = "claude-sonnet-5"
 READER_DAILY_CAP = "30"
+WIKI_REPO = "ac3charland/knowledge"
 
 # WORKER_VERSION is deliberately NOT declared here, unlike the two vars above. It is the commit
 # the running build came from, injected per deploy by the Deploy Worker workflow
