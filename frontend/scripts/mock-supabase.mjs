@@ -40,6 +40,9 @@
  *   GitHub Git Data API (the wiki writer's six endpoints, under /__mock__/github/repos/…):
  *     GET  …/git/ref/heads/main   GET …/git/commits/{sha}   GET …/git/trees/{sha}
  *     POST …/git/trees            POST …/git/commits         PATCH …/git/refs/heads/main
+ *   Instapaper (not part of Supabase — the Reader's Send route calls it from the Next server,
+ *   where page.route() can't reach, so INSTAPAPER_API_URL points it here):
+ *     POST /api/1/bookmarks/add                               → a bookmark, or a seeded error
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed   GET /__mock__/state
  *     POST /__mock__/github/fail-next  → make the next matching GitHub request fail once
@@ -118,6 +121,14 @@ let readerPosts = [];
 // success on it. So it is never auto-seeded — a test that wants a tick's history says so.
 /** @type {Record<string, unknown>[]} */
 let readerHealth = [];
+// ── Instapaper: every bookmarks/add the Send route made, and the error code to answer with. ──
+// Recorded as the route sent them — the Authorization header and the decoded form body — so a
+// test can check the request was signed and carried the post's body. A seeded error code makes
+// every add answer Instapaper's error shape instead of a bookmark; null answers a bookmark.
+/** @type {{ authorization: string, params: Record<string, string> }[]} */
+let instapaperRequests = [];
+/** @type {number | null} */
+let instapaperErrorCode = null;
 // ── Wiki (migration 0038): the page snapshot the Worker writes and the module reads. ──
 /** @type {Record<string, unknown>[]} */
 let wikiPages = [];
@@ -162,11 +173,14 @@ function sendNoContent(res) {
   res.end();
 }
 
-async function readBody(req) {
+async function readRawBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return;
-  const text = Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/** A PostgREST/control body is JSON; anything else (Instapaper's form body) parses to nothing. */
+function parseJsonBody(text) {
   if (text === '') return;
   try {
     return JSON.parse(text);
@@ -720,6 +734,10 @@ function newReaderPost(input) {
     archived_at: input.archived_at ?? null,
     // When the retention sweep took the body (migration 0036). Null = it still holds its text.
     text_swept_at: input.text_swept_at ?? null,
+    // The email HTML and the Instapaper send's stamps (migration 0039).
+    html: input.html ?? null,
+    instapaper_sent_at: input.instapaper_sent_at ?? null,
+    instapaper_bookmark_id: input.instapaper_bookmark_id ?? null,
     // The exact text of every Novel-ideas bullet already sent to the wiki (migration 0038).
     wiki_sent_ideas: Array.isArray(input.wiki_sent_ideas) ? [...input.wiki_sent_ideas] : [],
     created_at: input.created_at ?? receivedAt,
@@ -2218,6 +2236,8 @@ function handleControl(req, res, url, body) {
     readerPublications = [];
     readerPosts = [];
     readerHealth = [];
+    instapaperRequests = [];
+    instapaperErrorCode = null;
     wikiPages = [];
     wikiSync = [];
     github = freshGithub();
@@ -2280,6 +2300,9 @@ function handleControl(req, res, url, body) {
     readerHealth = Array.isArray(body?.readerHealth)
       ? body.readerHealth.map((h) => newReaderHealth(h))
       : [];
+    instapaperRequests = [];
+    instapaperErrorCode =
+      typeof body?.instapaperErrorCode === 'number' ? body.instapaperErrorCode : null;
     // Wiki. The sync row is likewise not defaulted: an empty table is "never synced".
     wikiPages = Array.isArray(body?.wikiPages) ? body.wikiPages.map((p) => newWikiPage(p)) : [];
     wikiSync = Array.isArray(body?.wikiSync) ? body.wikiSync.map((s) => newWikiSync(s)) : [];
@@ -2315,6 +2338,7 @@ function handleControl(req, res, url, body) {
   }
   if (url.pathname === '/__mock__/state' && req.method === 'GET') {
     sendJson(res, 200, {
+      instapaperRequests,
       folders,
       items,
       projects,
@@ -2343,6 +2367,28 @@ function handleControl(req, res, url, body) {
   sendJson(res, 404, { message: `No control route: ${req.method} ${url.pathname}` });
 }
 
+/**
+ * Instapaper's Full API, as much of it as the Send route uses: `bookmarks/add`, answering the
+ * JSON array Instapaper does — a bookmark, or (when a test seeded one) an error with its code.
+ */
+function handleInstapaper(req, res, url, raw) {
+  if (url.pathname !== '/api/1/bookmarks/add' || req.method !== 'POST') {
+    sendJson(res, 404, { message: `No Instapaper route: ${req.method} ${url.pathname}` });
+    return;
+  }
+  instapaperRequests.push({
+    authorization: req.headers.authorization ?? '',
+    params: Object.fromEntries(new URLSearchParams(raw)),
+  });
+  if (instapaperErrorCode !== null) {
+    sendJson(res, 400, [
+      { type: 'error', error_code: instapaperErrorCode, message: 'Mocked Instapaper error' },
+    ]);
+    return;
+  }
+  sendJson(res, 200, [{ type: 'bookmark', bookmark_id: 1000 + instapaperRequests.length }]);
+}
+
 // ── server ───────────────────────────────────────────────────────────────────
 
 const server = createServer((req, res) => {
@@ -2356,7 +2402,8 @@ const server = createServer((req, res) => {
     }
 
     const noBody = new Set(['GET', 'HEAD', 'DELETE']);
-    const body = noBody.has(req.method ?? '') ? undefined : await readBody(req);
+    const raw = noBody.has(req.method ?? '') ? '' : await readRawBody(req);
+    const body = parseJsonBody(raw);
 
     try {
       if (url.pathname.startsWith('/__mock__/github/')) {
@@ -2367,6 +2414,8 @@ const server = createServer((req, res) => {
         handleAuth(req, res, url, body);
       } else if (url.pathname.startsWith('/rest/v1/')) {
         handleRest(req, res, url, body);
+      } else if (url.pathname.startsWith('/api/1/')) {
+        handleInstapaper(req, res, url, raw);
       } else {
         sendJson(res, 404, { message: `Not found: ${req.method} ${url.pathname}` });
       }

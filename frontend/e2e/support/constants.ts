@@ -108,6 +108,8 @@ export interface SeedState {
    * EMPTY list is a state of its own: the tick has never run.
    */
   readerHealth?: ReaderHealth[];
+  /** Answer every Instapaper `bookmarks/add` with this error code instead of a bookmark. */
+  instapaperErrorCode?: number;
   /** The wiki's page snapshot, bodies included (the mock serves the body route from them). */
   wikiPages?: WikiPageRow[];
   /** The singleton sync row, as a list: an EMPTY list is "never synced". */
