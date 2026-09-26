@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-263 — Implement an Instapaper-to-Wiki pipeline</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #1f8a5b; --accent-bg: #e3f5ec;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --good: #2ea36b; --bad: #d1544a; --partial: #d99b2b; --blue: #2f6fb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #4cc98e; --accent-bg: #123424;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --good: #3fbf82; --bad: #e8776a; --partial: #e0ab48; --blue: #6ea8e8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  pre .c { color: var(--muted); }
+  pre .hl { color: var(--accent); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .callout code { background: color-mix(in srgb, var(--warn-fg) 12%, transparent); color: inherit; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .toc { columns: 2; column-gap: 2rem; font-size: .92rem; }
+  .toc li { break-inside: avoid; }
+  @media (max-width: 640px) { .toc { columns: 1; } }
+
+  /* Decision blocks */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .8rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .tag { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+         text-transform: uppercase; border: 1px solid; border-radius: 999px; padding: 0 .45rem;
+         margin-left: .4rem; vertical-align: middle; }
+  .tag.epic { color: var(--partial); }
+  .tag.ticket { color: var(--blue); }
+
+  /* Diagrams */
+  .fig { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: .8rem; margin: 1rem 0; overflow-x: auto; }
+  .fig svg { display: block; min-width: 680px; width: 100%; height: auto; }
+  .fig .box { fill: var(--bg); stroke: var(--faint); stroke-width: 1.4; }
+  .fig .box.ip { stroke: var(--partial); }
+  .fig .box.act { stroke: var(--blue); }
+  .fig .box.wiki { stroke: var(--accent); }
+  .fig .box.new { stroke: var(--blue); stroke-width: 2.2; }
+  .fig .zone { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .fig text { fill: var(--fg); font: 13px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .fig text.t { font-weight: 600; }
+  .fig text.m { fill: var(--muted); font-size: 11.5px; }
+  .fig text.z { fill: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+  .fig text.e { fill: var(--muted); font-size: 11px; font-style: italic; }
+  .fig .ln { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .fig .ln.dash { stroke-dasharray: 4 4; }
+  .fig .ln.alex { stroke: var(--partial); }
+  .fig .ah { fill: var(--muted); }
+  .fig .ah.alex { fill: var(--partial); }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+
+  /* Acceptance checklist */
+  .ac { list-style: none; padding-left: 0; }
+  .ac li { padding-left: 1.7rem; position: relative; }
+  .ac li::before { content: "☐"; position: absolute; left: .2rem; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-263 — Implement an Instapaper-to-Wiki pipeline</h1>
+<p class="sub">
+  <span class="pill">Refinement spec</span>
+  A story in epic <b>ALF-259 · Wiki Module</b> (<code>docs/specs/epics/ALF-259.html</code>, the
+  "Instapaper tag sync" follow-up). Written 2026-09-26. <b>Built in <code>ac3charland/knowledge</code></b>,
+  not in Alfred. Alfred only gets this spec's archive commit.
+</p>
+
+<div class="card">
+  <b>In short.</b> Alex moves an Instapaper article into a <b>To Wiki</b> folder. A new step at the
+  top of the wiki repo's existing <code>kickoff</code> workflow reads that folder and commits one source
+  folder per article into <code>inbox/</code>: the article text as <code>source.md</code>, his highlights as
+  <code>excerpts-&lt;date&gt;.md</code>, and the notes he wrote on them as <code>notes-&lt;date&gt;.md</code>. From
+  there the batch goes through the ordinary lock, ingest session, and PR. Once the PR is merged and
+  the article sits filed in <code>raw/</code> on <code>main</code>, the same step moves it into his existing
+  <b>Reference</b> folder. There is no state store: git plus the To Wiki folder decide every action,
+  so each run is idempotent and a failed run leaves nothing half-done.
+</div>
+
+<h3>Contents</h3>
+<ol class="toc">
+  <li><a href="#context">Context &amp; problem</a></li>
+  <li><a href="#decisions">Decisions</a></li>
+  <li><a href="#flow">How it flows</a></li>
+  <li><a href="#plan">Per-bookmark plan (the state machine)</a></li>
+  <li><a href="#folder">What lands in <code>inbox/</code></a></li>
+  <li><a href="#client">The Instapaper client</a></li>
+  <li><a href="#command">The <code>instapaper</code> command</a></li>
+  <li><a href="#kickoff">Kickoff wiring</a></li>
+  <li><a href="#files">Files to touch</a></li>
+  <li><a href="#tests">Tests</a></li>
+  <li><a href="#build">Build plan, PRs &amp; evidence</a></li>
+  <li><a href="#setup">Setup checklist (Alex)</a></li>
+  <li><a href="#acceptance">Acceptance criteria</a></li>
+  <li><a href="#scope">Out of scope &amp; open questions</a></li>
+</ol>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="context">1 · Context &amp; problem</h2>
+
+<p>
+  Alex reads in Instapaper, highlights what matters, and writes notes on some highlights. Today
+  getting that into the wiki is manual. For example, <code>raw/2026/2026-09-25-the-acceleration-of-addictiveness/</code>
+  was sent with <code>npm run add -- --url … --quote "…" --quote "…"</code>, with each highlight retyped as
+  a <code>--quote</code>, and the notes he wrote on them were lost. The ticket asks for this flow:
+</p>
+<ol>
+  <li>Mark an article in Instapaper.</li>
+  <li>The body, the highlights, and Alex's notes on the highlights land in the wiki inbox.</li>
+  <li>The wiki ingests it as normal and opens a PR.</li>
+  <li>(Optional, but wanted.) On merge, Instapaper shows it as done.</li>
+</ol>
+<p>
+  The epic already settled the shape: a new producer and no new architecture. The kickoff lock,
+  filing by identity, and the ingest skill are all reused unchanged. It left three things for this
+  refinement: where the poller runs, tags versus folders, and API access. All three are now
+  settled with Alex (§2).
+</p>
+
+<div class="callout">
+  <b>Why folders, not tags.</b> Instapaper's Full API can <i>list</i> bookmarks by tag
+  (<code>bookmarks/list?tag=</code>), but it has no call to add, remove, or change a tag on a bookmark
+  that already exists. Tags can only be set when a URL is first added (<code>bookmarks/add</code>). Every
+  client library surveyed says so (e.g. <code>vburojevic/instapaper-cli</code>: "no tag management API").
+  A "To Wiki" → "In Wiki" tag swap is therefore impossible through the documented API. Folders
+  can be listed and moved (<code>bookmarks/list?folder_id=</code>, <code>bookmarks/move</code>), so the
+  pipeline uses folders.
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="decisions">2 · Decisions</h2>
+<p class="small">Tagged <span class="tag epic">changes epic</span> where this differs from the epic's
+follow-up sketch, and <span class="tag ticket">changes ticket</span> where it differs from the ticket text.
+Alex chose D1–D3 in this refinement session.</p>
+
+<div class="dec">
+  <h3><span class="n">D1</span>Folders both ways: <b>To Wiki</b> in, <b>Reference</b> out
+    <span class="tag ticket">changes ticket</span><span class="tag epic">changes epic</span></h3>
+  <p>An article is sent by moving it into the Instapaper folder <b>To Wiki</b>, from Unread, from
+    Archive, or from <b>Reference</b> (a folder Alex already has). Once it is filed in the wiki, the
+    poller moves it into <b>Reference</b>. Both names are exact-match constants
+    (<code>SEND_FOLDER = 'To Wiki'</code>, <code>DONE_FOLDER = 'Reference'</code>) in the command. A missing folder is a
+    setup error, and the script never creates one.</p>
+  <p class="why"><b>Why:</b> tags can't be changed through the API (callout above). Reusing
+    Reference keeps a filed article where Alex already keeps finished reading, instead of adding a
+    parallel "In Wiki" folder.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>The poller is a step in the wiki repo's <code>kickoff.yml</code>, before <i>Decide</i></h3>
+  <p>A new <code>npm run instapaper</code> script in <code>knowledge/scripts/</code> runs as kickoff's first real
+    step. Kickoff's triggers become the poller's triggers:</p>
+  <ul>
+    <li>the existing <b>3-hour cron</b> (<code>17 */3 * * *</code>): new articles reach <code>inbox/</code> within about 3 hours;</li>
+    <li>every <b>push to <code>main</code> touching <code>inbox/**</code></b>, which includes every ingest-PR merge
+      (it moves folders out of <code>inbox/</code>). So an article moves to Reference within minutes of the merge;</li>
+    <li><b>Run workflow</b> (<code>workflow_dispatch</code>): "send now" from the GitHub app.</li>
+  </ul>
+  <p>Anything it commits lands on <code>main</code> <i>before</i> Decide reads <code>main</code>'s head, so the same
+    run's lock includes it.</p>
+  <p class="why"><b>Why here:</b> the producer's output is a wiki-repo contract, and the wiki repo
+    already has everything the job needs: <code>htmlToMarkdown</code> (Readability + turndown),
+    frontmatter serialization, the quote-id and hash rules, git write helpers, <code>node --test</code>, and
+    lint. Alfred stays out entirely: no fifth Worker cron, no Worker port of the writer, no write token
+    on the Worker. Riding kickoff's cron costs about zero extra Actions minutes. <b>Why not a separate
+    workflow:</b> a push made with the Actions <code>GITHUB_TOKEN</code> doesn't trigger other workflows, so a
+    standalone poller would have to dispatch kickoff anyway.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>Credentials: the same four OAuth values Alfred's Reader send uses</h3>
+  <p>Repo secrets on <code>ac3charland/knowledge</code>: <code>INSTAPAPER_CONSUMER_KEY</code>,
+    <code>INSTAPAPER_CONSUMER_SECRET</code>, <code>INSTAPAPER_ACCESS_TOKEN</code>, <code>INSTAPAPER_ACCESS_TOKEN_SECRET</code>.
+    These are the names and values that <code>frontend/lib/instapaper/config.ts</code> (ALF-238, merged) reads from
+    Vercel. A Full API token is bound to the consumer key that issued it, so all four travel together.
+    Alex already has a key and Premium. No password is ever stored, and this repo gets no token-exchange
+    script. If a token is ever re-minted, Alfred's <code>npm run instapaper:token -w frontend</code> does it,
+    and both places get the new pair.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>Git is the state; the plan is a pure function <span class="tag epic">changes epic</span></h3>
+  <p>For each bookmark in To Wiki, the next action is computed from two inputs: the bookmark and its
+    highlights, and what <code>main</code> already holds for that source across <code>inbox/</code> and <code>raw/</code>. §4 is
+    the whole table. Nothing is recorded anywhere else, so re-running is always safe.</p>
+  <p class="why"><b>Why it changes the epic:</b> the epic sketched "change the tag once the commit
+    lands". Alex wants the done-state to mean <i>filed</i>, not <i>sent</i>, so the move waits for the
+    merge. That needs a way to know an article is in flight without sending it twice, and
+    <code>inbox/</code> on <code>main</code> is exactly that record.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>Identity is the article's URL, not the bookmark id <span class="tag epic">changes epic</span></h3>
+  <p>Every file carries <code>source_url</code> = the bookmark's <code>url</code> and <code>external_id: null</code>, so the
+    folder's identity is the canonical URL (<code>canonicalUrl</code> in <code>scripts/lib/sources.ts</code>).
+    Only a bookmark with no http(s) URL (a private/emailed bookmark) uses
+    <code>external_id: "instapaper:&lt;bookmark_id&gt;"</code> with <code>source_url: null</code>.</p>
+  <p class="why"><b>Why:</b> articles Alex already sent by hand with <code>npm run add</code> (the Paul Graham one
+    above) are keyed by URL. A bookmark-id identity would open a second <code>raw/</code> folder for the same
+    article instead of merging into it.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span>Highlights → excerpts, highlight notes → notes, paired by one id</h3>
+  <ul>
+    <li>Each highlight becomes one <code>excerpts-&lt;date&gt;.md</code> record, with id
+      <code>webQuoteId(text)</code>: the rule <code>npm run add --quote</code> already uses
+      (<code>q-&lt;slug(text, ≤40)&gt;-&lt;sha256(text)[0..4]&gt;</code>). A highlight Alex once sent by hand gets the
+      same id and is never sent twice.</li>
+    <li>A highlight's non-blank <code>note</code> becomes an entry in <code>notes-&lt;date&gt;.md</code> under
+      <b>the same id</b>. This is the book importer's convention for commentary on a quote, which the
+      ingest skill already reads, so the skill doesn't change.</li>
+    <li>Records are written in article order: highlight <code>position</code>, then <code>time</code>.</li>
+  </ul>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span><code>source.md</code> comes from Instapaper's own text, sent once</h3>
+  <p>The body is <code>bookmarks/get_text</code>'s HTML converted by the wiki's existing <code>htmlToMarkdown</code>,
+    at <code>fidelity: full-text</code>. That is the text Alex actually read and highlighted, so excerpts
+    match it. <code>source.md</code> is sent <b>only when no full-text <code>source.md</code> is on file</b> for the
+    identity. If Instapaper can't produce text, a <b>pointer</b> (empty body) goes instead when there's a URL
+    and no <code>source.md</code> on file at all. Kickoff's <code>fetch-pointers</code> then tries the web.</p>
+  <p class="why"><b>Why "only once":</b> <code>get_text</code> can differ between calls, and a second full-text
+    <code>source.md</code> whose body differs from the filed one makes <code>file-batch</code> leave the whole
+    folder (<code>action: "left"</code>). The kickoff Gate would then park it.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D8</span>At most 10 articles sent per run</h3>
+  <p><code>--limit</code> defaults to 10. Bookmarks are handled oldest-first (bookmark <code>time</code>).
+    Anything over the cap is <i>deferred</i>: it stays in To Wiki for the next run. Waits and moves
+    don't count toward the cap.</p>
+  <p class="why"><b>Why:</b> it bounds one run's Instapaper calls (1 folders list + 1 bookmarks list +
+    ≤10 <code>get_text</code> + moves) under unpublished rate limits, and keeps one ingest batch reviewable if
+    Alex drops a backlog into To Wiki.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="flow">3 · How it flows</h2>
+
+<div class="fig">
+<svg viewBox="0 0 920 430" role="img" aria-label="Flow from the Instapaper To Wiki folder through kickoff, the ingest PR and back to the Reference folder">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah alex" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <!-- zones -->
+  <rect class="zone" x="10" y="24" width="230" height="396" rx="10"/>
+  <text class="z" x="24" y="16">INSTAPAPER</text>
+  <rect class="zone" x="262" y="24" width="330" height="396" rx="10"/>
+  <text class="z" x="276" y="16">KICKOFF.YML · WIKI REPO ACTION</text>
+  <rect class="zone" x="614" y="24" width="296" height="396" rx="10"/>
+  <text class="z" x="628" y="16">WIKI REPO · MAIN</text>
+
+  <!-- Instapaper boxes -->
+  <rect class="box ip" x="30" y="44" width="190" height="58" rx="8"/>
+  <text class="t" x="44" y="68">Unread / Archive /</text>
+  <text class="t" x="44" y="87">Reference</text>
+
+  <rect class="box ip" x="30" y="160" width="190" height="62" rx="8"/>
+  <text class="t" x="44" y="185">To Wiki folder</text>
+  <text class="m" x="44" y="204">highlights + notes on them</text>
+
+  <rect class="box ip" x="30" y="332" width="190" height="58" rx="8"/>
+  <text class="t" x="44" y="357">Reference folder</text>
+  <text class="m" x="44" y="376">filed; move back to resend</text>
+
+  <!-- Alex moves -->
+  <path class="ln alex" d="M125,102 L125,158" marker-end="url(#aa)"/>
+  <text class="e" x="132" y="134">Alex moves it</text>
+
+  <!-- kickoff boxes -->
+  <rect class="box new" x="282" y="150" width="290" height="82" rx="8"/>
+  <text class="t" x="296" y="174">① Send from Instapaper  (new)</text>
+  <text class="m" x="296" y="194">npm run instapaper: plan per bookmark (§4)</text>
+  <text class="m" x="296" y="212">send · wait · move · defer · skip</text>
+
+  <rect class="box act" x="282" y="268" width="290" height="62" rx="8"/>
+  <text class="t" x="296" y="292">② Decide → lock → Routine</text>
+  <text class="m" x="296" y="311">unchanged: batch = inbox/ at the lock</text>
+
+  <rect class="box act" x="282" y="44" width="290" height="70" rx="8"/>
+  <text class="t" x="296" y="68">Triggers (unchanged)</text>
+  <text class="m" x="296" y="87">3-hour cron · Run workflow · push touching</text>
+  <text class="m" x="296" y="104">inbox/**, which every ingest merge is</text>
+
+  <!-- wiki boxes -->
+  <rect class="box wiki" x="634" y="150" width="256" height="62" rx="8"/>
+  <text class="t" x="648" y="175">inbox/&lt;date&gt;-&lt;slug&gt;/</text>
+  <text class="m" x="648" y="194">source.md · excerpts-… · notes-…</text>
+
+  <rect class="box wiki" x="634" y="268" width="256" height="62" rx="8"/>
+  <text class="t" x="648" y="292">Ingest PR on the lock branch</text>
+  <text class="m" x="648" y="311">ingest skill, unchanged</text>
+
+  <rect class="box wiki" x="634" y="358" width="256" height="50" rx="8"/>
+  <text class="t" x="648" y="382">raw/&lt;YYYY&gt;/&lt;date&gt;-&lt;slug&gt;/</text>
+  <text class="m" x="648" y="399">filed; merged by identity</text>
+
+  <!-- arrows -->
+  <path class="ln" d="M427,114 L427,148" marker-end="url(#a)"/>
+  <path class="ln" d="M220,191 L280,191" marker-end="url(#a)"/>
+  <text class="m" x="226" y="183">reads</text>
+  <path class="ln" d="M572,181 L632,181" marker-end="url(#a)"/>
+  <text class="m" x="578" y="173">commits</text>
+  <path class="ln" d="M427,232 L427,266" marker-end="url(#a)"/>
+  <path class="ln" d="M572,299 L632,299" marker-end="url(#a)"/>
+  <text class="m" x="578" y="291">fires</text>
+  <path class="ln alex" d="M762,330 L762,356" marker-end="url(#aa)"/>
+  <text class="e" x="770" y="348">Alex merges</text>
+
+  <!-- move to Reference -->
+  <path class="ln dash" d="M282,216 L251,216 L251,361 L222,361" marker-end="url(#a)"/>
+  <text class="m" x="236" y="294" text-anchor="end">① moves it once it's filed</text>
+  <text class="m" x="236" y="310" text-anchor="end">and nothing new is left</text>
+</svg>
+</div>
+<p class="diagram-cap">Blue-bold is the only new component. Orange lines are Alex. The merge moves the
+batch out of <code>inbox/</code>, so it re-runs kickoff. On that pass, step ① finds the article filed and moves it
+to Reference (dashed).</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="plan">4 · Per-bookmark plan (the state machine)</h2>
+
+<div class="fig">
+<svg viewBox="0 0 920 230" role="img" aria-label="State machine for one bookmark">
+  <defs>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="bb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah alex" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="box ip" x="10" y="80" width="140" height="56" rx="8"/>
+  <text class="t" x="22" y="104">Anywhere else</text>
+  <text class="m" x="22" y="122">Unread / Reference …</text>
+
+  <rect class="box new" x="200" y="80" width="150" height="56" rx="8"/>
+  <text class="t" x="212" y="104">To Wiki · unsent</text>
+  <text class="m" x="212" y="122">something not on file</text>
+
+  <rect class="box wiki" x="400" y="80" width="160" height="56" rx="8"/>
+  <text class="t" x="412" y="104">To Wiki · waiting</text>
+  <text class="m" x="412" y="122">identity in inbox/ on main</text>
+
+  <rect class="box wiki" x="610" y="80" width="150" height="56" rx="8"/>
+  <text class="t" x="622" y="104">To Wiki · filed</text>
+  <text class="m" x="622" y="122">in raw/, nothing unsent</text>
+
+  <rect class="box ip" x="800" y="80" width="110" height="56" rx="8"/>
+  <text class="t" x="812" y="104">Reference</text>
+  <text class="m" x="812" y="122">done</text>
+
+  <path class="ln alex" d="M150,108 L198,108" marker-end="url(#bb)"/>
+  <text class="e" x="152" y="100">Alex</text>
+  <path class="ln" d="M350,108 L398,108" marker-end="url(#b)"/>
+  <text class="m" x="354" y="100">send</text>
+  <path class="ln" d="M560,108 L608,108" marker-end="url(#b)"/>
+  <text class="m" x="562" y="100">merge</text>
+  <path class="ln" d="M760,108 L798,108" marker-end="url(#b)"/>
+  <text class="m" x="762" y="100">move</text>
+
+  <!-- over cap loop -->
+  <path class="ln dash" d="M240,80 C240,40 310,40 310,78" marker-end="url(#b)"/>
+  <text class="m" x="222" y="34">defer (over cap)</text>
+
+  <!-- closed PR loop -->
+  <path class="ln dash" d="M450,80 C450,40 520,40 520,78" marker-end="url(#b)"/>
+  <text class="m" x="400" y="34">PR closed unmerged: still in inbox/</text>
+
+  <!-- resend loop -->
+  <path class="ln alex dash" d="M855,136 C855,205 275,205 275,138" marker-end="url(#bb)"/>
+  <text class="e" x="470" y="200">Alex moves it back after new highlights or notes → only the delta is sent</text>
+</svg>
+</div>
+
+<p>Each run evaluates every bookmark in To Wiki against <code>main</code>'s tree after a fresh pull. For one
+bookmark, with <b>identity</b> per D5 and <b>on file</b> meaning every folder on <code>main</code>
+(<code>inbox/</code> and <code>raw/</code>) that declares that identity, the rules below apply in order and the first match wins:</p>
+
+<div class="scroll">
+<table>
+  <tr><th>#</th><th>Condition</th><th>Action</th><th>Instapaper calls</th></tr>
+  <tr><td>1</td><td>Some <code>inbox/</code> folder on <code>main</code> declares the identity</td>
+      <td><b>wait</b>. It's in flight: waiting for a lock, in a batch, or in an open or closed-unmerged PR.</td><td>none</td></tr>
+  <tr><td>2</td><td>The <b>unsent set</b> (below) is non-empty and the run's send count is under the cap</td>
+      <td><b>send</b> one new <code>inbox/</code> folder holding exactly the unsent files</td><td><code>get_text</code> only if <code>source.md</code> is unsent</td></tr>
+  <tr><td>3</td><td>Unsent set non-empty, cap reached</td><td><b>defer</b>. It stays in To Wiki.</td><td>none</td></tr>
+  <tr><td>4</td><td>Unsent set empty, identity is in <code>raw/</code></td><td><b>move</b> to Reference</td><td><code>bookmarks/move</code></td></tr>
+  <tr><td>5</td><td>Unsent set empty, nothing on file (URL-less, no text, no highlights)</td>
+      <td><b>skip</b> with a warning. It stays in To Wiki for Alex to look at.</td><td>none</td></tr>
+</table>
+</div>
+
+<p><b>The unsent set</b>, computed against every file on file for the identity:</p>
+<ul>
+  <li><code>source.md</code> when no full-text <code>source.md</code> is on file (D7). If <code>get_text</code> yields no
+    text, the pointer form is sent only when there's a URL and <i>no</i> <code>source.md</code> is on file.</li>
+  <li>Each highlight whose <code>webQuoteId(text)</code> isn't a <code>quotes</code> id in any <code>excerpts-*.md</code> on file.</li>
+  <li>Each highlight note (trimmed, non-blank) whose id isn't an <code>entries</code> id on file, or whose
+    <code>shortHash(notesHashInput([note]))</code> differs from the <b>latest-dated</b> on-file entry with that id.
+    An edited note is resent. A deleted note or highlight is never propagated, because <code>raw/</code> is frozen.</li>
+</ul>
+<p class="small">Consequence worth knowing: an article already filed by hand with the same highlights has an
+empty unsent set, so on its first run it is simply moved to Reference, with nothing sent.</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="folder">5 · What lands in <code>inbox/</code></h2>
+
+<p>One folder per sent bookmark, <code>inbox/&lt;captured&gt;-&lt;slug(title)&gt;</code>, named with
+<code>folderName</code>/<code>uniqueFolderName</code> against the names already in <code>inbox/</code> and those
+this run already used. <code>source_type: web-article</code> (an existing registry row, so <b><code>registry.yaml</code> doesn't change</b>),
+<code>via: instapaper</code>, and <code>captured</code> = today UTC. <code>title</code>, <code>author</code>, and <code>published</code>
+are computed once per send and shared by every file:</p>
+<ul>
+  <li><code>title</code>: the bookmark's title, else <code>htmlToMarkdown</code>'s title, else <code>defaultTitle(url)</code>, else <code>Untitled</code>.</li>
+  <li><code>author</code> / <code>published</code>: from <code>htmlToMarkdown</code> when <code>get_text</code> ran, else <code>null</code>
+    (the bookmark carries neither).</li>
+</ul>
+<p>An illustrative first send (hashes and ids made up; key order is <code>serializeFile</code>'s):</p>
+
+<pre><code><span class="c"># inbox/2026-09-26-why-habits-stick/source.md</span>
+---
+source_type: web-article
+origin: third-party
+title: Why Habits Stick
+author: Jane Doe
+source_url: https://example.com/why-habits-stick
+published: "2026-08-14"
+captured: 2026-09-26
+<span class="hl">via: instapaper</span>
+external_id: null            <span class="c"># "instapaper:&lt;bookmark_id&gt;" only when there's no http(s) URL</span>
+fidelity: full-text          <span class="c"># pointer (empty body) when get_text yields nothing</span>
+---
+
+&lt;get_text HTML → htmlToMarkdown&gt;
+
+<span class="c"># inbox/2026-09-26-why-habits-stick/excerpts-2026-09-26.md</span>
+---
+source_type: web-article
+origin: third-party
+title: Why Habits Stick
+…same core…
+fidelity: excerpt
+quotes:
+  - id: q-habits-are-the-compound-interest-of-3f2a     <span class="c"># webQuoteId(highlight.text)</span>
+    note: Habits are the compound interest of self-improvement.
+    hash: 7c1e0a9b2d44                                  <span class="c"># shortHash(excerptHashInput(text, null, null))</span>
+---
+
+## q-habits-are-the-compound-interest-of-3f2a
+
+&gt; Habits are the compound interest of self-improvement.
+
+<span class="c"># inbox/2026-09-26-why-habits-stick/notes-2026-09-26.md   (only when some highlight has a note)</span>
+---
+source_type: web-article
+origin: mine
+title: Why Habits Stick
+…same core…
+entries:
+  - id: q-habits-are-the-compound-interest-of-3f2a     <span class="c"># same id as the highlight it comments on</span>
+    hash: 1b9d0e77c3a2                                  <span class="c"># shortHash(notesHashInput([note]))</span>
+---
+
+## q-habits-are-the-compound-interest-of-3f2a
+
+Same point as Four Thousand Weeks: small repeated choices.</code></pre>
+
+<p>Rules: a body line of a multi-line highlight is quoted line by line (<code>&gt; </code>), exactly as
+<code>add-source</code> does. A note body is written verbatim. <code>notes-…</code> is omitted when no unsent note exists, and
+<code>excerpts-…</code> when no unsent highlight exists. A resend holds only the unsent files and records. Two
+distinct highlights with identical text collapse to one record (same id), keeping the first by position.</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="client">6 · The Instapaper client</h2>
+
+<p>Two new library modules, each with an injectable <code>fetch</code> (the <code>scripts/lib/github.ts</code> pattern), so
+tests never touch the network:</p>
+<ul>
+  <li><code>scripts/lib/oauth1.ts</code>: a <b>port of Alfred's <code>frontend/lib/instapaper/oauth.ts</code></b>
+    (OAuth 1.0a HMAC-SHA1 per RFC 5849: <code>percentEncode</code>, <code>signatureBaseString</code>,
+    <code>hmacSha1Signature</code>, <code>newSigningMoment</code>, <code>signRequest</code>). That file already imports only
+    <code>node:crypto</code> and uses only erasable TypeScript, so the port is a copy minus its
+    <code>import 'server-only'</code> line, with a header comment naming where it came from. The repos can't share
+    code, and copying the RFC-pinned signer is safer than writing a second one. Its RFC 5849 vectors come across too (§10).</li>
+  <li><code>scripts/lib/instapaper.ts</code>: <code>instapaperConfig(env)</code> (the four D3 values, or <code>null</code> if any
+    is blank) and an <code>InstapaperClient</code> implementing an <code>InstapaperApi</code> interface that tests fake.</li>
+</ul>
+
+<p>Every call is a signed <code>POST</code> to <code>https://www.instapaper.com</code> with an
+<code>application/x-www-form-urlencoded</code> body and a 20 s abort:</p>
+<div class="scroll">
+<table>
+  <tr><th>Method</th><th>Endpoint</th><th>Params</th><th>Used for</th></tr>
+  <tr><td><code>listFolders()</code></td><td><code>/api/1.1/folders/list</code></td><td>—</td>
+      <td>Resolve <code>To Wiki</code> and <code>Reference</code> to <code>folder_id</code>s by exact <code>title</code></td></tr>
+  <tr><td><code>listBookmarks(folderId)</code></td><td><code>/api/1.1/bookmarks/list</code></td><td><code>folder_id</code>, <code>limit=500</code></td>
+      <td>The To Wiki bookmarks (<code>bookmark_id</code>, <code>url</code>, <code>title</code>, <code>time</code>) and their
+        <code>highlights</code> (<code>highlight_id</code>, <code>bookmark_id</code>, <code>text</code>, <code>note</code> (nullable), <code>position</code>, <code>time</code>)</td></tr>
+  <tr><td><code>getText(bookmarkId)</code></td><td><code>/api/1.1/bookmarks/get_text</code></td><td><code>bookmark_id</code></td>
+      <td>The article HTML, or <code>null</code> when Instapaper can't generate text (error 1550)</td></tr>
+  <tr><td><code>move(bookmarkId, folderId)</code></td><td><code>/api/1.1/bookmarks/move</code></td><td><code>bookmark_id</code>, <code>folder_id</code></td>
+      <td>To Wiki → Reference</td></tr>
+</table>
+</div>
+
+<p>Instapaper answers with a JSON array of typed objects (<code>{"type":"error","error_code":…}</code> among them). Read
+it the way Alfred's <code>readAnswer</code> in <code>frontend/lib/instapaper/bookmark.ts</code> does, codes included. Failures
+are typed, and no message ever includes a header, a body, or a secret:</p>
+<div class="scroll">
+<table>
+  <tr><th>Instapaper answer</th><th>Kind</th><th>The run</th></tr>
+  <tr><td>401/403, or error <code>1042</code> (app suspended)</td><td><code>credentials</code></td><td>stops before writing anything; exit 1</td></tr>
+  <tr><td>error <code>1040</code> (rate limit)</td><td><code>rate-limited</code></td><td>stops; whatever was already pushed stands; the next run resumes; exit 1</td></tr>
+  <tr><td>error <code>1041</code> (Premium required)</td><td><code>premium</code></td><td>stops; exit 1</td></tr>
+  <tr><td>error <code>1550</code> on <code>get_text</code></td><td>—</td><td>not an error: <code>getText</code> returns <code>null</code> (D7's pointer path)</td></tr>
+  <tr><td>any other error, a non-2xx, a network failure or timeout, or a body that isn't JSON (the docs say to treat it as a 503)</td>
+      <td><code>unavailable</code></td><td>stops; exit 1</td></tr>
+</table>
+</div>
+
+<div class="callout">
+  <b>Confirm the shapes against the docs first.</b> This session couldn't reach instapaper.com (the
+  cloud network policy blocks it). The error handling above comes from Alfred's working client, whose refiner read
+  the docs. The four endpoints, their <code>/api/1.1/</code> prefix, and the list response carrying <code>highlights</code>
+  inline come from three client libraries (<code>stve/instapaper</code>, <code>ieroNo47/gopaper</code>,
+  <code>vburojevic/instapaper-cli</code>). Alfred's own <code>bookmarks/add</code> call uses <code>/api/1/</code>. Before coding, read
+  <code>instapaper.com/developers/v1/full-api/</code> the way <code>docs/specs/archive/ALF-238.html</code> §6 describes: the pages
+  are rendered client-side, and their markdown lives at <code>/assets/&lt;page&gt;-&lt;hash&gt;.md</code>. Take each
+  endpoint's prefix from there. If <code>bookmarks/list</code> turns out <i>not</i> to return highlights, use
+  <code>/api/1.1/bookmarks/&lt;id&gt;/highlights</code> per bookmark. If the implementing session can't reach the docs
+  either, build to this table. Alex's <code>--dry-run</code> (§12) is the live check, and a mismatch there
+  is a parser fix. GitHub's Actions runners have open egress, so production isn't affected.
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="command">7 · The <code>instapaper</code> command</h2>
+
+<pre><code>npm run instapaper -- [--dry-run] [--limit &lt;n&gt;]      <span class="c"># package.json: "instapaper": "node scripts/instapaper.ts"</span></code></pre>
+
+<ol>
+  <li><b>Not configured</b> (any D3 value blank) → print <code>::warning::instapaper is not configured</code> and exit 0.</li>
+  <li><code>prepareMainForWrite()</code> (clean tree, on <code>main</code>, <code>pull --rebase</code>). This is skipped for <code>--dry-run</code>,
+    which reads the working tree as-is.</li>
+  <li><code>listFolders</code> → both folder ids. If either is missing, print <code>instapaper: no "&lt;name&gt;" folder</code> and exit 1.</li>
+  <li><code>listBookmarks(To Wiki)</code>; group highlights by <code>bookmark_id</code>; order bookmarks oldest-first.</li>
+  <li>Scan <code>main</code>'s sources (<code>scanSources</code> + <code>foldersWithIdentity</code>) and run the pure
+    <code>planBookmark</code> (§4) for each bookmark. Call <code>getText</code> only for sends whose unsent set includes <code>source.md</code>.</li>
+  <li><code>--dry-run</code>: print the plan and exit 0. No files, commits, or moves.</li>
+  <li>Write every send's folder; <code>commitAndPushMain(['inbox'], msg)</code> with <code>msg</code> =
+    <code>instapaper: &lt;title&gt;</code> for one folder, <code>instapaper: &lt;n&gt; sources</code> for several.
+    <b>If the push is rejected</b> (another producer pushed in between), reset to the pre-write commit, pull,
+    and re-plan from step 5 (the Instapaper reads are reused), up to 3 attempts in total. It never
+    rebases this run's folders onto someone else's, because the other writer may have created the same folder name.</li>
+  <li>Only after the push succeeds (or when nothing was sent): perform every <b>move</b>. A failed move is
+    reported and the rest continue, unless it's <code>rate-limited</code> or <code>unauthorized</code>, which stops the
+    run. Every unmoved article is retried next run by rule 4.</li>
+  <li>Print one line per bookmark, and append a summary line to <code>$GITHUB_STEP_SUMMARY</code> when set.
+    Exit 1 if any step failed, else 0.</li>
+</ol>
+
+<pre><code>instapaper: send "Why Habits Stick" → inbox/2026-09-26-why-habits-stick (source.md, 3 excerpts, 1 note)
+instapaper: wait "The Tail End" (in flight: inbox/2026-09-25-the-tail-end)
+instapaper: move "Do Things That Don't Scale" → Reference
+instapaper: defer "Some Other Article" (over the 10-per-run limit)
+instapaper: skip "Private note 812" (no URL, no text, no highlights)
+instapaper: sent 1, moved 1, waiting 1, deferred 1, skipped 1</code></pre>
+
+<p>Structure: <code>planBookmark</code>, the unsent-set computation, and the folder builder are exported pure functions. <code>main(argv, ctx)</code>
+takes <code>{ root, env, api, now }</code> the way <code>add-source</code>'s and <code>kickoff</code>'s mains take their context, so the
+end-to-end tests drive it against a temp repo and a fake API. <code>webQuoteId</code> moves from
+<code>scripts/add-source.ts</code> into <code>scripts/lib/obsidian.ts</code> beside <code>quoteId</code>, exported, and both scripts
+import it, so the two producers can't drift.</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="kickoff">8 · Kickoff wiring</h2>
+
+<p>One new step in <code>.github/workflows/kickoff.yml</code>, right after <code>npm ci</code> and before <i>Decide</i>. Nothing
+else in kickoff changes.</p>
+<pre><code>      - name: Send from Instapaper
+        <span class="c"># Before Decide, so anything sent joins this run's batch. Its failure never blocks
+        # ingest: the step shows red and kickoff carries on. Pushes with GITHUB_TOKEN don't
+        # trigger workflows, so this commit doesn't start a second kickoff; Decide reads
+        # main's new head over the API instead.</span>
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          INSTAPAPER_CONSUMER_KEY: ${{ secrets.INSTAPAPER_CONSUMER_KEY }}
+          INSTAPAPER_CONSUMER_SECRET: ${{ secrets.INSTAPAPER_CONSUMER_SECRET }}
+          INSTAPAPER_ACCESS_TOKEN: ${{ secrets.INSTAPAPER_ACCESS_TOKEN }}
+          INSTAPAPER_ACCESS_TOKEN_SECRET: ${{ secrets.INSTAPAPER_ACCESS_TOKEN_SECRET }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm run instapaper</code></pre>
+<ul>
+  <li>Kickoff already has <code>contents: write</code>, <code>fetch-depth: 0</code>, and a checkout of <code>main</code> for all three
+    triggers, and <code>main</code> is unprotected (README setup checklist). Implementer: confirm
+    <code>actions/checkout</code> leaves a local <code>main</code> <i>branch</i> (not a detached HEAD) for push, schedule, and
+    dispatch, because <code>prepareMainForWrite</code> requires it. If it doesn't, add <code>git checkout main</code> to the step.</li>
+  <li>The step is independent of the Routine secrets: with Instapaper configured and the Routine not,
+    it still sends, and Decide then logs "not configured" as today.</li>
+  <li><code>check.yml</code> doesn't run on this bot push (<code>GITHUB_TOKEN</code> again). That is why the tests (§10) run
+    <code>lint</code> and <code>file-batch --dry-run</code> over the produced folders. The ingest PR's check covers them later.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="files">9 · Files to touch</h2>
+<div class="scroll">
+<table>
+  <tr><th>Repo</th><th>File</th><th>Change</th></tr>
+  <tr><td rowspan="9"><code>knowledge</code></td><td><code>scripts/lib/oauth1.ts</code> (+ <code>.test.ts</code>)</td><td>New: the signer (§6)</td></tr>
+  <tr><td><code>scripts/lib/instapaper.ts</code> (+ <code>.test.ts</code>)</td><td>New: config, <code>InstapaperApi</code>, <code>InstapaperClient</code>, typed errors</td></tr>
+  <tr><td><code>scripts/instapaper.ts</code> (+ <code>.test.ts</code>)</td><td>New: plan, build, write, commit/push with retry, moves, output (§4, §5, §7)</td></tr>
+  <tr><td><code>scripts/lib/obsidian.ts</code></td><td>Gains exported <code>webQuoteId</code> (moved, unchanged)</td></tr>
+  <tr><td><code>scripts/add-source.ts</code></td><td>Imports <code>webQuoteId</code> instead of defining it</td></tr>
+  <tr><td><code>package.json</code></td><td><code>"instapaper": "node scripts/instapaper.ts"</code></td></tr>
+  <tr><td><code>.github/workflows/kickoff.yml</code></td><td>The step in §8, and the header comment's "Secrets read" line gains the four names</td></tr>
+  <tr><td><code>README.md</code></td><td>Commands row; a step 0 in "How automatic ingest works"; setup checklist items (§12);
+      Troubleshooting: "an article stays in To Wiki" (read kickoff's <i>Send from Instapaper</i> step: wait / defer / skip / error)</td></tr>
+  <tr><td><code>registry.yaml</code>, <code>CLAUDE.md</code>, ingest skill</td><td><b>No change</b> (existing <code>web-article</code> row, existing notes-under-the-quote's-id convention)</td></tr>
+  <tr><td><code>alfred</code></td><td><code>docs/specs/ALF-263.html</code></td><td><code>git mv</code> to <code>docs/specs/archive/ALF-263.html</code> (§11)</td></tr>
+</table>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="tests">10 · Tests</h2>
+<p>All <code>node --test</code>, offline, built on <code>scripts/lib/testing.ts</code> (<code>initRepo</code>, <code>writeTree</code>,
+<code>coreFields</code>). The wiki's gate is <code>npm run check</code>, and it must be green.</p>
+<div class="scroll">
+<table>
+  <tr><th>Suite</th><th>Pins</th></tr>
+  <tr><td><code>lib/oauth1.test.ts</code></td><td>Alfred's <code>frontend/lib/instapaper/oauth.test.ts</code> ported from Jest to
+    <code>node:test</code>, with the same vectors and expectations: RFC 5849's worked base string (§3.4.1.1) and signatures (§1.2),
+    percent-encoding of the five characters <code>encodeURIComponent</code> leaves bare, form-body params in the base string,
+    and the header's seven <code>oauth_*</code> fields.</td></tr>
+  <tr><td><code>lib/instapaper.test.ts</code></td><td>Each method's path, form body, and signed header. Parsing of folders, bookmarks, and
+    highlights (including a <code>null</code> note). <code>get_text</code> 1550 → <code>null</code>. 1040/1041/1042/401/403/non-JSON/network → the typed kinds.
+    Config is <code>null</code> when any value is blank. No error message contains a credential.</td></tr>
+  <tr><td><code>instapaper.test.ts</code>: plan (pure)</td><td>Every row of §4's table. Unsent-set cases: fresh; filed full-text
+    source (not resent); filed pointer plus new text (resent); filed source, no text now (not resent); a highlight filed by
+    <code>add --quote</code> (same id, not resent); a note added later (notes-only resend); an edited note (resent); a deleted note
+    (nothing). URL-less bookmark → <code>instapaper:&lt;id&gt;</code> identity. Canonical-URL match despite <code>utm_*</code>/trailing slash.
+    Cap and oldest-first order.</td></tr>
+  <tr><td><code>instapaper.test.ts</code>: build</td><td>§5's shapes. A produced first-send folder passes <code>lint</code> and is
+    <code>new</code> under <code>file-batch --dry-run</code>. A resend beside an existing <code>raw/</code> folder is <code>merged</code>, not
+    <code>left</code>. Position ordering. Duplicate highlight text → one record. Multi-line highlight quoting.</td></tr>
+  <tr><td><code>instapaper.test.ts</code>: end to end</td><td>Temp repo with a bare remote and a fake API. First run sends, commits
+    <code>instapaper: …</code>, and pushes <code>main</code>. The second run waits and makes no move. After the folder is filed into
+    <code>raw/</code> and committed, the third run moves it and sends nothing. <code>--dry-run</code> writes and moves nothing. Not configured →
+    exit 0 plus a warning. A remote advanced mid-run → re-plan and exactly one commit of this run's folders. A missing
+    folder → exit 1. A move failure after a successful push leaves the push in place and exits 1.</td></tr>
+  <tr><td><code>add-source.test.ts</code></td><td>Unchanged and still green after the <code>webQuoteId</code> move.</td></tr>
+</table>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="build">11 · Build plan, PRs &amp; evidence</h2>
+<ul>
+  <li><b>Where:</b> the implementing session needs both repos. The code goes on a feature branch of
+    <code>ac3charland/knowledge</code>, following <i>its</i> <code>CLAUDE.md</code> and README. Alfred's hooks, commitlint,
+    demo docs, and skills don't apply there, as with ALF-260.</li>
+  <li><b>Team:</b> small enough for the lead alone (strongest model). Optionally, after the lead writes
+    <code>InstapaperApi</code> and the config type first, one mid-tier subagent owns <code>lib/oauth1.ts</code> +
+    <code>lib/instapaper.ts</code> and their tests, while the lead writes <code>scripts/instapaper.ts</code> against the
+    interface with a fake. The file sets are disjoint and the only seam is <code>InstapaperApi</code>. The subagent never commits.</li>
+  <li><b>Two PRs:</b> (1) the code PR in <code>knowledge</code>, whose description holds the test output and a
+    <code>--dry-run</code> transcript against a fixture repo and fake API; (2) an Alfred PR that only
+    <code>git mv</code>s this spec to <code>docs/specs/archive/</code>, carrying
+    <code>alfred-ticket: ALF-263</code> / <code>phase: implementation</code> /
+    <code>spec-path: docs/specs/ALF-263.html</code> and linking PR (1). Merge (2) after (1).</li>
+  <li><b>Demo doc:</b> none. Nothing in Alfred behaves differently, so the Alfred PR is a non-behavioral
+    docs move, which the <code>showboat</code> skill's rules exempt. The wiki repo has no demo tooling. The
+    behavioral evidence is PR (1)'s test and dry-run output, and the live acceptance is Alex's smoke test (§12).</li>
+  <li><b>Egress:</b> a cloud session can't reach instapaper.com, so all verification is against fixtures.
+    Never paste live credentials into a session.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="setup">12 · Setup checklist (Alex)</h2>
+<p class="small">Not agent work. It goes into the knowledge README's setup checklist.</p>
+<ol>
+  <li>In Instapaper, create a folder named exactly <b>To Wiki</b>. <b>Reference</b> already exists.</li>
+  <li>Add the four D3 secrets to <code>ac3charland/knowledge</code> (Settings → Secrets and variables → Actions), using the
+    same values as Alfred's Vercel env (<code>frontend/lib/instapaper/config.ts</code>).</li>
+  <li><b>Dry run</b> on the Mac, from the clone on a clean <code>main</code>, with the four values exported and one
+    highlighted, noted article in To Wiki: <code>npm run instapaper -- --dry-run</code>. Expect one
+    <code>send</code> line with the right highlight and note counts. This is the live check of §6's shapes.</li>
+  <li><b>Smoke test:</b> Actions → kickoff → Run workflow. Check for an <code>instapaper: …</code> commit on <code>main</code>, then the lock,
+    then the ingest PR. In the PR, check the source page quotes the highlights as the author's words and
+    the notes as Alex's. Merge, and within minutes the article is in Reference.</li>
+  <li><b>Resend test:</b> add one highlight to that article and move it back to To Wiki. The next run sends a
+    folder with only that excerpt, and after that PR merges the article returns to Reference.</li>
+</ol>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="acceptance">13 · Acceptance criteria</h2>
+<ul class="ac">
+  <li>An article in To Wiki with no identity on file is committed to <code>inbox/</code> on <code>main</code> as one folder: <code>source.md</code>
+    (full-text from <code>get_text</code>, else a pointer when it has a URL), <code>excerpts-&lt;date&gt;.md</code> (one record per highlight,
+    <code>webQuoteId</code> ids, article order), and <code>notes-&lt;date&gt;.md</code> (one entry per non-blank note, same id as its highlight).
+    All files carry <code>source_type: web-article</code> and <code>via: instapaper</code>, and identity per D5.</li>
+  <li>The folder passes <code>npm run lint</code> and files as <code>new</code> (first send) or <code>merged</code> (resend), never <code>left</code>.</li>
+  <li>An article whose identity is in <code>inbox/</code> on <code>main</code> is neither resent nor moved.</li>
+  <li>An article filed in <code>raw/</code> with nothing unsent is moved to Reference, with no Instapaper calls beyond the list and the move.</li>
+  <li>A resend holds only the unsent files and records. A full-text <code>source.md</code> is never sent twice.</li>
+  <li>At most <code>--limit</code> (default 10) articles are sent per run, oldest first. The rest are deferred.</li>
+  <li>Moves happen only after this run's push succeeded (or when it sent nothing). A rejected push re-plans against the new
+    <code>main</code>, up to 3 attempts, and commits this run's folders exactly once.</li>
+  <li><code>--dry-run</code> prints the plan and changes nothing locally, on the remote, or in Instapaper.</li>
+  <li>Unconfigured → warning plus exit 0. A missing folder, auth failure, rate limit, or network failure → a clear message plus exit 1,
+    with nothing half-written. No output contains a credential.</li>
+  <li><code>kickoff.yml</code> runs the step before Decide with <code>continue-on-error: true</code>, and the same run's lock includes anything it sent.</li>
+  <li><code>add-source</code> uses the shared <code>webQuoteId</code>, and its tests are unchanged and green. <code>npm run check</code> is green.</li>
+  <li>The README documents the command, the step, the setup items, and the "stays in To Wiki" troubleshooting entry.</li>
+  <li>This spec is archived in Alfred by a PR carrying the <code>phase: implementation</code> block.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h2 id="scope">14 · Out of scope &amp; open questions</h2>
+<h3>Deliberately out</h3>
+<ul>
+  <li><b>Tags.</b> Not read and not written (D1).</li>
+  <li><b>Bulk backlog import.</b> The epic's open "batching Instapaper" question stays open. This ships the
+    per-article flow, and D8's cap is its only throttle. A later <code>--file-only</code> (marking sends
+    <code>ingest: file-only</code>) would be the natural valve for "move the whole backlog into To Wiki".</li>
+  <li><b>Propagating deletions or edits of highlights</b> after filing. <code>raw/</code> is frozen, and only edited
+    <i>notes</i> are resent (as a later-dated entry that wins).</li>
+  <li><b>The bookmark's <code>description</code>.</b> It's the page's own summary, not Alex's words, so it isn't sent.</li>
+  <li><b>Anything in Alfred's UI.</b> No status of Instapaper sends appears in Alfred.</li>
+  <li><b>An article sent both as a Reader pick and through Instapaper</b> becomes two <code>raw/</code> folders, because a
+    Reader send's identity is <code>alfred:reader-post:&lt;id&gt;</code>. This is rare, and the ingest session sees both.
+    Unifying identities is a separate decision.</li>
+</ul>
+<h3>Genuinely open (for the implementer to confirm, not to decide)</h3>
+<ul>
+  <li>Whether <code>bookmarks/list</code> returns <code>highlights</code> inline. §6 names the fallback.</li>
+  <li>Instapaper's rate-limit numbers aren't published. D8 keeps a run to about a dozen calls. If 1040s ever appear
+    in kickoff logs, lower the cap.</li>
+</ul>
+
+<p class="small" style="margin-top:2.5rem">
+  Sources: <code>docs/specs/epics/ALF-259.html</code> (decisions envelope, immutability, fidelity, registry, bar, kickoff;
+  the "Instapaper tag sync" follow-up); <code>docs/specs/archive/ALF-238.html</code> §6 and §10 and its code in <code>frontend/lib/instapaper/</code>
+  (<code>oauth.ts</code>, <code>bookmark.ts</code>, <code>config.ts</code>) and <code>frontend/scripts/instapaper-token.mjs</code>; in <code>ac3charland/knowledge</code>: <code>README.md</code>, <code>registry.yaml</code>,
+  <code>.github/workflows/kickoff.yml</code>, <code>.claude/skills/ingest/SKILL.md</code> §4–5,
+  <code>scripts/add-source.ts</code>, <code>scripts/lib/{schema,sources,paths,git,extract,obsidian,github,testing}.ts</code>,
+  <code>raw/2026/2026-09-25-the-acceleration-of-addictiveness/</code>, <code>raw/2026/2026-09-26-broad-band/</code>; Instapaper
+  client libraries <code>stve/instapaper</code>, <code>ieroNo47/gopaper</code>, <code>akadir/instapaper-go-client</code>,
+  <code>vburojevic/instapaper-cli</code>; RFC 5849.
+</p>
+
+</div>
+</body>
+</html>
