@@ -941,11 +941,23 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
 
     const inserts = restCalls(calls, 'reader_posts', 'POST').map((call) => payload(call));
     expect(inserts).toHaveLength(3);
-    expect(inserts[2]).toMatchObject({ html_extracted: false, title: 'Notes from the third week' });
+    expect(inserts[2]).toMatchObject({
+      html_extracted: false,
+      title: 'Notes from the third week',
+    });
+    // No HTML produced the plain post's body, so the insert carries none and the column stays null.
+    expect(inserts[2]).not.toHaveProperty('html');
     expect(inserts[0]).toMatchObject({
       html_extracted: true,
       canonical_url: 'https://open.substack.com/pub/harborline/p/the-grain-ledger',
     });
+    // The email HTML rides on the insert the tick already makes — same fetch, larger body.
+    expect(inserts[0]?.['html']).toEqual(expect.stringContaining('Every port keeps two sets'));
+
+    // The subrequest arithmetic in `READER_TICK_LIMIT`'s doc comment, minus the model calls
+    // (`summarizePost` is mocked above): nine per tick, plus the Gmail read, the insert, the
+    // comms stamp and the terminal patch per fresh post. Keeping the HTML adds none.
+    expect(calls).toHaveLength(9 + 3 * 4);
 
     expect(restCalls(calls, 'comm_messages')).toHaveLength(3);
     expect(summarized).toHaveBeenCalledTimes(3);
