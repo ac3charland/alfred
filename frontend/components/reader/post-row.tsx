@@ -12,6 +12,7 @@ import { readerHotkeyAction } from '@/lib/reader/hotkeys';
 import { postOpenLink } from '@/lib/reader/open-link';
 import { isReaderOverview } from '@/lib/reader/overview';
 import { useReaderActions } from '@/lib/stores/reader-store';
+import { useWikiConfig } from '@/lib/stores/wiki-store';
 import type { ReaderPostListItem, ReaderSummaryState } from '@/lib/types';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
@@ -167,8 +168,12 @@ export function PostRow({
   onExit,
 }: PostRowProperties) {
   const actions = useReaderActions();
+  const { writable } = useWikiConfig();
   const prefersReducedMotion = usePrefersReducedMotion();
   const [overviewOpen, setOverviewOpen] = React.useState(false);
+  // How many times the panel has been opened — the overview's key, so each opening starts with
+  // nothing ticked while a closing one keeps its state through the fold (and a send in flight).
+  const [openings, setOpenings] = React.useState(0);
   const shellRef = React.useRef<HTMLDivElement>(null);
   const linkRef = React.useRef<HTMLAnchorElement>(null);
   // What the card and the Overview verb say they control, so a screen reader can follow the
@@ -227,8 +232,9 @@ export function PostRow({
 
   const toggleOverview = React.useCallback(() => {
     if (!hasPanel) return;
+    if (!panelOpen) setOpenings((count) => count + 1);
     setOverviewOpen((open) => !open);
-  }, [hasPanel]);
+  }, [hasPanel, panelOpen]);
 
   // Bring the selected row into view when the keyboard walks onto it. `nearest` scrolls the
   // least that makes the row visible, so a row already on screen doesn't jump under the owner.
@@ -405,7 +411,14 @@ export function PostRow({
             {hasPanel && (
               <div id={panelId}>
                 <AnimatedHeightCollapse open={panelOpen} testId="reader-row-overview">
-                  {overview !== undefined && <PostOverview overview={overview} />}
+                  {overview !== undefined && (
+                    <PostOverview
+                      key={openings}
+                      overview={overview}
+                      post={post}
+                      writable={writable}
+                    />
+                  )}
                   {hasFooter && (
                     <div className={overviewFooterClass}>
                       {rerunnable ? (

@@ -18,6 +18,8 @@ describe('Badge', () => {
     expect(badgeVariants({ variant: 'accent' })).toContain('text-accent-teal');
     expect(badgeVariants({ variant: 'alert' })).toContain('bg-amber-500/15');
     expect(badgeVariants({ variant: 'alert' })).toContain('text-amber-400');
+    expect(badgeVariants({ variant: 'wiki' })).toContain('bg-accent-violet/15');
+    expect(badgeVariants({ variant: 'wiki' })).toContain('text-accent-violet');
     expect(badgeVariants({ variant: 'destructive' })).toContain('bg-destructive/15');
     expect(badgeVariants({ variant: 'destructive' })).toContain('text-destructive');
     expect(badgeVariants({ variant: 'due' })).toContain('border-accent-blue/50');

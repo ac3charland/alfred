@@ -197,10 +197,20 @@ things bite, and both surface as every route answering `{"error":"TypeError: fet
 - **Build after exporting the mock's URL, unconditionally.** Next inlines `NEXT_PUBLIC_*` at
   **build** time, so a `[ -d .next ] || npm run build` guard silently reuses a build pointing at
   whatever port the last build used (the E2E harness rebuilds on its own port every run).
-- **`npm run start` spawns `next-server` as a child**, so a trap killing only the npm PID leaves
-  it holding the port — and the *next* run's requests are answered by that stale server, still
-  pointed at the old mock. Kill the child (`pkill -P "$APP"`), and `pkill -f '[n]ext-server'` before
-  re-running a block that died.
+- **`npm run start` spawns `next-server` as a grandchild** (npm → sh → next-server), so a trap
+  killing the npm PID — or its direct children with `pkill -P "$APP"` — leaves it holding the
+  port, and the *next* run's requests are answered by that stale server, still pointed at the old
+  mock. Kill the whole tree (a recursive `pgrep -P` walk — `docs/demos/alf-261-day-2-wiki/with-app.sh`),
+  and `pkill -f '[n]ext-server'` before re-running a block that died.
+- **A session-gated route (`withSession`) needs a real auth cookie, not the API key.** Mint it in
+  node: `createServerClient` from `@supabase/ssr` with a `cookies.setAll` that captures into a
+  map, then `auth.signInWithPassword` against the mock — the library writes its own cookie
+  name/encoding, which you send as `Cookie:` (`docs/demos/alf-261-day-2-wiki/send-contract.mjs`).
+
+**Bundling a Worker module into a harness** (the `sweep-harness.mjs` pattern): esbuild's ESM
+output throws `Dynamic require of "process" is not supported` when a dependency ships CommonJS
+(`yaml` does). Give the bundle a real `require` via `banner: { js: "import { createRequire } from
+'node:module'; const require = createRequire(import.meta.url);" }`.
 
 ## Screenshotting the UI (the evidence for any visual change)
 
@@ -406,7 +416,9 @@ clip long enough that the flash is a small fraction of it.
 inspect a real frame, load the GIF as a `data:` URI `<img>` in the suite's own
 Playwright Chromium from a small `.mjs` placed INSIDE `frontend/` (Node resolves
 `@playwright/test` from the script's directory), run it with plain `node`,
-`waitForTimeout` to the moment you want, then screenshot the `<img>`.
+`waitForTimeout` to the moment you want, then screenshot the `<img>`. Check a mid-clip frame every time: a
+small recording viewport can leave the revealed element below the fold, which frame 0 never shows —
+scroll the target near the top of the viewport before the animation starts.
 
 Minimise the GIF by keeping the recording small at the source: a small viewport
 **and** matching `video.size`, a test body containing **only** the animation (no

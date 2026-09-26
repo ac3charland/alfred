@@ -60,10 +60,64 @@ describe('useTaskRowFlags', () => {
       const flags = useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY);
       expect(flags).toMatchObject({ isTask: false, isUnclassified: false, isCode: true });
     });
+
+    it('marks a knowledge node isKnowledge, and none of the others', () => {
+      const flags = useTaskRowFlags({ ...BASE_NODE, item_type: 'knowledge' }, false, EMPTY);
+      expect(flags).toMatchObject({
+        isTask: false,
+        isUnclassified: false,
+        isCode: false,
+        isKnowledge: true,
+      });
+    });
+
+    it.each(['task', 'code', 'unclassified'] as const)(
+      'does not mark a %s node isKnowledge',
+      (itemType) => {
+        const { isKnowledge } = useTaskRowFlags(
+          { ...BASE_NODE, item_type: itemType },
+          false,
+          EMPTY,
+        );
+        expect(isKnowledge).toBe(false);
+      },
+    );
+  });
+
+  describe('canDrag', () => {
+    it('lets an active, reconciled task or unclassified root lift', () => {
+      expect(useTaskRowFlags(BASE_NODE, false, EMPTY).canDrag).toBe(true);
+      expect(
+        useTaskRowFlags({ ...BASE_NODE, item_type: 'unclassified' }, false, EMPTY).canDrag,
+      ).toBe(true);
+    });
+
+    it('keeps a completed row and a temp id still', () => {
+      expect(useTaskRowFlags(BASE_NODE, true, EMPTY).canDrag).toBe(false);
+      expect(useTaskRowFlags({ ...BASE_NODE, id: 'temp-abc' }, false, EMPTY).canDrag).toBe(false);
+    });
+
+    // A folder holds tasks: a drop there runs moveTask, which would file a code or knowledge
+    // root like a task instead of sending it where its type says it goes.
+    it('keeps a code root and a knowledge root still', () => {
+      expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY).canDrag).toBe(
+        false,
+      );
+      expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'knowledge' }, false, EMPTY).canDrag).toBe(
+        false,
+      );
+    });
+
+    it('still lets a code child lift — reordering stories is a real gesture', () => {
+      expect(useTaskRowFlags(child({ item_type: 'code' }), false, EMPTY).canDrag).toBe(true);
+    });
   });
 
   describe('the subtask affordance', () => {
-    it('lets a task and a code ROOT add subtasks, but not a code child or unclassified row', () => {
+    it('lets a task and a code ROOT add subtasks, but not a code child, unclassified or knowledge row', () => {
+      expect(
+        useTaskRowFlags({ ...BASE_NODE, item_type: 'knowledge' }, false, EMPTY).canAddSubtask,
+      ).toBe(false);
       expect(useTaskRowFlags(BASE_NODE, false, EMPTY).canAddSubtask).toBe(true);
       expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY).canAddSubtask).toBe(
         true,
@@ -118,7 +172,7 @@ describe('useTaskRowFlags', () => {
   });
 
   describe('canChangeType (ALF-170)', () => {
-    it.each(['task', 'code', 'unclassified'] as const)(
+    it.each(['task', 'code', 'unclassified', 'knowledge'] as const)(
       'is true for a childless %s root',
       (itemType) => {
         const { canChangeType } = useTaskRowFlags(

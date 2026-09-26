@@ -27,22 +27,31 @@ function candidate(
   };
 }
 
+/** The readiness context for an instance with no wiki writer — the default everywhere. */
+const WIKI_OFF = { wikiWritable: false };
+/** The readiness context for the Personal instance, whose wiki writer is configured. */
+const WIKI_ON = { wikiWritable: true };
+
 describe('dispatchReadiness', () => {
   // The readiness table, row by row: what each shape needs before Dispatch will send it.
   it('a task with a folder is ready', () => {
-    expect(dispatchReadiness(candidate({ item_type: 'task', folder_id: 'f1' }), false)).toEqual({
+    expect(
+      dispatchReadiness(candidate({ item_type: 'task', folder_id: 'f1' }), false, WIKI_OFF),
+    ).toEqual({
       ready: true,
     });
   });
 
   it('a task with subtasks is still ready — the dispatch cascades over its subtree', () => {
-    expect(dispatchReadiness(candidate({ item_type: 'task', folder_id: 'f1' }), true)).toEqual({
+    expect(
+      dispatchReadiness(candidate({ item_type: 'task', folder_id: 'f1' }), true, WIKI_OFF),
+    ).toEqual({
       ready: true,
     });
   });
 
   it('a task without a folder needs a folder', () => {
-    expect(dispatchReadiness(candidate({ item_type: 'task' }), false)).toEqual({
+    expect(dispatchReadiness(candidate({ item_type: 'task' }), false, WIKI_OFF)).toEqual({
       ready: false,
       blocker: 'needs a folder',
     });
@@ -53,12 +62,13 @@ describe('dispatchReadiness', () => {
       dispatchReadiness(
         candidate({ item_type: 'code', intended_project_id: 'p1', intended_epic_id: 'e1' }),
         false,
+        WIKI_OFF,
       ),
     ).toEqual({ ready: true });
   });
 
   it('a code item without a project needs a project (before the epic)', () => {
-    expect(dispatchReadiness(candidate({ item_type: 'code' }), false)).toEqual({
+    expect(dispatchReadiness(candidate({ item_type: 'code' }), false, WIKI_OFF)).toEqual({
       ready: false,
       blocker: 'needs a project',
     });
@@ -66,7 +76,11 @@ describe('dispatchReadiness', () => {
 
   it('a code item with a project but no epic needs an epic', () => {
     expect(
-      dispatchReadiness(candidate({ item_type: 'code', intended_project_id: 'p1' }), false),
+      dispatchReadiness(
+        candidate({ item_type: 'code', intended_project_id: 'p1' }),
+        false,
+        WIKI_OFF,
+      ),
     ).toEqual({ ready: false, blocker: 'needs an epic' });
   });
 
@@ -77,20 +91,70 @@ describe('dispatchReadiness', () => {
       dispatchReadiness(
         candidate({ item_type: 'code', intended_project_id: 'p1', intended_epic_id: 'e1' }),
         true,
+        WIKI_OFF,
       ),
     ).toEqual({ ready: false, blocker: 'dispatch from its own row menu' });
   });
 
   it('an unclassified row is never ready', () => {
-    expect(dispatchReadiness(candidate(), false)).toEqual({
+    expect(dispatchReadiness(candidate(), false, WIKI_OFF)).toEqual({
       ready: false,
       blocker: 'needs a type',
     });
   });
 
+  // A knowledge row goes to the wiki, so its one label is the wiki being there to take it.
+  it('a childless knowledge row is ready when the wiki is writable', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'knowledge' }), false, WIKI_ON)).toEqual({
+      ready: true,
+    });
+  });
+
+  it('a knowledge row with children has subtasks', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'knowledge' }), true, WIKI_ON)).toEqual({
+      ready: false,
+      blocker: 'has subtasks',
+    });
+  });
+
+  it('a knowledge row on an instance with no wiki writer is blocked: wiki not connected', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'knowledge' }), false, WIKI_OFF)).toEqual({
+      ready: false,
+      blocker: 'wiki not connected',
+    });
+  });
+
+  it('wiki not connected wins over has subtasks — the gap the row cannot fix', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'knowledge' }), true, WIKI_OFF)).toEqual({
+      ready: false,
+      blocker: 'wiki not connected',
+    });
+  });
+
+  it('a knowledge row still carrying a temp id is still saving', () => {
+    expect(
+      dispatchReadiness(candidate({ id: tempId(), item_type: 'knowledge' }), false, WIKI_ON),
+    ).toEqual({ ready: false, blocker: 'still saving' });
+  });
+
+  it('the wiki being writable readies no other type', () => {
+    expect(dispatchReadiness(candidate(), false, WIKI_ON)).toEqual({
+      ready: false,
+      blocker: 'needs a type',
+    });
+    expect(dispatchReadiness(candidate({ item_type: 'task' }), false, WIKI_ON)).toEqual({
+      ready: false,
+      blocker: 'needs a folder',
+    });
+  });
+
   it('a row still carrying a temp id is still saving, whatever else it has', () => {
     expect(
-      dispatchReadiness(candidate({ id: tempId(), item_type: 'task', folder_id: 'f1' }), false),
+      dispatchReadiness(
+        candidate({ id: tempId(), item_type: 'task', folder_id: 'f1' }),
+        false,
+        WIKI_OFF,
+      ),
     ).toEqual({ ready: false, blocker: 'still saving' });
   });
 });
@@ -127,6 +191,30 @@ describe('summarizeBlockers', () => {
     );
   });
 
+  it('phrases the two knowledge blockers for one and for many', () => {
+    expect(summarizeBlockers(['has subtasks'])).toBe('1 not ready — 1 has subtasks');
+    expect(summarizeBlockers(['has subtasks', 'has subtasks'])).toBe(
+      '2 not ready — 2 have subtasks',
+    );
+    expect(summarizeBlockers(['wiki not connected'])).toBe('1 not ready — 1 wiki not connected');
+    expect(
+      summarizeBlockers(['wiki not connected', 'wiki not connected', 'wiki not connected']),
+    ).toBe('3 not ready — 3 wiki not connected');
+  });
+
+  it('orders the knowledge blockers after the epic and before the row-menu reason', () => {
+    const blockers: DispatchBlocker[] = [
+      'still saving',
+      'dispatch from its own row menu',
+      'wiki not connected',
+      'has subtasks',
+      'needs an epic',
+    ];
+    expect(summarizeBlockers(blockers)).toBe(
+      '5 not ready — 1 needs an epic, 1 has subtasks, 1 wiki not connected, 1 dispatch from its own row menu, 1 still saving',
+    );
+  });
+
   it('reads naturally for the row-menu and still-saving reasons', () => {
     expect(summarizeBlockers(['dispatch from its own row menu'])).toBe(
       '1 not ready — 1 dispatch from its own row menu',
@@ -146,6 +234,7 @@ describe('rowDispatchAction', () => {
       rowDispatchAction(candidate({ item_type: 'task', folder_id: 'f1' }), {
         hasChildren: false,
         groupHasTempIds: false,
+        wikiWritable: false,
       }),
     ).toEqual({ kind: 'send' });
   });
@@ -154,7 +243,7 @@ describe('rowDispatchAction', () => {
     expect(
       rowDispatchAction(
         candidate({ item_type: 'code', intended_project_id: 'p1', intended_epic_id: 'e1' }),
-        { hasChildren: false, groupHasTempIds: false },
+        { hasChildren: false, groupHasTempIds: false, wikiWritable: false },
       ),
     ).toEqual({ kind: 'send' });
   });
@@ -164,6 +253,7 @@ describe('rowDispatchAction', () => {
       rowDispatchAction(candidate({ item_type: 'code' }), {
         hasChildren: true,
         groupHasTempIds: false,
+        wikiWritable: false,
       }),
     ).toEqual({ kind: 'epic', opensDialog: true });
   });
@@ -174,6 +264,7 @@ describe('rowDispatchAction', () => {
       rowDispatchAction(candidate({ item_type: 'code', intended_project_id: 'p1' }), {
         hasChildren: true,
         groupHasTempIds: false,
+        wikiWritable: false,
       }),
     ).toEqual({ kind: 'epic', opensDialog: false });
   });
@@ -184,6 +275,7 @@ describe('rowDispatchAction', () => {
       rowDispatchAction(candidate({ item_type: 'code', intended_project_id: 'p1' }), {
         hasChildren: true,
         groupHasTempIds: true,
+        wikiWritable: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'still saving' });
   });
@@ -193,9 +285,16 @@ describe('rowDispatchAction', () => {
       rowDispatchAction(candidate({ item_type: 'task' }), {
         hasChildren: false,
         groupHasTempIds: false,
+        wikiWritable: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'needs a folder' });
-    expect(rowDispatchAction(candidate(), { hasChildren: false, groupHasTempIds: false })).toEqual({
+    expect(
+      rowDispatchAction(candidate(), {
+        hasChildren: false,
+        groupHasTempIds: false,
+        wikiWritable: false,
+      }),
+    ).toEqual({
       kind: 'blocked',
       blocker: 'needs a type',
     });
@@ -206,8 +305,37 @@ describe('rowDispatchAction', () => {
       rowDispatchAction(candidate({ id: tempId(), item_type: 'code', intended_project_id: 'p1' }), {
         hasChildren: true,
         groupHasTempIds: false,
+        wikiWritable: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'still saving' });
+  });
+
+  it('sends a childless knowledge row when the wiki is writable', () => {
+    expect(
+      rowDispatchAction(candidate({ item_type: 'knowledge' }), {
+        hasChildren: false,
+        groupHasTempIds: false,
+        wikiWritable: true,
+      }),
+    ).toEqual({ kind: 'send' });
+  });
+
+  it('blocks a knowledge row with children, and one with no wiki writer', () => {
+    // A knowledge parent has no epic-like path of its own: children only block it.
+    expect(
+      rowDispatchAction(candidate({ item_type: 'knowledge' }), {
+        hasChildren: true,
+        groupHasTempIds: false,
+        wikiWritable: true,
+      }),
+    ).toEqual({ kind: 'blocked', blocker: 'has subtasks' });
+    expect(
+      rowDispatchAction(candidate({ item_type: 'knowledge' }), {
+        hasChildren: false,
+        groupHasTempIds: false,
+        wikiWritable: false,
+      }),
+    ).toEqual({ kind: 'blocked', blocker: 'wiki not connected' });
   });
 
   it('blocks a row still carrying its own temp id', () => {
@@ -215,6 +343,7 @@ describe('rowDispatchAction', () => {
       rowDispatchAction(candidate({ id: tempId(), item_type: 'task', folder_id: 'f1' }), {
         hasChildren: false,
         groupHasTempIds: false,
+        wikiWritable: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'still saving' });
   });

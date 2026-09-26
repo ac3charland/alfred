@@ -1,5 +1,5 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
-import { makeSupabaseDouble } from '@/lib/api/supabase-route-double';
+import { makeChain, makeSupabaseDouble } from '@/lib/api/supabase-route-double';
 import { makeCommAccount } from '@/lib/comms/fixtures';
 import {
   makeReaderHealth,
@@ -11,8 +11,11 @@ import { createClient } from '@/lib/supabase/server';
 
 import {
   READER_POST_LIST_COLUMNS,
+  appendWikiSentIdeas,
   getReaderHealthSeed,
   getReaderHealthSnapshot,
+  getReaderPostForWiki,
+  getReaderPostListItem,
   getReaderPostResummarizeState,
   getReaderPosts,
   getReaderSeed,
@@ -379,6 +382,90 @@ describe('getReaderPostResummarizeState', () => {
     });
 
     const { error } = await getReaderPostResummarizeState(supabase as never, POST_ID);
+
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('getReaderPostForWiki', () => {
+  it('reads exactly what a send needs, the body included, for the row asked for', async () => {
+    const stored = makeReaderPost(PUBLICATION.id, { id: POST_ID, text: 'The body.' });
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: stored } } });
+
+    const { data } = await getReaderPostForWiki(supabase as never, POST_ID);
+
+    expect(data).toEqual(stored);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    const [columns] = supabase.table('reader_posts').select.mock.calls[0] as [string];
+    expect(columns.split(',')).toStrictEqual([
+      'id',
+      'title',
+      'author',
+      'canonical_url',
+      'received_at',
+      'text',
+      'overview',
+      'wiki_sent_ideas',
+    ]);
+  });
+
+  it('resolves null data for a row that is not there — the route handles the 404', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    const { data } = await getReaderPostForWiki(supabase as never, POST_ID);
+
+    expect(data).toBeNull();
+  });
+
+  it('passes a Supabase error straight through', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: null, error: { message: 'boom' } } },
+    });
+
+    const { error } = await getReaderPostForWiki(supabase as never, POST_ID);
+
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('getReaderPostListItem', () => {
+  it('reads one row through the shared list columns — never the body', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await getReaderPostListItem(supabase as never, POST_ID);
+
+    expect(supabase.table('reader_posts').select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    expect(supabase.table('reader_posts').maybeSingle).toHaveBeenCalled();
+  });
+});
+
+describe('appendWikiSentIdeas', () => {
+  it('appends through the atomic RPC and reads the row back through the list columns', async () => {
+    const { text: _text, ...saved } = makeReaderPost(PUBLICATION.id, {
+      id: POST_ID,
+      wiki_sent_ideas: ['Idea one'],
+    });
+    const supabase = makeSupabaseDouble({});
+    const chain = makeChain({ single: { data: saved } });
+    supabase.rpc.mockReturnValue(chain);
+
+    const { data } = await appendWikiSentIdeas(supabase as never, POST_ID, ['Idea one']);
+
+    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_ideas', {
+      p_post: POST_ID,
+      p_ideas: ['Idea one'],
+    });
+    expect(chain.select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
+    expect(chain.single).toHaveBeenCalled();
+    expect(data).toEqual(saved);
+  });
+
+  it('passes a Supabase error straight through', async () => {
+    const supabase = makeSupabaseDouble({});
+    supabase.rpc.mockReturnValue(makeChain({ single: { data: null, error: { message: 'boom' } } }));
+
+    const { error } = await appendWikiSentIdeas(supabase as never, POST_ID, ['Idea one']);
 
     expect(error).toEqual({ message: 'boom' });
   });

@@ -25,6 +25,8 @@ const badgeVariants = cva('shrink-0 rounded-full px-2 py-0.5 text-xs', {
       secondary: 'bg-secondary text-muted-foreground',
       accent: 'bg-accent-teal/15 text-accent-teal',
       alert: 'bg-amber-500/15 text-amber-400',
+      // The wiki's filled violet, mirroring `accent`: the ⌘P row badge for a wiki page.
+      wiki: 'bg-accent-violet/15 text-accent-violet',
       destructive: 'bg-destructive/15 text-destructive',
       // The outline form of the same tone — a red LABEL rather than a red alarm. Kept distinct
       // from the filled `destructive` so a category chip (the Bug badge) doesn't wear the

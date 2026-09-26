@@ -1,6 +1,6 @@
 import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
-import { userEvent, within } from 'storybook/test';
+import { expect, userEvent, within } from 'storybook/test';
 
 import { NO_READER_HEALTH, makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
 import { ReaderProvider } from '@/lib/stores/reader-store';
@@ -14,6 +14,12 @@ import { PostRow } from './post-row';
  * expanded), the three floor states, and a post with nowhere for "Open" to point. Each is its
  * own `ReaderProvider` seed (rather than the shared shell seed) so its archive/open verbs have
  * something real to act on in an isolated story.
+ *
+ * The `Wiki…` stories are the Novel-ideas checklist on a deployment that can write into the
+ * wiki (the preview's `store.wiki.writable`), one per state it draws: nothing ticked beside a
+ * bullet sent earlier, two ticked with the selection bar, the send in flight, and every bullet
+ * sent. `WikiNotConnected` is that same post with the wiki not connected — the plain list
+ * `DoneExpanded` also draws.
  */
 
 const NOW = new Date(2026, 8, 18, 9, 0);
@@ -252,4 +258,129 @@ export const RefusedAndSwept: Story = {
     }),
   },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+// ---------------------------------------------------------------------------
+// The Novel-ideas checklist, with the wiki connected
+// ---------------------------------------------------------------------------
+
+const HABIT = 'Habit stacking works because the cue is an existing routine, not a time of day.';
+const ENVIRONMENT = 'Environment design beats willpower for the first thirty days.';
+const STREAKS =
+  'Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.';
+const IDENTITY = 'Identity-based framing ("I’m a runner") outlasts outcome goals.';
+const HABIT_IDEAS = [HABIT, ENVIRONMENT, STREAKS, IDENTITY];
+
+function habitsPost(wikiSentIdeas: string[]): ReaderPostListItem {
+  return post({
+    id: 'p-habits',
+    author: 'Jane Doe',
+    title: 'Why habits stick',
+    received_at: '2026-09-16T14:00:00.000Z',
+    word_count: 1640,
+    canonical_url: 'https://janedoe.substack.com/p/why-habits-stick',
+    summary_state: 'done',
+    gist: "Routines anchored to an existing cue survive; routines anchored to a clock time don't.",
+    overview: makeReaderOverview({
+      novel_ideas: HABIT_IDEAS,
+      evidence: ['Lally et al. (2010): median 66 days to automaticity.'],
+    }),
+    model: 'claude-sonnet-5',
+    prompt_version: 2,
+    summarized_at: '2026-09-16T14:05:00.000Z',
+    wiki_sent_ideas: wikiSentIdeas,
+  });
+}
+
+const WIKI_PARAMETERS = {
+  store: { wiki: { repo: 'ac3charland/knowledge', writable: true } },
+  visualTest: { target: '[data-testid="row-frame"]' },
+};
+
+async function openOverview(canvasElement: HTMLElement): Promise<void> {
+  const canvas = within(canvasElement);
+  await userEvent.click(await canvas.findByRole('button', { name: 'Overview' }));
+}
+
+async function tickTwo(canvasElement: HTMLElement): Promise<void> {
+  const canvas = within(canvasElement);
+  await userEvent.click(await canvas.findByRole('checkbox', { name: ENVIRONMENT }));
+  await userEvent.click(await canvas.findByRole('checkbox', { name: STREAKS }));
+  await expect(await canvas.findByText('2 selected')).toBeInTheDocument();
+}
+
+/** Nothing ticked, one bullet sent earlier: the sent check, and Send all on the heading row. */
+export const WikiNothingTicked: Story = {
+  args: { post: habitsPost([HABIT]) },
+  parameters: WIKI_PARAMETERS,
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('button', { name: 'Send all to wiki' })).toBeEnabled();
+  },
+};
+
+/** Two ticked: the selection bar under the list, with its count, Send to wiki and Clear. */
+export const WikiTwoTicked: Story = {
+  args: { post: habitsPost([HABIT]) },
+  parameters: WIKI_PARAMETERS,
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    await tickTwo(canvasElement);
+  },
+};
+
+/**
+ * The two on their way: every control disabled, and the pressed button reads Sending…. The
+ * send route is held unanswered for the length of the story, so the capture sits mid-flight.
+ */
+export const WikiSending: Story = {
+  args: { post: habitsPost([HABIT]) },
+  parameters: WIKI_PARAMETERS,
+  beforeEach: () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = () => new Promise(() => {});
+    return () => {
+      globalThis.fetch = original;
+    };
+  },
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    await tickTwo(canvasElement);
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Send to wiki' }));
+    await expect(await canvas.findByRole('button', { name: /Sending…/ })).toBeDisabled();
+  },
+};
+
+/** Every bullet sent: each row checked in violet, and "All sent to wiki" in Send all's place. */
+export const WikiAllSent: Story = {
+  args: { post: habitsPost(HABIT_IDEAS) },
+  parameters: WIKI_PARAMETERS,
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('All sent to wiki')).toBeInTheDocument();
+  },
+};
+
+/**
+ * The same post with the wiki NOT connected (the Work instance, `writable: false`): Novel ideas is
+ * the plain bulleted list, with no tick boxes, no Send all and no selection bar.
+ */
+export const WikiNotConnected: Story = {
+  args: { post: habitsPost([]) },
+  parameters: {
+    ...WIKI_PARAMETERS,
+    store: { wiki: { writable: false } },
+  },
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText(HABIT)).toBeInTheDocument();
+    await expect(canvas.queryByRole('checkbox')).not.toBeInTheDocument();
+    await expect(
+      canvas.queryByRole('button', { name: 'Send all to wiki' }),
+    ).not.toBeInTheDocument();
+  },
 };

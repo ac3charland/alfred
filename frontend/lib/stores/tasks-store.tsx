@@ -12,6 +12,7 @@ import { useExpansionActions } from '@/lib/stores/expansion-store';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { useWikiConfig } from '@/lib/stores/wiki-store';
 import { createClient } from '@/lib/supabase/client';
 import { joinWhenAuthenticated } from '@/lib/supabase/realtime';
 import { classifierVerdictPatch } from '@/lib/tasks/classification';
@@ -80,16 +81,32 @@ type TaskFieldPatch = Pick<
   'title' | 'due_date' | 'notes' | 'recurrence' | 'priority'
 >;
 
+/** The types a Classify control can set: `unclassified` is a starting state, not a target. */
+export type ClassifyTarget = Exclude<ItemType, 'unclassified'>;
+
 /**
  * The one coherent PATCH a type change is: `item_type` travels with the clears the new type
  * forbids — chosen from the row's CURRENT type, since that decides which fields it may be
  * carrying. A task's due date is task-only and its recurrence is anchored to it, so both go
  * when it becomes code; a code row's two pre-factory hints are code-only, so both go when it
- * becomes a task. An unclassified row can carry neither set (the DB CHECKs), so its flip is a
- * bare `item_type` patch. `priority` is deliberately never cleared: no constraint forbids it,
- * and a mis-classification corrected straight back keeps the level the owner set.
+ * becomes a task. An unclassified or knowledge row can carry neither set (the DB CHECKs), so
+ * its flip to task or code is a bare `item_type` patch. Becoming knowledge clears every label
+ * at once — the four the DB forbids, plus `folder_id`, since the row's folder chip draws for any
+ * undispatched row that carries one and an idea has no folder to go to. `priority` is
+ * deliberately never cleared: no constraint forbids it, and a mis-classification corrected
+ * straight back keeps the level the owner set.
  */
-function classifyPatch(current: ItemType, next: 'task' | 'code'): api.UpdateItemInput {
+function classifyPatch(current: ItemType, next: ClassifyTarget): api.UpdateItemInput {
+  if (next === 'knowledge') {
+    return {
+      item_type: next,
+      due_date: null,
+      recurrence: null,
+      intended_project_id: null,
+      intended_epic_id: null,
+      folder_id: null,
+    };
+  }
   if (current === 'task' && next === 'code') {
     return { item_type: next, due_date: null, recurrence: null };
   }
@@ -98,6 +115,12 @@ function classifyPatch(current: ItemType, next: 'task' | 'code'): api.UpdateItem
   }
   return { item_type: next };
 }
+
+/**
+ * The most knowledge ids one wiki send takes — `sendItemsToWikiSchema`'s bound. A bigger
+ * dispatch goes as several sends, one commit each.
+ */
+const WIKI_SEND_MAX = 50;
 
 /** The item fields a code dispatch hands the factory gate (the code store's own input shape). */
 interface CodeDispatchItem {
@@ -122,7 +145,7 @@ interface TaskActions {
    * of `TaskFieldPatch` — so only the deliberate Classify controls may change the type;
    * reconciles / rolls back exactly like `updateTask`.
    */
-  classifyItem: (id: string, itemType: 'task' | 'code') => Promise<void>;
+  classifyItem: (id: string, itemType: ClassifyTarget) => Promise<void>;
   /** Move a task (and its subtree) to a folder, or to the Inbox when null. */
   moveTask: (id: string, folderId: string | null) => Promise<void>;
   /**
@@ -149,12 +172,13 @@ interface TaskActions {
    * Resolves with the ids that FAILED (empty = full success), so the caller can keep just
    * those selected for a retry.
    */
-  bulkClassify: (ids: string[], itemType: 'task' | 'code') => Promise<string[]>;
+  bulkClassify: (ids: string[], itemType: ClassifyTarget) => Promise<string[]>;
   /**
    * Dispatch: send each READY selected item to its own destination in one press — a task (and
    * its whole subtree) to its folder via the residency PATCH, a code item into the factory via
    * `sendToCode` (the code store's `convertTaskToCode`, passed in because the RPC's optimistic
-   * board card lives in that store). Unready items — judged by `dispatchReadiness` — are
+   * board card lives in that store), and every knowledge item to the wiki in ONE request (one
+   * commit, one folder per item). Unready items — judged by `dispatchReadiness` — are
    * filtered out BEFORE anything runs: never sent, never "failures". Gated rows are dropped
    * from this store on success. Resolves with the ids that should STAY SELECTED (unready ∪
    * failed), so the bar keeps exactly the unfinished work in front of the owner.
@@ -376,6 +400,15 @@ export function TasksProvider({
   React.useEffect(() => {
     showToastRef.current = showToast;
   }, [showToast]);
+
+  // Whether this instance can write to the wiki — the one piece of readiness a knowledge row
+  // can't read off itself. WikiProvider is mounted ABOVE this store (in the shell layout), and
+  // the flag is captured through an effect-synced ref for the same reason `showToast` is.
+  const { writable: wikiWritable } = useWikiConfig();
+  const wikiWritableRef = React.useRef(wikiWritable);
+  React.useEffect(() => {
+    wikiWritableRef.current = wikiWritable;
+  }, [wikiWritable]);
 
   // A create reconciles by swapping the optimistic temp id for the server's, which orphans any
   // UI state still keyed by the old id — a detail panel opened on the row while it saved simply
@@ -797,12 +830,30 @@ export function TasksProvider({
         const unreadyIds: string[] = [];
         const units: BulkUnit[] = [];
         const codeIds: string[] = [];
+        const knowledgeIds: string[] = [];
         const taskSubtreeIds: string[] = [];
+        const context = { wikiWritable: wikiWritableRef.current };
+        // The knowledge ids in this dispatch travel together — one request, one commit, one
+        // kickoff batch on the wiki's side, not N — in chunks of at most WIKI_SEND_MAX, the
+        // route's bound. `applyBulkSettled` settles per unit, so each id is still its own unit,
+        // but every unit of a chunk awaits that chunk's one shared promise: they succeed or fail
+        // together, and a failure rolls every one of them back. Each send starts lazily with
+        // its chunk's first request, once `knowledgeIds` is complete.
+        const wikiSends = new Map<number, Promise<unknown>>();
+        const sendToWiki = (chunk: number): Promise<unknown> => {
+          let send = wikiSends.get(chunk);
+          if (send === undefined) {
+            const start = chunk * WIKI_SEND_MAX;
+            send = api.sendItemsToWiki({ ids: knowledgeIds.slice(start, start + WIKI_SEND_MAX) });
+            wikiSends.set(chunk, send);
+          }
+          return send;
+        };
         for (const id of ids) {
           const item = current.find((row) => row.id === id);
           if (item === undefined) continue;
           const hasChildren = current.some((row) => row.parent_id === id);
-          if (!dispatchReadiness(item, hasChildren).ready) {
+          if (!dispatchReadiness(item, hasChildren, context).ready) {
             // Filtered out BEFORE the mutation runs: not sent, not a failure — it stays
             // selected with the readiness line still naming what it's missing.
             unreadyIds.push(id);
@@ -818,6 +869,19 @@ export function TasksProvider({
               snapshot: subtree,
               request: () =>
                 Promise.all(subtree.map((row) => api.updateItem(row.id, { dispatched: true }))),
+            });
+          } else if (item.item_type === 'knowledge') {
+            // A ready knowledge row is a childless root, so the row is the whole snapshot. It
+            // leaves this store the way a gated code row does (the RPC deletes it server-side).
+            const chunk = Math.floor(knowledgeIds.length / WIKI_SEND_MAX);
+            knowledgeIds.push(id);
+            units.push({
+              id,
+              snapshot: [item],
+              request: async () => {
+                await sendToWiki(chunk);
+                return [];
+              },
             });
           } else {
             // A ready code item has both hints — the gate has nothing left to ask, so the
@@ -860,11 +924,13 @@ export function TasksProvider({
             patch: { dispatched_at: new Date().toISOString() },
           });
         }
-        // A gated code row leaves task_items outright, so its optimistic form is a removal —
-        // dispatched in the same commit as the stamp above, so every dispatched row leaves the
-        // Inbox together. `applyBulkSettled` upserts each failed unit's snapshot, putting a row
-        // whose gate call failed straight back.
-        if (codeIds.length > 0) dispatch({ type: 'remove', ids: codeIds });
+        // A gated code row leaves task_items outright, and a knowledge row is deleted once the
+        // wiki has it, so the optimistic form of both is a removal — dispatched in the same
+        // commit as the stamp above, so every dispatched row leaves the Inbox together.
+        // `applyBulkSettled` upserts each failed unit's snapshot, putting a row whose call
+        // failed straight back.
+        const removedIds = [...codeIds, ...knowledgeIds];
+        if (removedIds.length > 0) dispatch({ type: 'remove', ids: removedIds });
         const failedIds = await applyBulkSettled(
           dispatch,
           showToastRef.current,

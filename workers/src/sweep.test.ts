@@ -320,7 +320,7 @@ describe('the write', () => {
       classified_at: NOW.toISOString(),
       classified_provider: 'anthropic',
       classified_model: 'claude-haiku-4-5',
-      classified_prompt_version: 2,
+      classified_prompt_version: 3,
       classified_guess: { item_type: 'task', priority: 'high', due_date: '2026-08-07' },
     });
   });
@@ -351,7 +351,7 @@ describe('the write', () => {
       classified_at: NOW.toISOString(),
       classified_provider: 'anthropic',
       classified_model: 'claude-haiku-4-5',
-      classified_prompt_version: 2,
+      classified_prompt_version: 3,
       classified_guess: {},
     });
     expect(summary.classified).toBe(1);
@@ -463,7 +463,7 @@ describe('the write', () => {
       classified_at: NOW.toISOString(),
       classified_provider: 'anthropic',
       classified_model: 'claude-haiku-4-5',
-      classified_prompt_version: 2,
+      classified_prompt_version: 3,
       classified_guess: { item_type: 'code' },
     });
   });

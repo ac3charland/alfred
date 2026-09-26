@@ -46,8 +46,9 @@ import { useDepartingItems, useDepartingItemsActions } from '@/lib/stores/depart
 import { useExpansion, useExpansionActions } from '@/lib/stores/expansion-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
-import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
+import { type ClassifyTarget, useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { useWikiConfig } from '@/lib/stores/wiki-store';
 import { classificationOrigin } from '@/lib/tasks/classification';
 import { dispatchReadiness, rowDispatchAction } from '@/lib/tasks/dispatch';
 import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
@@ -147,6 +148,7 @@ export function TaskRow({
     settleEpicConversion,
   } = useTaskActions();
   const { showToast } = useToastActions();
+  const { writable: wikiWritable } = useWikiConfig();
   const activeEditor = useActiveEditor();
   const { openEditor, closeEditor } = useActiveEditorActions();
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -188,18 +190,13 @@ export function TaskRow({
 
   // The whole row is a drag source (the row sensors ignore presses on its buttons
   // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
-  // be dragged to re-parent it; an active task can also be filed into a folder. A completed
-  // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable. Nor is a
-  // top-level code row (ALF-239): it has no legitimate drag target — a folder holds tasks,
-  // not a code item still awaiting Dispatch — so dragging one onto the sidebar used to file
-  // it into a folder anyway, stranding it there with none of the affordances (Dispatch,
-  // completion) the folder view expects. A code CHILD (a story under an in-progress epic)
-  // stays draggable — reordering it among its siblings, including across sibling epics,
-  // is a real feature (see resolveReorder) — only a code ROOT has nothing to gain from it.
+  // be dragged to re-parent it; an active task can also be filed into a folder. Which rows may
+  // lift at all — not a completed or temp row, nor a code or knowledge ROOT, which have no
+  // legitimate drag target — is `canDrag`, derived with the other flags.
   const { draggedSubtreeIds, activeDragItemType } = useTaskDrag();
   // Item-type flags + drop-target validity (completion/due-date/subtask gating, the drop
-  // highlight) all derive from the node — see useTaskRowFlags.
-  const { isTask, isUnclassified, isCode, canAddSubtask, isValidDropTarget, canChangeType } =
+  // highlight, drag) all derive from the node — see useTaskRowFlags.
+  const { isTask, isCode, isKnowledge, canAddSubtask, isValidDropTarget, canChangeType, canDrag } =
     useTaskRowFlags(node, isCompleted, draggedSubtreeIds, activeDragItemType);
 
   // Recurrence is top-level-task-only: the parsed rule drives the row chip and the meta-panel
@@ -238,7 +235,8 @@ export function TaskRow({
   // never disagree. The gate is `isInboxRow`, reused rather than re-expressed, so the Type badge,
   // the provenance mark and this cue can never gate differently; `node.children.length > 0` is
   // the same hasChildren the bulk bar passes, so the row and the press agree by construction.
-  const isDispatchReady = isInboxRow && dispatchReadiness(node, node.children.length > 0).ready;
+  const isDispatchReady =
+    isInboxRow && dispatchReadiness(node, node.children.length > 0, { wikiWritable }).ready;
 
   // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
@@ -314,7 +312,6 @@ export function TaskRow({
   const [showEpicGate, setShowEpicGate] = React.useState(false);
   const { convertToCodeEpic, convertTaskToCode } = useCodeActions();
 
-  const canDrag = !isCompleted && !isTempId(node.id) && !(isCode && node.parent_id === null);
   const {
     setNodeRef: setDragNodeRef,
     listeners: dragListeners,
@@ -501,7 +498,7 @@ export function TaskRow({
   // deleteTask once the collapse ends (the store rolls the row back on failure). Under
   // reduced motion it commits immediately. See useAnimatedRowExit.
 
-  const handleClassify = async (itemType: 'task' | 'code') => {
+  const handleClassify = async (itemType: ClassifyTarget) => {
     if (itemType === node.item_type) return;
     try {
       await classifyItem(node.id, itemType);
@@ -641,14 +638,19 @@ export function TaskRow({
   // top-level item a human hasn't triaged yet — has a destination to be sent to. A subtask's
   // residency travels with its root, and a dispatched row has already gone.
   const dispatchAction = isInboxRow
-    ? rowDispatchAction(node, { hasChildren: node.children.length > 0, groupHasTempIds })
+    ? rowDispatchAction(node, {
+        hasChildren: node.children.length > 0,
+        groupHasTempIds,
+        wikiWritable,
+      })
     : null;
 
   // Dispatch (ALF-185): send this row where its labels already say it goes. An epic-shaped code
   // row runs the conversion above; every other ready row goes through the SAME store action the
   // bulk bar presses, on a set of one — the subtree residency cascade, the factory RPC, the
   // rollback and the failure toast are all its, so the two surfaces can't drift. The success
-  // toast is the row's own, since here there IS a single destination to name and link to.
+  // toast is the row's own, since here there IS a single destination to name (and link to,
+  // where it has a view in the app — the wiki's inbox doesn't).
   const handleDispatch = () => {
     if (dispatchAction === null || dispatchAction.kind === 'blocked') return;
     if (dispatchAction.kind === 'epic') {
@@ -670,6 +672,10 @@ export function TaskRow({
       clearDeparting();
       // A failure keeps the row where it is and has already toasted; nothing to announce.
       if (staying.length > 0) return;
+      if (isKnowledge) {
+        showToast('Sent to the wiki');
+        return;
+      }
       if (story === undefined) {
         // A task: it landed in the folder its chip named, and the toast links to that view.
         const folder = folders.find((candidate) => candidate.id === node.folder_id);
@@ -887,8 +893,9 @@ export function TaskRow({
               </IconButton>
 
               {/* Completion is `task`-only: an unclassified row shows no checkbox, just a spacer
-                so its title stays aligned with task rows; a code row shows the ALF-224 `code`
-                glyph in the same slot instead, so it still names itself without a row badge. */}
+                so its title stays aligned with task rows; a code or knowledge row shows its
+                ALF-224 type glyph in the same slot instead, so it still names itself without a
+                row badge. */}
               {isTask ? (
                 isDropTarget ? (
                   <div aria-hidden="true" className={dropPlusClass}>
@@ -928,13 +935,14 @@ export function TaskRow({
                   </CheckboxButton>
                 ) /* Completion checkbox — or, while a task is dropped onto this row, a "+" that
                 signals it will become a child here (replaces the checkbox; no animation). */
-              ) : isCode ? (
-                // The ALF-224 `code` glyph fills the checkbox slot a code row has none of —
-                // visible at every width, unlike the unclassified spacer below, since it now
-                // carries real information rather than reserving blank alignment space.
+              ) : isCode || isKnowledge ? (
+                // The ALF-224 type glyph (`code`, or a knowledge row's lightbulb) fills the
+                // checkbox slot a row that can't be completed has none of — visible at every
+                // width, unlike the unclassified spacer below, since it carries real
+                // information rather than reserving blank alignment space.
                 <div
                   className={cn(checkboxSizeClass, 'shrink-0 flex items-center justify-center')}
-                  data-testid="code-type-icon"
+                  data-testid="type-glyph-slot"
                 >
                   <TypeGlyph
                     itemType={node.item_type}
@@ -1089,7 +1097,6 @@ export function TaskRow({
                   node={node}
                   canChangeType={canChangeType}
                   isTask={isTask}
-                  isUnclassified={isUnclassified}
                   isCode={isCode}
                   canAddSubtask={canAddSubtask}
                   isCompletedView={isCompletedView}

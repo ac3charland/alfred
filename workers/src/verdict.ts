@@ -14,8 +14,13 @@
  * body in which "no opinion" simply isn't sent.
  */
 
-/** The values `items.item_type` may take that mean a decision was made. */
-export type ItemType = 'task' | 'code';
+/** The values `items.item_type` may take that mean a decision was made. `knowledge` is the
+ *  narrowest of the three: the classifier writes nothing else onto it, not even a folder or a
+ *  project, because dispatching a knowledge row sends it to the wiki rather than filing it — and
+ *  that field-writing rule is this module's own policy, stricter than anything the database
+ *  requires (see `validateVerdict` below), so the owner's own later labelling is never pre-empted
+ *  by a guess that turns out to mean nothing on a knowledge row. */
+export type ItemType = 'task' | 'code' | 'knowledge';
 
 /** The values `items.priority` may take. */
 export type Priority = 'high' | 'medium' | 'low';
@@ -135,6 +140,9 @@ export type ClassifyFailure =
 export type ClassifyOutcome = { ok: Verdict } | { failed: ClassifyFailure };
 
 const PRIORITIES = new Set<string>(['high', 'medium', 'low']);
+/** Every legal `ItemType`, in one place — `prompt.ts` imports this rather than holding its own
+ *  copy, so the schema's enum and the type this module accepts can never drift apart. */
+export const ITEM_TYPES: readonly ItemType[] = ['task', 'code', 'knowledge'];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Read a field of a parsed JSON object as a string, treating JSON `null` as absence. */
@@ -161,7 +169,10 @@ export function parseVerdict(raw: unknown): Verdict | undefined {
   const itemType = readString(body, 'item_type');
   const priority = readString(body, 'priority');
   return {
-    item_type: itemType === 'task' || itemType === 'code' ? itemType : undefined,
+    item_type:
+      itemType !== undefined && (ITEM_TYPES as readonly string[]).includes(itemType)
+        ? (itemType as ItemType)
+        : undefined,
     priority:
       priority !== undefined && PRIORITIES.has(priority) ? (priority as Priority) : undefined,
     due_date: readString(body, 'due_date'),
@@ -182,9 +193,18 @@ function isCalendarDate(value: string): boolean {
  * Drop every field of `verdict` that is not legal against `world`, keeping the coherent core.
  * No rule rejects the whole verdict: a wrong folder costs the folder, not the priority.
  *
- * The cross-field rules mirror the database's CHECK constraints exactly
- * (`items_task_only_fields`, `items_intended_project_code_only`, `items_intended_epic_code_only`
- * and the epic/project coherence trigger), so a validated verdict is always a legal write.
+ * The project/epic rules mirror the database's CHECK constraints exactly
+ * (`items_intended_project_code_only`, `items_intended_epic_code_only` and the epic/project
+ * coherence trigger), and `due_date` mirrors `items_task_only_fields` the same way. `priority`
+ * and `folder_id` are held to the same task-only rule here even though neither is actually named
+ * in a database CHECK — that CHECK constrains `due_date`/`parent_id`, not those two — so this is
+ * this module's own POLICY, not a database mirror: a priority or folder chip means nothing on a
+ * `code` row, and keeping the verdict task-shaped is what stops one from ever landing on one.
+ *
+ * `knowledge` is narrower still than `code`: it is neither task-shaped nor code-shaped, so it
+ * falls through both `isTask` and `isCode` below and keeps nothing but `item_type`. That is the
+ * same policy taken to its limit — the classifier suggests knowledge's TYPE and nothing else,
+ * so it can never pre-empt a label the owner adds by hand later.
  */
 export function validateVerdict(verdict: Verdict, world: ClosedWorld): Verdict {
   const folderIds = new Set(world.folders.map((folder) => folder.id));
@@ -241,7 +261,9 @@ function keepIf(
  * rename away from disagreeing.
  */
 export function decidedType(item: SweepItem): ItemType | undefined {
-  return item.item_type === 'task' || item.item_type === 'code' ? item.item_type : undefined;
+  return (ITEM_TYPES as readonly string[]).includes(item.item_type)
+    ? (item.item_type as ItemType)
+    : undefined;
 }
 
 /**
@@ -253,6 +275,11 @@ export function decidedType(item: SweepItem): ItemType | undefined {
  * The type the row will END UP with decides which fields are legal, not the type the model
  * guessed: keeping an existing `code` while writing a task-shaped due date is exactly the
  * incoherent row `items_task_only_fields` refuses.
+ *
+ * A held `knowledge` row falls through the `finalType === 'task'` / `'code'` checks below exactly
+ * as `code` falls through the task checks: `item_type` itself is never rewritten (it is already
+ * held), and every other field stays undefined, so the sweep can only ever fill gaps a knowledge
+ * row doesn't have — it never retypes one.
  *
  * The same "end up with" rule has to be applied to the epic, which is why this needs `world`.
  * `validateVerdict` checked the epic against the VERDICT's project; if the item already holds a

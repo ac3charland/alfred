@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { makeReaderOverview, makeReaderPost, resetReaderFixtureClock } from '@/lib/reader/fixtures';
+import { useReaderPosts } from '@/lib/stores/reader-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
 import { PostRow } from './post-row';
@@ -275,6 +276,121 @@ describe('PostRow — Overview', () => {
 
     expect(screen.getByRole('button', { name: 'Hide overview' })).toBeInTheDocument();
     expect(screen.getByTestId('reader-row')).toHaveClass('border-accent-green/60');
+  });
+});
+
+describe('PostRow — Novel ideas and the wiki', () => {
+  const IDEAS = ['Idea one', 'Idea two', 'Idea three'];
+  const WIKI_POST_ID = '22222222-2222-4222-8222-222222222222';
+  const withIdeas = (sent: string[] = []) =>
+    post({
+      id: WIKI_POST_ID,
+      summary_state: 'done',
+      gist: 'a gist',
+      overview: makeReaderOverview({ novel_ideas: IDEAS }),
+      wiki_sent_ideas: sent,
+    });
+
+  /** The row as the list mounts it: fed from the store, so a reconciled send redraws it. */
+  function LiveRow() {
+    const row = useReaderPosts().find((candidate) => candidate.id === WIKI_POST_ID);
+    return row === undefined ? null : <PostRow post={row} now={NOW} />;
+  }
+
+  it('keeps the plain bulleted list when the wiki is not connected', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={withIdeas()} now={NOW} />, [withIdeas()]);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getByText('Idea one')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /to wiki/ })).not.toBeInTheDocument();
+  });
+
+  it('offers the checklist, reading the sent marks off the post, when it is connected', async () => {
+    const user = userEvent.setup();
+    renderReader(
+      <PostRow post={withIdeas(['Idea one'])} now={NOW} />,
+      [withIdeas(['Idea one'])],
+      undefined,
+      {
+        wikiWritable: true,
+      },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    expect(screen.getByText('Sent')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send all to wiki' })).toBeInTheDocument();
+  });
+
+  it('drops the ticks when the overview is collapsed', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={withIdeas()} now={NOW} />, [withIdeas()], undefined, {
+      wikiWritable: true,
+    });
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Idea two' }));
+
+    await user.click(screen.getByRole('button', { name: 'Hide overview' }));
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getByRole('checkbox', { name: 'Idea two' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.queryByRole('group', { name: 'Selected ideas' })).not.toBeInTheDocument();
+  });
+
+  it('holds every control while a send started before a collapse is still in the air', async () => {
+    const user = userEvent.setup();
+    let settle!: (row: ReaderPostListItem) => void;
+    mockApi.sendReaderIdeasToWiki.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    renderReader(<LiveRow />, [withIdeas()], undefined, { wikiWritable: true });
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Idea two' }));
+    await user.click(screen.getByRole('button', { name: 'Send to wiki' }));
+
+    await user.click(screen.getByRole('button', { name: 'Hide overview' }));
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toBeDisabled();
+    const sendAll = screen.getByRole('button', { name: 'Send all to wiki' });
+    expect(sendAll).toBeDisabled();
+    await user.click(sendAll);
+    expect(mockApi.sendReaderIdeasToWiki).toHaveBeenCalledTimes(1);
+
+    settle(withIdeas(['Idea two']));
+    expect(await screen.findByText('Sent')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Idea two' })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Idea one' })).toBeEnabled();
+  });
+
+  it('lands a send whose row was collapsed mid-flight, and reads it sent on reopening', async () => {
+    const user = userEvent.setup();
+    let settle!: (row: ReaderPostListItem) => void;
+    mockApi.sendReaderIdeasToWiki.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    renderReader(<LiveRow />, [withIdeas()], undefined, { wikiWritable: true });
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Idea two' }));
+    await user.click(screen.getByRole('button', { name: 'Send to wiki' }));
+
+    await user.click(screen.getByRole('button', { name: 'Hide overview' }));
+    settle(withIdeas(['Idea two']));
+    await user.click(await screen.findByRole('button', { name: 'Overview' }));
+
+    expect(await screen.findByText('Sent')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Idea two' })).not.toBeInTheDocument();
   });
 });
 

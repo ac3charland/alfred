@@ -19,6 +19,7 @@ import { useCodeStories } from '@/lib/stores/code-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useSearch, useSearchActions } from '@/lib/stores/search-store';
 import { useTasks } from '@/lib/stores/tasks-store';
+import { useWikiPages } from '@/lib/stores/wiki-store';
 import { cn } from '@/lib/utils';
 
 const DESKTOP_QUERY = '(min-width: 768px)';
@@ -49,6 +50,7 @@ export function SearchBox({ placement = 'desktop', className, onNavigate }: Sear
   const tasks = useTasks();
   const stories = useCodeStories();
   const folders = useFolders();
+  const pages = useWikiPages();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [activeIndex, setActiveIndex] = React.useState(0);
 
@@ -62,8 +64,8 @@ export function SearchBox({ placement = 'desktop', className, onNavigate }: Sear
   useGlobalSearchShortcut(focusInput, placement === 'desktop');
 
   const results = React.useMemo(
-    () => buildResults(query, tasks, stories, folders, showCompleted),
-    [query, tasks, stories, folders, showCompleted],
+    () => buildResults(query, tasks, stories, folders, showCompleted, pages),
+    [query, tasks, stories, folders, showCompleted, pages],
   );
   const flat = React.useMemo(() => flattenResults(results), [results]);
 
@@ -147,7 +149,7 @@ export function SearchBox({ placement = 'desktop', className, onNavigate }: Sear
             aria-controls={LISTBOX_ID}
             aria-autocomplete="list"
             aria-activedescendant={activeOption ? optionDomId(activeOption) : undefined}
-            aria-label="Search tasks and stories"
+            aria-label="Search tasks, stories, and wiki pages"
             placeholder="Search…"
             spellCheck={false}
             autoComplete="off"

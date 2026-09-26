@@ -21,7 +21,8 @@
  *                                     habits,habit_entries,comm_accounts,comm_messages,
  *                                     comm_verdicts,comm_people,comm_handles,comm_rubrics,
  *                                     comm_corrections,comm_classifier_health,
- *                                     reader_publications,reader_posts,reader_health}
+ *                                     reader_publications,reader_posts,reader_health,
+ *                                     wiki_pages,wiki_sync}
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories,v_reader_candidates,v_reader_publications}
  *                                                             → computed views
@@ -34,8 +35,14 @@
  *     POST /rest/v1/rpc/{comm_purge,comm_record_reply,comm_example_set_version,
  *                        comm_create_inbox_item}
  *                                                             → Comms RPCs
+ *     POST /rest/v1/rpc/{append_wiki_sent_ideas,send_items_to_wiki,search_wiki_pages}
+ *                                                             → Wiki RPCs
+ *   GitHub Git Data API (the wiki writer's six endpoints, under /__mock__/github/repos/…):
+ *     GET  …/git/ref/heads/main   GET …/git/commits/{sha}   GET …/git/trees/{sha}
+ *     POST …/git/trees            POST …/git/commits         PATCH …/git/refs/heads/main
  *   Test control (not part of Supabase):
- *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
+ *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed   GET /__mock__/state
+ *     POST /__mock__/github/fail-next  → make the next matching GitHub request fail once
  *
  * Single-process, in-memory, single worker (playwright.config runs workers: 1),
  * so a shared store with per-test reset/seed is safe. Self-contained: only Node
@@ -111,6 +118,18 @@ let readerPosts = [];
 // success on it. So it is never auto-seeded — a test that wants a tick's history says so.
 /** @type {Record<string, unknown>[]} */
 let readerHealth = [];
+// ── Wiki (migration 0038): the page snapshot the Worker writes and the module reads. ──
+/** @type {Record<string, unknown>[]} */
+let wikiPages = [];
+// The singleton sync row, held as a list of 0 or 1 rows: an EMPTY table is "never synced".
+/** @type {Record<string, unknown>[]} */
+let wikiSync = [];
+// The wiki repo itself, as the Git Data API shows it: see `freshGithub` below. `githubSequence`
+// backs `nextSha` (defined near `freshGithub`, much later in the file) and must be initialized
+// before this call — `let` is not hoisted, so declaring it down there would throw a
+// ReferenceError (TDZ) the moment this line runs.
+let githubSequence = 0;
+let github = freshGithub();
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
@@ -382,6 +401,8 @@ function tableFor(name) {
   if (name === 'reader_publications') return readerPublications;
   if (name === 'reader_posts') return readerPosts;
   if (name === 'reader_health') return readerHealth;
+  if (name === 'wiki_pages') return wikiPages;
+  if (name === 'wiki_sync') return wikiSync;
   return;
 }
 
@@ -699,7 +720,46 @@ function newReaderPost(input) {
     archived_at: input.archived_at ?? null,
     // When the retention sweep took the body (migration 0036). Null = it still holds its text.
     text_swept_at: input.text_swept_at ?? null,
+    // The exact text of every Novel-ideas bullet already sent to the wiki (migration 0038).
+    wiki_sent_ideas: Array.isArray(input.wiki_sent_ideas) ? [...input.wiki_sent_ideas] : [],
     created_at: input.created_at ?? receivedAt,
+  };
+}
+
+// ── Wiki row constructors (defaults mirror migration 0038). ──
+
+/** One snapshotted page. The section is read off the path, as the CHECK constraint demands. */
+function newWikiPage(input) {
+  const path = String(input.path ?? '');
+  const section = input.section ?? /^wiki\/([^/]+)\//.exec(path)?.[1] ?? 'concepts';
+  return {
+    path,
+    section,
+    title: input.title ?? '',
+    summary: input.summary ?? '',
+    tags: input.tags ?? [],
+    sources: input.sources ?? [],
+    links: input.links ?? [],
+    created: input.created ?? null,
+    updated: input.updated ?? null,
+    body: input.body ?? '',
+    parse_error: input.parse_error ?? null,
+    blob_oid: input.blob_oid ?? randomUUID().replaceAll('-', ''),
+    commit_oid: input.commit_oid ?? 'c0ffee',
+    synced_at: input.synced_at ?? new Date().toISOString(),
+    search: null,
+  };
+}
+
+/** The singleton sync row. */
+function newWikiSync(input) {
+  return {
+    id: input.id ?? 1,
+    commit_oid: input.commit_oid ?? null,
+    synced_at: input.synced_at ?? null,
+    pending: input.pending ?? 0,
+    last_error: input.last_error ?? null,
+    last_error_at: input.last_error_at ?? null,
   };
 }
 
@@ -849,6 +909,8 @@ function rowConstructorFor(name) {
   if (name === 'comm_classifier_health') return newCommHealth;
   if (name === 'reader_publications') return newReaderPublication;
   if (name === 'reader_posts') return newReaderPost;
+  if (name === 'wiki_pages') return newWikiPage;
+  if (name === 'wiki_sync') return newWikiSync;
   if (name === 'reader_health') return newReaderHealth;
   return;
 }
@@ -1474,7 +1536,129 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
+  // ── Wiki RPCs (migration 0038) ──
+
+  // One atomic append of the bullets not already recorded, returning the post row. The route
+  // asks for the list columns back (`?select=…` + a single-object Accept), which the RPC path
+  // honours the way a table read does.
+  if (fn === 'append_wiki_sent_ideas' && req.method === 'POST') {
+    const post = readerPosts.find((row) => String(row.id) === String(body?.p_post));
+    const url = new URL(req.url ?? '/', `http://localhost:${String(PORT)}`);
+    if (post === undefined) {
+      // PostgREST answers a `.single()` that found no row with a 406, not a 200 holding null —
+      // real Postgrest's own code and message for "zero rows where exactly one was asked for".
+      if (wantsObject(req)) {
+        sendJson(res, 406, {
+          code: 'PGRST116',
+          message: 'JSON object requested, multiple (or no) rows returned',
+        });
+        return;
+      }
+      sendJson(res, 200, []);
+      return;
+    }
+    const held = new Set(post.wiki_sent_ideas);
+    for (const idea of body?.p_ideas ?? []) {
+      if (!held.has(idea)) {
+        held.add(idea);
+        post.wiki_sent_ideas = [...(post.wiki_sent_ideas ?? []), idea];
+      }
+    }
+    const rows = applySelect([post], url.searchParams);
+    sendJson(res, 200, wantsObject(req) ? (rows[0] ?? null) : rows);
+    return;
+  }
+
+  // Stamp-then-delete for knowledge rows, all-or-nothing: every id must be an undispatched,
+  // childless root knowledge item, or nothing goes. Returns how many were consumed. The
+  // corrections-log side effect of the stamp is a real-Postgres trigger, proven by the database
+  // integration suite rather than mirrored here.
+  if (fn === 'send_items_to_wiki' && req.method === 'POST') {
+    const ids = Array.isArray(body?.p_ids) ? body.p_ids.map(String) : [];
+    const bad = ids.find((id) => {
+      const item = items.find((row) => String(row.id) === id);
+      return (
+        item === undefined ||
+        item.item_type !== 'knowledge' ||
+        item.parent_id != null ||
+        item.dispatched_at != null
+      );
+    });
+    if (bad !== undefined) {
+      sendJson(res, 400, {
+        code: '23514',
+        message: `send_items_to_wiki: ${bad} is not an undispatched root knowledge item`,
+      });
+      return;
+    }
+    const parent = items.find(
+      (row) => row.parent_id != null && ids.includes(String(row.parent_id)),
+    );
+    if (parent !== undefined) {
+      sendJson(res, 400, {
+        code: '23514',
+        message: `send_items_to_wiki: ${String(parent.parent_id)} has subtasks`,
+      });
+      return;
+    }
+    const doomed = items.filter((row) => ids.includes(String(row.id)));
+    const now = new Date().toISOString();
+    for (const row of doomed) row.dispatched_at = now;
+    deleteRows('items', doomed);
+    sendJson(res, 200, doomed.length);
+    return;
+  }
+
+  // Body search as a case-insensitive substring match — the same shape the real function
+  // answers with: the path, a snippet whose matched words sit between chr(2) and chr(3), and a
+  // rank that puts a title hit above a summary hit above a body hit.
+  if (fn === 'search_wiki_pages' && req.method === 'POST') {
+    const query = String(body?.p_query ?? '').trim();
+    const limit = Number(body?.p_limit ?? 20);
+    if (query === '') {
+      sendJson(res, 200, []);
+      return;
+    }
+    const needle = query.toLowerCase();
+    const hits = [];
+    for (const page of wikiPages) {
+      const inTitle = String(page.title).toLowerCase().includes(needle);
+      const inSummary = String(page.summary).toLowerCase().includes(needle);
+      const bodyText = String(page.body);
+      const at = bodyText.toLowerCase().indexOf(needle);
+      if (!inTitle && !inSummary && at === -1) continue;
+      const rank = inTitle ? 1 : inSummary ? 0.5 : 0.25;
+      hits.push({ path: page.path, snippet: snippetAround(bodyText, at, query.length), rank });
+    }
+    hits.sort((a, b) => b.rank - a.rank || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    sendJson(res, 200, hits.slice(0, limit));
+    return;
+  }
+
   sendJson(res, 404, { message: `No rpc: ${fn}` });
+}
+
+/** The markers `ts_headline` is configured with: control characters that never occur in markdown. */
+const SNIPPET_START = '\u0002';
+const SNIPPET_STOP = '\u0003';
+
+/**
+ * A window of roughly 24 words around the first match, with the matched text wrapped in the
+ * highlight markers — or the body's first words when the match was in the title or summary,
+ * which is what `ts_headline` does with no body hit (`MinWords` of unmarked text).
+ */
+function snippetAround(bodyText, at, length) {
+  const flat = bodyText.replaceAll(/\s+/g, ' ').trim();
+  if (at === -1) return flat.split(' ').slice(0, 10).join(' ');
+  const flatAt = bodyText.slice(0, at).replaceAll(/\s+/g, ' ').replace(/^\s+/, '').length;
+  const before = flat.slice(0, flatAt).split(' ').slice(-8).join(' ');
+  const matched = flat.slice(flatAt, flatAt + length);
+  const after = flat
+    .slice(flatAt + length)
+    .split(' ')
+    .slice(0, 12)
+    .join(' ');
+  return `${before}${SNIPPET_START}${matched}${SNIPPET_STOP}${after}`;
 }
 
 function handleRest(req, res, url, body) {
@@ -1765,6 +1949,250 @@ function deleteRows(rest, matched) {
   }
 }
 
+// ── The wiki repo, as the Git Data API shows it ──────────────────────────────
+//
+// The writer makes seven requests per send (ref → commit → root tree → inbox tree → new tree →
+// new commit → ref update); this emulates exactly those, on a repo whose main starts at one
+// commit holding a README and an `inbox/` folder. Trees are recorded as GitHub lists them
+// (`{ path, type, sha }` entries), and every commit also records the FLAT files it introduced,
+// so a test can read back what a send committed from `/__mock__/state`.
+
+/** The token the harness configures the Next server with; anything else is a 401. */
+const WIKI_TOKEN = process.env.WIKI_GITHUB_TOKEN ?? 'mock_wiki_token';
+
+/**
+ * The `owner/name` the harness configures the Next server with (e2e/support/constants.ts
+ * `WIKI_REPO`). A request for any other repo is a 404, as GitHub answers a repo the token can't
+ * see — so a writer that built the wrong repo path fails here instead of passing.
+ */
+const WIKI_REPO = process.env.WIKI_REPO ?? 'ac3charland/knowledge';
+
+function nextSha(prefix) {
+  githubSequence += 1;
+  return `${prefix}${String(githubSequence).padStart(6, '0')}`.padEnd(40, '0');
+}
+
+/** A repo at its first commit, with `inbox/` holding `inboxNames` (each an empty folder tree). */
+function freshGithub(inboxNames = []) {
+  const trees = {};
+  const inboxEntries = inboxNames.map((name) => {
+    const sha = nextSha('t');
+    trees[sha] = [];
+    return { path: name, type: 'tree', sha };
+  });
+  const inboxSha = nextSha('t');
+  trees[inboxSha] = inboxEntries;
+  const rootSha = nextSha('t');
+  trees[rootSha] = [
+    { path: 'README.md', type: 'blob', sha: nextSha('b') },
+    { path: 'inbox', type: 'tree', sha: inboxSha },
+  ];
+  const head = nextSha('c');
+  return {
+    head,
+    trees,
+    commits: { [head]: { sha: head, tree: rootSha, parents: [], message: 'init', files: {} } },
+    /**
+     * `{ step, status }` — answered once, then cleared. `step` is one of `'ref-read'` (GET
+     * ref/heads/main), `'commit-read'` (GET commits/:sha), `'tree-read'` (GET trees/:sha),
+     * `'tree'` (POST trees), `'commit'` (POST commits), `'ref'` (PATCH refs/heads/main), or
+     * `'any'` (every step).
+     */
+    failNext: null,
+  };
+}
+
+/** Whether a pending `fail-next` applies to this step; consumes it when it does. */
+function consumeFailure(step) {
+  const pending = github.failNext;
+  if (pending === null) return;
+  if (pending.step !== 'any' && pending.step !== step) return;
+  github.failNext = null;
+  return pending.status;
+}
+
+/** What `/__mock__/state` reports: the head, every commit newest first, and inbox's folders. */
+function githubState() {
+  const root = github.trees[github.commits[github.head].tree] ?? [];
+  const inbox = root.find((entry) => entry.path === 'inbox');
+  return {
+    head: github.head,
+    commits: Object.values(github.commits)
+      .toReversed()
+      .map(({ sha, message, parents, files }) => ({ sha, message, parents, files })),
+    inbox: inbox === undefined ? [] : (github.trees[inbox.sha] ?? []).map((entry) => entry.path),
+  };
+}
+
+function handleGithub(req, res, url, body) {
+  if (url.pathname === '/__mock__/github/fail-next' && req.method === 'POST') {
+    github.failNext = { step: body?.step ?? 'any', status: Number(body?.status ?? 502) };
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (req.headers['authorization'] !== `Bearer ${WIKI_TOKEN}`) {
+    sendJson(res, 401, { message: 'Bad credentials' });
+    return;
+  }
+
+  // Everything below hangs off /__mock__/github/repos/{owner}/{repo}/git/…, for the one repo.
+  const match = /^\/__mock__\/github\/repos\/([^/]+\/[^/]+)\/git\/(.*)$/.exec(url.pathname);
+  if (match === null) {
+    sendJson(res, 404, { message: `No GitHub route: ${req.method} ${url.pathname}` });
+    return;
+  }
+  if (match[1] !== WIKI_REPO) {
+    sendJson(res, 404, { message: 'Not Found' });
+    return;
+  }
+  const rest = match[2];
+
+  if (req.method === 'GET' && rest === 'ref/heads/main') {
+    const failure = consumeFailure('ref-read');
+    if (failure !== undefined) {
+      sendJson(res, failure, { message: `mock: ref read failing with ${String(failure)}` });
+      return;
+    }
+    sendJson(res, 200, { ref: 'refs/heads/main', object: { type: 'commit', sha: github.head } });
+    return;
+  }
+
+  if (req.method === 'GET' && rest.startsWith('commits/')) {
+    const failure = consumeFailure('commit-read');
+    if (failure !== undefined) {
+      sendJson(res, failure, { message: `mock: commit read failing with ${String(failure)}` });
+      return;
+    }
+    const commit = github.commits[rest.slice('commits/'.length)];
+    if (commit === undefined) {
+      sendJson(res, 404, { message: 'Not Found' });
+      return;
+    }
+    sendJson(res, 200, {
+      sha: commit.sha,
+      message: commit.message,
+      tree: { sha: commit.tree },
+      parents: commit.parents.map((sha) => ({ sha })),
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && rest.startsWith('trees/')) {
+    const failure = consumeFailure('tree-read');
+    if (failure !== undefined) {
+      sendJson(res, failure, { message: `mock: tree read failing with ${String(failure)}` });
+      return;
+    }
+    const sha = rest.slice('trees/'.length);
+    const tree = github.trees[sha];
+    if (tree === undefined) {
+      sendJson(res, 404, { message: 'Not Found' });
+      return;
+    }
+    sendJson(res, 200, { sha, tree, truncated: false });
+    return;
+  }
+
+  if (req.method === 'POST' && rest === 'trees') {
+    const failure = consumeFailure('tree');
+    if (failure !== undefined) {
+      sendJson(res, failure, { message: `mock: tree POST failing with ${String(failure)}` });
+      return;
+    }
+    const base = github.trees[body?.base_tree];
+    const entries = Array.isArray(body?.tree) ? body.tree : [];
+    if (base === undefined || entries.some((entry) => typeof entry.path !== 'string')) {
+      sendJson(res, 422, { message: 'Invalid tree' });
+      return;
+    }
+    // The writer only ever adds `inbox/<folder>/<file>` blobs: group them by folder, build one
+    // tree per folder, a new inbox tree holding the old folders plus the new ones, and a new
+    // root pointing at it.
+    const byFolder = new Map();
+    const files = {};
+    for (const entry of entries) {
+      const parts = entry.path.split('/');
+      if (parts.length !== 3 || parts[0] !== 'inbox' || entry.type !== 'blob') {
+        sendJson(res, 422, { message: `mock: unexpected tree entry ${entry.path}` });
+        return;
+      }
+      files[entry.path] = entry.content;
+      const folder = byFolder.get(parts[1]) ?? [];
+      folder.push({ path: parts[2], type: 'blob', sha: nextSha('b') });
+      byFolder.set(parts[1], folder);
+    }
+    const oldInbox = base.find((entry) => entry.path === 'inbox');
+    const inboxEntries = [...(oldInbox === undefined ? [] : (github.trees[oldInbox.sha] ?? []))];
+    for (const [name, blobs] of byFolder) {
+      if (inboxEntries.some((entry) => entry.path === name)) {
+        sendJson(res, 422, { message: `mock: inbox/${name} already exists` });
+        return;
+      }
+      const sha = nextSha('t');
+      github.trees[sha] = blobs;
+      inboxEntries.push({ path: name, type: 'tree', sha });
+    }
+    const inboxSha = nextSha('t');
+    github.trees[inboxSha] = inboxEntries;
+    const rootSha = nextSha('t');
+    github.trees[rootSha] = [
+      ...base.filter((entry) => entry.path !== 'inbox'),
+      { path: 'inbox', type: 'tree', sha: inboxSha },
+    ];
+    // The files this tree introduced ride along so the commit can record them.
+    github.trees[`${rootSha}:files`] = files;
+    sendJson(res, 201, { sha: rootSha });
+    return;
+  }
+
+  if (req.method === 'POST' && rest === 'commits') {
+    const failure = consumeFailure('commit');
+    if (failure !== undefined) {
+      sendJson(res, failure, { message: `mock: commit POST failing with ${String(failure)}` });
+      return;
+    }
+    const tree = body?.tree;
+    if (github.trees[tree] === undefined) {
+      sendJson(res, 422, { message: 'Tree SHA does not exist' });
+      return;
+    }
+    const sha = nextSha('c');
+    github.commits[sha] = {
+      sha,
+      tree,
+      parents: Array.isArray(body?.parents) ? body.parents : [],
+      message: String(body?.message ?? ''),
+      files: github.trees[`${tree}:files`] ?? {},
+    };
+    sendJson(res, 201, { sha });
+    return;
+  }
+
+  if (req.method === 'PATCH' && rest === 'refs/heads/main') {
+    const failure = consumeFailure('ref');
+    if (failure !== undefined) {
+      sendJson(res, failure, { message: `mock: ref update failing with ${String(failure)}` });
+      return;
+    }
+    const commit = github.commits[body?.sha];
+    if (commit === undefined) {
+      sendJson(res, 422, { message: 'Object does not exist' });
+      return;
+    }
+    // A fast-forward only: the new commit must sit on the current head.
+    if (commit.parents[0] !== github.head) {
+      sendJson(res, 422, { message: 'Update is not a fast forward' });
+      return;
+    }
+    github.head = commit.sha;
+    sendJson(res, 200, { ref: 'refs/heads/main', object: { type: 'commit', sha: commit.sha } });
+    return;
+  }
+
+  sendJson(res, 404, { message: `No GitHub route: ${req.method} ${url.pathname}` });
+}
+
 function handleControl(req, res, url, body) {
   if (url.pathname === '/__mock__/health') {
     sendJson(res, 200, { ok: true });
@@ -1790,6 +2218,9 @@ function handleControl(req, res, url, body) {
     readerPublications = [];
     readerPosts = [];
     readerHealth = [];
+    wikiPages = [];
+    wikiSync = [];
+    github = freshGithub();
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
@@ -1849,6 +2280,12 @@ function handleControl(req, res, url, body) {
     readerHealth = Array.isArray(body?.readerHealth)
       ? body.readerHealth.map((h) => newReaderHealth(h))
       : [];
+    // Wiki. The sync row is likewise not defaulted: an empty table is "never synced".
+    wikiPages = Array.isArray(body?.wikiPages) ? body.wikiPages.map((p) => newWikiPage(p)) : [];
+    wikiSync = Array.isArray(body?.wikiSync) ? body.wikiSync.map((s) => newWikiSync(s)) : [];
+    // The wiki repo starts fresh on every seed, with whatever inbox/ folders the test names
+    // already taken (so a send's folder-name suffixing can be exercised).
+    github = freshGithub(Array.isArray(body?.githubInbox) ? body.githubInbox : []);
     // Park the sequence above every seeded rank so gate-created stories append at the bottom.
     syncPrioritySequence();
     sendJson(res, 200, {
@@ -1871,6 +2308,8 @@ function handleControl(req, res, url, body) {
       readerPublications,
       readerPosts,
       readerHealth,
+      wikiPages,
+      wikiSync,
     });
     return;
   }
@@ -1895,6 +2334,9 @@ function handleControl(req, res, url, body) {
       readerPublications,
       readerPosts,
       readerHealth,
+      wikiPages,
+      wikiSync,
+      github: githubState(),
     });
     return;
   }
@@ -1917,7 +2359,9 @@ const server = createServer((req, res) => {
     const body = noBody.has(req.method ?? '') ? undefined : await readBody(req);
 
     try {
-      if (url.pathname.startsWith('/__mock__/')) {
+      if (url.pathname.startsWith('/__mock__/github/')) {
+        handleGithub(req, res, url, body);
+      } else if (url.pathname.startsWith('/__mock__/')) {
         handleControl(req, res, url, body);
       } else if (url.pathname.startsWith('/auth/v1/')) {
         handleAuth(req, res, url, body);

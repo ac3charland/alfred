@@ -2,9 +2,10 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
 import type { PatchReaderPostInput, ReaderPostsQuery } from '@/lib/api/reader-schemas';
-import type { Database } from '@/lib/database.types';
+import type { Database, Json } from '@/lib/database.types';
 import { createClient } from '@/lib/supabase/server';
 import type { ReaderHealthSnapshot, ReaderPostListItem, ReaderPostUpdate } from '@/lib/types';
+import type { ReaderPostForWiki } from '@/lib/wiki/writer/envelope';
 
 /**
  * Server-only read/write layer for the Reader module's list — the shell's seed, the route that
@@ -51,6 +52,7 @@ export const READER_POST_LIST_COLUMNS = [
   'summary_state',
   'text_swept_at',
   'title',
+  'wiki_sent_ideas',
   'word_count',
 ].join(',');
 
@@ -172,6 +174,64 @@ export async function getReaderPostResummarizeState(
     .select('text_swept_at,word_count,summary_state')
     .eq('id', id)
     .maybeSingle();
+}
+
+/**
+ * One row through the shared list columns — what a route answers with when it has nothing to
+ * write (a wiki send whose every bullet was already sent). `.maybeSingle()`, so a row deleted in
+ * between is the route's 404 rather than a 500.
+ */
+export async function getReaderPostListItem(
+  supabase: SupabaseClient<Database>,
+  id: string,
+): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .select(READER_POST_LIST_COLUMNS)
+    .eq('id', id)
+    .maybeSingle<ReaderPostListItem>();
+}
+
+/** What a wiki send reads: the envelope's fields, plus the bullets it may send and has sent. */
+export interface ReaderPostWikiRow extends ReaderPostForWiki {
+  /** The structured take, whose `novel_ideas` bound what a send may name. */
+  overview: Json | null;
+  /** The exact text of every bullet already sent. */
+  wiki_sent_ideas: string[];
+}
+
+/**
+ * The one read of a post's body outside the Worker: a wiki send writes the text into the
+ * envelope's `source.md`. Nothing else here selects `text`, and this read goes nowhere near a
+ * response — the send route answers through the list columns. `.maybeSingle()`, so a missing
+ * row is the route's 404.
+ */
+export async function getReaderPostForWiki(
+  supabase: SupabaseClient<Database>,
+  id: string,
+): Promise<{ data: ReaderPostWikiRow | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .select('id,title,author,canonical_url,received_at,text,overview,wiki_sent_ideas')
+    .eq('id', id)
+    .maybeSingle();
+}
+
+/**
+ * Record bullets as sent, through the `append_wiki_sent_ideas` RPC: one atomic update that adds
+ * only the strings not already present. A read-modify-write here would let two tabs sending from
+ * the same post race, and the later send would erase the earlier one's marks. The row comes back
+ * through the shared list columns, so the body never rides along.
+ */
+export async function appendWikiSentIdeas(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  ideas: readonly string[],
+): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
+  return supabase
+    .rpc('append_wiki_sent_ideas', { p_post: id, p_ideas: [...ideas] })
+    .select(READER_POST_LIST_COLUMNS)
+    .single<ReaderPostListItem>();
 }
 
 /**

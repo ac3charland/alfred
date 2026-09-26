@@ -25,8 +25,13 @@ export const TaskIcon: Story = {
   args: { itemType: 'task' },
 };
 
-// Unclassified renders nothing — the ALF-224 icon only names the two types that need one where
+// Unclassified renders nothing — the ALF-224 icon only names the types that need one where
 // their usual affordance (checkbox / tick box) doesn't already say it.
 export const Unclassified: Story = {
   args: { itemType: 'unclassified' },
+};
+
+// A knowledge row — an idea bound for the wiki — reads as a lightbulb.
+export const KnowledgeIcon: Story = {
+  args: { itemType: 'knowledge' },
 };

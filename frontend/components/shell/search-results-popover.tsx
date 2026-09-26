@@ -10,11 +10,12 @@ import {
   type SearchResults,
   optionDomId,
 } from '@/components/shell/search-results';
+import { GROUP_LABEL_CLASS } from '@/lib/ui/group-label-class';
 import { cn } from '@/lib/utils';
 
 interface SearchResultsPopoverProperties {
   results: SearchResults;
-  /** Both groups concatenated, in keyboard-nav order, so the active index maps across them. */
+  /** All three groups concatenated, in keyboard-nav order, so the active index maps across them. */
   flat: SearchResult[];
   activeIndex: number;
   query: string;
@@ -30,6 +31,16 @@ interface SearchResultsPopoverProperties {
   showCompleted: boolean;
   onShowCompletedChange: (next: boolean) => void;
 }
+
+/** The row badge's tone and label, by result kind. */
+const KIND_BADGE: Record<
+  SearchResult['kind'],
+  { variant: 'accent' | 'alert' | 'wiki'; label: string }
+> = {
+  task: { variant: 'accent', label: 'Task' },
+  story: { variant: 'alert', label: 'Code' },
+  wiki: { variant: 'wiki', label: 'Wiki' },
+};
 
 /** One result row. */
 function OptionRow({
@@ -80,14 +91,14 @@ function OptionRow({
           <span className="truncate text-xs text-muted-foreground">{result.subtitle}</span>
         )}
       </div>
-      <Badge variant={result.kind === 'task' ? 'accent' : 'alert'} className="font-medium">
-        {result.kind === 'task' ? 'Task' : 'Code'}
+      <Badge variant={KIND_BADGE[result.kind].variant} className="font-medium">
+        {KIND_BADGE[result.kind].label}
       </Badge>
     </li>
   );
 }
 
-/** A labelled group (Tasks / Stories) with its options and a capped "+N more" line. */
+/** A labelled group (Tasks / Stories / Wiki) with its options and a capped "+N more" line. */
 function Group({
   label,
   groupResults,
@@ -108,9 +119,7 @@ function Group({
   if (groupResults.length === 0) return null;
   return (
     <li>
-      <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-        {label}
-      </div>
+      <div className={GROUP_LABEL_CLASS}>{label}</div>
       <ul>
         {groupResults.map((result, offset) => {
           const index = baseIndex + offset;
@@ -188,7 +197,7 @@ export function SearchResultsPopover({
       >
         {trimmed === '' ? (
           <p className="px-2 py-2 text-xs text-muted-foreground">
-            Search tasks and stories by title, notes, or ref
+            Search tasks, stories, and wiki pages
           </p>
         ) : (
           <>
@@ -218,6 +227,15 @@ export function SearchResultsPopover({
                     groupResults={results.stories}
                     truncated={results.truncated.stories}
                     baseIndex={results.tasks.length}
+                    activeIndex={activeIndex}
+                    onSelect={onSelect}
+                    onHover={onHover}
+                  />
+                  <Group
+                    label="Wiki"
+                    groupResults={results.wiki}
+                    truncated={results.truncated.wiki}
+                    baseIndex={results.tasks.length + results.stories.length}
                     activeIndex={activeIndex}
                     onSelect={onSelect}
                     onHover={onHover}

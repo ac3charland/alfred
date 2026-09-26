@@ -52,6 +52,13 @@ describe('buildDestinations', () => {
     ]);
     expect(grouped.comms.map((d) => d.label)).toEqual(['Queue', 'People', 'Rubric', 'Examples']);
     expect(grouped.reader.map((d) => d.label)).toEqual(['Reading list', 'Archive', 'Publications']);
+    expect(grouped.wiki.map((d) => d.label)).toEqual([
+      'Wiki',
+      'Concepts',
+      'Entities',
+      'Sources',
+      'Questions',
+    ]);
     expect(grouped.folders.map((d) => d.label)).toEqual(['Software']);
     expect(grouped.projects.map((d) => d.label)).toEqual(['Alfred']);
   });
@@ -88,6 +95,22 @@ describe('buildDestinations', () => {
       ['/reader/archive', 'reader'],
       ['/reader/publications', 'reader'],
     ]);
+  });
+
+  it('emits the five Wiki destinations with their hrefs and icon tokens', () => {
+    const grouped = buildDestinations('', [], []);
+    expect(grouped.wiki.map((d) => [d.href, d.icon])).toEqual([
+      ['/wiki', 'wiki'],
+      ['/wiki/concepts', 'concepts'],
+      ['/wiki/entities', 'entities'],
+      ['/wiki/sources', 'sources'],
+      ['/wiki/questions', 'questions'],
+    ]);
+  });
+
+  it('filters the Wiki group like any other', () => {
+    expect(buildDestinations('con', [], []).wiki.map((d) => d.label)).toEqual(['Concepts']);
+    expect(buildDestinations('zzz', [], []).wiki).toHaveLength(0);
   });
 
   it('filters the Reader group like any other', () => {
@@ -174,13 +197,14 @@ describe('buildDestinations', () => {
     expect(grouped.go.map((d) => d.label)).toEqual(['Priority']);
     expect(grouped.comms).toHaveLength(0);
     expect(grouped.reader).toHaveLength(0);
+    expect(grouped.wiki).toHaveLength(0);
     expect(grouped.folders).toHaveLength(0);
     expect(grouped.projects).toHaveLength(0);
   });
 });
 
 describe('flattenDestinations', () => {
-  it('concatenates go → comms → reader → folders → projects in order', () => {
+  it('concatenates go → comms → reader → wiki → folders → projects in order', () => {
     const grouped = buildDestinations(
       '',
       [makeFolder({ id: 'fa', name: 'Software' })],
@@ -191,6 +215,7 @@ describe('flattenDestinations', () => {
       ...Array.from({ length: 11 }, () => 'go'),
       ...Array.from({ length: 4 }, () => 'comms'),
       ...Array.from({ length: 3 }, () => 'reader'),
+      ...Array.from({ length: 5 }, () => 'wiki'),
       'folders',
       'projects',
     ]);

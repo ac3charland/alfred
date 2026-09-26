@@ -11,6 +11,11 @@ import {
   fetchReaderCandidates,
   fetchReaderHealth,
   fetchReaderPublications,
+  fetchWikiPageBody,
+  fetchWikiPages,
+  searchWikiBodies,
+  sendItemsToWiki,
+  sendReaderIdeasToWiki,
   updateReaderPublication,
 } from './api-client';
 import {
@@ -20,6 +25,7 @@ import {
   makeReaderPublicationListItem,
   resetReaderFixtureClock,
 } from './reader/fixtures';
+import { makeWikiPage, makeWikiSync, resetWikiFixtureClock, toWikiIndexRow } from './wiki/fixtures';
 
 const PUBLICATION_ID = '22222222-2222-4222-8222-222222222222';
 
@@ -44,6 +50,7 @@ function requested(mock: jest.Mock): { path: string; method: string; body: unkno
 
 beforeEach(() => {
   resetReaderFixtureClock();
+  resetWikiFixtureClock();
 });
 
 afterEach(() => {
@@ -112,6 +119,79 @@ describe('fetchReaderHealth', () => {
 
     await expect(fetchReaderHealth()).resolves.toEqual(snapshot);
     expect(requested(spy)).toMatchObject({ path: '/api/reader/health', method: 'GET' });
+  });
+});
+
+describe('fetchWikiPages', () => {
+  it('reads the whole index plus the sync row from the pages route', async () => {
+    const seed = {
+      pages: [toWikiIndexRow(makeWikiPage('wiki/concepts/habit-stacking.md'))],
+      sync: makeWikiSync(),
+    };
+    const spy = stubFetch(seed);
+
+    await expect(fetchWikiPages()).resolves.toEqual(seed);
+    expect(requested(spy)).toMatchObject({ path: '/api/wiki/pages', method: 'GET' });
+  });
+});
+
+describe('fetchWikiPageBody', () => {
+  it('reads one page body from the page route, encoding the path in the query', async () => {
+    const body = { path: 'wiki/concepts/spaced page.md', blob_oid: 'b1', body: '# Spaced page' };
+    const spy = stubFetch(body);
+
+    await expect(fetchWikiPageBody('wiki/concepts/spaced page.md')).resolves.toEqual(body);
+    expect(requested(spy)).toMatchObject({
+      path: '/api/wiki/page?path=wiki%2Fconcepts%2Fspaced%20page.md',
+      method: 'GET',
+    });
+  });
+});
+
+describe('searchWikiBodies', () => {
+  it('reads ranked hits from the search route, encoding the query', async () => {
+    const hits = [
+      { path: 'wiki/concepts/habit-stacking.md', snippet: '\u0002habit\u0003', rank: 1 },
+    ];
+    const spy = stubFetch(hits);
+
+    await expect(searchWikiBodies('habit stacking')).resolves.toEqual(hits);
+    expect(requested(spy)).toMatchObject({
+      path: '/api/wiki/search?q=habit%20stacking',
+      method: 'GET',
+    });
+  });
+});
+
+describe('sendReaderIdeasToWiki', () => {
+  it('posts the picked bullets to the post’s wiki route and hands back the updated row', async () => {
+    const saved = { id: 'post-1', wiki_sent_ideas: ['A new habit needs an existing cue.'] };
+    const spy = stubFetch(saved);
+
+    await expect(
+      sendReaderIdeasToWiki('post-1', { ideas: ['A new habit needs an existing cue.'] }),
+    ).resolves.toEqual(saved);
+    expect(requested(spy)).toEqual({
+      path: '/api/reader/posts/post-1/wiki',
+      method: 'POST',
+      body: { ideas: ['A new habit needs an existing cue.'] },
+    });
+  });
+});
+
+describe('sendItemsToWiki', () => {
+  it('posts the dispatched ids to the items route and hands back the ones sent', async () => {
+    const sent = { sent: ['11111111-1111-4111-8111-111111111111'] };
+    const spy = stubFetch(sent);
+
+    await expect(
+      sendItemsToWiki({ ids: ['11111111-1111-4111-8111-111111111111'] }),
+    ).resolves.toEqual(sent);
+    expect(requested(spy)).toEqual({
+      path: '/api/wiki/items',
+      method: 'POST',
+      body: { ids: ['11111111-1111-4111-8111-111111111111'] },
+    });
   });
 });
 

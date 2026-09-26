@@ -13,6 +13,7 @@ import { TaskList } from './task-list';
 jest.mock('@/lib/api-client');
 const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
+const mockSendItemsToWiki = jest.mocked(apiClient.sendItemsToWiki);
 
 const BASE: Item = {
   id: 'item-1',
@@ -119,12 +120,14 @@ function renderInbox(
   tasks: Item[],
   folders: Folder[] = FOLDERS,
   code: { projects?: Project[]; epics?: Epic[] } = {},
+  wikiWritable = false,
 ) {
   return renderWithProviders(<InboxHarness />, {
     tasks,
     folders,
     projects: code.projects ?? [],
     epics: code.epics ?? [],
+    wiki: { writable: wikiWritable },
   });
 }
 
@@ -785,5 +788,163 @@ describe('select mode keeps the label chips, inert (S13)', () => {
     );
     // No picker opened — the chip is inert here.
     expect(screen.queryByRole('button', { name: 'No folder' })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Knowledge rows — Classify as Knowledge, and Dispatch sends every idea in one request
+// ---------------------------------------------------------------------------
+
+/** A knowledge row — an idea bound for the wiki. */
+function idea(id: string): Item {
+  return makeItem(id, { item_type: 'knowledge' });
+}
+
+/** Open the bar's Classify as dropdown and list its entries. */
+async function classifyEntries(user: ReturnType<typeof userEvent.setup>): Promise<string[]> {
+  await user.click(screen.getByRole('button', { name: /classify as/i }));
+  await screen.findByRole('menuitem', { name: 'Task' });
+  return screen.getAllByRole('menuitem').map((item) => item.textContent);
+}
+
+describe('knowledge in the bulk bar', () => {
+  const WRITABLE = true;
+
+  it('offers Knowledge after Code in Classify as when the wiki is writable', async () => {
+    const user = userEvent.setup();
+    renderInbox([makeItem('u1')], FOLDERS, {}, WRITABLE);
+
+    await selectRows(user, ['u1']);
+
+    expect(await classifyEntries(user)).toEqual(['Task', 'Code', 'Knowledge']);
+  });
+
+  it('offers no Knowledge when the wiki is not writable', async () => {
+    const user = userEvent.setup();
+    renderInbox([makeItem('u1')]);
+
+    await selectRows(user, ['u1']);
+
+    expect(await classifyEntries(user)).toEqual(['Task', 'Code']);
+  });
+
+  it('Classify → Knowledge sends every row the knowledge clear-set', async () => {
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(makeItem(id, { item_type: 'knowledge' })),
+    );
+    const user = userEvent.setup();
+    renderInbox(
+      [makeItem('u1'), makeItem('t1', { item_type: 'task', due_date: '2026-08-14' })],
+      FOLDERS,
+      {},
+      WRITABLE,
+    );
+
+    await selectRows(user, ['u1', 't1']);
+    await pickFromMenu(user, /classify as/i, /^knowledge$/i);
+
+    const clears = {
+      item_type: 'knowledge',
+      due_date: null,
+      recurrence: null,
+      intended_project_id: null,
+      intended_epic_id: null,
+      folder_id: null,
+    };
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('u1', clears);
+    });
+    expect(mockUpdateItem).toHaveBeenCalledWith('t1', clears);
+  });
+
+  it('names a knowledge row with a subtask: "1 not ready — 1 has subtasks"', async () => {
+    const user = userEvent.setup();
+    renderInbox(
+      [idea('idea'), makeItem('child', { item_type: 'task', parent_id: 'idea' })],
+      FOLDERS,
+      {},
+      WRITABLE,
+    );
+
+    await selectRows(user, ['idea']);
+
+    expect(screen.getByRole('status')).toHaveTextContent('1 not ready — 1 has subtasks');
+  });
+
+  it('names ideas on an instance with no wiki writer: "3 not ready — 3 wiki not connected"', async () => {
+    const user = userEvent.setup();
+    renderInbox([idea('i1'), idea('i2'), idea('i3')]);
+
+    await selectRows(user, ['i1', 'i2', 'i3']);
+
+    expect(screen.getByRole('status')).toHaveTextContent('3 not ready — 3 wiki not connected');
+    expect(screen.getByRole('button', { name: 'Dispatch' })).toBeDisabled();
+  });
+
+  it('dispatches every idea in ONE request and toasts "Sent 3 ideas to the wiki"', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToWiki.mockResolvedValue({ sent: ['i1', 'i2', 'i3'] });
+    const user = userEvent.setup();
+    renderInbox([idea('i1'), idea('i2'), idea('i3')], FOLDERS, {}, WRITABLE);
+
+    await selectRows(user, ['i1', 'i2', 'i3']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(await screen.findByText('Sent 3 ideas to the wiki')).toBeInTheDocument();
+    expect(mockSendItemsToWiki).toHaveBeenCalledTimes(1);
+    expect(mockSendItemsToWiki).toHaveBeenCalledWith({ ids: ['i1', 'i2', 'i3'] });
+    for (const id of ['i1', 'i2', 'i3']) expect(screen.queryByText(id)).not.toBeInTheDocument();
+  });
+
+  it('says "Sent 1 idea to the wiki" for one', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToWiki.mockResolvedValue({ sent: ['i1'] });
+    const user = userEvent.setup();
+    renderInbox([idea('i1'), idea('i2')], FOLDERS, {}, WRITABLE);
+
+    await selectRows(user, ['i1']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(await screen.findByText('Sent 1 idea to the wiki')).toBeInTheDocument();
+  });
+
+  it('keeps the "Dispatched n items" toast when anything else went too', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToWiki.mockResolvedValue({ sent: ['i1'] });
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(
+        makeItem(id, { item_type: 'task', folder_id: 'f1', dispatched_at: '2025-01-02T00:00:00Z' }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderInbox(
+      [idea('i1'), makeItem('t1', { item_type: 'task', folder_id: 'f1', dispatched_at: null })],
+      FOLDERS,
+      {},
+      WRITABLE,
+    );
+
+    await selectRows(user, ['i1', 't1']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(await screen.findByText('Dispatched 2 items')).toBeInTheDocument();
+    expect(screen.queryByText(/to the wiki/)).toBeNull();
+  });
+
+  it('a failed send puts every idea back, still selected', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToWiki.mockRejectedValue(new Error('502'));
+    const user = userEvent.setup();
+    renderInbox([idea('i1'), idea('i2')], FOLDERS, {}, WRITABLE);
+
+    await selectRows(user, ['i1', 'i2']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(await screen.findByText("2 of 2 couldn't be dispatched")).toBeInTheDocument();
+    expect(mockSendItemsToWiki).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('region', { name: 'Bulk actions' })).toHaveTextContent('2 selected');
+    expect(screen.getByRole('button', { name: /deselect "i1"/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /deselect "i2"/i })).toBeInTheDocument();
+    expect(screen.queryByText(/to the wiki/)).toBeNull();
   });
 });

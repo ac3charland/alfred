@@ -128,6 +128,20 @@ export const CodeClassified: Story = {
   },
 };
 
+// A knowledge row — an idea bound for the wiki: the lightbulb fills the checkbox slot (it can't
+// be completed), it carries no label chips, and — with the wiki connected — the green pip says
+// Dispatch will send it.
+export const KnowledgeClassified: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      item_type: 'knowledge',
+      title: 'Spaced repetition works because forgetting is the signal, not the failure',
+    },
+  },
+  parameters: { store: { wiki: { writable: true } } },
+};
+
 // A subtask row: title + affordances and no row badge (ALF-67/ALF-224 removed it everywhere).
 // ── ALF-129 — an epic under construction: a code parent with ordered code children. ──
 
@@ -707,6 +721,32 @@ export const MenuCodeStoryWithProject: Story = {
       </CodeProvider>
     ),
   ],
+};
+
+/**
+ * A knowledge row with its ⋯ menu and Classify as… open: no label submenus (Due date, Priority
+ * and Folder are task-only; Project and Epic code-only), Dispatch live, and Knowledge offered
+ * after Task and Code because the wiki is connected — so a wrong guess flips straight back.
+ */
+export const MenuKnowledge: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      item_type: 'knowledge',
+      title: 'Spaced repetition works because forgetting is the signal, not the failure',
+    },
+  },
+  parameters: {
+    ...menuStory.parameters,
+    store: { folders: MENU_FOLDERS, wiki: { writable: true } },
+  },
+  play: async ({ canvasElement }) => {
+    await openRowMenu(canvasElement);
+    const body = within(document.body);
+    await userEvent.hover(body.getByRole('menuitem', { name: 'Classify as…' }));
+    await userEvent.keyboard('{ArrowRight}');
+    await body.findByRole('menuitem', { name: 'Knowledge' });
+  },
 };
 
 // A deeply nested completed item shows every ancestor, oldest → youngest, joined by " > ".

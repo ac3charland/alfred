@@ -1,8 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
 
-import type { ItemType } from '@/lib/types';
-
 import { TypeGlyph } from './type-glyph';
 
 describe('TypeGlyph', () => {
@@ -24,10 +22,10 @@ describe('TypeGlyph', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders nothing for a knowledge item (reserved, not built)', () => {
-    const knowledge = 'knowledge' as ItemType;
-    const { container } = render(<TypeGlyph itemType={knowledge} />);
+  it('renders an accessible "Knowledge" lightbulb for a knowledge item', () => {
+    const { container } = render(<TypeGlyph itemType="knowledge" />);
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole('img', { name: 'Knowledge' })).toBeInTheDocument();
+    expect(container.querySelector('svg')).toHaveClass('lucide-lightbulb');
   });
 });

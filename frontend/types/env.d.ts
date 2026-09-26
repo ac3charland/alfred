@@ -26,5 +26,10 @@ declare namespace NodeJS {
     GITHUB_TOKEN?: string;
     PR_RATIO_REPOS?: string;
     PR_RATIO_AUTHORS?: string;
+    // The wiki writer — server-only; unset leaves the deployment read-only (every send
+    // affordance hidden, the send routes answering 501). Never NEXT_PUBLIC_.
+    WIKI_GITHUB_TOKEN?: string;
+    WIKI_REPO?: string;
+    WIKI_GITHUB_API_URL?: string;
   }
 }

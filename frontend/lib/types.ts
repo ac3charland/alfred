@@ -265,3 +265,44 @@ export interface ReaderOverview {
   argument: string;
   who_should_read: string;
 }
+
+// ── Wiki (the read-only snapshot of the knowledge repo's compiled pages) — ──
+
+export type WikiPageRow = Database['public']['Tables']['wiki_pages']['Row'];
+
+/**
+ * A page without its body or search vector — the shape the shell seeds and the module lists.
+ * The body is fetched when a page opens and cached by blob id (the weekly-plans precedent: big
+ * documents seed lazily), and the tsvector is Postgres's alone.
+ */
+export type WikiPageIndexRow = Omit<WikiPageRow, 'body' | 'search'>;
+
+/** The singleton sync row: when the snapshot last reconciled and whether the last run failed. */
+export type WikiSync = Database['public']['Tables']['wiki_sync']['Row'];
+
+/** One `search_wiki_pages` hit: the page, a snippet with control-character highlight marks, rank. */
+export type WikiSearchHit = Database['public']['Functions']['search_wiki_pages']['Returns'][number];
+
+/**
+ * What the shell seeds the client with about the wiki repo — and nothing else. `repo` is the
+ * `owner/name` GitHub links to raw citations are built from (null when unset), `writable`
+ * whether this deployment holds the write token, which is what shows or hides every send
+ * affordance. The token itself never leaves the server.
+ */
+export interface WikiClientConfig {
+  repo: string | null;
+  writable: boolean;
+}
+
+/** What `GET /api/wiki/pages` returns — the same pair the shell seeds. */
+export interface WikiSeed {
+  pages: WikiPageIndexRow[];
+  sync: WikiSync | null;
+}
+
+/** What `GET /api/wiki/page?path=` returns: the body, pinned to the blob it was parsed from. */
+export interface WikiPageBody {
+  path: string;
+  blob_oid: string;
+  body: string;
+}

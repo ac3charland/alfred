@@ -10,6 +10,7 @@ import {
   GitBranch,
   Inbox,
   LayoutDashboard,
+  Library,
   ListOrdered,
   ListTodo,
   type LucideIcon,
@@ -34,8 +35,10 @@ import {
   flattenDestinations,
 } from '@/components/shell/command-destinations';
 import { useCommandPaletteShortcut } from '@/components/shell/use-command-palette-shortcut';
+import { WIKI_SECTION_ICONS } from '@/components/wiki/wiki-section-icons';
 import { useProjects } from '@/lib/stores/code-store';
 import { useFolders } from '@/lib/stores/folders-store';
+import { GROUP_LABEL_CLASS } from '@/lib/ui/group-label-class';
 import { cn } from '@/lib/utils';
 
 const LISTBOX_ID = 'command-palette-destinations';
@@ -58,6 +61,8 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   rubric: ScrollText,
   examples: BookMarked,
   reader: BookOpen,
+  wiki: Library,
+  ...WIKI_SECTION_ICONS,
   folder: FolderOpen,
   project: GitBranch,
 };
@@ -66,6 +71,7 @@ const GROUP_LABELS = {
   go: 'Go to',
   comms: 'Comms',
   reader: 'Reader',
+  wiki: 'Wiki',
   folders: 'Folders',
   projects: 'Projects',
 } as const;
@@ -138,9 +144,7 @@ function DestinationGroup({
   if (destinations.length === 0) return null;
   return (
     <li>
-      <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-        {label}
-      </div>
+      <div className={GROUP_LABEL_CLASS}>{label}</div>
       <ul>
         {destinations.map((destination, offset) => {
           const index = baseIndex + offset;
@@ -305,9 +309,22 @@ export function CommandPalette() {
               onHover={setActiveIndex}
             />
             <DestinationGroup
+              label={GROUP_LABELS.wiki}
+              destinations={grouped.wiki}
+              baseIndex={grouped.go.length + grouped.comms.length + grouped.reader.length}
+              activeIndex={clampedIndex}
+              onSelect={select}
+              onHover={setActiveIndex}
+            />
+            <DestinationGroup
               label={GROUP_LABELS.folders}
               destinations={grouped.folders}
-              baseIndex={grouped.go.length + grouped.comms.length + grouped.reader.length}
+              baseIndex={
+                grouped.go.length +
+                grouped.comms.length +
+                grouped.reader.length +
+                grouped.wiki.length
+              }
               activeIndex={clampedIndex}
               onSelect={select}
               onHover={setActiveIndex}
@@ -319,6 +336,7 @@ export function CommandPalette() {
                 grouped.go.length +
                 grouped.comms.length +
                 grouped.reader.length +
+                grouped.wiki.length +
                 grouped.folders.length
               }
               activeIndex={clampedIndex}

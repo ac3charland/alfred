@@ -4,14 +4,14 @@
  * the module switcher. Keeping one rule here is what guarantees URL, main content, sidebar,
  * and switcher highlight never disagree mid-switch (ALF-27).
  *
- * There are four modules now, so module resolution is a real router rather than a boolean:
+ * There are five modules now, so module resolution is a real router rather than a boolean:
  * Code owns `/code` and everything beneath it, Comms owns `/comms` and everything beneath it,
- * Reader owns `/reader` and everything beneath it, and every other path is Tasks (inbox, a
- * folder, completed, the cross-cutting views).
+ * Reader owns `/reader` and everything beneath it, Wiki owns `/wiki` and everything beneath it,
+ * and every other path is Tasks (inbox, a folder, completed, the cross-cutting views).
  */
 
-/** The four top-level modules the shell can be showing. */
-export type ModuleId = 'tasks' | 'code' | 'comms' | 'reader';
+/** The five top-level modules the shell can be showing. */
+export type ModuleId = 'tasks' | 'code' | 'comms' | 'reader' | 'wiki';
 
 /** True when `pathname` is the module's root or lives beneath it. */
 function ownsPath(pathname: string, root: string): boolean {
@@ -26,6 +26,7 @@ export function activeModule(pathname: string): ModuleId {
   if (ownsPath(pathname, '/code')) return 'code';
   if (ownsPath(pathname, '/comms')) return 'comms';
   if (ownsPath(pathname, '/reader')) return 'reader';
+  if (ownsPath(pathname, '/wiki')) return 'wiki';
   return 'tasks';
 }
 
@@ -42,6 +43,11 @@ export function isCommsPath(pathname: string): boolean {
 /** True on the Reader module's own routes. A thin wrapper over {@link activeModule}. */
 export function isReaderPath(pathname: string): boolean {
   return activeModule(pathname) === 'reader';
+}
+
+/** True on the Wiki module's own routes. A thin wrapper over {@link activeModule}. */
+export function isWikiPath(pathname: string): boolean {
+  return activeModule(pathname) === 'wiki';
 }
 
 /** The accent utility classes one module wears. Every field is a complete class string. */
@@ -65,11 +71,12 @@ export interface ModuleAccent {
  * colour tables follow.)
  *
  * One hue per module, and no two alike: Tasks is amber, Code the app's teal, Comms the blue the
- * product spec reserved for the communication firewall, and Reader the green the epic
- * (ALF-232) settled on. Tasks and Code both wore teal until ALF-219, which made two of the
- * three switcher segments indistinguishable once highlighted — the highlight told you a module
- * was active but not which one. Anything reading a module's colour reads it from here, so a
- * recolour lands everywhere at once.
+ * product spec reserved for the communication firewall, Reader the green the epic (ALF-232)
+ * settled on, and Wiki the violet the wiki epic (ALF-259) added — the fifth hue, because teal,
+ * green, blue and amber were taken and red means danger. Tasks and Code both wore teal until
+ * ALF-219, which made two of the three switcher segments indistinguishable once highlighted —
+ * the highlight told you a module was active but not which one. Anything reading a module's
+ * colour reads it from here, so a recolour lands everywhere at once.
  */
 export const MODULE_ACCENT: Record<ModuleId, ModuleAccent> = {
   tasks: {
@@ -99,5 +106,12 @@ export const MODULE_ACCENT: Record<ModuleId, ModuleAccent> = {
     dot: 'bg-accent-green',
     border: 'border-accent-green',
     glow: 'glow-green',
+  },
+  wiki: {
+    text: 'text-accent-violet',
+    ring: 'ring-accent-violet',
+    dot: 'bg-accent-violet',
+    border: 'border-accent-violet',
+    glow: 'glow-violet',
   },
 };

@@ -6,6 +6,7 @@ import { spyOnFetch } from './fetch-stub';
 import { hmacSha256Hex } from './hmac';
 import worker, { type Env, POLL_CRON, READER_CRON, RETENTION_CRON, TICK_CRON } from './index';
 import * as readerScheduled from './reader/scheduled';
+import * as wikiSync from './wiki/sync';
 
 const env: Env = {
   GITHUB_WEBHOOK_SECRET: 'webhook-secret',
@@ -15,6 +16,7 @@ const env: Env = {
   ANTHROPIC_API_KEY: 'sk-ant-test',
   CLASSIFIER_MODEL: 'claude-haiku-4-5',
   CLASSIFIER_TIMEZONE: 'America/Chicago',
+  WIKI_REPO: 'ac3charland/knowledge',
   READER_MODEL: 'claude-sonnet-5',
   READER_DAILY_CAP: '30',
 };
@@ -99,6 +101,25 @@ function prPayload(overrides: {
   };
 }
 
+/** A signed `push` delivery for `ref` on `fullName`. */
+function pushRequest(
+  overrides: { ref?: string; fullName?: string; secret?: string } = {},
+): Promise<Request> {
+  return webhookRequest(
+    {
+      ref: overrides.ref ?? 'refs/heads/main',
+      after: 'c'.repeat(40),
+      repository: { full_name: overrides.fullName ?? env.WIKI_REPO },
+    },
+    { event: 'push', ...(overrides.secret === undefined ? {} : { secret: overrides.secret }) },
+  );
+}
+
+/** A console stand-in with a body, since an empty arrow function is a lint error. */
+function discard(): void {
+  return undefined;
+}
+
 const alfredBlock = (lines: string[]): string => ['```alfred', ...lines, '```'].join('\n');
 
 /**
@@ -144,7 +165,7 @@ describe('worker.fetch', () => {
     });
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30)',
+      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; wiki ac3charland/knowledge)',
     );
   });
 
@@ -154,7 +175,7 @@ describe('worker.fetch', () => {
     const { response } = await invoke(new Request('https://worker.dev/'));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30)',
+      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; wiki ac3charland/knowledge)',
     );
   });
 
@@ -169,7 +190,7 @@ describe('worker.fetch', () => {
       CLASSIFIER_TIMEZONE: 'Europe/London',
     });
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30)',
+      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30; wiki ac3charland/knowledge)',
     );
   });
 
@@ -239,6 +260,172 @@ describe('worker.fetch', () => {
     const { response } = await invoke(request);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ignored: 'not a pull_request event' });
+  });
+
+  describe('a push', () => {
+    const summary: wikiSync.WikiSyncSummary = {
+      ok: true,
+      commitOid: 'c'.repeat(40),
+      changed: 2,
+      removed: 0,
+      pending: 0,
+    };
+
+    it("to the wiki repo's main queues a sync in the background and answers 202", async () => {
+      const sync = jest.spyOn(wikiSync, 'syncWiki').mockResolvedValue(summary);
+      jest.spyOn(console, 'log').mockImplementation(discard);
+      const fetchSpy = spyOnFetch();
+
+      const { response, background } = await invoke(await pushRequest());
+
+      expect(response.status).toBe(202);
+      expect(response.headers.get('content-type')).toBe('application/json');
+      expect(await response.json()).toEqual({ sync: 'queued' });
+      await background;
+      expect(sync).toHaveBeenCalledTimes(1);
+      expect(sync.mock.calls[0]?.[0]).toBe(env);
+      // The webhook itself spends nothing: every subrequest belongs to the sync.
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('pins the sync to the invocation with waitUntil, so the runtime does not cut it short', async () => {
+      // A bare `void runWikiSync(env)` would also call the sync — but the runtime tears the
+      // invocation down once the response is sent, killing it part-way. The sync must be the ONE
+      // task handed to ctx.waitUntil, and that task must still be pending until the sync settles.
+      let resolveSync: (summary: wikiSync.WikiSyncSummary) => void = discard;
+      const deferred = new Promise<wikiSync.WikiSyncSummary>((resolve) => {
+        resolveSync = resolve;
+      });
+      jest.spyOn(wikiSync, 'syncWiki').mockReturnValue(deferred);
+      jest.spyOn(console, 'log').mockImplementation(discard);
+      const tasks: Promise<unknown>[] = [];
+      const ctx = {
+        waitUntil: (promise: Promise<unknown>) => {
+          tasks.push(promise);
+        },
+      } as unknown as FetchArgs[2];
+
+      const response = await worker.fetch(await pushRequest(), env, ctx);
+
+      expect(response.status).toBe(202);
+      expect(tasks).toHaveLength(1);
+      let settled = false;
+      const task = tasks[0]?.then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      resolveSync(summary);
+      await task;
+      expect(settled).toBe(true);
+    });
+
+    it('logs the background run, and a sync that rejects is logged rather than left unhandled', async () => {
+      jest
+        .spyOn(wikiSync, 'syncWiki')
+        .mockRejectedValue(new Error('Supabase upsert wiki_sync failed: 503'));
+      const errors: string[] = [];
+      jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        errors.push(args.map(String).join(' '));
+      });
+
+      const { response, background } = await invoke(await pushRequest());
+
+      expect(response.status).toBe(202);
+      await expect(background).resolves.toBeDefined();
+      expect(errors).toEqual(['wiki sync: threw: Supabase upsert wiki_sync failed: 503']);
+    });
+
+    it.each([
+      ['on another branch', { ref: 'refs/heads/feature' }],
+      ['of a tag', { ref: 'refs/tags/main' }],
+      ['from another repo', { fullName: 'ac3charland/alfred' }],
+    ])('%s is ignored with a 200, and syncs nothing', async (_label, overrides) => {
+      const sync = jest.spyOn(wikiSync, 'syncWiki');
+
+      const { response, background } = await invoke(await pushRequest(overrides));
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ignored: 'not a push to ac3charland/knowledge main',
+      });
+      await background;
+      expect(sync).not.toHaveBeenCalled();
+    });
+
+    it('with a bad signature is refused (401) before anything is read', async () => {
+      const sync = jest.spyOn(wikiSync, 'syncWiki');
+
+      const { response } = await invoke(await pushRequest({ secret: 'wrong-secret' }));
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: 'invalid signature' });
+      expect(sync).not.toHaveBeenCalled();
+    });
+
+    it('whose body is not JSON is a 400', async () => {
+      const body = 'not json';
+      const request = new Request('https://worker.dev/github/webhook', {
+        method: 'POST',
+        headers: {
+          'X-Hub-Signature-256': await sign(env.GITHUB_WEBHOOK_SECRET, body),
+          'X-GitHub-Event': 'push',
+        },
+        body,
+      });
+
+      const { response } = await invoke(request);
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'invalid JSON' });
+    });
+
+    it('whose body is a bare JSON null is ignored, not a crash', async () => {
+      const sync = jest.spyOn(wikiSync, 'syncWiki');
+      const body = 'null';
+      const request = new Request('https://worker.dev/github/webhook', {
+        method: 'POST',
+        headers: {
+          'X-Hub-Signature-256': await sign(env.GITHUB_WEBHOOK_SECRET, body),
+          'X-GitHub-Event': 'push',
+        },
+        body,
+      });
+
+      const { response, background } = await invoke(request);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ignored: 'not a push to ac3charland/knowledge main',
+      });
+      await background;
+      expect(sync).not.toHaveBeenCalled();
+    });
+
+    it('never makes a pull_request event sync the wiki', async () => {
+      const sync = jest.spyOn(wikiSync, 'syncWiki');
+      spyOnFetch().mockResolvedValue(Response.json([{ ref: 'ALF-42' }], { status: 200 }));
+
+      const { response, background } = await invoke(
+        await webhookRequest(
+          prPayload({
+            fullName: env.WIKI_REPO,
+            body: alfredBlock(['alfred-ticket: ALF-42', 'phase: implementation']),
+          }),
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        tickets: ['ALF-42'],
+        state: 'ready_for_review',
+      });
+      await background;
+      expect(sync).not.toHaveBeenCalled();
+    });
   });
 
   it('ignores a PR with no alfred block', async () => {
@@ -541,6 +728,23 @@ describe('worker.scheduled', () => {
     waitUntil: (promise: Promise<unknown>) => background.push(promise),
   } as unknown as Parameters<typeof worker.scheduled>[2];
 
+  /** What the daily run's wiki sync reports unless a test says otherwise. */
+  const syncedSummary: wikiSync.WikiSyncSummary = {
+    ok: true,
+    commitOid: 'abcdef1234567890abcdef1234567890abcdef12',
+    changed: 3,
+    removed: 1,
+    pending: 0,
+  };
+  const WIKI_LINE = 'wiki sync: 3 changed, 1 removed, 0 pending at abcdef1';
+
+  // The sync is its own module with its own suite; here it is only a unit the dispatch must
+  // call, in order. Stubbed for every test so no schedule reaches GitHub by accident.
+  let sync: jest.SpiedFunction<typeof wikiSync.syncWiki>;
+  beforeEach(() => {
+    sync = jest.spyOn(wikiSync, 'syncWiki').mockResolvedValue(syncedSummary);
+  });
+
   it('runs a classifier sweep, and resolves only once the sweep has finished', async () => {
     // The handler must AWAIT its own work: a scheduled invocation is torn down when the promise
     // it returns settles, so a fire-and-forget sweep would be killed part-way through.
@@ -677,9 +881,111 @@ describe('worker.scheduled', () => {
 
     expect(retention).toHaveBeenCalledTimes(1);
     expect(readerRetention).toHaveBeenCalledTimes(1);
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(sync.mock.calls[0]?.[0]).toBe(env);
     expect(judge).not.toHaveBeenCalled();
     expect(poll).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('runs the wiki sync AFTER both retention sweeps, as the snapshot safety net', async () => {
+    const retention = jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: 0, failures: [] });
+    const readerRetention = jest
+      .spyOn(readerScheduled, 'runReaderRetention')
+      .mockResolvedValue({ swept: 0, failures: [] });
+    jest.spyOn(console, 'log').mockImplementation(discard);
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    const [syncOrder = 0] = sync.mock.invocationCallOrder;
+    expect(syncOrder).toBeGreaterThan(retention.mock.invocationCallOrder[0] ?? Infinity);
+    expect(syncOrder).toBeGreaterThan(readerRetention.mock.invocationCallOrder[0] ?? Infinity);
+  });
+
+  it('still syncs the wiki when both retention sweeps failed', async () => {
+    jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: undefined, failures: ['comms retention: 500 upstream'] });
+    jest
+      .spyOn(readerScheduled, 'runReaderRetention')
+      .mockResolvedValue({ swept: undefined, failures: ['reader retention: permission denied'] });
+    jest.spyOn(console, 'log').mockImplementation(discard);
+    jest.spyOn(console, 'error').mockImplementation(discard);
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+
+  it('never lets a wiki sync that throws escape the scheduled handler — it is logged', async () => {
+    jest.spyOn(commsScheduled, 'runCommsRetention').mockResolvedValue({ deleted: 4, failures: [] });
+    jest.spyOn(readerScheduled, 'runReaderRetention').mockResolvedValue({ swept: 0, failures: [] });
+    sync.mockRejectedValue(new Error('Supabase upsert wiki_sync failed: 503'));
+    jest.spyOn(console, 'log').mockImplementation(discard);
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await expect(
+      worker.scheduled(controllerFor(RETENTION_CRON), env, ctx),
+    ).resolves.toBeUndefined();
+
+    expect(errors).toEqual(['wiki sync: threw: Supabase upsert wiki_sync failed: 503']);
+  });
+
+  it('logs a recorded wiki sync failure as an error line', async () => {
+    jest.spyOn(commsScheduled, 'runCommsRetention').mockResolvedValue({ deleted: 4, failures: [] });
+    jest.spyOn(readerScheduled, 'runReaderRetention').mockResolvedValue({ swept: 0, failures: [] });
+    sync.mockResolvedValue({ ok: false, error: 'GitHub GraphQL tree returned errors: rate limit' });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    expect(logged).toEqual([
+      'comms retention: 4 messages deleted',
+      'reader retention: 0 posts swept',
+    ]);
+    expect(errors).toEqual([
+      'wiki sync: failed (recorded in wiki_sync): GitHub GraphQL tree returned errors: rate limit',
+    ]);
+  });
+
+  it('never syncs the wiki on the frequent, poll or reader schedules', async () => {
+    spyOnFetch().mockResolvedValue(Response.json([]));
+    jest
+      .spyOn(commsScheduled, 'runCommsJudge')
+      .mockResolvedValue({ gmail: undefined, sweep: undefined, failures: [] });
+    jest
+      .spyOn(commsScheduled, 'runCommsPoll')
+      .mockResolvedValue({ gmail: undefined, sweep: undefined, failures: [] });
+    jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
+      discovered: 0,
+      intake: 0,
+      summarized: 0,
+      refused: 0,
+      countedFailures: 0,
+      uncountedFailures: 0,
+      skippedForCap: 0,
+      skippedForBudget: 0,
+      failures: [],
+    });
+    jest.spyOn(console, 'log').mockImplementation(discard);
+
+    for (const cron of [TICK_CRON, POLL_CRON, READER_CRON]) {
+      await worker.scheduled(controllerFor(cron), env, ctx);
+    }
+
+    expect(sync).not.toHaveBeenCalled();
   });
 
   it('runs the reader sweep after the comms sweep, and a comms failure does not skip it', async () => {
@@ -800,6 +1106,7 @@ describe('worker.scheduled', () => {
       'comms retention: 12 messages deleted',
       // Singular: one post, like the comms gmail-poll line's 'account' / 'accounts' split.
       'reader retention: 1 post swept',
+      WIKI_LINE,
     ]);
   });
 
@@ -825,6 +1132,7 @@ describe('worker.scheduled', () => {
     expect(logged).toEqual([
       'comms retention: 12 messages deleted',
       'reader retention: did not run',
+      WIKI_LINE,
     ]);
     expect(errors).toEqual(['reader: reader retention: permission denied']);
   });
@@ -853,6 +1161,7 @@ describe('worker.scheduled', () => {
     expect(logged).toEqual([
       'comms retention: 12 messages deleted',
       'reader retention: 2 posts swept',
+      WIKI_LINE,
     ]);
     expect(errors).toEqual(['reader: reader retention: permission denied']);
   });

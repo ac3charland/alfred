@@ -33,3 +33,11 @@ export function isReaderOverview(value: Json | null): value is JsonReaderOvervie
     typeof who_should_read === 'string'
   );
 }
+
+/**
+ * A bullet worth showing: an empty or whitespace-only one is not an idea, and the wiki send route
+ * refuses a blank string — kept in, it would fail every Send all.
+ */
+export function isIdea(bullet: string): boolean {
+  return bullet.trim() !== '';
+}

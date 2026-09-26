@@ -7,13 +7,18 @@
  *   verify HMAC → it's a pull_request → parse the `alfred` block → plan the transition →
  *   PATCH the ticket(s) → (on refinement- or spike-merge) snapshot the document in the background.
  *
+ * The same webhook endpoint takes the knowledge wiki repo's `push` deliveries: a push to
+ * `WIKI_REPO`'s main answers 202 and reconciles the wiki page snapshot in the background
+ * (`syncWiki`); every other push is ignored.
+ *
  * `fetch` also serves the Mac daemon's comms ingest endpoint — a second, unrelated POST route,
  * signed with its own secret and its own scheme, delegating to `handleIngest`.
  *
  * `scheduled` is fired by the cron triggers in wrangler.toml, and dispatches on WHICH schedule
  * fired: the frequent one runs the Inbox classifier and then the comms judge pass, the poll one
  * reads Gmail, the reader one runs the newsletter tick, and the daily one runs the comms
- * retention sweep and then the reader's own text sweep. Every handler stays thin and delegates.
+ * retention sweep, the reader's own text sweep, and then the wiki sync as the snapshot's safety
+ * net. Every handler stays thin and delegates.
  */
 import { handleIngest } from './comms/ingest';
 import {
@@ -36,6 +41,7 @@ import {
 import { patchCodeItem, patchEpic } from './supabase';
 import { runSweep } from './sweep';
 import { type TransitionTarget, planTransition } from './transitions';
+import { type WikiSyncSummary, syncWiki } from './wiki/sync';
 
 /**
  * The Worker's bindings. Hand-written because most of these are SECRETS, not `wrangler.toml`
@@ -85,6 +91,12 @@ export interface Env {
   GMAIL_PERSONAL_REFRESH_TOKEN?: string;
   GMAIL_REALPLAY_REFRESH_TOKEN?: string;
   /**
+   * The knowledge wiki's repo as `owner/name` — a `[vars]` entry. The push webhook syncs the
+   * page snapshot only for a push to this repo's main, and the sync reads its tree with the
+   * same `GITHUB_TOKEN` the spec snapshot uses (its repository list must include the wiki).
+   */
+  WIKI_REPO: string;
+  /**
    * The commit this Worker was built from — a plain `[vars]` binding, NOT a secret, injected by
    * the deploy workflow (`--var WORKER_VERSION:<sha>`). Optional because a hand-run
    * `wrangler deploy` passes none.
@@ -124,12 +136,18 @@ export const TICK_CRON = '*/2 * * * *';
 export const POLL_CRON = '*/3 * * * *';
 
 /**
- * The daily retention sweep — the comms message sweep, then the Reader's 90-day text sweep.
+ * The daily housekeeping run — the comms message sweep, then the Reader's 90-day text sweep, then
+ * the wiki snapshot's safety-net sync, which repairs whatever a missed push webhook left stale.
  * Housekeeping rather than triage, so it runs alone, overnight, and never drags a model call
- * along with it. Each unit is isolated in its own wrapper's try/catch, so a comms failure never
- * skips the reader sweep and a reader failure never skips the comms one. These two strings must
- * match wrangler.toml's `crons`: the runtime hands the handler the expression it fired, and that
- * is all it has to dispatch on.
+ * along with it. Each unit is isolated in its own try/catch (the two sweeps inside their
+ * wrappers, the sync in `runWikiSync`), so no unit's failure skips the ones after it; the sync
+ * runs last so nothing waits on GitHub.
+ *
+ * Budget: 50 subrequests per invocation. The comms sweep spends 1, the reader sweep at most 40
+ * (its `MAX_BATCHES`), and the wiki sync at most 6 (`WIKI_SYNC_SUBREQUEST_CEILING`) — 47. CPU is
+ * dominated by the sync's page parsing, capped at ~6ms by `WIKI_SYNC_PAGE_CAP`; the sweeps are
+ * database-side and cost next to none. These strings must match wrangler.toml's `crons`: the
+ * runtime hands the handler the expression it fired, and that is all it has to dispatch on.
  */
 export const RETENTION_CRON = '17 9 * * *';
 
@@ -183,7 +201,8 @@ export default {
         `alfred workers ok (build ${env.WORKER_VERSION ?? UNSTAMPED}; ` +
           `classifier ${env.CLASSIFIER_MODEL} @ ${env.CLASSIFIER_TIMEZONE}; ` +
           `comms ingest ${env.COMMS_INGEST_HMAC_SECRET === undefined ? 'unconfigured' : 'configured'}; ` +
-          `reader ${env.READER_MODEL} cap ${env.READER_DAILY_CAP ?? String(READER_DEFAULT_DAILY_CAP)})`,
+          `reader ${env.READER_MODEL} cap ${env.READER_DAILY_CAP ?? String(READER_DEFAULT_DAILY_CAP)}; ` +
+          `wiki ${env.WIKI_REPO})`,
       );
     }
 
@@ -214,10 +233,11 @@ export default {
     const now = new Date();
 
     if (event.cron === RETENTION_CRON) {
-      // Two isolated units on one schedule: each wrapper owns its own try/catch, so a comms
-      // failure never skips the reader sweep and a reader failure never skips the comms one.
+      // Three isolated units on one schedule: each owns its own try/catch, so no failure skips
+      // the units after it. The wiki sync goes last: it is the only one that waits on GitHub.
       logRetention(await runCommsRetention(env, now));
       logReaderRetention(await runReaderRetention(env, now));
+      await runWikiSync(env, now);
       return;
     }
 
@@ -315,6 +335,30 @@ function logReaderTick(summary: ReaderTickSummary): void {
   for (const failure of summary.failures) console.error(`reader: ${failure}`);
 }
 
+/**
+ * Run one wiki sync and log it as one line. `syncWiki` records its own failures in `wiki_sync`
+ * and resolves; it rejects only when that record could not be written — caught here, so neither
+ * the cron nor a webhook's background task ever ends on an unhandled rejection.
+ */
+async function runWikiSync(env: Env, now?: Date): Promise<void> {
+  try {
+    logWikiSync(await syncWiki(env, now === undefined ? {} : { now }));
+  } catch (error) {
+    console.error(`wiki sync: threw: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function logWikiSync(summary: WikiSyncSummary): void {
+  if (summary.ok) {
+    console.log(
+      `wiki sync: ${String(summary.changed)} changed, ${String(summary.removed)} removed, ` +
+        `${String(summary.pending)} pending at ${summary.commitOid.slice(0, 7)}`,
+    );
+  } else {
+    console.error(`wiki sync: failed (recorded in wiki_sync): ${summary.error}`);
+  }
+}
+
 function logFailures(failures: string[], unit = 'comms'): void {
   for (const failure of failures) console.error(`${unit}: ${failure}`);
 }
@@ -327,7 +371,12 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
     return json(401, { error: 'invalid signature' });
   }
 
-  // 2. We only act on pull_request events.
+  // 2. A push is the wiki repo's: sync the page snapshot for a push to its main, else ignore.
+  if (request.headers.get('X-GitHub-Event') === 'push') {
+    return handlePush(rawBody, env, ctx);
+  }
+
+  // 3. Otherwise we only act on pull_request events.
   if (request.headers.get('X-GitHub-Event') !== 'pull_request') {
     return json(200, { ignored: 'not a pull_request event' });
   }
@@ -339,13 +388,13 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
     return json(400, { error: 'invalid JSON' });
   }
 
-  // 3. Parse the alfred frontmatter block; no block → not ours, ignore.
+  // 4. Parse the alfred frontmatter block; no block → not ours, ignore.
   const frontmatter = parseFrontmatter(payload.pull_request.body ?? undefined);
   if (frontmatter === undefined) {
     return json(200, { ignored: 'no alfred frontmatter block' });
   }
 
-  // 4. Plan the transition from (phase, action, merged); undefined → a no-op action.
+  // 5. Plan the transition from (phase, action, merged); undefined → a no-op action.
   const plan = planTransition({
     phase: frontmatter.phase,
     action: payload.action,
@@ -357,7 +406,7 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
     return json(200, { ignored: `no-op for action '${payload.action}'` });
   }
 
-  // 5. Apply the column updates to every ticket the PR names (always a list), against the
+  // 6. Apply the column updates to every ticket the PR names (always a list), against the
   //    table the plan routes to — `code_items` for a story phase, `epics` for epic-refinement.
   const patch = patchFor(plan.target);
   const results = await Promise.all(
@@ -368,7 +417,7 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
   );
   const matched = results.filter((result) => result.count > 0).map((result) => result.ref);
 
-  // 6. Snapshot the document in the background on refinement- or spike-merge — best-effort,
+  // 7. Snapshot the document in the background on refinement- or spike-merge — best-effort,
   //    post-response. A spike snapshots on MERGE, not open: its findings only exist on its own PR.
   if (plan.snapshotSpec && frontmatter.specPath !== undefined && matched.length > 0) {
     ctx.waitUntil(snapshotSpec(env, payload, matched, frontmatter.specPath, plan.target));
@@ -376,6 +425,34 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
 
   // `state` is undefined for an epic plan — epics have no factory_state.
   return json(200, { ok: true, tickets: matched, state: plan.updates.factory_state });
+}
+
+/** The `push` payload fields we read. */
+interface PushPayload {
+  ref?: string;
+  repository?: { full_name?: string };
+}
+
+/**
+ * A (signature-verified) push. Only a push to `WIKI_REPO`'s main means anything: the sync runs
+ * after the response, via `ctx.waitUntil`, and the 202 says it was queued rather than done.
+ * The sync reads the tree itself, so nothing in the payload beyond the repo and ref is trusted.
+ */
+function handlePush(rawBody: string, env: Env, ctx: ExecutionContext): Response {
+  let payload: PushPayload;
+  try {
+    // `?? {}`: a bare JSON `null` is valid JSON and must read as "not the wiki", not throw.
+    payload = (JSON.parse(rawBody) as PushPayload | undefined) ?? {};
+  } catch {
+    return json(400, { error: 'invalid JSON' });
+  }
+
+  if (payload.repository?.full_name !== env.WIKI_REPO || payload.ref !== 'refs/heads/main') {
+    return json(200, { ignored: `not a push to ${env.WIKI_REPO} main` });
+  }
+
+  ctx.waitUntil(runWikiSync(env));
+  return json(202, { sync: 'queued' });
 }
 
 /** The ref-keyed PATCH for a plan's target table. */

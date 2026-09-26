@@ -7,6 +7,7 @@ import { CodeView } from '@/components/code/code-view';
 import { CommsView } from '@/components/comms/comms-view';
 import { ReaderView } from '@/components/reader/reader-view';
 import { TaskViews } from '@/components/tasks/task-views';
+import { WikiView } from '@/components/wiki/wiki-view';
 import { activeModule } from '@/lib/modules';
 
 /**
@@ -21,8 +22,8 @@ import { activeModule } from '@/lib/modules';
  * load / deep link / refresh of any path still server-renders the matching module, since the
  * matching page is mounted normally on first load.
  *
- * Tasks, Comms and Reader are all lists, so they share the centered, max-width column; the
- * code board spans the full width.
+ * Tasks, Comms, Reader and Wiki are all lists (or a single page), so they share the centered,
+ * max-width column; the code board spans the full width.
  */
 export function ModuleRouter() {
   // Named `current`, not `module`: Next forbids assigning a variable called `module`, which
@@ -35,7 +36,15 @@ export function ModuleRouter() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 flex-1 flex flex-col">
-      {current === 'comms' ? <CommsView /> : current === 'reader' ? <ReaderView /> : <TaskViews />}
+      {current === 'comms' ? (
+        <CommsView />
+      ) : current === 'reader' ? (
+        <ReaderView />
+      ) : current === 'wiki' ? (
+        <WikiView />
+      ) : (
+        <TaskViews />
+      )}
     </div>
   );
 }

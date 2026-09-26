@@ -16,8 +16,9 @@ import { useCodeActions } from '@/lib/stores/code-store';
 import { useDepartingItemsActions } from '@/lib/stores/departing-items-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
-import { useScopedTasks, useTaskActions } from '@/lib/stores/tasks-store';
+import { type ClassifyTarget, useScopedTasks, useTaskActions } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { useWikiConfig } from '@/lib/stores/wiki-store';
 import type { DispatchBlocker } from '@/lib/tasks/dispatch';
 import { DISPATCH_READY_LABEL, dispatchReadiness, summarizeBlockers } from '@/lib/tasks/dispatch';
 import type { CodeStory } from '@/lib/types';
@@ -60,15 +61,15 @@ export function InboxSelectToggle() {
 
 /**
  * The Inbox bulk action bar: shown only while select mode is on and ≥1 item is selected.
- * **Dispatch leads** — the primary action, the only one styled accent: it sends each READY
- * selected item to its own destination in one press (a task to its labelled folder, a code item
- * through the factory gate), leaving unready items selected with the readiness line naming what
- * each is missing. The other actions are gated on the selection's composition: Classify needs
+ * **Dispatch leads** — the primary action, the only one styled accent: it sends each READY selected
+ * item to its own destination in one press (a task to its labelled folder, a code item through the
+ * factory gate, an idea to the wiki), leaving unready items selected with the readiness line naming
+ * what each is missing. The other actions are gated on the selection's composition: Classify needs
  * every row to be a childless root (the type-change shape gate, whatever the current type —
- * ALF-253), Move needs tasks/unclassified rows, Send-to-Code stays the "choose the project and
- * epic now" path. A full success clears the selection and exits mode — except after Dispatch,
- * which stays in select mode for the next batch; a partial outcome keeps the unfinished items
- * selected. Done or Esc exits.
+ * ALF-253), Move needs tasks/unclassified rows, Send-to-Code stays the "choose the project and epic
+ * now" path. A full success clears the selection and exits mode — except after Dispatch, which
+ * stays in select mode for the next batch; a partial outcome keeps the unfinished items selected.
+ * Done or Esc exits.
  *
  * The effective selection is the stored ids intersected with the items still in the Inbox, so
  * an item that has left (gated/moved away) simply stops counting — and a prune keeps the store
@@ -81,6 +82,9 @@ export function InboxBulkBar() {
   const { convertTaskToCode } = useCodeActions();
   const { depart, clear: clearDeparting } = useDepartingItemsActions();
   const { showToast } = useToastActions();
+  // Knowledge is a Classify destination, and a knowledge row dispatch-ready, only where the wiki
+  // can take it.
+  const { writable: wikiWritable } = useWikiConfig();
   const folders = useFolders();
   const inboxNodes = useScopedTasks({ type: 'inbox' });
   const [showGate, setShowGate] = React.useState(false);
@@ -136,7 +140,7 @@ export function InboxBulkBar() {
   const blockers: DispatchBlocker[] = [];
   const readyIds: string[] = [];
   for (const item of selectedItems) {
-    const readiness = dispatchReadiness(item, item.children.length > 0);
+    const readiness = dispatchReadiness(item, item.children.length > 0, { wikiWritable });
     if (readiness.ready) readyIds.push(item.id);
     else blockers.push(readiness.blocker);
   }
@@ -151,7 +155,7 @@ export function InboxBulkBar() {
     else prune(staying);
   };
 
-  const handleClassify = async (itemType: 'task' | 'code') => {
+  const handleClassify = async (itemType: ClassifyTarget) => {
     settle(await bulkClassify(ids, itemType));
   };
 
@@ -168,17 +172,26 @@ export function InboxBulkBar() {
     await depart(readyIds);
     // One press, each ready item to its own destination; unready ∪ failed stay selected. The
     // toast counts what actually went, with no deep link — a mixed dispatch has no single
-    // destination to link to.
-    const staying = await dispatchItems(ids, convertTaskToCode);
+    // destination to link to. When everything that went was an idea, the one destination is
+    // the wiki, and the toast says so.
+    const staying = new Set(await dispatchItems(ids, convertTaskToCode));
     clearDeparting();
-    const sent = count - staying.length;
-    if (sent > 0) showToast(`Dispatched ${String(sent)} item${sent === 1 ? '' : 's'}`);
+    const sentItems = selectedItems.filter((item) => !staying.has(item.id));
+    const sent = sentItems.length;
+    if (sent > 0) {
+      const plural = sent === 1 ? '' : 's';
+      showToast(
+        sentItems.every((item) => item.item_type === 'knowledge')
+          ? `Sent ${String(sent)} idea${plural} to the wiki`
+          : `Dispatched ${String(sent)} item${plural}`,
+      );
+    }
     // Dispatch alone never leaves select mode. It is the sweep you press again and again —
     // clear a batch, pick the next — so exiting on a clean sweep would charge a re-entry for
     // the work that just went well, and hardest when the Inbox is fullest. A full success
     // therefore only empties the selection (the bar folds away at zero), and a partial one
     // narrows to what stayed, exactly as `settle` would. Only Done or Esc ends the mode.
-    prune(staying);
+    prune([...staying]);
   };
 
   const gateItems: GateItem[] = selectedItems.map((item) => ({
@@ -263,6 +276,15 @@ export function InboxBulkBar() {
                 >
                   Code
                 </DropdownMenuItem>
+                {wikiWritable && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void handleClassify('knowledge');
+                    }}
+                  >
+                    Knowledge
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 

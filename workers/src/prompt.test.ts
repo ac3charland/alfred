@@ -68,7 +68,7 @@ function requestFor(overrides: {
 
 describe('constants', () => {
   it('pins the prompt version and the example limit', () => {
-    expect(PROMPT_VERSION).toBe(2);
+    expect(PROMPT_VERSION).toBe(3);
     expect(EXAMPLE_LIMIT).toBe(12);
   });
 });
@@ -87,7 +87,7 @@ describe('buildSchema', () => {
         'intended_epic_id',
       ],
       properties: {
-        item_type: { anyOf: [{ enum: ['task', 'code'] }, { type: 'null' }] },
+        item_type: { anyOf: [{ enum: ['task', 'code', 'knowledge'] }, { type: 'null' }] },
         priority: { anyOf: [{ enum: ['high', 'medium', 'low'] }, { type: 'null' }] },
         due_date: { anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }] },
         folder_id: { anyOf: [{ enum: ['folder-health', 'folder-errands'] }, { type: 'null' }] },
@@ -105,7 +105,7 @@ describe('buildSchema', () => {
     expect(properties['intended_epic_id']).toEqual({ type: 'null' });
     // item_type / priority always have a fixed, non-empty set — an empty world must not touch them.
     expect(properties['item_type']).toEqual({
-      anyOf: [{ enum: ['task', 'code'] }, { type: 'null' }],
+      anyOf: [{ enum: ['task', 'code', 'knowledge'] }, { type: 'null' }],
     });
   });
 
@@ -113,7 +113,7 @@ describe('buildSchema', () => {
   // point: a model that read a hand-typed `task` as `code` would have every field of its verdict
   // dropped — the task-only ones by validation, the code-only ones by the merge — and the row
   // stamped anyway. One wasted call, zero fields, no second chance.
-  it.each(['task', 'code'] as const)(
+  it.each(['task', 'code', 'knowledge'] as const)(
     'pins item_type to a single-value enum with no null branch for a held %s',
     (heldType) => {
       const properties = buildSchema(WORLD, heldType)['properties'] as Record<string, unknown>;
@@ -228,17 +228,27 @@ describe('the system preamble', () => {
     expect(system).toContain('a wrong answer costs more than a blank one');
   });
 
-  it('grounds both item_type values, so "work on alfred itself" below is readable', () => {
+  it('grounds all three item_type values, so "work on alfred itself" below is readable', () => {
     const { system } = requestFor({});
     expect(system).toContain('ordinary to-do (`task`)');
     expect(system).toContain("alfred's own codebase (`code`)");
+    expect(system).toContain(
+      'idea or piece of knowledge worth keeping, with nothing to do about it (`knowledge`)',
+    );
   });
 });
 
 describe('the abstention rules', () => {
   it('states every field-specific abstention rule and the no-rewrite rule', () => {
     const { system } = requestFor({});
-    expect(system).toContain('item_type: answer only when the text clearly reads as a task');
+    // The whole sentence in one assertion, not fragments: a fragment-by-fragment check would still
+    // pass if a clause like "as work on alfred itself" or the closing "It may stay null." were
+    // dropped from the middle of it.
+    expect(system).toContain(
+      'item_type: answer only when the text clearly reads as a task, as work on alfred itself, ' +
+        'or as an idea to keep with no action in it. A capture that asks the owner to read, look ' +
+        'up, try, or do something with an idea is a task, not knowledge. It may stay null.',
+    );
     expect(system).toContain('Never infer it from urgency');
     expect(system).toContain('No default guess');
     expect(system).toContain('Never invent a folder');
@@ -273,11 +283,14 @@ describe('the per-item user message', () => {
     );
   });
 
-  it.each(['task', 'code'] as const)('names a held %s and says it is settled', (heldType) => {
-    const { user } = requestFor({ item: makeItem({ item_type: heldType }) });
-    expect(user).toContain(`Already classified by the owner: ${heldType}.`);
-    expect(user).toContain(`judge only the fields that apply to a ${heldType}`);
-  });
+  it.each(['task', 'code', 'knowledge'] as const)(
+    'names a held %s and says it is settled',
+    (heldType) => {
+      const { user } = requestFor({ item: makeItem({ item_type: heldType }) });
+      expect(user).toContain(`Already classified by the owner: ${heldType}.`);
+      expect(user).toContain(`judge only the fields that apply to a ${heldType}`);
+    },
+  );
 
   it('says nothing of the sort for an item nobody has typed yet', () => {
     const { user } = requestFor({ item: makeItem() });
@@ -296,7 +309,7 @@ describe('buildRequest', () => {
     const { schema } = requestFor({ item: makeItem() });
     const properties = schema['properties'] as Record<string, unknown>;
     expect(properties['item_type']).toEqual({
-      anyOf: [{ enum: ['task', 'code'] }, { type: 'null' }],
+      anyOf: [{ enum: ['task', 'code', 'knowledge'] }, { type: 'null' }],
     });
   });
 });

@@ -43,9 +43,13 @@ export function AppShell({
     <>
       <div className={shellRootClass}>
         {/* Desktop sidebar */}
-        {/* 256px (`md:w-64`), matching the mobile drawer's width — widened from `md:w-56`
-            (ALF-233) so the four-segment switcher's labels fit without truncating. */}
-        <aside className="hidden md:flex md:w-64 md:shrink-0 md:flex-col border-r border-border bg-surface">
+        {/* 280px (`md:w-70`), matching the mobile drawer's width — widened from `md:w-56`
+            (ALF-233) so the four-segment switcher's labels fit without truncating, then widened
+            again from `md:w-64` (ALF-261): the fifth segment (Wiki) pushed five 13px labels to
+            ~187px of text against the 256px sidebar's budget, clipping every label by a few px.
+            Widening to 272px (`md:w-68`) wasn't quite enough either — every label was still 1px
+            short of its content width there — so the sidebar grew once more to 280px. */}
+        <aside className="hidden md:flex md:w-70 md:shrink-0 md:flex-col border-r border-border bg-surface">
           <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
             <AlfredLink
               aria-label="alfred — back to capture"

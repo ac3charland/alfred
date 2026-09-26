@@ -1,6 +1,7 @@
 import { projectBoardHref } from '@/lib/code/board-links';
 import { rankField } from '@/lib/rank-field';
 import type { Folder, Project } from '@/lib/types';
+import { WIKI_SECTIONS, WIKI_SECTION_LABELS } from '@/lib/wiki/sections';
 
 /**
  * ⌘K command palette — the pure filter/rank/group layer, kept free of React and the DOM so the
@@ -13,7 +14,7 @@ import type { Folder, Project } from '@/lib/types';
  */
 
 /** The destination groups, in display + keyboard-traversal order. */
-export type DestinationGroup = 'go' | 'comms' | 'reader' | 'folders' | 'projects';
+export type DestinationGroup = 'go' | 'comms' | 'reader' | 'wiki' | 'folders' | 'projects';
 
 /**
  * A stable icon token per destination, resolved to a concrete lucide icon by the component —
@@ -36,6 +37,11 @@ export type DestinationIcon =
   | 'rubric'
   | 'examples'
   | 'reader'
+  | 'wiki'
+  | 'concepts'
+  | 'entities'
+  | 'sources'
+  | 'questions'
   | 'folder'
   | 'project';
 
@@ -57,6 +63,7 @@ export interface GroupedDestinations {
   go: Destination[];
   comms: Destination[];
   reader: Destination[];
+  wiki: Destination[];
   folders: Destination[];
   projects: Destination[];
 }
@@ -137,6 +144,24 @@ const READER_DESTINATIONS: readonly Destination[] = [
   },
 ];
 
+/**
+ * The Wiki module's five destinations, in the sidebar's own order — the whole index first, then
+ * the four sections, named and ordered by `lib/wiki/sections.ts` so ⌘K and the sidebar cannot
+ * disagree. Each section's icon token is its own name, the one its nav entry uses.
+ */
+const WIKI_DESTINATIONS: readonly Destination[] = [
+  { id: 'wiki-all', group: 'wiki', label: 'Wiki', href: '/wiki', icon: 'wiki' },
+  ...WIKI_SECTIONS.map(
+    (section): Destination => ({
+      id: `wiki-${section}`,
+      group: 'wiki',
+      label: WIKI_SECTION_LABELS[section].plural,
+      href: `/wiki/${section}`,
+      icon: section,
+    }),
+  ),
+];
+
 /** Trim + lowercase so matching is whitespace- and case-insensitive. */
 function normalize(query: string): string {
   return query.trim().toLowerCase();
@@ -210,6 +235,7 @@ export function buildDestinations(
     go: filterGroup(q, STATIC_DESTINATIONS),
     comms: filterGroup(q, COMMS_DESTINATIONS),
     reader: filterGroup(q, READER_DESTINATIONS),
+    wiki: filterGroup(q, WIKI_DESTINATIONS),
     folders: filterGroup(
       q,
       folders.map((folder) => folderDestination(folder)),
@@ -227,6 +253,7 @@ export function flattenDestinations(grouped: GroupedDestinations): Destination[]
     ...grouped.go,
     ...grouped.comms,
     ...grouped.reader,
+    ...grouped.wiki,
     ...grouped.folders,
     ...grouped.projects,
   ];

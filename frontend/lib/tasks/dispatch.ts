@@ -5,11 +5,11 @@ import type { Item } from '@/lib/types';
  * Dispatch **readiness** — the one place the rule lives (the residency twin of
  * `lib/tasks/residency.ts`).
  *
- * Dispatch sends each selected Inbox item to the destination its labels already name: a task to
- * its folder, a code item through the factory gate. An item is *ready* when those labels are
- * complete; an unready item is never sent and never a failure — it just isn't ready yet, and the
- * blocker says what it's missing. Pure, so every row of the readiness table is a unit test and
- * nothing about readiness lives inside a component.
+ * Dispatch sends each selected Inbox item to the destination its labels already name: a task to its
+ * folder, a code item through the factory gate, a knowledge item to the wiki. An item is *ready*
+ * when those labels are complete; an unready item is never sent and never a failure — it just isn't
+ * ready yet, and the blocker says what it's missing. Pure, so every row of the readiness table is a
+ * unit test and nothing about readiness lives inside a component.
  */
 
 /** Why an item can't be dispatched yet, in the bulk bar's own words. */
@@ -18,6 +18,8 @@ export type DispatchBlocker =
   | 'needs a folder'
   | 'needs a project'
   | 'needs an epic'
+  | 'has subtasks'
+  | 'wiki not connected'
   | 'dispatch from its own row menu'
   | 'still saving';
 
@@ -36,6 +38,14 @@ export type DispatchCandidate = Pick<
 >;
 
 /**
+ * What readiness needs to know beyond the row itself: whether this instance can write to the
+ * wiki at all (the Work instance, or a Personal deploy with its token unset, cannot).
+ */
+export interface DispatchContext {
+  wikiWritable: boolean;
+}
+
+/**
  * Whether one selected root can be dispatched **from the bulk bar**, and what it's missing when
  * it can't.
  *
@@ -43,12 +53,16 @@ export type DispatchCandidate = Pick<
  * - A **code** item is ready once it carries both hints — and has no children, because an
  *   epic-shaped row converts through `convert_to_code_epic`, not `enter_code_module`, so its
  *   path stays the row menu's (see {@link rowDispatchAction}).
+ * - A **knowledge** item is ready once the wiki can take it and it has no children — it goes as
+ *   one notes file, so a subtree has nowhere to land. When both gaps apply, `wiki not connected`
+ *   wins: it is the one the owner can't fix from the row.
  * - An **unclassified** row is never ready, and a row still carrying a temp id can't be
  *   PATCHed or passed to an RPC at all.
  */
 export function dispatchReadiness(
   item: DispatchCandidate,
   hasChildren: boolean,
+  { wikiWritable }: DispatchContext,
 ): DispatchReadiness {
   if (isTempId(item.id)) return { ready: false, blocker: 'still saving' };
   if (item.item_type === 'task') {
@@ -60,6 +74,11 @@ export function dispatchReadiness(
     if (item.intended_epic_id === null) return { ready: false, blocker: 'needs an epic' };
     return { ready: true };
   }
+  if (item.item_type === 'knowledge') {
+    if (!wikiWritable) return { ready: false, blocker: 'wiki not connected' };
+    if (hasChildren) return { ready: false, blocker: 'has subtasks' };
+    return { ready: true };
+  }
   return { ready: false, blocker: 'needs a type' };
 }
 
@@ -68,7 +87,8 @@ export function dispatchReadiness(
  * the only place the two surfaces differ.
  *
  * - `send` — the ordinary dispatch: a task (with its subtree) to its folder, a childless code
- *   row through the factory gate. Exactly `dispatchReadiness`'s "ready".
+ *   row through the factory gate, a childless knowledge row to the wiki. Exactly
+ *   `dispatchReadiness`'s "ready".
  * - `epic` — an epic-shaped code row, which travels through `convert_to_code_epic` instead. Only
  *   the row can run it (the parent becomes the epic and its children the stories), which is why
  *   the bulk bar sends that shape here. It needs a project, not an epic hint — the conversion
@@ -84,13 +104,17 @@ export type RowDispatchAction =
 
 export function rowDispatchAction(
   item: DispatchCandidate,
-  { hasChildren, groupHasTempIds }: { hasChildren: boolean; groupHasTempIds: boolean },
+  {
+    hasChildren,
+    groupHasTempIds,
+    wikiWritable,
+  }: { hasChildren: boolean; groupHasTempIds: boolean } & DispatchContext,
 ): RowDispatchAction {
   if (groupHasTempIds) return { kind: 'blocked', blocker: 'still saving' };
   if (item.item_type === 'code' && hasChildren && !isTempId(item.id)) {
     return { kind: 'epic', opensDialog: item.intended_project_id === null };
   }
-  const readiness = dispatchReadiness(item, hasChildren);
+  const readiness = dispatchReadiness(item, hasChildren, { wikiWritable });
   return readiness.ready ? { kind: 'send' } : { kind: 'blocked', blocker: readiness.blocker };
 }
 
@@ -100,6 +124,8 @@ const BLOCKER_PHRASES: Record<DispatchBlocker, { one: string; many: string }> = 
   'needs a folder': { one: 'needs a folder', many: 'need a folder' },
   'needs a project': { one: 'needs a project', many: 'need a project' },
   'needs an epic': { one: 'needs an epic', many: 'need an epic' },
+  'has subtasks': { one: 'has subtasks', many: 'have subtasks' },
+  'wiki not connected': { one: 'wiki not connected', many: 'wiki not connected' },
   'dispatch from its own row menu': {
     one: 'dispatch from its own row menu',
     many: 'dispatch from their own row menus',
@@ -113,6 +139,8 @@ const BLOCKER_ORDER: DispatchBlocker[] = [
   'needs a folder',
   'needs a project',
   'needs an epic',
+  'has subtasks',
+  'wiki not connected',
   'dispatch from its own row menu',
   'still saving',
 ];

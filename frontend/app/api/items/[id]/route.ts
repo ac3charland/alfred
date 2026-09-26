@@ -21,6 +21,36 @@ export const PATCH = withSession(
     const input = await parseRequestBody(request, updateItemSchema);
     if (input instanceof Response) return input;
 
+    // Knowledge leaves the Inbox only through POST /api/wiki/items. Migration 0038 lets a
+    // dispatched knowledge row go folderless, so one made here would render in no view at all.
+    // What counts is the state the row ends up in: each of type and residency is this PATCH's,
+    // else the stored one — so retyping a dispatched task to knowledge is refused too. Only a
+    // PATCH that moves the row toward that state (knowledge, or dispatched) needs the stored row.
+    const towardKnowledge = input.item_type === 'knowledge';
+    const towardDispatched = input.dispatched === true;
+    const settlesElsewhere =
+      input.dispatched === false || (input.item_type !== undefined && !towardKnowledge);
+    if ((towardKnowledge || towardDispatched) && !settlesElsewhere) {
+      let knowledgeAndDispatched = towardKnowledge && towardDispatched;
+      if (!knowledgeAndDispatched) {
+        const { data: current, error: readError } = await supabase
+          .from('items')
+          .select('item_type,dispatched_at')
+          .eq('id', id)
+          .single();
+        if (readError) {
+          const { status, message } = mapSupabaseError(readError);
+          return jsonError(status, message);
+        }
+        knowledgeAndDispatched =
+          (towardKnowledge || current.item_type === 'knowledge') &&
+          (towardDispatched || current.dispatched_at !== null);
+      }
+      if (knowledgeAndDispatched) {
+        return jsonError(409, 'A knowledge item leaves the Inbox only by being sent to the wiki');
+      }
+    }
+
     // PATCH semantics: only set the fields the caller actually provided (a present `null`
     // clears a nullable column). Building from defined-only fields also satisfies
     // exactOptionalPropertyTypes (zod `.optional()` yields `T | undefined`).

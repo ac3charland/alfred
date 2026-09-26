@@ -1,6 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
 
-import { AUTH_FILE, E2E_USER, INGEST_API_KEY, MOCK_PORT, MOCK_URL } from './e2e/support/constants';
+import {
+  AUTH_FILE,
+  E2E_USER,
+  INGEST_API_KEY,
+  MOCK_PORT,
+  MOCK_URL,
+  WIKI_GITHUB_API_URL,
+  WIKI_GITHUB_TOKEN,
+  WIKI_REPO,
+} from './e2e/support/constants';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 
@@ -18,6 +27,13 @@ const mockEnvironment: Record<string, string> = {
   INGEST_API_KEY,
   E2E_USER_EMAIL: E2E_USER.email,
   E2E_USER_PASSWORD: E2E_USER.password,
+  // The wiki writer, pointed at the mock's Git Data API emulation so a send's commit lands in
+  // the mock and can be read back from /__mock__/state. Deliberate feature wiring: with these
+  // set the harness runs as the Personal deployment (writable), which is the state every send
+  // journey needs; a spec that wants the Work instance's read-only shell has none.
+  WIKI_GITHUB_TOKEN,
+  WIKI_REPO,
+  WIKI_GITHUB_API_URL,
 };
 
 export default defineConfig({
