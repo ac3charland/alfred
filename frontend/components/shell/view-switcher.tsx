@@ -5,7 +5,8 @@ import * as React from 'react';
 
 import { FolderCountBadge } from '@/components/tasks/folder-count-badge';
 import { ViewLink } from '@/components/tasks/view-link';
-import { MODULE_ACCENT, type ModuleId, activeModule } from '@/lib/modules';
+import { MODULE_ICON } from '@/lib/module-icons';
+import { MODULE_ACCENT, MODULE_LABEL, type ModuleId, activeModule } from '@/lib/modules';
 import { useQueueCount } from '@/lib/stores/comms-store';
 import { cn } from '@/lib/utils';
 
@@ -18,31 +19,12 @@ import { cn } from '@/lib/utils';
  * The active segment wears its OWN module's accent, read from the shared accent table rather
  * than hard-coded — Tasks amber, Code teal, Comms blue, Reader green, Wiki violet, no two alike
  * (ALF-219).
- * One table means the switcher, the sidebar and a view heading can't drift on what colour a
- * module is.
  *
- * The control fills its container and splits that width evenly between the segments, rather than
- * sizing itself to its labels. Hugging the labels (`w-fit`, ALF-93) was fine with two segments
- * and burst the 224px desktop sidebar once Comms made three: the control ran past the sidebar's
- * border and over the main pane. Sized from the container down, a fourth module narrows the
- * segments instead of overflowing, so the layout can't break again from a label's width.
- *
- * Four segments needed more than that narrowing, though (ALF-233): measured in the
- * bundled Geist at 14px/500, "Tasks Code Comms Reader" is 181px of text against the 224px
- * sidebar's ~176px budget for all four segments — no padding change closes that gap without
- * truncating a label, which ALF-219 already ruled out. So the desktop sidebar widens to 256px
- * (`app-shell.tsx`, `md:w-64` at the time) AND the segment type drops from 14px to 13px
- * (`text-[13px] px-1`, down from `text-sm px-1.5`): at 256px the four 13px labels measure 161px
- * against a 208px budget, ~15px of slack — comfortably clear of a font-hinting difference.
- * Everything else about the control (`flex-auto`, `min-w-0`, `truncate` as the floor, `gap-0.5`,
- * `p-1`) is unchanged.
- *
- * A fifth segment (Wiki, ALF-261) ate that slack: measured at 13px, "Tasks Code Comms Reader
- * Wiki" is ~187px of text against the 256px sidebar's budget, and every one of the five labels
- * clipped by a few px. Rather than shrink the labels, type, or padding again, the sidebar widened
- * a second time, from `md:w-64` to `md:w-68` (272px) — but that measured only 1px short per
- * label, still clipping every one, so it widened once more to `md:w-70` (280px, `app-shell.tsx`)
- * — see the `SEGMENTS` comment below for the per-label fit at that width.
+ * The segments are icon-only (ALF-270): a word-per-module control widened the sidebar three
+ * times over as modules were added (ALF-219, ALF-233, ALF-261) and still ran out of room at
+ * five. Five equal-width icon cells (`flex-1`) never overflow and never reflow — adding a sixth
+ * module just narrows every cell by a few px. The open module's name moved to the sidebar's
+ * wordmark row instead (`ActiveModuleLabel`), which has the room a segment's own label never did.
  *
  * Tasks lands on the By-Priority list — the module's default view — rather than the `/`
  * capture screen; capture stays reachable via the `alfred` wordmark (see the app shell).
@@ -65,21 +47,14 @@ import { cn } from '@/lib/utils';
  * visible from every module, not only once Comms is already open.
  *
  * The badge pokes slightly OUTSIDE the segment's own corner (negative offsets), the same way a
- * notification badge conventionally overlaps its host icon, rather than trying to squeeze inside
- * the segment next to the label — the segment is only ~13px of text tall with 4px of padding, so
- * any inside-the-box position collides with the label's own cap-height (measured in Storybook: it
- * covered part of the final "s"). That only works because `truncate` (the text-clipping
- * `overflow-hidden`) moved off this anchor and onto an inner span wrapping just the label text —
- * left on the anchor, it would clip the badge's overhang along with any overflowing text.
+ * notification badge conventionally overlaps its host icon.
  */
 const segmentClass = (module: ModuleId, active: boolean) =>
   cn(
-    // `flex-auto` (basis: content), not `flex-1` (basis: 0): each segment starts at its own
-    // label's width and only the LEFTOVER space is shared out. Equal thirds would hand every
-    // segment what the narrowest needs and clip "Comms" at the sidebar's width. `min-w-0` is the
-    // floor under that: a fourth module shrinks below its label's width inside the control rather
-    // than push it past the sidebar border, which is the failure mode being fixed.
-    'relative flex-auto min-w-0 rounded-md px-1 py-1 text-center text-[13px] font-medium',
+    // `flex-1` (basis: 0) — every segment is the same width regardless of module, so the icon a
+    // user clicked never moves when another module is opened (ALF-270). `min-w-0` is still the
+    // floor: a sixth module narrows every cell instead of overflowing the control.
+    'relative flex-1 min-w-0 flex items-center justify-center rounded-md py-1.5',
     'transition-colors duration-100 motion-reduce:transition-none',
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface',
     active
@@ -88,36 +63,20 @@ const segmentClass = (module: ModuleId, active: boolean) =>
   );
 
 /**
- * The label text's own clipping — `truncate` moved here (off the anchor) so the corner badge,
- * an absolutely-positioned sibling, isn't clipped by the same `overflow-hidden`. A plain `block`
- * child fills its flex-item parent's width without needing its own `min-w-0`: that escape hatch
- * is specifically for flex/grid items defaulting to `min-width: auto`, and this span is neither.
- */
-const labelClass = 'block truncate';
-
-/**
  * The corner badge's own classes. Negative insets deliberately poke it outside the segment's own
- * box — see the component doc comment for why that needs `truncate` off the anchor first.
+ * box, the same way a notification badge conventionally overlaps its host icon.
  */
 const queueBadgeClass =
   'absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-surface px-0.5 py-0 text-[9px] leading-none';
 
-/** Each segment: the module it selects, its label, and the view it lands on. */
-const SEGMENTS: readonly { module: ModuleId; label: string; href: string }[] = [
-  { module: 'tasks', label: 'Tasks', href: '/priority' },
-  { module: 'code', label: 'Code', href: '/code' },
-  { module: 'reader', label: 'Reader', href: '/reader' },
-  // Wiki slots in before Comms (ALF-261): Comms stays last so its badge sits at the row's end.
-  // Against the 256px sidebar, all five 13px labels clipped: each one's rendered span was a
-  // few px narrower than its text needed (Tasks 33/37, Code 29/33, Comms 41/46, Reader 40/45,
-  // Wiki 23/26 — clientWidth/scrollWidth), ~187px of text against a budget the sidebar no
-  // longer had room for. Widening to 272px (`md:w-68`) closed most of that but left every
-  // label 1px short (Tasks 36/37, Code 32/33, Comms 45/46, Reader 44/45, Wiki 25/26) — still
-  // clipping all five, just barely. Rather than shrink the labels, type, or padding, the
-  // sidebar widened once more to 280px (`app-shell.tsx`, `md:w-70`) — the module-switcher E2E
-  // spec holds every label to "shown in full, inside the border" with the fifth added.
-  { module: 'wiki', label: 'Wiki', href: '/wiki' },
-  { module: 'comms', label: 'Comms', href: '/comms' },
+/** Each segment: the module it selects and the view it lands on, in display order. */
+const SEGMENTS: readonly { module: ModuleId; href: string }[] = [
+  { module: 'tasks', href: '/priority' },
+  { module: 'code', href: '/code' },
+  { module: 'reader', href: '/reader' },
+  { module: 'wiki', href: '/wiki' },
+  // Comms stays last so its badge sits at the row's end, not a corner in the middle.
+  { module: 'comms', href: '/comms' },
 ];
 
 export function ViewSwitcher() {
@@ -130,24 +89,30 @@ export function ViewSwitcher() {
       aria-label="Switch module"
       className="flex w-full items-center gap-0.5 rounded-lg border border-border bg-background/60 p-1"
     >
-      {SEGMENTS.map(({ module, label, href }) => (
-        <ViewLink
-          key={module}
-          href={href}
-          aria-current={current === module ? 'page' : undefined}
-          className={segmentClass(module, current === module)}
-        >
-          <span className={labelClass}>{label}</span>
-          {module === 'comms' && (
-            <FolderCountBadge
-              tone="attention"
-              count={queued}
-              label={(count) => `${String(count)} waiting for a reply`}
-              className={queueBadgeClass}
-            />
-          )}
-        </ViewLink>
-      ))}
+      {SEGMENTS.map(({ module, href }) => {
+        const Icon = MODULE_ICON[module];
+        const label = MODULE_LABEL[module];
+        return (
+          <ViewLink
+            key={module}
+            href={href}
+            aria-current={current === module ? 'page' : undefined}
+            aria-label={label}
+            title={label}
+            className={segmentClass(module, current === module)}
+          >
+            <Icon size={16} aria-hidden />
+            {module === 'comms' && (
+              <FolderCountBadge
+                tone="attention"
+                count={queued}
+                label={(count) => `${String(count)} waiting for a reply`}
+                className={queueBadgeClass}
+              />
+            )}
+          </ViewLink>
+        );
+      })}
     </div>
   );
 }
