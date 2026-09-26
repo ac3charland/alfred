@@ -197,10 +197,11 @@ things bite, and both surface as every route answering `{"error":"TypeError: fet
 - **Build after exporting the mock's URL, unconditionally.** Next inlines `NEXT_PUBLIC_*` at
   **build** time, so a `[ -d .next ] || npm run build` guard silently reuses a build pointing at
   whatever port the last build used (the E2E harness rebuilds on its own port every run).
-- **`npm run start` spawns `next-server` as a child**, so a trap killing only the npm PID leaves
-  it holding the port — and the *next* run's requests are answered by that stale server, still
-  pointed at the old mock. Kill the child (`pkill -P "$APP"`), and `pkill -f '[n]ext-server'` before
-  re-running a block that died.
+- **`npm run start` spawns `next-server` as a grandchild** (npm → sh → next-server), so a trap
+  killing the npm PID — or its direct children with `pkill -P "$APP"` — leaves it holding the
+  port, and the *next* run's requests are answered by that stale server, still pointed at the old
+  mock. Kill the whole tree (a recursive `pgrep -P` walk — `docs/demos/alf-261-day-2-wiki/with-app.sh`),
+  and `pkill -f '[n]ext-server'` before re-running a block that died.
 - **A session-gated route (`withSession`) needs a real auth cookie, not the API key.** Mint it in
   node: `createServerClient` from `@supabase/ssr` with a `cookies.setAll` that captures into a
   map, then `auth.signInWithPassword` against the mock — the library writes its own cookie
