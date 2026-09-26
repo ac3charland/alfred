@@ -55,6 +55,9 @@ describe('resolveWikiLink — the link-resolution table, as the reading room ren
     ['habit-loop.txt', { kind: 'github', href: `${BLOB}/wiki/concepts/habit-loop.txt` }],
     ['https://example.com/habits', { kind: 'external', href: 'https://example.com/habits' }],
     ['mailto:alex@example.com', { kind: 'external', href: 'mailto:alex@example.com' }],
+    // `[a](<habit-loop.md>)`: the wiki reads the target literally, brackets and all (the raw-URL
+    // plugin keeps them), so it names no page — never an in-app link, and no backlink either.
+    ['<habit-loop.md>', { kind: 'github', href: `${BLOB}/wiki/concepts/%3Chabit-loop.md%3E` }],
   ];
 
   it.each(table)('%s → %j', (href, renders) => {

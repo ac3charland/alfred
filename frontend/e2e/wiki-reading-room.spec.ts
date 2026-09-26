@@ -135,6 +135,32 @@ test.describe('the Wiki reading room', () => {
     await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBeGreaterThan(0);
   });
 
+  test('reads a page the wiki’s way in the real render: no empty id, a bracketed target literal', async ({
+    page,
+    seed,
+  }) => {
+    const edges = makeWikiPage('wiki/concepts/edges.md', {
+      title: 'Edges',
+      body: '## `yaml` \n\nA heading that is only code.\n\n## After\n\n[bracketed](<habit-loop.md>) and [plain](habit-loop.md).\n',
+    });
+    await seedWiki(seed, [edges]);
+    await page.goto('/wiki/concepts/edges');
+
+    const body = page.getByTestId('wiki-body');
+    // The wiki anchors the code-only heading as '', which is no anchor: the element carries no id.
+    await expect(body.getByRole('heading', { name: 'yaml' })).not.toHaveAttribute('id');
+    await expect(body.getByRole('heading', { name: 'After' })).toHaveAttribute('id', 'after');
+    // `<habit-loop.md>` is the wiki's literal target — no page — while the plain one opens in-app.
+    await expect(body.getByRole('link', { name: /bracketed/ })).toHaveAttribute(
+      'href',
+      `https://github.com/${WIKI_REPO}/blob/main/wiki/concepts/%3Chabit-loop.md%3E`,
+    );
+    await expect(body.getByRole('link', { name: 'plain' })).toHaveAttribute(
+      'href',
+      '/wiki/concepts/habit-loop',
+    );
+  });
+
   test('opens the next page at the top after following a backlink from the foot of a long one', async ({
     page,
     seed,

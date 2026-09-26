@@ -258,6 +258,32 @@ describe('WikiMarkdown', () => {
     );
   });
 
+  it('agrees with the Worker on an angle-bracket target: the wiki’s literal, never a page', () => {
+    renderBody('body');
+    const { components } = lastProps();
+
+    // `[a](<habit-loop.md>)` and `[b](habit-loop.md 'T')`: react-markdown hands both overrides the
+    // bare `habit-loop.md`; the raw-URL plugin keeps the first one's brackets.
+    render(
+      <>
+        {components.a({ href: 'habit-loop.md', 'data-href': '<habit-loop.md>', children: 'a' })}
+        {components.a({ href: 'habit-loop.md', 'data-href': 'habit-loop.md', children: 'b' })}
+      </>,
+    );
+
+    // The Worker records no backlink for `<habit-loop.md>`, and this is no in-app page link.
+    expect(screen.getByRole('link', { name: 'a (opens in a new tab)' })).toHaveAttribute(
+      'href',
+      `https://github.com/${REPO}/blob/main/wiki/concepts/%3Chabit-loop.md%3E`,
+    );
+    // A single-quoted title is no link to the wiki (like a reference-style one): no backlink, but
+    // the page it names still opens in-app.
+    expect(screen.getByRole('link', { name: 'b' })).toHaveAttribute(
+      'href',
+      '/wiki/concepts/habit-loop',
+    );
+  });
+
   it('keeps a GFM footnote back-link’s id, aria-label and data-footnote attributes', () => {
     renderBody('body');
     const { components } = lastProps();
