@@ -14,11 +14,13 @@ import {
   appendWikiSentIdeas,
   getReaderHealthSeed,
   getReaderHealthSnapshot,
+  getReaderPostForSend,
   getReaderPostForWiki,
   getReaderPostListItem,
   getReaderPostResummarizeState,
   getReaderPosts,
   getReaderSeed,
+  markReaderPostSent,
   patchReaderPost,
 } from './reader';
 
@@ -37,9 +39,11 @@ beforeEach(() => {
 });
 
 describe('READER_POST_LIST_COLUMNS', () => {
-  it('names every reader_posts column except text — pinned against the fixture builder', () => {
+  it('names every reader_posts column except the two bodies — pinned against the fixture builder', () => {
     const post = makeReaderPost(PUBLICATION.id);
-    const fixtureColumns = new Set(Object.keys(post).filter((key) => key !== 'text'));
+    const fixtureColumns = new Set(
+      Object.keys(post).filter((key) => key !== 'text' && key !== 'html'),
+    );
     const listedColumns = new Set(READER_POST_LIST_COLUMNS.split(','));
 
     // Symmetric: a migration that adds a column to the Row type (and so to the fixture
@@ -47,6 +51,10 @@ describe('READER_POST_LIST_COLUMNS', () => {
     // the constant after a column is dropped fails it too.
     expect(listedColumns).toStrictEqual(fixtureColumns);
     expect(listedColumns.has('text')).toBe(false);
+    expect(listedColumns.has('html')).toBe(false);
+    // The row's "in Instapaper" badge is drawn from these, so the list has to carry them.
+    expect(listedColumns.has('instapaper_sent_at')).toBe(true);
+    expect(listedColumns.has('instapaper_bookmark_id')).toBe(true);
   });
 });
 
@@ -468,5 +476,67 @@ describe('appendWikiSentIdeas', () => {
     const { error } = await appendWikiSentIdeas(supabase as never, POST_ID, ['Idea one']);
 
     expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('getReaderPostForSend', () => {
+  it('reads exactly what a send needs — the bodies included — for the row asked for', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await getReaderPostForSend(supabase as never, POST_ID);
+
+    const [columns] = supabase.table('reader_posts').select.mock.calls[0] as [string];
+    expect(columns.split(',')).toStrictEqual([
+      'title',
+      'canonical_url',
+      'gist',
+      'html',
+      'text',
+      'archived_at',
+    ]);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+  });
+
+  it('resolves null data for a row that is not there — the route handles the 404', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    const { data } = await getReaderPostForSend(supabase as never, POST_ID);
+
+    expect(data).toBeNull();
+  });
+});
+
+describe('markReaderPostSent', () => {
+  const NOW = new Date('2026-09-24T12:00:00.000Z');
+
+  it('stamps the send and the bookmark id, and archives the post at the same instant', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await markReaderPostSent(supabase as never, POST_ID, 1_234_567, NOW, null);
+
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+      instapaper_sent_at: '2026-09-24T12:00:00.000Z',
+      instapaper_bookmark_id: 1_234_567,
+      archived_at: '2026-09-24T12:00:00.000Z',
+    });
+  });
+
+  it('keeps an existing archived_at — a send from the archive does not re-date the archiving', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await markReaderPostSent(supabase as never, POST_ID, 7, NOW, '2026-09-17T09:00:00.000Z');
+
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith(
+      expect.objectContaining({ archived_at: '2026-09-17T09:00:00.000Z' }),
+    );
+  });
+
+  it('scopes the write to the given id and reads the row back through the shared columns', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await markReaderPostSent(supabase as never, POST_ID, 7, NOW, null);
+
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    expect(supabase.table('reader_posts').select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
   });
 });

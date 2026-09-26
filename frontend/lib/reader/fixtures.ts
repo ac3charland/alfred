@@ -107,6 +107,9 @@ export function makeReaderPost(
     opened_at: overrides.opened_at ?? null,
     archived_at: overrides.archived_at ?? null,
     text_swept_at: overrides.text_swept_at ?? null,
+    html: overrides.html ?? null,
+    instapaper_sent_at: overrides.instapaper_sent_at ?? null,
+    instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? null,
     wiki_sent_ideas: overrides.wiki_sent_ideas ?? [],
     created_at: overrides.created_at ?? receivedAt,
   };
@@ -249,7 +252,7 @@ export function makeReaderOverview(overrides: Partial<ReaderOverview> = {}): Rea
 /**
  * One publication and one post per state the reading list renders: done with a canonical URL,
  * done with no canonical URL but an rfc822 id (the mailbox-permalink fallback), pending, failed,
- * refused, and done with neither a URL nor an rfc822 id (Open has nothing to point at). Titles and
+ * refused, and done with neither a URL nor an rfc822 id (Original has nothing to point at). Titles and
  * gists are drawn from the spec's mockup where it names one; the sixth state has no mockup row, so
  * its title is original.
  */
@@ -361,8 +364,8 @@ export function readerFixtureSet(): { publication: ReaderPublication; posts: Rea
     gist:
       'A short piece distinguishing arguments you disagree with from ones you cannot immediately ' +
       'locate the flaw in, and arguing only the second kind are worth real time. A plain-text ' +
-      'mailing with no post link and no retrievable message id, so the row has nowhere for Open ' +
-      'to point.',
+      'mailing with no post link and no retrievable message id, so the row has nowhere for its ' +
+      'Original link to point.',
     overview: makeReaderOverview({
       novel_ideas: [
         'Proposes a one-question test for whether an argument deserves a rebuttal: can you name ' +

@@ -16,11 +16,13 @@ import {
   searchWikiBodies,
   sendItemsToWiki,
   sendReaderIdeasToWiki,
+  sendReaderPostToInstapaper,
   updateReaderPublication,
 } from './api-client';
 import {
   makeReaderCandidate,
   makeReaderHealth,
+  makeReaderPost,
   makeReaderPublication,
   makeReaderPublicationListItem,
   resetReaderFixtureClock,
@@ -191,6 +193,36 @@ describe('sendItemsToWiki', () => {
       path: '/api/wiki/items',
       method: 'POST',
       body: { ids: ['11111111-1111-4111-8111-111111111111'] },
+    });
+  });
+});
+
+describe('sendReaderPostToInstapaper', () => {
+  const POST_ID = '33333333-3333-4333-8333-333333333333';
+
+  it('posts to the row’s own instapaper segment, with no body, and hands back the stamped row', async () => {
+    const { text: _text, html: _html, ...row } = makeReaderPost(PUBLICATION_ID, { id: POST_ID });
+    const spy = stubFetch(row);
+
+    await expect(sendReaderPostToInstapaper(POST_ID)).resolves.toEqual(row);
+    expect(requested(spy)).toEqual({
+      path: `/api/reader/posts/${POST_ID}/instapaper`,
+      method: 'POST',
+      body: undefined,
+    });
+  });
+
+  it('throws the route’s own sentence as an ApiError, for the toast to say', async () => {
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        Response.json({ error: 'This publication has opted out of Instapaper' }, { status: 422 }),
+      );
+
+    await expect(sendReaderPostToInstapaper(POST_ID)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 422,
+      detail: 'This publication has opted out of Instapaper',
     });
   });
 });
