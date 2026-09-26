@@ -16,6 +16,7 @@
     "serve:storybook": "http-server storybook-static -p 6006 --silent",
     "setup:chromium": "node scripts/setup-chromium.mjs",
     "screenshot": "node scripts/screenshot.mjs",
+    "instapaper:token": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/instapaper-token.mjs",
     "test:storybook": "node scripts/snapshot-docker.mjs",
     "test:storybook:update": "node scripts/snapshot-docker.mjs --update",
     "test:storybook:linux": "npm run setup:chromium && npm run storybook:build && concurrently --kill-others --success=first \"http-server storybook-static -p 6006 --silent\" \"wait-on http://127.0.0.1:6006 && test-storybook --ci --url http://127.0.0.1:6006\"",

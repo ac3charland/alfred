@@ -52,6 +52,13 @@ import type { GmailMessage, GmailPayload } from '../comms/gmail-api';
  */
 export const READER_TEXT_CHARS = 400_000;
 
+/**
+ * The ceiling on the STORED HTML. Markup is never truncated — an unclosed tag can swallow the
+ * rest of the article in whatever parses it next — so past this none is kept, and a send falls
+ * back to the stored text. Sized at about 14× the largest post measured (72.6 K text characters).
+ */
+export const READER_HTML_CHARS = 1_000_000;
+
 /** The title of a post whose subject was empty and whose HTML carried no `<title>` either. */
 export const UNTITLED = '(untitled)';
 
@@ -68,6 +75,12 @@ export interface ExtractedPost {
   word_count: number;
   /** True only when the text came out of an HTML part through `htmlToText`. */
   html_extracted: boolean;
+  /**
+   * The decoded `text/html` part, raw, when it is what produced `text` and fits
+   * `READER_HTML_CHARS`. Never rendered: it is the body a send to Instapaper carries, whose parser
+   * picks the article out of the mail's chrome — so nothing here strips it.
+   */
+  html?: string | undefined;
 }
 
 /** `<a … href="…" …>text</a>`, href quoted either way or bare, text non-greedy across newlines. */
@@ -296,5 +309,9 @@ export function extractPost(
     // derives from it never describes words the summariser was not given either.
     word_count: text.split(/\s+/).filter((token) => token !== '').length,
     html_extracted: htmlExtracted,
+    // Only the HTML that produced the stored text, so a row holding markup always holds a
+    // non-empty body too — which is what lets the retention sweep's predicate reach it.
+    html:
+      htmlExtracted && html !== undefined && html.length <= READER_HTML_CHARS ? html : undefined,
   };
 }

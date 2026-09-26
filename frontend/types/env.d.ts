@@ -26,6 +26,12 @@ declare namespace NodeJS {
     GITHUB_TOKEN?: string;
     PR_RATIO_REPOS?: string;
     PR_RATIO_AUTHORS?: string;
+    // Instapaper — all optional and server-only; any credential unset turns the Send verb off.
+    INSTAPAPER_CONSUMER_KEY?: string;
+    INSTAPAPER_CONSUMER_SECRET?: string;
+    INSTAPAPER_ACCESS_TOKEN?: string;
+    INSTAPAPER_ACCESS_TOKEN_SECRET?: string;
+    INSTAPAPER_API_URL?: string;
     // The wiki writer — server-only; unset leaves the deployment read-only (every send
     // affordance hidden, the send routes answering 501). Never NEXT_PUBLIC_.
     WIKI_GITHUB_TOKEN?: string;

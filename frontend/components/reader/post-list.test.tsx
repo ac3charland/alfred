@@ -16,7 +16,11 @@ const NOW = new Date(2026, 8, 18, 9, 0);
 const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
 
 function post(title: string, id: string, receivedAt: string): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  const {
+    text: _text,
+    html: _html,
+    ...listItem
+  } = makeReaderPost(PUBLICATION_ID, {
     id,
     title,
     received_at: receivedAt,

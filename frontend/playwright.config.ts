@@ -20,6 +20,10 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 // form also targets the mock), and reads the rest at runtime. They deliberately
 // override any real `.env.local`, so a developer's live credentials are never used
 // in tests.
+//
+// The four INSTAPAPER_* credentials are fakes that switch the Reader's Send verb on, and
+// INSTAPAPER_API_URL points its route at the same mock process, which stands in for Instapaper's
+// bookmarks/add (the call leaves the Next server, where page.route() can't reach it).
 const mockEnvironment: Record<string, string> = {
   NEXT_PUBLIC_SUPABASE_URL: MOCK_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: 'sb_publishable_mock',
@@ -27,6 +31,11 @@ const mockEnvironment: Record<string, string> = {
   INGEST_API_KEY,
   E2E_USER_EMAIL: E2E_USER.email,
   E2E_USER_PASSWORD: E2E_USER.password,
+  INSTAPAPER_CONSUMER_KEY: 'mock-consumer-key',
+  INSTAPAPER_CONSUMER_SECRET: 'mock-consumer-secret',
+  INSTAPAPER_ACCESS_TOKEN: 'mock-access-token',
+  INSTAPAPER_ACCESS_TOKEN_SECRET: 'mock-access-token-secret',
+  INSTAPAPER_API_URL: MOCK_URL,
   // The wiki writer, pointed at the mock's Git Data API emulation so a send's commit lands in
   // the mock and can be read back from /__mock__/state. Deliberate feature wiring: with these
   // set the harness runs as the Personal deployment (writable), which is the state every send

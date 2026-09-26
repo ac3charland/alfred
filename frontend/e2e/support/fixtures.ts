@@ -46,6 +46,7 @@ export const test = base.extend<Fixtures>({
           readerPublications: state.readerPublications ?? [],
           readerPosts: state.readerPosts ?? [],
           readerHealth: state.readerHealth ?? [],
+          instapaperErrorCode: state.instapaperErrorCode ?? null,
           wikiPages: state.wikiPages ?? [],
           wikiSync: state.wikiSync ?? [],
           githubInbox: state.githubInbox ?? [],

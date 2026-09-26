@@ -29,7 +29,11 @@ const LIVE_ACCOUNT = makeCommAccount('Personal', {
 
 /** A claimed post the tick has not summarised yet — what the stall and ceiling states read. */
 function waiting(minutes: number): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  const {
+    text: _text,
+    html: _html,
+    ...listItem
+  } = makeReaderPost(PUBLICATION_ID, {
     id: `p-waiting-${String(minutes)}`,
     summary_state: 'pending',
     word_count: 1200,

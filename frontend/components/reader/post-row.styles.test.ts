@@ -1,4 +1,4 @@
-import { hintClass, rowShellClass } from './post-row.styles';
+import { hintClass, rowShellClass, verbButtonClass, verbRowClass } from './post-row.styles';
 
 /** The resting row: nothing selected, nothing open, nothing dimmed. */
 const AT_REST = { selected: false, expanded: false, dimmed: false };
@@ -55,5 +55,18 @@ describe('hintClass', () => {
   it('wears the search box’s hint treatment', () => {
     expect(hintClass).toContain('rounded border border-border bg-background');
     expect(hintClass).toContain('font-mono text-[10px] text-muted-foreground');
+  });
+});
+
+describe('the verb row on a phone', () => {
+  // A 375 px phone leaves the verb row 302 px, and Send to Instapaper · Overview · Archive need
+  // 310 px at desktop spacing — so below `md` the row tightens its gap and each verb its padding,
+  // and from `md` up both are exactly what every other sm button in the app wears.
+  it('tightens the gap below md and restores it from md up', () => {
+    expect(verbRowClass.split(' ')).toEqual(expect.arrayContaining(['gap-1.5', 'md:gap-2']));
+  });
+
+  it('trims each verb’s padding below md and restores the sm button’s from md up', () => {
+    expect(verbButtonClass.split(' ')).toEqual(['px-2.5', 'md:px-3']);
   });
 });

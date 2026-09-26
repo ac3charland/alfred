@@ -14,6 +14,8 @@ export interface RenderReaderOptions {
    * a test sees a send affordance only when it asks for one.
    */
   wikiWritable?: boolean;
+  /** Whether the deployment can send to Instapaper. On by default, as on the Personal instance. */
+  instapaperConfigured?: boolean;
 }
 
 /**
@@ -27,7 +29,7 @@ export function renderReader(
   initialPosts: ReaderPostListItem[] = [],
   /** Nothing read yet — the state before the tick has ever run. */
   initialHealth: ReaderHealthSnapshot = NO_READER_HEALTH,
-  { wikiWritable = false }: RenderReaderOptions = {},
+  { wikiWritable = false, instapaperConfigured = true }: RenderReaderOptions = {},
 ) {
   // Via RTL's own `wrapper` option, not inlined around `ui` directly: only that way does the
   // result's `rerender` re-wrap a new element in the same providers rather than replacing the
@@ -40,7 +42,11 @@ export function renderReader(
           initialSync={null}
           config={{ repo: wikiWritable ? 'ac3charland/knowledge' : null, writable: wikiWritable }}
         >
-          <ReaderProvider initialPosts={initialPosts} initialHealth={initialHealth}>
+          <ReaderProvider
+            initialPosts={initialPosts}
+            initialHealth={initialHealth}
+            instapaperConfigured={instapaperConfigured}
+          >
             {children}
           </ReaderProvider>
         </WikiProvider>

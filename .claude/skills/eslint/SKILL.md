@@ -223,6 +223,13 @@ not one class. (Both hit while decoding RFC 2047 headers in `workers/src/comms/e
 string match will silently find nothing on the second pass — read the file back after a lint run
 rather than matching what you wrote.
 
+**`unicorn/prefer-https` rewrites a literal `http://` URL to `https://` — test data included**
+
+Any `http://` host with a public TLD (`example.com` counts; `localhost` doesn't) is rewritten in
+place, silently. Where the scheme is data — a signed OAuth vector in `lib/instapaper/oauth.test.ts`
+— lint stays green and the test goes red. Keep the literal out of the source: `const HTTP = 'http:'`,
+then `` `${HTTP}//example.com/…` ``.
+
 **`unicorn/prefer-includes-over-repeated-comparisons` fires across *different* variables**
 
 Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.) A plain array literal infers as `string[]`, so a union-typed argument needs no cast; the `as const` trap below is a *tuple*'s doing, not this rule's.

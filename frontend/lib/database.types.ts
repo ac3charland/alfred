@@ -959,8 +959,11 @@ export type Database = {
           gist: string | null
           gmail_message_id: string
           headline: string | null
+          html: string | null
           html_extracted: boolean
           id: string
+          instapaper_bookmark_id: number | null
+          instapaper_sent_at: string | null
           last_error: string | null
           model: string | null
           model_called_at: string | null
@@ -990,8 +993,11 @@ export type Database = {
           gist?: string | null
           gmail_message_id: string
           headline?: string | null
+          html?: string | null
           html_extracted?: boolean
           id?: string
+          instapaper_bookmark_id?: number | null
+          instapaper_sent_at?: string | null
           last_error?: string | null
           model?: string | null
           model_called_at?: string | null
@@ -1021,8 +1027,11 @@ export type Database = {
           gist?: string | null
           gmail_message_id?: string
           headline?: string | null
+          html?: string | null
           html_extracted?: boolean
           id?: string
+          instapaper_bookmark_id?: number | null
+          instapaper_sent_at?: string | null
           last_error?: string | null
           model?: string | null
           model_called_at?: string | null
@@ -1477,8 +1486,11 @@ export type Database = {
           gist: string | null
           gmail_message_id: string
           headline: string | null
+          html: string | null
           html_extracted: boolean
           id: string
+          instapaper_bookmark_id: number | null
+          instapaper_sent_at: string | null
           last_error: string | null
           model: string | null
           model_called_at: string | null

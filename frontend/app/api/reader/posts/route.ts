@@ -12,8 +12,8 @@ import { getReaderPosts } from '@/lib/data/reader';
 // through here on first paint: this is for the focus refetch (the store's `refresh()`) and, later,
 // the archive view (`scope=archived`). `text` never comes back — `getReaderPosts` selects
 // `READER_POST_LIST_COLUMNS`, the same column list the seed and the patch share, because the
-// list never renders a post's body (the "Open" verb sends the owner to the original) and a
-// 30 KB-per-row column on every refetch is weight nobody asked for.
+// list never renders a post's body (the owner reads in Instapaper; the Send route reads the body
+// server-side itself) and a 30 KB-per-row column on every refetch is weight nobody asked for.
 // ---------------------------------------------------------------------------
 
 export const GET = withSession(async (session, request) => {

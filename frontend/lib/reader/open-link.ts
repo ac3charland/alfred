@@ -1,7 +1,7 @@
 import type { ReaderPostListItem } from '@/lib/types';
 
 /**
- * Where the row's "Open" verb points: the post's own canonical URL when extraction found
+ * Where the row's "Original" link points: the post's own canonical URL when extraction found
  * one, else a Gmail permalink built from the captured Message-ID, else nothing at all — the
  * disabled state, with a sentence saying why rather than a link to the wrong place.
  */
@@ -25,20 +25,30 @@ function isWebUrl(value: string): boolean {
   }
 }
 
+/**
+ * The post's own web address, when it has one: the trimmed canonical URL, if it is `http`/`https`.
+ * The one rule for "this post has a link" — the Original link, the Instapaper send's `url` and the
+ * Send verb's "nothing to send" check all ask it, so none of them can disagree about a `mailto:`.
+ */
+export function postWebUrl(post: Pick<ReaderPostListItem, 'canonical_url'>): string | undefined {
+  const canonical = post.canonical_url?.trim();
+  return canonical !== undefined && isWebUrl(canonical) ? canonical : undefined;
+}
+
 /** A Message-ID is stored as it arrived, brackets and all; the search operator wants the bare id. */
 function stripAngleBrackets(rawId: string): string {
   return rawId.trim().replace(/^</, '').replace(/>$/, '');
 }
 
 /**
- * The row's "Open" target. An `http`/`https` canonical URL first, else the Gmail permalink built
+ * The row's "Original" target. An `http`/`https` canonical URL first, else the Gmail permalink built
  * from the RFC822 Message-ID comms captured at ingest (`rfc822msgid:` is Gmail search's own
  * operator, so this reopens exactly the mirrored message), else disabled — no link was ever
- * found and no Message-ID was captured, so there is nothing for "Open" to point at.
+ * found and no Message-ID was captured, so there is nothing for "Original" to point at.
  */
 export function postOpenLink(post: ReaderPostListItem): ReaderOpenLink {
-  const canonical = post.canonical_url?.trim();
-  if (canonical !== undefined && isWebUrl(canonical)) {
+  const canonical = postWebUrl(post);
+  if (canonical !== undefined) {
     return { href: canonical, kind: 'canonical', unavailable: undefined };
   }
 

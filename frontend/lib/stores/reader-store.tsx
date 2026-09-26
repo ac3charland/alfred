@@ -32,6 +32,20 @@ function refusal(error: unknown): string | undefined {
 }
 
 /**
+ * The statuses the Instapaper send route answers with a sentence written for the owner: nothing to
+ * send (409), a refusal about this post (422), a rate limit (429), a deployment with no Instapaper
+ * (501) and Instapaper itself being unhappy (502). A 500 is the database talking, not the route,
+ * and gets the store's own line instead.
+ */
+const SEND_REFUSAL_STATUSES = new Set([409, 422, 429, 501, 502]);
+
+function sendRefusal(error: unknown): string | undefined {
+  return error instanceof api.ApiError && SEND_REFUSAL_STATUSES.has(error.status)
+    ? error.detail
+    : undefined;
+}
+
+/**
  * What a failed wiki send says. Every refusal the send route writes (a bullet re-summarised
  * away, no writer on this deployment, GitHub refusing or busy) is a sentence the owner can act
  * on, so it is quoted whatever the status — unlike {@link refusal}, which only trusts a 409.
@@ -75,6 +89,12 @@ export interface ReaderState {
    */
   healthReconcileStartedAt: string | null;
   /**
+   * Whether this deployment can send to Instapaper at all — all four credentials set on the
+   * server. Seeded by the shell and never changed: it is a fact about the deployment, not the
+   * data, and the Send verb is drawn disabled when it is false.
+   */
+  instapaperConfigured: boolean;
+  /**
    * The posts with a wiki send in the air. Held here rather than in the checklist, because the
    * checklist remounts each time its overview opens: a flag of its own would forget a send
    * still running, and let a second press commit the same post again.
@@ -106,7 +126,7 @@ export interface ReaderActions {
    */
   loadArchive: () => void;
   /**
-   * Stamp `opened_at` the instant "Open" is clicked. Fire-and-forget: the owner is already on
+   * Stamp `opened_at` the instant the Original link is followed, by click or by `o`. Fire-and-forget: the owner is already on
    * their way to the post, so a failed write neither rolls back the stamp nor toasts — the next
    * `refresh()` corrects the row if the server never saw it.
    */
@@ -119,6 +139,16 @@ export interface ReaderActions {
    * again" would be a lie.
    */
   resummarize: (id: string) => Promise<ReaderPostListItem>;
+  /**
+   * Send a post to Instapaper, which also archives it — once a post is in Instapaper, that is where
+   * it lives. Optimistic, exactly like {@link ReaderActions.archive}: `instapaper_sent_at` and
+   * `archived_at` (kept as it was for a post already in the archive) are patched at once,
+   * reconciled with the stamped row, and rolled back and toasted if Instapaper saved nothing. A
+   * refusal the route wrote for the owner is toasted in its own words. Nothing retries on its
+   * own: the owner is watching. A second send of the same post while one is in flight is the same
+   * send — it returns the pending promise and makes no second request.
+   */
+  sendToInstapaper: (id: string) => Promise<ReaderPostListItem>;
   /**
    * Send picked Novel-ideas bullets into the wiki: one request, one commit. Deliberately NOT
    * optimistic — the send is a commit to another system that takes a second or two and fails
@@ -237,10 +267,13 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 export function ReaderProvider({
   initialPosts,
   initialHealth,
+  instapaperConfigured,
   children,
 }: {
   initialPosts: ReaderPostListItem[];
   initialHealth: ReaderHealthSnapshot;
+  /** Whether the server holds Instapaper credentials — `getInstapaperConfig() !== null`. */
+  instapaperConfigured: boolean;
   children: React.ReactNode;
 }) {
   const [state, dispatch] = React.useReducer(readerReducer, {
@@ -249,6 +282,7 @@ export function ReaderProvider({
     archiveStatus: 'idle',
     archiveFull: false,
     healthReconcileStartedAt: null,
+    instapaperConfigured,
     wikiSendsInFlight: [],
   });
 
@@ -459,6 +493,58 @@ export function ReaderProvider({
     [beginWrite, endWrite],
   );
 
+  /**
+   * One send per post at a time: the pending promise, by id, so a second press (the button and
+   * the `i` key landing together, or a double click in the archive where the row does not leave)
+   * rides the first rather than sending twice.
+   */
+  const sendingRef = React.useRef(new Map<string, Promise<ReaderPostListItem>>());
+
+  const sendToInstapaper = React.useCallback(
+    (id: string): Promise<ReaderPostListItem> => {
+      const inFlight = sendingRef.current.get(id);
+      if (inFlight !== undefined) return inFlight;
+
+      const current = stateRef.current.posts.find((post) => post.id === id);
+      const now = new Date().toISOString();
+      const patch: Partial<ReaderPostListItem> = {
+        instapaper_sent_at: now,
+        // Sent from the archive, the post keeps the date it was put away — the same rule the
+        // route's write follows, so the reconcile moves nothing the owner can see.
+        archived_at: current?.archived_at ?? now,
+      };
+      const captured = current === undefined ? {} : capturedFields(current, patch);
+      // A write like any other: a focus refetch already in the air would otherwise answer with the
+      // row still active and put a sent post back on the reading list.
+      beginWrite(id);
+      const sending = (async () => {
+        try {
+          return await runOptimisticMutation({
+            optimistic: () => {
+              dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch } });
+            },
+            apiCall: () => api.sendReaderPostToInstapaper(id),
+            reconcile: (saved) => {
+              dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
+            },
+            rollback: () => {
+              dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch: captured } });
+            },
+            onError: (error) => {
+              showToastRef.current(sendRefusal(error) ?? "Couldn't send that post to Instapaper");
+            },
+          });
+        } finally {
+          endWrite(id);
+          sendingRef.current.delete(id);
+        }
+      })();
+      sendingRef.current.set(id, sending);
+      return sending;
+    },
+    [beginWrite, endWrite],
+  );
+
   const actions = React.useMemo<ReaderActions>(
     () => ({
       archive(id) {
@@ -552,10 +638,11 @@ export function ReaderProvider({
             endWrite(id);
           });
       },
+      sendToInstapaper,
       refresh,
       reconcileHealth,
     }),
-    [refresh, reconcileHealth, loadArchive, setArchived, beginWrite, endWrite],
+    [refresh, reconcileHealth, loadArchive, setArchived, sendToInstapaper, beginWrite, endWrite],
   );
 
   return (
@@ -612,6 +699,14 @@ export function useReaderHealth(): ReaderHealthSnapshot {
  */
 export function useReaderHealthReconcileStartedAt(): string | null {
   return useStateValue('useReaderHealthReconcileStartedAt').healthReconcileStartedAt;
+}
+
+/**
+ * Whether this deployment can send to Instapaper — the Send verb is drawn disabled, with a title
+ * saying why, when it cannot.
+ */
+export function useInstapaperConfigured(): boolean {
+  return useStateValue('useInstapaperConfigured').instapaperConfigured;
 }
 
 /** Whether a wiki send for this post is in the air — every send control waits on it. */

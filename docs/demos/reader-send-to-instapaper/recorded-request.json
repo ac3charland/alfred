@@ -1,0 +1,9 @@
+{
+  "authorization": "OAuth oauth_consumer_key=\"mock-consumer-key\", oauth_nonce=\"…\", oauth_signature=\"…\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"…\", oauth_token=\"mock-access-token\", oauth_version=\"1.0\"",
+  "form": {
+    "url": "https://secondthoughts.substack.com/p/how-near",
+    "title": "How near is the intelligence explosion, really?",
+    "description": "Argues the \"recursive self-improvement\" debate conflates three different feedback loops and that only one of them has any evidence behind it.",
+    "content": "<html><body><h1>How near</h1><p>The whole paid post, as mailed.</p></body></html>"
+  }
+}

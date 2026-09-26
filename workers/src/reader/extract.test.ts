@@ -1,5 +1,5 @@
 import type { GmailMessage } from '../comms/gmail-api';
-import { READER_TEXT_CHARS, UNTITLED, extractPost } from './extract';
+import { READER_HTML_CHARS, READER_TEXT_CHARS, UNTITLED, extractPost } from './extract';
 import {
   ESSAY_MESSAGE,
   PLAIN_TEXT_ONLY_MESSAGE,
@@ -102,6 +102,20 @@ describe('extractPost — the fixtures', () => {
     expect(extractPost(ESSAY_MESSAGE, HARBORLINE).html_extracted).toBe(true);
     // The plain-text fixture has no HTML part at all, so the plain body is the post.
     expect(extractPost(PLAIN_TEXT_ONLY_MESSAGE, HARBORLINE).html_extracted).toBe(false);
+  });
+
+  it('keeps the raw email HTML for a post whose body came out of it', () => {
+    // Raw means raw: the send hands this to Instapaper, whose parser picks the article out of
+    // the mail's chrome — so nothing is stripped here, preheaders and footer included.
+    const html = extractPost(ESSAY_MESSAGE, HARBORLINE).html;
+    expect(html).toContain('<p>');
+    expect(html).toContain('Every port keeps two sets of books');
+    expect(html).toContain('What three open berth feeds');
+    expect(html).toContain('Manage your subscription');
+  });
+
+  it('keeps no HTML for a post whose body came from the plain part', () => {
+    expect(extractPost(PLAIN_TEXT_ONLY_MESSAGE, HARBORLINE).html).toBeUndefined();
   });
 
   it('keeps the Message-ID with its angle brackets, as comms stores it', () => {
@@ -272,6 +286,21 @@ describe('extractPost — the edges', () => {
     expect(post.word_count).toBe(post.text.split(/\s+/).filter((token) => token !== '').length);
   });
 
+  it('keeps the HTML up to READER_HTML_CHARS and none past it, never a truncated half', () => {
+    // Truncated markup is worse than none: an unclosed tag can swallow the rest of the article
+    // in Instapaper's parser, where the stored text is a clean fallback.
+    const within = `<p>${'x'.repeat(READER_HTML_CHARS - 7)}</p>`;
+    expect(within).toHaveLength(READER_HTML_CHARS);
+    expect(extractPost(htmlMessage(within), HARBORLINE).html).toBe(within);
+
+    const over = `<p>${'x'.repeat(READER_HTML_CHARS - 6)}</p>`;
+    const post = extractPost(htmlMessage(over), HARBORLINE);
+    expect(post.html).toBeUndefined();
+    // The body itself is still stored — only the markup is dropped.
+    expect(post.text).not.toBe('');
+    expect(post.html_extracted).toBe(true);
+  });
+
   it('returns empty text for a message whose every part is an attachment', () => {
     const message: GmailMessage = {
       id: 'attachments-only',
@@ -355,6 +384,8 @@ describe('extractPost — the edges', () => {
     const post = extractPost(message, HARBORLINE);
     expect(post.text).toBe('hello there');
     expect(post.html_extracted).toBe(false);
+    // The HTML produced nothing, so it is not the body — and not what a send should carry.
+    expect(post.html).toBeUndefined();
   });
 
   it('falls back to the caller’s date when Gmail sent no internalDate', () => {

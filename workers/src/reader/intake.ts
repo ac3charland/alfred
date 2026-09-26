@@ -119,6 +119,7 @@ export async function intakePost(
     text: post.text,
     word_count: post.word_count,
     html_extracted: post.html_extracted,
+    html: post.html,
     summary_state: 'pending',
     // The insert IS the lease. On a capped day it is deliberately left free.
     summarizing_since: options.capped ? JSON_NULL : options.now.toISOString(),

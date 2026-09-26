@@ -15,8 +15,17 @@ const MARKER: Partial<
   refused: { label: 'summary refused', variant: 'destructiveOutline' },
 };
 
-export function PostMarkers({ state }: { state: ReaderSummaryState }) {
+/**
+ * The row's badges: the summary state's, when it has one, and — beside it rather than instead
+ * of it, since the two say unrelated things — a quiet `in Instapaper` once the post has been sent.
+ * The sent badge outlives an unarchive: the post is still in Instapaper.
+ */
+export function PostMarkers({ state, sent }: { state: ReaderSummaryState; sent: boolean }) {
   const marker = MARKER[state];
-  if (marker === undefined) return null;
-  return <Badge variant={marker.variant}>{marker.label}</Badge>;
+  return (
+    <>
+      {marker !== undefined && <Badge variant={marker.variant}>{marker.label}</Badge>}
+      {sent && <Badge variant="secondary">in Instapaper</Badge>}
+    </>
+  );
 }

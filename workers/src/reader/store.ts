@@ -53,6 +53,11 @@ export interface ReaderPostInsert {
   text: string;
   word_count: number;
   html_extracted: boolean;
+  /**
+   * The email's raw HTML (see `ExtractedPost.html`). Omitted rather than nulled when there is none:
+   * an insert leaves an absent column at its default, which is null.
+   */
+  html?: string | undefined;
   summary_state: 'pending';
   /** The lease: `now` claims the row for this tick, a JSON null leaves it for tomorrow. */
   summarizing_since: unknown;
