@@ -4089,8 +4089,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
   // ── Wiki (ALF-261) ──────────────────────────────────────────────────────────
 
   const wikiGrantsResult = await attempt(
-    'wiki: authenticated has full DML on wiki_pages and wiki_sync, and anon is denied on both ' +
-      '(ALF-261)',
+    'wiki: authenticated and service_role have full DML on wiki_pages and wiki_sync, ' +
+      'service_role may EXECUTE the three wiki RPCs, and anon is denied on both tables (ALF-261)',
     async () => {
       await asRole(client, 'authenticated', async () => {
         await client.query(
@@ -4119,6 +4119,47 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         await client.query(`delete from wiki_sync where id = 1`);
       });
 
+      // service_role is the Worker's sync (the only writer of both tables) and the admin client:
+      // it needs the same DML, plus EXECUTE on every wiki RPC.
+      await asRole(client, 'service_role', async () => {
+        await client.query(
+          `insert into wiki_pages (path, section, title, blob_oid, commit_oid)
+             values ('wiki/concepts/grant-test.md', 'concepts', 'Grant test', 'b1', 'c1')`,
+        );
+        await client.query(
+          `update wiki_pages set title = 'Renamed' where path = 'wiki/concepts/grant-test.md'`,
+        );
+        const { rows } = await client.query<{ title: string }>(
+          `select title from wiki_pages where path = 'wiki/concepts/grant-test.md'`,
+        );
+        if (rows[0]?.title !== 'Renamed')
+          throw new Error('service_role could not read back its own page update');
+        await client.query(`delete from wiki_pages where path = 'wiki/concepts/grant-test.md'`);
+
+        await client.query(
+          `insert into wiki_sync (id, commit_oid, synced_at) values (1, 'c1', now())
+             on conflict (id) do update set commit_oid = excluded.commit_oid`,
+        );
+        await client.query(`update wiki_sync set commit_oid = 'c2' where id = 1`);
+        const { rows: syncRows } = await client.query<{ commit_oid: string }>(
+          `select commit_oid from wiki_sync where id = 1`,
+        );
+        if (syncRows[0]?.commit_oid !== 'c2')
+          throw new Error('service_role could not write wiki_sync');
+        await client.query(`delete from wiki_sync where id = 1`);
+      });
+      const { rows: functions } = await client.query<{ fn: string; sr_exec: boolean }>(
+        `select fn, has_function_privilege('service_role', fn, 'EXECUTE') as sr_exec
+           from unnest(array[
+             'append_wiki_sent_ideas(uuid, text[])',
+             'send_items_to_wiki(uuid[])',
+             'search_wiki_pages(text, int)'
+           ]) as fn`,
+      );
+      const denied = functions.filter((row) => !row.sr_exec).map((row) => row.fn);
+      if (functions.length !== 3 || denied.length > 0)
+        throw new Error(`service_role may not EXECUTE: ${denied.join(', ')}`);
+
       // Seed real rows as the superuser (bypasses RLS), so the anon count below proves RLS
       // denial rather than just reading an empty table the authenticated block already emptied.
       await client.query(
@@ -4142,7 +4183,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         await client.query(`delete from wiki_pages where path = 'wiki/concepts/grant-test.md'`);
         await client.query(`delete from wiki_sync where id = 1`);
       }
-      return 'authenticated wrote, read and deleted both tables; anon saw neither despite real rows existing';
+      return (
+        'authenticated and service_role wrote, read and deleted both tables; service_role may ' +
+        'EXECUTE all three wiki RPCs; anon saw neither table despite real rows existing'
+      );
     },
   );
 
