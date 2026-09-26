@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { createContextPair } from '@/lib/stores/create-context-pair';
-import type { WikiClientConfig, WikiPageIndexRow, WikiSync } from '@/lib/types';
+import type { WikiClientConfig, WikiPageIndexRow, WikiSearchHit, WikiSync } from '@/lib/types';
 import { WikiBodyCache, type WikiBodyEntry, wikiBodyKey } from '@/lib/wiki/body-cache';
 import { type WikiSection, sortWikiPages } from '@/lib/wiki/sections';
 
@@ -45,6 +45,17 @@ export interface WikiActions {
   refresh: () => void;
   /** The read-through body cache — read it through {@link useWikiPageBody}, never directly. */
   bodyCache: WikiBodyCache;
+  /**
+   * Full-text search over page bodies, straight through to `GET /api/wiki/search`. A pass-through:
+   * the hits are per keystroke, never seeded and never shared, so the store holds none of them —
+   * it only keeps components off the API client.
+   */
+  searchBodies: (query: string) => Promise<WikiSearchHit[]>;
+}
+
+/** The body search, a module-level function so the actions object never rebuilds for it. */
+function searchBodies(query: string): Promise<WikiSearchHit[]> {
+  return api.searchWikiBodies(query);
 }
 
 /** What {@link useWikiPageBody} answers: the body once it is in hand, or where it is. */
@@ -113,7 +124,10 @@ export function WikiProvider({
     };
   }, [refresh]);
 
-  const actions = React.useMemo<WikiActions>(() => ({ refresh, bodyCache }), [refresh, bodyCache]);
+  const actions = React.useMemo<WikiActions>(
+    () => ({ refresh, bodyCache, searchBodies }),
+    [refresh, bodyCache],
+  );
 
   return (
     <ActionsContext.Provider value={actions}>

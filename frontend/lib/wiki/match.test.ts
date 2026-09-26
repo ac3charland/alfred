@@ -1,6 +1,7 @@
+import { stableSorted } from '@/lib/sort';
 import { makeWikiPage, toWikiIndexRow } from '@/lib/wiki/fixtures';
 
-import { rankWikiPage } from './match';
+import { compareWikiMatches, rankWikiPage } from './match';
 
 const PAGE = toWikiIndexRow(
   makeWikiPage('wiki/concepts/habit-stacking.md', {
@@ -32,5 +33,28 @@ describe('rankWikiPage', () => {
   it('prefers the title over the summary when both match', () => {
     const both = { ...PAGE, summary: 'habit talk' };
     expect(rankWikiPage('habit', both)).toBe(0);
+  });
+});
+
+describe('compareWikiMatches', () => {
+  it('orders best rank first, then newest `updated`, a never-updated page last in its rank', () => {
+    const matches = [
+      { id: 'a', rank: 2, updated: '2026-09-01' },
+      { id: 'b', rank: 0, updated: null },
+      { id: 'c', rank: 0, updated: '2026-01-01' },
+      { id: 'd', rank: 0, updated: '2026-09-01' },
+      { id: 'e', rank: 1, updated: '2025-01-01' },
+    ];
+    expect(stableSorted(matches, compareWikiMatches).map(({ id }) => id)).toEqual([
+      'd',
+      'c',
+      'b',
+      'e',
+      'a',
+    ]);
+    expect(compareWikiMatches({ rank: 1, updated: null }, { rank: 1, updated: null })).toBe(0);
+    expect(
+      compareWikiMatches({ rank: 1, updated: '2026-01-01' }, { rank: 1, updated: '2026-01-01' }),
+    ).toBe(0);
   });
 });

@@ -1,19 +1,11 @@
 import { stableSorted } from '@/lib/sort';
 import type { WikiPageIndexRow, WikiSearchHit } from '@/lib/types';
-import { rankWikiPage } from '@/lib/wiki/match';
+import { compareWikiMatches, rankWikiPage } from '@/lib/wiki/match';
 
 /**
  * The module search's two result groups, as pure functions of the index and the query — the
  * components only draw them.
  */
-
-/** Newest first; a page with no `updated` date sorts after every dated one. */
-function byUpdatedDesc(a: WikiPageIndexRow, b: WikiPageIndexRow): number {
-  const aDate = a.updated ?? '';
-  const bDate = b.updated ?? '';
-  if (aDate === bDate) return 0;
-  return aDate < bDate ? 1 : -1;
-}
 
 /**
  * "Titles & summaries": every page `rankWikiPage` matches — the one matcher ⌘P shares — best rank
@@ -24,15 +16,13 @@ export function titleMatches(
   pages: readonly WikiPageIndexRow[],
   query: string,
 ): WikiPageIndexRow[] {
-  const ranked: { page: WikiPageIndexRow; rank: number }[] = [];
+  const ranked: { page: WikiPageIndexRow; rank: number; updated: string | null }[] = [];
   for (const page of pages) {
     const rank = rankWikiPage(query, page);
-    if (rank !== null) ranked.push({ page, rank });
+    if (rank !== null) ranked.push({ page, rank, updated: page.updated });
   }
   // Stable, so pages tied on rank and date keep the index order they arrived in.
-  return stableSorted(ranked, (a, b) => a.rank - b.rank || byUpdatedDesc(a.page, b.page)).map(
-    ({ page }) => page,
-  );
+  return stableSorted(ranked, compareWikiMatches).map(({ page }) => page);
 }
 
 /** One "In page text" row: the page and the snippet the body search found in it. */

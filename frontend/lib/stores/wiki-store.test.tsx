@@ -2,6 +2,7 @@ import { act, render, renderHook, screen, waitFor } from '@testing-library/react
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import type { WikiSearchHit } from '@/lib/types';
 import { makeWikiPage, makeWikiSync, toWikiIndexRow } from '@/lib/wiki/fixtures';
 
 import {
@@ -17,10 +18,12 @@ import {
 jest.mock('@/lib/api-client', () => ({
   fetchWikiPages: jest.fn(),
   fetchWikiPageBody: jest.fn(),
+  searchWikiBodies: jest.fn(),
 }));
 
 const mockFetchPages = jest.mocked(api.fetchWikiPages);
 const mockFetchBody = jest.mocked(api.fetchWikiPageBody);
+const mockSearchBodies = jest.mocked(api.searchWikiBodies);
 
 const STACKING = toWikiIndexRow(
   makeWikiPage('wiki/concepts/habit-stacking.md', { title: 'Habit stacking', blob_oid: 'b1' }),
@@ -184,6 +187,17 @@ function Body({ path }: { path: string }) {
     </div>
   );
 }
+
+describe('searchBodies', () => {
+  it('passes the query through to the body search and answers with its hits', async () => {
+    const hits: WikiSearchHit[] = [{ path: STACKING.path, snippet: 'habit', rank: 0.5 }];
+    mockSearchBodies.mockResolvedValue(hits);
+    const { result } = renderHook(() => useWikiActions(), { wrapper });
+
+    await expect(result.current.searchBodies('habit')).resolves.toBe(hits);
+    expect(mockSearchBodies).toHaveBeenCalledWith('habit');
+  });
+});
 
 describe('useWikiPageBody', () => {
   it('loads a body on first open and serves it from the cache on the next', async () => {

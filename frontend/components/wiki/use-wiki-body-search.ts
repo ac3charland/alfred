@@ -2,8 +2,8 @@
 
 import * as React from 'react';
 
-import * as api from '@/lib/api-client';
 import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
+import { useWikiActions } from '@/lib/stores/wiki-store';
 import type { WikiSearchHit } from '@/lib/types';
 
 /** How long typing must pause before the body search goes out. */
@@ -29,18 +29,19 @@ type Answer = { query: string } & (
  * once typing pauses for 250ms and only for a query of at least two characters.
  *
  * It is a read the store has no business holding — per keystroke, never seeded, never shared —
- * so the view asks the API for it directly, the way the Comms dialogs do. An answer is kept with
- * the query it answers and shown only while that is still the query on screen, so a slow answer
- * for an earlier query can never stand in for the current one; until the current one answers,
- * the group is pending.
+ * so the store's `searchBodies` action only passes it through, and the answer lives here. An
+ * answer is kept with the query it answers and shown only while that is still the query on
+ * screen, so a slow answer for an earlier query can never stand in for the current one; until
+ * the current one answers, the group is pending.
  */
 export function useWikiBodySearch(query: string): WikiBodySearchState {
   const term = query.trim();
   const [answer, setAnswer] = React.useState<Answer | undefined>();
   const latestRef = React.useRef(term);
+  const { searchBodies } = useWikiActions();
 
   const search = useDebouncedCallback((next: string) => {
-    void api.searchWikiBodies(next).then(
+    void searchBodies(next).then(
       (hits) => {
         if (latestRef.current === next) setAnswer({ query: next, status: 'ready', hits });
       },

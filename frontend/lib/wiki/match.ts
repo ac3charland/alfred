@@ -18,3 +18,24 @@ export function rankWikiPage(query: string, page: WikiPageIndexRow): 0 | 1 | 2 |
   if (page.tags.some((tag) => tag.toLowerCase().includes(q))) return 2;
   return null;
 }
+
+/** What {@link compareWikiMatches} orders by: a page's rank for the query, and its `updated`. */
+export interface WikiMatchOrder {
+  rank: number;
+  updated: string | null;
+}
+
+/**
+ * The order after {@link rankWikiPage}, shared by ⌘P and the module's instant search: best rank
+ * first, then `updated` newest first, with a never-updated page (`null`) last within its rank.
+ * Plain string comparison, never `localeCompare` — an ISO `YYYY-MM-DD` date orders correctly as a
+ * string and stays independent of the machine's locale (the `sections.ts` convention). Ties are
+ * `0`, so a stable sort keeps them in arrival order.
+ */
+export function compareWikiMatches(a: WikiMatchOrder, b: WikiMatchOrder): number {
+  if (a.rank !== b.rank) return a.rank - b.rank;
+  if (a.updated === b.updated) return 0;
+  if (a.updated === null) return 1;
+  if (b.updated === null) return -1;
+  return a.updated > b.updated ? -1 : 1;
+}

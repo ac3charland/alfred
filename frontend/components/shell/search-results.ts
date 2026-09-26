@@ -3,7 +3,7 @@ import { FACTORY_STATE_LABELS } from '@/lib/stores/code-store';
 import { residentFolderId } from '@/lib/tasks/residency';
 import { resolveRoot, taskDestination } from '@/lib/tasks/task-location';
 import type { CodeStory, Folder, Item, WikiPageIndexRow } from '@/lib/types';
-import { rankWikiPage } from '@/lib/wiki/match';
+import { compareWikiMatches, rankWikiPage } from '@/lib/wiki/match';
 import { wikiPageHref } from '@/lib/wiki/sections';
 
 /**
@@ -88,21 +88,6 @@ function rankTitleNotes(query: string, title: string, notes: string): number | n
 /** Sort by rank ascending, breaking ties by recency (created_at descending). */
 function byRankThenRecency(a: { rank: number; createdAt: string }, b: typeof a): number {
   return a.rank - b.rank || b.createdAt.localeCompare(a.createdAt);
-}
-
-/**
- * Sort wiki matches by rank ascending, then `updated` descending, with a never-updated page
- * (`null`) sorting last within its rank. Plain string comparison, never `localeCompare` — an
- * ISO `YYYY-MM-DD` date orders correctly as a string and stays independent of the machine's
- * locale (the `sections.ts` convention).
- */
-function byWikiRankThenUpdated(a: { rank: number; updated: string | null }, b: typeof a): number {
-  if (a.rank !== b.rank) return a.rank - b.rank;
-  if (a.updated === b.updated) return 0;
-  if (a.updated === null) return 1;
-  if (b.updated === null) return -1;
-  if (a.updated > b.updated) return -1;
-  return 1;
 }
 
 /**
@@ -232,7 +217,7 @@ export function buildResults(
 
   scoredTasks.sort(byRankThenRecency);
   scoredStories.sort(byRankThenRecency);
-  scoredPages.sort(byWikiRankThenUpdated);
+  scoredPages.sort(compareWikiMatches);
 
   return {
     tasks: scoredTasks.slice(0, RESULTS_PER_GROUP).map((entry) => entry.result),
