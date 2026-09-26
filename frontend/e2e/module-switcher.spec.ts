@@ -50,7 +50,7 @@ test.describe('the desktop module switcher', () => {
 
     // And every segment with it: a segment clipped at the border is unreadable even when
     // the group's own box happens to fit.
-    for (const label of ['Tasks', 'Code', 'Comms', 'Reader']) {
+    for (const label of ['Tasks', 'Code', 'Comms', 'Reader', 'Wiki']) {
       const segment = page.getByRole('link', { name: label, exact: true });
       expect(
         await rightEdge(segment),
@@ -90,6 +90,19 @@ test.describe('the desktop module switcher', () => {
     await expect(page).toHaveURL(/\/code$/);
     await expect(code).toHaveCSS('color', 'rgb(79, 209, 224)');
     await expect(tasks).toHaveCSS('color', restingCode);
+  });
+
+  test('highlights Wiki in violet (ALF-261)', async ({ page, seed }) => {
+    await seed(SEED);
+    await page.goto('/priority');
+
+    const wiki = page.getByRole('link', { name: 'Wiki', exact: true });
+    await expect(wiki).not.toHaveCSS('color', 'rgb(167, 139, 250)');
+
+    await wiki.click();
+    await expect(page).toHaveURL(/\/wiki$/);
+    // #a78bfa — the accent-violet token in globals.css.
+    await expect(wiki).toHaveCSS('color', 'rgb(167, 139, 250)');
   });
 
   test('highlights Reader in green (ALF-233)', async ({ page, seed }) => {

@@ -30,7 +30,10 @@ import type {
   ReaderPost,
   ReaderPublication,
   WeeklyPlan,
+  WikiPageRow,
+  WikiSync,
 } from '@/lib/types';
+import { resetWikiFixtureClock } from '@/lib/wiki/fixtures';
 
 /**
  * The comms seed builders are the SAME ones the unit tests and stories use — re-exported here
@@ -56,8 +59,16 @@ export {
   readerFixtureSet,
 } from '@/lib/reader/fixtures';
 
+/** And the wiki's. */
+export { makeWikiPage, makeWikiSync, wikiFixtureSet } from '@/lib/wiki/fixtures';
+
 export const MOCK_PORT = 54_331;
 export const MOCK_URL = `http://localhost:${String(MOCK_PORT)}`;
+
+/** The wiki writer's harness config: the mock's token, repo and API origin (playwright.config). */
+export const WIKI_GITHUB_TOKEN = 'mock_wiki_token';
+export const WIKI_REPO = 'ac3charland/knowledge';
+export const WIKI_GITHUB_API_URL = `${MOCK_URL}/__mock__/github`;
 
 // Resolved against the Playwright working directory (frontend/, where the config
 // lives). Avoids import.meta, which Playwright's CJS config loader can't transpile.
@@ -97,6 +108,12 @@ export interface SeedState {
    * EMPTY list is a state of its own: the tick has never run.
    */
   readerHealth?: ReaderHealth[];
+  /** The wiki's page snapshot, bodies included (the mock serves the body route from them). */
+  wikiPages?: WikiPageRow[];
+  /** The singleton sync row, as a list: an EMPTY list is "never synced". */
+  wikiSync?: WikiSync[];
+  /** Folder names already taken in the wiki repo's inbox/ when the test starts. */
+  githubInbox?: string[];
 }
 
 let sequence = 0;
@@ -120,6 +137,7 @@ export function resetSeedClock(): void {
   sortSequence = 0;
   resetCommFixtureClock();
   resetReaderFixtureClock();
+  resetWikiFixtureClock();
 }
 
 export function makeFolder(name: string, overrides: Partial<Folder> = {}): Folder {

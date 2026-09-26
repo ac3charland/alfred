@@ -1,4 +1,11 @@
-import { makeCodeStory, makeEpic, makeFolder, makeItem, makeProject } from './support/constants';
+import {
+  makeCodeStory,
+  makeEpic,
+  makeFolder,
+  makeItem,
+  makeProject,
+  wikiFixtureSet,
+} from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -30,7 +37,7 @@ test('⌘P focuses the field; selecting a task jumps to its folder view', async 
 
   // The shortcut claims ⌘P from the browser and focuses the top-bar field.
   await page.keyboard.press('ControlOrMeta+KeyP');
-  const search = page.getByRole('combobox', { name: /search tasks and stories/i });
+  const search = page.getByRole('combobox', { name: /search tasks, stories, and wiki pages/i });
   await expect(search).toBeFocused();
 
   // Typing filters in real time; the match shows under the Tasks group.
@@ -138,4 +145,46 @@ test('hides completed tasks and terminal stories by default, revealed by "Show c
 
   await expect(listbox.getByText('Firewall done task')).toBeVisible();
   await expect(listbox.getByText('Firewall done story')).toBeVisible();
+});
+
+test('shows a Wiki group; ArrowDown to a page and Enter opens it', async ({ page, seed }) => {
+  const { pages } = wikiFixtureSet();
+
+  await seed({ wikiPages: pages });
+  await page.goto('/');
+
+  await page.keyboard.press('ControlOrMeta+KeyP');
+  await page.keyboard.type('habit');
+
+  // A row's accessible name concatenates its title, subtitle and the "Wiki" badge text, and
+  // "Atomic Habits" appears in more than one row's subtitle — so target each row by the same
+  // stable `optionDomId` the component itself keys rows by (percent-encoded path), not by name.
+  const listbox = page.getByRole('listbox');
+  const habitStackingId = `search-option-wiki-${encodeURIComponent('wiki/concepts/habit-stacking.md')}`;
+  const atomicHabitsId = `search-option-wiki-${encodeURIComponent('wiki/sources/atomic-habits.md')}`;
+  const habitStackingRow = listbox.locator(`[id="${habitStackingId}"]`);
+  await expect(habitStackingRow).toBeVisible();
+  await expect(habitStackingRow.getByText('Habit stacking', { exact: true })).toBeVisible();
+  await expect(habitStackingRow.getByText('Wiki', { exact: true })).toBeVisible();
+  await expect(listbox.locator(`[id="${atomicHabitsId}"]`)).toBeVisible();
+
+  // `useWikiPages` sorts by section then lower-cased title, so within Concepts "Habit loop"
+  // sorts ahead of "Habit stacking" — both rank 0 for "habit" with the same `updated` date, so
+  // that alphabetical order is exactly the (stable) tie-break order the results land in. The
+  // dropdown opens with the first wiki match already active, so one ArrowDown reaches the second.
+  const search = page.getByRole('combobox', { name: /search tasks, stories, and wiki pages/i });
+  await page.keyboard.press('ArrowDown');
+  await expect(search).toHaveAttribute('aria-activedescendant', habitStackingId);
+
+  await page.keyboard.press('Enter');
+
+  await expect(page).toHaveURL(/\/wiki\/concepts\/habit-stacking$/);
+  // The reading room's own body is covered by the wiki reading-room e2e; here we only confirm
+  // the Wiki module actually rendered at this URL — its nav landmark and switcher segment.
+  await expect(page.getByRole('navigation', { name: 'Wiki' })).toBeVisible();
+  const switcher = page.getByRole('group', { name: 'Switch module' });
+  await expect(switcher.getByRole('link', { name: 'Wiki' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
 });
