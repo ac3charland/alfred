@@ -22,23 +22,31 @@ export const PATCH = withSession(
     if (input instanceof Response) return input;
 
     // Knowledge leaves the Inbox only through POST /api/wiki/items. Migration 0038 lets a
-    // dispatched knowledge row go folderless, so stamped here it would render in no view at all.
-    // The type that counts is the one the row ends up with: this PATCH's, else the stored one.
-    if (input.dispatched === true) {
-      let itemType = input.item_type;
-      if (itemType === undefined) {
+    // dispatched knowledge row go folderless, so one made here would render in no view at all.
+    // What counts is the state the row ends up in: each of type and residency is this PATCH's,
+    // else the stored one — so retyping a dispatched task to knowledge is refused too. Only a
+    // PATCH that moves the row toward that state (knowledge, or dispatched) needs the stored row.
+    const towardKnowledge = input.item_type === 'knowledge';
+    const towardDispatched = input.dispatched === true;
+    const settlesElsewhere =
+      input.dispatched === false || (input.item_type !== undefined && !towardKnowledge);
+    if ((towardKnowledge || towardDispatched) && !settlesElsewhere) {
+      let knowledgeAndDispatched = towardKnowledge && towardDispatched;
+      if (!knowledgeAndDispatched) {
         const { data: current, error: readError } = await supabase
           .from('items')
-          .select('item_type')
+          .select('item_type,dispatched_at')
           .eq('id', id)
           .single();
         if (readError) {
           const { status, message } = mapSupabaseError(readError);
           return jsonError(status, message);
         }
-        itemType = current.item_type;
+        knowledgeAndDispatched =
+          (towardKnowledge || current.item_type === 'knowledge') &&
+          (towardDispatched || current.dispatched_at !== null);
       }
-      if (itemType === 'knowledge') {
+      if (knowledgeAndDispatched) {
         return jsonError(409, 'A knowledge item leaves the Inbox only by being sent to the wiki');
       }
     }

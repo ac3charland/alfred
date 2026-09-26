@@ -71,10 +71,28 @@ async function patchWith(body: unknown): Promise<Record<string, unknown>> {
   return firstCallArg(mockSupabase._chain.update);
 }
 
-/** PATCH a row that is stored as knowledge with `body`: the response, and the update mock. */
+/** PATCH a row that is stored as Inbox knowledge with `body`: the response, and the update mock. */
 async function patchKnowledge(body: unknown) {
   const mockSupabase = makeMockSupabase(TEST_USER, {
-    data: { ...TEST_ITEM, item_type: 'knowledge' },
+    data: { ...TEST_ITEM, item_type: 'knowledge', dispatched_at: null },
+    error: undefined,
+  });
+  mockCreateClient.mockResolvedValue(mockSupabase as never);
+  const response = await PATCH(
+    new Request(`http://localhost/api/items/${TEST_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+    routeContext,
+  );
+  return { response, update: mockSupabase._chain.update };
+}
+
+/** PATCH a row stored as a dispatched task with `body`: the response, and the update mock. */
+async function patchDispatchedTask(body: unknown) {
+  const mockSupabase = makeMockSupabase(TEST_USER, {
+    data: { ...TEST_ITEM, item_type: 'task', dispatched_at: '2026-09-01T00:00:00.000Z' },
     error: undefined,
   });
   mockCreateClient.mockResolvedValue(mockSupabase as never);
@@ -495,6 +513,35 @@ describe('PATCH /api/items/[id]', () => {
       it('still returns a knowledge row to the Inbox', async () => {
         const { response } = await patchKnowledge({ dispatched: false });
         expect(response.status).toBe(200);
+      });
+    });
+
+    // The same folderless state is reachable from the other side: retyping a dispatched row.
+    describe('refuses to retype a dispatched row to knowledge', () => {
+      it('409s a folderless retype of a dispatched task, and writes nothing', async () => {
+        const { response, update } = await patchDispatchedTask({
+          item_type: 'knowledge',
+          folder_id: null,
+        });
+        expect(response.status).toBe(409);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toMatch(/knowledge/i);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('still lets the retype ride a return to the Inbox', async () => {
+        const { response, update } = await patchDispatchedTask({
+          item_type: 'knowledge',
+          dispatched: false,
+        });
+        expect(response.status).toBe(200);
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('still lets an Inbox row be retyped to knowledge', async () => {
+        const { response, update } = await patchKnowledge({ item_type: 'knowledge' });
+        expect(response.status).toBe(200);
+        expect(update).toHaveBeenCalled();
       });
     });
 
