@@ -29,8 +29,13 @@ node scripts/mock-supabase.mjs >/dev/null 2>&1 &
 MOCK=$!
 npm run start -- -p 3011 >/dev/null 2>&1 &
 APP=$!
-# `npm run start` spawns next-server as a child: kill it too, or it outlives this script.
-cleanup() { pkill -P "$APP" 2>/dev/null || true; kill "$APP" "$MOCK" 2>/dev/null || true; }
+# `npm run start` spawns next-server as a GRANDchild (npm → sh → next-server), so a one-level
+# `pkill -P` misses it and it outlives this script holding the port: kill the whole tree.
+kill_tree() {
+  for child in $(pgrep -P "$1"); do kill_tree "$child"; done
+  kill "$1" 2>/dev/null || true
+}
+cleanup() { kill_tree "$APP"; kill_tree "$MOCK"; }
 trap cleanup EXIT
 until curl -sf "$MOCK_URL/__mock__/health" >/dev/null 2>&1; do sleep 0.2; done
 until curl -s -o /dev/null "$APP_URL/login" 2>/dev/null; do sleep 0.5; done
