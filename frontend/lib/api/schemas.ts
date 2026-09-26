@@ -761,3 +761,11 @@ export * from '@/lib/api/comms-schemas';
 // ---------------------------------------------------------------------------
 
 export * from '@/lib/api/reader-schemas';
+
+// ---------------------------------------------------------------------------
+// Wiki (the knowledge repo's snapshot and the two send routes into it)
+//
+// Defined in `lib/api/wiki-schemas` and re-exported here for the same one-import-path reason.
+// ---------------------------------------------------------------------------
+
+export * from '@/lib/api/wiki-schemas';

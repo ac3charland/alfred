@@ -23,6 +23,8 @@ import type {
   PatchReaderPostInput,
   PurgeInput,
   ReaderPostsQuery,
+  SendItemsToWikiInput,
+  SendReaderIdeasInput,
   UpdateEpicInput,
   UpdateFolderInput,
   UpdateHabitInput,
@@ -56,6 +58,9 @@ import type {
   ReaderPublication,
   ReaderPublicationListItem,
   WeeklyPlan,
+  WikiPageBody,
+  WikiSearchHit,
+  WikiSeed,
 } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -805,6 +810,57 @@ export function fetchReaderCandidates(): Promise<ReaderCandidate[]> {
  */
 export function fetchReaderHealth(): Promise<ReaderHealthSnapshot> {
   return apiRequest<ReaderHealthSnapshot>('/api/reader/health');
+}
+
+// ---------------------------------------------------------------------------
+// Wiki — the knowledge repo's page snapshot, and the two sends into its inbox
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-read the whole index plus the sync row. The shell seeds the store, so this is the
+ * navigation and tab-return refresh — a small read, since it carries no page bodies.
+ */
+export function fetchWikiPages(): Promise<WikiSeed> {
+  return apiRequest<WikiSeed>('/api/wiki/pages');
+}
+
+/** One page's body, pinned to its blob id so the store can cache it per version. */
+export function fetchWikiPageBody(path: string): Promise<WikiPageBody> {
+  return apiRequest<WikiPageBody>(`/api/wiki/page?path=${encodeURIComponent(path)}`);
+}
+
+/**
+ * Full-text search over page bodies. Snippets come back with control-character highlight
+ * delimiters, never HTML — the caller splits them into marks itself.
+ */
+export function searchWikiBodies(query: string): Promise<WikiSearchHit[]> {
+  return apiRequest<WikiSearchHit[]>(`/api/wiki/search?q=${encodeURIComponent(query)}`);
+}
+
+/**
+ * Send picked Novel-ideas bullets from a post into the wiki: one commit, one folder. Returns
+ * the post's list row with `wiki_sent_ideas` extended. The route may refuse with a 409 (a bullet
+ * no longer in the overview), a 501 (no writer on this deployment), or a 502/503 (GitHub).
+ */
+export function sendReaderIdeasToWiki(
+  postId: string,
+  body: SendReaderIdeasInput,
+): Promise<ReaderPostListItem> {
+  return apiRequest<ReaderPostListItem>(`/api/reader/posts/${postId}/wiki`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Dispatch knowledge rows to the wiki: one commit with one folder per item, then the rows are
+ * deleted. Returns the ids that went.
+ */
+export function sendItemsToWiki(body: SendItemsToWikiInput): Promise<{ sent: string[] }> {
+  return apiRequest<{ sent: string[] }>('/api/wiki/items', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
 export {
