@@ -71,6 +71,24 @@ async function patchWith(body: unknown): Promise<Record<string, unknown>> {
   return firstCallArg(mockSupabase._chain.update);
 }
 
+/** PATCH a row that is stored as knowledge with `body`: the response, and the update mock. */
+async function patchKnowledge(body: unknown) {
+  const mockSupabase = makeMockSupabase(TEST_USER, {
+    data: { ...TEST_ITEM, item_type: 'knowledge' },
+    error: undefined,
+  });
+  mockCreateClient.mockResolvedValue(mockSupabase as never);
+  const response = await PATCH(
+    new Request(`http://localhost/api/items/${TEST_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+    routeContext,
+  );
+  return { response, update: mockSupabase._chain.update };
+}
+
 describe('PATCH /api/items/[id]', () => {
   it('returns 401 when no session', async () => {
     const mockSupabase = makeMockSupabase(undefined, { data: undefined, error: undefined });
@@ -446,6 +464,38 @@ describe('PATCH /api/items/[id]', () => {
       const payload = await patchWith({ title: 'Only title' });
       expect(Object.keys(payload)).not.toContain('dispatched_at');
       expect(Object.keys(payload)).not.toContain('dispatched');
+    });
+
+    // Knowledge leaves the Inbox only through POST /api/wiki/items: stamped here, it would need no
+    // folder (migration 0038) and so render in no view at all.
+    describe('refuses to stamp a knowledge row dispatched', () => {
+      it('409s a row that is already knowledge, and writes nothing', async () => {
+        const { response, update } = await patchKnowledge({ dispatched: true });
+        expect(response.status).toBe(409);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toMatch(/knowledge/i);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('409s a row retyped to knowledge in the same PATCH', async () => {
+        const { response, update } = await patchKnowledge({
+          item_type: 'knowledge',
+          dispatched: true,
+        });
+        expect(response.status).toBe(409);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('still lets a knowledge row retyped to a task be dispatched', async () => {
+        const { response, update } = await patchKnowledge({ item_type: 'task', dispatched: true });
+        expect(response.status).toBe(200);
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('still returns a knowledge row to the Inbox', async () => {
+        const { response } = await patchKnowledge({ dispatched: false });
+        expect(response.status).toBe(200);
+      });
     });
 
     it('rides alongside folder_id as one coherent write', async () => {

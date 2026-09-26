@@ -21,6 +21,28 @@ export const PATCH = withSession(
     const input = await parseRequestBody(request, updateItemSchema);
     if (input instanceof Response) return input;
 
+    // Knowledge leaves the Inbox only through POST /api/wiki/items. Migration 0038 lets a
+    // dispatched knowledge row go folderless, so stamped here it would render in no view at all.
+    // The type that counts is the one the row ends up with: this PATCH's, else the stored one.
+    if (input.dispatched === true) {
+      let itemType = input.item_type;
+      if (itemType === undefined) {
+        const { data: current, error: readError } = await supabase
+          .from('items')
+          .select('item_type')
+          .eq('id', id)
+          .single();
+        if (readError) {
+          const { status, message } = mapSupabaseError(readError);
+          return jsonError(status, message);
+        }
+        itemType = current.item_type;
+      }
+      if (itemType === 'knowledge') {
+        return jsonError(409, 'A knowledge item leaves the Inbox only by being sent to the wiki');
+      }
+    }
+
     // PATCH semantics: only set the fields the caller actually provided (a present `null`
     // clears a nullable column). Building from defined-only fields also satisfies
     // exactOptionalPropertyTypes (zod `.optional()` yields `T | undefined`).
