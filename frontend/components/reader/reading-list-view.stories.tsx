@@ -23,7 +23,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** The earliest pinned arrival — every later fixture lands `index` days after it. */
 const BASE_RECEIVED_AT = new Date(Date.UTC(2026, 8, 12, 14, 0, 0));
 
-function withoutText({ text: _text, ...listItem }: ReaderPost) {
+function withoutText({ text: _text, html: _html, ...listItem }: ReaderPost) {
   return listItem;
 }
 
@@ -89,7 +89,11 @@ export const Populated: Story = {
   decorators: [
     (Story) => (
       <ToastProvider>
-        <ReaderProvider initialPosts={pinnedPosts()} initialHealth={healthySnapshot()}>
+        <ReaderProvider
+          initialPosts={pinnedPosts()}
+          initialHealth={healthySnapshot()}
+          instapaperConfigured
+        >
           <Story />
         </ReaderProvider>
       </ToastProvider>
@@ -111,7 +115,11 @@ export const SelectedCollapsed: Story = {
   decorators: [
     (Story) => (
       <ToastProvider>
-        <ReaderProvider initialPosts={pinnedPosts()} initialHealth={healthySnapshot()}>
+        <ReaderProvider
+          initialPosts={pinnedPosts()}
+          initialHealth={healthySnapshot()}
+          instapaperConfigured
+        >
           <Story />
         </ReaderProvider>
       </ToastProvider>
@@ -131,7 +139,11 @@ export const SelectedExpanded: Story = {
   decorators: [
     (Story) => (
       <ToastProvider>
-        <ReaderProvider initialPosts={pinnedPosts()} initialHealth={healthySnapshot()}>
+        <ReaderProvider
+          initialPosts={pinnedPosts()}
+          initialHealth={healthySnapshot()}
+          instapaperConfigured
+        >
           <Story />
         </ReaderProvider>
       </ToastProvider>
@@ -151,7 +163,7 @@ export const Empty: Story = {
   decorators: [
     (Story) => (
       <ToastProvider>
-        <ReaderProvider initialPosts={[]} initialHealth={healthySnapshot()}>
+        <ReaderProvider initialPosts={[]} initialHealth={healthySnapshot()} instapaperConfigured>
           <Story />
         </ReaderProvider>
       </ToastProvider>

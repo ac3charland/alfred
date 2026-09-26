@@ -11,9 +11,11 @@ import { PostRow } from './post-row';
 
 /**
  * One story per row state the reading list can show: a finished summary (collapsed and
- * expanded), the three floor states, and a post with nowhere for "Open" to point. Each is its
- * own `ReaderProvider` seed (rather than the shared shell seed) so its archive/open verbs have
- * something real to act on in an isolated story.
+ * expanded), the three floor states, a post with no web link, the Send verb disabled for each of
+ * its two reasons, and a sent post in the archive. Each is its own `ReaderProvider` seed (rather
+ * than the shared shell seed) so its verbs have something real to act on in an isolated story.
+ * `parameters.instapaperConfigured` says whether the story's deployment can send; it defaults to
+ * true, the Personal instance.
  *
  * The `Wiki…` stories are the Novel-ideas checklist on a deployment that can write into the
  * wiki (the preview's `store.wiki.writable`), one per state it draws: nothing ticked beside a
@@ -30,7 +32,7 @@ function post(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
+  const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
   return listItem;
 }
 
@@ -42,9 +44,14 @@ const withFrame: Decorator = (Story) => (
 
 const withProviders: Decorator = (Story, context) => {
   const row = context.args['post'] as ReaderPostListItem;
+  const configured = context.parameters['instapaperConfigured'] as boolean | undefined;
   return (
     <ToastProvider>
-      <ReaderProvider initialPosts={[row]} initialHealth={NO_READER_HEALTH}>
+      <ReaderProvider
+        initialPosts={[row]}
+        initialHealth={NO_READER_HEALTH}
+        instapaperConfigured={configured ?? true}
+      >
         <Story />
       </ReaderProvider>
     </ToastProvider>
@@ -151,7 +158,10 @@ export const Refused: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** No canonical URL and no captured Message-ID — Open is disabled, with a title saying why. */
+/**
+ * No canonical URL and no captured Message-ID: nowhere for Original to point, so there is no
+ * Original link at all — and Send still works, as a private bookmark carrying the post's body.
+ */
 export const NoLink: Story = {
   args: {
     post: post({
@@ -255,6 +265,64 @@ export const RefusedAndSwept: Story = {
       text_swept_at: '2026-09-08T03:00:00.000Z',
       model: 'claude-sonnet-5',
       prompt_version: 1,
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/**
+ * Send disabled: no web link, and the retention sweep took the body — nothing Instapaper could
+ * save. The button stays in the leading slot, disabled, with a title saying why.
+ */
+export const SendNothingToSend: Story = {
+  args: {
+    post: post({
+      id: 'p-nothing-to-send',
+      author: 'Stratechery',
+      title: '(untitled)',
+      received_at: '2026-06-14T14:00:00.000Z',
+      word_count: 0,
+      canonical_url: null,
+      rfc822_message_id: '<untitled@mail.stratechery.com>',
+      summary_state: 'failed',
+      last_error: 'no readable body',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** Send disabled: this deployment has no Instapaper credentials (the Work instance, local dev). */
+export const SendNotConfigured: Story = {
+  args: { selected: true },
+  parameters: {
+    instapaperConfigured: false,
+    visualTest: { target: '[data-testid="row-frame"]' },
+  },
+};
+
+/** The archive after a send: the in Instapaper badge, and Unarchive in Archive's slot. */
+export const SentInArchive: Story = {
+  args: {
+    variant: 'archive',
+    post: post({
+      id: 'p-sent',
+      author: 'Second Thoughts',
+      title: 'How near is the intelligence explosion, really?',
+      received_at: '2026-09-16T14:00:00.000Z',
+      word_count: 3220,
+      html_extracted: true,
+      canonical_url: 'https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion',
+      summary_state: 'done',
+      gist:
+        'Argues the "recursive self-improvement" debate conflates three different feedback loops ' +
+        'and that only one of them (automated ML research) has any evidence behind it.',
+      overview: makeReaderOverview(),
+      model: 'claude-sonnet-5',
+      prompt_version: 2,
+      summarized_at: '2026-09-16T14:05:00.000Z',
+      archived_at: '2026-09-17T09:00:00.000Z',
+      instapaper_sent_at: '2026-09-17T09:00:00.000Z',
+      instapaper_bookmark_id: 1_234_567,
     }),
   },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },

@@ -39,3 +39,15 @@ export const Emphasis: Story = {
     },
   },
 };
+
+// A Reader send Instapaper refused: the route's own sentence, as the store toasts it on rollback.
+export const InstapaperRefusal: Story = {
+  args: {
+    toast: {
+      id: 'i',
+      message: 'This publication has opted out of Instapaper',
+      variant: 'default',
+      leaving: false,
+    },
+  },
+};
