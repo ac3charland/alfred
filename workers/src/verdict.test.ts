@@ -99,8 +99,14 @@ describe('parseVerdict', () => {
   });
 
   it('drops item_type to undefined when it is outside the enum, without rejecting the rest', () => {
-    const result = parseVerdict({ item_type: 'knowledge', priority: 'high' });
+    const result = parseVerdict({ item_type: 'reminder', priority: 'high' });
     expect(result?.item_type).toBeUndefined();
+    expect(result?.priority).toBe('high');
+  });
+
+  it("accepts item_type 'knowledge' — it is a legal enum value, not dropped", () => {
+    const result = parseVerdict({ item_type: 'knowledge', priority: 'high' });
+    expect(result?.item_type).toBe('knowledge');
     expect(result?.priority).toBe('high');
   });
 
@@ -214,6 +220,20 @@ describe('validateVerdict', () => {
       intended_epic_id: 'epic-alf',
     });
     expect(validateVerdict(verdict, buildWorld())).toEqual(verdict);
+  });
+
+  it('keeps only item_type for a knowledge verdict, dropping a model-supplied priority and folder_id (and every other field)', () => {
+    const verdict = buildVerdict({
+      item_type: 'knowledge',
+      priority: 'high',
+      due_date: '2026-08-14',
+      folder_id: 'folder-work',
+      intended_project_id: 'project-alf',
+      intended_epic_id: 'epic-alf',
+    });
+    expect(validateVerdict(verdict, buildWorld())).toEqual(
+      buildVerdict({ item_type: 'knowledge' }),
+    );
   });
 });
 
@@ -329,6 +349,45 @@ describe('mergeIntoItem', () => {
     const result = mergeIntoItem(verdict, item, buildWorld());
     expect(result.intended_project_id).toBe('project-oth');
     expect(result.intended_epic_id).toBe('epic-oth');
+  });
+
+  it("keeps a held knowledge row's schema pinned — the sweep never retypes it and never adds a field, task- or code-shaped alike", () => {
+    const item = buildItem({ item_type: 'knowledge' });
+    // Even a model that (wrongly) proposed every task- AND code-shaped field for it: the schema
+    // pin makes this unreachable in production, but the merge must still be safe against it. All
+    // five other fields have to be exercised together — a guard loosened from `finalType ===
+    // 'code'` to `finalType !== 'task'` would still pass a test that only tried the task fields,
+    // because it would also (wrongly) let a knowledge row through for project/epic.
+    const verdict = buildVerdict({
+      item_type: 'knowledge',
+      priority: 'high',
+      due_date: '2026-08-14',
+      folder_id: 'folder-work',
+      intended_project_id: 'project-alf',
+      intended_epic_id: 'epic-alf',
+    });
+    const result = mergeIntoItem(verdict, item, buildWorld());
+    // Already held, so not rewritten.
+    expect(result.item_type).toBeUndefined();
+    // The classifier's policy writes nothing else onto a knowledge row — the database itself
+    // doesn't forbid a priority or a folder here, so this is `mergeIntoItem` holding the line.
+    expect(JSON.stringify(result)).toBe('{}');
+  });
+
+  it('never retypes a held knowledge row given a task-shaped verdict, and writes none of its fields', () => {
+    const item = buildItem({ item_type: 'knowledge' });
+    // The row's own type wins regardless of what the verdict was judged as — the schema pin makes
+    // a task-shaped verdict for a held knowledge row unreachable in production, but the merge must
+    // still be safe against it.
+    const verdict = buildVerdict({
+      item_type: 'task',
+      priority: 'high',
+      due_date: '2026-08-14',
+      folder_id: 'folder-work',
+    });
+    const result = mergeIntoItem(verdict, item, buildWorld());
+    expect(result.item_type).toBeUndefined();
+    expect(JSON.stringify(result)).toBe('{}');
   });
 
   it('carries no field the item already had, so JSON.stringify produces only the keys that will actually be written', () => {
