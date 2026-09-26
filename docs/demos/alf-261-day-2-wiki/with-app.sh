@@ -37,7 +37,18 @@ kill_tree() {
 }
 cleanup() { kill_tree "$APP"; kill_tree "$MOCK"; }
 trap cleanup EXIT
-until curl -sf "$MOCK_URL/__mock__/health" >/dev/null 2>&1; do sleep 0.2; done
-until curl -s -o /dev/null "$APP_URL/login" 2>/dev/null; do sleep 0.5; done
+# Bounded: a server that never comes up fails the demo in two minutes instead of hanging it.
+wait_for() {
+  local name="$1"
+  shift
+  for _ in $(seq 120); do
+    if "$@" >/dev/null 2>&1; then return 0; fi
+    sleep 1
+  done
+  echo "with-app.sh: $name did not come up within 120s" >&2
+  exit 1
+}
+wait_for "the mock backend" curl -sf "$MOCK_URL/__mock__/health"
+wait_for "the app" curl -s -o /dev/null "$APP_URL/login"
 
 node "$HERE/send-contract.mjs" "$1"
