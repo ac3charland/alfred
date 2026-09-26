@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { ActiveModuleLabel } from '@/components/shell/active-module-label';
 import { CommandPalette } from '@/components/shell/command-palette';
 import { InstanceMenu } from '@/components/shell/instance-menu';
 import { SearchBox } from '@/components/shell/search-box';
@@ -43,20 +44,21 @@ export function AppShell({
     <>
       <div className={shellRootClass}>
         {/* Desktop sidebar */}
-        {/* 280px (`md:w-70`), matching the mobile drawer's width — widened from `md:w-56`
-            (ALF-233) so the four-segment switcher's labels fit without truncating, then widened
-            again from `md:w-64` (ALF-261): the fifth segment (Wiki) pushed five 13px labels to
-            ~187px of text against the 256px sidebar's budget, clipping every label by a few px.
-            Widening to 272px (`md:w-68`) wasn't quite enough either — every label was still 1px
-            short of its content width there — so the sidebar grew once more to 280px. */}
-        <aside className="hidden md:flex md:w-70 md:shrink-0 md:flex-col border-r border-border bg-surface">
+        {/* 224px (`md:w-56`), matching the mobile drawer's width. The switcher is icon-only
+            (ALF-270) so it carries no label budget; the module navs are what actually set this
+            floor (they fit at 224px before ALF-233 widened the sidebar for the switcher's own
+            labels, since removed). */}
+        <aside className="hidden md:flex md:w-56 md:shrink-0 md:flex-col border-r border-border bg-surface">
           <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
-            <AlfredLink
-              aria-label="alfred — back to capture"
-              className="font-serif text-xl text-foreground tracking-tight transition-colors duration-150 hover:text-accent-teal motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
-            >
-              alfred
-            </AlfredLink>
+            <div className="flex items-baseline justify-between gap-2 min-w-0">
+              <AlfredLink
+                aria-label="alfred — back to capture"
+                className="font-serif text-xl text-foreground tracking-tight transition-colors duration-150 hover:text-accent-teal motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
+              >
+                alfred
+              </AlfredLink>
+              <ActiveModuleLabel />
+            </div>
             <ViewSwitcher />
           </div>
           <div className="flex-1 overflow-y-auto px-2">
