@@ -137,6 +137,19 @@ update reader_publications set enabled = false where handle = 'news@example.com'
   call still can. The actual guard is that `anon` has no RLS policy on `reader_posts` and
   `authenticated` is the owner's own session, not an arbitrary caller.
 
+### `0039_reader_instapaper.sql` — sending a post to Instapaper (ALF-238)
+
+- **`reader_posts.html`** — the email's decoded `text/html` part, raw, kept at intake so a send can
+  carry the post's own body (a paid post arrives whole, not as the paywall's teaser). Written only
+  when that HTML produced `text` and fits the Worker's 1 M-character ceiling; the app never renders
+  it and the list payload never carries it. Null for posts ingested before this migration.
+- **`reader_posts.instapaper_sent_at`** — the last confirmed save to Instapaper; drives the row's
+  "in Instapaper" badge and survives an unarchive.
+- **`reader_posts.instapaper_bookmark_id`** — Instapaper's `bookmark_id` from that save, kept for a
+  later Instapaper → wiki sync to match on.
+- **`reader_sweep_text`** — unchanged signature and predicate; the retention sweep now nulls
+  `html` in the same statement that nulls `text`.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`

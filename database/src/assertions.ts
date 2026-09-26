@@ -3737,9 +3737,9 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
   );
 
   const readerSweepTextResult = await attempt(
-    'reader_sweep_text nulls the body of a post past the window, stamps text_swept_at, leaves ' +
-      'the summary, a post inside the window and a post that never had a body alone, and ' +
-      'refuses a p_days below one (ALF-234)',
+    'reader_sweep_text nulls the body of a post past the window — its text and its HTML — ' +
+      'stamps text_swept_at, leaves the summary, a post inside the window and a post that never ' +
+      'had a body alone, and refuses a p_days below one (ALF-234, ALF-238)',
     async () => {
       const publication = await client.query<{ id: string }>(
         `insert into reader_publications (handle, name, source)
@@ -3755,14 +3755,16 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       // was swept" about a post that simply arrived empty.
       await client.query(
         `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
-                                    received_at, text, summary_state, headline, gist, overview,
-                                    summarized_at)
+                                    received_at, text, html, summary_state, headline, gist,
+                                    overview, summarized_at)
            values ($1, 'gmail-personal', 'sweep-old', 'Old Post', now() - interval '91 days',
-                   'the stored body', 'done', 'A headline', 'A gist', '{}'::jsonb, now()),
+                   'the stored body', '<p>the stored body</p>', 'done', 'A headline', 'A gist',
+                   '{}'::jsonb, now()),
                   ($1, 'gmail-personal', 'sweep-recent', 'Recent Post', now() - interval '89 days',
-                   'the stored body', 'done', 'A headline', 'A gist', '{}'::jsonb, now()),
+                   'the stored body', '<p>the stored body</p>', 'done', 'A headline', 'A gist',
+                   '{}'::jsonb, now()),
                   ($1, 'gmail-personal', 'sweep-bodiless', 'Bodiless Post',
-                   now() - interval '91 days', '', 'failed', null, null, null, null)`,
+                   now() - interval '91 days', '', '<p></p>', 'failed', null, null, null, null)`,
         [publicationId],
       );
 
@@ -3774,6 +3776,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
 
       const { rows: oldRows } = await client.query<{
         text: string | null;
+        html: string | null;
         stamped: boolean;
         title: string;
         gist: string | null;
@@ -3782,6 +3785,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         received: boolean;
       }>(
         `select text,
+                html,
                 text_swept_at is not null as stamped,
                 title,
                 gist,
@@ -3793,18 +3797,25 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       const old = oldRows[0];
       if (old === undefined) throw new Error('the swept post is gone');
       if (old.text !== null) throw new Error('the swept post still holds its text');
+      if (old.html !== null) throw new Error('the swept post still holds its HTML');
       if (!old.stamped) throw new Error('the swept post has no text_swept_at stamp');
       if (old.title !== 'Old Post' || old.gist !== 'A gist' || old.overview === null)
         throw new Error('the sweep took part of the summary with it');
       if (!old.summarized || !old.received)
         throw new Error('the sweep moved summarized_at or received_at');
 
-      const { rows: recentRows } = await client.query<{ text: string | null; stamped: boolean }>(
-        `select text, text_swept_at is not null as stamped
+      const { rows: recentRows } = await client.query<{
+        text: string | null;
+        html: string | null;
+        stamped: boolean;
+      }>(
+        `select text, html, text_swept_at is not null as stamped
            from reader_posts where gmail_message_id = 'sweep-recent'`,
       );
       if (recentRows[0]?.text === null || recentRows[0]?.stamped === true)
         throw new Error('a post inside the window was swept');
+      if (recentRows[0]?.html !== '<p>the stored body</p>')
+        throw new Error('a post inside the window lost its HTML');
 
       const { rows: bodilessRows } = await client.query<{ text: string | null; stamped: boolean }>(
         `select text, text_swept_at is not null as stamped
@@ -3837,7 +3848,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       if (!refusedLimit) throw new Error('reader_sweep_text accepted p_limit = 0');
 
       return (
-        'the old post lost only its text and gained a stamp; the recent one, the bodiless one ' +
+        'the old post lost only its text and HTML and gained a stamp; the recent one, the ' +
+        'bodiless one ' +
         'and a caller asking for p_days = 0 were all turned away'
       );
     },
