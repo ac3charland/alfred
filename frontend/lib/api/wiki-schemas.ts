@@ -36,6 +36,8 @@ export type WikiSearchQuery = z.infer<typeof wikiSearchQuerySchema>;
  */
 export const sendReaderIdeasSchema = z
   .object({
+    // Six is workers/src/reader/schema.ts `READER_MAX_BULLETS`, the most bullets an overview
+    // stores; the two packages share no code, so the number is repeated here.
     ideas: z.array(z.string().min(1)).min(1).max(6),
   })
   .strict();

@@ -38,21 +38,39 @@ function post(wikiSentIdeas: string[] = []): ReaderPostListItem {
 }
 
 /** The list as the row mounts it: fed from the store, so a reconciled send redraws it. */
-function LiveList() {
+function LiveList({ ideas = IDEAS }: { ideas?: readonly string[] }) {
   const row = useReaderPosts().find((candidate) => candidate.id === POST_ID);
   if (row === undefined) return null;
   return (
     <NovelIdeaList
       postId={row.id}
-      ideas={IDEAS}
+      ideas={ideas}
       sentIdeas={row.wiki_sent_ideas}
       heading={<h3>Novel ideas</h3>}
     />
   );
 }
 
-function renderList(sent: string[] = []) {
-  return renderReader(<LiveList />, [post(sent)], undefined, { wikiWritable: true });
+function renderList(sent: string[] = [], ideas: readonly string[] = IDEAS) {
+  return renderReader(<LiveList ideas={ideas} />, [post(sent)], undefined, {
+    wikiWritable: true,
+  });
+}
+
+/**
+ * Force a `prefers-reduced-motion` result for the duration of a test. `restoreMocks`
+ * (jest.config) reverts the spy to the jest.setup stub after each test.
+ */
+function mockReducedMotion(matches: boolean): void {
+  const mql = {
+    matches,
+    media: '(prefers-reduced-motion: reduce)',
+    onchange: null,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  } as unknown as MediaQueryList;
+  jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
 }
 
 /** A promise the test settles by hand, so one send can be held in flight. */
@@ -119,6 +137,18 @@ describe('NovelIdeaList — ticking', () => {
     expect(tick(STREAKS)).toHaveAttribute('aria-checked', 'true');
   });
 
+  it('never ticks a bullet with Enter — a checkbox toggles on Space only', async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    tick(STREAKS).focus();
+    await user.keyboard('{Enter}');
+    expect(tick(STREAKS)).toHaveAttribute('aria-checked', 'false');
+
+    await user.keyboard(' ');
+    expect(tick(STREAKS)).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('draws a sent bullet as sent, and never as something to tick', async () => {
     const user = userEvent.setup();
     renderList([HABIT]);
@@ -130,6 +160,21 @@ describe('NovelIdeaList — ticking', () => {
     await user.click(screen.getByText(HABIT));
     expect(queryBar()).not.toBeInTheDocument();
     expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+  });
+});
+
+describe('NovelIdeaList — empty bullets', () => {
+  it('drops empty and whitespace-only bullets: they are not ideas, and never reach a send', async () => {
+    const user = userEvent.setup();
+    mockApi.sendReaderIdeasToWiki.mockResolvedValue(post([HABIT]));
+    renderList([], ['', HABIT, '   \t']);
+
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Send all to wiki' }));
+
+    expect(mockApi.sendReaderIdeasToWiki).toHaveBeenCalledWith(POST_ID, { ideas: [HABIT] });
   });
 });
 
@@ -356,6 +401,27 @@ describe('NovelIdeaList — what it looks like', () => {
 
     expect(screen.getByTestId('novel-ideas-selection')).toHaveClass('grid-rows-[1fr]');
     expect(screen.getByTestId('novel-ideas-selection')).not.toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+describe('NovelIdeaList — reduced motion', () => {
+  it('opens and folds the bar with no transition to wait on under prefers-reduced-motion', async () => {
+    mockReducedMotion(true);
+    const user = userEvent.setup();
+    renderList();
+
+    const collapse = screen.getByTestId('novel-ideas-selection');
+    // The height transition is switched off for reduced-motion users, so no transitionend is
+    // ever needed: the bar is open or folded the moment the count says so.
+    expect(collapse).toHaveClass('motion-reduce:transition-none');
+
+    await user.click(tick(ENVIRONMENT));
+    expect(collapse).toHaveClass('grid-rows-[1fr]');
+    expect(bar()).toHaveTextContent('1 selected');
+
+    await user.click(tick(ENVIRONMENT));
+    expect(collapse).toHaveClass('grid-rows-[0fr]');
+    expect(queryBar()).not.toBeInTheDocument();
   });
 });
 

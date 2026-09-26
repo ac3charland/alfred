@@ -68,7 +68,29 @@ const barClass = cn(
   'mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 px-1.5 pt-1.5',
 );
 
-export function NovelIdeaList({ postId, ideas, sentIdeas, heading }: NovelIdeaListProperties) {
+/**
+ * A bullet worth showing: an empty or whitespace-only one is not an idea, and the send route
+ * refuses an empty string — kept in, it would fail every Send all.
+ */
+function isIdea(bullet: string): boolean {
+  return bullet.trim() !== '';
+}
+
+/**
+ * The ARIA checkbox pattern toggles on Space only. A `<button>` also clicks on Enter, so the
+ * keydown's default is stopped there — Enter on a bullet does nothing.
+ */
+function ignoreEnter(event: React.KeyboardEvent<HTMLButtonElement>) {
+  if (event.key === 'Enter') event.preventDefault();
+}
+
+export function NovelIdeaList({
+  postId,
+  ideas: bullets,
+  sentIdeas,
+  heading,
+}: NovelIdeaListProperties) {
+  const ideas = React.useMemo(() => bullets.filter((bullet) => isIdea(bullet)), [bullets]);
   const { sendIdeasToWiki } = useReaderActions();
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(EMPTY_SELECTION);
   const [sending, setSending] = React.useState<Sending>(null);
@@ -229,6 +251,7 @@ export function NovelIdeaList({ postId, ideas, sentIdeas, heading }: NovelIdeaLi
                 aria-checked={isTicked}
                 disabled={busy}
                 className={tickRowClass}
+                onKeyDown={ignoreEnter}
                 onClick={() => {
                   toggle(idea);
                 }}
