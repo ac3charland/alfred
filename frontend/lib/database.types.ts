@@ -977,6 +977,7 @@ export type Database = {
           text: string | null
           text_swept_at: string | null
           title: string
+          wiki_sent_ideas: string[]
           word_count: number
         }
         Insert: {
@@ -1007,6 +1008,7 @@ export type Database = {
           text?: string | null
           text_swept_at?: string | null
           title: string
+          wiki_sent_ideas?: string[]
           word_count?: number
         }
         Update: {
@@ -1037,6 +1039,7 @@ export type Database = {
           text?: string | null
           text_swept_at?: string | null
           title?: string
+          wiki_sent_ideas?: string[]
           word_count?: number
         }
         Relationships: [
@@ -1128,6 +1131,87 @@ export type Database = {
           html?: string
           id?: string
           uploaded_at?: string
+        }
+        Relationships: []
+      }
+      wiki_pages: {
+        Row: {
+          blob_oid: string
+          body: string
+          commit_oid: string
+          created: string | null
+          links: string[]
+          parse_error: string | null
+          path: string
+          search: unknown
+          section: string
+          sources: string[]
+          summary: string
+          synced_at: string
+          tags: string[]
+          title: string
+          updated: string | null
+        }
+        Insert: {
+          blob_oid: string
+          body?: string
+          commit_oid: string
+          created?: string | null
+          links?: string[]
+          parse_error?: string | null
+          path: string
+          search?: unknown
+          section: string
+          sources?: string[]
+          summary?: string
+          synced_at?: string
+          tags?: string[]
+          title: string
+          updated?: string | null
+        }
+        Update: {
+          blob_oid?: string
+          body?: string
+          commit_oid?: string
+          created?: string | null
+          links?: string[]
+          parse_error?: string | null
+          path?: string
+          search?: unknown
+          section?: string
+          sources?: string[]
+          summary?: string
+          synced_at?: string
+          tags?: string[]
+          title?: string
+          updated?: string | null
+        }
+        Relationships: []
+      }
+      wiki_sync: {
+        Row: {
+          commit_oid: string | null
+          id: number
+          last_error: string | null
+          last_error_at: string | null
+          pending: number
+          synced_at: string | null
+        }
+        Insert: {
+          commit_oid?: string | null
+          id?: number
+          last_error?: string | null
+          last_error_at?: string | null
+          pending?: number
+          synced_at?: string | null
+        }
+        Update: {
+          commit_oid?: string | null
+          id?: number
+          last_error?: string | null
+          last_error_at?: string | null
+          pending?: number
+          synced_at?: string | null
         }
         Relationships: []
       }
@@ -1381,6 +1465,46 @@ export type Database = {
       }
     }
     Functions: {
+      append_wiki_sent_ideas: {
+        Args: { p_ideas: string[]; p_post: string }
+        Returns: {
+          account_key: string
+          archived_at: string | null
+          author: string | null
+          canonical_url: string | null
+          comm_message_id: string | null
+          created_at: string
+          gist: string | null
+          gmail_message_id: string
+          headline: string | null
+          html_extracted: boolean
+          id: string
+          last_error: string | null
+          model: string | null
+          model_called_at: string | null
+          opened_at: string | null
+          overview: Json | null
+          prompt_version: number | null
+          publication_id: string
+          received_at: string
+          rfc822_message_id: string | null
+          summarize_attempts: number
+          summarized_at: string | null
+          summarizing_since: string | null
+          summary_state: string
+          text: string | null
+          text_swept_at: string | null
+          title: string
+          wiki_sent_ideas: string[]
+          word_count: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "reader_posts"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       comm_canonical_handle: { Args: { p_handle: string }; Returns: string }
       comm_canonicalise_handles: { Args: never; Returns: number }
       comm_create_inbox_item: {
@@ -1685,6 +1809,15 @@ export type Database = {
         Returns: number
       }
       respace_code_priorities: { Args: never; Returns: undefined }
+      search_wiki_pages: {
+        Args: { p_limit?: number; p_query: string }
+        Returns: {
+          path: string
+          rank: number
+          snippet: string
+        }[]
+      }
+      send_items_to_wiki: { Args: { p_ids: string[] }; Returns: number }
       swap_code_priority: {
         Args: { p_a: string; p_b: string }
         Returns: {

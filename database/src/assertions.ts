@@ -4086,6 +4086,355 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // ── Wiki (ALF-261) ──────────────────────────────────────────────────────────
+
+  const wikiGrantsResult = await attempt(
+    'wiki: authenticated has full DML on wiki_pages and wiki_sync, and anon is denied on both ' +
+      '(ALF-261)',
+    async () => {
+      await asRole(client, 'authenticated', async () => {
+        await client.query(
+          `insert into wiki_pages (path, section, title, blob_oid, commit_oid)
+             values ('wiki/concepts/grant-test.md', 'concepts', 'Grant test', 'b1', 'c1')`,
+        );
+        await client.query(
+          `update wiki_pages set title = 'Renamed' where path = 'wiki/concepts/grant-test.md'`,
+        );
+        const { rows } = await client.query<{ title: string }>(
+          `select title from wiki_pages where path = 'wiki/concepts/grant-test.md'`,
+        );
+        if (rows[0]?.title !== 'Renamed')
+          throw new Error('authenticated could not read back its own page update');
+        await client.query(`delete from wiki_pages where path = 'wiki/concepts/grant-test.md'`);
+
+        await client.query(
+          `insert into wiki_sync (id, commit_oid, synced_at) values (1, 'c1', now())
+             on conflict (id) do update set commit_oid = excluded.commit_oid`,
+        );
+        const { rows: syncRows } = await client.query<{ commit_oid: string }>(
+          `select commit_oid from wiki_sync where id = 1`,
+        );
+        if (syncRows[0]?.commit_oid !== 'c1')
+          throw new Error('authenticated could not write wiki_sync');
+        await client.query(`delete from wiki_sync where id = 1`);
+      });
+
+      // Seed real rows as the superuser (bypasses RLS), so the anon count below proves RLS
+      // denial rather than just reading an empty table the authenticated block already emptied.
+      await client.query(
+        `insert into wiki_pages (path, section, title, blob_oid, commit_oid)
+           values ('wiki/concepts/grant-test.md', 'concepts', 'Grant test', 'b1', 'c1')`,
+      );
+      await client.query(
+        `insert into wiki_sync (id, commit_oid, synced_at) values (1, 'c1', now())
+           on conflict (id) do update set commit_oid = excluded.commit_oid`,
+      );
+      try {
+        await asRole(client, 'anon', async () => {
+          for (const table of ['wiki_pages', 'wiki_sync']) {
+            const { rows } = await client.query<{ n: string }>(
+              `select count(*)::text as n from ${table}`,
+            );
+            if (rows[0]?.n !== '0') throw new Error(`anon can read ${table}`);
+          }
+        });
+      } finally {
+        await client.query(`delete from wiki_pages where path = 'wiki/concepts/grant-test.md'`);
+        await client.query(`delete from wiki_sync where id = 1`);
+      }
+      return 'authenticated wrote, read and deleted both tables; anon saw neither despite real rows existing';
+    },
+  );
+
+  const wikiPageChecksResult = await attempt(
+    'wiki_pages refuses a section outside the four, a second sync row, and a path that ' +
+      'disagrees with its section (ALF-261)',
+    async () => {
+      const expectRejection = async (label: string, sql: string): Promise<void> => {
+        await client.query('savepoint wiki_check');
+        try {
+          await client.query(sql);
+        } catch {
+          await client.query('rollback to savepoint wiki_check');
+          return;
+        }
+        await client.query('rollback to savepoint wiki_check');
+        throw new Error(`${label} was accepted`);
+      };
+      await client.query('begin');
+      try {
+        await expectRejection(
+          'a raw section',
+          `insert into wiki_pages (path, section, title, blob_oid, commit_oid)
+             values ('wiki/raw/x.md', 'raw', 'x', 'b', 'c')`,
+        );
+        await expectRejection(
+          'a path outside its section',
+          `insert into wiki_pages (path, section, title, blob_oid, commit_oid)
+             values ('wiki/entities/x.md', 'concepts', 'x', 'b', 'c')`,
+        );
+        await expectRejection('a second wiki_sync row', `insert into wiki_sync (id) values (2)`);
+      } finally {
+        await client.query('rollback');
+      }
+      return 'all three rejected';
+    },
+  );
+
+  const wikiDispatchCheckResult = await attempt(
+    'items_dispatched_needs_folder lets a knowledge row dispatch with no folder, and still ' +
+      'refuses a task (ALF-261)',
+    async () => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('An idea', 'knowledge') returning id`,
+      );
+      const knowledge = rows[0]?.id;
+      if (knowledge === undefined) throw new Error('insert returned no id');
+      await client.query(`update items set dispatched_at = now() where id = $1`, [knowledge]);
+      const { rows: taskRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('A chore', 'task') returning id`,
+      );
+      const task = taskRows[0]?.id;
+      if (task === undefined) throw new Error('insert returned no id');
+      let refused = false;
+      try {
+        await client.query(`update items set dispatched_at = now() where id = $1`, [task]);
+      } catch {
+        refused = true;
+      }
+      if (!refused) throw new Error('a folderless task was dispatched');
+      await client.query(`delete from items where id in ($1, $2)`, [knowledge, task]);
+      return 'knowledge dispatched without a folder; the task was refused';
+    },
+  );
+
+  const wikiSendItemsResult = await attempt(
+    'send_items_to_wiki refuses a non-knowledge row, a knowledge parent with subtasks, an ' +
+      'already-dispatched row and a bad batch, and consumes a valid batch all at once (ALF-261)',
+    async () => {
+      const insert = async (
+        title: string,
+        type: string,
+        extra: Record<string, string | null> = {},
+      ): Promise<string> => {
+        const columns = ['title', 'item_type', ...Object.keys(extra)];
+        const values = [title, type, ...Object.values(extra)];
+        const { rows } = await client.query<{ id: string }>(
+          `insert into items (${columns.join(', ')})
+             values (${columns.map((_, index) => `$${String(index + 1)}`).join(', ')})
+             returning id`,
+          values,
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error('insert returned no id');
+        return id;
+      };
+      const expectRefusal = async (label: string, ids: string[]): Promise<void> => {
+        let refused = false;
+        try {
+          await asRole(client, 'authenticated', () =>
+            client.query(`select send_items_to_wiki($1::uuid[])`, [ids]),
+          );
+        } catch {
+          refused = true;
+        }
+        if (!refused) throw new Error(`${label} was accepted`);
+      };
+
+      const task = await insert('A chore', 'task');
+      const parent = await insert('A parent idea', 'knowledge');
+      // A knowledge row itself can never carry parent_id (items_task_only_fields forbids it for
+      // any item_type but task/code), so "a knowledge row that is a child" cannot exist as a
+      // seedable state — only a task or code child can hang off a knowledge parent, and
+      // enforce_subtask_shape (0019) only restricts family-mixing for `code`, so a task child
+      // nests under a knowledge parent with no retyping dance needed. It exists here purely to
+      // give `parent` a subtask for the next case.
+      const child = await insert('A child idea', 'task', { parent_id: parent });
+      const one = await insert('One idea', 'knowledge');
+      const two = await insert('Two idea', 'knowledge');
+      const dispatched = await insert('Already sent', 'knowledge');
+      await client.query(`update items set dispatched_at = now() where id = $1`, [dispatched]);
+
+      try {
+        await expectRefusal('a task', [task]);
+        await expectRefusal('a knowledge parent with subtasks', [parent]);
+        await expectRefusal('an already-dispatched knowledge row', [dispatched]);
+        await expectRefusal('a batch with one bad id', [one, task]);
+        // Refused batches change nothing.
+        const { rows: stillThere } = await client.query<{ n: string }>(
+          `select count(*)::text as n from items where id in ($1, $2, $3, $4, $5, $6)`,
+          [task, parent, child, one, two, dispatched],
+        );
+        if (stillThere[0]?.n !== '6') throw new Error('a refused batch removed rows');
+
+        const { rows: countRows } = await asRole(client, 'authenticated', () =>
+          client.query<{ n: number }>(`select send_items_to_wiki($1::uuid[]) as n`, [[one, two]]),
+        );
+        if (countRows[0]?.n !== 2)
+          throw new Error(`expected 2 consumed, got ${String(countRows[0]?.n)}`);
+        const { rows: gone } = await client.query<{ n: string }>(
+          `select count(*)::text as n from items where id in ($1, $2)`,
+          [one, two],
+        );
+        if (gone[0]?.n !== '0') throw new Error('consumed rows were not deleted');
+
+        await expectRefusal('an already-consumed id', [one]);
+        return 'four refusals, one batch consumed and deleted';
+      } finally {
+        // Every seeded row, even the ones a failed expectation left behind — `parent`'s delete
+        // cascades `child` (parent_id references items on delete cascade), and re-deleting an
+        // id the valid batch already consumed is a harmless no-op.
+        await client.query(`delete from items where id in ($1, $2, $3, $4, $5, $6)`, [
+          task,
+          parent,
+          child,
+          one,
+          two,
+          dispatched,
+        ]);
+      }
+    },
+  );
+
+  const wikiSendLogsCorrectionResult = await attempt(
+    'send_items_to_wiki stamps dispatched_at first, so a knowledge override of the classifier ' +
+      "logs a correction that outlives the row's delete (ALF-261)",
+    async () => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('Forgetting is the signal', 'unclassified')
+           returning id`,
+      );
+      const id = rows[0]?.id;
+      if (id === undefined) throw new Error('insert returned no id');
+      // The classifier's verdict: it said task.
+      await client.query(
+        `update items set item_type = 'task', classified_at = now(),
+                          classified_provider = 'anthropic', classified_model = 'claude-haiku-4-5',
+                          classified_prompt_version = 3, classified_guess = '{"item_type":"task"}'
+           where id = $1`,
+        [id],
+      );
+      // The owner said knowledge, then dispatched it to the wiki.
+      await client.query(`update items set item_type = 'knowledge' where id = $1`, [id]);
+      await asRole(client, 'authenticated', () =>
+        client.query(`select send_items_to_wiki($1::uuid[])`, [[id]]),
+      );
+      const { rows: corrections } = await client.query<{
+        item_id: string | null;
+        field: string;
+        direction: string;
+        guessed_value: string | null;
+        chosen_value: string | null;
+        captured_text: string;
+      }>(
+        `select item_id, field, direction, guessed_value, chosen_value, captured_text
+           from classification_corrections where captured_text = 'Forgetting is the signal'`,
+      );
+      const correction = corrections[0];
+      if (correction === undefined) throw new Error('no correction was logged');
+      if (correction.item_id !== null) throw new Error('the correction still references the row');
+      if (
+        correction.field !== 'item_type' ||
+        correction.direction !== 'changed' ||
+        correction.guessed_value !== 'task' ||
+        correction.chosen_value !== 'knowledge'
+      ) {
+        throw new Error(`unexpected correction ${JSON.stringify(correction)}`);
+      }
+      await client.query(`delete from classification_corrections where captured_text = $1`, [
+        'Forgetting is the signal',
+      ]);
+      return 'task → knowledge logged as changed, with item_id null after the delete';
+    },
+  );
+
+  const wikiAppendIdeasResult = await attempt(
+    'append_wiki_sent_ideas adds only the strings not already sent, once each, in first-' +
+      'occurrence order (ALF-261)',
+    async () => {
+      const { rows: pubRows } = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('append-test@example.com', 'Append Test', 'owner') returning id`,
+      );
+      const publication = pubRows[0]?.id;
+      if (publication === undefined) throw new Error('could not seed a publication');
+      const { rows: postRows } = await client.query<{ id: string }>(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+           values ($1, 'gmail-personal', 'append-test-msg', 'Append Test Post', now()) returning id`,
+        [publication],
+      );
+      const post = postRows[0]?.id;
+      if (post === undefined) throw new Error('could not seed a post');
+
+      const sent = async (ideas: string[]): Promise<string[]> => {
+        const { rows } = await asRole(client, 'authenticated', () =>
+          client.query<{ wiki_sent_ideas: string[] }>(
+            `select wiki_sent_ideas from append_wiki_sent_ideas($1, $2::text[])`,
+            [post, ideas],
+          ),
+        );
+        return rows[0]?.wiki_sent_ideas ?? [];
+      };
+
+      // Deliberately NOT alphabetical order — 'zeta' before 'alpha' — so this only passes because
+      // the append preserves first-occurrence order (unnest ... with ordinality, `order by
+      // min(ordinality)`); a plain `select distinct` giving back alphabetical order would fail it.
+      const first = await sent(['zeta', 'alpha']);
+      if (first.join('|') !== 'zeta|alpha') throw new Error(`first append gave ${first.join('|')}`);
+      const second = await sent(['alpha', 'mu', 'mu']);
+      if (second.join('|') !== 'zeta|alpha|mu')
+        throw new Error(`second append gave ${second.join('|')}`);
+      const third = await sent(['zeta']);
+      if (third.join('|') !== 'zeta|alpha|mu')
+        throw new Error(`re-sending an idea changed the array: ${third.join('|')}`);
+
+      await client.query(`delete from reader_posts where id = $1`, [post]);
+      await client.query(`delete from reader_publications where id = $1`, [publication]);
+      return 'zeta|alpha → zeta|alpha|mu → unchanged';
+    },
+  );
+
+  const wikiSearchResult = await attempt(
+    'search_wiki_pages ranks a title hit above a body hit and marks matched words with chr(2)/' +
+      'chr(3) (ALF-261)',
+    async () => {
+      // The body-hit page's path (`a-brain-rules.md`) is deliberately chosen to sort BEFORE the
+      // title-hit page's path (`forgetting-curve.md`) in plain path order — both live under
+      // `concepts` — so the assertion below only passes because `rank desc` actually runs before
+      // the `p.path` tie-break; dropping the `setweight`/`rank desc` entirely would leave path
+      // order in charge and put the body hit first instead.
+      await client.query(
+        `insert into wiki_pages (path, section, title, summary, body, blob_oid, commit_oid) values
+           ('wiki/concepts/forgetting-curve.md', 'concepts', 'Forgetting curve',
+            'Decay of recall over time.', 'Spaced review flattens the decay.', 'b1', 'c1'),
+           ('wiki/concepts/a-brain-rules.md', 'concepts', 'Brain Rules',
+            'Twelve principles.',
+            'Medina argues that forgetting is the brain pruning what it was never asked to retrieve.',
+            'b2', 'c1'),
+           ('wiki/entities/ebbinghaus.md', 'entities', 'Ebbinghaus', 'A psychologist.',
+            'Nothing about memory decay here.', 'b3', 'c1')`,
+      );
+      const { rows } = await asRole(client, 'authenticated', () =>
+        client.query<{ path: string; snippet: string; rank: number }>(
+          `select path, snippet, rank from search_wiki_pages('forgetting')`,
+        ),
+      );
+      const paths = rows.map((row) => row.path);
+      if (paths.join('|') !== 'wiki/concepts/forgetting-curve.md|wiki/concepts/a-brain-rules.md') {
+        throw new Error(`unexpected order ${paths.join('|')}`);
+      }
+      const bodyHit = rows[1];
+      if (!bodyHit?.snippet.includes('\u0002forgetting\u0003')) {
+        throw new Error(`snippet lacks the delimiters: ${JSON.stringify(bodyHit?.snippet)}`);
+      }
+      if (bodyHit.snippet.includes('<') || bodyHit.snippet.includes('>')) {
+        throw new Error('snippet carries HTML');
+      }
+      await client.query(`delete from wiki_pages where commit_oid = 'c1'`);
+      return `title hit first; snippet ${JSON.stringify(bodyHit.snippet)}`;
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -4162,5 +4511,12 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     readerCandidatesResult,
     readerPublicationsViewResult,
     readerHealthCeilingColumnsResult,
+    wikiGrantsResult,
+    wikiPageChecksResult,
+    wikiDispatchCheckResult,
+    wikiSendItemsResult,
+    wikiSendLogsCorrectionResult,
+    wikiAppendIdeasResult,
+    wikiSearchResult,
   ];
 }
