@@ -42,10 +42,14 @@ export function wikiPagePath(section: WikiSection, name: string): string {
   return `wiki/${section}/${name}.md`;
 }
 
-/** The in-app URL of a page: `/wiki/<section>/<name>`, or the index for a path outside it. */
+/**
+ * The in-app URL of a page: `/wiki/<section>/<name>`, or the index for a path outside it. The stem
+ * is percent-encoded, so a `#` or `?` in it stays part of the path rather than starting an anchor
+ * or a query; the route decodes the segment back (`parseWikiRoute`).
+ */
 export function wikiPageHref(path: string): string {
   const split = splitWikiPath(path);
-  return split === undefined ? '/wiki' : `/wiki/${split.section}/${split.name}`;
+  return split === undefined ? '/wiki' : `/wiki/${split.section}/${encodeURIComponent(split.name)}`;
 }
 
 /** A section's rank in the wiki's own order. */

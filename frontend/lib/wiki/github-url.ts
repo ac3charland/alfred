@@ -13,9 +13,18 @@ function trimSlashes(path: string): string {
   return path.replace(/^\/+/, '').replace(/\/+$/, '');
 }
 
+/**
+ * `path` appended to `base`, each segment percent-encoded (the slashes kept), so a `#` or `?` in a
+ * file or folder name stays part of the path rather than starting an anchor or a query.
+ */
 function withPath(base: string, path: string): string {
   const trimmed = trimSlashes(path);
-  return trimmed === '' ? base : `${base}/${trimmed}`;
+  if (trimmed === '') return base;
+  const encoded = trimmed
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `${base}/${encoded}`;
 }
 
 /** The file at `path` in `repo` (`owner/name`), with `anchor` (with or without its `#`) kept. */

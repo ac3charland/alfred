@@ -34,6 +34,17 @@ describe('sections', () => {
     expect(wikiPageHref('wiki/entities/james-clear.md')).toBe('/wiki/entities/james-clear');
     expect(wikiPageHref('not/a/page')).toBe('/wiki');
   });
+
+  it.each([
+    ['wiki/concepts/a#b.md', '/wiki/concepts/a%23b'],
+    ['wiki/concepts/why?.md', '/wiki/concepts/why%3F'],
+    ['wiki/concepts/100%-rule.md', '/wiki/concepts/100%25-rule'],
+    ['wiki/entities/café.md', '/wiki/entities/caf%C3%A9'],
+  ])('encodes the stem of %s so the URL names it, not a query or anchor', (path, href) => {
+    expect(wikiPageHref(path)).toBe(href);
+    // Next hands the route the decoded segment, so it decodes back to the stem.
+    expect(decodeURIComponent(href.split('/').at(-1) ?? '')).toBe(splitWikiPath(path)?.name);
+  });
 });
 
 describe('sortWikiPages', () => {

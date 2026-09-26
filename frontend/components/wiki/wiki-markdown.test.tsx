@@ -250,11 +250,11 @@ describe('WikiMarkdown', () => {
 
     expect(screen.getByRole('link', { name: 'Café' })).toHaveAttribute(
       'href',
-      '/wiki/entities/café',
+      '/wiki/entities/caf%C3%A9',
     );
     expect(screen.getByRole('link', { name: 'rule' })).toHaveAttribute(
       'href',
-      '/wiki/concepts/100%-rule',
+      '/wiki/concepts/100%25-rule',
     );
   });
 

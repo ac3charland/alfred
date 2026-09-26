@@ -41,6 +41,15 @@ describe('resolveWikiLink — the link-resolution table, as the reading room ren
     ],
     ['../../index.md', { kind: 'github', href: `${BLOB}/index.md` }],
     ['../../../elsewhere.md', { kind: 'broken' }],
+    // A percent-encoded dot segment: GitHub would decode it and climb, so it goes nowhere — and
+    // the Worker records no backlink for it.
+    ['%2e%2e/../habit-loop.md', { kind: 'broken' }],
+    // Root-relative: a path from the repo root, as GitHub renders it — never an in-app page, and
+    // the Worker records no backlink for it.
+    [
+      '/wiki/concepts/habit-loop.md',
+      { kind: 'github', href: `${BLOB}/wiki/concepts/habit-loop.md` },
+    ],
     // Not a page directly inside one of the four sections, but still a file in the repo.
     ['../other/x.md', { kind: 'github', href: `${BLOB}/wiki/other/x.md` }],
     ['habit-loop.txt', { kind: 'github', href: `${BLOB}/wiki/concepts/habit-loop.txt` }],
@@ -77,11 +86,11 @@ describe('resolveWikiLink — the link-resolution table, as the reading room ren
     const context = { index, repo: REPO };
     expect(resolveWikiLink('../entities/café.md', PAGE, context)).toEqual({
       kind: 'page',
-      href: '/wiki/entities/café',
+      href: '/wiki/entities/caf%C3%A9',
     });
     expect(resolveWikiLink('100%-rule.md', PAGE, context)).toEqual({
       kind: 'page',
-      href: '/wiki/concepts/100%-rule',
+      href: '/wiki/concepts/100%25-rule',
     });
   });
 
@@ -89,7 +98,7 @@ describe('resolveWikiLink — the link-resolution table, as the reading room ren
     const index = new Set([...INDEX, 'wiki/concepts/habit%20loop.md']);
     expect(resolveWikiLink('habit%20loop.md', PAGE, { index, repo: REPO })).toEqual({
       kind: 'page',
-      href: '/wiki/concepts/habit%20loop',
+      href: '/wiki/concepts/habit%2520loop',
     });
   });
 
