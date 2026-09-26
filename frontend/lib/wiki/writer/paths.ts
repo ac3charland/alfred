@@ -7,7 +7,7 @@
  * wiki's rule changes, this file changes with it.
  */
 
-/** A slug is cut to this many characters, at a word boundary. */
+/** A slug is cut to this many characters, at a word boundary, unless the caller says otherwise. */
 const MAX_SLUG_LENGTH = 60;
 
 /** The slug of a title that has no alphanumeric characters at all. */
@@ -15,10 +15,11 @@ const EMPTY_SLUG = 'untitled';
 
 /**
  * The slug of a title: NFKD-folded to strip accents, lower-cased, every run of non-alphanumerics
- * turned into one `-`, leading and trailing dashes dropped, cut at a word boundary to at most 60
- * characters. A title with nothing left after folding becomes `untitled`.
+ * turned into one `-`, leading and trailing dashes dropped, cut at a word boundary to at most
+ * `maxLength` characters (60, as every caller uses). A title with nothing left after folding
+ * becomes `untitled`.
  */
-export function slugify(title: string): string {
+export function slugify(title: string, maxLength = MAX_SLUG_LENGTH): string {
   const folded = title
     .normalize('NFKD')
     // Combining marks (the accents NFKD split off their base letters) are dropped; anything
@@ -26,11 +27,11 @@ export function slugify(title: string): string {
     .replaceAll(/[̀-ͯ]/g, '')
     .toLowerCase();
   let slug = folded.replaceAll(/[^a-z0-9]+/g, '-').replaceAll(/^-+|-+$/g, '');
-  if (slug.length > MAX_SLUG_LENGTH) {
+  if (slug.length > maxLength) {
     // Cut at the last dash at or before the limit, so the slug never ends mid-word. A title whose
     // first word alone is longer than the limit has no boundary to cut at and is cut hard.
-    const boundary = slug.lastIndexOf('-', MAX_SLUG_LENGTH);
-    slug = boundary > 0 ? slug.slice(0, boundary) : slug.slice(0, MAX_SLUG_LENGTH);
+    const boundary = slug.lastIndexOf('-', maxLength);
+    slug = boundary > 0 ? slug.slice(0, boundary) : slug.slice(0, maxLength);
   }
   return slug === '' ? EMPTY_SLUG : slug;
 }

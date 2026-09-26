@@ -45,6 +45,48 @@ describe('slugify', () => {
   });
 });
 
+// The wiki's own table (scripts/lib/paths.test.ts), verbatim: a folder Alfred names is one the
+// wiki's `npm run add` would have named.
+describe("the wiki's slug and folder-name table", () => {
+  it('lower-cases, folds accents, and joins words with -', () => {
+    expect(slugify('Crème Brûlée: A Story!')).toBe('creme-brulee-a-story');
+  });
+
+  it('cuts at a word boundary within the limit', () => {
+    expect(slugify('if we ever fully understood how the human brain knew', 40)).toBe(
+      'if-we-ever-fully-understood-how-the',
+    );
+  });
+
+  it('defaults to 60 characters', () => {
+    const slug = slugify('word '.repeat(30));
+    expect(slug.length).toBeLessThanOrEqual(60);
+    expect(slug.endsWith('-')).toBe(false);
+  });
+
+  it('a single over-long word is cut mid-word', () => {
+    expect(slugify('a'.repeat(70))).toBe('a'.repeat(60));
+  });
+
+  it('nothing usable becomes untitled', () => {
+    expect(slugify('!!!')).toBe('untitled');
+  });
+
+  it('folderName is <captured>-<slug>', () => {
+    expect(folderName('2026-10-01', 'Brain Rules')).toBe('2026-10-01-brain-rules');
+  });
+
+  it('uniqueFolderName adds -2, -3', () => {
+    const taken = new Set(['x', 'x-2']);
+    expect(uniqueFolderName('x', taken)).toBe('x-3');
+    expect(uniqueFolderName('y', taken)).toBe('y');
+  });
+
+  it('todayUtc', () => {
+    expect(todayUtc(new Date('2026-10-01T23:59:00Z'))).toBe('2026-10-01');
+  });
+});
+
 describe('folderName', () => {
   it('is the captured date, a dash, the slug', () => {
     expect(folderName('2026-10-03', 'Why habits stick')).toBe('2026-10-03-why-habits-stick');

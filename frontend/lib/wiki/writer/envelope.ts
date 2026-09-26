@@ -57,6 +57,20 @@ function parseableUrl(raw: string | null): string | null {
   return raw !== null && URL.canParse(raw) ? raw : null;
 }
 
+/**
+ * The title every file and the folder name carry: the source's own, or `Untitled` when it is
+ * blank — the wiki's lint refuses a blank `title`, and `Untitled` is what the slug of a blank
+ * title already falls back to (`untitled`), so the folder and the frontmatter agree.
+ */
+function titleOf(raw: string): string {
+  return raw.trim() === '' ? 'Untitled' : raw;
+}
+
+/** An author only when there is one: the wiki's `author` is a non-blank string or null. */
+function authorOf(raw: string | null): string | null {
+  return raw === null || raw.trim() === '' ? null : raw;
+}
+
 /** The UTC calendar date of an ISO timestamp. */
 function utcDate(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
@@ -84,6 +98,9 @@ export function knowledgeItemExternalId(itemId: string): string {
  * uncheckable instead. Every other case writes `source.md` on every send — filing drops a copy
  * whose body matches, or is empty, so a second send of the same post costs nothing.
  *
+ * Text that is only whitespace counts as gone: the wiki reads a blank body as empty (a pointer),
+ * so it is never written as `full-text`.
+ *
  * A bullet's internal newlines are folded to spaces, because a list item is one line.
  */
 export function readerEnvelope(
@@ -91,12 +108,14 @@ export function readerEnvelope(
   ideas: readonly string[],
   captured: string,
 ): Envelope {
-  const text = post.text ?? '';
+  const rawText = post.text ?? '';
+  const text = rawText.trim() === '' ? '' : rawText;
   const sourceUrl = parseableUrl(post.canonical_url);
+  const title = titleOf(post.title);
   const core = {
     source_type: 'reader-post',
-    title: post.title,
-    author: post.author,
+    title,
+    author: authorOf(post.author),
     source_url: sourceUrl,
     published: utcDate(post.received_at),
     captured,
@@ -118,7 +137,7 @@ export function readerEnvelope(
   const bullets = ideas.map((idea) => `- ${idea.replaceAll(/\s*\n\s*/g, ' ').trim()}`).join('\n');
   files.push({ name: `picks-${captured}.md`, content: renderWikiFile(picks, bullets) });
 
-  return { title: post.title, captured, files };
+  return { title, captured, files };
 }
 
 /**
@@ -127,10 +146,11 @@ export function readerEnvelope(
  * so no fidelity anywhere; the wiki reads that as `notes-only`.
  */
 export function knowledgeEnvelope(item: KnowledgeItemForWiki, captured: string): Envelope {
+  const title = titleOf(item.title);
   const notes: CoreFrontmatter = {
     source_type: 'idea',
     origin: 'mine',
-    title: item.title,
+    title,
     author: null,
     source_url: parseableUrl(item.source_url),
     published: null,
@@ -139,9 +159,9 @@ export function knowledgeEnvelope(item: KnowledgeItemForWiki, captured: string):
     external_id: knowledgeItemExternalId(item.id),
   };
   const trimmed = (item.notes ?? '').trim();
-  const body = trimmed === '' ? item.title : `${item.title}\n\n${trimmed}`;
+  const body = trimmed === '' ? title : `${title}\n\n${trimmed}`;
   return {
-    title: item.title,
+    title,
     captured,
     files: [{ name: `notes-${captured}.md`, content: renderWikiFile(notes, body) }],
   };

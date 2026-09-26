@@ -114,6 +114,48 @@ describe('readerEnvelope', () => {
     const envelope = readerEnvelope({ ...POST, author: null }, IDEAS, CAPTURED);
     expect(envelope.files[0]?.content).toContain('author: null');
   });
+
+  // The wiki's lint refuses a blank `author` or `title` (core-frontmatter), and reads a blank body
+  // as empty — so none of these may reach a file as written.
+  it.each(['', ' '.repeat(3), '\t\n'])(
+    'writes a blank author %j as null in every file',
+    (author) => {
+      const envelope = readerEnvelope({ ...POST, author }, IDEAS, CAPTURED);
+      for (const file of envelope.files) {
+        expect(file.content).toContain('author: null');
+      }
+    },
+  );
+
+  it.each(['', ' '.repeat(3)])(
+    'titles a post with a blank title %j Untitled, as its slug is',
+    (title) => {
+      const envelope = readerEnvelope({ ...POST, title }, IDEAS, CAPTURED);
+      expect(envelope.title).toBe('Untitled');
+      for (const file of envelope.files) {
+        expect(file.content).toContain('title: "Untitled"');
+      }
+    },
+  );
+
+  it.each(['\n\n', ' '.repeat(3), ' \t\n '])(
+    'reads whitespace-only text %j as gone: a pointer with an empty body, never full-text',
+    (text) => {
+      const envelope = readerEnvelope({ ...POST, text }, IDEAS, CAPTURED);
+      expect(envelope.files[0]?.content).toBe(
+        ['---', ...CORE_LINES, 'fidelity: "pointer"', '---', ''].join('\n'),
+      );
+    },
+  );
+
+  it('omits source.md for whitespace-only text with no URL, as for no text at all', () => {
+    const envelope = readerEnvelope(
+      { ...POST, text: '  \n', canonical_url: null },
+      [IDEAS[0] ?? ''],
+      CAPTURED,
+    );
+    expect(envelope.files.map((file) => file.name)).toEqual(['picks-2026-10-03.md']);
+  });
 });
 
 const ITEM: KnowledgeItemForWiki = {
@@ -149,6 +191,13 @@ describe('knowledgeEnvelope', () => {
         '',
       ].join('\n'),
     );
+  });
+
+  it('titles an item with a blank title Untitled — frontmatter, body and envelope alike', () => {
+    const envelope = knowledgeEnvelope({ ...ITEM, title: '  ', notes: null }, CAPTURED);
+    expect(envelope.title).toBe('Untitled');
+    expect(envelope.files[0]?.content).toContain('title: "Untitled"');
+    expect(envelope.files[0]?.content.endsWith('---\n\nUntitled\n')).toBe(true);
   });
 
   it('writes the title alone when the item has no notes', () => {
