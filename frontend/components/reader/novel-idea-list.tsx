@@ -7,6 +7,7 @@ import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-colla
 import { Button } from '@/components/atoms/button';
 import { Spinner } from '@/components/atoms/spinner';
 import { checkboxIncompleteClass, checkboxSizeClass } from '@/components/tasks/task-row.styles';
+import { isIdea } from '@/lib/reader/overview';
 import { useReaderActions, useWikiSendInFlight } from '@/lib/stores/reader-store';
 import { cn } from '@/lib/utils';
 
@@ -67,14 +68,6 @@ const statusClass = 'inline-flex shrink-0 items-center gap-1 text-xs text-muted-
 const barClass = cn(
   'mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 px-1.5 pt-1.5',
 );
-
-/**
- * A bullet worth showing: an empty or whitespace-only one is not an idea, and the send route
- * refuses an empty string — kept in, it would fail every Send all.
- */
-function isIdea(bullet: string): boolean {
-  return bullet.trim() !== '';
-}
 
 /**
  * The ARIA checkbox pattern toggles on Space only. A `<button>` also clicks on Enter, so the

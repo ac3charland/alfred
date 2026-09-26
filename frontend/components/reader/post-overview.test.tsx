@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 
 import { makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
@@ -85,6 +85,18 @@ describe('PostOverview — the wiki not connected', () => {
     expect(
       screen.getByText('Nothing new — the post restates what a well-read reader already knows.'),
     ).toBeInTheDocument();
+  });
+
+  it('draws only the real bullets when blank ones are mixed in', () => {
+    renderPlain(makeReaderOverview({ novel_ideas: ['Idea one', '', ' '.repeat(2), 'Idea two'] }));
+
+    const list = screen.getAllByRole('list')[0];
+    if (list === undefined) throw new Error('no Novel ideas list');
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Idea one', 'Idea two']);
   });
 
   it('keeps Novel ideas a plain bulleted list, with no send affordance and no taller heading row', () => {

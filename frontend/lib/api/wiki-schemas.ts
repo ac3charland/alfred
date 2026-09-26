@@ -30,7 +30,7 @@ export const wikiSearchQuerySchema = z.object({
 export type WikiSearchQuery = z.infer<typeof wikiSearchQuerySchema>;
 
 /**
- * Body for POST /api/reader/posts/[id]/wiki — the bullets to send, one to six non-empty strings
+ * Body for POST /api/reader/posts/[id]/wiki — the bullets to send, one to six non-blank strings
  * (an overview never holds more than a handful). `.strict()`, so a stray key is a 400 rather than
  * something silently ignored.
  */
@@ -38,7 +38,12 @@ export const sendReaderIdeasSchema = z
   .object({
     // Six is workers/src/reader/schema.ts `READER_MAX_BULLETS`, the most bullets an overview
     // stores; the two packages share no code, so the number is repeated here.
-    ideas: z.array(z.string().min(1)).min(1).max(6),
+    // A refine, not `.trim()`: the route matches each idea exactly against the post's bullets, so
+    // a whitespace-only one is refused while every other idea keeps its text as sent.
+    ideas: z
+      .array(z.string().refine((idea) => idea.trim() !== '', 'An idea must not be blank'))
+      .min(1)
+      .max(6),
   })
   .strict();
 

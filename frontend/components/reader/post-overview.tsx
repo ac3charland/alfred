@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { isIdea } from '@/lib/reader/overview';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 import { SECTION_HEADING_CLASS } from '@/lib/ui/section-heading-class';
 
@@ -15,8 +16,9 @@ import { NovelIdeaList } from './novel-idea-list';
  * Where this deployment can write into the wiki, Novel ideas becomes a checklist that sends
  * picked bullets there ({@link NovelIdeaList}). Everywhere else — the Work instance, or a post
  * with no novel ideas — the section, like the other three, is exactly the plain list it always
- * was. A bullet that is empty or only whitespace is no idea: a list of nothing else reads as the
- * honest empty line, never as a checklist with nothing to tick ("All sent to wiki").
+ * was. A bullet that is empty or only whitespace is no idea, so neither view draws it: a list of
+ * nothing else reads as the honest empty line, never as a checklist with nothing to tick ("All
+ * sent to wiki").
  */
 
 const BULLET_LIST_CLASS = 'mt-1 list-disc space-y-1 pl-5 text-sm text-foreground';
@@ -37,7 +39,8 @@ export interface PostOverviewProperties {
 
 export function PostOverview({ overview, post, writable }: PostOverviewProperties) {
   const novelHeading = <h3 className={SECTION_HEADING_CLASS}>Novel ideas</h3>;
-  const hasIdeas = overview.novel_ideas.some((idea) => idea.trim() !== '');
+  const ideas = overview.novel_ideas.filter((idea) => isIdea(idea));
+  const hasIdeas = ideas.length > 0;
   const checklist = writable && hasIdeas;
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-border/60 pt-3">
@@ -54,7 +57,7 @@ export function PostOverview({ overview, post, writable }: PostOverviewPropertie
             {novelHeading}
             {hasIdeas ? (
               <ul className={BULLET_LIST_CLASS}>
-                {overview.novel_ideas.map((idea, index) => (
+                {ideas.map((idea, index) => (
                   <li key={index}>{idea}</li>
                 ))}
               </ul>
