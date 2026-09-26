@@ -31,6 +31,22 @@ const ISO_DATE = /^(?!0000)\d{4}-\d{2}-\d{2}$/;
  */
 const NUL = '\u0000';
 
+/**
+ * A lone surrogate: a high half with no low half after it, or a low half with no high half
+ * before it. YAML's `"\ud800"` escape decodes to one, and Postgres refuses it in `text` just as it
+ * refuses NUL — failing the whole batch, and the same page lands in every run's batch. Each is
+ * replaced by U+FFFD, exactly as `String.prototype.toWellFormed` would (ES2024, outside this
+ * package's ES2022 lib).
+ */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/**
+ * A dot segment spelled with `%2e` (`%2e%2e`, `.%2E`, …). Resolution is literal, so it is not a
+ * `..` here — but GitHub decodes it, and the renderer (lib/wiki/links.ts) draws a path carrying
+ * one as broken, so it records no backlink either.
+ */
+const ENCODED_DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
+
 /** Any URL scheme (`https:`, `mailto:`, …) — an href carrying one is never a page link. */
 const SCHEME = /^[a-z][\d+.a-z-]*:/i;
 
@@ -115,24 +131,24 @@ function readFrontmatter(yaml: string): { data: Frontmatter } | { error: string 
   return { data: value };
 }
 
-/** `value` with every NUL removed. */
-function withoutNul(value: string): string {
-  return value.replaceAll(NUL, '');
+/** `value` as Postgres will store it: every NUL removed, every lone surrogate replaced. */
+function storable(value: string): string {
+  return value.replaceAll(NUL, '').replaceAll(LONE_SURROGATE, '\uFFFD');
 }
 
-/** A string field, NUL-free and trimmed — or undefined when absent, not a string, or blank. */
+/** A string field, storable and trimmed — or undefined when absent, not a string, or blank. */
 function nonBlankString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const cleaned = withoutNul(value).trim();
+  const cleaned = storable(value).trim();
   return cleaned === '' ? undefined : cleaned;
 }
 
-/** A list of non-empty, NUL-free strings; anything else in it, or a non-list, contributes nothing. */
+/** A list of non-empty, storable strings; anything else in it, or a non-list, contributes nothing. */
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is string => typeof item === 'string')
-    .map((item) => withoutNul(item))
+    .map((item) => storable(item))
     .filter((item) => item.trim() !== '');
 }
 
@@ -191,7 +207,8 @@ export function extractLinks(text: string): string[] {
  * Resolve `href`, as written on the page at `pagePath`, to the wiki page path it names — or
  * undefined when it names none. Resolution is literal (no URL-decoding, like the wiki's lint),
  * relative to the page's folder, with the `#anchor` stripped. Only a `.md` file directly inside
- * one of the four sections counts; a target that climbs out of the repo is not one.
+ * one of the four sections counts; a target that climbs out of the repo, or that carries a
+ * percent-encoded dot segment, is not one.
  */
 export function resolveLink(pagePath: string, href: string): string | undefined {
   const target = href.split('#', 1)[0] ?? '';
@@ -200,6 +217,7 @@ export function resolveLink(pagePath: string, href: string): string | undefined 
   const segments = pagePath.split('/').slice(0, -1);
   for (const segment of target.split('/')) {
     if (segment === '' || segment === '.') continue;
+    if (segment !== '..' && ENCODED_DOT_SEGMENT.test(segment)) return undefined;
     if (segment === '..') {
       if (segments.length === 0) return undefined;
       segments.pop();
@@ -267,7 +285,7 @@ function bare(path: string, body: string, parseError?: string): ParsedPage {
  * page is still stored, as its whole text under its file stem, with `parse_error` saying why.
  */
 export function parsePage(path: string, text: string): ParsedPage {
-  const clean = withoutNul(text);
+  const clean = storable(text);
   const { yaml, body } = splitFrontmatter(clean);
   if (yaml === undefined) return bare(path, body);
 
@@ -278,7 +296,7 @@ export function parsePage(path: string, text: string): ParsedPage {
   return {
     ...bare(path, body),
     title: nonBlankString(data['title']) ?? stemOf(path),
-    summary: typeof data['summary'] === 'string' ? withoutNul(data['summary']) : '',
+    summary: typeof data['summary'] === 'string' ? storable(data['summary']) : '',
     tags: stringList(data['tags']),
     sources: stringList(data['sources']),
     created: realDate(data['created']),

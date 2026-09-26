@@ -20,6 +20,11 @@ describe('resolveLink — the link-resolution table: which hrefs become a `links
     ['../../raw/2026/2026-10-01-atomic-habits/', undefined],
     ['../../index.md', undefined],
     ['../../../elsewhere.md', undefined],
+    // A percent-encoded dot segment: literal resolution would keep it, but GitHub decodes it,
+    // so the renderer draws it broken — and no backlink is recorded for it either.
+    ['%2e%2e/../habit-loop.md', undefined],
+    // Root-relative: a path from the repo root, which the renderer sends to GitHub — not a page.
+    ['/wiki/concepts/habit-loop.md', undefined],
     ['https://example.com/habits', undefined],
     ['mailto:alex@example.com', undefined],
   ];
@@ -37,6 +42,13 @@ describe('resolveLink — the link-resolution table: which hrefs become a `links
       'wiki/sources/atomic-habits.md',
     );
   });
+
+  it.each(['%2E%2E/../habit-loop.md', '%2e/habit-loop.md', '.%2e/concepts/habit-loop.md'])(
+    'records no backlink for a percent-encoded dot segment, %s',
+    (href) => {
+      expect(resolveLink(PAGE, href)).toBeUndefined();
+    },
+  );
 
   it('refuses a path that is not a page directly inside one of the four sections', () => {
     expect(resolveLink(PAGE, '../other/x.md')).toBeUndefined();
@@ -249,6 +261,41 @@ describe('parsePage', () => {
       links: ['wiki/concepts/habit-loop.md'],
       parse_error: undefined,
     });
+  });
+
+  it('replaces a lone surrogate in every stored string, since Postgres refuses one in text', () => {
+    // YAML's "\ud800" escape decodes to a lone surrogate; one would fail the whole batch.
+    const text = [
+      '---',
+      String.raw`title: "Ha\ud800bit"`,
+      String.raw`summary: "Sum\udc00mary"`,
+      String.raw`tags: ["ta\ud800g"]`,
+      String.raw`sources: ["../sources/a\ud800.md"]`,
+      '---',
+      'Body',
+    ].join('\n');
+    const page = parsePage(PAGE, text);
+    const stored = [page.title, page.summary, ...page.tags, ...page.sources, page.body];
+    // `isWellFormed` is ES2024 (outside this package's lib); `encodeURIComponent` throws a
+    // URIError on exactly the strings it would call ill-formed.
+    for (const value of stored) expect(() => encodeURIComponent(value)).not.toThrow();
+    expect(page).toMatchObject({
+      title: 'Ha\uFFFDbit',
+      summary: 'Sum\uFFFDmary',
+      tags: ['ta\uFFFDg'],
+      sources: ['../sources/a\uFFFD.md'],
+    });
+  });
+
+  it('keeps a well-formed surrogate pair intact', () => {
+    const page = parsePage(
+      PAGE,
+      String.raw`---
+title: "\ud83d\ude00 smile"
+---
+`,
+    );
+    expect(page.title).toBe('\u{1F600} smile');
   });
 
   it('strips NUL from the body kept by a page whose frontmatter failed to parse', () => {
