@@ -4148,17 +4148,40 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
           throw new Error('service_role could not write wiki_sync');
         await client.query(`delete from wiki_sync where id = 1`);
       });
-      const { rows: functions } = await client.query<{ fn: string; sr_exec: boolean }>(
-        `select fn, has_function_privilege('service_role', fn, 'EXECUTE') as sr_exec
-           from unnest(array[
-             'append_wiki_sent_ideas(uuid, text[])',
-             'send_items_to_wiki(uuid[])',
-             'search_wiki_pages(text, int)'
-           ]) as fn`,
-      );
-      const denied = functions.filter((row) => !row.sr_exec).map((row) => row.fn);
-      if (functions.length !== 3 || denied.length > 0)
-        throw new Error(`service_role may not EXECUTE: ${denied.join(', ')}`);
+      // PUBLIC holds EXECUTE on every new function, so service_role would pass on that alone. With
+      // PUBLIC's revoked (rolled back after), only the migration's explicit grant can answer yes;
+      // a throwaway role granted nothing is the control that shows the query can answer no.
+      const wikiFunctions = [
+        'append_wiki_sent_ideas(uuid, text[])',
+        'send_items_to_wiki(uuid[])',
+        'search_wiki_pages(text, int)',
+      ];
+      await client.query('begin');
+      try {
+        for (const fn of wikiFunctions) {
+          await client.query(`revoke execute on function ${fn} from public`);
+        }
+        await client.query('create role wiki_grant_control nologin');
+        const { rows: functions } = await client.query<{
+          fn: string;
+          sr_exec: boolean;
+          control_exec: boolean;
+        }>(
+          `select fn,
+                  has_function_privilege('service_role', fn, 'EXECUTE') as sr_exec,
+                  has_function_privilege('wiki_grant_control', fn, 'EXECUTE') as control_exec
+             from unnest($1::text[]) as fn`,
+          [wikiFunctions],
+        );
+        const denied = functions.filter((row) => !row.sr_exec).map((row) => row.fn);
+        if (functions.length !== wikiFunctions.length || denied.length > 0)
+          throw new Error(`service_role may not EXECUTE: ${denied.join(', ')}`);
+        const leaked = functions.filter((row) => row.control_exec).map((row) => row.fn);
+        if (leaked.length > 0)
+          throw new Error(`a role granted nothing may still EXECUTE: ${leaked.join(', ')}`);
+      } finally {
+        await client.query('rollback');
+      }
 
       // Seed real rows as the superuser (bypasses RLS), so the anon count below proves RLS
       // denial rather than just reading an empty table the authenticated block already emptied.
@@ -4185,7 +4208,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       }
       return (
         'authenticated and service_role wrote, read and deleted both tables; service_role may ' +
-        'EXECUTE all three wiki RPCs; anon saw neither table despite real rows existing'
+        'EXECUTE all three wiki RPCs by its own grant, with PUBLIC revoked; anon saw neither table ' +
+        'despite real rows existing'
       );
     },
   );
