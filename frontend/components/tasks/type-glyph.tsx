@@ -1,4 +1,4 @@
-import { Code, type LucideIcon, SquareCheckBig } from 'lucide-react';
+import { Code, Lightbulb, type LucideIcon, SquareCheckBig } from 'lucide-react';
 import * as React from 'react';
 
 import type { ItemType } from '@/lib/types';
@@ -7,11 +7,13 @@ import type { ItemType } from '@/lib/types';
 const TYPE_GLYPH: Partial<Record<ItemType, LucideIcon>> = {
   task: SquareCheckBig,
   code: Code,
+  knowledge: Lightbulb,
 };
 
 const TYPE_LABEL: Partial<Record<ItemType, string>> = {
   task: 'Task',
   code: 'Code',
+  knowledge: 'Knowledge',
 };
 
 interface TypeGlyphProperties {
@@ -20,13 +22,13 @@ interface TypeGlyphProperties {
 }
 
 /**
- * A small icon naming an item's type — `code` for a code row, `square-check-big` for a task —
- * replacing the row's old "Task"/"Code" text pill (ALF-224). One component, two mount sites in
- * TaskRow: the ordinary row's checkbox column (a code row has no completion checkbox to show
- * there) and, in select mode, beside the selection tick box every row already carries (so the
- * type still needs its own mark once the tick box stops implying it). `unclassified` and
- * `knowledge` render nothing — an untriaged or reserved row stays the quiet "nothing to say yet"
- * it always was.
+ * A small icon naming an item's type — `code` for a code row, `square-check-big` for a task,
+ * `lightbulb` for a knowledge row — replacing the row's old "Task"/"Code" text pill (ALF-224).
+ * One component, two mount sites in TaskRow: the ordinary row's checkbox column (a code or
+ * knowledge row has no completion checkbox to show there) and, in select mode, beside the
+ * selection tick box every row already carries (so the type still needs its own mark once the
+ * tick box stops implying it). `unclassified` renders nothing — an untriaged row stays the quiet
+ * "nothing to say yet" it always was.
  *
  * Always `role="img"` + `aria-label`, like `ClassificationMark`: the glyph alone carries no text,
  * so without it the type would be legible to sighted users only.

@@ -52,6 +52,8 @@ const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
 // The epic conversion (ALF-129) routes through the code store's convertToCodeEpic, which
 // calls this endpoint under the hood.
 const mockConvertToCodeEpic = jest.mocked(apiClient.convertToCodeEpic);
+// A knowledge dispatch sends its ids to the wiki in one request.
+const mockSendItemsToWiki = jest.mocked(apiClient.sendItemsToWiki);
 
 /** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
 const DISPATCHED_AT = '2025-01-01T11:00:00Z';
@@ -157,13 +159,20 @@ const ARCHIVE_VIEW = {
  */
 function renderTasks(
   items: Item[],
-  options: { folders?: Folder[]; scope?: TaskScope; projects?: Project[]; epics?: Epic[] } = {},
+  options: {
+    folders?: Folder[];
+    scope?: TaskScope;
+    projects?: Project[];
+    epics?: Epic[];
+    wiki?: { writable: boolean };
+  } = {},
 ) {
   return renderWithProviders(<TaskList scope={options.scope ?? { type: 'inbox' }} />, {
     tasks: items,
     folders: options.folders ?? [],
     projects: options.projects ?? [],
     epics: options.epics ?? [],
+    wiki: options.wiki ?? { writable: false },
   });
 }
 
@@ -171,13 +180,13 @@ function renderTasks(
  * The Inbox with select mode available: the header toggle over a selectable list. Press
  * "Select" to enter multi-edit mode, where every root row becomes one toggle button.
  */
-function renderSelectableInbox(items: Item[]) {
+function renderSelectableInbox(items: Item[], wikiWritable = false) {
   return renderWithProviders(
     <>
       <InboxSelectToggle />
       <TaskList scope={{ type: 'inbox' }} selectable />
     </>,
-    { tasks: items },
+    { tasks: items, wiki: { writable: wikiWritable } },
   );
 }
 
@@ -2737,7 +2746,7 @@ describe('TaskRow — classification & type-gating', () => {
       expect(
         rowFor('Write tests').querySelector('[data-testid="checkbox-spacer"]'),
       ).not.toBeInTheDocument();
-      const iconSlot = rowFor('Write tests').querySelector('[data-testid="code-type-icon"]');
+      const iconSlot = rowFor('Write tests').querySelector('[data-testid="type-glyph-slot"]');
       expect(iconSlot).not.toHaveClass('hidden');
       expect(within(rowFor('Write tests')).getByRole('img', { name: 'Code' })).toBeInTheDocument();
     });
@@ -3053,6 +3062,235 @@ describe('TaskRow — classification & type-gating', () => {
         await openMenuFor(user, 'Write tests');
         expect(screen.queryByRole('menuitem', { name: /^dispatch/i })).toBeNull();
       });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Knowledge rows — an idea bound for the wiki: its own glyph, no labels, Dispatch to the wiki
+// ---------------------------------------------------------------------------
+
+const KNOWLEDGE_ITEM: Item = {
+  ...BASE_ITEM,
+  item_type: 'knowledge',
+  title: 'Forgetting is the signal, not the failure',
+};
+const KNOWLEDGE_TITLE = KNOWLEDGE_ITEM.title;
+const WRITABLE = { wiki: { writable: true } };
+
+/** Open the row's ⋯ menu, then Classify as…, and wait for its first entry. */
+async function openClassifySubmenu(
+  user: ReturnType<typeof userEvent.setup>,
+  title: string,
+): Promise<void> {
+  await openMenuFor(user, title);
+  await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+  await user.keyboard('[ArrowRight]');
+  await screen.findByRole('menuitem', { name: 'Task' });
+}
+
+describe('TaskRow — knowledge rows', () => {
+  describe('the glyph', () => {
+    it('fills the checkbox slot with the Knowledge lightbulb — no checkbox, no spacer', () => {
+      renderTasks([KNOWLEDGE_ITEM], WRITABLE);
+
+      const row = rowFor(KNOWLEDGE_TITLE);
+      const slot = row.querySelector('[data-testid="type-glyph-slot"]');
+      expect(slot).not.toBeNull();
+      expect(slot).not.toHaveClass('hidden');
+      expect(within(slot as HTMLElement).getByRole('img', { name: 'Knowledge' })).toBeVisible();
+      expect(row.querySelector('[data-testid="checkbox-spacer"]')).not.toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: /mark .* complete/i })).toBeNull();
+    });
+
+    it('offers no add-subtask affordance', () => {
+      renderTasks([KNOWLEDGE_ITEM], WRITABLE);
+
+      expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Add story' })).not.toBeInTheDocument();
+    });
+
+    it('shows the lightbulb beside the tick box in select mode', async () => {
+      const user = userEvent.setup();
+      renderSelectableInbox([KNOWLEDGE_ITEM], true);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+
+      const glyph = screen.getByRole('img', { name: 'Knowledge' });
+      expect(glyph.closest('button')).toHaveAttribute('aria-pressed');
+    });
+  });
+
+  describe('Classify as… Knowledge', () => {
+    it('offers Knowledge after Code when the wiki is writable', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM], WRITABLE);
+
+      await openClassifySubmenu(user, 'Write tests');
+
+      const names = menuEntryNames();
+      expect(names.indexOf('Knowledge')).toBe(names.indexOf('Code') + 1);
+    });
+
+    it('offers no Knowledge entry when the wiki is not writable', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await openClassifySubmenu(user, 'Write tests');
+
+      expect(screen.getByRole('menuitem', { name: 'Code' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Knowledge' })).not.toBeInTheDocument();
+    });
+
+    it('classifies as Knowledge in one write, and the row shows the lightbulb', async () => {
+      mockUpdateItem.mockResolvedValue({ ...UNCLASSIFIED_ITEM, item_type: 'knowledge' });
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM], WRITABLE);
+
+      await openClassifySubmenu(user, 'Write tests');
+      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          item_type: 'knowledge',
+          due_date: null,
+          recurrence: null,
+          intended_project_id: null,
+          intended_epic_id: null,
+          folder_id: null,
+        });
+      });
+      expect(within(rowFor('Write tests')).getByRole('img', { name: 'Knowledge' })).toBeVisible();
+    });
+
+    it('clears the folder label chip the row was wearing', async () => {
+      mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, folder_id: FOLDER.id, dispatched_at: null }], {
+        folders: [FOLDER],
+        ...WRITABLE,
+      });
+      expect(
+        within(rowFor('Write tests')).getByRole('button', { name: 'Folder: Work' }),
+      ).toBeInTheDocument();
+
+      await openClassifySubmenu(user, 'Write tests');
+      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+
+      await waitFor(() => {
+        expect(
+          within(rowFor('Write tests')).queryByRole('button', { name: /folder:/i }),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('is still offered on a knowledge row, so a wrong guess flips back', async () => {
+      mockUpdateItem.mockResolvedValue({ ...KNOWLEDGE_ITEM, item_type: 'task' });
+      const user = userEvent.setup();
+      renderTasks([KNOWLEDGE_ITEM], WRITABLE);
+
+      await openClassifySubmenu(user, KNOWLEDGE_TITLE);
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'task' });
+      });
+    });
+
+    it('is still offered on a knowledge row when the wiki is not writable', async () => {
+      // A misconfigured deploy must not strand an idea: Task and Code still take it back.
+      const user = userEvent.setup();
+      renderTasks([KNOWLEDGE_ITEM]);
+
+      await openClassifySubmenu(user, KNOWLEDGE_TITLE);
+
+      expect(screen.getByRole('menuitem', { name: 'Code' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Knowledge' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the menu', () => {
+    it('carries no label submenus — only Classify as…, Dispatch and Delete around them', async () => {
+      const user = userEvent.setup();
+      renderTasks([KNOWLEDGE_ITEM], { folders: [FOLDER], ...WRITABLE });
+
+      await openMenuFor(user, KNOWLEDGE_TITLE);
+
+      for (const label of ['Due date…', 'Priority…', 'Folder…', 'Project…', 'Epic…']) {
+        expect(screen.queryByRole('menuitem', { name: label })).not.toBeInTheDocument();
+      }
+      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Dispatch' })).toBeInTheDocument();
+    });
+
+    it('carries no label chips on the row, whatever priority it kept', () => {
+      renderTasks([{ ...KNOWLEDGE_ITEM, priority: 'high' }], WRITABLE);
+
+      const row = rowFor(KNOWLEDGE_TITLE);
+      expect(within(row).queryByRole('button', { name: /folder|project|epic|priority/i })).toBe(
+        null,
+      );
+    });
+  });
+
+  describe('Dispatch', () => {
+    it('sends the row to the wiki, toasts "Sent to the wiki", and the row leaves', async () => {
+      mockSendItemsToWiki.mockResolvedValue({ sent: ['item-1'] });
+      const user = userEvent.setup();
+      renderTasks([KNOWLEDGE_ITEM], WRITABLE);
+
+      await openMenuFor(user, KNOWLEDGE_TITLE);
+      await activateMenuItem(user, /^dispatch$/i);
+
+      await waitFor(() => {
+        expect(mockSendItemsToWiki).toHaveBeenCalledWith({ ids: ['item-1'] });
+      });
+      expect(await screen.findByText('Sent to the wiki')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.queryByText(KNOWLEDGE_TITLE)).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps the row and announces nothing but the failure when the send fails', async () => {
+      mockSendItemsToWiki.mockRejectedValue(new Error('502'));
+      const user = userEvent.setup();
+      renderTasks([KNOWLEDGE_ITEM], WRITABLE);
+
+      await openMenuFor(user, KNOWLEDGE_TITLE);
+      await activateMenuItem(user, /^dispatch$/i);
+
+      expect(await screen.findByText("1 of 1 couldn't be dispatched")).toBeInTheDocument();
+      expect(screen.queryByText('Sent to the wiki')).toBeNull();
+      expect(screen.getByText(KNOWLEDGE_TITLE)).toBeInTheDocument();
+    });
+
+    it('wears the ready pip when the wiki is writable', () => {
+      renderTasks([KNOWLEDGE_ITEM], WRITABLE);
+
+      expect(screen.getByRole('img', { name: 'Ready to dispatch' })).toBeInTheDocument();
+    });
+
+    it('is disabled with "wiki not connected" — and no pip — when the wiki is not writable', async () => {
+      const user = userEvent.setup();
+      renderTasks([KNOWLEDGE_ITEM]);
+
+      expect(screen.queryByRole('img', { name: 'Ready to dispatch' })).not.toBeInTheDocument();
+      await openMenuFor(user, KNOWLEDGE_TITLE);
+      const dispatchItem = screen.getByRole('menuitem', { name: /^dispatch$/i });
+      expect(dispatchItem).toHaveAttribute('aria-disabled', 'true');
+      expect(dispatchItem).toHaveAttribute('title', 'Not ready — wiki not connected');
+    });
+
+    it('is disabled with "has subtasks" on a knowledge row that has children', async () => {
+      // Defensive: the shape gate never retypes a parent, but a row that arrived this way can't
+      // go to the wiki as one notes file.
+      const user = userEvent.setup();
+      renderTasks([KNOWLEDGE_ITEM, CHILD_ITEM], WRITABLE);
+
+      await openMenuFor(user, KNOWLEDGE_TITLE);
+      const dispatchItem = screen.getByRole('menuitem', { name: /^dispatch$/i });
+      expect(dispatchItem).toHaveAttribute('aria-disabled', 'true');
+      expect(dispatchItem).toHaveAttribute('title', 'Not ready — has subtasks');
     });
   });
 });

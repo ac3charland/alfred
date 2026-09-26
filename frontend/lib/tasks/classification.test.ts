@@ -168,6 +168,33 @@ describe('classifierVerdictPatch', () => {
     expect(classifierVerdictPatch({ classified_at: '2026-09-03T09:00:00Z' }, row())).toBeNull();
   });
 
+  // The classifier can say knowledge (prompt v3). A knowledge verdict carries no other label —
+  // the Worker drops them — and the patch copies the type through like any other.
+  it('lands a knowledge verdict on an unjudged row, with every other label null', () => {
+    expect(
+      classifierVerdictPatch(
+        { classified_at: null },
+        row({
+          item_type: 'knowledge',
+          priority: null,
+          due_date: null,
+          folder_id: null,
+          classified_prompt_version: 3,
+          classified_guess: { item_type: 'knowledge' },
+        }),
+      ),
+    ).toMatchObject({
+      item_type: 'knowledge',
+      priority: null,
+      due_date: null,
+      folder_id: null,
+      intended_project_id: null,
+      intended_epic_id: null,
+      classified_prompt_version: 3,
+      classified_provider: 'anthropic',
+    });
+  });
+
   it('applies a verdict that abstained on every field', () => {
     // Abstention is a first-class answer: the row's labels stay blank, but it stops being
     // unjudged — which is what flips the provenance mark and ends the sweeper's interest.

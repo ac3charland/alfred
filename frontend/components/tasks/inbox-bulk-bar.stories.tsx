@@ -1,5 +1,6 @@
 import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
+import { userEvent, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import { useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
@@ -179,4 +180,51 @@ export const DispatchWithReadinessLine: Story = {
 export const NothingReady: Story = {
   parameters: { store: { tasks: UNCLASSIFIED, folders: FOLDERS } },
   render: () => <SelectedBar ids={['u1', 'u2']} />,
+};
+
+const IDEAS: Item[] = [
+  makeItem('k1', {
+    title: 'Spaced repetition works because forgetting is the signal',
+    item_type: 'knowledge',
+  }),
+  makeItem('k2', { title: 'Tests are back-pressure on generation', item_type: 'knowledge' }),
+  makeItem('k3', { title: 'Capture first, triage later', item_type: 'knowledge' }),
+];
+
+/**
+ * Classify as open with the wiki connected: Task, Code, then Knowledge. The dropdown portals out
+ * of the story root, so the capture targets `body`.
+ */
+export const ClassifyAsOpenWithKnowledge: Story = {
+  parameters: {
+    store: { tasks: UNCLASSIFIED, folders: FOLDERS, wiki: { writable: true } },
+    visualTest: { target: 'body' },
+  },
+  render: () => <SelectedBar ids={['u1', 'u2', 'u3']} />,
+  play: async () => {
+    const body = within(document.body);
+    await userEvent.click(await body.findByRole('button', { name: /classify as/i }));
+    await body.findByRole('menuitem', { name: 'Knowledge' });
+  },
+};
+
+/** Three ideas selected, one of which carries a subtask: the other two are ready to go. */
+export const KnowledgeWithSubtask: Story = {
+  parameters: {
+    store: {
+      tasks: [
+        ...IDEAS,
+        makeItem('k1-child', { title: 'Find the paper', item_type: 'task', parent_id: 'k1' }),
+      ],
+      folders: FOLDERS,
+      wiki: { writable: true },
+    },
+  },
+  render: () => <SelectedBar ids={['k1', 'k2', 'k3']} />,
+};
+
+/** Three ideas on a deploy with no wiki writer: nothing is ready, and the line says why. */
+export const KnowledgeWikiNotConnected: Story = {
+  parameters: { store: { tasks: IDEAS, folders: FOLDERS } },
+  render: () => <SelectedBar ids={['k1', 'k2', 'k3']} />,
 };
