@@ -1,5 +1,6 @@
 import {
   MODULE_ACCENT,
+  MODULE_LABEL,
   activeModule,
   isCodePath,
   isCommsPath,
@@ -123,5 +124,17 @@ describe('MODULE_ACCENT', () => {
       expect(accent.border).toMatch(/^border-accent-[a-z]+$/);
       expect(accent.glow).toMatch(/^glow-[a-z]+$/);
     }
+  });
+});
+
+describe('MODULE_LABEL', () => {
+  it('gives each module its display name, shared by the switcher and the wordmark-row label', () => {
+    expect(MODULE_LABEL).toEqual({
+      tasks: 'Tasks',
+      code: 'Code',
+      comms: 'Comms',
+      reader: 'Reader',
+      wiki: 'Wiki',
+    });
   });
 });

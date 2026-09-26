@@ -13,6 +13,18 @@
 /** The five top-level modules the shell can be showing. */
 export type ModuleId = 'tasks' | 'code' | 'comms' | 'reader' | 'wiki';
 
+/**
+ * Each module's display name — the switcher's `aria-label`/`title` and the active-module name
+ * shown in the sidebar's wordmark row both read from here, so the two can't disagree (ALF-270).
+ */
+export const MODULE_LABEL: Record<ModuleId, string> = {
+  tasks: 'Tasks',
+  code: 'Code',
+  comms: 'Comms',
+  reader: 'Reader',
+  wiki: 'Wiki',
+};
+
 /** True when `pathname` is the module's root or lives beneath it. */
 function ownsPath(pathname: string, root: string): boolean {
   return pathname === root || pathname.startsWith(`${root}/`);
