@@ -10,6 +10,7 @@ import {
   type SearchResults,
   optionDomId,
 } from '@/components/shell/search-results';
+import { GROUP_LABEL_CLASS } from '@/lib/ui/group-label-class';
 import { cn } from '@/lib/utils';
 
 interface SearchResultsPopoverProperties {
@@ -118,9 +119,7 @@ function Group({
   if (groupResults.length === 0) return null;
   return (
     <li>
-      <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-        {label}
-      </div>
+      <div className={GROUP_LABEL_CLASS}>{label}</div>
       <ul>
         {groupResults.map((result, offset) => {
           const index = baseIndex + offset;

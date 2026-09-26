@@ -4,9 +4,10 @@ import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
 import type { QueuedTier } from '@/lib/comms';
+import { SECTION_HEADING_CLASS } from '@/lib/ui/section-heading-class';
 
 import { TIER_LABEL } from './comms-format';
-import { sectionEyebrowClass, sectionShellClass } from './message-row.styles';
+import { sectionShellClass } from './message-row.styles';
 
 /**
  * One counted tier and its rows.
@@ -37,7 +38,7 @@ export function TierSection({ tier, count, emptyLabel, children }: TierSectionPr
   return (
     <section className={sectionShellClass(loud)} aria-label={TIER_LABEL[tier]}>
       <div className="flex items-center gap-2 px-1">
-        <h3 className={sectionEyebrowClass}>{TIER_LABEL[tier]}</h3>
+        <h3 className={SECTION_HEADING_CLASS}>{TIER_LABEL[tier]}</h3>
         <Badge
           variant={loud ? 'due' : 'secondary'}
           aria-label={`${String(count)} in ${TIER_LABEL[tier]}`}

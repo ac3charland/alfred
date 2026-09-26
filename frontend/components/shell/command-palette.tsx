@@ -5,9 +5,7 @@ import {
   BookOpen,
   CalendarRange,
   Check,
-  CircleHelp,
   Code2,
-  FileText,
   FolderOpen,
   GitBranch,
   Inbox,
@@ -20,7 +18,6 @@ import {
   Repeat,
   ScrollText,
   Search,
-  Shapes,
   Sun,
   UserCheck,
   Users,
@@ -38,8 +35,10 @@ import {
   flattenDestinations,
 } from '@/components/shell/command-destinations';
 import { useCommandPaletteShortcut } from '@/components/shell/use-command-palette-shortcut';
+import { WIKI_SECTION_ICONS } from '@/components/wiki/wiki-section-icons';
 import { useProjects } from '@/lib/stores/code-store';
 import { useFolders } from '@/lib/stores/folders-store';
+import { GROUP_LABEL_CLASS } from '@/lib/ui/group-label-class';
 import { cn } from '@/lib/utils';
 
 const LISTBOX_ID = 'command-palette-destinations';
@@ -63,10 +62,7 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   examples: BookMarked,
   reader: BookOpen,
   wiki: Library,
-  concepts: Shapes,
-  entities: Users,
-  sources: FileText,
-  questions: CircleHelp,
+  ...WIKI_SECTION_ICONS,
   folder: FolderOpen,
   project: GitBranch,
 };
@@ -148,9 +144,7 @@ function DestinationGroup({
   if (destinations.length === 0) return null;
   return (
     <li>
-      <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-        {label}
-      </div>
+      <div className={GROUP_LABEL_CLASS}>{label}</div>
       <ul>
         {destinations.map((destination, offset) => {
           const index = baseIndex + offset;

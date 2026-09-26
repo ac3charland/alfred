@@ -63,10 +63,6 @@ export const detailBodyClass = cn(
   'text-[12.5px] leading-relaxed text-muted-foreground',
 );
 
-/** A tier section's eyebrow: the tier name and its count, sitting above the rows. */
-export const sectionEyebrowClass =
-  'text-xs font-semibold uppercase tracking-widest text-muted-foreground';
-
 /**
  * ASAP wears the module's accent and a glow; the quieter tiers wear nothing. The whole claim
  * ASAP makes is "break focus for this", and a tier that looks like every other tier cannot

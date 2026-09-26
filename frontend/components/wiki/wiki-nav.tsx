@@ -1,26 +1,20 @@
 'use client';
 
-import { CircleHelp, FileText, Library, type LucideIcon, Shapes, Users } from 'lucide-react';
+import { Library } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
 import { ViewLink } from '@/components/tasks/view-link';
 import { useWikiCounts } from '@/lib/stores/wiki-store';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
-import { WIKI_SECTIONS, WIKI_SECTION_LABELS, type WikiSection } from '@/lib/wiki/sections';
+import { WIKI_SECTIONS, WIKI_SECTION_LABELS } from '@/lib/wiki/sections';
+
+import { WIKI_SECTION_ICONS } from './wiki-section-icons';
 
 interface WikiNavProperties {
   /** Called after a nav link is clicked (e.g. to close the mobile drawer). */
   onClose?: () => void;
 }
-
-/** Each section's glyph — the same icons the ⌘K palette resolves its wiki tokens to. */
-const SECTION_ICONS: Record<WikiSection, LucideIcon> = {
-  concepts: Shapes,
-  entities: Users,
-  sources: FileText,
-  questions: CircleHelp,
-};
 
 /**
  * A muted tally beside a nav label; nothing at zero, so an empty wiki stays clean. A visually
@@ -65,7 +59,7 @@ export function WikiNav({ onClose }: WikiNavProperties) {
       </ViewLink>
 
       {WIKI_SECTIONS.map((section) => {
-        const Icon = SECTION_ICONS[section];
+        const Icon = WIKI_SECTION_ICONS[section];
         const href = `/wiki/${section}`;
         return (
           <ViewLink
