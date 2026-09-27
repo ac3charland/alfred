@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/server';
 
 import {
   READER_POST_LIST_COLUMNS,
-  appendWikiSentIdeas,
+  appendWikiSentPicks,
   getReaderHealthSeed,
   getReaderHealthSnapshot,
   getReaderPostForSend,
@@ -55,6 +55,9 @@ describe('READER_POST_LIST_COLUMNS', () => {
     // The row's "in Instapaper" badge is drawn from these, so the list has to carry them.
     expect(listedColumns.has('instapaper_sent_at')).toBe(true);
     expect(listedColumns.has('instapaper_bookmark_id')).toBe(true);
+    // The overview's sent marks are drawn from these, one per checklist section.
+    expect(listedColumns.has('wiki_sent_ideas')).toBe(true);
+    expect(listedColumns.has('wiki_sent_evidence')).toBe(true);
   });
 });
 
@@ -414,6 +417,7 @@ describe('getReaderPostForWiki', () => {
       'text',
       'overview',
       'wiki_sent_ideas',
+      'wiki_sent_evidence',
     ]);
   });
 
@@ -448,21 +452,26 @@ describe('getReaderPostListItem', () => {
   });
 });
 
-describe('appendWikiSentIdeas', () => {
-  it('appends through the atomic RPC and reads the row back through the list columns', async () => {
+describe('appendWikiSentPicks', () => {
+  it('appends both lists through the one atomic RPC and reads the row back through the list columns', async () => {
     const { text: _text, ...saved } = makeReaderPost(PUBLICATION.id, {
       id: POST_ID,
       wiki_sent_ideas: ['Idea one'],
+      wiki_sent_evidence: ['Evidence one'],
     });
     const supabase = makeSupabaseDouble({});
     const chain = makeChain({ single: { data: saved } });
     supabase.rpc.mockReturnValue(chain);
 
-    const { data } = await appendWikiSentIdeas(supabase as never, POST_ID, ['Idea one']);
+    const { data } = await appendWikiSentPicks(supabase as never, POST_ID, {
+      ideas: ['Idea one'],
+      evidence: ['Evidence one'],
+    });
 
-    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_ideas', {
+    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_picks', {
       p_post: POST_ID,
       p_ideas: ['Idea one'],
+      p_evidence: ['Evidence one'],
     });
     expect(chain.select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
     expect(chain.single).toHaveBeenCalled();
@@ -473,7 +482,10 @@ describe('appendWikiSentIdeas', () => {
     const supabase = makeSupabaseDouble({});
     supabase.rpc.mockReturnValue(makeChain({ single: { data: null, error: { message: 'boom' } } }));
 
-    const { error } = await appendWikiSentIdeas(supabase as never, POST_ID, ['Idea one']);
+    const { error } = await appendWikiSentPicks(supabase as never, POST_ID, {
+      ideas: ['Idea one'],
+      evidence: [],
+    });
 
     expect(error).toEqual({ message: 'boom' });
   });

@@ -44,10 +44,14 @@ const IDEAS = [
   'Environment design beats willpower for the first thirty days.',
   'Identity-based framing outlasts outcome goals.',
 ];
+const EVIDENCE = [
+  'Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.',
+  'A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.',
+];
 const BODY_TEXT = 'Habits are the compound interest of self-improvement.';
 
 /** The row the send reads — body included. */
-function stored(wikiSentIdeas: string[] = []) {
+function stored(wikiSentIdeas: string[] = [], wikiSentEvidence: string[] = []) {
   return makeReaderPost(PUBLICATION.id, {
     id: POST_ID,
     gmail_message_id: 'gmail-1',
@@ -56,15 +60,22 @@ function stored(wikiSentIdeas: string[] = []) {
     canonical_url: 'https://janedoe.substack.com/p/why-habits-stick',
     received_at: '2026-10-02T22:15:00.000Z',
     text: BODY_TEXT,
-    overview: makeReaderOverview({ novel_ideas: IDEAS }),
+    overview: makeReaderOverview({ novel_ideas: IDEAS, evidence: EVIDENCE }),
     wiki_sent_ideas: wikiSentIdeas,
+    wiki_sent_evidence: wikiSentEvidence,
   });
 }
 
 /** The same row through the list columns, as the RPC and the list read answer it. */
-function listRow(wikiSentIdeas: string[]): ReaderPostListItem {
-  const { text: _text, ...row } = stored(wikiSentIdeas);
+function listRow(wikiSentIdeas: string[], wikiSentEvidence: string[] = []): ReaderPostListItem {
+  const { text: _text, ...row } = stored(wikiSentIdeas, wikiSentEvidence);
   return row;
+}
+
+/** The picks file the one committed envelope holds. */
+function committedPicks(): string {
+  const files = mockCommit.mock.calls[0]?.[1][0]?.files ?? [];
+  return files.find((file) => file.name.startsWith('picks-'))?.content ?? '';
 }
 
 function signedIn(
@@ -117,18 +128,58 @@ describe('POST /api/reader/posts/[id]/wiki', () => {
     expect(envelope?.files[0]?.content).toContain(
       'external_id: "alfred:reader-post:6f1c2b3a-0000-4000-8000-000000000001"',
     );
-    expect(envelope?.files[1]?.content).toContain(`- ${IDEAS[0] ?? ''}\n- ${IDEAS[1] ?? ''}\n`);
+    // Today's `{ ideas }` body still commits exactly as it did, apart from the section heading.
+    expect(envelope?.files[1]?.content).toContain(
+      `---\n\n## Novel ideas\n\n- ${IDEAS[0] ?? ''}\n- ${IDEAS[1] ?? ''}\n`,
+    );
     expect(envelope?.files[1]?.content).not.toContain(IDEAS[2]);
+    expect(envelope?.files[1]?.content).not.toContain('## Evidence');
   });
 
-  it('records the sent bullets through the atomic append, after the commit', async () => {
+  it('commits a mixed send as one envelope whose picks file heads both sections', async () => {
+    signedIn();
+
+    const response = await POST(
+      send(POST_ID, { ideas: [IDEAS[1]], evidence: [EVIDENCE[0]] }),
+      context(POST_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockCommit).toHaveBeenCalledTimes(1);
+    expect(mockCommit.mock.calls[0]?.[1]).toHaveLength(1);
+    expect(committedPicks()).toContain(
+      `---\n\n## Novel ideas\n\n- ${IDEAS[1] ?? ''}\n\n## Evidence\n\n- ${EVIDENCE[0] ?? ''}\n`,
+    );
+  });
+
+  it('commits an evidence-only send under the Evidence heading alone', async () => {
     const supabase = signedIn();
 
-    await POST(send(POST_ID, { ideas: IDEAS.slice(0, 2) }), context(POST_ID));
+    const response = await POST(send(POST_ID, { evidence: [EVIDENCE[1]] }), context(POST_ID));
 
-    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_ideas', {
+    expect(response.status).toBe(200);
+    expect(committedPicks()).toContain(`---\n\n## Evidence\n\n- ${EVIDENCE[1] ?? ''}\n`);
+    expect(committedPicks()).not.toContain('## Novel ideas');
+    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_picks', {
+      p_post: POST_ID,
+      p_ideas: [],
+      p_evidence: [EVIDENCE[1]],
+    });
+  });
+
+  it('records both lists through the one atomic append, after the commit', async () => {
+    const supabase = signedIn();
+
+    await POST(
+      send(POST_ID, { ideas: IDEAS.slice(0, 2), evidence: EVIDENCE.slice(0, 1) }),
+      context(POST_ID),
+    );
+
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_picks', {
       p_post: POST_ID,
       p_ideas: IDEAS.slice(0, 2),
+      p_evidence: EVIDENCE.slice(0, 1),
     });
     const committed = mockCommit.mock.invocationCallOrder[0] ?? 0;
     const appended = supabase.rpc.mock.invocationCallOrder[0] ?? 0;
@@ -147,17 +198,43 @@ describe('POST /api/reader/posts/[id]/wiki', () => {
     expect(raw).not.toContain(BODY_TEXT);
   });
 
-  it('commits only the bullets not already sent', async () => {
-    const supabase = signedIn(stored([IDEAS[0] ?? '']));
+  it('commits only the bullets not already sent, each list checked against its own column', async () => {
+    const supabase = signedIn(stored([IDEAS[0] ?? ''], [EVIDENCE[0] ?? '']));
 
-    await POST(send(POST_ID, { ideas: IDEAS.slice(0, 2) }), context(POST_ID));
+    await POST(send(POST_ID, { ideas: IDEAS.slice(0, 2), evidence: EVIDENCE }), context(POST_ID));
 
-    const picks = mockCommit.mock.calls[0]?.[1][0]?.files[1]?.content ?? '';
+    const picks = committedPicks();
     expect(picks).toContain(IDEAS[1]);
     expect(picks).not.toContain(IDEAS[0]);
-    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_ideas', {
+    expect(picks).toContain(EVIDENCE[1]);
+    expect(picks).not.toContain(EVIDENCE[0]);
+    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_picks', {
       p_post: POST_ID,
       p_ideas: [IDEAS[1]],
+      p_evidence: [EVIDENCE[1]],
+    });
+  });
+
+  it('never counts a sent idea as sent evidence, even when the two share their text', async () => {
+    const shared = 'Two independent replications agree.';
+    const supabase = signedIn(
+      makeReaderPost(PUBLICATION.id, {
+        id: POST_ID,
+        text: BODY_TEXT,
+        overview: makeReaderOverview({ novel_ideas: [shared], evidence: [shared] }),
+        wiki_sent_ideas: [shared],
+      }),
+    );
+
+    await POST(send(POST_ID, { ideas: [shared], evidence: [shared] }), context(POST_ID));
+
+    expect(mockCommit).toHaveBeenCalledTimes(1);
+    expect(committedPicks()).toContain(`## Evidence\n\n- ${shared}\n`);
+    expect(committedPicks()).not.toContain('## Novel ideas');
+    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_picks', {
+      p_post: POST_ID,
+      p_ideas: [],
+      p_evidence: [shared],
     });
   });
 
@@ -167,28 +244,32 @@ describe('POST /api/reader/posts/[id]/wiki', () => {
 
     await POST(send(POST_ID, { ideas: [once, once] }), context(POST_ID));
 
-    const picks = mockCommit.mock.calls[0]?.[1][0]?.files[1]?.content ?? '';
+    const picks = committedPicks();
     expect(picks.split('\n').filter((line) => line.startsWith('- '))).toEqual([`- ${once}`]);
-    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_ideas', {
+    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_picks', {
       p_post: POST_ID,
       p_ideas: [once],
+      p_evidence: [],
     });
   });
 
   it('answers 200 with the row unchanged and makes no commit when every bullet was sent', async () => {
     const supabase = makeSupabaseDouble({});
-    const read = makeChain({ maybeSingle: { data: stored([...IDEAS]) } });
-    const list = makeChain({ maybeSingle: { data: listRow([...IDEAS]) } });
+    const read = makeChain({ maybeSingle: { data: stored([...IDEAS], [...EVIDENCE]) } });
+    const list = makeChain({ maybeSingle: { data: listRow([...IDEAS], [...EVIDENCE]) } });
     supabase.from.mockReturnValueOnce(read).mockReturnValueOnce(list);
     mockCreateClient.mockResolvedValue(supabase as never);
 
-    const response = await POST(send(POST_ID, { ideas: IDEAS.slice(0, 1) }), context(POST_ID));
+    const response = await POST(
+      send(POST_ID, { ideas: IDEAS.slice(0, 1), evidence: EVIDENCE.slice(0, 1) }),
+      context(POST_ID),
+    );
 
     expect(response.status).toBe(200);
     expect(mockCommit).not.toHaveBeenCalled();
     expect(supabase.rpc).not.toHaveBeenCalled();
     const raw = await response.text();
-    expect(JSON.parse(raw)).toEqual(listRow([...IDEAS]));
+    expect(JSON.parse(raw)).toEqual(listRow([...IDEAS], [...EVIDENCE]));
     expect(raw).not.toContain(BODY_TEXT);
   });
 
@@ -230,6 +311,46 @@ describe('POST /api/reader/posts/[id]/wiki', () => {
     expect(mockCommit).not.toHaveBeenCalled();
   });
 
+  it('409s when an evidence bullet is no longer in the overview', async () => {
+    signedIn();
+
+    const response = await POST(
+      send(POST_ID, { ideas: [IDEAS[0]], evidence: ['Evidence the model has since reworded.'] }),
+      context(POST_ID),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "That evidence isn't in this post's overview any more",
+    });
+    expect(mockCommit).not.toHaveBeenCalled();
+  });
+
+  it('reports a stale idea first when a bullet in each list is stale', async () => {
+    signedIn();
+
+    const response = await POST(
+      send(POST_ID, { ideas: ['A reworded idea.'], evidence: ['Reworded evidence.'] }),
+      context(POST_ID),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "That idea isn't in this post's overview any more",
+    });
+  });
+
+  it('409s on an idea sent as evidence — each list is checked against its own section', async () => {
+    signedIn();
+
+    const response = await POST(send(POST_ID, { evidence: [IDEAS[0]] }), context(POST_ID));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "That evidence isn't in this post's overview any more",
+    });
+  });
+
   it('409s when the post has no overview to pick from at all', async () => {
     signedIn(makeReaderPost(PUBLICATION.id, { id: POST_ID, overview: null }));
 
@@ -261,6 +382,9 @@ describe('POST /api/reader/posts/[id]/wiki', () => {
 
     expect(mockCommit).toHaveBeenCalledTimes(1);
     expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Sent to the wiki, but couldn't mark the bullets as sent",
+    });
   });
 
   it('401s with no session', async () => {
@@ -281,7 +405,14 @@ describe('POST /api/reader/posts/[id]/wiki', () => {
 
   it.each([
     ['no bullets at all', { ideas: [] }],
+    ['neither list', {}],
+    ['both lists empty', { ideas: [], evidence: [] }],
     ['an empty bullet', { ideas: [''] }],
+    ['an empty evidence bullet', { evidence: ['  '] }],
+    [
+      'seven pieces of evidence',
+      { evidence: Array.from({ length: 7 }, (_, i) => `E${String(i)}`) },
+    ],
     ['a stray key', { ideas: IDEAS.slice(0, 1), note: 'x' }],
   ])('400s on %s', async (_name, body) => {
     signedIn();

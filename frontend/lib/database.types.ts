@@ -980,6 +980,7 @@ export type Database = {
           text: string | null
           text_swept_at: string | null
           title: string
+          wiki_sent_evidence: string[]
           wiki_sent_ideas: string[]
           word_count: number
         }
@@ -1014,6 +1015,7 @@ export type Database = {
           text?: string | null
           text_swept_at?: string | null
           title: string
+          wiki_sent_evidence?: string[]
           wiki_sent_ideas?: string[]
           word_count?: number
         }
@@ -1048,6 +1050,7 @@ export type Database = {
           text?: string | null
           text_swept_at?: string | null
           title?: string
+          wiki_sent_evidence?: string[]
           wiki_sent_ideas?: string[]
           word_count?: number
         }
@@ -1507,6 +1510,51 @@ export type Database = {
           text: string | null
           text_swept_at: string | null
           title: string
+          wiki_sent_evidence: string[]
+          wiki_sent_ideas: string[]
+          word_count: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "reader_posts"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      append_wiki_sent_picks: {
+        Args: { p_evidence: string[]; p_ideas: string[]; p_post: string }
+        Returns: {
+          account_key: string
+          archived_at: string | null
+          author: string | null
+          canonical_url: string | null
+          comm_message_id: string | null
+          created_at: string
+          gist: string | null
+          gmail_message_id: string
+          headline: string | null
+          html: string | null
+          html_extracted: boolean
+          id: string
+          instapaper_bookmark_id: number | null
+          instapaper_sent_at: string | null
+          last_error: string | null
+          model: string | null
+          model_called_at: string | null
+          opened_at: string | null
+          overview: Json | null
+          prompt_version: number | null
+          publication_id: string
+          received_at: string
+          rfc822_message_id: string | null
+          summarize_attempts: number
+          summarized_at: string | null
+          summarizing_since: string | null
+          summary_state: string
+          text: string | null
+          text_swept_at: string | null
+          title: string
+          wiki_sent_evidence: string[]
           wiki_sent_ideas: string[]
           word_count: number
         }[]

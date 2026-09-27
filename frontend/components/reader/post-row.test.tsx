@@ -652,15 +652,16 @@ describe('PostRow — Overview', () => {
   });
 });
 
-describe('PostRow — Novel ideas and the wiki', () => {
+describe('PostRow — Novel ideas, Evidence and the wiki', () => {
   const IDEAS = ['Idea one', 'Idea two', 'Idea three'];
+  const EVIDENCE = ['Evidence one'];
   const WIKI_POST_ID = '22222222-2222-4222-8222-222222222222';
   const withIdeas = (sent: string[] = []) =>
     post({
       id: WIKI_POST_ID,
       summary_state: 'done',
       gist: 'a gist',
-      overview: makeReaderOverview({ novel_ideas: IDEAS }),
+      overview: makeReaderOverview({ novel_ideas: IDEAS, evidence: EVIDENCE }),
       wiki_sent_ideas: sent,
     });
 
@@ -677,8 +678,9 @@ describe('PostRow — Novel ideas and the wiki', () => {
     await user.click(screen.getByRole('button', { name: 'Overview' }));
 
     expect(screen.getByText('Idea one')).toBeInTheDocument();
+    expect(screen.getByText('Evidence one')).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /to wiki/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /to wiki|Select all/ })).not.toBeInTheDocument();
   });
 
   it('offers the checklist, reading the sent marks off the post, when it is connected', async () => {
@@ -694,9 +696,10 @@ describe('PostRow — Novel ideas and the wiki', () => {
 
     await user.click(screen.getByRole('button', { name: 'Overview' }));
 
-    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+    expect(screen.getByRole('checkbox', { name: 'Evidence one' })).toBeInTheDocument();
     expect(screen.getByText('Sent')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send all to wiki' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select all Novel ideas' })).toBeInTheDocument();
   });
 
   it('drops the ticks when the overview is collapsed', async () => {
@@ -706,6 +709,7 @@ describe('PostRow — Novel ideas and the wiki', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Overview' }));
     await user.click(screen.getByRole('checkbox', { name: 'Idea two' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Evidence one' }));
 
     await user.click(screen.getByRole('button', { name: 'Hide overview' }));
     await user.click(screen.getByRole('button', { name: 'Overview' }));
@@ -714,13 +718,17 @@ describe('PostRow — Novel ideas and the wiki', () => {
       'aria-checked',
       'false',
     );
-    expect(screen.queryByRole('group', { name: 'Selected ideas' })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Evidence one' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.queryByRole('group', { name: 'Selected bullets' })).not.toBeInTheDocument();
   });
 
   it('holds every control while a send started before a collapse is still in the air', async () => {
     const user = userEvent.setup();
     let settle!: (row: ReaderPostListItem) => void;
-    mockApi.sendReaderIdeasToWiki.mockReturnValue(
+    mockApi.sendReaderPicksToWiki.mockReturnValue(
       new Promise((resolve) => {
         settle = resolve;
       }),
@@ -734,10 +742,9 @@ describe('PostRow — Novel ideas and the wiki', () => {
     await user.click(screen.getByRole('button', { name: 'Overview' }));
 
     for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toBeDisabled();
-    const sendAll = screen.getByRole('button', { name: 'Send all to wiki' });
-    expect(sendAll).toBeDisabled();
-    await user.click(sendAll);
-    expect(mockApi.sendReaderIdeasToWiki).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Select all Novel ideas' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Select all Evidence' })).toBeDisabled();
+    expect(mockApi.sendReaderPicksToWiki).toHaveBeenCalledTimes(1);
 
     settle(withIdeas(['Idea two']));
     expect(await screen.findByText('Sent')).toBeInTheDocument();
@@ -748,7 +755,7 @@ describe('PostRow — Novel ideas and the wiki', () => {
   it('lands a send whose row was collapsed mid-flight, and reads it sent on reopening', async () => {
     const user = userEvent.setup();
     let settle!: (row: ReaderPostListItem) => void;
-    mockApi.sendReaderIdeasToWiki.mockReturnValue(
+    mockApi.sendReaderPicksToWiki.mockReturnValue(
       new Promise((resolve) => {
         settle = resolve;
       }),

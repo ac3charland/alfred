@@ -15,7 +15,7 @@ import {
   fetchWikiPages,
   searchWikiBodies,
   sendItemsToWiki,
-  sendReaderIdeasToWiki,
+  sendReaderPicksToWiki,
   sendReaderPostToInstapaper,
   updateReaderPublication,
 } from './api-client';
@@ -165,18 +165,28 @@ describe('searchWikiBodies', () => {
   });
 });
 
-describe('sendReaderIdeasToWiki', () => {
+describe('sendReaderPicksToWiki', () => {
   it('posts the picked bullets to the post’s wiki route and hands back the updated row', async () => {
-    const saved = { id: 'post-1', wiki_sent_ideas: ['A new habit needs an existing cue.'] };
+    const saved = {
+      id: 'post-1',
+      wiki_sent_ideas: ['A new habit needs an existing cue.'],
+      wiki_sent_evidence: ['Lally et al. (2010): median 66 days.'],
+    };
     const spy = stubFetch(saved);
 
     await expect(
-      sendReaderIdeasToWiki('post-1', { ideas: ['A new habit needs an existing cue.'] }),
+      sendReaderPicksToWiki('post-1', {
+        ideas: ['A new habit needs an existing cue.'],
+        evidence: ['Lally et al. (2010): median 66 days.'],
+      }),
     ).resolves.toEqual(saved);
     expect(requested(spy)).toEqual({
       path: '/api/reader/posts/post-1/wiki',
       method: 'POST',
-      body: { ideas: ['A new habit needs an existing cue.'] },
+      body: {
+        ideas: ['A new habit needs an existing cue.'],
+        evidence: ['Lally et al. (2010): median 66 days.'],
+      },
     });
   });
 });

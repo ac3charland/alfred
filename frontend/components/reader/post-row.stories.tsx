@@ -329,7 +329,7 @@ export const SentInArchive: Story = {
 };
 
 // ---------------------------------------------------------------------------
-// The Novel-ideas checklist, with the wiki connected
+// The Novel-ideas and Evidence checklists, with the wiki connected
 // ---------------------------------------------------------------------------
 
 const HABIT = 'Habit stacking works because the cue is an existing routine, not a time of day.';
@@ -339,7 +339,26 @@ const STREAKS =
 const IDENTITY = 'Identity-based framing ("I’m a runner") outlasts outcome goals.';
 const HABIT_IDEAS = [HABIT, ENVIRONMENT, STREAKS, IDENTITY];
 
-function habitsPost(wikiSentIdeas: string[]): ReaderPostListItem {
+const LALLY = 'Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.';
+const SURVEY =
+  'A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.';
+const LOG = "The author's own 90-day log, n=1, flagged as such.";
+const HABIT_EVIDENCE = [LALLY, SURVEY, LOG];
+
+interface HabitsPostOptions {
+  novelIdeas?: string[];
+  evidence?: string[];
+  wikiSentEvidence?: string[];
+}
+
+function habitsPost(
+  wikiSentIdeas: string[],
+  {
+    novelIdeas = HABIT_IDEAS,
+    evidence = HABIT_EVIDENCE,
+    wikiSentEvidence = [],
+  }: HabitsPostOptions = {},
+): ReaderPostListItem {
   return post({
     id: 'p-habits',
     author: 'Jane Doe',
@@ -349,14 +368,12 @@ function habitsPost(wikiSentIdeas: string[]): ReaderPostListItem {
     canonical_url: 'https://janedoe.substack.com/p/why-habits-stick',
     summary_state: 'done',
     gist: "Routines anchored to an existing cue survive; routines anchored to a clock time don't.",
-    overview: makeReaderOverview({
-      novel_ideas: HABIT_IDEAS,
-      evidence: ['Lally et al. (2010): median 66 days to automaticity.'],
-    }),
+    overview: makeReaderOverview({ novel_ideas: novelIdeas, evidence }),
     model: 'claude-sonnet-5',
     prompt_version: 2,
     summarized_at: '2026-09-16T14:05:00.000Z',
     wiki_sent_ideas: wikiSentIdeas,
+    wiki_sent_evidence: wikiSentEvidence,
   });
 }
 
@@ -377,18 +394,25 @@ async function tickTwo(canvasElement: HTMLElement): Promise<void> {
   await expect(await canvas.findByText('2 selected')).toBeInTheDocument();
 }
 
-/** Nothing ticked, one bullet sent earlier: the sent check, and Send all on the heading row. */
+/**
+ * Nothing ticked, one idea sent earlier: the sent check, and Select all on both sections'
+ * heading rows. Nothing is ticked, so there is no selection bar.
+ */
 export const WikiNothingTicked: Story = {
   args: { post: habitsPost([HABIT]) },
   parameters: WIKI_PARAMETERS,
   play: async ({ canvasElement }) => {
     await openOverview(canvasElement);
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole('button', { name: 'Send all to wiki' })).toBeEnabled();
+    await expect(
+      await canvas.findByRole('button', { name: 'Select all Novel ideas' }),
+    ).toBeEnabled();
+    await expect(canvas.getByRole('button', { name: 'Select all Evidence' })).toBeEnabled();
+    await expect(canvas.queryByRole('button', { name: /Send all/ })).not.toBeInTheDocument();
   },
 };
 
-/** Two ticked: the selection bar under the list, with its count, Send to wiki and Clear. */
+/** Two ideas ticked: the selection bar under Evidence, with its count, Send to wiki and Clear. */
 export const WikiTwoTicked: Story = {
   args: { post: habitsPost([HABIT]) },
   parameters: WIKI_PARAMETERS,
@@ -421,23 +445,96 @@ export const WikiSending: Story = {
   },
 };
 
-/** Every bullet sent: each row checked in violet, and "All sent to wiki" in Send all's place. */
+/**
+ * Every bullet in both sections sent: each row checked in violet, and "All sent to wiki" in each
+ * section's Select all place. Nothing is left to tick, so there is no bar.
+ */
 export const WikiAllSent: Story = {
-  args: { post: habitsPost(HABIT_IDEAS) },
+  args: { post: habitsPost(HABIT_IDEAS, { wikiSentEvidence: HABIT_EVIDENCE }) },
   parameters: WIKI_PARAMETERS,
   play: async ({ canvasElement }) => {
     await openOverview(canvasElement);
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText('All sent to wiki')).toBeInTheDocument();
+    await expect(await canvas.findAllByText('All sent to wiki')).toHaveLength(2);
+    await expect(canvas.queryByRole('checkbox')).not.toBeInTheDocument();
+  },
+};
+
+/** One idea and one piece of evidence ticked: one selection, counted in one bar under Evidence. */
+export const WikiPickedAcrossSections: Story = {
+  args: { post: habitsPost([HABIT]) },
+  parameters: WIKI_PARAMETERS,
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('checkbox', { name: ENVIRONMENT }));
+    await userEvent.click(await canvas.findByRole('checkbox', { name: LALLY }));
+    await expect(await canvas.findByText('2 selected')).toBeInTheDocument();
+    await expect(canvas.getAllByRole('group', { name: 'Selected bullets' })).toHaveLength(1);
   },
 };
 
 /**
- * The same post with the wiki NOT connected (the Work instance, `writable: false`): Novel ideas is
- * the plain bulleted list, with no tick boxes, no Send all and no selection bar.
+ * After a send of an idea and a piece of evidence: the streaks idea ticked by hand, then
+ * Evidence's Select all. Both sections read Deselect all — every unsent bullet in each is
+ * ticked — and the bar counts all three, still unsent.
+ */
+export const WikiSelectAllEvidence: Story = {
+  args: { post: habitsPost([HABIT, ENVIRONMENT, IDENTITY], { wikiSentEvidence: [LALLY] }) },
+  parameters: WIKI_PARAMETERS,
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('checkbox', { name: STREAKS }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Select all Evidence' }));
+    await expect(await canvas.findByText('3 selected')).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Deselect all Evidence' })).toBeEnabled();
+    await expect(canvas.getByRole('button', { name: 'Deselect all Novel ideas' })).toBeEnabled();
+  },
+};
+
+/**
+ * A post with no novel ideas: Novel ideas keeps its honest empty line at its normal height, and
+ * Evidence alone is a checklist, with the bar under it.
+ */
+export const WikiEvidenceOnly: Story = {
+  args: {
+    post: habitsPost([], {
+      novelIdeas: [],
+      evidence: [
+        'Three eval releases with links; the robotics one includes raw per-task numbers.',
+        'An internal replication the author ran, n=1, flagged as such.',
+      ],
+    }),
+  },
+  parameters: WIKI_PARAMETERS,
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole('checkbox', {
+        name: 'An internal replication the author ran, n=1, flagged as such.',
+      }),
+    );
+    await expect(await canvas.findByText('1 selected')).toBeInTheDocument();
+    await expect(
+      canvas.queryByRole('button', { name: 'Select all Novel ideas' }),
+    ).not.toBeInTheDocument();
+  },
+};
+
+/**
+ * The same post with the wiki NOT connected (the Work instance, `writable: false`): Novel ideas
+ * and Evidence are the plain bulleted lists, with no tick boxes, no Select all and no selection
+ * bar. Its one evidence bullet is the one this baseline was first captured with, so the capture
+ * proves the plain view did not move.
  */
 export const WikiNotConnected: Story = {
-  args: { post: habitsPost([]) },
+  args: {
+    post: habitsPost([], {
+      evidence: ['Lally et al. (2010): median 66 days to automaticity.'],
+    }),
+  },
   parameters: {
     ...WIKI_PARAMETERS,
     store: { wiki: { writable: false } },
@@ -447,8 +544,6 @@ export const WikiNotConnected: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText(HABIT)).toBeInTheDocument();
     await expect(canvas.queryByRole('checkbox')).not.toBeInTheDocument();
-    await expect(
-      canvas.queryByRole('button', { name: 'Send all to wiki' }),
-    ).not.toBeInTheDocument();
+    await expect(canvas.queryByRole('button', { name: /Select all/ })).not.toBeInTheDocument();
   },
 };

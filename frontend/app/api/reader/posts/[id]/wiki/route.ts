@@ -2,10 +2,10 @@ import { withSession } from '@/lib/api/auth';
 import { parseUUID } from '@/lib/api/params';
 import { parseRequestBody } from '@/lib/api/parsing';
 import { jsonError, jsonOk } from '@/lib/api/responses';
-import { sendReaderIdeasSchema } from '@/lib/api/schemas';
+import { sendReaderPicksSchema } from '@/lib/api/schemas';
 import { mapSupabaseError } from '@/lib/api/supabase-errors';
 import {
-  appendWikiSentIdeas,
+  appendWikiSentPicks,
   getReaderPostForWiki,
   getReaderPostListItem,
 } from '@/lib/data/reader';
@@ -17,12 +17,15 @@ import { todayUtc } from '@/lib/wiki/writer/paths';
 import { wikiUnconfiguredResponse, wikiWriteErrorResponse } from '@/lib/wiki/writer/responses';
 
 // ---------------------------------------------------------------------------
-// POST /api/reader/posts/[id]/wiki — send picked Novel-ideas bullets into the wiki
+// POST /api/reader/posts/[id]/wiki — send picked Novel-ideas and Evidence bullets into the wiki
 //
-// One request is one commit: the post's text as `source.md` plus the picked bullets as
-// `picks-<today>.md`, in a brand-new `inbox/` folder. The bullets must still be in the post's
-// current overview (a re-summarise can reword them underneath an open tab), and any already sent
-// are dropped — a send with nothing left to send answers the row unchanged and commits nothing.
+// One request is one commit, whatever mix of the two sections it carries: the post's text as
+// `source.md` plus the picked bullets as `picks-<today>.md`, headed per section, in a brand-new
+// `inbox/` folder. Each list must still be in its own section of the post's current overview (a
+// re-summarise can reword them underneath an open tab), and any already sent are dropped, each
+// list against its own sent column — a send with nothing left in either list answers the row
+// unchanged and commits nothing. A tab on an older bundle posts `{ ideas }` alone, which still
+// works.
 //
 // The commit lands BEFORE the sent marks are recorded, deliberately. Reserving the bullets first
 // and un-reserving them on a failed commit risks the worse outcome: a bullet marked sent that
@@ -36,6 +39,13 @@ import { wikiUnconfiguredResponse, wikiWriteErrorResponse } from '@/lib/wiki/wri
 // ---------------------------------------------------------------------------
 
 const STALE_IDEA = "That idea isn't in this post's overview any more";
+const STALE_EVIDENCE = "That evidence isn't in this post's overview any more";
+
+/** Each picked bullet once, in the order picked, minus those already sent. */
+function freshOf(picked: readonly string[], sent: readonly string[]): string[] {
+  const held = new Set(sent);
+  return [...new Set(picked)].filter((bullet) => !held.has(bullet));
+}
 
 export const POST = withSession(
   async (session, request, context: { params: Promise<{ id: string }> }) => {
@@ -48,8 +58,9 @@ export const POST = withSession(
     const id = parseUUID(rawId);
     if (id instanceof Response) return id;
 
-    const input = await parseRequestBody(request, sendReaderIdeasSchema);
+    const input = await parseRequestBody(request, sendReaderPicksSchema);
     if (input instanceof Response) return input;
+    const { ideas = [], evidence = [] } = input;
 
     const { data: post, error: readError } = await getReaderPostForWiki(session.supabase, id);
     if (readError) {
@@ -58,13 +69,20 @@ export const POST = withSession(
     }
     if (post === null) return jsonError(404, 'Post not found');
 
-    const offered = new Set(isReaderOverview(post.overview) ? post.overview.novel_ideas : []);
-    if (input.ideas.some((idea) => !offered.has(idea))) return jsonError(409, STALE_IDEA);
+    const overview = isReaderOverview(post.overview) ? post.overview : null;
+    const offeredIdeas = new Set(overview?.novel_ideas);
+    if (ideas.some((idea) => !offeredIdeas.has(idea))) return jsonError(409, STALE_IDEA);
+    const offeredEvidence = new Set(overview?.evidence);
+    if (evidence.some((item) => !offeredEvidence.has(item))) {
+      return jsonError(409, STALE_EVIDENCE);
+    }
 
-    const sent = new Set(post.wiki_sent_ideas);
-    const fresh = [...new Set(input.ideas)].filter((idea) => !sent.has(idea));
+    const fresh = {
+      ideas: freshOf(ideas, post.wiki_sent_ideas),
+      evidence: freshOf(evidence, post.wiki_sent_evidence),
+    };
 
-    if (fresh.length === 0) {
+    if (fresh.ideas.length === 0 && fresh.evidence.length === 0) {
       const { data: row, error } = await getReaderPostListItem(session.supabase, id);
       if (error) {
         const { status, message } = mapSupabaseError(error);
@@ -81,18 +99,18 @@ export const POST = withSession(
       throw error;
     }
 
-    const { data: saved, error: appendError } = await appendWikiSentIdeas(
+    const { data: saved, error: appendError } = await appendWikiSentPicks(
       session.supabase,
       id,
       fresh,
     );
     if (appendError || saved === null) {
-      // The commit is in the wiki; only the mark is missing — see the header comment.
+      // The commit is in the wiki; only the marks are missing — see the header comment.
       console.error(
-        'reader wiki send: committed, but could not record the sent ideas',
+        'reader wiki send: committed, but could not record the sent bullets',
         appendError,
       );
-      return jsonError(500, "Sent to the wiki, but couldn't mark the ideas as sent");
+      return jsonError(500, "Sent to the wiki, but couldn't mark the bullets as sent");
     }
     return jsonOk(saved);
   },

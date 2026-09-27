@@ -4165,6 +4165,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       // a throwaway role granted nothing is the control that shows the query can answer no.
       const wikiFunctions = [
         'append_wiki_sent_ideas(uuid, text[])',
+        'append_wiki_sent_picks(uuid, text[], text[])',
         'send_items_to_wiki(uuid[])',
         'search_wiki_pages(text, int)',
       ];
@@ -4474,6 +4475,60 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const wikiAppendPicksResult = await attempt(
+    'append_wiki_sent_picks appends ideas and evidence in one call, each list deduplicated ' +
+      'against its own column only, in first-occurrence order (ALF-271)',
+    async () => {
+      const { rows: pubRows } = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('append-picks@example.com', 'Append Picks', 'owner') returning id`,
+      );
+      const publication = pubRows[0]?.id;
+      if (publication === undefined) throw new Error('could not seed a publication');
+      const { rows: postRows } = await client.query<{ id: string }>(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+           values ($1, 'gmail-personal', 'append-picks-msg', 'Append Picks Post', now()) returning id`,
+        [publication],
+      );
+      const post = postRows[0]?.id;
+      if (post === undefined) throw new Error('could not seed a post');
+
+      // As `authenticated`, so a missing grant to the owner's role fails here too.
+      const sent = async (ideas: string[], evidence: string[]): Promise<string> => {
+        const { rows } = await asRole(client, 'authenticated', () =>
+          client.query<{ wiki_sent_ideas: string[]; wiki_sent_evidence: string[] }>(
+            `select wiki_sent_ideas, wiki_sent_evidence
+               from append_wiki_sent_picks($1, $2::text[], $3::text[])`,
+            [post, ideas, evidence],
+          ),
+        );
+        const row = rows[0];
+        if (row === undefined) throw new Error('the append returned no row');
+        return `${row.wiki_sent_ideas.join('|')} / ${row.wiki_sent_evidence.join('|')}`;
+      };
+
+      // Both lists in one call, NOT in alphabetical order, with a duplicate in each.
+      const first = await sent(['zeta', 'alpha', 'zeta'], ['omega', 'beta', 'beta']);
+      if (first !== 'zeta|alpha / omega|beta') throw new Error(`first append gave ${first}`);
+      // The same text in the other section is a different bullet: `alpha` is an idea already, so
+      // it still lands in evidence, and `omega` is evidence already, so it still lands in ideas.
+      const second = await sent(['omega', 'alpha'], ['alpha', 'beta']);
+      if (second !== 'zeta|alpha|omega / omega|beta|alpha')
+        throw new Error(`second append gave ${second}`);
+      // An empty array leaves its column exactly as it was.
+      const third = await sent([], ['gamma']);
+      if (third !== 'zeta|alpha|omega / omega|beta|alpha|gamma')
+        throw new Error(`an evidence-only append gave ${third}`);
+      const fourth = await sent(['mu'], []);
+      if (fourth !== 'zeta|alpha|omega|mu / omega|beta|alpha|gamma')
+        throw new Error(`an ideas-only append gave ${fourth}`);
+
+      await client.query(`delete from reader_posts where id = $1`, [post]);
+      await client.query(`delete from reader_publications where id = $1`, [publication]);
+      return 'zeta|alpha / omega|beta → cross-section text kept apart → empty lists untouched';
+    },
+  );
+
   const wikiSearchResult = await attempt(
     'search_wiki_pages ranks a title hit above a body hit and marks matched words with chr(2)/' +
       'chr(3) (ALF-261)',
@@ -4597,6 +4652,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     wikiSendItemsResult,
     wikiSendLogsCorrectionResult,
     wikiAppendIdeasResult,
+    wikiAppendPicksResult,
     wikiSearchResult,
   ];
 }

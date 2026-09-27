@@ -127,6 +127,8 @@ via: "alfred-reader"
 external_id: "alfred:reader-post:55555555-5555-4555-8555-555555555561"
 ---
 
+## Novel ideas
+
 - Environment design beats willpower for the first thirty days.
 - Streak-tracking helps only until the first miss.
 

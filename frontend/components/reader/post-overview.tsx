@@ -1,10 +1,10 @@
 import * as React from 'react';
 
-import { isIdea } from '@/lib/reader/overview';
+import { isBullet } from '@/lib/reader/overview';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 import { SECTION_HEADING_CLASS } from '@/lib/ui/section-heading-class';
 
-import { NovelIdeaList } from './novel-idea-list';
+import { WikiPicks } from './wiki-picks';
 
 /**
  * The four sections of a `done` post's structured take, in the order the model returns them and
@@ -13,12 +13,13 @@ import { NovelIdeaList } from './novel-idea-list';
  * point at — so each renders as a stated line rather than a blank section, which would read as
  * a bug rather than a verdict.
  *
- * Where this deployment can write into the wiki, Novel ideas becomes a checklist that sends
- * picked bullets there ({@link NovelIdeaList}). Everywhere else — the Work instance, or a post
- * with no novel ideas — the section, like the other three, is exactly the plain list it always
- * was. A bullet that is empty or only whitespace is no idea, so neither view draws it: a list of
- * nothing else reads as the honest empty line, never as a checklist with nothing to tick ("All
- * sent to wiki").
+ * Where this deployment can write into the wiki, Novel ideas and Evidence become checklists over
+ * one selection that sends picked bullets there ({@link WikiPicks}); each section is a checklist
+ * only when it has a bullet to pick, and the pair is handed over when either is. Everywhere else —
+ * the Work instance, or a post with neither — both sections, like the other two, are exactly the
+ * plain lists they always were. A bullet that is empty or only whitespace is no bullet, so neither
+ * view draws it: a list of nothing else reads as the honest empty line, never as a checklist with
+ * nothing to tick ("All sent to wiki").
  */
 
 const BULLET_LIST_CLASS = 'mt-1 list-disc space-y-1 pl-5 text-sm text-foreground';
@@ -37,49 +38,60 @@ export interface PostOverviewProperties {
   writable: boolean;
 }
 
+/** A bulleted section as the plain list: its real bullets, or its honest empty line. */
+function PlainSection({
+  heading,
+  bullets,
+  empty,
+}: {
+  heading: string;
+  bullets: readonly string[];
+  empty: string;
+}) {
+  return (
+    <section>
+      <h3 className={SECTION_HEADING_CLASS}>{heading}</h3>
+      {bullets.length > 0 ? (
+        <ul className={BULLET_LIST_CLASS}>
+          {bullets.map((bullet, index) => (
+            <li key={index}>{bullet}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className={PARAGRAPH_CLASS}>{empty}</p>
+      )}
+    </section>
+  );
+}
+
 export function PostOverview({ overview, post, writable }: PostOverviewProperties) {
-  const novelHeading = <h3 className={SECTION_HEADING_CLASS}>Novel ideas</h3>;
-  const ideas = overview.novel_ideas.filter((idea) => isIdea(idea));
-  const hasIdeas = ideas.length > 0;
-  const checklist = writable && hasIdeas;
+  const ideas = overview.novel_ideas.filter((idea) => isBullet(idea));
+  const evidence = overview.evidence.filter((item) => isBullet(item));
+  const checklist = writable && (ideas.length > 0 || evidence.length > 0);
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-border/60 pt-3">
-      <section>
-        {checklist ? (
-          <NovelIdeaList
-            postId={post.id}
-            ideas={overview.novel_ideas}
-            sentIdeas={post.wiki_sent_ideas}
-            heading={novelHeading}
-          />
-        ) : (
-          <>
-            {novelHeading}
-            {hasIdeas ? (
-              <ul className={BULLET_LIST_CLASS}>
-                {ideas.map((idea, index) => (
-                  <li key={index}>{idea}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className={PARAGRAPH_CLASS}>{EMPTY_NOVEL_IDEAS_LINE}</p>
-            )}
-          </>
-        )}
-      </section>
-
-      <section>
-        <h3 className={SECTION_HEADING_CLASS}>Evidence</h3>
-        {overview.evidence.length === 0 ? (
-          <p className={PARAGRAPH_CLASS}>{EMPTY_EVIDENCE_LINE}</p>
-        ) : (
-          <ul className={BULLET_LIST_CLASS}>
-            {overview.evidence.map((item, index) => (
-              <li key={index}>{item}</li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {checklist ? (
+        <WikiPicks
+          postId={post.id}
+          ideas={{
+            heading: 'Novel ideas',
+            bullets: ideas,
+            sent: post.wiki_sent_ideas,
+            empty: <p className={PARAGRAPH_CLASS}>{EMPTY_NOVEL_IDEAS_LINE}</p>,
+          }}
+          evidence={{
+            heading: 'Evidence',
+            bullets: evidence,
+            sent: post.wiki_sent_evidence,
+            empty: <p className={PARAGRAPH_CLASS}>{EMPTY_EVIDENCE_LINE}</p>,
+          }}
+        />
+      ) : (
+        <>
+          <PlainSection heading="Novel ideas" bullets={ideas} empty={EMPTY_NOVEL_IDEAS_LINE} />
+          <PlainSection heading="Evidence" bullets={evidence} empty={EMPTY_EVIDENCE_LINE} />
+        </>
+      )}
 
       <section>
         <h3 className={SECTION_HEADING_CLASS}>The argument</h3>

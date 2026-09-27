@@ -10,6 +10,7 @@ import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, capturedFields, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
 import type { ReaderHealthSnapshot, ReaderPostListItem } from '@/lib/types';
+import type { ReaderPicks } from '@/lib/wiki/writer/envelope';
 
 /**
  * Reader store — the optimistic client cache of the reading list.
@@ -150,14 +151,15 @@ export interface ReaderActions {
    */
   sendToInstapaper: (id: string) => Promise<ReaderPostListItem>;
   /**
-   * Send picked Novel-ideas bullets into the wiki: one request, one commit. Deliberately NOT
-   * optimistic — the send is a commit to another system that takes a second or two and fails
-   * for reasons this store cannot reconcile (a bad token, GitHub down), so the row keeps reading
-   * unsent until the server confirms, then takes the server's row (with `wiki_sent_ideas`
-   * extended) whole. A failure toasts the route's own sentence when it wrote one, whatever the
-   * status, and rethrows so the list can keep its ticks for a one-press retry.
+   * Send picked Novel-ideas and Evidence bullets into the wiki: one request, one commit, whatever
+   * mix of the two sections it carries. Deliberately NOT optimistic — the send is a commit to
+   * another system that takes a second or two and fails for reasons this store cannot reconcile
+   * (a bad token, GitHub down), so the row keeps reading unsent until the server confirms, then
+   * takes the server's row (with `wiki_sent_ideas` and `wiki_sent_evidence` extended) whole. A
+   * failure toasts the route's own sentence when it wrote one, whatever the status, and rethrows
+   * so the checklist can keep its ticks for a one-press retry.
    */
-  sendIdeasToWiki: (id: string, ideas: readonly string[]) => Promise<ReaderPostListItem>;
+  sendPicksToWiki: (id: string, picks: ReaderPicks) => Promise<ReaderPostListItem>;
   /**
    * Re-read the health snapshot and replace it whole. Runs beside `refresh()` on the same
    * return-to-the-foreground signals: the surface is derived against a ticking clock, so a seed
@@ -587,7 +589,7 @@ export function ReaderProvider({
           endWrite(id);
         }
       },
-      async sendIdeasToWiki(id, ideas) {
+      async sendPicksToWiki(id, picks) {
         // One send per post at a time: a second would commit the same bullets into a second
         // folder. Refused before anything leaves the browser, and silently — nothing failed.
         if (wikiSendsRef.current.has(id)) {
@@ -599,7 +601,10 @@ export function ReaderProvider({
         // cannot hand back the row with its bullets still unsent.
         beginWrite(id);
         try {
-          const saved = await api.sendReaderIdeasToWiki(id, { ideas: [...ideas] });
+          const saved = await api.sendReaderPicksToWiki(id, {
+            ideas: [...picks.ideas],
+            evidence: [...picks.evidence],
+          });
           dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
           return saved;
         } catch (error) {

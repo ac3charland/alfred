@@ -35,7 +35,8 @@
  *     POST /rest/v1/rpc/{comm_purge,comm_record_reply,comm_example_set_version,
  *                        comm_create_inbox_item}
  *                                                             → Comms RPCs
- *     POST /rest/v1/rpc/{append_wiki_sent_ideas,send_items_to_wiki,search_wiki_pages}
+ *     POST /rest/v1/rpc/{append_wiki_sent_ideas,append_wiki_sent_picks,send_items_to_wiki,
+ *                        search_wiki_pages}
  *                                                             → Wiki RPCs
  *   GitHub Git Data API (the wiki writer's six endpoints, under /__mock__/github/repos/…):
  *     GET  …/git/ref/heads/main   GET …/git/commits/{sha}   GET …/git/trees/{sha}
@@ -740,6 +741,10 @@ function newReaderPost(input) {
     instapaper_bookmark_id: input.instapaper_bookmark_id ?? null,
     // The exact text of every Novel-ideas bullet already sent to the wiki (migration 0038).
     wiki_sent_ideas: Array.isArray(input.wiki_sent_ideas) ? [...input.wiki_sent_ideas] : [],
+    // The same for Evidence bullets (migration 0040).
+    wiki_sent_evidence: Array.isArray(input.wiki_sent_evidence)
+      ? [...input.wiki_sent_evidence]
+      : [],
     created_at: input.created_at ?? receivedAt,
   };
 }
@@ -1558,8 +1563,12 @@ function handleRpc(req, res, fn, body) {
 
   // One atomic append of the bullets not already recorded, returning the post row. The route
   // asks for the list columns back (`?select=…` + a single-object Accept), which the RPC path
-  // honours the way a table read does.
-  if (fn === 'append_wiki_sent_ideas' && req.method === 'POST') {
+  // honours the way a table read does. `append_wiki_sent_picks` (migration 0040) appends to both
+  // sections' columns, each against its own; `append_wiki_sent_ideas` is the ideas-only original.
+  if (
+    (fn === 'append_wiki_sent_ideas' || fn === 'append_wiki_sent_picks') &&
+    req.method === 'POST'
+  ) {
     const post = readerPosts.find((row) => String(row.id) === String(body?.p_post));
     const url = new URL(req.url ?? '/', `http://localhost:${String(PORT)}`);
     if (post === undefined) {
@@ -1575,13 +1584,17 @@ function handleRpc(req, res, fn, body) {
       sendJson(res, 200, []);
       return;
     }
-    const held = new Set(post.wiki_sent_ideas);
-    for (const idea of body?.p_ideas ?? []) {
-      if (!held.has(idea)) {
-        held.add(idea);
-        post.wiki_sent_ideas = [...(post.wiki_sent_ideas ?? []), idea];
+    const append = (column, bullets) => {
+      const held = new Set(post[column]);
+      for (const bullet of bullets ?? []) {
+        if (!held.has(bullet)) {
+          held.add(bullet);
+          post[column] = [...(post[column] ?? []), bullet];
+        }
       }
-    }
+    };
+    append('wiki_sent_ideas', body?.p_ideas);
+    if (fn === 'append_wiki_sent_picks') append('wiki_sent_evidence', body?.p_evidence);
     const rows = applySelect([post], url.searchParams);
     sendJson(res, 200, wantsObject(req) ? (rows[0] ?? null) : rows);
     return;
