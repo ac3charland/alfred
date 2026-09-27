@@ -150,6 +150,17 @@ update reader_publications set enabled = false where handle = 'news@example.com'
 - **`reader_sweep_text`** — unchanged signature and predicate; the retention sweep now nulls
   `html` in the same statement that nulls `text`.
 
+### `0040_reader_wiki_evidence.sql` — sending Evidence to the wiki (ALF-271)
+
+- **`reader_posts.wiki_sent_evidence`** — the exact text of every `overview.evidence` bullet
+  already sent to the wiki, beside 0038's `wiki_sent_ideas` for Novel ideas. Its own column, so an
+  idea and an evidence bullet with the same text never mark each other sent; a reworded bullet
+  reads as unsent.
+- **`append_wiki_sent_picks(p_post, p_ideas, p_evidence)`** — one atomic UPDATE appending to both
+  columns, each with `append_wiki_sent_ideas`'s rules (only strings not already present, duplicates
+  collapsed, first-occurrence order). `append_wiki_sent_ideas` stays until a later contract-step
+  migration drops it.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`
