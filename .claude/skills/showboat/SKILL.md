@@ -396,6 +396,10 @@ test('capture: inbox reveal fade', async ({ page, seed }) => {
 });
 ```
 
+Keep that `test.use({ video })` at the file's top level: inside a `describe` Playwright refuses
+to run the file ("forces a new worker"), so a video capture beside stills at another viewport
+goes in its own spec file.
+
 Playwright writes the `.webm` under `test-results/…`. **Don't link the `.webm`** —
 GitHub's file and markdown viewers won't render it. Instead hand it to
 `npm run demo -- video <doc> <webm> [alt]`, which converts it to an animated **GIF**
