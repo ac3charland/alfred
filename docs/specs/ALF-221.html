@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-221 — Provide some sort of feedback when "Re-run classifier" button is pressed</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.checks { list-style: none; padding-left: 0; }
+  ul.checks li { padding-left: 1.6rem; position: relative; margin: .4rem 0; }
+  ul.checks li::before { content: "☐"; position: absolute; left: 0; color: var(--accent); }
+
+  /* ── Mockups: the app's own tokens (frontend/app/globals.css, dark :root) ───────── */
+  .app {
+    --background: #0a0e17; --foreground: #e8edf5; --surface: #0f1626; --border: #1e2a3f;
+    --muted-foreground: #8a96a8; --secondary: #1e2a3f; --input: #1e2a3f;
+    --accent-teal: #4fd1e0; --accent-blue: #60a5fa; --amber-400: #fbbf24;
+    background: var(--background); color: var(--foreground);
+    font: 14px/1.45 "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    border-radius: 10px; padding: 16px; margin: 1rem 0; overflow-x: auto;
+  }
+  .app code { background: none; padding: 0; color: inherit; font-size: inherit; }
+  .app .label { font: 600 11px/1 ui-monospace, monospace; color: #6b7682; text-transform: uppercase;
+                letter-spacing: .08em; margin: 0 0 8px; }
+  /* sectionShellClass(false) + sectionEyebrowClass */
+  .app .section { border: 1px solid rgba(30,42,63,.6); border-radius: .75rem; padding: 12px;
+                  display: flex; flex-direction: column; gap: 4px; max-width: 640px; }
+  .app .eyebrow { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em;
+                  color: var(--muted-foreground); margin: 0 0 4px; }
+  /* rowShellClass */
+  .app .row { border: 1px solid transparent; border-radius: .5rem; padding: 8px 12px; }
+  .app .row.sel { border-color: rgba(96,165,250,.6); background: rgba(30,42,63,.4); }
+  .app .sender { font-weight: 500; color: var(--foreground); }
+  .app .meta { font-size: 12px; color: var(--muted-foreground); }
+  .app .ask { font-size: 13px; line-height: 1.375; color: var(--muted-foreground);
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+  .app .row.sel .ask { color: var(--foreground); white-space: normal; }
+  .app .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  /* Badge atom: shrink-0 rounded-full px-2 py-0.5 text-xs font-medium */
+  .app .badge { border-radius: 9999px; padding: 2px 8px; font-size: 12px; font-weight: 500; line-height: 16px; }
+  .app .badge.secondary { background: var(--secondary); color: var(--muted-foreground); }
+  .app .badge.alert { background: rgba(245,158,11,.15); color: var(--amber-400); }
+  /* detailClass */
+  .app .detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(30,42,63,.6);
+                 display: flex; flex-direction: column; gap: 12px; }
+  .app .subject { font-size: 14px; font-weight: 500; margin: 0; }
+  .app .fine { font-size: 12px; color: var(--muted-foreground); margin: 0; }
+  .app .body { background: rgba(30,42,63,.6); border-radius: .375rem; padding: 8px;
+               font-size: 12.5px; line-height: 1.625; color: var(--muted-foreground); }
+  .app .why { font-size: 12.5px; line-height: 1.625; color: var(--muted-foreground); margin: 0; }
+  .app .why b { font-weight: 500; color: var(--foreground); }
+  .app .why b.warn { color: var(--amber-400); }
+  .app .verbs { display: flex; flex-direction: column; gap: 8px; }
+  .app .verbs > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .app .verbs > div + div { gap: 12px; }
+  /* Button atom, size sm: h-8 rounded-sm px-3 text-xs font-medium */
+  .app .btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px;
+              border-radius: .25rem; font-size: 12px; font-weight: 500; color: var(--foreground);
+              background: transparent; border: 1px solid transparent; white-space: nowrap; }
+  .app .btn.outline { border-color: var(--border); }
+  .app .btn.dis { opacity: .5; }
+  .app .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .app .spin { animation: none; } }
+  /* ToastViewport, default variant */
+  .app .toasts { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .app .toast { max-width: 20rem; width: 100%; border: 1px solid var(--border); background: var(--surface);
+                border-radius: .5rem; padding: 12px 16px; font-size: 14px; color: var(--foreground);
+                box-shadow: 0 8px 32px 0 rgba(0,0,0,.4); }
+  .app .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Refinement spec · Epic ALF-7 (Comms Module)</p>
+<h1>ALF-221 — Provide some sort of feedback when "Re-run classifier" button is pressed</h1>
+<p class="sub">After a re-run request, the row says it's waiting, and a toast reports the new verdict or the
+failure. The worker also stops retrying a re-run that can't succeed, so every re-run ends with an outcome.</p>
+
+<h2>1 · Context &amp; problem</h2>
+<p>Ticket: <em>"Right now there's no indication anything was sent, if the verdict changed or not, if
+something went wrong, etc."</em></p>
+<p>Today a click on <strong>Re-run classifier</strong> (<code>components/comms/row-verbs.tsx</code>) calls
+<code>requestReclassify</code> in <code>lib/stores/comms-store.tsx</code>. That call POSTs
+<code>/api/comms/messages/[id]/reclassify</code>, which stamps <code>reclassify_requested_at</code> and resets
+<code>classify_attempts</code>. Then the UI says nothing. The flow is:</p>
+<ol>
+  <li>The Worker's comms sweep (<code>workers/src/comms/sweep.ts</code>, cron <code>*/2</code>) takes re-runs
+    first, judges them, then clears <code>reclassify_requested_at</code>.</li>
+  <li>The Comms store re-reads the snapshot every <code>COMMS_POLL_MS</code> (30s), so the new tier arrives
+    1–3 minutes after the click. If the tier changed, the row moves to another section with no explanation.
+    If it didn't change, nothing visible happens.</li>
+</ol>
+<p>Here is what the owner can see today for each part of the ticket:</p>
+<div class="scroll"><table>
+  <tr><th>The ticket asks</th><th>Today</th><th>After this story</th></tr>
+  <tr><td>Was anything sent?</td><td>Nothing, unless the POST fails. Then the store rolls back and toasts
+    "Couldn't ask for a re-run".</td><td>The button switches to <em>Re-run requested</em> with a spinner, and a
+    <em>Re-run pending</em> chip appears on the row. The failure toast stays as it is.</td></tr>
+  <tr><td>Did the verdict change?</td><td>The row might move sections, or might not.</td><td>A toast names the
+    sender and the before and after tiers, or says the tier stayed the same.</td></tr>
+  <tr><td>Did something go wrong?</td><td>Nothing tells the owner. Worse, a re-run that keeps failing never ends
+    (see below).</td><td>After 5 attempts the Worker gives up and keeps the old verdict. A toast and a line in
+    the detail panel say so.</td></tr>
+</table></div>
+
+<div class="callout"><strong>A re-run that keeps failing retries forever.</strong>
+<code>fetchReclassifyRequests</code> (<code>workers/src/comms/store.ts</code>) does not filter on
+<code>classify_attempts</code>, and <code>parkAtCeiling</code> only picks up rows with <code>tier IS NULL</code>.
+So when a re-run of an already-judged row keeps failing with a bad model response (a content-shaped failure),
+the Worker re-sends the model call on every tick, bills it, counts attempts past the ceiling of 5, and never
+clears the request. The UI would show the row as pending forever. This story adds an end state for it (§3.3).</div>
+
+<h2>2 · What a re-run goes through</h2>
+<svg viewBox="0 0 900 330" role="img" aria-label="Re-run lifecycle state diagram" font-family="-apple-system, Segoe UI, sans-serif" font-size="13">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8a94a0"/></marker></defs>
+  <g fill="none" stroke="#8a94a0" stroke-width="1.4">
+    <rect x="10" y="130" width="120" height="54" rx="8"/>
+    <rect x="190" y="130" width="140" height="54" rx="8"/>
+    <rect x="400" y="120" width="170" height="74" rx="8" stroke="#0d7d7d" stroke-width="2"/>
+    <rect x="660" y="10" width="230" height="54" rx="8"/>
+    <rect x="660" y="84" width="230" height="54" rx="8"/>
+    <rect x="660" y="158" width="230" height="54" rx="8"/>
+    <rect x="660" y="232" width="230" height="74" rx="8" stroke="#d1544a"/>
+    <rect x="190" y="250" width="140" height="54" rx="8" stroke="#d1544a"/>
+    <path d="M130 157 H188" marker-end="url(#ar)"/>
+    <path d="M330 157 H398" marker-end="url(#ar)"/>
+    <path d="M260 184 V248" marker-end="url(#ar)"/>
+    <path d="M570 140 C610 140 620 37 658 37" marker-end="url(#ar)"/>
+    <path d="M570 150 C615 150 620 111 658 111" marker-end="url(#ar)"/>
+    <path d="M570 165 C615 165 620 185 658 185" marker-end="url(#ar)"/>
+    <path d="M570 180 C610 180 620 269 658 269" marker-end="url(#ar)"/>
+    <path d="M455 194 C455 225 515 225 515 196" marker-end="url(#ar)"/>
+  </g>
+  <g fill="currentColor" style="color:#5c6672">
+    <text x="70" y="161" text-anchor="middle" fill="#1b1f24" style="fill:var(--fg)">Idle</text>
+    <text x="260" y="153" text-anchor="middle" style="fill:var(--fg)">Requesting</text>
+    <text x="260" y="171" text-anchor="middle" font-size="11">POST in flight</text>
+    <text x="485" y="146" text-anchor="middle" style="fill:var(--fg)" font-weight="600">Pending</text>
+    <text x="485" y="164" text-anchor="middle" font-size="11">reclassify_requested_at set</text>
+    <text x="485" y="180" text-anchor="middle" font-size="11">button + chip (§4)</text>
+    <text x="485" y="244" text-anchor="middle" font-size="11">transport error / classifier outage:</text>
+    <text x="485" y="258" text-anchor="middle" font-size="11">stays pending, next tick retries</text>
+    <text x="775" y="33" text-anchor="middle" style="fill:var(--fg)">Judged</text>
+    <text x="775" y="51" text-anchor="middle" font-size="11">"still Today" / "Today → ASAP"</text>
+    <text x="775" y="107" text-anchor="middle" style="fill:var(--fg)">Refused</text>
+    <text x="775" y="125" text-anchor="middle" font-size="11">filed on the FYI shelf</text>
+    <text x="775" y="181" text-anchor="middle" style="fill:var(--fg)">Still unjudged</text>
+    <text x="775" y="199" text-anchor="middle" font-size="11">body undecoded → Today</text>
+    <text x="775" y="256" text-anchor="middle" style="fill:var(--fg)">Gave up <tspan font-size="10" fill="#0d7d7d">NEW</tspan></text>
+    <text x="775" y="274" text-anchor="middle" font-size="11">5 content-shaped failures</text>
+    <text x="775" y="290" text-anchor="middle" font-size="11">old verdict kept · reclassify_failed_at</text>
+    <text x="260" y="273" text-anchor="middle" style="fill:var(--fg)">Rolled back</text>
+    <text x="260" y="291" text-anchor="middle" font-size="11">existing error toast</text>
+    <text x="620" y="320" text-anchor="middle" font-size="11">Each outcome clears the request → the next poll resolves it → one toast (§3.2)</text>
+  </g>
+</svg>
+
+<h2>3 · Proposed change</h2>
+
+<h3>3.1 Pending state (derived from the row, so it survives a reload)</h3>
+<p>The row counts as pending whenever <code>message.reclassify_requested_at !== null</code>. No new client
+state is needed. The existing optimistic patch in <code>requestReclassify</code> sets that field when the button
+is clicked, so the pending state shows at once, and a rollback removes it.</p>
+<ul>
+  <li><strong>Button</strong> (<code>RowVerbs</code>): while pending it becomes a disabled
+    <code>ghost sm</code> button with the <code>Spinner</code> atom (size 12, label
+    <code>"Re-run pending"</code>) in place of <code>RefreshCw</code>, and the text <em>Re-run requested</em>.
+    It's disabled because a second request while one is pending would only reset the attempt count.
+    <code>RowVerbs</code> gets a <code>reclassifyPending</code> prop, passed down through
+    <code>MessageDetail</code>.</li>
+  <li><strong>Chip</strong> (<code>RowMarkers</code>): a <code>Badge variant="secondary"</code> reading
+    <em>Re-run pending</em>. It appears on queue and shelf rows, so the pending state is also visible when the row
+    is collapsed. Like every other marker it's derived, not stored. It goes first in the chip order, because
+    it describes the row's verdict as a whole.</li>
+  <li>A classifier outage keeps rows pending, and nothing new is added for that case. The existing module-level
+    <code>ClassifierBanner</code> already explains why nothing is being judged.</li>
+</ul>
+
+<h3>3.2 Outcome toast (for re-runs requested in this tab)</h3>
+<p>The store remembers each re-run it asked for, and when the request clears it compares the before and after
+rows:</p>
+<pre><code>// comms-store.tsx: a ref, not reducer state, since nothing renders from it
+const rerunsRef = useRef(new Map&lt;string, { tier: CommTier | null; requestedAt: string }&gt;());
+
+// requestReclassify: record { tier, requestedAt } before the write; delete it on rollback.
+// Each successful reconcile: resolve every tracked id against the snapshot's `watched` rows.
+//   row absent (purged / expired)             → drop, no toast
+//   row.reclassify_requested_at !== null      → still pending, keep waiting
+//   otherwise                                 → toast outcomeMessage(before, row, people), drop</code></pre>
+
+<p><strong>The watched rows come from the snapshot</strong> because a re-run can move a row somewhere the
+snapshot doesn't return. A demotion to FYI or a refusal files the row on the shelf, and the shelf is paged
+newest-first, so an older message can fall outside the loaded page. That is exactly the case that most needs a
+toast. So <code>GET /api/comms/snapshot</code> takes an optional <code>watch</code> parameter:</p>
+<ul>
+  <li><code>watch</code> is a comma-separated list of UUIDs, at most 20. The route validates it the same way it
+    validates <code>shelf</code>, and returns 400 on a malformed id.</li>
+  <li>The route returns those rows as <code>seed.watched: CommMessage[]</code>, fetched with one extra
+    <code>.in('id', …)</code> read, and only when the list is non-empty.</li>
+  <li><code>api.fetchCommsSnapshot(shelfLimit, watchIds)</code> passes the list through. The store uses
+    <code>watched</code> only to resolve outcomes. It is never rendered or merged into <code>messages</code>.</li>
+</ul>
+
+<p>The toast text is built by a pure <code>rerunOutcomeMessage(before, after, senderName)</code> in
+<code>lib/comms/</code>. Tier names come from <code>TIER_LABEL</code>. The rules are checked top-down and the
+first match wins:</p>
+<div class="scroll"><table>
+  <tr><th>Resolved row</th><th>Toast</th></tr>
+  <tr><td><code>reclassify_failed_at ≥ requestedAt</code> (the Worker gave up, §3.3)</td>
+      <td><em>Re-run failed · {sender}: kept {Tier}</em>, or <em>…: still unjudged</em> if the row had no tier</td></tr>
+  <tr><td><code>judged_by = 'refusal'</code></td><td><em>Re-run · {sender}: the model declined, moved to FYI</em></td></tr>
+  <tr><td><code>judged_by = 'unjudged'</code></td><td><em>Re-run · {sender}: still couldn't judge it, on {Tier}</em></td></tr>
+  <tr><td><code>tier === before.tier</code></td><td><em>Re-run · {sender}: still {Tier}</em></td></tr>
+  <tr><td>otherwise</td><td><em>Re-run · {sender}: {Old} → {New}</em></td></tr>
+</table></div>
+<p class="small">Toasts use the <code>default</code> variant and go through the existing <code>showToastRef</code>.
+The toast viewport's <code>aria-live="polite"</code> region announces them. The sender label comes from
+<code>senderLabel(message, people)</code>, which tells two re-runs that land in the same tick apart. The
+owner's triage state is never touched: a cleared row stays cleared, as <code>writeVerdict</code> already
+guarantees.</p>
+
+<h3>3.3 Worker: a re-run that can't succeed gets an end state</h3>
+<ol>
+  <li><strong>Migration</strong> <code>&lt;next&gt;_comm_reclassify_failed.sql</code> (use the next available
+    number): <code>ALTER TABLE comm_messages ADD COLUMN reclassify_failed_at timestamptz</code>, nullable, no
+    default. Run migration-lint. Regenerate <code>frontend/lib/database.types.ts</code> with
+    <code>supabase gen types</code>. Add the field to the Worker's <code>WireMessage</code>/<code>CommMessage</code>
+    and to <code>lib/comms/fixtures.ts</code>.</li>
+  <li><strong>A new first step in <code>runCommsSweep</code></strong>, <code>abandonStalledReruns</code>, runs
+    before <code>parkAtCeiling</code> and follows the same pattern. It reads rows with
+    <code>reclassify_requested_at NOT NULL AND classify_attempts &gt;= COMMS_ATTEMPT_CEILING</code> (limited to
+    <code>COMMS_SWEEP_LIMIT</code>) and PATCHes each one to
+    <code>{ reclassify_requested_at: null, reclassify_failed_at: now }</code>. That PATCH is conditional on
+    <code>reclassify_requested_at</code> still equalling the value it read, so it can't wipe out a newer request.
+    It doesn't change tier, verdict or ask, so the old verdict stays. A row that never had a tier then goes to
+    <code>parkAtCeiling</code> in the same tick, as it would today.</li>
+  <li><strong><code>fetchReclassifyRequests</code></strong> adds <code>classify_attempts=lt.{ceiling}</code>,
+    so a stalled row is abandoned instead of being billed again.</li>
+  <li><strong>Subrequest budget:</strong> the new step adds one read to every tick, plus one PATCH for each
+    abandoned row (rare). Recheck the arithmetic in the <code>COMMS_SWEEP_LIMIT</code> comment and keep a full
+    tick under 50 subrequests. If the new step pushes it over, lower the cap on abandoned rows per tick; don't
+    raise the budget.</li>
+  <li><strong>A new request clears the old failure.</strong> The reclassify route, and the optimistic patch in
+    <code>requestReclassify</code>, also set <code>reclassify_failed_at: null</code>.</li>
+</ol>
+
+<h3>3.4 The failure line in the detail panel</h3>
+<p>While <code>reclassify_failed_at</code> is set, <code>MessageDetail</code> shows a line right after
+<em>Why:</em> (same <code>text-[12.5px] text-muted-foreground</code>, with an amber lead-in):
+<em><b>Re-run failed</b> {formatMessageTime(reclassify_failed_at)}. The classifier couldn't produce a verdict,
+so this one stands.</em> This makes the failure visible after a reload, or when it happened in another tab.
+There's deliberately no chip on the collapsed row: the verdict still stands, so a failed re-run isn't a way the
+module is wrong about the row.</p>
+
+<h2>4 · Mockups</h2>
+<p class="small">These use the app's own dark tokens from <code>globals.css</code>, the <code>Button</code>,
+<code>Badge</code> and <code>Spinner</code> atoms, <code>message-row.styles.ts</code> and the toast viewport's
+default variant.</p>
+
+<div class="app">
+  <p class="label">A · Pending: the expanded row just after the click</p>
+  <div class="section">
+    <p class="eyebrow">Today · 3</p>
+    <div class="row sel">
+      <div><span class="sender">Dana Whitfield</span> <span class="meta">· Gmail — personal · 9:42 AM</span></div>
+      <p class="ask">Wants to know if you can cover Thursday's standup</p>
+      <div class="chips"><span class="badge secondary">Re-run pending</span></div>
+      <div class="detail">
+        <p class="subject">Thursday standup</p>
+        <p class="fine">dana@example.com · Gmail — personal · 9:42 AM</p>
+        <div class="body">Hey — any chance you could run standup Thursday? I'm out at the dentist until 11.</div>
+        <p class="why"><b>Why:</b> A direct request from a colleague with a near deadline.</p>
+        <div class="verbs">
+          <div>
+            <span class="btn outline">↗ Open in Gmail</span>
+            <span class="btn outline">Make an Inbox item</span>
+            <span class="btn outline">Not replying</span>
+            <span class="btn outline">Change tier ▾</span>
+          </div>
+          <div>
+            <span class="btn dis"><svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Re-run requested</span>
+            <span class="btn">⊕ Add sender to people</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div><span class="sender">Sam Ortiz</span> <span class="meta">· iMessage · 8:10 AM</span></div>
+      <p class="ask">Asks whether dinner Saturday is still on</p>
+      <div class="chips"><span class="badge secondary">Re-run pending</span><span class="badge alert">Unjudged</span></div>
+    </div>
+  </div>
+  <p class="fine" style="margin-top:8px">The second row is collapsed but still shows it's pending. <code>Re-run pending</code> comes before the other chips.</p>
+</div>
+
+<div class="app">
+  <p class="label">B · Outcome toasts (bottom-right viewport, one for each rule in §3.2)</p>
+  <div class="toasts">
+    <div class="toast">Re-run · Dana Whitfield: Today → ASAP</div>
+    <div class="toast">Re-run · Dana Whitfield: still Today</div>
+    <div class="toast">Re-run · Promo Weekly: the model declined, moved to FYI</div>
+    <div class="toast">Re-run · Sam Ortiz: still couldn't judge it, on Today</div>
+    <div class="toast">Re-run failed · Dana Whitfield: kept Today</div>
+  </div>
+</div>
+
+<div class="app">
+  <p class="label">C · After a failed re-run: the expanded row, later or after a reload</p>
+  <div class="section">
+    <p class="eyebrow">Today · 3</p>
+    <div class="row sel">
+      <div><span class="sender">Dana Whitfield</span> <span class="meta">· Gmail — personal · 9:42 AM</span></div>
+      <p class="ask">Wants to know if you can cover Thursday's standup</p>
+      <div class="detail">
+        <p class="subject">Thursday standup</p>
+        <p class="fine">dana@example.com · Gmail — personal · 9:42 AM</p>
+        <div class="body">Hey — any chance you could run standup Thursday? I'm out at the dentist until 11.</div>
+        <p class="why"><b>Why:</b> A direct request from a colleague with a near deadline.</p>
+        <p class="why"><b class="warn">Re-run failed</b> 9:58 AM. The classifier couldn't produce a verdict, so this one stands.</p>
+        <div class="verbs">
+          <div>
+            <span class="btn outline">↗ Open in Gmail</span>
+            <span class="btn outline">Make an Inbox item</span>
+            <span class="btn outline">Not replying</span>
+            <span class="btn outline">Change tier ▾</span>
+          </div>
+          <div>
+            <span class="btn">↻ Re-run classifier</span>
+            <span class="btn">⊕ Add sender to people</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="fine" style="margin-top:8px">The button is enabled again (so the owner can retry), and the collapsed row gets no chip. The line disappears when a new re-run is requested.</p>
+</div>
+
+<p class="small"><strong>Legend.</strong> A shows §3.1: the <em>Re-run requested</em> button with a spinner
+(disabled) and the <em>Re-run pending</em> chip (<code>secondary</code>). B shows the §3.2 outcome table, one
+toast per rule. C shows §3.4: the amber <em>Re-run failed</em> line in the detail panel only. These mockups fix
+which elements appear and their wording. Padding and exact colors may differ slightly.</p>
+
+<h2>5 · Files touched</h2>
+<div class="scroll"><table>
+  <tr><th>Area</th><th>Files</th></tr>
+  <tr><td>Schema</td><td><code>database/migrations/&lt;next&gt;_comm_reclassify_failed.sql</code>, regenerated <code>frontend/lib/database.types.ts</code></td></tr>
+  <tr><td>Worker</td><td><code>workers/src/comms/sweep.ts</code> (<code>abandonStalledReruns</code>), <code>store.ts</code> (<code>fetchStalledReruns</code>, attempts filter), <code>sweep-store.ts</code>, <code>types.ts</code></td></tr>
+  <tr><td>API</td><td><code>app/api/comms/messages/[id]/reclassify/route.ts</code> (clear failure), <code>app/api/comms/snapshot/route.ts</code> + <code>lib/data/comms.ts</code> (<code>watch</code> → <code>watched</code>), <code>lib/api-client.ts</code></td></tr>
+  <tr><td>Store</td><td><code>lib/stores/comms-store.tsx</code> (tracking, resolution, toast), new <code>lib/comms/rerun.ts</code> (<code>isReclassifyPending</code>, <code>rerunOutcomeMessage</code>)</td></tr>
+  <tr><td>UI</td><td><code>components/comms/row-verbs.tsx</code>, <code>row-markers.tsx</code>, <code>message-detail.tsx</code>, <code>message-row.tsx</code>, <code>message-row.stories.tsx</code></td></tr>
+</table></div>
+
+<h2>6 · Acceptance criteria</h2>
+<ul class="checks">
+  <li>Clicking <em>Re-run classifier</em> immediately disables the button and replaces it with <em>Re-run
+    requested</em> and a spinner. A <em>Re-run pending</em> chip, listed first, appears on the row whether
+    it's expanded or collapsed, in the queue or on the shelf.</li>
+  <li>Reloading while a re-run is pending still shows both, because they're derived from
+    <code>reclassify_requested_at</code>.</li>
+  <li>If the POST fails, the row rolls back (button and chip go back to normal) and the existing
+    "Couldn't ask for a re-run" toast appears.</li>
+  <li>When the request clears, exactly one toast appears for each re-run requested in this tab, with the §3.2
+    wording for its outcome. That includes a row that moved to a shelf page that isn't loaded, via
+    <code>watch</code>. A row that was purged or deleted is dropped without a toast.</li>
+  <li><code>rerunOutcomeMessage</code> is unit-tested for every row of the §3.2 table, including the
+    precedence order.</li>
+  <li><code>GET /api/comms/snapshot?watch=…</code> returns the named rows in <code>watched</code>, returns
+    400 on a malformed id or more than 20 ids, and makes no extra read when <code>watch</code> is absent.</li>
+  <li>Worker: a re-run row at the attempt ceiling is abandoned without a model call. Its request is cleared,
+    <code>reclassify_failed_at</code> is stamped, and its tier, verdict and ask are unchanged.
+    <code>fetchReclassifyRequests</code> excludes rows at the ceiling. The abandoning PATCH doesn't match a
+    row whose <code>reclassify_requested_at</code> has changed since it was read. A tier-null row that's
+    abandoned is then parked by <code>parkAtCeiling</code> as it is today.</li>
+  <li>The reclassify route and the optimistic patch both set <code>reclassify_failed_at</code> to null.</li>
+  <li>The expanded row shows the <em>Re-run failed</em> line whenever <code>reclassify_failed_at</code> is
+    set, and never on the collapsed row.</li>
+  <li>New Storybook stories on <code>MessageRow</code>: <em>Re-run pending (expanded)</em>, <em>Re-run pending
+    (collapsed)</em> and <em>Re-run failed</em>, with committed snapshot baselines.</li>
+  <li>The subrequest arithmetic in the <code>COMMS_SWEEP_LIMIT</code> comment is updated and stays under 50.</li>
+  <li>The demo doc's evidence follows the <code>showboat</code> skill's rules for a UI change that adds
+    Storybook snapshots. This spec doesn't redefine them.</li>
+</ul>
+
+<h2>7 · Out of scope / open questions</h2>
+<ul>
+  <li><strong>Outcome toasts for re-runs requested in another tab or before a reload.</strong> The tracking
+    lives in the tab's memory, so those re-runs get the pending state and the failure line (both stored on the
+    row) but no toast. Accepted, since a re-run is a single deliberate click.</li>
+  <li><strong>A keyboard shortcut for re-run.</strong> There isn't one today and this story doesn't add one.</li>
+  <li><strong>Showing verdict history</strong> (the old reason next to the new one). The verdict rows are kept,
+    but showing them is a separate audit feature.</li>
+  <li><strong>The owner changes the tier while a re-run is pending.</strong> The re-run still overwrites the
+    tier, as it does today (D19: it's an explicit act). The toast compares against the tier at the time of
+    the request.</li>
+</ul>
+
+</div>
+</body>
+</html>
