@@ -5,19 +5,18 @@ import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { makeCommAccount, makeCommMessage } from '@/lib/comms/fixtures';
 
 /**
- * Frame the switcher in the desktop sidebar's real geometry — `w-70` with the `px-4` its
- * header block carries (see `app-shell.tsx`) — because the control now sizes itself from its
- * container rather than from its labels. Captured on the canvas it would simply stretch to the
+ * Frame the switcher in the desktop sidebar's real geometry — `w-56` with the `px-4` its
+ * header block carries (see `app-shell.tsx`) — because the control sizes itself from its
+ * container rather than from its content. Captured on the canvas it would simply stretch to the
  * canvas width, and the snapshot would stop showing the thing that matters: that the segments
- * fit the sidebar without clipping or spilling over its border (ALF-219). The sidebar widened
- * from `w-56` to `w-64` for the fourth (Reader) segment (ALF-233), then from `w-64` to `w-68`
- * to `w-70` for the fifth (Wiki) segment (ALF-261) — `w-68` (272px) still left every label 1px
- * short of its content width — this frame follows it.
+ * fit the sidebar without clipping or spilling over its border (ALF-219). The switcher is
+ * icon-only (ALF-270), so this width is the module navs' floor, not the switcher's own — see
+ * `app-shell.tsx`.
  */
 const withSidebarFrame: Decorator = (Story) => (
   <div
     data-testid="sidebar-frame"
-    className="w-70 border-r border-border bg-surface px-4 py-3 text-foreground"
+    className="w-56 border-r border-border bg-surface px-4 py-3 text-foreground"
   >
     <Story />
   </div>

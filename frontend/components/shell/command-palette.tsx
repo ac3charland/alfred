@@ -2,19 +2,14 @@
 
 import {
   BookMarked,
-  BookOpen,
   CalendarRange,
   Check,
-  Code2,
   FolderOpen,
   GitBranch,
   Inbox,
   LayoutDashboard,
-  Library,
   ListOrdered,
-  ListTodo,
   type LucideIcon,
-  MessagesSquare,
   Repeat,
   ScrollText,
   Search,
@@ -36,6 +31,7 @@ import {
 } from '@/components/shell/command-destinations';
 import { useCommandPaletteShortcut } from '@/components/shell/use-command-palette-shortcut';
 import { WIKI_SECTION_ICONS } from '@/components/wiki/wiki-section-icons';
+import { MODULE_ICON } from '@/lib/module-icons';
 import { useProjects } from '@/lib/stores/code-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { GROUP_LABEL_CLASS } from '@/lib/ui/group-label-class';
@@ -43,25 +39,25 @@ import { cn } from '@/lib/utils';
 
 const LISTBOX_ID = 'command-palette-destinations';
 
-/** Each icon token resolves to the same lucide icon its sidebar entry uses. */
+/**
+ * Each icon token resolves to the same lucide icon its sidebar entry uses. The five module
+ * destinations (`tasks`, `code`, `comms`, `reader`, `wiki`) spread in from `MODULE_ICON`
+ * (ALF-270) so the palette and the module switcher can't disagree on a module's icon.
+ */
 const ICONS: Record<DestinationIcon, LucideIcon> = {
-  tasks: ListTodo,
   inbox: Inbox,
   priority: ListOrdered,
   today: Sun,
   plan: CalendarRange,
   habits: Repeat,
   completed: Check,
-  code: Code2,
   dashboard: LayoutDashboard,
   backlog: ListOrdered,
   'needs-human-action': UserCheck,
-  comms: MessagesSquare,
   people: Users,
   rubric: ScrollText,
   examples: BookMarked,
-  reader: BookOpen,
-  wiki: Library,
+  ...MODULE_ICON,
   ...WIKI_SECTION_ICONS,
   folder: FolderOpen,
   project: GitBranch,

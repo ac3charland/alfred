@@ -34,10 +34,14 @@ test.describe('at a phone width', () => {
     const switcher = drawer.getByRole('group', { name: 'Switch module' });
     await expect(switcher.getByRole('link')).toHaveCount(5);
 
+    // The drawer's wordmark row names the open module (ALF-270), starting on Tasks.
+    await expect(drawer.getByText('Tasks', { exact: true })).toBeVisible();
+
     // Comms swaps in without closing the drawer, exactly as Code does.
     await switcher.getByRole('link', { name: 'Comms' }).click();
     await expect(drawer).toBeVisible();
     await expect(drawer.getByRole('navigation', { name: 'Comms' })).toBeVisible();
+    await expect(drawer.getByText('Comms', { exact: true })).toBeVisible();
 
     await drawer.getByRole('link', { name: 'Code' }).click();
 

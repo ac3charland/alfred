@@ -16,6 +16,7 @@ import { IconButton } from '@/components/atoms/icon-button';
 import { ProjectNav } from '@/components/code/project-nav';
 import { CommsNav } from '@/components/comms/comms-nav';
 import { ReaderNav } from '@/components/reader/reader-nav';
+import { ActiveModuleLabel } from '@/components/shell/active-module-label';
 import { SearchBox } from '@/components/shell/search-box';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { FolderNav } from '@/components/tasks/folder-nav';
@@ -58,7 +59,8 @@ export function ShellMobileNav() {
             event.preventDefault();
           }}
           className={cn(
-            'fixed left-0 top-0 bottom-0 z-50 w-70 bg-surface border-r border-border',
+            // 224px (`w-56`), matching the desktop sidebar (ALF-270) — see app-shell.tsx.
+            'fixed left-0 top-0 bottom-0 z-50 w-56 bg-surface border-r border-border',
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
             'data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left',
             'duration-200 motion-reduce:animate-none',
@@ -66,7 +68,10 @@ export function ShellMobileNav() {
         >
           <DialogTitle className="sr-only">Navigation</DialogTitle>
           <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
-            <span className="font-serif text-xl text-foreground">alfred</span>
+            <div className="flex items-baseline justify-between gap-2 min-w-0">
+              <span className="font-serif text-xl text-foreground">alfred</span>
+              <ActiveModuleLabel />
+            </div>
             {/* No `onNavigate`: switching module is a move *within* this menu, not an arrival,
                 so the drawer stays open and just re-derives which module's nav it shows. */}
             <ViewSwitcher />
