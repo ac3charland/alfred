@@ -6,7 +6,7 @@ import { type CoreFrontmatter, renderWikiFile } from './frontmatter';
  * what `inbox/` already holds.
  *
  * Two producers build envelopes. A Reader send holds the post's text as `source.md` plus the
- * picked "Novel ideas" bullets as `picks-<date>.md`; a knowledge dispatch holds one
+ * picked "Novel ideas" and "Evidence" bullets as `picks-<date>.md`; a knowledge dispatch holds one
  * `notes-<date>.md` in the owner's own words. Both are registry rows the wiki repo already
  * carries (`reader-post` and `idea`), so no wiki-side change is ever needed for a send.
  */
@@ -37,6 +37,12 @@ export interface ReaderPostForWiki {
   received_at: string;
   /** The post body, or null / empty once the retention sweep has taken it. */
   text: string | null;
+}
+
+/** The bullets one Reader send carries, per overview section, each in overview order. */
+export interface ReaderPicks {
+  ideas: readonly string[];
+  evidence: readonly string[];
 }
 
 /** The Inbox item fields a knowledge dispatch reads. */
@@ -89,6 +95,12 @@ export function knowledgeItemExternalId(itemId: string): string {
   return `alfred:item:${itemId}`;
 }
 
+/** One picks section: its heading, a blank line, then one `- ` line per bullet. */
+function picksSection(heading: string, bullets: readonly string[]): string {
+  const lines = bullets.map((bullet) => `- ${bullet.replaceAll(/\s*\n\s*/g, ' ').trim()}`);
+  return [`## ${heading}`, '', ...lines].join('\n');
+}
+
 /**
  * A Reader send: `source.md` holding the post text verbatim (or a pointer with an empty body once
  * the text is swept), plus `picks-<captured>.md` listing the chosen bullets one per line.
@@ -101,11 +113,16 @@ export function knowledgeItemExternalId(itemId: string): string {
  * Text that is only whitespace counts as gone: the wiki reads a blank body as empty (a pointer),
  * so it is never written as `full-text`.
  *
+ * The picks body is headed per section — `## Novel ideas`, then `## Evidence` — so the ingest
+ * session can tell a claim from its support. A section with no bullets in this send is left out,
+ * and every send is headed, even one of ideas alone, so every picks file has one shape. The route
+ * guarantees at least one bullet, so the body is never empty.
+ *
  * A bullet's internal newlines are folded to spaces, because a list item is one line.
  */
 export function readerEnvelope(
   post: ReaderPostForWiki,
-  ideas: readonly string[],
+  picks: ReaderPicks,
   captured: string,
 ): Envelope {
   const rawText = post.text ?? '';
@@ -133,9 +150,14 @@ export function readerEnvelope(
     files.push({ name: 'source.md', content: renderWikiFile(source, text) });
   }
 
-  const picks: CoreFrontmatter = { ...core, origin: 'model-derived' };
-  const bullets = ideas.map((idea) => `- ${idea.replaceAll(/\s*\n\s*/g, ' ').trim()}`).join('\n');
-  files.push({ name: `picks-${captured}.md`, content: renderWikiFile(picks, bullets) });
+  const picksFrontmatter: CoreFrontmatter = { ...core, origin: 'model-derived' };
+  const sections: string[] = [];
+  if (picks.ideas.length > 0) sections.push(picksSection('Novel ideas', picks.ideas));
+  if (picks.evidence.length > 0) sections.push(picksSection('Evidence', picks.evidence));
+  files.push({
+    name: `picks-${captured}.md`,
+    content: renderWikiFile(picksFrontmatter, sections.join('\n\n')),
+  });
 
   return { title, captured, files };
 }

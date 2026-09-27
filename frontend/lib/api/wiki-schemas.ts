@@ -30,24 +30,34 @@ export const wikiSearchQuerySchema = z.object({
 export type WikiSearchQuery = z.infer<typeof wikiSearchQuerySchema>;
 
 /**
- * Body for POST /api/reader/posts/[id]/wiki — the bullets to send, one to six non-blank strings
- * (an overview never holds more than a handful). `.strict()`, so a stray key is a 400 rather than
+ * One section's picks: up to six non-blank strings. Six is workers/src/reader/schema.ts
+ * `READER_MAX_BULLETS`, the most bullets an overview stores in either list; the two packages
+ * share no code, so the number is repeated here. A refine, not `.trim()`: the route matches each
+ * bullet exactly against the post's overview, so a whitespace-only one is refused while every
+ * other bullet keeps its text as sent.
+ */
+const readerPicksList = z
+  .array(z.string().refine((bullet) => bullet.trim() !== '', 'A bullet must not be blank'))
+  .max(6);
+
+/**
+ * Body for POST /api/reader/posts/[id]/wiki — the Novel-ideas and Evidence bullets to send in one
+ * commit. Either list may be left out (a tab on an older bundle posts `{ ideas }` alone), but the
+ * two together must name at least one bullet. `.strict()`, so a stray key is a 400 rather than
  * something silently ignored.
  */
-export const sendReaderIdeasSchema = z
+export const sendReaderPicksSchema = z
   .object({
-    // Six is workers/src/reader/schema.ts `READER_MAX_BULLETS`, the most bullets an overview
-    // stores; the two packages share no code, so the number is repeated here.
-    // A refine, not `.trim()`: the route matches each idea exactly against the post's bullets, so
-    // a whitespace-only one is refused while every other idea keeps its text as sent.
-    ideas: z
-      .array(z.string().refine((idea) => idea.trim() !== '', 'An idea must not be blank'))
-      .min(1)
-      .max(6),
+    ideas: readerPicksList.optional(),
+    evidence: readerPicksList.optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ ideas = [], evidence = [] }) => ideas.length + evidence.length > 0,
+    'Pick at least one bullet',
+  );
 
-export type SendReaderIdeasInput = z.infer<typeof sendReaderIdeasSchema>;
+export type SendReaderPicksInput = z.infer<typeof sendReaderPicksSchema>;
 
 /**
  * Body for POST /api/wiki/items — the knowledge rows to dispatch, one commit for all of them.

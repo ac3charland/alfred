@@ -5,7 +5,7 @@ import type { PatchReaderPostInput, ReaderPostsQuery } from '@/lib/api/reader-sc
 import type { Database, Json } from '@/lib/database.types';
 import { createClient } from '@/lib/supabase/server';
 import type { ReaderHealthSnapshot, ReaderPostListItem, ReaderPostUpdate } from '@/lib/types';
-import type { ReaderPostForWiki } from '@/lib/wiki/writer/envelope';
+import type { ReaderPicks, ReaderPostForWiki } from '@/lib/wiki/writer/envelope';
 
 /**
  * Server-only read/write layer for the Reader module's list — the shell's seed, the route that
@@ -55,6 +55,7 @@ export const READER_POST_LIST_COLUMNS = [
   'summary_state',
   'text_swept_at',
   'title',
+  'wiki_sent_evidence',
   'wiki_sent_ideas',
   'word_count',
 ].join(',');
@@ -197,10 +198,12 @@ export async function getReaderPostListItem(
 
 /** What a wiki send reads: the envelope's fields, plus the bullets it may send and has sent. */
 export interface ReaderPostWikiRow extends ReaderPostForWiki {
-  /** The structured take, whose `novel_ideas` bound what a send may name. */
+  /** The structured take, whose `novel_ideas` and `evidence` bound what a send may name. */
   overview: Json | null;
-  /** The exact text of every bullet already sent. */
+  /** The exact text of every Novel-ideas bullet already sent. */
   wiki_sent_ideas: string[];
+  /** The exact text of every Evidence bullet already sent. */
+  wiki_sent_evidence: string[];
 }
 
 /**
@@ -215,24 +218,31 @@ export async function getReaderPostForWiki(
 ): Promise<{ data: ReaderPostWikiRow | null; error: PostgrestError | null }> {
   return supabase
     .from('reader_posts')
-    .select('id,title,author,canonical_url,received_at,text,overview,wiki_sent_ideas')
+    .select(
+      'id,title,author,canonical_url,received_at,text,overview,wiki_sent_ideas,wiki_sent_evidence',
+    )
     .eq('id', id)
     .maybeSingle();
 }
 
 /**
- * Record bullets as sent, through the `append_wiki_sent_ideas` RPC: one atomic update that adds
- * only the strings not already present. A read-modify-write here would let two tabs sending from
- * the same post race, and the later send would erase the earlier one's marks. The row comes back
- * through the shared list columns, so the body never rides along.
+ * Record a send's bullets as sent, through the `append_wiki_sent_picks` RPC: one atomic update
+ * that adds to each section's column only the strings not already present in it. One call for
+ * both lists, so a failure can never leave half a send marked; and no read-modify-write, which
+ * would let two tabs sending from the same post race and the later send erase the earlier one's
+ * marks. The row comes back through the shared list columns, so the body never rides along.
  */
-export async function appendWikiSentIdeas(
+export async function appendWikiSentPicks(
   supabase: SupabaseClient<Database>,
   id: string,
-  ideas: readonly string[],
+  picks: ReaderPicks,
 ): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
   return supabase
-    .rpc('append_wiki_sent_ideas', { p_post: id, p_ideas: [...ideas] })
+    .rpc('append_wiki_sent_picks', {
+      p_post: id,
+      p_ideas: [...picks.ideas],
+      p_evidence: [...picks.evidence],
+    })
     .select(READER_POST_LIST_COLUMNS)
     .single<ReaderPostListItem>();
 }

@@ -24,7 +24,7 @@ import type {
   PurgeInput,
   ReaderPostsQuery,
   SendItemsToWikiInput,
-  SendReaderIdeasInput,
+  SendReaderPicksInput,
   UpdateEpicInput,
   UpdateFolderInput,
   UpdateHabitInput,
@@ -848,13 +848,14 @@ export function searchWikiBodies(query: string): Promise<WikiSearchHit[]> {
 }
 
 /**
- * Send picked Novel-ideas bullets from a post into the wiki: one commit, one folder. Returns
- * the post's list row with `wiki_sent_ideas` extended. The route may refuse with a 409 (a bullet
- * no longer in the overview), a 501 (no writer on this deployment), or a 502/503 (GitHub).
+ * Send picked Novel-ideas and Evidence bullets from a post into the wiki: one commit, one folder.
+ * Returns the post's list row with `wiki_sent_ideas` and `wiki_sent_evidence` extended. The route
+ * may refuse with a 409 (a bullet no longer in the overview), a 501 (no writer on this
+ * deployment), or a 502/503 (GitHub).
  */
-export function sendReaderIdeasToWiki(
+export function sendReaderPicksToWiki(
   postId: string,
-  body: SendReaderIdeasInput,
+  body: SendReaderPicksInput,
 ): Promise<ReaderPostListItem> {
   return apiRequest<ReaderPostListItem>(`/api/reader/posts/${postId}/wiki`, {
     method: 'POST',
