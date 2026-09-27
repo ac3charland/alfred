@@ -35,9 +35,10 @@ export function isReaderOverview(value: Json | null): value is JsonReaderOvervie
 }
 
 /**
- * A bullet worth showing: an empty or whitespace-only one is not an idea, and the wiki send route
- * refuses a blank string — kept in, it would fail every Send all.
+ * A bullet worth showing, in either Novel ideas or Evidence: an empty or whitespace-only one is no
+ * bullet, and the wiki send route refuses a blank string — kept in, it would fail every send that
+ * Select all fed.
  */
-export function isIdea(bullet: string): boolean {
+export function isBullet(bullet: string): boolean {
   return bullet.trim() !== '';
 }

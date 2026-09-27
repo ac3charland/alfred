@@ -12,7 +12,7 @@ import {
 import { expect, test } from './support/fixtures';
 
 /**
- * Sending a post's Novel ideas into the wiki, through the whole stack: the checklist in the
+ * Sending a post's Novel ideas and Evidence into the wiki, through the whole stack: the checklist in the
  * browser, the send route, the wiki writer's Git Data API calls against the harness's mock
  * GitHub, and the atomic append that records the sent marks. The mock records every commit it
  * was handed, so each test reads back exactly what landed on the wiki's `main`.
@@ -31,6 +31,10 @@ const STREAKS = 'Streak-tracking helps only until the first miss.';
 const IDENTITY = 'Identity-based framing outlasts outcome goals.';
 const IDEAS = [HABIT, ENVIRONMENT, STREAKS, IDENTITY];
 
+const LALLY = 'Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.';
+const SURVEY = 'A survey of 2,000 habit-app users: streak users lapsed 40% more often.';
+const EVIDENCE = [LALLY, SURVEY];
+
 function habitsPost() {
   return makeReaderPost(PUBLICATION.id, {
     id: POST_ID,
@@ -41,7 +45,7 @@ function habitsPost() {
     word_count: 1640,
     summary_state: 'done',
     gist: "Routines anchored to an existing cue survive; routines anchored to a clock time don't.",
-    overview: makeReaderOverview({ novel_ideas: IDEAS }),
+    overview: makeReaderOverview({ novel_ideas: IDEAS, evidence: EVIDENCE }),
     received_at: '2026-09-16T12:00:00.000Z',
   });
 }
@@ -72,13 +76,18 @@ function headCommit(state: GithubState): GithubCommit {
   return head;
 }
 
-/** The bullets a picks file lists, one `- ` line each. */
+/** The bullets a picks file lists, one `- ` line each, across every section. */
 function pickedBullets(content: string): string[] {
   const body = content.split('\n---\n', 2)[1] ?? '';
   return body
     .split('\n')
     .filter((line) => line.startsWith('- '))
     .map((line) => line.slice(2));
+}
+
+/** A picks file's body, after the frontmatter. */
+function picksBody(content: string): string {
+  return content.split('\n---\n', 2)[1] ?? '';
 }
 
 /** The one folder a commit introduced, and its files by name. */
@@ -111,7 +120,46 @@ async function openRow(page: Page): Promise<Locator> {
   return row;
 }
 
-test.describe('sending Novel ideas to the wiki', () => {
+test.describe('sending Novel ideas and Evidence to the wiki', () => {
+  test('ticks an idea and an evidence bullet and sends them as one commit, headed per section, and the sent state survives a reload', async ({
+    page,
+    seed,
+    request,
+  }) => {
+    await seed({ readerPublications: [PUBLICATION], readerPosts: [habitsPost()] });
+    await page.goto('/reader');
+    const before = await githubState(request);
+
+    const row = await openRow(page);
+    await row.getByRole('checkbox', { name: ENVIRONMENT }).click();
+    await row.getByRole('checkbox', { name: LALLY }).click();
+    await expect(row.getByText('2 selected')).toBeVisible();
+    await row.getByRole('button', { name: 'Send to wiki' }).click();
+
+    await expect(row.getByText('Sent', { exact: true })).toHaveCount(2);
+    await expect(row.getByRole('checkbox', { name: ENVIRONMENT })).toHaveCount(0);
+    await expect(row.getByRole('checkbox', { name: LALLY })).toHaveCount(0);
+    await expect(row.getByRole('group', { name: 'Selected bullets' })).toBeHidden();
+
+    const after = await githubState(request);
+    const commit = headCommit(after);
+    expect(commit.parents).toEqual([before.head]);
+    const { folder, files } = folderOf(commit);
+    expect(folder).toMatch(/^inbox\/\d{4}-\d{2}-\d{2}-why-habits-stick$/);
+    expect(picksBody(picksOf(files))).toBe(
+      `\n## Novel ideas\n\n- ${ENVIRONMENT}\n\n## Evidence\n\n- ${LALLY}\n`,
+    );
+
+    await page.reload();
+    const reloaded = await openRow(page);
+    await expect(reloaded.getByText('Sent', { exact: true })).toHaveCount(2);
+    await expect(reloaded.getByRole('checkbox', { name: LALLY })).toHaveCount(0);
+    await expect(reloaded.getByRole('checkbox', { name: SURVEY })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+  });
+
   test('ticks two and sends them as one commit, and the sent state survives a reload', async ({
     page,
     seed,
@@ -130,8 +178,8 @@ test.describe('sending Novel ideas to the wiki', () => {
     await expect(row.getByText('Sent', { exact: true })).toHaveCount(2);
     await expect(row.getByRole('checkbox', { name: ENVIRONMENT })).toHaveCount(0);
     await expect(row.getByRole('checkbox', { name: STREAKS })).toHaveCount(0);
-    await expect(row.getByRole('checkbox')).toHaveCount(2);
-    await expect(row.getByRole('group', { name: 'Selected ideas' })).toBeHidden();
+    await expect(row.getByRole('checkbox')).toHaveCount(4);
+    await expect(row.getByRole('group', { name: 'Selected bullets' })).toBeHidden();
 
     const after = await githubState(request);
     const commit = headCommit(after);
@@ -146,14 +194,14 @@ test.describe('sending Novel ideas to the wiki', () => {
     await page.reload();
     const reloaded = await openRow(page);
     await expect(reloaded.getByText('Sent', { exact: true })).toHaveCount(2);
-    await expect(reloaded.getByRole('checkbox')).toHaveCount(2);
+    await expect(reloaded.getByRole('checkbox')).toHaveCount(4);
     await expect(reloaded.getByRole('checkbox', { name: HABIT })).toHaveAttribute(
       'aria-checked',
       'false',
     );
   });
 
-  test('Send all sends the rest in a second commit, into a new folder', async ({
+  test('Select all on each section, then Send to wiki, sends every unsent bullet in exactly one more commit', async ({
     page,
     seed,
     request,
@@ -168,20 +216,24 @@ test.describe('sending Novel ideas to the wiki', () => {
     await expect(row.getByText('Sent', { exact: true })).toHaveCount(2);
     const first = headCommit(await githubState(request));
 
-    // A tick left on one bullet makes no difference: Send all sends every unsent bullet.
-    await row.getByRole('checkbox', { name: HABIT }).click();
-    await row.getByRole('button', { name: 'Send all to wiki' }).click();
+    // Select all ticks and sends nothing: main does not move until Send to wiki is pressed.
+    await row.getByRole('button', { name: 'Select all Novel ideas' }).click();
+    await row.getByRole('button', { name: 'Select all Evidence' }).click();
+    await expect(row.getByText('4 selected')).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Deselect all Evidence' })).toBeVisible();
+    expect(headCommit(await githubState(request)).sha).toBe(first.sha);
+    await row.getByRole('button', { name: 'Send to wiki' }).click();
 
-    await expect(row.getByText('All sent to wiki')).toBeVisible();
-    await expect(row.getByText('Sent', { exact: true })).toHaveCount(4);
+    await expect(row.getByText('All sent to wiki')).toHaveCount(2);
+    await expect(row.getByText('Sent', { exact: true })).toHaveCount(6);
     await expect(row.getByRole('checkbox')).toHaveCount(0);
 
-    const second = headCommit(await githubState(request));
-    expect(second.sha).not.toBe(first.sha);
+    const after = await githubState(request);
+    const second = headCommit(after);
     expect(second.parents).toEqual([first.sha]);
     const { folder, files } = folderOf(second);
     expect(folder).not.toBe(folderOf(first).folder);
-    expect(pickedBullets(picksOf(files))).toEqual([HABIT, IDENTITY]);
+    expect(pickedBullets(picksOf(files))).toEqual([HABIT, IDENTITY, LALLY, SURVEY]);
   });
 
   test('a failed send toasts and keeps the ticks, committing nothing', async ({
