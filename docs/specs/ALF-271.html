@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-271 — Be able to send Evidence bullet points to Wiki from Reader along with novel ideas</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --line: #e4e8ee; --card: #f7f9fc;
+    --accent: #6d4fd6; --accent-bg: #efeafd; --code-bg: #f0f3f7;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --ok: #2ea36b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --line: #262d36; --card: #1b2129;
+      --accent: #a78bfa; --accent-bg: #231b3d; --code-bg: #1d242d;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --ok: #3fbf82;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  .kicker { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700; color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 .4rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em;
+         background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: .9rem 1rem;
+        overflow-x: auto; font-size: .8rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .87rem; }
+  th, td { text-align: left; padding: .5rem .65rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  a { color: var(--accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card p { margin: .4rem 0; }
+  .callout { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+             border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent); }
+  .toc { columns: 2; column-gap: 2rem; font-size: .92rem; padding-left: 1.2rem; }
+  @media (max-width: 640px) { .toc { columns: 1; } h1 { font-size: 1.35rem; } }
+  .tag { display: inline-block; font-size: .66rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+         border-radius: 999px; padding: .05rem .5rem; margin-left: .35rem; vertical-align: middle; border: 1px solid; }
+  .tag.alex { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+  .tag.new { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: .8rem 1.05rem; margin: .8rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .3rem; font-size: .98rem; }
+  .dec p, .dec ul { margin: .35rem 0; font-size: .92rem; }
+  .dec .why { color: var(--muted); font-size: .88rem; }
+  .dec .why b { color: var(--fg); }
+  ul.tight li { margin: .3rem 0; }
+  .ac { list-style: none; padding-left: 0; }
+  .ac li { margin: .42rem 0; padding-left: 1.7rem; position: relative; font-size: .92rem; }
+  .ac li::before { content: "☐"; position: absolute; left: 0; color: var(--accent); font-size: 1.05rem; line-height: 1.45; }
+  .ac li.grp { padding-left: 0; font-weight: 600; margin-top: 1.1rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-size: .78rem; }
+  .ac li.grp::before { content: ""; }
+  .mockcap { color: var(--muted); font-size: .84rem; margin: .35rem 0 1.5rem; }
+  .frame-title { font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 1.4rem 0 .2rem; }
+  svg.flow { display: block; width: 100%; min-width: 560px; height: auto; }
+  .fl-box { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+  .fl-hot { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+  .fl-t { fill: var(--fg); font: 600 13px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .fl-s { fill: var(--muted); font: 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .fl-l { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .fl-d { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .fl-a { fill: var(--muted); }
+  .fl-n { fill: var(--accent); font: 700 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+  /* ── App mockups ────────────────────────────────────────────────────────────────────────
+     Scoped to .app so the prose keeps this document's own chrome. Every value is lifted from source:
+       palette, radius, fonts        → frontend/app/globals.css (dark-only palette; Tailwind v4 radii:
+                                       rounded 4px, rounded-md 6px, rounded-lg 8px). `font-serif` is
+                                       --font-instrument-serif, never defined, so Georgia.
+       row shell (expanded+selected) → components/reader/post-row.styles.ts rowShellClass
+       eyebrow/meta/title/gist/verbs → post-row.styles.ts (eyebrowClass … verbRowClass, hintClass)
+       overview panel, plain lists   → components/reader/post-overview.tsx
+       section heading               → lib/ui/section-heading-class.ts
+       checklist rows, heading row,
+       selection bar, sent marks     → components/reader/novel-idea-list.tsx
+       tick box                      → components/tasks/task-row.styles.ts (checkboxSizeClass md:16px,
+                                       checkboxIncompleteClass)
+       buttons                       → components/atoms/button.tsx (ghost / outline / accent, size sm)
+       footer + stamp                → post-row.styles.ts overviewFooterClass, summaryStampClass       */
+  .app {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f; --a-secondary: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8; --a-teal: #4fd1e0; --a-green: #34d399; --a-violet: #a78bfa;
+    background: var(--a-bg); color: var(--a-text); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 16px; margin: .4rem 0 .2rem; font: 14px/1.43 "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow-x: auto;
+  }
+  .app * { box-sizing: border-box; }
+  .app p { margin: 0; }
+  .app code { background: rgba(255,255,255,.06); color: var(--a-text); font-size: 12px; padding: 0 3px; border-radius: 4px; }
+  .app .row { max-width: 640px; min-width: 300px; border: 1px solid color-mix(in srgb, var(--a-green) 60%, transparent);
+              box-shadow: 0 0 0 1px color-mix(in srgb, var(--a-green) 60%, transparent);
+              background: color-mix(in srgb, var(--a-secondary) 40%, transparent); border-radius: 8px; padding: 8px 12px; }
+  .app .panel { max-width: 640px; min-width: 300px; padding: 0 12px; }
+  .app .rhead { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+  .app .eb { font-size: 12px; font-weight: 600; color: var(--a-green); }
+  .app .meta { font-size: 12px; color: var(--a-muted); }
+  .app .rtitle { margin-top: 6px; font: 18px/1.375 Georgia, "Times New Roman", serif; }
+  .app .gist { margin-top: 4px; font-size: 14px; line-height: 1.625; }
+  .app .verbs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+  .app .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 12px;
+              border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap; color: var(--a-text); background: transparent; }
+  .app .btn.outline { border: 1px solid var(--a-border); }
+  .app .btn.accent { background: var(--a-teal); color: var(--a-bg); }
+  .app .btn.quiet { color: var(--a-muted); gap: 6px; }
+  .app .btn.dis { opacity: .5; }
+  .app .kbd { display: inline-flex; border: 1px solid var(--a-border); background: var(--a-bg); border-radius: 4px; padding: 2px 4px;
+              font: 10px/1 ui-monospace, "Geist Mono", Menlo, monospace; color: var(--a-muted); }
+  .app .ov { margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent);
+             display: flex; flex-direction: column; gap: 12px; }
+  .app .panel .ov { margin-top: 0; }
+  .app .sh { margin: 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--a-muted); }
+  .app .hrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 8px; row-gap: 4px; min-height: 32px; }
+  .app .plist { margin: 4px 0 0; padding-left: 20px; list-style: disc; font-size: 14px; }
+  .app .plist li + li { margin-top: 4px; }
+  .app .para { margin-top: 4px; font-size: 14px; }
+  .app .picks { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .app .pick { display: flex; align-items: flex-start; gap: 10px; border-radius: 6px; padding: 4px 6px; font-size: 14px; }
+  .app .pick .tx { flex: 1; min-width: 0; }
+  .app .tick { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 4px;
+               border: 1px solid color-mix(in srgb, var(--a-muted) 50%, transparent); display: flex; align-items: center; justify-content: center; }
+  .app .tick.on { border-color: var(--a-teal); background: var(--a-teal); color: var(--a-bg); }
+  .app .tick.dim { opacity: .5; }
+  .app .slot { flex: none; width: 16px; height: 16px; margin-top: 2px; display: flex; align-items: center; justify-content: center; color: var(--a-violet); }
+  .app .st { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--a-muted); margin-top: 1px; }
+  .app .v { color: var(--a-violet); }
+  .app .bar { margin-top: 8px; padding: 6px 6px 0; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent);
+              display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .app .cnt { font-size: 14px; font-weight: 600; color: var(--a-teal); }
+  .app .foot { margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent);
+               display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  .app .foot-verbs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .app .stamp { font-size: 12px; color: var(--a-muted); }
+  .app .elide { font-size: 12px; color: var(--a-muted); font-style: italic; }
+  .app .toast { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 320px; border: 1px solid var(--a-border);
+                background: var(--a-surface); border-radius: 8px; padding: 12px 16px; font-size: 14px; box-shadow: 0 8px 32px 0 rgba(0,0,0,.4); }
+  .app .toast .x { color: var(--a-muted); display: inline-flex; }
+  .app .newmark { outline: 1px dashed color-mix(in srgb, var(--a-violet) 70%, transparent); outline-offset: 3px; border-radius: 6px; }
+  .ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .ic.bold { stroke-width: 3; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  .legend { display: grid; grid-template-columns: minmax(150px, 220px) 1fr; gap: .55rem 1rem; align-items: center; font-size: .88rem; }
+  .legend .app { margin: 0; padding: 8px 10px; display: flex; align-items: center; gap: 8px; overflow: visible; }
+  @media (max-width: 560px) { .legend { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-bookplus" viewBox="0 0 24 24"><path d="M12 7v6"/><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="M9 10h6"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+</svg>
+<main class="wrap">
+
+<p class="kicker">Refinement spec · a story in epic ALF-232 (Reader)</p>
+<h1>ALF-271 — Be able to send Evidence bullet points to Wiki from Reader along with novel ideas</h1>
+<p class="sub">Written 2026-09-27. Builds on ALF-261 (Day 2 wiki setup, archived at
+<code>docs/specs/archive/ALF-261.html</code>), which made a post's Novel ideas a checklist that sends picked bullets
+into the wiki. Background: the Reader epic <code>docs/specs/epics/ALF-232.html</code> and the wiki epic
+<code>docs/specs/epics/ALF-259.html</code>.</p>
+
+<div class="card">
+  <p><b>In short.</b> A post's <b>Evidence</b> section becomes a checklist like Novel ideas. Both sections share one
+  selection: Alex can tick ideas and evidence together, and one <b>Send to wiki</b> press sends all of them as one
+  commit. Each section heading has its own <b>Send all to wiki</b>, which sends only that section.</p>
+  <p>In the wiki, the send is still one <code>picks-&lt;date&gt;.md</code> file. Its body now has
+  <code>## Novel ideas</code> and <code>## Evidence</code> headings, so ingest can tell a claim from its support.
+  Sent evidence is recorded in its own column, <code>wiki_sent_evidence</code>. The Work instance, which has no wiki
+  writer, stays exactly as it is today.</p>
+</div>
+
+<h3>Contents</h3>
+<ol class="toc">
+  <li><a href="#context">Context &amp; problem</a></li>
+  <li><a href="#decisions">Decisions</a></li>
+  <li><a href="#mockups">What Alex sees</a></li>
+  <li><a href="#behaviour">Behaviour</a></li>
+  <li><a href="#flow">Data flow &amp; contracts</a></li>
+  <li><a href="#wiki-file">What lands in the wiki</a></li>
+  <li><a href="#files">Files to touch</a></li>
+  <li><a href="#tests">Tests &amp; the contract check</a></li>
+  <li><a href="#demo">Demo evidence</a></li>
+  <li><a href="#ac">Acceptance criteria</a></li>
+  <li><a href="#out">Out of scope, risks &amp; open questions</a></li>
+</ol>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="context">1 · Context &amp; problem</h2>
+
+<p>The Reader summarises each newsletter into a gist plus a four-section overview: <b>Novel ideas</b>,
+<b>Evidence</b>, <b>The argument</b>, and <b>Who should read it</b>. ALF-232 D6 stored the first two as string arrays
+so a future knowledge base could index them. ALF-261 then built the path into the wiki, but only for Novel ideas.
+Evidence is still a plain list that nothing can send.</p>
+
+<p>That leaves a gap. A claim without its support is the weaker half of what the post offered. When the ingest
+session writes a wiki page from a picked idea, the most useful thing to have beside it is the evidence the post
+gave for it: the study, the number, the example. Today Alex has to leave that behind or retype it.</p>
+
+<h3>What already exists, and what this story extends</h3>
+<div class="scroll"><table>
+  <tr><th>Piece (ALF-261)</th><th>Today</th><th>After this story</th></tr>
+  <tr><td><code>components/reader/novel-idea-list.tsx</code></td><td>The Novel ideas checklist, its selection bar, and Send all</td><td>Becomes <code>wiki-picks.tsx</code>, which renders both checklists over one selection</td></tr>
+  <tr><td><code>POST /api/reader/posts/[id]/wiki</code></td><td>Body <code>{ ideas }</code>, checked against <code>overview.novel_ideas</code></td><td>Body <code>{ ideas?, evidence? }</code>, each list checked against its own section</td></tr>
+  <tr><td><code>lib/wiki/writer/envelope.ts</code> <code>readerEnvelope</code></td><td><code>picks-…</code> body is a bare bullet list</td><td>Body has a heading per section that has bullets in this send</td></tr>
+  <tr><td><code>reader_posts.wiki_sent_ideas</code> + <code>append_wiki_sent_ideas</code></td><td>Sent marks for ideas, stored as exact text</td><td>Joined by <code>wiki_sent_evidence</code>; one new RPC appends to both columns</td></tr>
+  <tr><td><code>reader-store.tsx</code> <code>sendIdeasToWiki</code></td><td>Not optimistic; one send per post at a time</td><td>Becomes <code>sendPicksToWiki</code>, with the same semantics and both lists</td></tr>
+  <tr><td>Worker summariser</td><td>Already emits <code>overview.evidence</code> (0–6 bullets)</td><td><b>No change.</b> No Worker, prompt or schema edits.</td></tr>
+</table></div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="decisions">2 · Decisions</h2>
+
+<div class="dec">
+  <h3>D1 · One selection covers both sections, with one bar, one send and one commit <span class="tag alex">Alex</span></h3>
+  <p>Novel ideas and Evidence are both checklists over <b>one</b> selection. Ticks in either section add to it.
+  A single selection bar sits under the last checklist section, and its <b>Send to wiki</b> sends every ticked
+  bullet from both sections in one request. That request makes one folder, one commit and one kickoff.</p>
+  <p class="why"><b>Why:</b> the reason for ALF-261 D12 still holds. A post's picks should reach the ingest session
+  together. Evidence is support for a claim. If it went in a separate commit, it could land in a different ingest
+  batch from the idea it supports, and the session would write about one without the other.</p>
+</div>
+
+<div class="dec">
+  <h3>D2 · Send all stays per section <span class="tag alex">Alex</span></h3>
+  <p>Novel ideas' <b>Send all to wiki</b> does not change. Evidence's heading row gets its own button, which sends
+  every unsent evidence bullet and nothing else. A section's Send all clears only that section's ticks, so ideas
+  ticked while Evidence's Send all runs stay ticked.</p>
+  <p class="why"><b>Why:</b> a button next to a list should send that list. <b>Accepted cost:</b> sending every bullet
+  in the post takes two presses and makes two commits. Ticking everything and then pressing Send to wiki is still
+  the one-commit way to do it.</p>
+</div>
+
+<div class="dec">
+  <h3>D3 · Each send is still one picks file, now with headed sections <span class="tag alex">Alex</span></h3>
+  <p>A send still writes one <code>picks-&lt;captured&gt;.md</code> with <code>origin: "model-derived"</code>, under
+  the same registry row. The body changes:</p>
+  <ul>
+    <li>The ideas in the send go under <code>## Novel ideas</code>, and the evidence under <code>## Evidence</code>.</li>
+    <li>A section with no bullets in this send is left out.</li>
+    <li>Every send has headings, including one with only ideas. That is a change from today's bare list.</li>
+  </ul>
+  <p class="why"><b>Why:</b> the summariser writes evidence bullets just as it writes ideas. They have the same
+  provenance, so they belong in the same file kind, and <code>ac3charland/knowledge</code> needs no registry change.
+  The headings let ingest tell a claim from its support. Always adding headings means every future picks file has
+  one shape.</p>
+  <p class="why"><b>Unverified:</b> nothing in this repo says whether the wiki's lint accepts headings in a picks
+  body. The build's contract check (§8) is the gate. If the lint rejects them, the build stops and raises it
+  (§11). It does not fall back to a flat list.</p>
+</div>
+
+<div class="dec">
+  <h3>D4 · Sent evidence gets its own text-keyed column, and one RPC marks both lists atomically <span class="tag new">new</span></h3>
+  <ul>
+    <li>New column <code>reader_posts.wiki_sent_evidence text[] not null default '{}'</code>. It follows ALF-261 D8's
+      rule: a bullet shows as sent when its exact text is in the array, and a reworded bullet reads as unsent.</li>
+    <li>New RPC <code>append_wiki_sent_picks(p_post uuid, p_ideas text[], p_evidence text[])</code>. It is one
+      <code>UPDATE</code> that appends to both columns, with <code>append_wiki_sent_ideas</code>'s rules for each:
+      add only strings not already present, collapse duplicates, and keep first-occurrence order.</li>
+    <li><code>append_wiki_sent_ideas</code> stays, because migrations here are expand-then-contract (supabase skill).
+      The code still running during the deploy calls it. A later migration can drop it.</li>
+  </ul>
+  <p class="why"><b>Why a separate column, not <code>wiki_sent_ideas</code>:</b> an idea and an evidence bullet with
+  the same text would mark each other as sent, and the column's name would no longer be true. <b>Why one RPC:</b>
+  with two calls, a failure between them would leave half a send marked.</p>
+</div>
+
+<div class="dec">
+  <h3>D5 · The route accepts both lists and still accepts today's body <span class="tag new">new</span></h3>
+  <p>The body becomes <code>{ ideas?: string[]; evidence?: string[] }</code>, with <code>.strict()</code>. Each list
+  holds at most 6 non-blank strings, and the request must name at least one bullet overall. A tab still running
+  today's bundle posts <code>{ ideas }</code>, and that keeps working through the deploy.</p>
+</div>
+
+<div class="dec">
+  <h3>D6 · A blank evidence bullet is treated as no bullet, in both views <span class="tag new">new</span></h3>
+  <p>ALF-261's follow-up already does this for ideas. <code>isIdea</code> is renamed <code>isBullet</code>, since it
+  now covers both sections. A blank evidence bullet is dropped from the checklist and from the plain list. An
+  evidence list containing only blanks shows the empty line, "None — the post rests on assertion alone."</p>
+  <p class="why"><b>Why:</b> the checklist needs it, because the route refuses a blank string and a drawn blank would
+  make every Send all fail. The plain view gets the same rule so the two views never disagree.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="mockups">3 · What Alex sees</h2>
+
+<p>These mockups use the app's own tokens and component classes (sources are listed in this file's
+<code>&lt;style&gt;</code> header). They are drawn at desktop width: tick boxes are 16 px there and 24 px on a phone,
+as today. The dashed violet outline marks only what this story <b>adds</b>. It is annotation, not UI.</p>
+
+<p class="frame-title">A · Nothing ticked (one idea sent earlier)</p>
+<div class="app">
+  <div class="row">
+    <div class="rhead"><span class="eb">Jane Doe</span><span class="meta">Sep 16 · 8 min read</span></div>
+    <p class="rtitle">Why habits stick</p>
+    <p class="gist">Routines anchored to an existing cue survive; routines anchored to a clock time don't.</p>
+    <div class="verbs">
+      <span class="btn outline">Send to Instapaper <span class="kbd">i</span></span>
+      <span class="btn">Hide overview <span class="kbd">v</span></span>
+      <span class="btn outline">Archive <span class="kbd">e</span></span>
+    </div>
+    <div class="ov">
+      <section>
+        <div class="hrow"><h6 class="sh">Novel ideas</h6>
+          <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+        <ul class="picks">
+          <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+            <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
+            <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+          <li class="pick"><span class="tick"></span><span class="tx">Environment design beats willpower for the first thirty days.</span></li>
+          <li class="pick"><span class="tick"></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></li>
+        </ul>
+      </section>
+      <section class="newmark">
+        <div class="hrow"><h6 class="sh">Evidence</h6>
+          <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+        <ul class="picks">
+          <li class="pick"><span class="tick"></span><span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span></li>
+          <li class="pick"><span class="tick"></span><span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span></li>
+          <li class="pick"><span class="tick"></span><span class="tx">The author's own 90-day log, n=1, flagged as such.</span></li>
+        </ul>
+      </section>
+      <section><h6 class="sh">The argument</h6>
+        <p class="para">Habits form when a behaviour is chained to a cue that already happens every day. The post walks through three failed clock-time routines, then rebuilds each one on an existing cue…</p></section>
+      <section><h6 class="sh">Who should read it</h6>
+        <p class="para">Anyone rebuilding a routine after a lapse. Everyone else has the gist.</p></section>
+    </div>
+    <div class="foot">
+      <div class="foot-verbs">
+        <span class="btn quiet"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg>Original <span class="kbd">o</span></span>
+        <span class="btn" style="gap:6px"><svg class="ic" width="14" height="14"><use href="#i-rotate"/></svg>Re-summarise</span>
+      </div>
+      <span class="stamp">claude-sonnet-5 · prompt v1 · Sep 16</span>
+    </div>
+  </div>
+</div>
+<p class="mockcap">The Evidence section now works like Novel ideas. Its heading row is 32 px tall and holds its
+own Send all, and each bullet is a tick row. Nothing is ticked, so there is no selection bar. Everything outside
+the dashed outline is today's row, unchanged. Frames B–F show only the first two overview sections; the rest of
+the row is as in A.</p>
+
+<p class="frame-title">B · One idea and one piece of evidence ticked: one bar, under Evidence</p>
+<div class="app"><div class="panel"><div class="ov">
+  <section>
+    <div class="hrow"><h6 class="sh">Novel ideas</h6>
+      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Environment design beats willpower for the first thirty days.</span></li>
+      <li class="pick"><span class="tick"></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></li>
+    </ul>
+  </section>
+  <section>
+    <div class="hrow"><h6 class="sh">Evidence</h6>
+      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span></li>
+      <li class="pick"><span class="tick"></span><span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span></li>
+      <li class="pick"><span class="tick"></span><span class="tx">The author's own 90-day log, n=1, flagged as such.</span></li>
+    </ul>
+    <div class="bar newmark">
+      <span class="cnt">2 selected</span>
+      <span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span>
+      <span class="btn">Clear</span>
+    </div>
+  </section>
+</div></div></div>
+<p class="mockcap">The counter covers both sections. The bar is today's bar, moved down to sit under the last
+checklist section, which here is Evidence. Pressing Send to wiki sends the idea and the evidence in one request and
+one commit.</p>
+
+<p class="frame-title">C · Sending the two</p>
+<div class="app"><div class="panel"><div class="ov">
+  <section>
+    <div class="hrow"><h6 class="sh">Novel ideas</h6>
+      <span class="btn dis"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="tick on dim"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Environment design beats willpower for the first thirty days.</span></li>
+      <li class="pick"><span class="tick dim"></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></li>
+    </ul>
+  </section>
+  <section>
+    <div class="hrow"><h6 class="sh">Evidence</h6>
+      <span class="btn dis"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="tick on dim"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span></li>
+      <li class="pick"><span class="tick dim"></span><span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span></li>
+      <li class="pick"><span class="tick dim"></span><span class="tx">The author's own 90-day log, n=1, flagged as such.</span></li>
+    </ul>
+    <div class="bar">
+      <span class="cnt">2 selected</span>
+      <span class="btn accent dis"><svg class="ic spin" width="14" height="14"><use href="#i-loader"/></svg>Sending…</span>
+      <span class="btn dis">Clear</span>
+    </div>
+  </section>
+</div></div></div>
+<p class="mockcap">While any send is in flight, every control in <b>both</b> sections is disabled at the atoms'
+50%: both Send all buttons, every tick box, Send to wiki and Clear. The pressed button reads Sending… with a 14 px
+spinner. Bullet text stays at full strength; only the tick boxes dim.</p>
+
+<p class="frame-title">D · Sent</p>
+<div class="app"><div class="panel"><div class="ov">
+  <section>
+    <div class="hrow"><h6 class="sh">Novel ideas</h6>
+      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Environment design beats willpower for the first thirty days.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="tick"></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></li>
+    </ul>
+  </section>
+  <section>
+    <div class="hrow"><h6 class="sh">Evidence</h6>
+      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+    <ul class="picks">
+      <li class="pick newmark"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="tick"></span><span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span></li>
+      <li class="pick"><span class="tick"></span><span class="tx">The author's own 90-day log, n=1, flagged as such.</span></li>
+    </ul>
+  </section>
+</div></div></div>
+<p class="mockcap">A sent evidence bullet looks exactly like a sent idea: a borderless violet check where the tick
+box was, plus a trailing muted "Sent". It can no longer be selected. The selection has emptied and the bar has
+folded away. Focus moves to the first tick row still unsent in either section.</p>
+
+<p class="frame-title">E · Evidence's Send all while an idea is still ticked</p>
+<div class="app"><div class="panel"><div class="ov">
+  <section>
+    <div class="hrow"><h6 class="sh">Novel ideas</h6>
+      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Environment design beats willpower for the first thirty days.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span></li>
+    </ul>
+  </section>
+  <section>
+    <div class="hrow"><h6 class="sh">Evidence</h6>
+      <span class="st newmark" style="margin-top:0"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>All sent to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">The author's own 90-day log, n=1, flagged as such.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+    </ul>
+    <div class="bar">
+      <span class="cnt">1 selected</span>
+      <span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span>
+      <span class="btn">Clear</span>
+    </div>
+  </section>
+</div></div></div>
+<p class="mockcap">Alex ticked the streaks idea, then pressed Evidence's Send all. Only Evidence was sent (D2).
+Its heading now reads "All sent to wiki", with the violet check, as Novel ideas does once all its ideas are sent.
+The ticked idea is still ticked, and the bar still sits under Evidence, because a fully sent section is still a
+checklist section.</p>
+
+<p class="frame-title">F · A post with no novel ideas: Evidence alone is a checklist</p>
+<div class="app"><div class="panel"><div class="ov">
+  <section>
+    <h6 class="sh">Novel ideas</h6>
+    <p class="para">Nothing new — the post restates what a well-read reader already knows.</p>
+  </section>
+  <section>
+    <div class="hrow"><h6 class="sh">Evidence</h6>
+      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Three eval releases with links; the robotics one includes raw per-task numbers.</span></li>
+      <li class="pick"><span class="tick"></span><span class="tx">An internal replication the author ran, n=1, flagged as such.</span></li>
+    </ul>
+    <div class="bar">
+      <span class="cnt">1 selected</span>
+      <span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span>
+      <span class="btn">Clear</span>
+    </div>
+  </section>
+</div></div></div>
+<p class="mockcap">Each section decides for itself whether it is a checklist. Here Novel ideas shows today's
+honest empty line, with no heading-row controls and its normal height. Evidence is the only checklist, so the bar
+sits under it. In the reverse case (ideas but no evidence), the bar stays where it is today, under Novel ideas, and
+Evidence shows "None — the post rests on assertion alone."</p>
+
+<p class="frame-title">G · Wiki not connected (Work instance): unchanged</p>
+<div class="app"><div class="panel"><div class="ov">
+  <section>
+    <h6 class="sh">Novel ideas</h6>
+    <ul class="plist">
+      <li>Habit stacking works because the cue is an existing routine, not a time of day.</li>
+      <li>Environment design beats willpower for the first thirty days.</li>
+    </ul>
+  </section>
+  <section>
+    <h6 class="sh">Evidence</h6>
+    <ul class="plist">
+      <li>Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</li>
+      <li>A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</li>
+    </ul>
+  </section>
+</div></div></div>
+<p class="mockcap">With <code>writable: false</code>, both sections are today's plain disc lists, pixel for pixel.
+The only difference, from D6, is invisible on well-formed data: a blank evidence bullet is no longer drawn as an
+empty disc.</p>
+
+<p class="frame-title">H · A stale evidence bullet (the post was re-summarised under an open tab)</p>
+<div class="app">
+  <div class="toast newmark"><span>That evidence isn't in this post's overview any more</span>
+    <span class="x"><svg class="ic" width="14" height="14"><use href="#i-x"/></svg></span></div>
+</div>
+<p class="mockcap">This is the default toast atom (<code>toast-viewport.tsx</code>) with the route's new 409
+sentence. Behind it, the overview stays exactly as in frame B, with every tick in place. A stale idea still toasts
+today's "That idea isn't in this post's overview any more", and any other failure toasts "Couldn't send to the
+wiki", as now.</p>
+
+<h3>Legend</h3>
+<div class="legend">
+  <div class="app"><span class="tick"></span></div>
+  <div>An unsent bullet in either section: a tick row. Clicking or tapping anywhere on the row toggles it, as does Space.</div>
+  <div class="app"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span></div>
+  <div>Ticked: the Inbox select-mode tick in the app's teal.</div>
+  <div class="app"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span><span class="st" style="margin:0"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></div>
+  <div>Already in the wiki. Can't be selected. Violet is kept for the wiki's own marks (ALF-261 D10).</div>
+  <div class="app"><span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+  <div>On each checklist section's heading row. Sends that section's unsent bullets only (D2).</div>
+  <div class="app"><span class="st" style="margin:0"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>All sent to wiki</span></div>
+  <div>Replaces a section's Send all once every bullet in that section is sent.</div>
+  <div class="app"><span class="cnt">2 selected</span><span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span></div>
+  <div>The one selection bar, under the last checklist section. It counts and sends ticks from both sections (D1). Clear unticks both.</div>
+  <div class="app"><span class="btn accent dis"><svg class="ic" width="14" height="14"><use href="#i-loader"/></svg>Sending…</span></div>
+  <div>A send is in flight. Every control in both sections is at 50%.</div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="behaviour">4 · Behaviour</h2>
+
+<ul class="tight">
+  <li><b>When a section is a checklist.</b> Each of Novel ideas and Evidence is a checklist when
+    <code>writable</code> is true and it has at least one non-blank bullet. Each section decides this on its own. With
+    neither a checklist, the overview is exactly today's. The same rules apply wherever <code>PostOverview</code>
+    renders, in the reading list and in the archive.</li>
+  <li><b>Evidence rows copy idea rows exactly.</b> Each row has <code>role="checkbox"</code> and
+    <code>aria-checked</code>, and the whole row is the hit target. Space toggles it; Enter does nothing. The tick box is
+    24 px on a phone and 16 px from <code>md</code>. A sent row can't be selected.</li>
+  <li><b>One selection.</b> The selection is a set of <i>(section, text)</i> pairs, held in the overview's own
+    <code>useState</code>. Collapsing the overview drops it. A bullet repeated within a section counts as one pick. The
+    same text in both sections counts as two.</li>
+  <li><b>The bar</b> reveals through <code>AnimatedHeightCollapse</code> (reduced motion honoured) under the last
+    checklist section once anything is ticked. It keeps <code>role="group"</code>, with its label changed from
+    "Selected ideas" to "Selected bullets". The counter counts ticks in both sections. <b>Send to wiki</b> sends every
+    ticked bullet in overview order, ideas first and then evidence. <b>Clear</b> unticks both sections.</li>
+  <li><b>Send all</b> sends its own section's unsent bullets, whatever else is ticked. When it succeeds it clears its
+    own section's ticks only. The heading row is 32 px tall only while that section's controls render.</li>
+  <li><b>In flight.</b> A post can have only one send at a time (the store's <code>wikiSendsInFlight</code>, as
+    today). While one runs, every tick box, both Send all buttons, Send to wiki and Clear are disabled. The pressed
+    button shows the 14 px spinner and reads "Sending…". Sends are not optimistic.</li>
+  <li><b>Success.</b> The sent bullets in both sections flip to their sent state. After a bar send, the selection
+    empties and the bar folds away. If focus was lost, it moves to the first unsent tick row in either section, or to
+    the heading row of the first checklist section if none is left. Focus Alex moved elsewhere stays where it is
+    (today's rule).</li>
+  <li><b>Failure.</b> A toast shows the route's own sentence, or "Couldn't send to the wiki" if it has none. Every
+    tick stays as it was, so retrying takes one press.</li>
+  <li><b>No hotkey</b>, as today.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="flow">5 · Data flow &amp; contracts</h2>
+
+<div class="scroll">
+<svg class="flow" viewBox="0 0 740 440" role="img" aria-label="A send's path. The overview checklist gathers ticks from Novel ideas and Evidence into one selection and calls the store's sendPicksToWiki with both lists. The store posts to the send route. The route checks each list against its own overview section, drops bullets already sent, then first commits one folder to the wiki repository's main, holding source.md and one headed picks file, and second calls append_wiki_sent_picks, which marks both lists in one update. The route returns the list row, which the store puts in place of the old one, and the bullets read Sent.">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" class="fl-a"/></marker></defs>
+  <rect x="20" y="16" width="380" height="62" rx="8" class="fl-hot"/>
+  <text x="36" y="42" class="fl-t">Overview · WikiPicks</text>
+  <text x="36" y="62" class="fl-s">ticks in Novel ideas + Evidence → one selection</text>
+
+  <rect x="20" y="108" width="380" height="62" rx="8" class="fl-hot"/>
+  <text x="36" y="134" class="fl-t">reader-store · sendPicksToWiki(id, { ideas, evidence })</text>
+  <text x="36" y="154" class="fl-s">not optimistic · one send per post · toast + rethrow</text>
+
+  <rect x="20" y="200" width="380" height="80" rx="8" class="fl-hot"/>
+  <text x="36" y="226" class="fl-t">POST /api/reader/posts/[id]/wiki</text>
+  <text x="36" y="246" class="fl-s">each list ⊆ its own overview section, else 409</text>
+  <text x="36" y="264" class="fl-s">drop already-sent per list · nothing left → 200, no commit</text>
+
+  <rect x="480" y="200" width="236" height="80" rx="8" class="fl-box"/>
+  <text x="494" y="226" class="fl-t">ac3charland/knowledge</text>
+  <text x="494" y="246" class="fl-s">inbox/&lt;date&gt;-&lt;slug&gt;/</text>
+  <text x="494" y="264" class="fl-s">source.md + picks-&lt;date&gt;.md (headed)</text>
+
+  <rect x="20" y="320" width="380" height="62" rx="8" class="fl-hot"/>
+  <text x="36" y="346" class="fl-t">append_wiki_sent_picks(p_post, p_ideas, p_evidence)</text>
+  <text x="36" y="366" class="fl-s">one UPDATE → wiki_sent_ideas + wiki_sent_evidence</text>
+
+  <path d="M210 78v28" class="fl-l" marker-end="url(#ah)"/>
+  <path d="M210 170v28" class="fl-l" marker-end="url(#ah)"/>
+  <path d="M400 240h78" class="fl-l" marker-end="url(#ah)"/>
+  <text x="410" y="232" class="fl-n">① commit</text>
+  <path d="M210 280v38" class="fl-l" marker-end="url(#ah)"/>
+  <text x="220" y="303" class="fl-n">② mark</text>
+  <path d="M400 351h318q8 0 8-8V147q0-8-8-8H404" class="fl-d" marker-end="url(#ah)"/>
+  <text x="480" y="318" class="fl-n">③ list row (no text)</text>
+  <text x="480" y="336" class="fl-s">the store swaps it in; bullets read Sent</text>
+  <text x="20" y="420" class="fl-s">Violet boxes change in this story. The commit lands before the marks, as in ALF-261:</text>
+  <text x="20" y="436" class="fl-s">a failed mark after a good commit answers 500; a retry costs at most a repeated citation, never a lost bullet.</text>
+</svg>
+</div>
+
+<h3>5.1 Route · <code>POST /api/reader/posts/[id]/wiki</code></h3>
+<p>This is the ALF-261 route, extended. Its checks run in this order:</p>
+<ol class="tight">
+  <li>The writer isn't configured: <b>501</b>, unchanged.</li>
+  <li>The id doesn't parse, or the body fails <code>sendReaderPicksSchema</code>: <b>400</b>. The schema is
+    <code>{ ideas?: string[]; evidence?: string[] }</code> with <code>.strict()</code>. Each list is 0–6 strings, each
+    rejected when blank using the refine (not <code>.trim()</code>) as today, and a refine requires at least one bullet
+    across the two lists.</li>
+  <li>The post is unknown: <b>404</b>. <code>getReaderPostForWiki</code> now also selects
+    <code>wiki_sent_evidence</code>.</li>
+  <li>An idea isn't in <code>overview.novel_ideas</code>: <b>409</b> with the existing sentence, "That idea isn't in
+    this post's overview any more". This is checked first.</li>
+  <li>An evidence bullet isn't in <code>overview.evidence</code>: <b>409</b>, "That evidence isn't in this post's
+    overview any more".</li>
+  <li>Compute the fresh ideas (the request's ideas, deduplicated, minus <code>wiki_sent_ideas</code>) and the fresh
+    evidence (the same, minus <code>wiki_sent_evidence</code>). If both are empty: <b>200</b> with the list row
+    unchanged, and no commit.</li>
+  <li><code>commitEnvelopes(config, [readerEnvelope(post, { ideas: freshIdeas, evidence: freshEvidence }, today)])</code>.
+    Writer errors map through <code>wikiWriteErrorResponse</code>, unchanged.</li>
+  <li><code>appendWikiSentPicks</code>. If it fails, answer <b>500</b>, "Sent to the wiki, but couldn't mark the
+    bullets as sent" (the word "ideas" becomes "bullets").</li>
+  <li><b>200</b> with the saved row through <code>READER_POST_LIST_COLUMNS</code>. <code>text</code> never reaches the
+    client.</li>
+</ol>
+
+<h3>5.2 Store, API client, data layer</h3>
+<div class="scroll"><table>
+  <tr><th>Today</th><th>After</th><th>Notes</th></tr>
+  <tr><td><code>sendIdeasToWiki(id, ideas)</code></td><td><code>sendPicksToWiki(id, { ideas, evidence })</code></td><td>Same body otherwise: an in-flight guard, <code>beginWrite</code>/<code>endWrite</code>, replace on success, and a toast plus rethrow on failure. <code>useWikiSendInFlight</code> is unchanged.</td></tr>
+  <tr><td><code>api.sendReaderIdeasToWiki</code></td><td><code>api.sendReaderPicksToWiki(postId, body: SendReaderPicksInput)</code></td><td>Same URL and method.</td></tr>
+  <tr><td><code>sendReaderIdeasSchema</code> / <code>SendReaderIdeasInput</code></td><td><code>sendReaderPicksSchema</code> / <code>SendReaderPicksInput</code></td><td><code>lib/api/wiki-schemas.ts</code>. The "six is <code>READER_MAX_BULLETS</code>" comment applies to both lists.</td></tr>
+  <tr><td><code>appendWikiSentIdeas(supabase, id, ideas)</code></td><td><code>appendWikiSentPicks(supabase, id, { ideas, evidence })</code></td><td>Calls <code>rpc('append_wiki_sent_picks', { p_post, p_ideas, p_evidence })</code> and selects the list columns.</td></tr>
+  <tr><td><code>READER_POST_LIST_COLUMNS</code></td><td>Adds <code>'wiki_sent_evidence'</code></td><td>Its pin test moves. <code>ReaderPostWikiRow</code> gains <code>wiki_sent_evidence: string[]</code>.</td></tr>
+  <tr><td><code>readerEnvelope(post, ideas, captured)</code></td><td><code>readerEnvelope(post, picks: ReaderPicks, captured)</code></td><td><code>interface ReaderPicks { ideas: readonly string[]; evidence: readonly string[] }</code>. See §6 for the body.</td></tr>
+  <tr><td><code>isIdea</code> (<code>lib/reader/overview.ts</code>)</td><td><code>isBullet</code></td><td>Same predicate, renamed because it now covers both sections (D6).</td></tr>
+</table></div>
+
+<h3>5.3 Migration · <code>database/migrations/&lt;next&gt;_reader_wiki_evidence.sql</code></h3>
+<p>Use the next free number at build time. Don't pin one here.</p>
+<pre><code>-- Which Evidence bullets a post has sent — the exact text, as wiki_sent_ideas (0038) does for ideas.
+alter table reader_posts add column wiki_sent_evidence text[] not null default '{}';
+comment on column reader_posts.wiki_sent_evidence is '…';
+
+-- One atomic append to both lists. Each array gets 0038's rules: only strings not already present,
+-- duplicates collapsed, first-occurrence order (unnest … with ordinality / group by / order by min(ord)).
+-- The subqueries read the row's pre-update arrays, so each list is checked against itself.
+create or replace function append_wiki_sent_picks(p_post uuid, p_ideas text[], p_evidence text[])
+returns setof reader_posts
+language sql security invoker as $$
+  update reader_posts
+     set wiki_sent_ideas    = wiki_sent_ideas    || array(… p_ideas    … not (i = any(reader_posts.wiki_sent_ideas))    …),
+         wiki_sent_evidence = wiki_sent_evidence || array(… p_evidence … not (i = any(reader_posts.wiki_sent_evidence)) …)
+   where id = p_post
+  returning *;
+$$;
+grant execute on function append_wiki_sent_picks(uuid, text[], text[]) to anon, authenticated, service_role;
+
+-- append_wiki_sent_ideas is deliberately NOT dropped: expand-then-contract (supabase skill).</code></pre>
+<p>Copy the <code>array(…)</code> body from the <b>current</b> <code>append_wiki_sent_ideas</code> in
+<code>0038_wiki.sql</code> (the supabase skill's "copy the CURRENT definition" rule). Afterwards, regenerate
+<code>frontend/lib/database.types.ts</code> with <code>database/src/gen-types.ts</code>; never hand-edit it. This
+migration adds no realtime line and no view.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="wiki-file">6 · What lands in the wiki</h2>
+
+<p>The folder, the <code>source.md</code> rules (full text, a pointer, or left out when the post is swept and has no
+URL), the frontmatter, the commit message (<code>add: &lt;title&gt;</code>) and the one-new-folder-per-send rule are
+all ALF-261's, unchanged. Only the picks body changes:</p>
+
+<pre><code>inbox/2026-09-27-why-habits-stick/picks-2026-09-27.md
+---
+source_type: "reader-post"
+origin: "model-derived"
+title: "Why habits stick"
+author: "Jane Doe"
+source_url: "https://janedoe.substack.com/p/why-habits-stick"
+published: "2026-09-16"
+captured: "2026-09-27"
+via: "alfred-reader"
+external_id: "alfred:reader-post:55555555-5555-4555-8555-555555555561"
+---
+
+## Novel ideas
+
+- Environment design beats willpower for the first thirty days.
+
+## Evidence
+
+- Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</code></pre>
+
+<div class="scroll"><table>
+  <tr><th>The send carries</th><th>Picks body</th></tr>
+  <tr><td>Ideas and evidence</td><td><code>## Novel ideas</code>, a blank line, the idea bullets, a blank line, <code>## Evidence</code>, a blank line, the evidence bullets</td></tr>
+  <tr><td>Ideas only</td><td><code>## Novel ideas</code>, a blank line, the bullets. This is a change from today's bare list (D3).</td></tr>
+  <tr><td>Evidence only</td><td><code>## Evidence</code>, a blank line, the bullets</td></tr>
+</table></div>
+<p>Each bullet is still <code>- </code> plus the bullet's text, with internal newlines folded to spaces. Sections
+always come in overview order. <code>renderWikiFile</code> adds the frontmatter and the trailing newline, unchanged.
+The route guarantees at least one bullet, so the body is never empty.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="files">7 · Files to touch</h2>
+<div class="scroll"><table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>database/migrations/&lt;next&gt;_reader_wiki_evidence.sql</code></td><td>New (§5.3)</td></tr>
+  <tr><td><code>database/src/assertions.ts</code></td><td>Add <code>append_wiki_sent_picks(uuid, text[], text[])</code> to the execute-grant list, plus a behaviour assertion (§8)</td></tr>
+  <tr><td><code>database/README.md</code></td><td>A <code>reader_posts.wiki_sent_evidence</code> bullet beside the other <code>reader_posts</code> column notes</td></tr>
+  <tr><td><code>frontend/lib/database.types.ts</code></td><td>Regenerated</td></tr>
+  <tr><td><code>frontend/lib/reader/fixtures.ts</code>, <code>frontend/e2e/support/constants.ts</code></td><td>Default <code>wiki_sent_evidence: []</code> on <code>makeReaderPost</code></td></tr>
+  <tr><td><code>frontend/lib/reader/overview.ts</code></td><td><code>isIdea</code> → <code>isBullet</code>, and its callers</td></tr>
+  <tr><td><code>frontend/lib/api/wiki-schemas.ts</code> (+test)</td><td><code>sendReaderPicksSchema</code></td></tr>
+  <tr><td><code>frontend/lib/api-client.ts</code> (+test)</td><td><code>sendReaderPicksToWiki</code></td></tr>
+  <tr><td><code>frontend/lib/data/reader.ts</code> (+test)</td><td>List columns, <code>getReaderPostForWiki</code>, <code>appendWikiSentPicks</code></td></tr>
+  <tr><td><code>frontend/lib/wiki/writer/envelope.ts</code> (+test)</td><td><code>ReaderPicks</code> and the headed body</td></tr>
+  <tr><td><code>frontend/app/api/reader/posts/[id]/wiki/route.ts</code> (+test)</td><td>§5.1</td></tr>
+  <tr><td><code>frontend/lib/stores/reader-store.tsx</code> (+test)</td><td><code>sendPicksToWiki</code></td></tr>
+  <tr><td><code>frontend/components/reader/novel-idea-list.tsx</code> → <code>wiki-picks.tsx</code> (+test, renamed)</td><td>Both sections over one selection, the bar under the last checklist, per-section Send all</td></tr>
+  <tr><td><code>frontend/components/reader/post-overview.tsx</code> (+test)</td><td>Hands the first two sections to <code>WikiPicks</code> when either is a checklist; drops blank evidence in the plain view (D6)</td></tr>
+  <tr><td><code>frontend/components/reader/post-row.stories.tsx</code> + baselines</td><td>Moved and new stories (§8)</td></tr>
+  <tr><td><code>frontend/e2e/reader-wiki-send.spec.ts</code></td><td>A mixed send, end to end</td></tr>
+  <tr><td><code>docs/demos/&lt;folder&gt;/</code></td><td>The demo doc (§9)</td></tr>
+</table></div>
+<p>No Worker, prompt, schema-for-the-model, comms or wiki-module (<code>components/wiki/</code>) files change. This
+spec is archived to <code>docs/specs/archive/</code> by the implementation PR.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="tests">8 · Tests &amp; the contract check</h2>
+
+<p>Use Red/Green TDD per CLAUDE.md. Each of these fails before the change and passes after it.</p>
+<ul class="tight">
+  <li><b>Envelope goldens</b> (<code>envelope.test.ts</code>). New: a mixed send, an evidence-only send, and an
+    ideas-only send (now headed). The existing full-text, pointer and no-URL-swept goldens move to the headed body.
+    Newline folding is still covered in both sections.</li>
+  <li><b>Schema.</b> Accepted: evidence only, and ideas only (today's body). Rejected (400): both missing or both
+    empty, 7 in either list, a blank string in either list, and an unknown key.</li>
+  <li><b>Route.</b> A stale evidence bullet gives 409 with its sentence, and a stale idea is reported first. Each
+    list is deduplicated against its own column. Nothing fresh means no commit. A mixed send makes one commit whose
+    picks file has both headings. The RPC is called with both arrays. An append failure gives 500 with the new
+    sentence. A <code>{ ideas }</code>-only body still commits exactly as today, apart from the heading.</li>
+  <li><b>Data layer.</b> The list-column pin includes <code>wiki_sent_evidence</code>; <code>appendWikiSentPicks</code>
+    passes the RPC's three arguments.</li>
+  <li><b>Database integration</b> (<code>database</code> suite, check:slow). <code>append_wiki_sent_picks</code>
+    appends both lists in one call. It deduplicates each list and keeps first-occurrence order. An empty array
+    leaves its column untouched. An idea string never lands in <code>wiki_sent_evidence</code>, and an evidence
+    string never lands in <code>wiki_sent_ideas</code>. <code>authenticated</code> may execute it.</li>
+  <li><b>Store.</b> <code>sendPicksToWiki</code> sends both lists. It replaces the row with the server's on success,
+    toasts the evidence 409's sentence, rethrows on failure, and refuses a second send while one is in flight.</li>
+  <li><b>Component</b> (<code>wiki-picks.test.tsx</code>, <code>post-overview.test.tsx</code>).
+    <ul>
+      <li>Evidence rows are checkboxes.</li>
+      <li>One idea plus one evidence ticked shows "2 selected" in a bar placed after the Evidence list.</li>
+      <li>Send to wiki calls the action with both lists, in overview order.</li>
+      <li>Evidence's Send all sends only evidence and leaves a ticked idea ticked.</li>
+      <li>A send in flight disables every control in both sections.</li>
+      <li>A failed send keeps every tick.</li>
+      <li>A fully sent section shows "All sent to wiki".</li>
+      <li>An evidence-only post draws frame F.</li>
+      <li>An ideas-only post keeps the bar under Novel ideas.</li>
+      <li>After a send, focus moves to the first unsent tick row across both sections.</li>
+      <li>Blank evidence is dropped in both views, and an all-blank list shows the empty line.</li>
+      <li>With <code>writable: false</code>, both plain lists are unchanged.</li>
+    </ul></li>
+  <li><b>Storybook.</b> Stories that now show an Evidence checklist, because <code>makeReaderOverview</code>'s default
+    has two evidence bullets: <code>WikiNothingTicked</code>, <code>WikiTwoTicked</code>, <code>WikiSending</code>.
+    <code>WikiAllSent</code> now marks both lists sent. New stories: <code>WikiPickedAcrossSections</code> (frame B),
+    <code>WikiEvidenceSendAllWithIdeaTicked</code> (E) and <code>WikiEvidenceOnly</code> (F).
+    <code>WikiNotConnected</code> must not move.</li>
+  <li><b>E2E</b> (<code>reader-wiki-send.spec.ts</code>). Against the mock GitHub: tick one idea and one evidence
+    bullet, press Send to wiki, and check that exactly one commit landed, with one new <code>inbox/</code> folder whose
+    picks file has both headings over the right bullets. After a reload, both bullets still read Sent.</li>
+</ul>
+
+<div class="callout"><b>Cross-repo contract check, which the lead runs itself, as in ALF-261 §11.6:</b> attach
+<code>ac3charland/knowledge</code> read-only and clone it to the scratchpad. Write a mixed-picks golden folder and an
+evidence-only one (with distinct <code>external_id</code>s) into the clone's <code>inbox/</code>. Then run the
+wiki's <code>npm ci</code>, <code>npm run lint</code> and <code>npm run file-batch -- --dry-run --json</code>. Lint
+must exit 0 with no E findings, and each folder must file as new. Never push to the wiki repo. <b>If the lint rejects
+headings in a picks body, stop.</b> Don't fall back to a flat list. Report it in the PR, because it needs a
+wiki-side change first (§11). If the session can't attach the repo, say so in the PR, and the first real send in
+§10's owner checklist is the check.</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="demo">9 · Demo evidence</h2>
+<p>Follow the <code>showboat</code> skill's evidence rules. They are the source of truth; this list only names what
+the demo doc must cover:</p>
+<ul class="tight">
+  <li>The overview journey on a writable post: nothing ticked, then one idea and one evidence bullet ticked, then
+    Send to wiki, then Sending…, then both marked Sent. Then Evidence's Send all with an idea still ticked, ending at
+    "All sent to wiki" with the idea still ticked. The bar revealing under Evidence is motion, so it follows
+    showboat's motion rule.</li>
+  <li>Each moved Storybook baseline, shown as its diff image and then approved. The new stories, as their
+    screenshots.</li>
+  <li>The non-visual part: the route's request and the picks file it committed to the mock GitHub, with both headings.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="ac">10 · Acceptance criteria</h2>
+<ul class="ac">
+  <li class="grp">Reader</li>
+  <li>With the wiki connected, a post's Evidence bullets form a checklist that looks and behaves like the Novel-ideas checklist, as frames A–F draw it.</li>
+  <li>Ticks in both sections form one selection. A single bar under the last checklist section counts them, and Send to wiki sends them all in <b>one</b> request and one commit.</li>
+  <li>Each section's Send all sends only that section's unsent bullets and clears only that section's ticks. A fully sent section reads "All sent to wiki".</li>
+  <li>While a send is in flight, every control in both sections is disabled. A failed send toasts and keeps every tick. Sent marks for both sections survive a reload, and concurrent sends never lose a mark.</li>
+  <li>A post with evidence but no novel ideas sends evidence alone (frame F). A reworded evidence bullet reads as unsent. A blank evidence bullet is drawn in neither view.</li>
+  <li>With the wiki not connected, the overview is pixel-identical to today (frame G; <code>WikiNotConnected</code> baseline unmoved).</li>
+  <li class="grp">Route &amp; data</li>
+  <li><code>POST /api/reader/posts/[id]/wiki</code> accepts <code>{ ideas?, evidence? }</code>, still accepts today's <code>{ ideas }</code>, answers 409 for a stale bullet in either list, and commits nothing when nothing is fresh.</li>
+  <li><code>reader_posts.wiki_sent_evidence</code> exists, and <code>append_wiki_sent_picks</code> marks both lists in one atomic update. <code>append_wiki_sent_ideas</code> still exists. <code>text</code> never reaches the client.</li>
+  <li class="grp">Wiki</li>
+  <li>A send writes one <code>picks-&lt;date&gt;.md</code> whose body is headed <code>## Novel ideas</code> and/or <code>## Evidence</code> (§6), next to ALF-261's unchanged <code>source.md</code>.</li>
+  <li>The golden folders pass the wiki's own lint and file as new under <code>file-batch --dry-run</code>. If that couldn't be run, the PR says so.</li>
+  <li class="grp">Process</li>
+  <li><code>npm run check</code> is green on the final tree, there is a demo doc (§9), and this spec is archived in the implementation PR.</li>
+</ul>
+
+<h3>After merge (Alex, not agent work)</h3>
+<ul class="tight">
+  <li>From a real post, tick one idea and one evidence bullet and send them. Check that one folder appears in the
+    wiki's <code>inbox/</code> with a headed picks file, and that kickoff runs once.</li>
+  <li>Read the resulting ingest PR and check that it used the evidence as support for the idea, rather than as a
+    free-standing claim. If it didn't, the fix is a line in the wiki repo's ingest skill (§11).</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="out">11 · Out of scope, risks &amp; open questions</h2>
+
+<h3>Deliberately out</h3>
+<ul class="tight">
+  <li>Sending <b>The argument</b> or <b>Who should read it</b>. They are prose paragraphs, not bullets, and the epic
+    stored them as such.</li>
+  <li>Linking each evidence bullet to the idea it supports. That is a prompt and schema change (a new
+    <code>READER_PROMPT_VERSION</code>, with Worker edits) and would be its own story (see Risks).</li>
+  <li>Any edit to <code>ac3charland/knowledge</code>, whether its ingest skill or its registry. D3 needs neither,
+    provided the contract check passes.</li>
+  <li>A single Send all for both sections (D2), a sticky selection bar, and hotkeys.</li>
+  <li>Dropping <code>append_wiki_sent_ideas</code>. That is a later contract-step migration once nothing calls it.</li>
+</ul>
+
+<h3>Risks</h3>
+<ul class="tight">
+  <li><b>Evidence bullets aren't always self-contained.</b> The prompt doesn't tie evidence to ideas, and some
+    bullets only make sense next to their claim. For example, "An internal replication the author ran, n=1, flagged as
+    such" doesn't say what was replicated. Two things soften this. <code>source.md</code> goes with every send, and
+    the <code>## Evidence</code> heading tells ingest these bullets are support. If ingest PRs still mishandle them,
+    the lasting fix is to link evidence to ideas in the prompt, which is out of scope above.</li>
+  <li><b>The wiki's lint may reject a headed picks body.</b> Nothing readable from this repo says either way. The
+    contract check is the gate, and the fallback is a wiki-side change, not a flat list.</li>
+  <li><b>On a phone, the bar can sit below the fold.</b> With six ideas and six evidence bullets, ticking the first
+    idea shows a bar several screens down. The filled tick box is the immediate feedback. A sticky bar is the
+    follow-up if this becomes a problem.</li>
+  <li><b>Deploy order.</b> Vercel can go live a moment before the migration applies. During that gap, the list
+    columns name a missing column, and the seed read returns an empty list. This is the same short window every
+    additive list-column migration has had, including ALF-261's <code>wiki_sent_ideas</code>.</li>
+</ul>
+
+<h3>Open questions</h3>
+<p>None block the build. Alex made the two scoping calls in this session: D1 and D2 (one selection, per-section Send
+all) and D3 (one headed picks file). Everything else is decided above, and a reviewer can overturn any of it in PR
+comments.</p>
+
+<p class="sub" style="margin-top:2rem">Sources: <code>docs/specs/epics/ALF-232.html</code> (D6, §3.4) and
+<code>ALF-232-notes.md</code>; <code>docs/specs/archive/ALF-261.html</code> (§4.2, §5, D8, D10, D12, §11.6);
+<code>docs/specs/epics/ALF-259.html</code> (envelope, picks); <code>components/reader/{post-overview,novel-idea-list,post-row}.tsx</code>;
+<code>lib/stores/reader-store.tsx</code>; <code>lib/data/reader.ts</code>; <code>lib/wiki/writer/envelope.ts</code>;
+<code>app/api/reader/posts/[id]/wiki/route.ts</code>; <code>lib/api/wiki-schemas.ts</code>;
+<code>database/migrations/0038_wiki.sql</code>; the supabase and showboat skills.</p>
+
+</main>
+</body>
+</html>
