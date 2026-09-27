@@ -133,7 +133,7 @@
   .app .v { color: var(--a-violet); }
   .app .bar { margin-top: 8px; padding: 6px 6px 0; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent);
               display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .app .cnt { font-size: 14px; font-weight: 600; color: var(--a-teal); }
+  .app .cnt { font-size: 14px; font-weight: 600; color: var(--a-teal); white-space: nowrap; }
   .app .foot { margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent);
                display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
   .app .foot-verbs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -174,7 +174,8 @@ into the wiki. Background: the Reader epic <code>docs/specs/epics/ALF-232.html</
 <div class="card">
   <p><b>In short.</b> A post's <b>Evidence</b> section becomes a checklist like Novel ideas. Both sections share one
   selection: Alex can tick ideas and evidence together, and one <b>Send to wiki</b> press sends all of them as one
-  commit. Each section heading has its own <b>Send all to wiki</b>, which sends only that section.</p>
+  commit. Each section heading has a <b>Select all</b> that ticks that section's unsent bullets and sends nothing,
+  so the bar's Send to wiki is the only send, and every send is one commit.</p>
   <p>In the wiki, the send is still one <code>picks-&lt;date&gt;.md</code> file. Its body now has
   <code>## Novel ideas</code> and <code>## Evidence</code> headings, so ingest can tell a claim from its support.
   Sent evidence is recorded in its own column, <code>wiki_sent_evidence</code>. The Work instance, which has no wiki
@@ -211,7 +212,7 @@ gave for it: the study, the number, the example. Today Alex has to leave that be
 <h3>What already exists, and what this story extends</h3>
 <div class="scroll"><table>
   <tr><th>Piece (ALF-261)</th><th>Today</th><th>After this story</th></tr>
-  <tr><td><code>components/reader/novel-idea-list.tsx</code></td><td>The Novel ideas checklist, its selection bar, and Send all</td><td>Becomes <code>wiki-picks.tsx</code>, which renders both checklists over one selection</td></tr>
+  <tr><td><code>components/reader/novel-idea-list.tsx</code></td><td>The Novel ideas checklist, its selection bar, and a one-press Send all</td><td>Becomes <code>wiki-picks.tsx</code>, which renders both checklists over one selection. Send all is replaced by a per-section Select all (D2)</td></tr>
   <tr><td><code>POST /api/reader/posts/[id]/wiki</code></td><td>Body <code>{ ideas }</code>, checked against <code>overview.novel_ideas</code></td><td>Body <code>{ ideas?, evidence? }</code>, each list checked against its own section</td></tr>
   <tr><td><code>lib/wiki/writer/envelope.ts</code> <code>readerEnvelope</code></td><td><code>picks-…</code> body is a bare bullet list</td><td>Body has a heading per section that has bullets in this send</td></tr>
   <tr><td><code>reader_posts.wiki_sent_ideas</code> + <code>append_wiki_sent_ideas</code></td><td>Sent marks for ideas, stored as exact text</td><td>Joined by <code>wiki_sent_evidence</code>; one new RPC appends to both columns</td></tr>
@@ -233,13 +234,17 @@ gave for it: the study, the number, the example. Today Alex has to leave that be
 </div>
 
 <div class="dec">
-  <h3>D2 · Send all stays per section <span class="tag alex">Alex</span></h3>
-  <p>Novel ideas' <b>Send all to wiki</b> does not change. Evidence's heading row gets its own button, which sends
-  every unsent evidence bullet and nothing else. A section's Send all clears only that section's ticks, so ideas
-  ticked while Evidence's Send all runs stay ticked.</p>
-  <p class="why"><b>Why:</b> a button next to a list should send that list. <b>Accepted cost:</b> sending every bullet
-  in the post takes two presses and makes two commits. Ticking everything and then pressing Send to wiki is still
-  the one-commit way to do it.</p>
+  <h3>D2 · Each section gets Select all; the bar is the only send <span class="tag alex">Alex</span></h3>
+  <p>ALF-261's <b>Send all to wiki</b> is removed. In its place, each checklist section's heading row has
+  <b>Select all</b>. It ticks every unsent bullet in that section, adds them to the one selection, and sends
+  nothing. Once every unsent bullet in the section is ticked, the button reads <b>Deselect all</b> and unticks that
+  section only. The bar's <b>Send to wiki</b> is the only control that sends.</p>
+  <p class="why"><b>Why:</b> each send is a push to the wiki's <code>inbox/</code>, and each push can start its own
+  ingest run: a Routine session and a PR to review. That is the expensive part. A send button per section would make sending a whole post two presses and two
+  commits, which could split one article across two ingest runs. With the bar as the only send, every press is one
+  commit, whatever mix of sections it carries. <b>Accepted cost:</b> this
+  changes shipped behaviour. Sending all of a post's ideas used to be one press (Send all). It is now two: Select
+  all, then Send to wiki.</p>
 </div>
 
 <div class="dec">
@@ -289,7 +294,7 @@ gave for it: the study, the number, the example. Today Alex has to leave that be
   now covers both sections. A blank evidence bullet is dropped from the checklist and from the plain list. An
   evidence list containing only blanks shows the empty line, "None — the post rests on assertion alone."</p>
   <p class="why"><b>Why:</b> the checklist needs it, because the route refuses a blank string and a drawn blank would
-  make every Send all fail. The plain view gets the same rule so the two views never disagree.</p>
+  make every Select all-then-send fail. The plain view gets the same rule so the two views never disagree.</p>
 </div>
 
 <!-- ─────────────────────────────────────────────────────────────────────────── -->
@@ -313,7 +318,7 @@ as today. The dashed violet outline marks only what this story <b>adds</b>. It i
     <div class="ov">
       <section>
         <div class="hrow"><h6 class="sh">Novel ideas</h6>
-          <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+          <span class="btn newmark">Select all</span></div>
         <ul class="picks">
           <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
             <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
@@ -324,7 +329,7 @@ as today. The dashed violet outline marks only what this story <b>adds</b>. It i
       </section>
       <section class="newmark">
         <div class="hrow"><h6 class="sh">Evidence</h6>
-          <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+          <span class="btn">Select all</span></div>
         <ul class="picks">
           <li class="pick"><span class="tick"></span><span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span></li>
           <li class="pick"><span class="tick"></span><span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span></li>
@@ -345,16 +350,17 @@ as today. The dashed violet outline marks only what this story <b>adds</b>. It i
     </div>
   </div>
 </div>
-<p class="mockcap">The Evidence section now works like Novel ideas. Its heading row is 32 px tall and holds its
-own Send all, and each bullet is a tick row. Nothing is ticked, so there is no selection bar. Everything outside
-the dashed outline is today's row, unchanged. Frames B–F show only the first two overview sections; the rest of
-the row is as in A.</p>
+<p class="mockcap">The Evidence section now works like Novel ideas: a 32 px heading row with its own
+<b>Select all</b>, and a tick row per bullet. On both heading rows, ALF-261's violet "Send all to wiki" is replaced by
+a plain ghost Select all with no wiki glyph, because it sends nothing (D2). Nothing is ticked, so there is no
+selection bar. Everything outside the dashed outlines is today's row, unchanged. Frames B–H show only the first two
+overview sections; the rest of the row is as in A.</p>
 
 <p class="frame-title">B · One idea and one piece of evidence ticked: one bar, under Evidence</p>
 <div class="app"><div class="panel"><div class="ov">
   <section>
     <div class="hrow"><h6 class="sh">Novel ideas</h6>
-      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+      <span class="btn">Select all</span></div>
     <ul class="picks">
       <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
         <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
@@ -365,7 +371,7 @@ the row is as in A.</p>
   </section>
   <section>
     <div class="hrow"><h6 class="sh">Evidence</h6>
-      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+      <span class="btn">Select all</span></div>
     <ul class="picks">
       <li class="pick"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span></li>
       <li class="pick"><span class="tick"></span><span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span></li>
@@ -386,7 +392,7 @@ one commit.</p>
 <div class="app"><div class="panel"><div class="ov">
   <section>
     <div class="hrow"><h6 class="sh">Novel ideas</h6>
-      <span class="btn dis"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+      <span class="btn dis">Select all</span></div>
     <ul class="picks">
       <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
         <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
@@ -397,7 +403,7 @@ one commit.</p>
   </section>
   <section>
     <div class="hrow"><h6 class="sh">Evidence</h6>
-      <span class="btn dis"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+      <span class="btn dis">Select all</span></div>
     <ul class="picks">
       <li class="pick"><span class="tick on dim"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span></li>
       <li class="pick"><span class="tick dim"></span><span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span></li>
@@ -411,14 +417,14 @@ one commit.</p>
   </section>
 </div></div></div>
 <p class="mockcap">While any send is in flight, every control in <b>both</b> sections is disabled at the atoms'
-50%: both Send all buttons, every tick box, Send to wiki and Clear. The pressed button reads Sending… with a 14 px
+50%: both Select all buttons, every tick box, Send to wiki and Clear. The pressed button reads Sending… with a 14 px
 spinner. Bullet text stays at full strength; only the tick boxes dim.</p>
 
 <p class="frame-title">D · Sent</p>
 <div class="app"><div class="panel"><div class="ov">
   <section>
     <div class="hrow"><h6 class="sh">Novel ideas</h6>
-      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+      <span class="btn">Select all</span></div>
     <ul class="picks">
       <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
         <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
@@ -431,7 +437,7 @@ spinner. Bullet text stays at full strength; only the tick boxes dim.</p>
   </section>
   <section>
     <div class="hrow"><h6 class="sh">Evidence</h6>
-      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+      <span class="btn">Select all</span></div>
     <ul class="picks">
       <li class="pick newmark"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
         <span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span>
@@ -445,11 +451,11 @@ spinner. Bullet text stays at full strength; only the tick boxes dim.</p>
 box was, plus a trailing muted "Sent". It can no longer be selected. The selection has emptied and the bar has
 folded away. Focus moves to the first tick row still unsent in either section.</p>
 
-<p class="frame-title">E · Evidence's Send all while an idea is still ticked</p>
+<p class="frame-title">E · Select all on Evidence, with an idea already ticked</p>
 <div class="app"><div class="panel"><div class="ov">
   <section>
     <div class="hrow"><h6 class="sh">Novel ideas</h6>
-      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+      <span class="btn">Deselect all</span></div>
     <ul class="picks">
       <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
         <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
@@ -462,7 +468,47 @@ folded away. Focus moves to the first tick row still unsent in either section.</
   </section>
   <section>
     <div class="hrow"><h6 class="sh">Evidence</h6>
-      <span class="st newmark" style="margin-top:0"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>All sent to wiki</span></div>
+      <span class="btn newmark">Deselect all</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.</span></li>
+      <li class="pick"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">The author's own 90-day log, n=1, flagged as such.</span></li>
+    </ul>
+    <div class="bar">
+      <span class="cnt">3 selected</span>
+      <span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span>
+      <span class="btn">Clear</span>
+    </div>
+  </section>
+</div></div></div>
+<p class="mockcap">Continuing from D: Alex ticked the streaks idea, then pressed Evidence's <b>Select all</b>.
+That ticked every unsent evidence bullet and sent nothing (D2), and it left the idea's tick alone. A section's
+button reads <b>Deselect all</b> whenever every unsent bullet in it is ticked, however they got ticked. So Evidence
+reads Deselect all, and so does Novel ideas, whose one unsent idea is ticked. Sent bullets never count. Deselect
+all unticks its own section only. The bar is the only way to send: one press, three bullets, one commit.</p>
+
+<p class="frame-title">F · Everything sent</p>
+<div class="app"><div class="panel"><div class="ov">
+  <section>
+    <div class="hrow"><h6 class="sh">Novel ideas</h6>
+      <span class="st" style="margin-top:0"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>All sent to wiki</span></div>
+    <ul class="picks">
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Habit stacking works because the cue is an existing routine, not a time of day.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Environment design beats willpower for the first thirty days.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+      <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
+        <span class="tx">Streak-tracking helps only until the first miss; after that, "never miss twice" matters more.</span>
+        <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
+    </ul>
+  </section>
+  <section>
+    <div class="hrow"><h6 class="sh">Evidence</h6>
+      <span class="st" style="margin-top:0"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>All sent to wiki</span></div>
     <ul class="picks">
       <li class="pick"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span>
         <span class="tx">Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.</span>
@@ -474,19 +520,12 @@ folded away. Focus moves to the first tick row still unsent in either section.</
         <span class="tx">The author's own 90-day log, n=1, flagged as such.</span>
         <span class="st"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></li>
     </ul>
-    <div class="bar">
-      <span class="cnt">1 selected</span>
-      <span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span>
-      <span class="btn">Clear</span>
-    </div>
   </section>
 </div></div></div>
-<p class="mockcap">Alex ticked the streaks idea, then pressed Evidence's Send all. Only Evidence was sent (D2).
-Its heading now reads "All sent to wiki", with the violet check, as Novel ideas does once all its ideas are sent.
-The ticked idea is still ticked, and the bar still sits under Evidence, because a fully sent section is still a
-checklist section.</p>
+<p class="mockcap">After E's send. Once every bullet in a section is sent, its Select all is replaced by "All sent
+to wiki" with the violet check, as ALF-261 does for ideas today. There is nothing left to tick, so there is no bar.</p>
 
-<p class="frame-title">F · A post with no novel ideas: Evidence alone is a checklist</p>
+<p class="frame-title">G · A post with no novel ideas: Evidence alone is a checklist</p>
 <div class="app"><div class="panel"><div class="ov">
   <section>
     <h6 class="sh">Novel ideas</h6>
@@ -494,7 +533,7 @@ checklist section.</p>
   </section>
   <section>
     <div class="hrow"><h6 class="sh">Evidence</h6>
-      <span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
+      <span class="btn">Select all</span></div>
     <ul class="picks">
       <li class="pick"><span class="tick on"><svg class="ic bold" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx">Three eval releases with links; the robotics one includes raw per-task numbers.</span></li>
       <li class="pick"><span class="tick"></span><span class="tx">An internal replication the author ran, n=1, flagged as such.</span></li>
@@ -511,7 +550,7 @@ honest empty line, with no heading-row controls and its normal height. Evidence 
 sits under it. In the reverse case (ideas but no evidence), the bar stays where it is today, under Novel ideas, and
 Evidence shows "None — the post rests on assertion alone."</p>
 
-<p class="frame-title">G · Wiki not connected (Work instance): unchanged</p>
+<p class="frame-title">H · Wiki not connected (Work instance): unchanged</p>
 <div class="app"><div class="panel"><div class="ov">
   <section>
     <h6 class="sh">Novel ideas</h6>
@@ -532,7 +571,7 @@ Evidence shows "None — the post rests on assertion alone."</p>
 The only difference, from D6, is invisible on well-formed data: a blank evidence bullet is no longer drawn as an
 empty disc.</p>
 
-<p class="frame-title">H · A stale evidence bullet (the post was re-summarised under an open tab)</p>
+<p class="frame-title">I · A stale evidence bullet (the post was re-summarised under an open tab)</p>
 <div class="app">
   <div class="toast newmark"><span>That evidence isn't in this post's overview any more</span>
     <span class="x"><svg class="ic" width="14" height="14"><use href="#i-x"/></svg></span></div>
@@ -550,10 +589,10 @@ wiki", as now.</p>
   <div>Ticked: the Inbox select-mode tick in the app's teal.</div>
   <div class="app"><span class="slot"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span><span class="st" style="margin:0"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>Sent</span></div>
   <div>Already in the wiki. Can't be selected. Violet is kept for the wiki's own marks (ALF-261 D10).</div>
-  <div class="app"><span class="btn"><svg class="ic v" width="14" height="14"><use href="#i-bookplus"/></svg>Send all to wiki</span></div>
-  <div>On each checklist section's heading row. Sends that section's unsent bullets only (D2).</div>
+  <div class="app"><span class="btn">Select all</span><span class="btn">Deselect all</span></div>
+  <div>On each checklist section's heading row. Ticks every unsent bullet in that section and sends nothing (D2). Reads Deselect all once all of them are ticked, and then unticks that section only.</div>
   <div class="app"><span class="st" style="margin:0"><svg class="ic v" width="12" height="12"><use href="#i-check"/></svg>All sent to wiki</span></div>
-  <div>Replaces a section's Send all once every bullet in that section is sent.</div>
+  <div>Replaces a section's Select all once every bullet in that section is sent.</div>
   <div class="app"><span class="cnt">2 selected</span><span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span></div>
   <div>The one selection bar, under the last checklist section. It counts and sends ticks from both sections (D1). Clear unticks both.</div>
   <div class="app"><span class="btn accent dis"><svg class="ic" width="14" height="14"><use href="#i-loader"/></svg>Sending…</span></div>
@@ -578,13 +617,17 @@ wiki", as now.</p>
     checklist section once anything is ticked. It keeps <code>role="group"</code>, with its label changed from
     "Selected ideas" to "Selected bullets". The counter counts ticks in both sections. <b>Send to wiki</b> sends every
     ticked bullet in overview order, ideas first and then evidence. <b>Clear</b> unticks both sections.</li>
-  <li><b>Send all</b> sends its own section's unsent bullets, whatever else is ticked. When it succeeds it clears its
-    own section's ticks only. The heading row is 32 px tall only while that section's controls render.</li>
+  <li><b>Select all / Deselect all</b> sits on each checklist section's heading row, as a ghost <code>sm</code>
+    button with no glyph. Select all ticks every unsent bullet in its section and sends nothing. The label is
+    Deselect all whenever every unsent bullet in the section is ticked, and pressing it unticks that section only.
+    Sent bullets never count. Each button's accessible name names its section ("Select all Novel ideas", "Select all
+    Evidence"), because the visible labels are identical. Once every bullet in a section is sent, the button is
+    replaced by "All sent to wiki". The heading row is 32 px tall only while that section's controls render.</li>
   <li><b>In flight.</b> A post can have only one send at a time (the store's <code>wikiSendsInFlight</code>, as
-    today). While one runs, every tick box, both Send all buttons, Send to wiki and Clear are disabled. The pressed
+    today). While one runs, every tick box, both Select all buttons, Send to wiki and Clear are disabled. The pressed
     button shows the 14 px spinner and reads "Sending…". Sends are not optimistic.</li>
-  <li><b>Success.</b> The sent bullets in both sections flip to their sent state. After a bar send, the selection
-    empties and the bar folds away. If focus was lost, it moves to the first unsent tick row in either section, or to
+  <li><b>Success.</b> The sent bullets in both sections flip to their sent state, the selection empties, and the
+    bar folds away. If focus was lost, it moves to the first unsent tick row in either section, or to
     the heading row of the first checklist section if none is left. Focus Alex moved elsewhere stays where it is
     (today's rule).</li>
   <li><b>Failure.</b> A toast shows the route's own sentence, or "Couldn't send to the wiki" if it has none. Every
@@ -751,7 +794,7 @@ The route guarantees at least one bullet, so the body is never empty.</p>
   <tr><td><code>frontend/lib/wiki/writer/envelope.ts</code> (+test)</td><td><code>ReaderPicks</code> and the headed body</td></tr>
   <tr><td><code>frontend/app/api/reader/posts/[id]/wiki/route.ts</code> (+test)</td><td>§5.1</td></tr>
   <tr><td><code>frontend/lib/stores/reader-store.tsx</code> (+test)</td><td><code>sendPicksToWiki</code></td></tr>
-  <tr><td><code>frontend/components/reader/novel-idea-list.tsx</code> → <code>wiki-picks.tsx</code> (+test, renamed)</td><td>Both sections over one selection, the bar under the last checklist, per-section Send all</td></tr>
+  <tr><td><code>frontend/components/reader/novel-idea-list.tsx</code> → <code>wiki-picks.tsx</code> (+test, renamed)</td><td>Both sections over one selection, the bar under the last checklist, per-section Select all / Deselect all; Send all removed</td></tr>
   <tr><td><code>frontend/components/reader/post-overview.tsx</code> (+test)</td><td>Hands the first two sections to <code>WikiPicks</code> when either is a checklist; drops blank evidence in the plain view (D6)</td></tr>
   <tr><td><code>frontend/components/reader/post-row.stories.tsx</code> + baselines</td><td>Moved and new stories (§8)</td></tr>
   <tr><td><code>frontend/e2e/reader-wiki-send.spec.ts</code></td><td>A mixed send, end to end</td></tr>
@@ -787,24 +830,30 @@ spec is archived to <code>docs/specs/archive/</code> by the implementation PR.</
       <li>Evidence rows are checkboxes.</li>
       <li>One idea plus one evidence ticked shows "2 selected" in a bar placed after the Evidence list.</li>
       <li>Send to wiki calls the action with both lists, in overview order.</li>
-      <li>Evidence's Send all sends only evidence and leaves a ticked idea ticked.</li>
+      <li>Select all ticks every unsent bullet in its own section only, sends nothing, and leaves the other section's ticks alone.</li>
+      <li>The label reads Deselect all exactly when every unsent bullet in its section is ticked, including when they were ticked by hand, and Deselect all unticks that section only.</li>
+      <li>No button named "Send all to wiki" renders anywhere, and Send to wiki is the only control that calls the action.</li>
+      <li>The two Select all buttons have distinct accessible names.</li>
       <li>A send in flight disables every control in both sections.</li>
       <li>A failed send keeps every tick.</li>
       <li>A fully sent section shows "All sent to wiki".</li>
-      <li>An evidence-only post draws frame F.</li>
+      <li>An evidence-only post draws frame G.</li>
       <li>An ideas-only post keeps the bar under Novel ideas.</li>
       <li>After a send, focus moves to the first unsent tick row across both sections.</li>
       <li>Blank evidence is dropped in both views, and an all-blank list shows the empty line.</li>
       <li>With <code>writable: false</code>, both plain lists are unchanged.</li>
     </ul></li>
   <li><b>Storybook.</b> Stories that now show an Evidence checklist, because <code>makeReaderOverview</code>'s default
-    has two evidence bullets: <code>WikiNothingTicked</code>, <code>WikiTwoTicked</code>, <code>WikiSending</code>.
-    <code>WikiAllSent</code> now marks both lists sent. New stories: <code>WikiPickedAcrossSections</code> (frame B),
-    <code>WikiEvidenceSendAllWithIdeaTicked</code> (E) and <code>WikiEvidenceOnly</code> (F).
-    <code>WikiNotConnected</code> must not move.</li>
+    has two evidence bullets, and every writable story because Send all becomes Select all:
+    <code>WikiNothingTicked</code>, <code>WikiTwoTicked</code>, <code>WikiSending</code>. Their play functions stop
+    asserting a "Send all to wiki" button. <code>WikiAllSent</code> now marks both lists sent (frame F). New stories:
+    <code>WikiPickedAcrossSections</code> (frame B), <code>WikiSelectAllEvidence</code> (E) and
+    <code>WikiEvidenceOnly</code> (G). <code>WikiNotConnected</code> must not move.</li>
   <li><b>E2E</b> (<code>reader-wiki-send.spec.ts</code>). Against the mock GitHub: tick one idea and one evidence
     bullet, press Send to wiki, and check that exactly one commit landed, with one new <code>inbox/</code> folder whose
-    picks file has both headings over the right bullets. After a reload, both bullets still read Sent.</li>
+    picks file has both headings over the right bullets. After a reload, both bullets still read Sent. ALF-261's
+    "Send all sends the rest in a second commit" test is rewritten for the new path: Select all on each section, then
+    Send to wiki, lands every unsent bullet in exactly one more commit.</li>
 </ul>
 
 <div class="callout"><b>Cross-repo contract check, which the lead runs itself, as in ALF-261 §11.6:</b> attach
@@ -822,9 +871,9 @@ wiki-side change first (§11). If the session can't attach the repo, say so in t
 the demo doc must cover:</p>
 <ul class="tight">
   <li>The overview journey on a writable post: nothing ticked, then one idea and one evidence bullet ticked, then
-    Send to wiki, then Sending…, then both marked Sent. Then Evidence's Send all with an idea still ticked, ending at
-    "All sent to wiki" with the idea still ticked. The bar revealing under Evidence is motion, so it follows
-    showboat's motion rule.</li>
+    Send to wiki, then Sending…, then both marked Sent. Then tick an idea, press Evidence's Select all (the label
+    turns to Deselect all), and send, ending at "All sent to wiki" on both sections. The bar revealing under Evidence
+    is motion, so it follows showboat's motion rule.</li>
   <li>Each moved Storybook baseline, shown as its diff image and then approved. The new stories, as their
     screenshots.</li>
   <li>The non-visual part: the route's request and the picks file it committed to the mock GitHub, with both headings.</li>
@@ -834,12 +883,12 @@ the demo doc must cover:</p>
 <h2 id="ac">10 · Acceptance criteria</h2>
 <ul class="ac">
   <li class="grp">Reader</li>
-  <li>With the wiki connected, a post's Evidence bullets form a checklist that looks and behaves like the Novel-ideas checklist, as frames A–F draw it.</li>
+  <li>With the wiki connected, a post's Evidence bullets form a checklist that looks and behaves like the Novel-ideas checklist, as frames A–G draw it.</li>
   <li>Ticks in both sections form one selection. A single bar under the last checklist section counts them, and Send to wiki sends them all in <b>one</b> request and one commit.</li>
-  <li>Each section's Send all sends only that section's unsent bullets and clears only that section's ticks. A fully sent section reads "All sent to wiki".</li>
+  <li>Each section's Select all ticks that section's unsent bullets and sends nothing. It reads Deselect all whenever every unsent bullet in the section is ticked, and then unticks that section only. No "Send all to wiki" button remains, so every send goes through the bar. A fully sent section reads "All sent to wiki".</li>
   <li>While a send is in flight, every control in both sections is disabled. A failed send toasts and keeps every tick. Sent marks for both sections survive a reload, and concurrent sends never lose a mark.</li>
-  <li>A post with evidence but no novel ideas sends evidence alone (frame F). A reworded evidence bullet reads as unsent. A blank evidence bullet is drawn in neither view.</li>
-  <li>With the wiki not connected, the overview is pixel-identical to today (frame G; <code>WikiNotConnected</code> baseline unmoved).</li>
+  <li>A post with evidence but no novel ideas sends evidence alone (frame G). A reworded evidence bullet reads as unsent. A blank evidence bullet is drawn in neither view.</li>
+  <li>With the wiki not connected, the overview is pixel-identical to today (frame H; <code>WikiNotConnected</code> baseline unmoved).</li>
   <li class="grp">Route &amp; data</li>
   <li><code>POST /api/reader/posts/[id]/wiki</code> accepts <code>{ ideas?, evidence? }</code>, still accepts today's <code>{ ideas }</code>, answers 409 for a stale bullet in either list, and commits nothing when nothing is fresh.</li>
   <li><code>reader_posts.wiki_sent_evidence</code> exists, and <code>append_wiki_sent_picks</code> marks both lists in one atomic update. <code>append_wiki_sent_ideas</code> still exists. <code>text</code> never reaches the client.</li>
@@ -869,7 +918,7 @@ the demo doc must cover:</p>
     <code>READER_PROMPT_VERSION</code>, with Worker edits) and would be its own story (see Risks).</li>
   <li>Any edit to <code>ac3charland/knowledge</code>, whether its ingest skill or its registry. D3 needs neither,
     provided the contract check passes.</li>
-  <li>A single Send all for both sections (D2), a sticky selection bar, and hotkeys.</li>
+  <li>A one-press send of any kind, since D2 makes the bar the only send. Also out: a sticky selection bar, and hotkeys.</li>
   <li>Dropping <code>append_wiki_sent_ideas</code>. That is a later contract-step migration once nothing calls it.</li>
 </ul>
 
@@ -882,17 +931,18 @@ the demo doc must cover:</p>
     the lasting fix is to link evidence to ideas in the prompt, which is out of scope above.</li>
   <li><b>The wiki's lint may reject a headed picks body.</b> Nothing readable from this repo says either way. The
     contract check is the gate, and the fallback is a wiki-side change, not a flat list.</li>
-  <li><b>On a phone, the bar can sit below the fold.</b> With six ideas and six evidence bullets, ticking the first
-    idea shows a bar several screens down. The filled tick box is the immediate feedback. A sticky bar is the
-    follow-up if this becomes a problem.</li>
+  <li><b>On a phone, the bar can sit below the fold.</b> With six ideas and six evidence bullets, pressing Novel
+    ideas' Select all shows a bar several screens down. The filled tick boxes are the immediate feedback, but D2 makes
+    that bar the only way to send, so the scroll is now on every send's path. A sticky bar is the follow-up if this
+    becomes a problem.</li>
   <li><b>Deploy order.</b> Vercel can go live a moment before the migration applies. During that gap, the list
     columns name a missing column, and the seed read returns an empty list. This is the same short window every
     additive list-column migration has had, including ALF-261's <code>wiki_sent_ideas</code>.</li>
 </ul>
 
 <h3>Open questions</h3>
-<p>None block the build. Alex made the two scoping calls in this session: D1 and D2 (one selection, per-section Send
-all) and D3 (one headed picks file). Everything else is decided above, and a reviewer can overturn any of it in PR
+<p>None block the build. Alex made the scoping calls in this session: D1 (one selection), D2 (a per-section Select
+all, with the bar as the only send) and D3 (one headed picks file). Everything else is decided above, and a reviewer can overturn any of it in PR
 comments.</p>
 
 <p class="sub" style="margin-top:2rem">Sources: <code>docs/specs/epics/ALF-232.html</code> (D6, §3.4) and
