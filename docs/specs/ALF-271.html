@@ -134,6 +134,8 @@
   .app .bar { margin-top: 8px; padding: 6px 6px 0; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent);
               display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .app .cnt { font-size: 14px; font-weight: 600; color: var(--a-teal); white-space: nowrap; }
+  .app .bar .cnt { margin-right: 8px; }
+  .app .btn.clear { padding: 0 8px; }
   .app .foot { margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--a-border) 60%, transparent);
                display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
   .app .foot-verbs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -380,13 +382,14 @@ overview sections; the rest of the row is as in A.</p>
     <div class="bar newmark">
       <span class="cnt">2 selected</span>
       <span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span>
-      <span class="btn">Clear</span>
+      <span class="btn clear">Clear</span>
     </div>
   </section>
 </div></div></div>
 <p class="mockcap">The counter covers both sections. The bar is today's bar, moved down to sit under the last
-checklist section, which here is Evidence. Pressing Send to wiki sends the idea and the evidence in one request and
-one commit.</p>
+checklist section, which here is Evidence. Its spacing is evened out, so "2 selected" and "Clear" sit the same 16 px
+either side of Send to wiki (§4). Pressing Send to wiki sends the idea and the evidence in one request and one
+commit.</p>
 
 <p class="frame-title">C · Sending the two</p>
 <div class="app"><div class="panel"><div class="ov">
@@ -412,7 +415,7 @@ one commit.</p>
     <div class="bar">
       <span class="cnt">2 selected</span>
       <span class="btn accent dis"><svg class="ic spin" width="14" height="14"><use href="#i-loader"/></svg>Sending…</span>
-      <span class="btn dis">Clear</span>
+      <span class="btn dis clear">Clear</span>
     </div>
   </section>
 </div></div></div>
@@ -479,7 +482,7 @@ folded away. Focus moves to the first tick row still unsent in either section.</
     <div class="bar">
       <span class="cnt">3 selected</span>
       <span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span>
-      <span class="btn">Clear</span>
+      <span class="btn clear">Clear</span>
     </div>
   </section>
 </div></div></div>
@@ -541,7 +544,7 @@ to wiki" with the violet check, as ALF-261 does for ideas today. There is nothin
     <div class="bar">
       <span class="cnt">1 selected</span>
       <span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-bookplus"/></svg>Send to wiki</span>
-      <span class="btn">Clear</span>
+      <span class="btn clear">Clear</span>
     </div>
   </section>
 </div></div></div>
@@ -616,7 +619,12 @@ wiki", as now.</p>
   <li><b>The bar</b> reveals through <code>AnimatedHeightCollapse</code> (reduced motion honoured) under the last
     checklist section once anything is ticked. It keeps <code>role="group"</code>, with its label changed from
     "Selected ideas" to "Selected bullets". The counter counts ticks in both sections. <b>Send to wiki</b> sends every
-    ticked bullet in overview order, ideas first and then evidence. <b>Clear</b> unticks both sections.</li>
+    ticked bullet in overview order, ideas first and then evidence. <b>Clear</b> unticks both sections.
+    <b>Spacing is symmetric about Send to wiki:</b> the counter gains <code>mr-2</code> and Clear takes
+    <code>px-2</code> (overriding the <code>sm</code> size's <code>px-3</code>). With the bar's <code>gap-2</code>,
+    the counter's text and Clear's label then both sit 16 px from the button. In ALF-261's bar they sit 8 px and
+    20 px away, because Clear's own padding adds to the gap. The Inbox bulk bar's counter uses <code>mr-1</code> for the
+    same reason.</li>
   <li><b>Select all / Deselect all</b> sits on each checklist section's heading row, as a ghost <code>sm</code>
     button with no glyph. Select all ticks every unsent bullet in its section and sends nothing. The label is
     Deselect all whenever every unsent bullet in the section is ticked, and pressing it unticks that section only.
@@ -834,6 +842,9 @@ spec is archived to <code>docs/specs/archive/</code> by the implementation PR.</
       <li>The label reads Deselect all exactly when every unsent bullet in its section is ticked, including when they were ticked by hand, and Deselect all unticks that section only.</li>
       <li>No button named "Send all to wiki" renders anywhere, and Send to wiki is the only control that calls the action.</li>
       <li>The two Select all buttons have distinct accessible names.</li>
+      <li>The bar's counter carries <code>mr-2</code> and Clear carries <code>px-2</code>, pinned by class the way
+        <code>post-row.styles.test.ts</code> pins the row's classes. jsdom has no layout, so the Storybook baselines
+        are what show the spacing.</li>
       <li>A send in flight disables every control in both sections.</li>
       <li>A failed send keeps every tick.</li>
       <li>A fully sent section shows "All sent to wiki".</li>
@@ -884,7 +895,7 @@ the demo doc must cover:</p>
 <ul class="ac">
   <li class="grp">Reader</li>
   <li>With the wiki connected, a post's Evidence bullets form a checklist that looks and behaves like the Novel-ideas checklist, as frames A–G draw it.</li>
-  <li>Ticks in both sections form one selection. A single bar under the last checklist section counts them, and Send to wiki sends them all in <b>one</b> request and one commit.</li>
+  <li>Ticks in both sections form one selection. A single bar under the last checklist section counts them, and Send to wiki sends them all in <b>one</b> request and one commit. The counter's text and Clear's label sit the same 16 px either side of Send to wiki.</li>
   <li>Each section's Select all ticks that section's unsent bullets and sends nothing. It reads Deselect all whenever every unsent bullet in the section is ticked, and then unticks that section only. No "Send all to wiki" button remains, so every send goes through the bar. A fully sent section reads "All sent to wiki".</li>
   <li>While a send is in flight, every control in both sections is disabled. A failed send toasts and keeps every tick. Sent marks for both sections survive a reload, and concurrent sends never lose a mark.</li>
   <li>A post with evidence but no novel ideas sends evidence alone (frame G). A reworded evidence bullet reads as unsent. A blank evidence bullet is drawn in neither view.</li>
