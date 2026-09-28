@@ -1,4 +1,5 @@
 import { postWebUrl } from '@/lib/reader/open-link';
+import { isInstapaperPost } from '@/lib/reader/source';
 import type { ReaderPostListItem } from '@/lib/types';
 
 /**
@@ -15,12 +16,17 @@ export const NOT_CONFIGURED = "Instapaper isn't set up on this deployment.";
 
 export const NOTHING_TO_SEND = 'No link and no stored text to send.';
 
-/** Why Send can't run for this post on this deployment, or `undefined` when it can. */
+/**
+ * Why Send can't run for this post on this deployment, or `undefined` when it can. An article
+ * from To Reader is always sendable on a configured deployment: its send moves the owner's own
+ * bookmark back to Unread, which needs neither a link nor a body in hand.
+ */
 export function sendUnavailable(
-  post: Pick<ReaderPostListItem, 'canonical_url' | 'text_swept_at' | 'word_count'>,
+  post: Pick<ReaderPostListItem, 'canonical_url' | 'source' | 'text_swept_at' | 'word_count'>,
   instapaperConfigured: boolean,
 ): string | undefined {
   if (!instapaperConfigured) return NOT_CONFIGURED;
+  if (isInstapaperPost(post)) return undefined;
   const hasBody = post.text_swept_at === null && post.word_count > 0;
   return postWebUrl(post) === undefined && !hasBody ? NOTHING_TO_SEND : undefined;
 }

@@ -51,6 +51,9 @@ describe('READER_POST_LIST_COLUMNS', () => {
     // the constant after a column is dropped fails it too.
     expect(listedColumns).toStrictEqual(fixtureColumns);
     expect(listedColumns.has('text')).toBe(false);
+    // The row's eyebrow and its "via Instapaper" read these two, so the list must carry them.
+    expect(listedColumns.has('source')).toBe(true);
+    expect(listedColumns.has('site')).toBe(true);
     expect(listedColumns.has('html')).toBe(false);
     // The row's "in Instapaper" badge is drawn from these, so the list has to carry them.
     expect(listedColumns.has('instapaper_sent_at')).toBe(true);
@@ -505,6 +508,10 @@ describe('getReaderPostForSend', () => {
       'html',
       'text',
       'archived_at',
+      // An Instapaper article's Send moves its own bookmark back to Unread rather than saving a
+      // second one, so the route has to know which kind of post it holds, and which bookmark.
+      'source',
+      'instapaper_bookmark_id',
     ]);
     expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
   });

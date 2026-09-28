@@ -28,6 +28,20 @@ const STORED: ReaderPostForSend = {
   html: BODY_HTML,
   text: BODY_TEXT,
   archived_at: null,
+  source: 'gmail',
+  instapaper_bookmark_id: null,
+};
+
+/** An article the To Reader leg took in: its own bookmark, its Instapaper text, no email HTML. */
+const ARTICLE: ReaderPostForSend = {
+  title: 'Cities Are Getting Quieter',
+  canonical_url: 'https://worksinprogress.co/issue/quiet-cities',
+  gist: 'Street noise tracks foot traffic, not ordinances.',
+  html: null,
+  text: 'The article, as Instapaper had it.',
+  archived_at: null,
+  source: 'instapaper',
+  instapaper_bookmark_id: 4242,
 };
 
 /** What the stamp reads back: the list row, with no body on it. */
@@ -300,6 +314,73 @@ describe('POST /api/reader/posts/[id]/instapaper', () => {
     expect(logged).not.toContain('OAuth ');
     expect(logged).not.toContain('oauth_signature');
     expect(logged).not.toContain(BODY_TEXT);
+  });
+
+  describe('an article from To Reader', () => {
+    it('moves its own bookmark back to Unread — no add, no body — then stamps it sent and archived', async () => {
+      const supabase = signedIn(ARTICLE, savedRow({ instapaper_bookmark_id: 4242 }));
+      const fetchSpy = instapaperAnswers([{ type: 'bookmark', bookmark_id: 4242 }]);
+
+      const response = await send();
+
+      expect(response.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchSpy.mock.calls[0] ?? [];
+      expect(url).toBe('https://www.instapaper.com/api/1/bookmarks/unarchive');
+      expect(formBody(init)).toEqual({ bookmark_id: '4242' });
+      expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+        instapaper_sent_at: '2026-09-24T12:00:00.000Z',
+        instapaper_bookmark_id: 4242,
+        archived_at: '2026-09-24T12:00:00.000Z',
+      });
+    });
+
+    it('resaves by URL when the owner deleted the bookmark, and keeps the new id', async () => {
+      const supabase = signedIn(ARTICLE, savedRow({ instapaper_bookmark_id: 5151 }));
+      const fetchSpy = jest
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }),
+        )
+        .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 5151 }]));
+
+      const response = await send();
+
+      expect(response.status).toBe(200);
+      const [url, init] = fetchSpy.mock.calls[1] ?? [];
+      expect(url).toBe('https://www.instapaper.com/api/1/bookmarks/add');
+      expect(formBody(init)).toEqual({
+        url: ARTICLE.canonical_url,
+        title: ARTICLE.title,
+        description: ARTICLE.gist,
+      });
+      expect(supabase.table('reader_posts').update).toHaveBeenCalledWith(
+        expect.objectContaining({ instapaper_bookmark_id: 5151 }),
+      );
+    });
+
+    it('409s when the bookmark is gone and there is nothing to save in its place', async () => {
+      const supabase = signedIn({ ...ARTICLE, canonical_url: null, text: null });
+      instapaperAnswers([{ type: 'error', error_code: 1241 }], 400);
+
+      const response = await send();
+
+      expect(response.status).toBe(409);
+      expect(supabase.table('reader_posts').update).not.toHaveBeenCalled();
+    });
+
+    it('answers a refused unarchive in the owner’s words and writes nothing', async () => {
+      const supabase = signedIn(ARTICLE);
+      instapaperAnswers([{ type: 'error', error_code: 1040 }], 400);
+
+      const response = await send();
+
+      expect(response.status).toBe(429);
+      expect(await response.json()).toEqual({
+        error: 'Instapaper is rate-limiting — try again in a minute',
+      });
+      expect(supabase.table('reader_posts').update).not.toHaveBeenCalled();
+    });
   });
 
   it('401s with no session', async () => {
