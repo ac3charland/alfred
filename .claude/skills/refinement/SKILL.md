@@ -30,7 +30,8 @@ once the scope is clear do you write the spec below.
    human-read artifact, so write it as a rich, scannable document a human will actually open and
    review, not a wall of prose:
    - **One self-contained file:** inline all CSS in a `<style>` block; no build step, no external
-     dependencies, no JS required — it opens directly in a browser. Make it easy to read and
+     dependencies — it opens directly in a browser and reads completely with scripting off (inline
+     `<script>` only as the interactive-mockup enhancement below). Make it easy to read and
      digest, and mobile-friendly.
    - **Title:** `<title>` and a top `<h1>` of `<REF> — <story title>`, so the browser tab is scannable.
    - **Context / problem:** what we're solving and why, drawn from the story title + notes + user feedback.
@@ -50,6 +51,18 @@ once the scope is clear do you write the spec below.
      too, inline `<code>` above all, or it flashes document styling onto the app's. It's the visual
      language that has to match, not the pixels — and drawing it faithfully audits the design:
      it's what catches a mockup depicting an arrangement the real component can't produce.
+   - **Make the mockup interactive when one static frame can't carry the decision — your call;
+     don't wait to be asked.** Do it when the story implies a visual change without pinning the
+     direction ("somehow distinguish X"), when more than one treatment is credible, or when the
+     behavior spans states one frame can't show (hover, select mode, empty/loading, narrow
+     viewport, output that depends on time or input). Draw every option/state and add a small
+     switcher — button groups setting a `data-opt` / `data-state` attribute on the mockup
+     container, CSS selecting on it — so the human compares them in place and picks one. Author
+     the markup at the recommended option's resting state, so it's still the correct static
+     mockup with scripting off, and keep the switcher in the document's chrome, outside the
+     canvas, so it isn't read as product UI. Ask up front only when the direction hinges on taste
+     you can't infer from the ticket or the app. Skip it for non-UI stories and single-state
+     changes the ticket already pins.
    - **Acceptance criteria:** a checklist a reviewer (and the implementation session) can verify.
    - **Never pin a sequence-allocated number** — a **migration number** above all. Other work
      merges while the spec waits, so the number you pick is stale by the time it's built: write
