@@ -148,11 +148,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
 .checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
 /* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
-/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
-.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
-.switch legend{float:left;padding:0;color:var(--c-open)}
-.switch input{margin:0 .3rem 0 0;accent-color:var(--c-open)}
-.plate:has([value=b]:checked) [data-opt=a],.plate:has([value=a]:checked) [data-opt=b]{display:none}
 /* alfred's tokens: frontend/app/globals.css (font-serif resolves to its Georgia fallback: layout.tsx
    loads only the Geist faces); row geometry and type: components/reader/post-row.styles.ts; buttons:
    components/atoms/button.tsx; badges: components/atoms/badge.tsx; heading: components/atoms/view-heading.tsx;
@@ -221,15 +216,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>272</span><span class="sep"> — </span><span class="ttl">Implement a “To Reader” folder pipeline in Instapaper à la “To Wiki”</span></h1>
   <p class="change" id="change">Move an Instapaper article into a To Reader folder and, within five minutes, it’s summarised in the Reader like a newsletter.</p>
-  <p class="revised" id="revised">Revised 2026-09-28: rebuilt in the spec template; D1 opened.</p>
+  <p class="revised" id="revised">Revised 2026-09-28: D1 → “Send to Instapaper” (your review).</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
-    <li data-state="open"><h3><a class="tag" href="#d1">D1</a>What does Send say on these rows?</h3>
-      <p class="pick">A · “Send to Instapaper”, as on every row ★ · B · “Back to Unread”</p>
-      <p class="why">Either way, the bookmark returns to the top of Unread.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>Where does the pipeline run?</h3>
       <p class="pick">In the Reader’s five-minute tick, not <code>knowledge</code> like To Wiki.</p>
       <p class="why">The summariser, lease and cap live there; no new cron.</p></li>
@@ -242,6 +234,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>How does a broken Instapaper connection show?</h3>
       <p class="pick">A third header dot, red, with a one-line note.</p>
       <p class="why">Newsletters still flow; the summariser mustn’t read as stalled.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>What does Send say on these rows?</h3>
+      <p class="pick">“Send to Instapaper”, as on every row.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>Where does the bookmark go once taken?</h3>
       <p class="pick">Archived in Instapaper; Send moves it back to Unread; Archive makes no call.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>How do articles count against the daily cap?</h3>
@@ -252,10 +246,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
 <section id="plates" aria-label="What you’ll see">
   <figure class="plate" id="p1">
-    <fieldset class="switch"><legend>D1</legend>
-      <label><input type="radio" name="p1" value="a" checked>A · Send to Instapaper</label>
-      <label><input type="radio" name="p1" value="b">B · Back to Unread</label>
-    </fieldset>
     <div class="mount">
       <div class="app" role="img" aria-label="The reading list: an Instapaper article, selected, above a newsletter; the header shows a third status dot, Instapaper">
         <div class="rhead">
@@ -277,8 +267,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
             <p class="pt serif">Cities Are Getting Quieter, and It’s Costing Them</p>
             <p class="gs">Argues that falling street-level noise in six US downtowns tracks lost foot traffic rather than new ordinances, using city sensor data from 2019–2026. The sensor analysis is new; the policy prescription is the familiar one. Read the data section; skip the last third.</p>
             <div class="vb">
-              <span class="bt o" data-opt="a">Send to Instapaper <span class="kc">i</span></span>
-              <span class="bt o nw" data-opt="b">Back to Unread <span class="kc">i</span></span>
+              <span class="bt o">Send to Instapaper <span class="kc">i</span></span>
               <span class="bt g">Overview <span class="kc">v</span></span>
               <span class="bt o">Archive <span class="kc">e</span></span>
             </div>
@@ -292,7 +281,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         </div>
       </div>
     </div>
-    <figcaption><b>Plate I.</b>An article from To Reader, selected, above an unchanged newsletter. Dashed: what’s new. The newsletter’s Send never changes.</figcaption>
+    <figcaption><b>Plate I.</b>An article from To Reader, selected, above a newsletter. Dashed: what’s new; every verb is the existing one.</figcaption>
   </figure>
 
   <figure class="plate" id="p2">
@@ -318,7 +307,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         </div>
       </div>
     </div>
-    <figcaption><b>Plate II.</b>The existing floor states, on an article. Send reads as D1 picks.</figcaption>
+    <figcaption><b>Plate II.</b>The existing floor states, on an article.</figcaption>
   </figure>
 
   <figure class="plate" id="p3">
@@ -426,8 +415,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 <section id="decision-records">
   <h2>Decision records</h2>
   <section class="rec" id="d1">
-    <h3><span class="tag">D1</span>What does Send say on these rows? · open</h3>
-    <p>A keeps one label, hotkey (<code>i</code>) and exit animation for one meaning, “put this in my reading queue”; to the owner, a newsletter send and an article restore are the same act. B says literally what happens to an article that’s already in Instapaper, at the cost of a second label for the same key. Either option changes only the label on <code>source = 'instapaper'</code> rows. Newsletter rows keep “Send to Instapaper”, and the behaviour behind it is D6’s either way.</p>
+    <h3><span class="tag">D1</span>What does Send say on these rows? · settled</h3>
+    <p>Considered: “Back to Unread” on Instapaper rows, which says literally what happens to an article already in Instapaper. The owner kept one label, hotkey (<code>i</code>) and exit animation for one meaning, “put this in my reading queue”. No label changes anywhere; the behaviour behind the verb on an Instapaper row is D6’s.</p>
   </section>
   <section class="rec" id="d2">
     <h3><span class="tag">D2</span>Where does the pipeline run? · proposed</h3>
@@ -636,7 +625,7 @@ const outcome =
     <tr><td><code>workers/src/index.ts</code> (+ test), <code>workers/wrangler.toml</code>, <code>workers/scripts/reader-eval.ts</code></td><td><code>GET /</code> and the log line; the secrets comment; <code>--instapaper</code></td></tr>
     <tr><td><code>frontend/lib/data/reader.ts</code>, <code>lib/instapaper/bookmark.ts</code>, <code>app/api/reader/posts/[id]/instapaper/route.ts</code> (+ tests)</td><td>Columns; <code>unarchiveBookmark</code>; the Send branch (D6, D14)</td></tr>
     <tr><td><code>frontend/lib/reader/{source,send,health}.ts</code> (+ tests)</td><td><code>siteName</code> / <code>postEyebrow</code>; availability; <code>instapaperHealth</code></td></tr>
-    <tr><td><code>frontend/components/reader/{post-row,reader-header,reading-list-view}.tsx</code> (+ tests, stories)</td><td>Eyebrow and meta (D4); D1’s label; the third dot and note (D5); empty-state copy</td></tr>
+    <tr><td><code>frontend/components/reader/{post-row,reader-header,reading-list-view}.tsx</code> (+ tests, stories)</td><td>Eyebrow and meta (D4); the third dot and note (D5); empty-state copy</td></tr>
     <tr><td><code>frontend/lib/reader/fixtures.ts</code>, <code>frontend/scripts/mock-supabase.mjs</code>, <code>frontend/e2e/reader-instapaper-source.spec.ts</code></td><td>Fixtures in each state; <code>source</code> default and <code>bookmarks/unarchive</code> in the mock; the E2E</td></tr>
   </table></div>
   <p><b>Order.</b> The lead writes the migration, the regenerated types and <code>InstapaperApi</code> first, alone. Optionally, one mid-tier subagent then owns <code>workers/src/instapaper/*</code> while the lead builds the leg against a fake of the interface; the file sets are disjoint and the interface is the only seam. The frontend half is the lead’s. Subagents never commit. No comms file changes, and nothing changes in <code>knowledge</code>.</p>
@@ -655,7 +644,7 @@ const outcome =
     <li data-trace="D5 D15">An Instapaper failure stops only the leg and is stamped in the owner-facing words. Newsletters, retries and <code>last_success_at</code> are unaffected, and a clean leg stamps <code>instapaper_last_success_at</code>.</li>
     <li data-trace="D11">Unconfigured: no Instapaper call, no stamp, <code>GET /</code> says <code>instapaper unconfigured</code>, and no dot.</li>
     <li data-trace="D4 P1">The eyebrow is the site (<code>www.</code> stripped) and the meta line ends “· via Instapaper”. Newsletter rows are unchanged.</li>
-    <li data-trace="D1 P1">Send on an Instapaper row carries D1’s picked label, and newsletter rows keep “Send to Instapaper”.</li>
+    <li data-trace="D1 P1">Every row, article or newsletter, keeps the verb “Send to Instapaper” with hotkey <code>i</code>.</li>
     <li data-trace="D5 P1 P3">The Instapaper dot is hidden, live or erroring by the rules in Behaviour, with the note’s exact words.</li>
     <li data-trace="D6 D14">Send on an Instapaper row calls <code>bookmarks/unarchive</code> (no <code>add</code>), stamps <code>instapaper_sent_at</code> and archives the post. If the bookmark is gone, it resaves by URL without content. Archive makes no Instapaper call.</li>
     <li data-trace="P3">The empty state reads “Newsletters from your publications, and articles you move to To Reader in Instapaper, land here summarised.”</li>
@@ -675,7 +664,7 @@ const outcome =
     <tr><td>Jest · <code>reader/scheduled.test.ts</code></td><td>Unconfigured; empty folder; one bookmark end to end; capped before and mid-tick; no free slot; archive failure then retry; newsletter restore; 1550; credentials refusal with newsletters still summarised; missing folder; the stand-alone health PATCH; <b>a worst tick counts ≤ 48 fetches</b></td></tr>
     <tr><td>Jest · worklist, store, health, index</td><td>Retry input uses the site; the insert union; the <code>in.(…)</code> read; health patch shapes; <code>GET /</code> and the log line</td></tr>
     <tr><td>DB · <code>database/src/assertions.ts</code></td><td>Existing rows read <code>gmail</code>. Each source’s identity CHECK accepts and rejects the right rows. A duplicate Instapaper bookmark id is rejected; a newsletter row with the same id is allowed. The health columns exist and are nullable.</td></tr>
-    <tr><td>Jest / RTL · frontend</td><td><code>unarchive</code>, the <code>gone</code> fallback, and newsletter sends unchanged; availability; the eyebrow and meta; D1’s label on Instapaper rows only; the dot’s three states and the note’s words; the empty-state copy</td></tr>
+    <tr><td>Jest / RTL · frontend</td><td><code>unarchive</code>, the <code>gone</code> fallback, and newsletter sends unchanged; availability; the eyebrow and meta; the unchanged Send label on an Instapaper row; the dot’s three states and the note’s words; the empty-state copy</td></tr>
     <tr><td>Storybook</td><td>PostRow: Instapaper summarised, arriving and no-text. ReaderHeader: Instapaper live and erroring. Baselines approved per the <code>storybook</code> skill.</td></tr>
     <tr><td>Playwright · <code>reader-instapaper-source.spec.ts</code></td><td>The seeded row shows the site and “via Instapaper”. Send → the mock records one <code>bookmarks/unarchive</code> for that id and no <code>add</code>, and the row leaves.</td></tr>
   </table></div>
