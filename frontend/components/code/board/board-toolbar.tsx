@@ -7,6 +7,7 @@ import {
   ChevronsUpDown,
   ListFilter,
   MoreHorizontal,
+  Palette,
   Plus,
 } from 'lucide-react';
 import * as React from 'react';
@@ -23,7 +24,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { ToggleButton } from '@/components/atoms/toggle-button';
+import { ProjectColorPicker, projectColorLabel } from '@/components/code/project-color-picker';
 import { StatusFilterItems, StatusFilterMenu } from '@/components/code/status-filter-menu';
+import { type ProjectColor, projectTextClasses } from '@/lib/code/project-color';
 import type { CodeFactoryState } from '@/lib/types';
 
 export interface BoardToolbarProperties {
@@ -47,6 +50,12 @@ export interface BoardToolbarProperties {
   hasArchivedEpics: boolean;
   showArchived: boolean;
   onToggleArchived: () => void;
+  /** The project's stored colour pick, or `null` when it is Automatic. */
+  projectColor: ProjectColor | null;
+  /** The project's creation-slot colour — what it wears while Automatic. */
+  slotColor: ProjectColor;
+  /** A colour pick from the palette button: a palette key, or `null` to return to Automatic. */
+  onProjectColorChange: (color: ProjectColor | null) => void;
 }
 
 /**
@@ -56,6 +65,10 @@ export interface BoardToolbarProperties {
  * swap), so the correct layout is server-rendered with no post-hydration flash:
  *
  * - **"Create epic" stays put** at every width — it's the board's primary action.
+ * - **The palette button** follows it at every width too, its glyph in the project's colour, and
+ *   opens the project colour picker (ALF-188). It does **not** fold into the ⋯ menu below `md`: a
+ *   menu item would have to close the menu before opening a popover anchored to something no
+ *   longer on screen, and one more icon button still fits the phone row.
  * - **Collapse all / Open all condenses to a chevron glyph below `md`** (ALF-134). The label is
  *   `sr-only md:not-sr-only` rather than removed, so the accessible name is the same string at
  *   every viewport.
@@ -78,10 +91,17 @@ export function BoardToolbar({
   hasArchivedEpics,
   showArchived,
   onToggleArchived,
+  projectColor,
+  slotColor,
+  onProjectColorChange,
 }: BoardToolbarProperties) {
   const collapseLabel = allCollapsed ? 'Open all' : 'Collapse all';
   const CollapseGlyph = allCollapsed ? ChevronsUpDown : ChevronsDownUp;
   const anyFilterActive = isFiltering || showAbandoned || showArchived;
+  const colorName =
+    projectColor === null
+      ? `${projectColorLabel(slotColor)} (automatic)`
+      : projectColorLabel(projectColor);
 
   return (
     <div className="flex items-center gap-2">
@@ -89,6 +109,22 @@ export function BoardToolbar({
         <Plus size={14} />
         Create epic
       </Button>
+
+      <ProjectColorPicker
+        value={projectColor}
+        slotColor={slotColor}
+        onChange={onProjectColorChange}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={`Project color: ${colorName}`}
+          // Pressed while its picker is open (Radix marks the trigger `data-state="open"`).
+          className="px-2 data-[state=open]:bg-secondary"
+        >
+          <Palette size={14} className={projectTextClasses(projectColor ?? slotColor)} />
+        </Button>
+      </ProjectColorPicker>
 
       {hasVisibleEpics ? (
         <ToggleButton
