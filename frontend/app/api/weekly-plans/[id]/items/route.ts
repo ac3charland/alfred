@@ -25,10 +25,10 @@ import { toWeeklyPlanItemsPayload } from '@/lib/weekly-plan-items/payload';
 // The plan is in the PATH rather than the body, so the association can't be forgotten or
 // contradicted — and one route file owns both verbs, since they are two views of one cohort.
 //
-// Auth is `resolveIngestClient` on both — NOT `withSessionOrApiKey`, which yields no Supabase
-// client: a keyed caller carries no cookie, so a route reaching for `createClient()` under it
-// would read anonymously and answer a cheerful 200 with an empty list. A coach told "you
-// created nothing last week" by an auth bug is worse than an error (the `/api/habits` trap).
+// Auth is `resolveIngestClient` on both, which hands a keyed caller the admin client: a keyed
+// caller carries no cookie, so a route reaching for `createClient()` itself would read
+// anonymously and answer a cheerful 200 with an empty list. A coach told "you created nothing
+// last week" by an auth bug is worse than an error (the `/api/habits` trap).
 // ---------------------------------------------------------------------------
 
 /** The GET-only path segment meaning "whichever plan the last review actually built on". */
