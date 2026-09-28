@@ -19,9 +19,10 @@ extension point (rules) is isolated from parsing and I/O:
 
 - **`skill.ts`** — turns a `SKILL.md` path into a `SkillContext`: frontmatter `name` /
   `description` (a YAML block scalar is folded to one string), the body, its line count,
-  the parsed headings (code fences excluded), and the bundled resource directories
-  (`isCompound` is just "has at least one subdirectory"). It also resolves CLI
-  path/glob/dir arguments into the list of `SKILL.md` files to lint.
+  the parsed headings (code fences excluded), the bundled resource directories
+  (`isCompound` is just "has at least one subdirectory"), and the house stylesheet copies in
+  its `assets/`. It also resolves CLI path/glob/dir arguments into the list of `SKILL.md`
+  files to lint, and `parseLibrary` adds their unlinted siblings for rules to compare against.
 - **`rules.ts`** — the registry. Each rule is a `Rule` (`{ name, description, check }`)
   where `check(skill: SkillContext, library: readonly SkillContext[]): Finding[]` is a **pure
   function** of the context. `library` is every skill, linted or not, for a rule that compares a
@@ -36,9 +37,8 @@ extension point (rules) is isolated from parsing and I/O:
   unit-testable with literal paths (mirroring how `demo-lint` keeps its raw git calls out of
   the tested core).
 - **`cli.ts`** — argument parsing (`--all`), the default-skills-dir resolution, the
-  check-mode changed-set filter, the library (every skill in each linted skill's skills
-  directory, linted or not), human-readable output, and the exit code (1 if any error, else 0;
-  usage errors exit 2).
+  check-mode changed-set filter, human-readable output, and the exit code (1 if any error,
+  else 0; usage errors exit 2).
 
 The data flow is one direction: `cli → resolve paths → (check mode: filter to changed) →
 parseSkill → lintSkills(rules, library) → report`. A rule never touches the filesystem or argv;

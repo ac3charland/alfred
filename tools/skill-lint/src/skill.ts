@@ -19,10 +19,13 @@ export interface Heading {
 export interface HouseStylesheet {
   /** The asset's path within the library, e.g. `spike/assets/findings-template.html`. */
   readonly asset: string;
-  /** 1-based line in the asset where the copy starts. */
+  /** 1-based line in the asset where the copy starts, or its first section marker if it can't. */
   readonly line: number;
-  /** The copy: its `TEMPLATE · 1` line up to section 4 or `</style>`, trailing blanks trimmed. */
-  readonly css: string;
+  /**
+   * The copy: its `TEMPLATE · 1` line up to section 4 or `</style>`, trailing blanks trimmed.
+   * `undefined` when the style block carries section markers but no `TEMPLATE · 1` line to start one.
+   */
+  readonly css: string | undefined;
 }
 
 /**
@@ -150,30 +153,31 @@ function listResourceDirs(dir: string): string[] {
   );
 }
 
+/** A copy per HTML file under `assets/` whose `<style>` block carries the section markers. */
 function readHouseStylesheets(dir: string): HouseStylesheet[] {
   const assets = path.join(dir, 'assets');
   if (!existsSync(assets)) return [];
   const files = sorted(
-    readdirSync(assets, { recursive: true, encoding: 'utf8' }).filter((file) =>
-      file.endsWith('.html'),
-    ),
+    readdirSync(assets, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.html'))
+      .map((entry) => path.relative(assets, path.join(entry.parentPath, entry.name))),
   );
-  return files.flatMap((file) => {
+  return files.flatMap((file): HouseStylesheet[] => {
     const lines = readFileSync(path.join(assets, file), 'utf8').split(/\r?\n/);
-    const style = lines.findIndex((line) => line.includes('<style'));
-    const start = lines.findIndex((line, index) => index > style && line.includes('TEMPLATE · 1'));
-    if (style === -1 || start === -1) return [];
-    const length = lines
-      .slice(start + 1)
-      .findIndex((line) => line.includes('TEMPLATE · 4') || line.includes('</style>'));
-    const end = length === -1 ? lines.length : start + 1 + length;
-    return [
-      {
-        asset: path.posix.join(path.basename(dir), 'assets', file.split(path.sep).join('/')),
-        line: start + 1,
-        css: lines.slice(start, end).join('\n').trimEnd(),
-      },
-    ];
+    const style = lines.findIndex((line) => /^\s*<style\b/.test(line));
+    if (style === -1) return [];
+    const close = lines.findIndex((line, index) => index > style && line.includes('</style>'));
+    const block = lines.slice(0, close === -1 ? lines.length : close);
+    const inBlock = (text: string) =>
+      block.findIndex((line, index) => index > style && line.includes(text));
+    const marker = inBlock('TEMPLATE · ');
+    if (marker === -1) return [];
+    const asset = path.posix.join(path.basename(dir), 'assets', file.split(path.sep).join('/'));
+    const start = inBlock('TEMPLATE · 1');
+    if (start === -1) return [{ asset, line: marker + 1, css: undefined }];
+    const length = block.slice(start + 1).findIndex((line) => line.includes('TEMPLATE · 4'));
+    const end = length === -1 ? block.length : start + 1 + length;
+    return [{ asset, line: start + 1, css: block.slice(start, end).join('\n').trimEnd() }];
   });
 }
 
@@ -255,17 +259,27 @@ export function resolveSkillMdPaths(
   return sorted([...found]);
 }
 
-/**
- * The SKILL.md files beside the given ones — every other skill in each one's skills directory —
- * so a rule can compare a linted skill against the siblings this run doesn't lint.
- */
-export function siblingSkillMdPaths(skillMdPaths: readonly string[], cwd: string): string[] {
+/** The SKILL.md files beside the given ones: every other skill in each one's skills directory. */
+function siblingSkillMdPaths(skillMdPaths: readonly string[], cwd: string): string[] {
   const given = new Set(skillMdPaths.map((skillMdPath) => path.resolve(skillMdPath)));
-  const found = new Set<string>();
-  for (const skillMdPath of given) {
-    for (const sibling of resolveSkillMdPaths([], cwd, path.dirname(path.dirname(skillMdPath)))) {
-      if (!given.has(sibling)) found.add(sibling);
-    }
-  }
-  return sorted([...found]);
+  const libraries = new Set(
+    [...given].map((skillMdPath) => path.dirname(path.dirname(skillMdPath))),
+  );
+  const found = [...libraries].flatMap((library) => resolveSkillMdPaths([], cwd, library));
+  return sorted([...new Set(found)].filter((sibling) => !given.has(sibling)));
+}
+
+/**
+ * Parse the skills to lint, and a library of them plus every sibling in their skills directories,
+ * so a rule can compare a linted skill against the ones this run doesn't lint.
+ */
+export function parseLibrary(
+  skillMdPaths: readonly string[],
+  cwd: string,
+): { skills: SkillContext[]; library: SkillContext[] } {
+  const skills = skillMdPaths.map((skillMdPath) => parseSkill(skillMdPath, cwd));
+  const siblings = siblingSkillMdPaths(skillMdPaths, cwd).map((sibling) =>
+    parseSkill(sibling, cwd),
+  );
+  return { skills, library: [...skills, ...siblings] };
 }

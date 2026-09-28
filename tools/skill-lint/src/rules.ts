@@ -44,8 +44,8 @@ export interface Rule {
   /** One-line summary of what the rule enforces. */
   readonly description: string;
   /**
-   * Return a finding per problem, or `[]` when the skill passes. `library` is every skill,
-   * linted or not, for a rule that compares a skill against the rest.
+   * Return a finding per problem, or `[]` when the skill passes. `library` is every skill in the
+   * same skills directory, linted or not, for a rule that compares a skill against its siblings.
    */
   check(skill: SkillContext, library: readonly SkillContext[]): Finding[];
 }
@@ -189,8 +189,17 @@ const houseStylesheet: Rule = {
   check(skill, library) {
     const copies = library.flatMap((other) => other.houseStylesheets);
     return skill.houseStylesheets.flatMap((copy) => {
-      const other = copies.find((each) => each.asset !== copy.asset && each.css !== copy.css);
-      if (!other) return [];
+      if (copy.css === undefined) {
+        return [
+          {
+            rule: 'house-stylesheet',
+            severity: 'error',
+            message: `${copy.asset}:${String(copy.line)} — its style block carries house stylesheet section markers but no "TEMPLATE · 1" line starting its copy, so the copy can't be checked. Restore that line.`,
+          },
+        ];
+      }
+      const other = copies.find((each) => each.css !== undefined && each.css !== copy.css);
+      if (other?.css === undefined) return [];
       const line = copy.line + firstDifferingLine(copy.css, other.css);
       return [
         {

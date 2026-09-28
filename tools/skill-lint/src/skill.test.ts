@@ -2,7 +2,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { parseSkill, resolveSkillMdPaths, siblingSkillMdPaths } from './skill.ts';
+import { lintSkills } from './lint.ts';
+import { rules } from './rules.ts';
+import { parseLibrary, parseSkill, resolveSkillMdPaths } from './skill.ts';
 
 let root: string;
 
@@ -28,9 +30,16 @@ function writeSkill(
 }
 
 function writeAsset(skill: string, file: string, lines: string[]): void {
-  const assets = path.join(root, skill, 'assets');
-  mkdirSync(assets, { recursive: true });
-  writeFileSync(path.join(assets, file), lines.join('\n'));
+  const asset = path.join(root, skill, 'assets', file);
+  mkdirSync(path.dirname(asset), { recursive: true });
+  writeFileSync(asset, lines.join('\n'));
+}
+
+function skill(name: string): string {
+  return writeSkill(name, {
+    frontmatter: `name: ${path.basename(name)}\ndescription: x`,
+    body: '# X\n',
+  });
 }
 
 function parseNamed(skill: string): ReturnType<typeof parseSkill> {
@@ -126,18 +135,48 @@ describe('parseSkill', () => {
       expect(parseNamed('refinement').houseStylesheets[0]?.css).toBe(spike?.css);
     });
 
-    it('starts inside <style>, past a guide comment that mentions the marker', () => {
+    it('runs a copy with no end marker to the end of the file', () => {
+      writeAsset('spike', 'findings.html', ['<style>', ...shared]);
+      expect(parseNamed('spike').houseStylesheets[0]?.css).toBe(shared.join('\n').trimEnd());
+    });
+
+    it('starts at the <style> tag, past a guide comment that mentions both it and the marker', () => {
       writeAsset('spike', 'findings.html', [
-        '<!-- guide: keep TEMPLATE · 1–3 verbatim -->',
+        '<!-- guide: the <style> block below',
+        '     keeps TEMPLATE · 1–3 verbatim -->',
         '<style>',
         ...shared,
         '</style>',
       ]);
-      expect(parseNamed('spike').houseStylesheets[0]?.line).toBe(3);
+      expect(parseNamed('spike').houseStylesheets[0]?.line).toBe(4);
     });
 
-    it('carries none for assets without the house stylesheet', () => {
-      writeAsset('plain', 'page.html', ['<style>', 'body{}', '</style>']);
+    it('reads assets in nested folders and skips a folder named like a page', () => {
+      writeAsset('spike', 'nested/findings.html', ['<style>', ...shared, '</style>']);
+      mkdirSync(path.join(root, 'spike', 'assets', 'folder.html'));
+      expect(parseNamed('spike').houseStylesheets.map((copy) => copy.asset)).toEqual([
+        'spike/assets/nested/findings.html',
+      ]);
+    });
+
+    it('flags a style block that has section markers but lost its TEMPLATE · 1 line', () => {
+      writeAsset('spike', 'findings.html', [
+        '<style>',
+        '   TEMPLATE · I · TOKENS */',
+        ':root{--ink:#13203a}',
+        '/* ═══ TEMPLATE · 2 · PAGE ═══ */',
+        '</style>',
+      ]);
+      expect(parseNamed('spike').houseStylesheets).toEqual([
+        { asset: 'spike/assets/findings.html', line: 2, css: undefined },
+      ]);
+    });
+
+    it.each([
+      ['a style block without the house stylesheet', ['<style>', 'body{}', '</style>']],
+      ['markers outside any style block', ['<!-- TEMPLATE · 1 -->', '<p>TEMPLATE · 2</p>']],
+    ])('carries none for %s', (_label, lines) => {
+      writeAsset('plain', 'page.html', lines);
       expect(parseNamed('plain').houseStylesheets).toEqual([]);
     });
   });
@@ -165,15 +204,42 @@ describe('resolveSkillMdPaths', () => {
     expect(resolveSkillMdPaths(['*/SKILL.md'], root, root)).toEqual([a, b]);
   });
 
-  it('finds the unlinted skills beside each linted one, and only those', () => {
-    const a = writeSkill('library/a', { frontmatter: 'name: a\ndescription: x', body: '# A\n' });
-    const b = writeSkill('library/b', { frontmatter: 'name: b\ndescription: x', body: '# B\n' });
-    writeSkill('elsewhere/c', { frontmatter: 'name: c\ndescription: x', body: '# C\n' });
-    expect(siblingSkillMdPaths([a], root)).toEqual([b]);
-  });
-
   it('resolves a single skill directory to its SKILL.md', () => {
     const a = writeSkill('a', { frontmatter: 'name: a\ndescription: x', body: '# A\n' });
     expect(resolveSkillMdPaths(['a'], root, root)).toEqual([a]);
+  });
+});
+
+describe('parseLibrary', () => {
+  it('parses the linted skills, and the library adds only their unlinted siblings', () => {
+    const a = skill('library/a');
+    skill('library/b');
+    skill('elsewhere/c');
+    const { skills, library } = parseLibrary([a], root);
+    expect(skills.map((parsed) => parsed.name)).toEqual(['a']);
+    expect(library.map((parsed) => parsed.name)).toEqual(['a', 'b']);
+  });
+
+  it('lets an unlinted sibling’s copy catch a drifted one, as the changed-only gate needs', () => {
+    const refinement = skill('library/refinement');
+    skill('library/spike');
+    writeAsset('library/refinement', 'spec.html', [
+      '<style>',
+      '   TEMPLATE · 1 */',
+      'a{}',
+      '</style>',
+    ]);
+    writeAsset('library/spike', 'findings.html', [
+      '<style>',
+      '   TEMPLATE · 1 */',
+      'b{}',
+      '</style>',
+    ]);
+    const { skills, library } = parseLibrary([refinement], root);
+    const [report] = lintSkills(skills, rules, library);
+    const drift = report?.findings.filter((finding) => finding.rule === 'house-stylesheet');
+    expect(drift?.map((finding) => finding.message)).toEqual([
+      expect.stringContaining('refinement/assets/spec.html:3'),
+    ]);
   });
 });
