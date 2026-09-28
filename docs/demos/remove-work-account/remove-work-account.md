@@ -8,10 +8,10 @@ branch: claude/remove-work-account-l6qfwe
 
 The Work deployment is going away (work now firewalls Vercel), so alfred is a single deployment again. The top-right Personal/Work switcher pill goes with it. It becomes a neutral icon **Account menu** that shows the signed-in email and Sign out. Sign out stays one deliberate click behind the trigger. The four `NEXT_PUBLIC_*INSTANCE*` env vars and `lib/instance.ts` are deleted. The migrate and backup workflows stop fanning out to a `work` database.
 
-Nothing in the app, the workflows, or the env templates reads the instance vars or the Work database secret any more:
+Nothing in the code, workflows, live docs or skills still reads the instance vars or the Work database secret, or describes the two-instance setup in the present tense. The historical demos, archived specs, spikes and applied migrations are left as they were:
 
 ```bash
-git grep -nE 'NEXT_PUBLIC_(OTHER_)?INSTANCE|SUPABASE_DB_URL_WORK|getInstanceConfig|InstanceMenu' -- frontend workers database .github ':!**/archive/**' || echo 'no references'
+git grep -nE 'NEXT_PUBLIC_(OTHER_)?INSTANCE|SUPABASE_DB_URL_WORK|getInstanceConfig|InstanceMenu|instance-isolation|the Work instance|Personal and Work|(two|both) alfred instances|both instances' -- frontend workers database .github docs .claude ':!docs/demos' ':!docs/specs/archive' ':!docs/spikes' ':!database/migrations' || echo 'no references'
 ```
 
 ```output
