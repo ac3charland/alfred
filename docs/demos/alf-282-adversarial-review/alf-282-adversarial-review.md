@@ -71,13 +71,28 @@ name: adversarial-review
 ## Record it on the PR
 ```
 
-## The implement-spec and bug skills cross-reference it
+## The implement-spec and bug skills end in dispatch, repair, record
+
+Each skill walks its work as numbered steps whose last three are the review round: dispatch the Opus reviewer (report-only, briefed per the adversarial-review skill's checklist, waited on in the foreground), repair what it finds, and record every disposition on the PR.
 
 ```bash
-grep -n 'adversarial-review' .claude/skills/implement-spec/SKILL.md .claude/skills/bug/SKILL.md
+grep -oE '^[0-9]+\. \*\*[^*]+\*\*' .claude/skills/implement-spec/SKILL.md .claude/skills/bug/SKILL.md
 ```
 
 ```output
-.claude/skills/implement-spec/SKILL.md:54:- **Get the open PR reviewed** — the adversarial-review skill's round.
-.claude/skills/bug/SKILL.md:41:6. **Get it reviewed.** Once the PR is open, run the adversarial-review skill's round.
+.claude/skills/implement-spec/SKILL.md:1. **Ground in the codebase.**
+.claude/skills/implement-spec/SKILL.md:2. **Ask when the spec is ambiguous or stale.**
+.claude/skills/implement-spec/SKILL.md:3. **Build it test-first, pinning every requirement with a test**
+.claude/skills/implement-spec/SKILL.md:4. **Archive the spec and open the PR**
+.claude/skills/implement-spec/SKILL.md:5. **Dispatch the adversarial reviewer.**
+.claude/skills/implement-spec/SKILL.md:6. **Repair.**
+.claude/skills/implement-spec/SKILL.md:7. **Record the round.**
+.claude/skills/bug/SKILL.md:1. **Reproduce.**
+.claude/skills/bug/SKILL.md:2. **Pin it red.**
+.claude/skills/bug/SKILL.md:3. **Fix the cause.**
+.claude/skills/bug/SKILL.md:4. **Check the blast radius.**
+.claude/skills/bug/SKILL.md:5. **Open the PR**
+.claude/skills/bug/SKILL.md:6. **Dispatch the adversarial reviewer.**
+.claude/skills/bug/SKILL.md:7. **Repair.**
+.claude/skills/bug/SKILL.md:8. **Record the round.**
 ```
