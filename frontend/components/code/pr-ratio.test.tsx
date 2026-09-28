@@ -229,6 +229,12 @@ describe('PrRatio', () => {
   });
 
   describe('each project wears its own colour and links to its board', () => {
+    afterEach(() => {
+      // The plain-click test below navigates for real (`ViewLink` calls `history.pushState`);
+      // put jsdom's URL back so later tests don't inherit '/code/p-alfred'.
+      globalThis.history.replaceState(null, '', '/');
+    });
+
     it('colours each segment and dot by the project’s creation slot, as ProjectNav does', async () => {
       mockGetPrRatio.mockResolvedValue(RATIO);
 
