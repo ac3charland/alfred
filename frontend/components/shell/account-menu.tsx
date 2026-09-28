@@ -3,7 +3,6 @@
 import { CircleUser, LogOut } from 'lucide-react';
 import * as React from 'react';
 
-import { Button } from '@/components/atoms/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
+import { IconButton } from '@/components/atoms/icon-button';
 import { signOut } from '@/lib/auth/actions';
 
 export interface AccountMenuProperties {
@@ -30,9 +30,9 @@ export function AccountMenu({ email }: AccountMenuProperties) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Account menu" className="rounded-full">
-          <CircleUser className="h-5 w-5" aria-hidden />
-        </Button>
+        <IconButton size="lg" aria-label="Account menu" className="rounded-full">
+          <CircleUser size={18} aria-hidden />
+        </IconButton>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="min-w-56 motion-reduce:animate-none">

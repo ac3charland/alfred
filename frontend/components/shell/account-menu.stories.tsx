@@ -33,3 +33,9 @@ export const SignedIn: Story = {};
 export const NoEmail: Story = {
   args: { email: null },
 };
+
+/** Closed — the header's icon trigger alone, as it sits beside the mobile hamburger. */
+export const Closed: Story = {
+  parameters: { visualTest: { target: 'button[aria-label="Account menu"]' } },
+  play: () => Promise.resolve(),
+};
