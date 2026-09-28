@@ -19,9 +19,10 @@
 --     dead Instapaper token is a third way for the Reader to go quiet and needs a third fix.
 --
 -- Expand-only: no table, view, sequence or function is added or replaced, so the existing
--- reader_posts / reader_health RLS and grants cover every column here. v_reader_worklist,
--- v_reader_publications and reader_sweep_text are unaffected — the first two join on columns an
--- Instapaper post leaves null, and the sweep keys on received_at, which for an article is the
+-- reader_posts / reader_health RLS and grants cover every column here. v_reader_worklist never
+-- matches an article (it joins on the mail identity an article leaves null); v_reader_publications
+-- counts an article toward a publication's last post only once something links the two, which is
+-- what that link means; and reader_sweep_text keys on received_at, which for an article is the
 -- instant the tick took it in.
 
 -- ── 1. reader_posts — which source a post came from, and the article's site ─────
