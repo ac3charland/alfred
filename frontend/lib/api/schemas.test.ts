@@ -374,6 +374,18 @@ describe('updateProjectSchema', () => {
     expect(result.success).toBe(true);
     if (result.success) expect(result.data).toStrictEqual({ description: 'Described' });
   });
+
+  it.each(['blue', 'amber', 'green', 'red', 'teal'])('accepts the palette colour %s', (color) => {
+    expect(updateProjectSchema.safeParse({ color }).success).toBe(true);
+  });
+
+  it('accepts a null colour — back to Automatic', () => {
+    expect(updateProjectSchema.safeParse({ color: null }).success).toBe(true);
+  });
+
+  it.each(['violet', '#ff0000', 'Blue', '', 3])('rejects the off-palette colour %p', (color) => {
+    expect(updateProjectSchema.safeParse({ color }).success).toBe(false);
+  });
 });
 
 describe('listItemsQuerySchema', () => {

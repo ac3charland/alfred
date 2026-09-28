@@ -25,6 +25,7 @@ const TEST_PROJECT = {
   ref_seq: 9,
   created_at: '2026-01-01T00:00:00Z',
   description: 'My capture-first task system.',
+  color: null,
 };
 
 interface MockResult {
@@ -147,6 +148,50 @@ describe('PATCH /api/projects/[id]', () => {
 
     expect(mockSupabase._chain.update).toHaveBeenCalledWith({ description: 'Described' });
   });
+
+  it('persists a picked colour', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, {
+      data: { ...TEST_PROJECT, color: 'green' },
+      error: undefined,
+    });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(patchRequest({ color: 'green' }), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ color: 'green' });
+  });
+
+  it('forwards a null colour — it clears the pick back to Automatic', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_PROJECT, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(patchRequest({ color: null }), routeContext);
+
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ color: null });
+  });
+
+  it('keeps name and key immutable alongside a colour pick', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_PROJECT, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(patchRequest({ color: 'red', name: 'Renamed', key: 'XXX' }), routeContext);
+
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ color: 'red' });
+  });
+
+  it.each(['violet', '#ff0000', 42])(
+    'returns 400 for the off-palette colour %p, before any Supabase call',
+    async (color) => {
+      const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      const response = await PATCH(patchRequest({ color }), routeContext);
+
+      expect(response.status).toBe(400);
+      expect(mockSupabase.from).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns 400 for a description over 500 characters, rather than a Postgres CHECK 500', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });

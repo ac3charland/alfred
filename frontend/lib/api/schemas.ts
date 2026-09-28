@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { PROJECT_COLORS } from '@/lib/code/project-color';
+
 /**
  * Make every optional property *exact-optional*: the key stays optional, but its value
  * type drops the implicit `undefined` that `z.infer` adds for `.optional()` fields.
@@ -491,15 +493,20 @@ export const createProjectSchema = z.object({
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 /**
- * Body for PATCH /api/projects/[id] — the description, and nothing else (ALF-179). `name`,
- * `key`, `github_url` and the repo fields stay as immutable as they are today: `key` is carried
+ * Body for PATCH /api/projects/[id] — the description (ALF-179) and the colour (ALF-188), and
+ * nothing else. `name`, `key`, `github_url` and the repo fields stay immutable: `key` is carried
  * by every ref, branch name and PR frontmatter, so renaming a project is a real feature with its
  * own consequences rather than a side effect of adding a text column. An object schema STRIPS
  * unknown keys, so a body naming any of them changes nothing.
+ *
+ * `color` is a palette key or `null` (Automatic: the project's creation-slot colour) — never a
+ * free-form value, matching the column's check constraint so an off-palette pick is a 400 here
+ * rather than a Postgres 500.
  */
 export const updateProjectSchema = z
   .object({
     description: entityDescription.optional(),
+    color: z.enum(PROJECT_COLORS).nullable().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: 'No fields to update',
