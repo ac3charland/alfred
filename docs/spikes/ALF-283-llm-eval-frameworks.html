@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-283 — Research existing frameworks/techniques for evaluating model performance</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a; --mid: #b7791f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a; --mid: #e0a84a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .9rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .87rem; }
+  th, td { text-align: left; padding: .5rem .65rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); overflow-wrap: anywhere; }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .meh { color: var(--mid); font-weight: 600; }
+  .alt { border: 1px solid var(--line); border-left: 3px solid var(--faint); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; }
+  .alt h3 { margin: 0 0 .35rem; font-size: 1rem; color: var(--muted); }
+  .alt p { margin: .35rem 0; font-size: .92rem; }
+  .verdict { font-size: .88rem; margin-top: .5rem; }
+  .verdict .k { display: inline-block; min-width: 5.4rem; font-size: .68rem; font-weight: 700;
+                letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+  .principle { border: 1px solid var(--line); border-radius: 8px; padding: .75rem 1rem; margin: .7rem 0; }
+  .principle b.n { color: var(--accent); }
+  .principle p { margin: .3rem 0; font-size: .92rem; }
+  .principle .ev { color: var(--muted); font-size: .85rem; }
+  .tag { display: inline-block; font-size: .66rem; font-weight: 700; letter-spacing: .06em;
+         text-transform: uppercase; padding: .05rem .4rem; border-radius: 4px;
+         background: var(--accent-bg); color: var(--accent); vertical-align: middle; }
+  .tag.snip { background: var(--warn-bg); color: var(--warn-fg); }
+  svg text { fill: var(--fg); font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  svg .box { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+  svg .box.hl { stroke: var(--accent); }
+  svg .arr { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#ah); }
+  svg .lbl { fill: var(--muted); font-size: 11px; }
+  svg .ttl { font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Spike · findings · ALF-283</p>
+<h1>ALF-283 — Research existing frameworks/techniques for evaluating model performance</h1>
+<p class="sub">
+  How should alfred compare <b>prompts on the same model and task</b>, and <b>models on the same prompt and
+  task</b>? Adopt an existing framework, or hand-spin one from the field's best practices?
+</p>
+
+<div class="card">
+<p style="margin:.2rem 0"><b>Scope.</b> Model performance means alfred's three single-call LLM features in
+<code>workers/</code>:</p>
+<ul class="tight" style="margin:.3rem 0">
+  <li>the <b>Inbox classifier</b> (<code>claude-haiku-4-5</code>, six nullable fields, <code>PROMPT_VERSION = 3</code>)</li>
+  <li><b>Comms triage</b> (<code>claude-haiku-4-5</code>, four tiers, <code>COMMS_PROMPT_VERSION = 4</code>)</li>
+  <li>the <b>Reader summariser</b> (<code>claude-sonnet-5</code>, free text, <code>READER_PROMPT_VERSION = 1</code>)</li>
+</ul>
+<p style="margin:.2rem 0">Evaluating the Claude Code <em>agent</em> sessions that the Code module launches is a
+different problem. It gets a sidebar in §4, not a recommendation.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>1 · Where we landed</h2>
+
+<div class="card teal">
+<p><b>Hand-spin. Extend the harness alfred already has, and adopt no framework.</b> <code>eval:comms</code> is
+already ahead of every TypeScript framework surveyed on the part that matters most: domain metrics (queue
+recall, asap precision) with Wilson intervals. It is behind on four practices that the field agrees on. Take
+those four ideas from the frameworks and leave their code:</p>
+<ol class="tight">
+  <li><b>Variants × fixtures × trials</b> as the unit of a run. A <em>variant</em> is a prompt builder plus a model
+  plus that model's call parameters.</li>
+  <li><b>Repeated trials</b> (k = 5), with a reported <b>noise floor</b>: the fixtures that flip between identical
+  runs.</li>
+  <li><b>Paired comparison</b> of variant A against variant B on the same fixtures, never two independent
+  confidence intervals set side by side.</li>
+  <li>A <b>dev / held-out split</b>, so a prompt tuned against the fixtures is not also graded on them.</li>
+</ol>
+<p>For the free-text Reader summaries, use <b>blind pairwise review by the owner first</b>. Add an LLM judge only
+after it has been validated against those human labels.</p>
+</div>
+
+<div class="callout">
+<b>The pushback: the framework is the least important decision in this ticket.</b> The binding constraints are
+statistical:
+<ul class="tight" style="margin:.4rem 0 .2rem">
+  <li>The comms set has 68 fixtures, of which 40 should be queued and 10 are asap.</li>
+  <li>At that size a prompt change has to flip <b>six fixtures one way and break none</b> before it clears
+  p&nbsp;&lt;&nbsp;0.05 (§2.2).</li>
+  <li>Sampling noise cannot be configured away. Production runs at the default temperature of 1.0, and models
+  released after Opus 4.6 reject any other value.</li>
+</ul>
+Installing promptfoo changes none of that. Growing the labelled data does, and so does running every fixture more
+than once. If one of the two gets the time, put it into labels.
+</div>
+
+<h3>Decisions</h3>
+<div class="scroll">
+<table>
+<thead><tr><th>Question</th><th>Decision</th><th>Rationale in one line</th></tr></thead>
+<tbody>
+<tr><td>Reuse a framework or hand-spin?</td>
+    <td><b>Hand-spin</b> in <code>workers/</code>, generalising the <code>eval:comms</code> shape</td>
+    <td>The frameworks factor the problem the wrong way for alfred (§2.3). None of the TypeScript ones computes a
+    paired comparison, and promptfoo installs 2.0&nbsp;GB.</td></tr>
+<tr><td>Unit of comparison</td>
+    <td><b>Variant</b> = <code>{ label, model, build(fixture) → request, call params }</code></td>
+    <td>In alfred, "same prompt, different model" is not the same request: Haiku rejects the
+    <code>thinking</code> + <code>effort</code> pair that the Reader sends to Sonnet
+    (<code>reader/summarize.ts</code>).</td></tr>
+<tr><td>Which call path is measured</td>
+    <td>The <b>production</b> call (<code>classifyJson</code>, <code>summarizePost</code>) plus the production
+    post-processing (<code>applyFloor</code>, <code>capForBacklog</code>)</td>
+    <td>Measure what ships. <code>comms-eval.ts</code> already follows this rule. A framework's built-in Anthropic
+    provider would bypass it.</td></tr>
+<tr><td>Trials per fixture</td>
+    <td><b>k = 5</b>, reporting stable-right, flaky and stable-wrong counts</td>
+    <td>Production samples at the default temperature of 1.0, so the eval must too. <code>temperature</code> is
+    deprecated, and models released after Opus 4.6 reject any other value. The API returns no logprobs. Resampling
+    is the only way left to reduce variance.</td></tr>
+<tr><td>Comparison statistic</td>
+    <td>Paired: <b>exact McNemar</b> on the per-fixture majority verdict, plus a <b>fixture-clustered paired
+    bootstrap</b> CI on each headline metric's delta</td>
+    <td>Anthropic's statistics paper, and Dietterich (1998) on comparing two classifiers on one test set.</td></tr>
+<tr><td>Overfitting to the fixtures</td>
+    <td>Tag each fixture <b>dev</b> or <b>holdout</b>. New fixtures from real traffic default to holdout. Report
+    both.</td>
+    <td><code>eval:comms</code> prints its own warning that it has no holdout. The in-repo
+    <code>skill-creator</code> already splits 60/40 and selects on the held-out score.</td></tr>
+<tr><td>Where new labels come from</td>
+    <td>Real traffic: <code>comm_corrections</code>, <code>classification_corrections</code>, and short owner
+    labelling sessions. Target <b>≥150</b> comms fixtures.</td>
+    <td>The power table in §2.2. The field's consistent advice is to build evals from real failures, not invented
+    cases.</td></tr>
+<tr><td>Free-text output (Reader)</td>
+    <td>Blind <b>pairwise owner review</b>, then binary criteria from error analysis, then an LLM judge only once it
+    is validated on TPR/TNR</td>
+    <td>Husain &amp; Shankar on error analysis and judges, Zheng et al. on judge bias, and "criteria drift".</td></tr>
+<tr><td>Inbox classifier</td>
+    <td>Build its <b>first</b> eval suite, seeded from <code>classification_corrections</code></td>
+    <td>It has none today (ALF-261 §6.1 note). Leakage guard: a fixture's own correction must never appear in its
+    few-shot block.</td></tr>
+<tr><td>Runs in CI?</td>
+    <td><b>Never.</b> Evals stay manual. Only the pure parts (scorer, statistics) are jest-tested.</td>
+    <td>Repo rule: no suite may spend money or depend on a network (<code>comms-eval.ts</code> header,
+    <code>wrangler.toml</code>).</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>2 · Why</h2>
+
+<h3>2.1 · What alfred already has (the in-repo art)</h3>
+<div class="scroll">
+<table>
+<thead><tr><th>Asset</th><th>What it does well</th><th>What it lacks</th></tr></thead>
+<tbody>
+<tr><td><code>npm run eval:comms -w workers</code><br><span class="small"><code>scripts/comms-eval.ts</code>,
+  <code>src/comms/eval/{fixtures,score}.ts</code></span></td>
+  <td>68 synthetic, hand-labelled fixtures (asap 10, today 25, whenever 5, fyi 28). It runs the production
+  <code>classifyJson</code> with the production floor and cap. It reports <b>directional metrics</b> (queue recall
+  is the one that decides, asap precision keeps the loud tier honest), each with <b>n and a 95% Wilson
+  interval</b>, plus a confusion matrix. It refuses to report a perfect score from an empty run, takes
+  <code>--model</code>, and writes JSON to a gitignored <code>eval-results/</code>.</td>
+  <td>One model and one prompt per invocation, with no A-vs-B comparison. One trial per fixture. No holdout (it
+  prints a warning saying so). Few-shot <code>examples: []</code>, while production sends up to 12
+  (<code>EXAMPLE_LIMIT</code>), so the eval measures a leaner prompt than the one that ships. No cost or latency
+  line.</td></tr>
+<tr><td><code>npm run eval:reader -w workers</code><br><span class="small"><code>scripts/reader-eval.ts</code></span></td>
+  <td>Runs the real extractor and summariser over mailbox posts or 6 committed fixtures. <code>--dry-run</code> is
+  deterministic and serves as demo evidence. It prints a per-call cost from a price table.</td>
+  <td><b>No scoring at all</b>: a human reads the printout. Nothing to compare two prompts or models with, and no
+  place to record a judgement.</td></tr>
+<tr><td>Inbox classifier</td>
+  <td>A pure <code>buildRequest</code>. The <code>classification_corrections</code> trigger logs every field the
+  owner overrode, with <code>model</code> and <code>prompt_version</code>, and <code>blanked</code> marks a
+  case where the model should have abstained.</td>
+  <td><b>No eval harness</b> (stated in ALF-261). The correction log only sees <em>dispatched</em> items, and it
+  doubles as the few-shot example source, so it can leak into any eval built from it.</td></tr>
+<tr><td>The seam</td>
+  <td>Every feature is a <b>pure builder</b> (<code>buildRequest</code>, <code>buildCommsRequest</code>,
+  <code>buildReaderRequest</code> → <code>{system, user, schema}</code>) plus <b>one call function</b>. Each stamps
+  <code>prompt_version</code> and <code>model</code> on stored output.</td>
+  <td>This is the right seam for a variant runner. Nothing uses it for comparison yet.</td></tr>
+<tr><td><code>skill-creator</code> <code>run_loop.py</code></td>
+  <td>An in-repo precedent for doing this properly: a <b>60/40 train/held-out split</b>, <b>3 runs per query</b>,
+  and the best candidate selected on the <em>held-out</em> score "to avoid overfitting".</td>
+  <td>Python, and specific to skill-description triggering. A precedent for method, not code to reuse.</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Also duplicated: <code>readDevVar</code> is copied verbatim between the two eval scripts, and the
+price table exists only in <code>reader-eval.ts</code>. A shared runner removes both copies.</p>
+
+<h3>2.2 · The statistics bind before the tooling does</h3>
+<p>The table below is <b>exact two-sided McNemar</b> over the 68 comms fixtures. "Fixes" are fixtures that A got
+wrong and B got right, and "breaks" are the reverse. The numbers were computed in this session (§6, command 4).</p>
+<div class="scroll">
+<table>
+<thead><tr><th>B fixes</th><th>B breaks</th><th>Net change</th><th>p</th><th>Distinguishable from noise?</th></tr></thead>
+<tbody>
+<tr><td>4</td><td>0</td><td>+5.9 pp</td><td>0.125</td><td class="no">no</td></tr>
+<tr><td>5</td><td>0</td><td>+7.4 pp</td><td>0.063</td><td class="no">no</td></tr>
+<tr><td>6</td><td>0</td><td>+8.8 pp</td><td>0.031</td><td class="yes">yes</td></tr>
+<tr><td>7</td><td>1</td><td>+8.8 pp</td><td>0.070</td><td class="no">no</td></tr>
+<tr><td>8</td><td>2</td><td>+8.8 pp</td><td>0.109</td><td class="no">no</td></tr>
+<tr><td>10</td><td>3</td><td>+10.3 pp</td><td>0.092</td><td class="no">no</td></tr>
+</tbody>
+</table>
+</div>
+<ul class="tight">
+  <li><b>Power is low even for large effects.</b> Suppose the errors of A and B were independent and the true
+  accuracy moved from 85% to 92%. A 2,000-run simulation detects that change about <b>16%</b> of the time at
+  n&nbsp;=&nbsp;68, 35% at n&nbsp;=&nbsp;150, and 67% at n&nbsp;=&nbsp;300. Real prompt edits have correlated
+  errors (the hard fixtures stay hard), which helps, but the direction of the conclusion holds.</li>
+  <li><b>The per-tier intervals are wide.</b> A perfect asap run over 10 fixtures has a Wilson interval of
+  72–100%, and 9 of 10 gives 60–98%. A perfect <code>whenever</code> run over 5 gives 57–100%.
+  <code>score.ts</code> already reports these intervals. What it cannot do is shrink them.</li>
+  <li><b>Sampling noise cannot be configured away.</b> The installed <code>@anthropic-ai/sdk@0.116.0</code> marks
+  <code>temperature</code> <code>@deprecated</code>: "Models released after Claude Opus 4.6 do not support setting
+  temperature. A value of 1.0 … will be accepted … all other values will be rejected with a 400 error." Neither
+  <code>classifier.ts</code> nor <code>summarize.ts</code> sets it, so production samples at the default of 1.0 and
+  an honest eval must match. Haiku 4.5 predates the cutoff, so pinning a lower temperature there would be a change to
+  <em>production</em>, not to the eval, and one that breaks at the next model upgrade. The SDK also has no logprobs
+  field, so the Anthropic paper's "use next-token probability" variance reduction is not available. <b>Repeated
+  trials are the only lever.</b></li>
+  <li><b>Money is not the constraint.</b> One comms run is about 151k input tokens (604,786 characters of assembled
+  requests ÷ 4) and about 7k output. On Haiku 4.5 at the repo's price table ($1 in, $5 out per million), that is
+  about <b>$0.19 per run</b>, or about $1.90 for a 2-variant × 5-trial comparison. The Batch API would halve it. The
+  constraint is labels.</li>
+</ul>
+
+<h3>2.3 · What the frameworks offer against what alfred needs</h3>
+<p>Two structural mismatches recur across every framework:</p>
+<ul class="tight">
+  <li><b>They factor a run as <code>prompts × providers × tests</code>.</b> In alfred, a prompt is a TypeScript
+  function of live data (rubric, people roster, thread, example set), not a template. A "provider" is a model
+  that needs its own call parameters. The workable integration in every framework is a custom
+  provider or task that calls alfred's own builder and call function. That makes the framework's prompt and
+  provider layers bypassed ceremony.</li>
+  <li><b>They score by averaging assertions.</b> Per-test pass/fail, rolled up into a mean. Alfred's headline
+  metrics are directional rates over subsets (recall over the fixtures that should be queued, precision over the
+  asap calls) with Wilson intervals. Those metrics would be re-implemented on top of any framework anyway.</li>
+</ul>
+<div class="scroll">
+<table>
+<thead><tr><th></th><th>promptfoo</th><th>Evalite</th><th>Inspect AI</th><th>Hosted (Braintrust / LangSmith / Langfuse / Phoenix)</th><th>Hand-spun (recommended)</th></tr></thead>
+<tbody>
+<tr><td>Language</td><td>TS/JS CLI</td><td>TS, runs on Vitest</td><td class="no">Python only</td><td>TS SDKs exist</td><td>TS, same repo</td></tr>
+<tr><td>Runs alfred's TS builders in-process</td><td class="yes">yes, via a custom provider (proved)</td><td class="yes">yes (proved)</td><td class="no">needs a subprocess or HTTP bridge</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+<tr><td>Domain metrics with CIs</td><td class="meh">assertions + <code>derivedMetrics</code>; CIs are yours to write</td><td class="meh">mean scorer only</td><td class="yes"><code>stderr()</code> by default</td><td class="meh">custom scorers</td><td class="yes">already exists (<code>score.ts</code>)</td></tr>
+<tr><td>Repeated trials</td><td class="yes"><code>--repeat N</code></td><td class="yes"><code>trialCount</code></td><td class="yes">epochs + reducers</td><td class="meh">varies</td><td>a loop</td></tr>
+<tr><td>Paired A-vs-B statistics</td><td class="no">none found</td><td class="no">none found</td><td class="meh">stderr per run; paired analysis is manual</td><td class="meh">pairwise judging, not significance</td><td>about 60 lines, pure, jest-tested</td></tr>
+<tr><td>Side-by-side viewer</td><td class="yes"><code>promptfoo view</code></td><td class="yes">local UI</td><td class="yes"><code>inspect view</code></td><td class="yes">hosted</td><td class="meh">a static HTML report (precedent: skill-creator's <code>eval_review.html</code>)</td></tr>
+<tr><td>Footprint</td><td class="no">2.0&nbsp;GB, 549 top-level packages, 1&nbsp;m&nbsp;48&nbsp;s install (measured)</td><td class="meh">84&nbsp;MB, but brings in Vitest 4 next to Jest (measured)</td><td class="no">a Python toolchain</td><td class="no">a SaaS account, or Postgres + ClickHouse to self-host Langfuse</td><td class="yes">zero dependencies</td></tr>
+<tr><td>Data leaves the machine</td><td class="meh">telemetry on by default (no prompt content); opt-in share</td><td class="yes">no</td><td class="yes">no</td><td class="no">yes: the owner's private mail and texts</td><td class="yes">no</td></tr>
+<tr><td>Status (Sept 2026)</td><td>0.123.1, MIT; owned by OpenAI since March 2026</td><td>stable 0.19.0; 1.0.0-beta.16</td><td>0.3.271, MIT, very active</td><td>active</td><td>—</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>2.4 · Prototype: both TypeScript frameworks can drive alfred's code, and neither adds what is missing</h3>
+<p>Throwaway prototypes lived in the session scratchpad; none of this is committed. Each built every
+request with the real <code>buildCommsRequest</code> over the real <code>FIXTURES</code>. A canned stand-in
+replaced the model (this container has no <code>ANTHROPIC_API_KEY</code>). "Variant B" was rigged to flip 9
+fixtures.</p>
+<pre><code># promptfooconfig.yaml (abridged)
+prompts:  [{ id: A, raw: 'variant A' }, { id: B, raw: 'variant B' }]
+providers: [{ id: file://provider.ts }]   # imports workers/src/comms/{prompt,eval/fixtures}.ts
+tests: file://tests.ts                     # generates one test per FIXTURES entry
+derivedMetrics: [{ name: tier_accuracy, value: tier_exact / __count }]
+
+$ PROMPTFOO_DISABLE_TELEMETRY=1 npx promptfoo eval --no-cache
+  ✓ 127 passed (93.38%)   ✗ 9 failed   Duration: 2s
+  variant A  {"tier_exact":68,"tier_accuracy":1}
+  variant B  {"tier_exact":59,"tier_accuracy":0.8676}</code></pre>
+<ul class="tight">
+  <li><b>promptfoo</b> imported alfred's extensionless TypeScript modules with no resolve hook, which is a point
+  in its favour. It wrote <code>~/.promptfoo/promptfoo.db</code> (SQLite) and an install id. The comparison it
+  produced was two pass rates. There was no statement of whether 68 against 59 is a real difference; by §2.2, 9
+  one-way flips is.</li>
+  <li><b>Evalite</b> (<code>evalite.each</code> for variants, <code>trialCount</code> for repeats, both confirmed
+  in the 1.0.0-beta.16 type definitions) ran 136 evals in 174&nbsp;ms and printed "Score 93%". Its first run
+  <b>failed</b>: Vite parsed <code>workers/tsconfig.json</code> and could not resolve its
+  <code>extends: "@tsconfig/strictest"</code> until the repo's <code>node_modules</code> existed. That is a small
+  sign of the coupling a second test runner brings into a repo whose back-pressure rules are written around
+  Jest.</li>
+</ul>
+
+<h3>2.5 · The practices worth taking</h3>
+<p class="small"><span class="tag">fetched</span> means the primary page was read in this session.
+<span class="tag snip">snippet</span> means the claim rests on search-result text, because the domain was blocked by
+this container's egress proxy.</p>
+
+<div class="principle"><b class="n">P1 · Report uncertainty on every number.</b>
+<p>"Report the SEM, derived from the Central Limit Theorem, alongside each calculated eval score." Alfred already
+does this, using Wilson intervals, which suit its small n better than the CLT.</p>
+<p class="ev">Anthropic, <em>A statistical approach to model evaluations</em> <span class="tag">fetched</span></p></div>
+
+<div class="principle"><b class="n">P2 · Compare paired, not side by side.</b>
+<p>"Conducting a paired-differences test lets us eliminate the variance in question difficulty and focus on the
+variance in responses." For two classifiers on one test set, Dietterich (1998) finds McNemar has low Type I error
+and is the acceptable choice when each is run once. A paired bootstrap generalises to any metric, including recall
+and precision deltas.</p>
+<p class="ev">Anthropic statistics post <span class="tag">fetched</span>; Dietterich 1998 <span class="tag snip">snippet</span></p></div>
+
+<div class="principle"><b class="n">P3 · Resample, and cluster by fixture.</b>
+<p>Reduce variance by "resampling answers from the same model several times, and using the question-level
+averages". Treat the trials of one fixture as a cluster: "clustered standard errors … can be over three times as
+large as naive standard errors."</p>
+<p class="ev">Anthropic statistics post <span class="tag">fetched</span>; LLM outputs vary even under greedy
+decoding because of batch-variant kernels (Thinking Machines, 2025) <span class="tag snip">snippet</span></p></div>
+
+<div class="principle"><b class="n">P4 · Measure reliability as pass^k, not only pass@1.</b>
+<p>pass^k is "the probability that all k trials succeed". It is the right lens when a user sees one sample per item,
+as the owner does in the Comms queue. A message that comes out asap on 3 of 5 runs is a coin flip for the
+owner.</p>
+<p class="ev">Anthropic Engineering, <em>Demystifying evals for AI agents</em> <span class="tag">fetched</span></p></div>
+
+<div class="principle"><b class="n">P5 · Grade by code first, then model, then human, and automate.</b>
+<p>"More questions with slightly lower signal automated grading is better than fewer questions with high-quality
+human hand-graded evals." When a model grades, have it reason first and output a constrained label.</p>
+<p class="ev">Anthropic docs, <em>Create strong empirical evaluations</em> <span class="tag">fetched</span></p></div>
+
+<div class="principle"><b class="n">P6 · Start small and use real failures.</b>
+<p>Begin with "20–50 simple tasks drawn from real failures". Split <b>capability</b> evals (hard, low pass rate)
+from <b>regression</b> evals (target close to 100%).</p>
+<p class="ev">Anthropic Engineering, <em>Demystifying evals</em> <span class="tag">fetched</span></p></div>
+
+<div class="principle"><b class="n">P7 · Error analysis before metrics.</b>
+<p>Read real outputs, write open-ended notes (open coding), then cluster them into failure modes (axial coding).
+Keep going until new reviews stop revealing new modes. Avoid generic off-the-shelf metrics. This matters most for
+the Reader, whose failures are not yet named.</p>
+<p class="ev">Husain &amp; Shankar, <em>AI Evals FAQ</em> <span class="tag">fetched via a mirror</span></p></div>
+
+<div class="principle"><b class="n">P8 · If you use an LLM judge, make it binary and validate it.</b>
+<p>Prefer pass/fail over 1–5 scales. Build the judge by "critique shadowing" a domain expert. Report the judge's
+TPR and TNR against human labels, not raw accuracy, and re-validate it periodically.</p>
+<p class="ev">Husain, <em>Creating a LLM-as-a-Judge…</em> <span class="tag snip">snippet</span>; <em>AI Evals FAQ</em> <span class="tag">fetched via a mirror</span></p></div>
+
+<div class="principle"><b class="n">P9 · Judges carry bias.</b>
+<p>LLM judges show position bias, verbosity bias and self-enhancement bias. The mitigation is to judge twice with
+the order swapped and call a disagreement a tie. Pairwise comparison is more stable for subjective axes; direct
+scoring suits objective checks.</p>
+<p class="ev">Zheng et al. 2023 (MT-Bench); Yan, <em>Evaluating the Effectiveness of LLM-Evaluators</em>
+<span class="tag snip">snippet</span></p></div>
+
+<div class="principle"><b class="n">P10 · Expect criteria drift.</b>
+<p>"Grading outputs helps [people] define those very criteria." The rubric for the Reader should be a living
+artifact, refined while grading, not fixed in advance.</p>
+<p class="ev">Shankar et al. 2024, <em>Who Validates the Validators?</em> <span class="tag snip">snippet</span></p></div>
+
+<div class="principle"><b class="n">P11 · Hold something out.</b>
+<p>Tune on dev and report holdout. A large gap between the two means the prompt memorised the fixtures.</p>
+<p class="ev">This is the weakest-sourced principle here: practitioner consensus <span class="tag snip">snippet</span>,
+backed by the in-repo <code>skill-creator</code> doing exactly this.</p></div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>3 · Technical shape</h2>
+<p>This is enough for a refinement session to expand. It is not the spec.</p>
+
+<svg viewBox="0 0 900 250" role="img" aria-label="Eval pipeline: fixtures with a dev or holdout split and variants fan out into k trials through the production call path, append to a JSONL record, then the existing scorer and a new paired comparator produce the report">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="fill:var(--muted)"/></marker></defs>
+  <rect class="box" x="10" y="20" width="170" height="80" rx="8"/>
+  <text x="22" y="42" class="ttl">Suite</text>
+  <text x="22" y="62" class="lbl">fixtures + expected</text>
+  <text x="22" y="78" class="lbl">split: dev | holdout</text>
+  <text x="22" y="94" class="lbl">judge(fixture, output)</text>
+  <rect class="box" x="10" y="140" width="170" height="80" rx="8"/>
+  <text x="22" y="162" class="ttl">Variants</text>
+  <text x="22" y="182" class="lbl">A: v4 prompt · haiku-4-5</text>
+  <text x="22" y="198" class="lbl">B: v5 draft · haiku-4-5</text>
+  <text x="22" y="214" class="lbl">(or same prompt · sonnet-5)</text>
+  <rect class="box hl" x="240" y="70" width="190" height="100" rx="8"/>
+  <text x="252" y="94" class="ttl">Runner</text>
+  <text x="252" y="114" class="lbl">for variant × fixture × k</text>
+  <text x="252" y="130" class="lbl">build → production call</text>
+  <text x="252" y="146" class="lbl">→ production post-process</text>
+  <text x="252" y="162" class="lbl">concurrency-limited</text>
+  <rect class="box" x="490" y="70" width="150" height="100" rx="8"/>
+  <text x="502" y="94" class="ttl">Trial records</text>
+  <text x="502" y="114" class="lbl">eval-results/*.jsonl</text>
+  <text x="502" y="130" class="lbl">(gitignored)</text>
+  <text x="502" y="146" class="lbl">output · usage · ms</text>
+  <text x="502" y="162" class="lbl">model · prompt_version</text>
+  <rect class="box" x="700" y="20" width="190" height="80" rx="8"/>
+  <text x="712" y="42" class="ttl">Per-variant score</text>
+  <text x="712" y="62" class="lbl">existing score.ts (Wilson)</text>
+  <text x="712" y="78" class="lbl">+ pass^k: stable / flaky</text>
+  <text x="712" y="94" class="lbl">+ cost and latency</text>
+  <rect class="box hl" x="700" y="140" width="190" height="80" rx="8"/>
+  <text x="712" y="162" class="ttl">Paired comparator</text>
+  <text x="712" y="182" class="lbl">exact McNemar (majority)</text>
+  <text x="712" y="198" class="lbl">clustered bootstrap Δ</text>
+  <text x="712" y="214" class="lbl">dev and holdout separately</text>
+  <path class="arr" d="M180,60 L238,105"/>
+  <path class="arr" d="M180,180 L238,140"/>
+  <path class="arr" d="M430,120 L488,120"/>
+  <path class="arr" d="M640,105 L698,65"/>
+  <path class="arr" d="M640,140 L698,175"/>
+</svg>
+
+<h4>Interfaces (sketch)</h4>
+<pre><code>// workers/src/eval/types.ts: pure, jest-tested, imported by the scripts
+interface Variant&lt;F&gt; {
+  label: string;                        // 'v4', 'v5-draft', 'v4@sonnet-5'
+  model: string;
+  run(fixture: F, env: EvalEnv): Promise&lt;TrialOutput&gt;;  // build + PRODUCTION call + post-process
+}
+interface Suite&lt;F, J&gt; {
+  name: 'comms' | 'inbox' | 'reader';
+  fixtures: readonly F[];
+  split(fixture: F): 'dev' | 'holdout';
+  judge(fixture: F, output: TrialOutput): J;     // a code grader wherever possible (P5)
+  correct(judgment: J): boolean;                 // the pass/fail that pairing and pass^k use
+}
+interface TrialRecord {                          // one JSONL line
+  suite: string; variant: string; model: string; promptVersion: number;
+  fixtureId: string; split: 'dev' | 'holdout'; trial: number;
+  output?: unknown; failure?: string; usage?: { in: number; out: number }; ms: number;
+}
+
+// workers/src/eval/paired.ts
+mcnemarExact(fixes: number, breaks: number): number   // two-sided p (the §2.2 numbers)
+pairedBootstrap(records, metric, { iterations: 10_000, seed }): { delta; low; high }
+stability(records): { stableRight; flaky; stableWrong }  // pass^k</code></pre>
+
+<h4>What a comparison prints (illustrative output, not a measurement)</h4>
+<pre><code>comms · A=v4@haiku-4-5  B=v5-draft@haiku-4-5 · k=5 · dev 48 / holdout 20
+                      A                 B                 Δ (B−A)  95% paired CI
+queue recall   dev    0.91 [0.84,0.95]  0.95 [0.89,0.98]  +0.04    [−0.01, +0.09]
+asap precision dev    0.78 [0.60,0.89]  0.88 [0.71,0.96]  +0.10    [−0.04, +0.22]
+majority verdict dev  fixes 5 · breaks 1 · McNemar p = 0.22  → not distinguishable
+stability      dev    A: 41 stable-right · 4 flaky · 3 stable-wrong
+               holdout …                   (holdout reported, never tuned against)
+cost  $1.87 · wall 11m</code></pre>
+
+<h4>Files a later story would touch</h4>
+<ul class="tight">
+  <li><b>New:</b> <code>workers/src/eval/{types,runner,paired,stability}.ts</code> and their tests. The runner takes
+  its caller as an argument, so its tests never make a network call.</li>
+  <li><b>New:</b> <code>workers/scripts/eval-compare.ts</code> and an <code>eval:compare</code> script, for example
+  <code>npm run eval:compare -w workers -- --suite comms --a v4 --b v5-draft --trials 5</code>.</li>
+  <li><b>Refactor:</b> <code>comms-eval.ts</code> onto the runner (the Wilson scorer stays), with a shared
+  <code>readDevVar</code> and price table.</li>
+  <li><b>Extend:</b> <code>comms/eval/fixtures.ts</code> with a <code>split</code> field. An
+  <code>examples</code> snapshot becomes a variant dimension, so production's 12-example prompt can also be
+  measured.</li>
+  <li><b>New suite:</b> <code>src/eval/inbox/</code>, seeded from <code>classification_corrections</code> and
+  labelled by the owner. The fixture's own row is excluded from its few-shot block.</li>
+  <li><b>Reader:</b> <code>reader-eval.ts --compare A,B</code> emits a self-contained HTML page. It shows the
+  summaries side by side in randomised order, captures a preference plus one line of critique, and exports JSON.
+  This follows P7–P10 and the <code>eval_review.html</code> precedent.</li>
+</ul>
+
+<h4>Suggested order (each step pays for itself)</h4>
+<ol class="tight">
+  <li><b>Measure the noise floor first.</b> Run today's comms prompt at k&nbsp;=&nbsp;5 on Haiku (about $1). If
+  several fixtures flip between identical runs, every single-run comparison made so far was partly noise. That
+  includes the ALF-244 eval bar, which was specified as a single-run before/after comparison and was not run in the
+  session that shipped it (demo §6).</li>
+  <li>Extract the runner and the paired statistics, then refactor <code>eval:comms</code> onto them.</li>
+  <li>Grow the comms set toward 150 or more fixtures from real traffic, defaulting to holdout.</li>
+  <li>Build the Inbox suite.</li>
+  <li>Build the Reader pairwise review page. Consider an LLM judge only after about 50 owner labels exist.</li>
+</ol>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>4 · Sidebars: appealing alternatives we're not taking</h2>
+
+<div class="alt"><h3>promptfoo</h3>
+<p>This is the obvious candidate, and the prototype proves it works. It has the prompts × providers matrix,
+<code>--repeat</code>, a disk cache, <code>llm-rubric</code> and <code>select-best</code> judges, a good local viewer,
+full Anthropic support, and MIT licensing. OpenAI's own Evals product is shutting down on 30&nbsp;Nov&nbsp;2026, and
+OpenAI reportedly points its users to promptfoo as the migration target.</p>
+<p><b>Why not:</b></p>
+<ul class="tight">
+  <li>At 2.0&nbsp;GB it cannot sensibly enter the single workspace lockfile, so it would live as an unpinned
+  <code>npx</code> side-tool.</li>
+  <li>Its matrix is the wrong factorisation for alfred (§2.3).</li>
+  <li>It has no paired statistics, so the one thing alfred lacks would still be hand-written.</li>
+  <li>Telemetry is on by default.</li>
+  <li>It is now owned by OpenAI and is reportedly being folded into OpenAI's enterprise agent platform. It is still
+  MIT, but the roadmap belongs to someone else.</li>
+</ul>
+<p class="verdict"><span class="k">Revisit if</span> alfred wants <b>adversarial testing</b> of the Comms prompt. That
+prompt ingests untrusted mail and texts behind <code>&lt;&lt;&lt;MESSAGE&gt;&gt;&gt;</code> delimiters, and
+security testing of AI apps is promptfoo's specialty. That would be a separate spike.</p></div>
+
+<div class="alt"><h3>Evalite (or Sentry's vitest-evals)</h3>
+<p>It is the lightest TS-native option: 84&nbsp;MB, <code>evalite.each</code> variants, <code>trialCount</code>, and a
+local UI.</p>
+<p><b>Why not:</b></p>
+<ul class="tight">
+  <li>It is built on Vitest 4, which would be a second test runner beside Jest. The back-pressure rules, ESLint
+  scoping and skills all assume Jest.</li>
+  <li>v1 is still beta (<code>1.0.0-beta.16</code>) and has a peer dependency on the Vercel <code>ai@^6</code>
+  SDK.</li>
+  <li>Scoring is a mean. There are no directional metrics and no paired statistics.</li>
+</ul>
+<p class="verdict"><span class="k">Revisit if</span> the Reader review UI outgrows a static HTML page.</p></div>
+
+<div class="alt"><h3>Inspect AI (UK AISI)</h3>
+<p>It is the most rigorous framework surveyed. Epochs with reducers, <code>stderr()</code> on by default, multi-model
+eval sets, and <code>inspect view</code> are all real and current (0.3.271, 26&nbsp;Sep&nbsp;2026).</p>
+<p><b>Why not:</b> it is Python only. Alfred's prompt assembly is TypeScript over TypeScript types, so every sample
+would cross a subprocess or HTTP bridge, or the builders would be ported and would drift. Take its ideas, and none of
+its code.</p></div>
+
+<div class="alt"><h3>Hosted platforms (Braintrust, LangSmith, Langfuse Cloud, Arize Phoenix)</h3>
+<p>They offer good TS SDKs, dataset versioning, pairwise experiments, and free tiers that fit one user.</p>
+<p><b>Why not:</b> the valuable eval data here is the owner's <b>private mail and texts</b>. The current fixtures are
+synthetic, but real-traffic fixtures, which §1 recommends, would be uploaded to a third party. Self-hosting Langfuse
+means running Postgres, ClickHouse and app servers for a single-user project. None that we found computes paired
+significance tests either.</p></div>
+
+<div class="alt"><h3>OpenAI Evals (repo and hosted)</h3>
+<p><b>Why not:</b> the hosted platform goes read-only on 31&nbsp;Oct&nbsp;2026 and shuts down on
+30&nbsp;Nov&nbsp;2026. The repo's README points to the dashboard, and it is Python.</p></div>
+
+<div class="alt"><h3>Anthropic Console "Evaluate" tab</h3>
+<p>Historically it offered side-by-side prompt versions and graded test cases in a UI.</p>
+<p><b>Why not:</b> it needs <code>{{variable}}</code> templates and cannot run alfred's TypeScript builders or
+post-processing. It is manual. Its current feature set could not be confirmed, because the doc URL now serves
+generic eval guidance.</p></div>
+
+<div class="alt"><h3>An LLM judge for the classifiers</h3>
+<p><b>Why not:</b> the classifiers have exact labels, so a code grader is strictly better (P5). A judge only earns
+its place on the Reader's free text, and there only after validation (P8).</p></div>
+
+<div class="alt"><h3>Public benchmarks (HELM, lm-evaluation-harness)</h3>
+<p><b>Why not:</b> these run fixed academic tasks to rank model capability. They say nothing about whether Haiku
+triages <em>this owner's</em> mail well. The question "is Sonnet 5 worth it for Comms?" is answered on alfred's own
+fixtures.</p></div>
+
+<div class="alt"><h3>Gating evals in CI or pre-push</h3>
+<p><b>Why not:</b> it spends money and needs a network, which breaks the repo rule. With k&nbsp;=&nbsp;1 it would
+also turn sampling noise into flaky gates. The pure statistics and scorer are unit-tested; the runs stay deliberate
+and manual.</p></div>
+
+<div class="alt"><h3>The Batch API by default</h3>
+<p>It is 50% cheaper, and Anthropic lists "large-scale evaluations" as a use case.</p>
+<p><b>Why not by default:</b> at about $0.19 per run, the saving is cents. It adds submit, poll and collect code, and
+most batches take up to an hour. Keep it as an option once suites grow.</p></div>
+
+<div class="alt"><h3>Evaluating the Code module's agent sessions and launch prompts</h3>
+<p>This is out of scope. It is a multi-turn, tool-using, repository-mutating task where a single trial costs dollars
+and minutes. It needs the agent-eval toolkit: pass^k over task outcomes, and graders on transcripts and on the
+resulting pull request. The nearest in-repo art is the <code>adversarial-review</code> step and skill-creator's
+trigger evals.</p>
+<p class="verdict"><span class="k">If wanted</span> it would be its own spike, and Anthropic's <em>Demystifying evals
+for AI agents</em> is the starting point.</p></div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>5 · Cost &amp; open questions</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Item</th><th>Estimate</th></tr></thead>
+<tbody>
+<tr><td>Build the runner, paired statistics, stability and the <code>eval:comms</code> refactor</td><td>About one story. Roughly 300–400 lines of source plus tests, all pure except the script.</td></tr>
+<tr><td>Inbox suite</td><td>One story, plus about an hour of owner labelling.</td></tr>
+<tr><td>Reader pairwise page</td><td>One story. It stays unused until the owner reviews about 30–50 pairs.</td></tr>
+<tr><td>Growing comms to 150 or more fixtures</td><td>This is <b>owner time</b>, not agent time: about 1–2 hours of labelling real messages. It is the highest-leverage item on the list.</td></tr>
+<tr><td>API spend</td><td>About $0.19 per comms run on Haiku, $0.37 on Sonnet 5 and $0.93 on Opus 5 (the repo's price table × about 151k input and 7k output tokens). A 2 × 5 comparison costs about $2 on Haiku.</td></tr>
+<tr><td>Wall clock</td><td>Not measured, because there is no key here. Sequential Haiku calls at 1–2&nbsp;s each put 680 calls at about 15–25&nbsp;min. Four-way concurrency would bring that to about 5&nbsp;min, rate limits permitting.</td></tr>
+</tbody>
+</table>
+</div>
+<h4>Open questions</h4>
+<ul class="tight">
+  <li><b>How noisy is Haiku on these fixtures?</b> This is unknown until step 1 runs. The size of the flaky set
+  decides whether k&nbsp;=&nbsp;5 is enough.</li>
+  <li><b>Where does the owner's private data go?</b> Real-traffic fixtures contain it. Options are to keep them in
+  the database and export on demand into a gitignored directory, or to commit only redacted and synthesised
+  derivatives. The current fixtures are committed because they are synthetic. This needs the owner's call.</li>
+  <li><b>Model comparisons carry a prompt-tuning bias.</b> The comms prompt was tuned against Haiku, so comparing
+  Sonnet on that prompt tests "Sonnet on a Haiku-tuned prompt". This is reasoning, not a measurement. Record it
+  whenever a model comparison is reported.</li>
+  <li><b>Does the <code>comm_corrections</code> window hold enough signal to mine for new fixtures?</b> It sees
+  demotions, not false negatives (the <code>fixtures.ts</code> header). New recall fixtures still have to come from
+  the owner reading the shelf.</li>
+  <li><b>Is the Console Evaluate tab still offered, and can it run cross-model?</b> This could not be verified in
+  this session. It does not change the recommendation.</li>
+</ul>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>6 · Sources</h2>
+<h4>Repo files read</h4>
+<ul class="tight small">
+  <li><code>workers/scripts/comms-eval.ts</code>, <code>workers/scripts/reader-eval.ts</code>, <code>workers/scripts/ts-resolve{,-hooks}.mjs</code></li>
+  <li><code>workers/src/comms/eval/score.ts</code>, <code>workers/src/comms/eval/fixtures.ts</code>, <code>workers/src/comms/prompt.ts</code>, <code>workers/src/comms/examples.ts</code>, <code>workers/src/comms/sweep.ts</code></li>
+  <li><code>workers/src/classifier.ts</code>, <code>workers/src/prompt.ts</code>, <code>workers/src/sweep.ts</code>, <code>workers/src/reader/summarize.ts</code>, <code>workers/src/reader/prompt.ts</code>, <code>workers/wrangler.toml</code>, <code>workers/package.json</code>, <code>workers/.gitignore</code></li>
+  <li><code>database/migrations/0029_llm_classifier.sql</code> (<code>classification_corrections</code>), <code>database/migrations/0034_comms.sql</code> (<code>comm_corrections</code>)</li>
+  <li><code>docs/specs/archive/ALF-261.html</code> §6.1, <code>docs/specs/archive/ALF-233.html</code>, <code>docs/demos/ALF-244-personal-text-flagging/comms-etiquette.md</code> §6</li>
+  <li><code>.claude/skills/skill-creator/SKILL.md</code> (run_loop: 60/40 split, 3 runs), <code>node_modules/@anthropic-ai/sdk/resources/messages/messages.d.ts</code> (<code>temperature</code> deprecation; no logprobs), SDK 0.116.0</li>
+</ul>
+<h4>Commands run (scratchpad, nothing committed)</h4>
+<ol class="tight small">
+  <li><code>npm view promptfoo version license</code> → 0.123.1, MIT; <code>npm view evalite dist-tags</code> → latest 0.19.0, beta 1.0.0-beta.16</li>
+  <li><code>npm install promptfoo@0.123.1</code> → 1&nbsp;m&nbsp;48&nbsp;s, <code>du -sh node_modules</code> = 2.0&nbsp;G, 549 entries; <code>npx promptfoo eval</code> with a custom TS provider over <code>FIXTURES</code> → 136 results in 2&nbsp;s</li>
+  <li><code>npm install evalite@1.0.0-beta.16 vitest@4</code> → 84&nbsp;M; <code>npx evalite run</code> → failed on tsconfig <code>extends</code> before <code>npm ci</code>, then 136 evals in 174&nbsp;ms</li>
+  <li><code>node power.mjs</code>: exact McNemar p-values, Wilson intervals, a 2,000-trial power simulation</li>
+  <li><code>node --import ./scripts/ts-resolve.mjs size.ts</code>: 68 fixtures, 604,786 request characters, about 7,951 system characters on average</li>
+</ol>
+<h4>External</h4>
+<ul class="tight small">
+  <li>Anthropic, <em>A statistical approach to model evaluations</em>: <a href="https://www.anthropic.com/research/statistical-approach-to-model-evals">anthropic.com/research/statistical-approach-to-model-evals</a> <span class="tag">fetched</span>; paper <a href="https://arxiv.org/abs/2411.00640">arXiv 2411.00640</a></li>
+  <li>Anthropic Engineering, <em>Demystifying evals for AI agents</em>: <a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">anthropic.com/engineering/demystifying-evals-for-ai-agents</a> <span class="tag">fetched</span></li>
+  <li>Anthropic docs: <a href="https://platform.claude.com/docs/en/test-and-evaluate/define-success">define success</a>, <a href="https://platform.claude.com/docs/en/test-and-evaluate/develop-tests">develop tests</a>, <a href="https://platform.claude.com/docs/en/build-with-claude/batch-processing">batch processing</a> (50%, "large-scale evaluations") <span class="tag">fetched</span></li>
+  <li>Husain &amp; Shankar, <em>AI Evals FAQ</em>: <a href="https://hamel.dev/blog/posts/evals-faq/">hamel.dev/blog/posts/evals-faq</a>; Husain, <a href="https://hamel.dev/blog/posts/llm-judge/">Creating a LLM-as-a-Judge</a>, <a href="https://hamel.dev/blog/posts/evals/">Your AI Product Needs Evals</a> <span class="tag snip">snippet / mirror</span></li>
+  <li>Shankar et al., <em>Who Validates the Validators?</em> <a href="https://arxiv.org/abs/2404.12272">arXiv 2404.12272</a>; Zheng et al., <em>Judging LLM-as-a-Judge</em> <a href="https://arxiv.org/abs/2306.05685">arXiv 2306.05685</a>; Yan, <a href="https://eugeneyan.com/writing/llm-evaluators/">Evaluating the Effectiveness of LLM-Evaluators</a> <span class="tag snip">snippet</span></li>
+  <li>Dietterich 1998, <a href="https://direct.mit.edu/neco/article-abstract/10/7/1895/6224">Approximate Statistical Tests for Comparing Supervised Classification Learning Algorithms</a>; Thinking Machines, <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/">Defeating Nondeterminism in LLM Inference</a> <span class="tag snip">snippet</span></li>
+  <li>promptfoo: <a href="https://github.com/promptfoo/promptfoo">github.com/promptfoo/promptfoo</a> (README: "Promptfoo is now part of OpenAI. Promptfoo remains open source and MIT licensed."), <a href="https://techcrunch.com/2026/03/09/openai-acquires-promptfoo-to-secure-its-ai-agents/">TechCrunch, 9 Mar 2026</a>, <a href="https://openai.com/index/openai-to-acquire-promptfoo/">openai.com</a></li>
+  <li>OpenAI Evals shutdown: <a href="https://community.openai.com/t/deprecation-notice-evals-will-be-shut-down-on-november-30th-2026/1385537">community.openai.com deprecation notice</a> <span class="tag snip">snippet</span>; <a href="https://github.com/openai/evals">github.com/openai/evals</a></li>
+  <li>Evalite: <a href="https://github.com/mattpocock/evalite">github.com/mattpocock/evalite</a>; vitest-evals: <a href="https://github.com/getsentry/vitest-evals">github.com/getsentry/vitest-evals</a></li>
+  <li>Inspect AI: <a href="https://github.com/UKGovernmentBEIS/inspect_ai">github.com/UKGovernmentBEIS/inspect_ai</a>, <a href="https://pypi.org/project/inspect-ai/">PyPI</a>; DeepEval: <a href="https://github.com/confident-ai/deepeval">github.com/confident-ai/deepeval</a></li>
+  <li>Braintrust autoevals: <a href="https://github.com/braintrustdata/autoevals">github.com/braintrustdata/autoevals</a>; Langfuse: <a href="https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk">experiments via SDK</a>; Arize Phoenix: <a href="https://github.com/Arize-ai/phoenix">github.com/Arize-ai/phoenix</a>; LangSmith: <a href="https://docs.smith.langchain.com/evaluation/how_to_guides/evaluation/evaluate_pairwise">pairwise evaluation</a> <span class="tag snip">snippet</span></li>
+  <li>EleutherAI <a href="https://github.com/EleutherAI/lm-evaluation-harness">lm-evaluation-harness</a>; Stanford <a href="https://github.com/stanford-crfm/helm">HELM</a></li>
+</ul>
+
+</div>
+</body>
+</html>
