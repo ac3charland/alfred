@@ -45,8 +45,8 @@ It wears the refinement spec's house style and splits at the same fold, for two 
 
 - **Above the fold (`#brief`): the answer, for the human** — one sentence, then *Where we
   landed*: the recommendation stated **first**, so a reader who stops at the fold knows what
-  you'd do. ≤ 300 words of prose; one figure, uncounted. Keep the brief's ids and the stylesheet,
-  and strip every `guide:` comment.
+  you'd do. ≤ 300 words of prose across the two; one optional figure, uncounted. Keep the brief's
+  ids and the stylesheet, and strip every `guide:` comment.
 - **Below (`#detail`): the evidence, freeform.** No required section, order or budget but a
   closing *Sources* — real links, and the files and commands you actually looked at. The template
   scaffolds the shape past findings converged on — *Why*, *Technical shape*, *Alternatives we're

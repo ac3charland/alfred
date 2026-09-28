@@ -160,8 +160,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .detail aside{margin:0 0 .9rem;padding:.75rem 1rem;background:var(--wash);border-left:3px solid var(--rule)}
 .detail aside>h3:first-child{margin-top:0}
 .detail aside>:last-child{margin-bottom:0}
-/* guide: Add this document's own rules here — a UI mockup's app tokens scoped on .app, per the refinement
-   skill's mockup rule, for one. Delete this guide when you add none. */
+/* guide: Add this document's own rules here, if it needs any. */
 
 </style>
 </head>
@@ -175,12 +174,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 <section id="brief" data-fold="above">
 
 <header class="mast" id="head">
-  <!-- guide: #head, required. The stamp fills itself, so leave it empty. The h1 reads [REF] — [spike title]:
-       the ref's prefix goes in <small>, its number in the numeral. -->
+  <!-- guide: #head, required. No review stamp: findings stay readable long after their PR merges. The h1
+       reads [REF] — [spike title]: the ref's prefix goes in <small>, its number in the numeral. -->
   <div class="mast-bar">
     <span class="wordmark">alfred</span>
     <span>[Project] · Spike findings</span>
-    <span class="stamp"></span>
   </div>
   <h1><span class="ref"><small>[PREFIX]<span class="hy">-</span></small>[N]</span><span class="sep"> — </span><span class="ttl">[spike title]</span></h1>
   <!-- guide: #answer, required. The answer to the spike's question: one sentence, ≤ 30 words. -->
@@ -199,13 +197,14 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <ol class="list">
     <li><h3>[finding]</h3>
       <p class="pick">[what you found, ≤ 15 words]</p>
-      <p class="why">[its evidence, in a phrase — <a href="#why">§1</a>]</p></li>
+      <p class="why">[its evidence, in a phrase — <a href="#why">the section below that carries it</a>]</p></li>
   </ol>
 </section>
 
 <!-- guide: #diagram, optional. One figure when a picture carries the answer faster than prose — a flow, an
-     architecture, a comparison. One SVG, ≤ 7 nodes, a one-sentence caption. Style it with .dg: g.new marks
-     what the recommendation adds, path.hot the flow it changes, text.s a sublabel, text.lb an edge label. -->
+     architecture, a comparison — with a one-sentence caption. An SVG diagram keeps to ≤ 7 nodes and is styled
+     with .dg: g.new marks what the recommendation adds, path.hot the flow it changes, text.s a sublabel,
+     text.lb an edge label. -->
 <section id="diagram" aria-label="How it fits">
   <figure class="fig">
     <svg class="dg" viewBox="[…]" role="img" aria-label="[what the diagram shows]">[…]</svg>
