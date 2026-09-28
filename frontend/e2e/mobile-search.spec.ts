@@ -73,7 +73,7 @@ test('full-width, touch-sized results that scroll, reaching and opening the last
   await seed(overflowingSeed());
   await page.goto('/');
 
-  // The icon sits in the header's right-hand cluster, just before the account pill.
+  // The icon sits in the header's right-hand cluster, just before the account menu.
   const trigger = page.getByRole('button', { name: 'Search', exact: true });
   const accountMenu = page.getByRole('button', { name: 'Account menu' });
   await expect(trigger).toBeVisible();
