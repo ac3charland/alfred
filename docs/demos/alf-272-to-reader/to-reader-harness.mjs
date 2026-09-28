@@ -10,6 +10,7 @@
  *
  *   take           three bookmarks in To Reader: an article, a Substack app link, a page with no text
  *   archive-fails  Instapaper fails the archive; the post stays; next tick archives it, no second post
+ *   bad-article    get_text fails on the oldest bookmark: it stays in To Reader, the next is taken
  *   restore        a newsletter the owner sent to Instapaper, archived, then moved into To Reader
  *   refused        Instapaper rejects the credentials: newsletters' health is untouched
  *   capped         the day's 30 model calls are spent: no Instapaper call at all
@@ -92,6 +93,7 @@ function world({
   posts = [],
   callsToday = 0,
   fail = {},
+  failTexts = {},
   folders = [
     { type: 'folder', folder_id: 77, title: 'To Reader' },
     { type: 'folder', folder_id: 12, title: 'To Wiki' },
@@ -117,6 +119,8 @@ function world({
       if (call === 'folders/list') return json(folders);
       if (call === 'bookmarks/list') return json({ bookmarks, highlights: [] });
       if (call === 'bookmarks/get_text') {
+        const broken = failTexts[form.bookmark_id];
+        if (broken !== undefined) return new Response(broken.body, { status: broken.status });
         const html = texts[form.bookmark_id];
         return html === undefined
           ? json([{ type: 'error', error_code: 1550, message: 'Error generating text' }], 400)
@@ -266,6 +270,17 @@ const sections = {
     printCalls(again);
     printPosts(again);
     printHealth(again);
+  },
+  async 'bad-article'() {
+    const state = world({
+      bookmarks: [TAKE_BOOKMARKS[1], TAKE_BOOKMARKS[0]],
+      texts: { 501: ARTICLE_HTML },
+      failTexts: { 502: { status: 500, body: 'Internal Server Error' } },
+    });
+    await tick(state);
+    printCalls(state);
+    printPosts(state);
+    printHealth(state);
   },
   async restore() {
     const state = world({

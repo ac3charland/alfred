@@ -307,6 +307,44 @@ every call the stand-ins received (4):
 
 ## After it ships (the owner's steps)
 
+**An article Instapaper can't read.** `get_text` fails on the oldest bookmark (#502): nothing is written, it stays in To Reader, and the failure is stamped and logged with its bookmark id — then the tick carries on and takes #501. Bookmarks are taken oldest first, so stopping here would leave one unreadable article holding the whole folder back every tick. Only a refusal every later call would get too (rejected credentials, a lapsed Premium, a rate limit) still stops the leg.
+
+```bash
+node docs/demos/alf-272-to-reader/to-reader-harness.mjs bad-article
+```
+
+```output
+runReaderTick → summarised 1, failures []
+  instapaper {"listed":2,"taken":1,"archived":1,"restored":0,"failures":["bookmark 502: bookmarks/get_text: unavailable (HTTP 500)"]}
+subrequests 17
+  GET    reader_posts (ceiling count)
+  PATCH  reader_health last_run_at
+  GET    v_reader_discovery
+  GET    reader_publications
+  GET    reader_posts (retries)
+  GET    v_reader_worklist
+  Instapaper folders/list (signed)
+  Instapaper bookmarks/list folder 77 (signed)
+  GET    reader_posts where instapaper_bookmark_id in (502,501)
+  Google token mint
+  Instapaper bookmarks/get_text #502 (signed)
+  Instapaper bookmarks/get_text #501 (signed)
+  POST   reader_posts (bookmark #501)
+  Instapaper bookmarks/archive #501 (signed)
+  Anthropic messages (Publication: worksinprogress.co)
+  PATCH  reader_posts post-1 gist, summary_state, summarized_at, model_called_at, last_error, summarizing_since
+  PATCH  reader_health last_success_at, instapaper_last_error, instapaper_last_error_at
+reader_posts (1)
+  post-1  source instapaper  bookmark #501
+    title "Cities Are Getting Quieter"  site "worksinprogress.co"
+    url "https://www.WorksInProgress.co/issue/quiet-cities"  received 2026-09-28T15:00:00.000Z  words 14
+    publication_id null  account_key null  gmail_message_id null
+    summary_state done  archived_at null
+reader_health {"last_run_at":"2026-09-28T15:00:00.000Z","last_success_at":"2026-09-28T15:00:00.000Z","instapaper_last_error":"Instapaper didn't answer","instapaper_last_error_at":"2026-09-28T15:00:00.000Z"}
+```
+
+## After it ships (the owner's steps)
+
 1. In Instapaper, create a folder named exactly **To Reader**.
 2. `npx wrangler secret put` for `INSTAPAPER_CONSUMER_KEY`, `_CONSUMER_SECRET`, `_ACCESS_TOKEN`, `_ACCESS_TOKEN_SECRET`, with Vercel's values.
 3. With one article in To Reader, a local Anthropic key and the four values exported: `npm run eval:reader -w workers -- --instapaper --limit 1` — expect its title, site and gist, with nothing archived. This is also the first live check of the `/api/1.1/` paths and the 1241 code.
