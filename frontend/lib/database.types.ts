@@ -921,6 +921,9 @@ export type Database = {
           calls_today: number | null
           daily_cap: number | null
           id: number
+          instapaper_last_error: string | null
+          instapaper_last_error_at: string | null
+          instapaper_last_success_at: string | null
           last_error: string | null
           last_error_at: string | null
           last_run_at: string | null
@@ -931,6 +934,9 @@ export type Database = {
           calls_today?: number | null
           daily_cap?: number | null
           id?: number
+          instapaper_last_error?: string | null
+          instapaper_last_error_at?: string | null
+          instapaper_last_success_at?: string | null
           last_error?: string | null
           last_error_at?: string | null
           last_run_at?: string | null
@@ -941,6 +947,9 @@ export type Database = {
           calls_today?: number | null
           daily_cap?: number | null
           id?: number
+          instapaper_last_error?: string | null
+          instapaper_last_error_at?: string | null
+          instapaper_last_success_at?: string | null
           last_error?: string | null
           last_error_at?: string | null
           last_run_at?: string | null
@@ -950,14 +959,14 @@ export type Database = {
       }
       reader_posts: {
         Row: {
-          account_key: string
+          account_key: string | null
           archived_at: string | null
           author: string | null
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
           gist: string | null
-          gmail_message_id: string
+          gmail_message_id: string | null
           headline: string | null
           html: string | null
           html_extracted: boolean
@@ -970,9 +979,11 @@ export type Database = {
           opened_at: string | null
           overview: Json | null
           prompt_version: number | null
-          publication_id: string
+          publication_id: string | null
           received_at: string
           rfc822_message_id: string | null
+          site: string | null
+          source: string
           summarize_attempts: number
           summarized_at: string | null
           summarizing_since: string | null
@@ -985,14 +996,14 @@ export type Database = {
           word_count: number
         }
         Insert: {
-          account_key: string
+          account_key?: string | null
           archived_at?: string | null
           author?: string | null
           canonical_url?: string | null
           comm_message_id?: string | null
           created_at?: string
           gist?: string | null
-          gmail_message_id: string
+          gmail_message_id?: string | null
           headline?: string | null
           html?: string | null
           html_extracted?: boolean
@@ -1005,9 +1016,11 @@ export type Database = {
           opened_at?: string | null
           overview?: Json | null
           prompt_version?: number | null
-          publication_id: string
+          publication_id?: string | null
           received_at: string
           rfc822_message_id?: string | null
+          site?: string | null
+          source?: string
           summarize_attempts?: number
           summarized_at?: string | null
           summarizing_since?: string | null
@@ -1020,14 +1033,14 @@ export type Database = {
           word_count?: number
         }
         Update: {
-          account_key?: string
+          account_key?: string | null
           archived_at?: string | null
           author?: string | null
           canonical_url?: string | null
           comm_message_id?: string | null
           created_at?: string
           gist?: string | null
-          gmail_message_id?: string
+          gmail_message_id?: string | null
           headline?: string | null
           html?: string | null
           html_extracted?: boolean
@@ -1040,9 +1053,11 @@ export type Database = {
           opened_at?: string | null
           overview?: Json | null
           prompt_version?: number | null
-          publication_id?: string
+          publication_id?: string | null
           received_at?: string
           rfc822_message_id?: string | null
+          site?: string | null
+          source?: string
           summarize_attempts?: number
           summarized_at?: string | null
           summarizing_since?: string | null
@@ -1480,14 +1495,14 @@ export type Database = {
       append_wiki_sent_ideas: {
         Args: { p_ideas: string[]; p_post: string }
         Returns: {
-          account_key: string
+          account_key: string | null
           archived_at: string | null
           author: string | null
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
           gist: string | null
-          gmail_message_id: string
+          gmail_message_id: string | null
           headline: string | null
           html: string | null
           html_extracted: boolean
@@ -1500,9 +1515,11 @@ export type Database = {
           opened_at: string | null
           overview: Json | null
           prompt_version: number | null
-          publication_id: string
+          publication_id: string | null
           received_at: string
           rfc822_message_id: string | null
+          site: string | null
+          source: string
           summarize_attempts: number
           summarized_at: string | null
           summarizing_since: string | null
@@ -1524,14 +1541,14 @@ export type Database = {
       append_wiki_sent_picks: {
         Args: { p_evidence: string[]; p_ideas: string[]; p_post: string }
         Returns: {
-          account_key: string
+          account_key: string | null
           archived_at: string | null
           author: string | null
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
           gist: string | null
-          gmail_message_id: string
+          gmail_message_id: string | null
           headline: string | null
           html: string | null
           html_extracted: boolean
@@ -1544,9 +1561,11 @@ export type Database = {
           opened_at: string | null
           overview: Json | null
           prompt_version: number | null
-          publication_id: string
+          publication_id: string | null
           received_at: string
           rfc822_message_id: string | null
+          site: string | null
+          source: string
           summarize_attempts: number
           summarized_at: string | null
           summarizing_since: string | null

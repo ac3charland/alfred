@@ -4098,6 +4098,251 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // ── Reader: Instapaper articles as a second source (ALF-272) ────────────────
+
+  /** What {@link readerInsertRefusal} answers for a row the database took. */
+  const ACCEPTED = 'accepted';
+
+  /**
+   * Insert one post and report the constraint that refused it, or {@link ACCEPTED}. Naming the
+   * constraint is the point: a row refused by a foreign key or a NOT NULL would otherwise pass
+   * for a row the identity CHECK refused, and prove nothing about the CHECK.
+   */
+  async function readerInsertRefusal(
+    columns: string,
+    values: string,
+    params: unknown[],
+  ): Promise<string> {
+    try {
+      await client.query(
+        `insert into reader_posts (title, received_at, ${columns}) values ('Row', now(), ${values})`,
+        params,
+      );
+      return ACCEPTED;
+    } catch (error) {
+      const constraint = (error as { constraint?: unknown }).constraint;
+      return typeof constraint === 'string' ? constraint : String(error);
+    }
+  }
+
+  const readerSourceDefaultResult = await attempt(
+    'reader_posts.source defaults to gmail, so every newsletter row reads as one (ALF-272)',
+    async () => {
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('source-default@example.com', 'Source Default', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      const { rows } = await client.query<{ source: string; site: string | null }>(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+           values ($1, 'gmail-personal', 'source-default-msg', 'A Newsletter', now())
+           returning source, site`,
+        [publicationId],
+      );
+      if (rows[0]?.source !== 'gmail') {
+        throw new Error(`a row written without a source reads ${String(rows[0]?.source)}`);
+      }
+      if (rows[0].site !== null) throw new Error('a newsletter row was given a site');
+
+      const { rows: missing } = await client.query<{ n: string }>(
+        `select count(*)::text as n from reader_posts where source is null`,
+      );
+      if (missing[0]?.n !== '0') throw new Error('some reader_posts row has no source');
+      return 'a row written the old way reads source = gmail, and no row lacks a source';
+    },
+  );
+
+  const readerSourceIdentityResult = await attempt(
+    'reader_posts_source_identity: a newsletter needs its whole mail identity, an Instapaper ' +
+      'article needs its bookmark id and none of the mail identity, and may carry a ' +
+      'publication (ALF-272)',
+    async () => {
+      const account = await ensureReaderAccount(client);
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('identity-test@example.com', 'Identity Test', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+      const message = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, direction,
+                                     received_at)
+           values ($1, 'identity-msg', 'identity-thread', 'identity-test@example.com', 'inbound',
+                   now()) returning id`,
+        [account],
+      );
+      const messageId = message.rows[0]?.id;
+      if (!messageId) throw new Error('could not seed the comms message');
+
+      const identity = 'reader_posts_source_identity';
+      const refusals: [string, string, string, unknown[]][] = [
+        [
+          'a newsletter with no publication',
+          `source, account_key, gmail_message_id`,
+          `'gmail', 'gmail-personal', 'identity-no-pub'`,
+          [],
+        ],
+        [
+          'a newsletter with no account',
+          `source, publication_id, gmail_message_id`,
+          `'gmail', $1, 'identity-no-account'`,
+          [publicationId],
+        ],
+        [
+          'a newsletter with no Gmail message id',
+          `source, publication_id, account_key`,
+          `'gmail', $1, 'gmail-personal'`,
+          [publicationId],
+        ],
+        ['an article with no bookmark id', `source, site`, `'instapaper', 'example.org'`, []],
+        [
+          'an article carrying an account',
+          `source, instapaper_bookmark_id, account_key`,
+          `'instapaper', 910001, 'gmail-personal'`,
+          [],
+        ],
+        [
+          'an article carrying a Gmail message id',
+          `source, instapaper_bookmark_id, gmail_message_id`,
+          `'instapaper', 910002, 'identity-article-msg'`,
+          [],
+        ],
+        [
+          'an article carrying a comms message',
+          `source, instapaper_bookmark_id, comm_message_id`,
+          `'instapaper', 910003, $1`,
+          [messageId],
+        ],
+      ];
+      for (const [label, columns, values, params] of refusals) {
+        const refusal = await readerInsertRefusal(columns, values, params);
+        if (refusal !== identity) {
+          throw new Error(
+            `${label} was ${refusal === ACCEPTED ? 'accepted' : `refused by ${refusal}`}`,
+          );
+        }
+      }
+
+      // An unknown source fails both CHECKs, and Postgres names whichever it evaluated first — so
+      // either name is a refusal by a source rule, and anything else is not.
+      const unknownSource = await readerInsertRefusal(
+        `source, instapaper_bookmark_id`,
+        `'rss', 910004`,
+        [],
+      );
+      if (unknownSource !== 'reader_posts_source_valid' && unknownSource !== identity) {
+        throw new Error(`an unknown source was ${unknownSource}`);
+      }
+
+      const accepted: [string, string, string, unknown[]][] = [
+        [
+          'an article with only its bookmark id',
+          `source, instapaper_bookmark_id, site, canonical_url`,
+          `'instapaper', 910005, 'example.org', 'https://example.org/a'`,
+          [],
+        ],
+        [
+          'an article linked to a publication',
+          `source, instapaper_bookmark_id, site, publication_id`,
+          `'instapaper', 910006, 'identity.example', $1`,
+          [publicationId],
+        ],
+        [
+          'a newsletter with its whole mail identity',
+          `source, publication_id, account_key, gmail_message_id, comm_message_id`,
+          `'gmail', $1, 'gmail-personal', 'identity-msg', $2`,
+          [publicationId, messageId],
+        ],
+      ];
+      for (const [label, columns, values, params] of accepted) {
+        const refusal = await readerInsertRefusal(columns, values, params);
+        if (refusal !== ACCEPTED) throw new Error(`${label} was refused by ${refusal}`);
+      }
+
+      return (
+        'seven rows missing or mixing the identities were refused by the identity CHECK, an ' +
+        'unknown source by its own, and the three well-formed rows were accepted'
+      );
+    },
+  );
+
+  const readerInstapaperKeyResult = await attempt(
+    'reader_posts_instapaper_source_key: a second Instapaper post for one bookmark is refused, ' +
+      'while a newsletter holding that bookmark id is not (ALF-272)',
+    async () => {
+      const publication = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('bookmark-key@example.com', 'Bookmark Key', 'owner') returning id`,
+      );
+      const publicationId = publication.rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+
+      const first = await readerInsertRefusal(
+        `source, instapaper_bookmark_id`,
+        `'instapaper', 920001`,
+        [],
+      );
+      if (first !== ACCEPTED) throw new Error(`the first article was refused by ${first}`);
+
+      const duplicate = await readerInsertRefusal(
+        `source, instapaper_bookmark_id`,
+        `'instapaper', 920001`,
+        [],
+      );
+      if (duplicate !== 'reader_posts_instapaper_source_key') {
+        throw new Error(
+          `a second article for one bookmark was ${duplicate === ACCEPTED ? 'accepted' : `refused by ${duplicate}`}`,
+        );
+      }
+
+      // A newsletter the owner sent to Instapaper holds the id of the bookmark Send created.
+      // Moving that bookmark into To Reader must not make the two collide.
+      const newsletter = await readerInsertRefusal(
+        `source, publication_id, account_key, gmail_message_id, instapaper_bookmark_id`,
+        `'gmail', $1, 'gmail-personal', 'bookmark-key-msg', 920001`,
+        [publicationId],
+      );
+      if (newsletter !== ACCEPTED)
+        throw new Error(`the sent newsletter was refused by ${newsletter}`);
+
+      return 'the duplicate article was refused by the partial unique index; the newsletter beside it was accepted';
+    },
+  );
+
+  const readerInstapaperHealthResult = await attempt(
+    'reader_health carries the To Reader leg’s own nullable health columns, writable as ' +
+      'authenticated (ALF-272)',
+    async () => {
+      const { rows: columns } = await client.query<{ column_name: string; is_nullable: string }>(
+        `select column_name, is_nullable from information_schema.columns
+          where table_schema = 'public' and table_name = 'reader_health'
+            and column_name like 'instapaper_%'
+          order by column_name`,
+      );
+      const described = columns.map((row) => `${row.column_name}:${row.is_nullable}`).join(',');
+      const expected =
+        'instapaper_last_error:YES,instapaper_last_error_at:YES,instapaper_last_success_at:YES';
+      if (described !== expected) throw new Error(`reader_health's columns read ${described}`);
+
+      await asRole(client, 'authenticated', async () => {
+        await client.query(
+          `update reader_health
+              set instapaper_last_error = 'there is no "To Reader" folder in Instapaper',
+                  instapaper_last_error_at = now(), instapaper_last_success_at = null
+            where id = 1`,
+        );
+        const { rows } = await client.query<{ instapaper_last_error: string | null }>(
+          `select instapaper_last_error from reader_health where id = 1`,
+        );
+        if (rows[0]?.instapaper_last_error === undefined || rows[0].instapaper_last_error === null)
+          throw new Error('the leg’s error did not read back');
+      });
+      return 'three nullable columns exist and authenticated wrote and read back the leg’s error';
+    },
+  );
+
   // ── Wiki (ALF-261) ──────────────────────────────────────────────────────────
 
   const wikiGrantsResult = await attempt(
@@ -4646,6 +4891,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     readerCandidatesResult,
     readerPublicationsViewResult,
     readerHealthCeilingColumnsResult,
+    readerSourceDefaultResult,
+    readerSourceIdentityResult,
+    readerInstapaperKeyResult,
+    readerInstapaperHealthResult,
     wikiGrantsResult,
     wikiPageChecksResult,
     wikiDispatchCheckResult,
