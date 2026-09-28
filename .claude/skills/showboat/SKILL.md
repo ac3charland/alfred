@@ -218,6 +218,12 @@ output throws `Dynamic require of "process" is not supported` when a dependency 
 (`yaml` does). Give the bundle a real `require` via `banner: { js: "import { createRequire } from
 'node:module'; const require = createRequire(import.meta.url);" }`.
 
+**Running an npm script against a stand-in server in the harness's own process** (an eval
+script pointed at a fake third-party API): launch it with async `spawn`, never `spawnSync` —
+the sync call blocks the event loop the stand-in answers on, so every request the child makes
+times out. The Anthropic SDK honours `ANTHROPIC_BASE_URL`, so the same stand-in can answer the
+model's `/v1/messages` (`docs/demos/alf-272-to-reader/eval-with-stand-in.mjs`).
+
 ## Screenshotting the UI (the evidence for any visual change)
 
 Reuse the Playwright-managed Chromium the E2E suite installs (`npm run setup:chromium`,
