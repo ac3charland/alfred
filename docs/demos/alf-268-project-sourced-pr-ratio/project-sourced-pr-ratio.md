@@ -75,7 +75,7 @@ loc-velocity 200  {"repos":["ac3charland/realplay","ac3charland/alfred","ac3char
 search repo:ac3charland/alfred
 search repo:ac3charland/lumen
 search repo:ac3charland/realplay
-search Other: author:ac3charland -repo:ac3charland/realplay -repo:ac3charland/alfred -repo:ac3charland/lumen
+search Other: is:pr is:merged merged:<window> author:ac3charland -repo:ac3charland/realplay -repo:ac3charland/alfred -repo:ac3charland/lumen
 ```
 
 ## 4 · New baselines for the legend link's states

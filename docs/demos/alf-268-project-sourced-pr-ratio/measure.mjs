@@ -78,7 +78,9 @@ const repoQueries = queries
   .filter((repo) => repo !== undefined)
   .toSorted();
 for (const repo of repoQueries) console.log(`search repo:${repo}`);
+// Print the ACTUAL logged Other query verbatim, only normalising the clock-dependent
+// `merged:<start>..<end>` token — everything else (including `author:`) is the real thing,
+// not a guess at its shape.
 for (const query of queries.filter((q) => !/(?:^| )repo:/.test(q))) {
-  const excluded = [...query.matchAll(/-repo:(\S+)/g)].map((match) => `-repo:${match[1]}`);
-  console.log(`search Other: author:ac3charland ${excluded.join(' ')}`);
+  console.log(`search Other: ${query.replace(/merged:\S+/, 'merged:<window>')}`);
 }
