@@ -202,9 +202,8 @@ export interface CodeActions {
   createEpic: (projectId: string, name: string) => Promise<Epic>;
   /**
    * Set the project's description — the owner's statement of what the project is and what work
-   * belongs in it, written from the board header (ALF-179). `null` clears it. The description is
-   * the project's ONLY editable field; optimistically patched via the reducer's `patchProject`,
-   * then reconciled with the saved row, rolling the previous value back on error.
+   * belongs in it, written from the board header (ALF-179). `null` clears it. Optimistically
+   * patched via the reducer's `patchProject`, then reconciled with the saved row, rolling the previous value back on error.
    */
   updateProjectDescription: (projectId: string, description: string | null) => Promise<void>;
   /**

@@ -116,7 +116,7 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
         <div className="mt-1 flex flex-col gap-0.5">
           {projects.map((project) => {
             const href = projectBoardHref(project.id);
-            // One colour per project (its stable creation slot) shared by the branch icon and the
+            // One colour per project (its pick, else its stable creation slot) shared by the icon and the
             // key pill, so the sidebar reads with the same tinted-badge treatment as the Backlog.
             const color = projectColorFor(projectsByCreation, project.id);
             return (

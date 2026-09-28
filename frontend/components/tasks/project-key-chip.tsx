@@ -20,7 +20,7 @@ interface ProjectKeyChipProperties {
 
 /**
  * A small pill showing a code inbox item's assigned project by its `key`, tinted with the
- * project's colour (the same positional palette the backlog badge and ProjectNav use). Sits
+ * project's colour (resolved as the backlog badge and ProjectNav resolve it). Sits
  * beside the Code type badge so the owner sees which project was assigned at a glance. Renders
  * nothing when the project isn't in the store (e.g. it was just deleted). Follows the
  * DueDateChip handler-present-means-editable convention.
