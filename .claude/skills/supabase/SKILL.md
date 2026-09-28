@@ -298,10 +298,10 @@ for relevant `breaking-change` tags and fetch the specific docs page (append `.m
 docs URL for the markdown version). Discover CLI commands with `--help` rather than guessing,
 and always **verify a change with a follow-up query** — a fix without verification is incomplete.
 
-### Merging a migration applies it — to both instances
+### Merging a migration applies it
 
 `.github/workflows/migrate.yml` runs the applier (`database/src/deploy.ts`) on every push to
-`main`, as a `personal` / `work` matrix. Pending is decided per database from its own
+`main`. Pending is decided from the database's own
 `public.schema_migrations` ledger, so re-runs are no-ops. **Shipping a migration is merging it —
 there is no sanctioned way to hand-apply one to a live instance any more**, not even to iterate
 before the PR lands; validate a new migration against real Postgres with
@@ -310,8 +310,8 @@ in [`database/README.md`](../../../database/README.md#applying-on-merge-the-defa
 restate them in a migration's rollout notes.
 
 A database with schema but no ledger is **refused**, not guessed at, and adopting one is an
-explicit `--baseline <verified migration>`. Assume nothing about how far along a database is: when
-this landed, Work was nine migrations behind and Personal had lost `0016`'s function rewrite.
+explicit `--baseline <verified migration>`. Assume nothing about how far along a database is: live
+databases have been found nine migrations behind, and missing `0016`'s function rewrite.
 
 **To find out where a database really stands, replay every migration into a throwaway cluster
 (`startCluster` + `applyMigrations`, as `src/run.ts` does) and diff the live one against it.** Diff

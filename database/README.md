@@ -163,13 +163,10 @@ update reader_publications set enabled = false where handle = 'news@example.com'
 
 ## Applying on merge (the default path)
 
-**Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`
-runs `database/src/deploy.ts` on every push to `main`, as a `personal` / `work` matrix
-(`fail-fast: false`) over the same session-pooler secrets the nightly backup uses
-(`SUPABASE_DB_URL_PERSONAL` / `SUPABASE_DB_URL_WORK`). Nothing pending → it reads the ledger, says
-"already up to date", and exits. You don't apply migrations by hand as part of shipping any more;
-the [instance-isolation rule](../docs/instance-isolation.md) that *every* migration must reach
-*both* databases is now mechanical rather than remembered.
+**Merging a migration to `main` applies it.** `.github/workflows/migrate.yml` runs
+`database/src/deploy.ts` on every push to `main`, over the same session-pooler secret the nightly
+backup uses (`SUPABASE_DB_URL_PERSONAL`). Nothing pending → it reads the ledger, says "already up to
+date", and exits. You don't apply migrations by hand as part of shipping any more.
 
 How it decides what to run:
 
@@ -185,9 +182,9 @@ How it decides what to run:
   gets every migration from `0001` — provisioning a new instance needs no manual bootstrap step.
 - **An _unadopted_ database — schema but no ledger — is refused, loudly.** Its history is
   unknowable from the outside, and a guess is unrecoverable: recording an assumed history marks the
-  gaps it actually has as applied and hides them forever. Both live databases proved the point when
-  this landed — Work was nine migrations behind (`0018`–`0026`) and Personal had lost `0016`'s
-  function rewrite, so *neither* stood where an assumed baseline would have put it.
+  gaps it actually has as applied and hides them forever. Both databases live when this landed proved
+  the point — the since-retired Work instance was nine migrations behind (`0018`–`0026`) and Personal
+  had lost `0016`'s function rewrite, so *neither* stood where an assumed baseline would have put it.
 - **Adoption is one explicit command**, naming the migration you have verified the database stands
   at: `npm run deploy -w database -- --baseline 0017_grant_v_code_stories.sql`. Everything through
   that file is recorded as applied, the rest is applied normally, and the database is ordinary from
@@ -204,9 +201,8 @@ Two things worth knowing:
   roles can't see it. The integration suite asserts both. The next `supabase gen types` run will list
   `schema_migrations` in `frontend/lib/database.types.ts` — expected, and unused by app code.
 
-Both live databases were adopted and caught up when this landed (Work: `0018`–`0026`; Personal:
-`0016`), and each database's own `schema_migrations` ledger records those applies — so neither
-needs adopting again.
+The live database was adopted and caught up when this landed (`0016`), and its own
+`schema_migrations` ledger records those applies — so it needs no adopting again.
 
 Watch a run under **Actions → Migrate Databases**; a failure emails the repo owner like any other
 red workflow. To see what a live database is missing without writing anything:
@@ -218,7 +214,7 @@ npm run deploy -w database -- --dry-run
 
 ## Pre-merge iteration and generating types
 
-There is no sanctioned way to hand-apply a migration to the hosted Personal or Work project
+There is no sanctioned way to hand-apply a migration to the hosted project
 any more — not even to iterate before a PR lands. That practice is exactly what let ALF-119/124
 drift silently, since a manual apply only reaches the repo if someone remembers to write it down.
 Validate a new migration against real Postgres with the integration suite instead (see
@@ -297,14 +293,10 @@ dump restores, and uploads it to a Cloudflare **R2** bucket. All the real logic 
 testable `src/backup.ts` (the YAML is not linted or type-checked, so it stays thin); its pure
 helpers are unit-tested in `src/backup.test.ts`.
 
-alfred runs as **two physically-isolated instances** (Personal and Work), each its **own Supabase
-database** (see [`docs/instance-isolation.md`](../docs/instance-isolation.md)). The workflow is a
-**matrix** over those instances (`fail-fast: false`), so each database is dumped in its own job and
-one instance's failure never suppresses the other's. Every R2 key carries the instance it came from
-(`daily/<instance>/…`, `monthly/<instance>/…`), so both instances share **one** bucket without
-colliding.
+Every R2 key carries an instance segment (`daily/personal/…`, `monthly/personal/…`). It dates
+from when alfred also ran a Work instance, and stays so new backups land beside existing ones.
 
-What each instance's nightly job does, in this fixed order (a dump that fails to restore never
+What the nightly job does, in this fixed order (a dump that fails to restore never
 uploads or counts as green — a red run triggers GitHub's failed-scheduled-run email to the repo
 owner):
 
@@ -321,57 +313,55 @@ owner):
    same FK guard and asserts the core tables (`items`, `folders`, `projects`) are present. The data is
    the irreplaceable asset (the schema lives in git), so proving it reloads into the canonical schema
    is the check that matters.
-3. **Upload** — copies the SAME verified gzip to two keys: `daily/<instance>/YYYY-MM-DD.sql.gz` (one
-   slot per UTC day; a same-day re-run overwrites) and `monthly/<instance>/YYYY-MM.sql.gz` (one slot
+3. **Upload** — copies the SAME verified gzip to two keys: `daily/personal/YYYY-MM-DD.sql.gz` (one
+   slot per UTC day; a same-day re-run overwrites) and `monthly/personal/YYYY-MM.sql.gz` (one slot
    per month; each daily run overwrites it, so it settles to the month's last good backup and freezes
    when the month rolls over).
 
-Run one instance locally / as a restore drill with `INSTANCE=personal npm run backup -w database`
+Run it locally / as a restore drill with `INSTANCE=personal npm run backup -w database`
 (needs the same env vars).
 
 ### One-time setup (do this once; the workflow is inert until it's done)
 
-1. **Create one R2 bucket** (shared by both instances — the instance segment sits *under* the tier
-   prefix, so a single lifecycle rule covers both). Add **one object-lifecycle rule**: expire objects
-   under the **`daily/`** prefix after **~35 days** (holds ~30 rolling dailies per instance). Add
+1. **Create one R2 bucket** (the instance segment sits *under* the tier prefix, so a single
+   lifecycle rule covers it). Add **one object-lifecycle rule**: expire objects
+   under the **`daily/`** prefix after **~35 days** (holds ~30 rolling dailies). Add
    **no rule** for `monthly/`, so monthly snapshots are kept indefinitely.
 2. **Create an R2 API token** (S3 credentials) scoped to that bucket → gives an access key id, a
    secret access key, and the S3 endpoint URL (`https://<account-id>.r2.cloudflarestorage.com`).
 3. **Add these GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions — never
-   commit or echo them). The Supabase URL is **per instance**; the R2 credentials are shared:
+   commit or echo them):
 
    | Secret | Value |
    | --- | --- |
    | `SUPABASE_DB_URL_PERSONAL` | **Personal** instance's Supabase **Session pooler** URI (IPv4, port **5432**) — see the callout below |
-   | `SUPABASE_DB_URL_WORK` | **Work** instance's Supabase **Session pooler** URI (same rules) |
    | `R2_ACCESS_KEY_ID` | R2 token's access key id |
    | `R2_SECRET_ACCESS_KEY` | R2 token's secret access key |
    | `R2_BUCKET` | the bucket name |
    | `R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
 
 4. **Trigger the workflow once** (Actions → Backup → *Run workflow*) to prove the path end-to-end;
-   both the `personal` and `work` matrix jobs should go green.
+   it should go green.
 
-> **The Supabase URL — the non-obvious one.** Each `SUPABASE_DB_URL_*` MUST be that instance's
+> **The Supabase URL — the non-obvious one.** `SUPABASE_DB_URL_PERSONAL` MUST be the
 > **Session pooler** connection (IPv4, port **5432**). NOT the Direct connection (IPv6-only on the
 > free tier → the IPv4-only Actions runner can't reach it) and NOT the Transaction pooler (port 6543
 > → doesn't support `pg_dump`). Session mode is the one that is both reachable and
-> `pg_dump`-compatible. Take care to pair each instance's pooler URL with the matching secret —
-> swapping them would back the Work database up under `personal/` and vice versa.
+> `pg_dump`-compatible.
 
 ### Restoring from a backup
 
-Pick the instance you're restoring, then download the object you want from R2 — a recent day from
-`daily/<instance>/`, or an older month from `monthly/<instance>/` — and load it into the target
+Download the object you want from R2 — a recent day from `daily/personal/`, or an older month from
+`monthly/personal/` — and load it into the target
 database. Because the dump is **full** (schema + data), this reconstructs everything with no
 migration replay:
 
 ```bash
-# List what's available for one instance, then pull one object (uses the R2 S3 credentials + endpoint):
+# List what's available, then pull one object (uses the R2 S3 credentials + endpoint):
 aws s3 ls "s3://$R2_BUCKET/daily/personal/" --endpoint-url "$R2_ENDPOINT"
 aws s3 cp "s3://$R2_BUCKET/daily/personal/2026-07-17.sql.gz" ./restore.sql.gz --endpoint-url "$R2_ENDPOINT"
 
-# Restore into the target database (that instance's fresh Supabase project, or a local cluster):
+# Restore into the target database (a fresh Supabase project, or a local cluster):
 gunzip -c ./restore.sql.gz | psql "<target-db-url>"
 ```
 

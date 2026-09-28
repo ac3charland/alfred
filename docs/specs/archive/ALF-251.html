@@ -300,7 +300,7 @@ full-screen sheet with full-width, touch-sized, scrollable results. Desktop (⌘
 <ol>
   <li><b>Entry point.</b> Below <code>md</code> (&lt; 768px), the header gets a <b>Search</b> icon button (lucide
     <code>Search</code>, <code>IconButton size="lg"</code>, <code>aria-label="Search"</code>) at the start of the right-hand
-    cluster, just before the account pill. It is hidden at <code>md+</code>, where the header field already exists.</li>
+    cluster, just before the account menu (ALF-206 replaced the pill with an icon trigger). It is hidden at <code>md+</code>, where the header field already exists.</li>
   <li><b>Sheet.</b> Tapping it opens a <b>full-screen sheet</b> built on the existing <code>FullScreenDialog</code> atom
     (<code>100dvh</code>, <code>bg-surface</code>). The title row reads <b>Search</b> and has the shared <b>×</b> close
     (44px tap target). Below it, in order:
@@ -449,7 +449,7 @@ desktop and mobile results can’t drift apart (see the <code>frontend-architect
       hidden header field.</td></tr>
   <tr><td><code>components/shell/app-shell.tsx</code></td>
     <td>Put the right-hand cluster in a <code>flex items-center gap-1</code> wrapper containing
-      <code>&lt;MobileSearch /&gt;</code> (<code>md:hidden</code>) and then <code>&lt;InstanceMenu /&gt;</code>.</td></tr>
+      <code>&lt;MobileSearch /&gt;</code> (<code>md:hidden</code>) and then <code>&lt;AccountMenu /&gt;</code>.</td></tr>
   <tr><td><code>components/shell/shell-mobile-nav.tsx</code></td>
     <td>Remove <code>&lt;SearchBox placement="mobile" … /&gt;</code> and its import. Update the doc comments that mention the
       drawer’s search field and closing on a search result, and the <code>onOpenAutoFocus</code> comment, whose reason (the
@@ -527,7 +527,7 @@ used to be locked), so pick the medium showboat prescribes for that. The Storybo
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2>4. Acceptance criteria</h2>
 <ul class="checks">
-  <li>At &lt; 768px the header shows a Search icon button before the account pill. At ≥ 768px it is absent and the header field is unchanged.</li>
+  <li>At &lt; 768px the header shows a Search icon button before the account menu. At ≥ 768px it is absent and the header field is unchanged.</li>
   <li>Tapping it opens a full-screen “Search” sheet (<code>FullScreenDialog</code>) with the field focused. The field is 44px tall, at least 16px text, with no ⌘P hint.</li>
   <li>Results fill the sheet’s width (≥ 90% of the viewport), rows are ≥ 44px tall, and grouping, ranking, badges and the 8-per-group cap with “+N more — keep typing” match desktop.</li>
   <li>With more results than fit, the results region scrolls by touch and wheel, and the last result can be reached and tapped.</li>
