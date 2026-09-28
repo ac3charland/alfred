@@ -42,6 +42,9 @@ const SPIKE_SKILL_PATH = '.claude/skills/spike/SKILL.md';
 /** The bug-guide skill dropped into each project repo; a bug-fix session auto-loads it. */
 const BUG_SKILL_PATH = '.claude/skills/bug/SKILL.md';
 
+/** The review-round skill dropped into each project repo; every code-shipping prompt points at it. */
+const ADVERSARIAL_REVIEW_SKILL_PATH = '.claude/skills/adversarial-review/SKILL.md';
+
 /**
  * Document-writing PRs (both refinement phases, and a spike) record where their document ended
  * up rather than alfred guessing it up front. The session's skill — not this prompt — decides the
@@ -203,6 +206,24 @@ function noScheduledCheckInsStep(): string {
   return `Once this PR is open, don't proactively schedule a check-in on it (a wakeup, timer, or recurring job polling it, its CI, or its deploy) — left running that's tokens spent finding nothing new. Do respond when a CI failure or comment actually reaches you, via an event subscription (e.g. subscribe_pr_activity) rather than a timer. (Pacing your own work before this PR exists — waiting out a slow check, say — is unaffected and fine.)`;
 }
 
+/**
+ * The adversarial-review step every single-story CODE prompt carries (implementation, bypass,
+ * bug), verbatim: once the PR is open, one round of review by an Opus subagent, whatever model
+ * the implementer runs on — a fresh context and the strongest reviewer, not a second look by the
+ * same eyes. It lives in the prompt rather than only in the skill for the reason the check-in
+ * guardrail does (the session has stopped reading files by the time its PR is open), and because
+ * the bypass and bug lanes never load implement-spec, the one skill it could otherwise hang off.
+ *
+ * The implementer — possibly the weaker model — is the one judging which findings are legitimate,
+ * so the step makes it record every disposition in the PR description, where the human can audit
+ * what it declined. The ticket notes arrive after this step in every prompt, so "the ticket
+ * context below" is where a human's override (more rounds, or none) lands. Document lanes and the
+ * epic orchestrator (which already reviews its subagents' diffs itself) don't carry it.
+ */
+function adversarialReviewStep(): string {
+  return `Once the PR is open, run ONE round of adversarial review: spawn a subagent on Opus — whatever model you are — to review the PR cold and antagonistically, wait for its report, fix the findings you verify as legitimate, and push. Then add an "Adversarial review" section to the PR description listing each finding and what you did with it (fixed, or declined and why), leaving the alfred block intact. Follow the adversarial-review skill at \`${ADVERSARIAL_REVIEW_SKILL_PATH}\` where present — it owns how to brief the reviewer and triage its findings. If the ticket context below says otherwise (more rounds, or none), follow it.`;
+}
+
 /** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */
 function buildUrl(project: Project, prompt: string): string {
   const parameters = new URLSearchParams({
@@ -346,6 +367,7 @@ export function buildBugUrl(project: Project, story: CodeStory): string {
     frontmatterBlock(ref, 'implementation'),
     '',
     `7. Before opening the PR, confirm the test you wrote now passes, the rest of the suite is green, and the block above is reproduced exactly.`,
+    `8. ${adversarialReviewStep()}`,
     noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
@@ -481,6 +503,7 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
     frontmatterBlock(ref, 'implementation', specPath),
     '',
     `Before opening the PR, confirm your changes satisfy the spec's acceptance criteria, the spec has been archived out of the active specs directory, and the block above is reproduced exactly.`,
+    adversarialReviewStep(),
     noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
@@ -536,6 +559,7 @@ export function buildBypassUrl(project: Project, story: CodeStory): string {
     frontmatterBlock(ref, 'implementation'),
     '',
     `5. Before opening the PR, confirm your changes satisfy the agreed plan and the block above is reproduced exactly.`,
+    `6. ${adversarialReviewStep()}`,
     noScheduledCheckInsStep(),
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
