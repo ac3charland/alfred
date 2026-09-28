@@ -138,7 +138,7 @@ const meta = {
       </FoldersProvider>
     ),
   ],
-  args: { placement: 'desktop', className: 'w-[420px]' },
+  args: { className: 'w-[420px]' },
 } satisfies Meta<typeof SearchBox>;
 
 export default meta;

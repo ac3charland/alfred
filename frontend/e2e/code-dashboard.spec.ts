@@ -14,6 +14,11 @@ import { expect, test } from './support/fixtures';
  */
 
 const project = makeProject('Alfred', { id: 'p1', key: 'ALF' });
+/**
+ * The ratio stubs name two repos, and the card joins each to its project by `owner/name` — so
+ * the specs that read the legend seed this second project too, and both repos resolve.
+ */
+const realplay = makeProject('RealPlay', { id: 'p2', key: 'RPL', repo_name: 'realplay' });
 const epic = makeEpic('Communication Firewall', {
   id: 'e1',
   project_id: 'p1',
@@ -271,7 +276,7 @@ test('renders the Dashboard untouched — no cards, no gap — when neither is c
 });
 
 test('shows the rolling seven-day PR split on the Dashboard', async ({ page, seed }) => {
-  await seed({ projects: [project], epics: [epic], items, codeItems });
+  await seed({ projects: [project, realplay], epics: [epic], items, codeItems });
   await stubGithub(page);
 
   await page.goto('/code/dashboard');
@@ -280,7 +285,7 @@ test('shows the rolling seven-day PR split on the Dashboard', async ({ page, see
   // Both ends inclusive: the first and last day the window actually covers.
   await expect(page.getByText('Jul 17 – Jul 24', { exact: false })).toBeVisible();
 
-  // One legend entry per repo, in configured order, each with its percentage and raw count.
+  // One legend entry per project, in the endpoint's order, each with its percentage and count.
   const legend = page.getByRole('listitem').filter({ hasText: '%' });
   await expect(legend).toHaveCount(2);
   await expect(legend.nth(0)).toContainText('RealPlay');
@@ -303,18 +308,15 @@ test('shows the rolling seven-day PR split on the Dashboard', async ({ page, see
   expect(chartBox?.y ?? 0).toBeLessThan(ratioBox?.y ?? 0);
 });
 
-test('adds an Other entry for the PRs merged outside the configured repos', async ({
-  page,
-  seed,
-}) => {
-  await seed({ projects: [project], epics: [epic], items, codeItems });
+test('adds an Other entry for the PRs merged outside the project repos', async ({ page, seed }) => {
+  await seed({ projects: [project, realplay], epics: [epic], items, codeItems });
   await stubGithub(page, { ratio: { status: 200, json: RATIO_WITH_OTHER } });
 
   await page.goto('/code/dashboard');
 
   const legend = page.getByRole('listitem').filter({ hasText: '%' });
   await expect(legend).toHaveCount(3);
-  // Other comes last, after the configured repos, and carries its own count.
+  // Other comes last, after the projects, and carries its own count.
   await expect(legend.nth(2)).toContainText('Other');
   await expect(legend.nth(2)).toContainText('25%');
   await expect(legend.nth(2)).toContainText('(3)');
@@ -327,11 +329,11 @@ test('adds an Other entry for the PRs merged outside the configured repos', asyn
   ).toBeVisible();
 });
 
-test('drops the Other entry when nothing merged outside the configured repos', async ({
+test('drops the Other entry when nothing merged outside the project repos', async ({
   page,
   seed,
 }) => {
-  await seed({ projects: [project], epics: [epic], items, codeItems });
+  await seed({ projects: [project, realplay], epics: [epic], items, codeItems });
   await stubGithub(page, {
     ratio: { status: 200, json: { ...RATIO, other: { count: 0, percentage: 0 } } },
   });
@@ -341,6 +343,27 @@ test('drops the Other entry when nothing merged outside the configured repos', a
   const legend = page.getByRole('listitem').filter({ hasText: '%' });
   await expect(legend).toHaveCount(2);
   await expect(page.getByText('Other')).toBeHidden();
+});
+
+test('opens a project’s board from its PR-ratio legend entry, while Other stays plain text', async ({
+  page,
+  seed,
+}) => {
+  await seed({ projects: [project, realplay], epics: [epic], items, codeItems });
+  await stubGithub(page, { ratio: { status: 200, json: RATIO_WITH_OTHER } });
+  await page.goto('/code/dashboard');
+
+  const legend = page.getByRole('listitem').filter({ hasText: '%' });
+  await expect(legend).toHaveCount(3);
+  // Each project's row is one link to its board; Other isn't one place, so it links nowhere.
+  await expect(legend.nth(0).getByRole('link')).toHaveAttribute('href', '/code/p2');
+  await expect(legend.nth(1).getByRole('link')).toHaveAttribute('href', '/code/p1');
+  await expect(legend.nth(2).getByRole('link')).toHaveCount(0);
+
+  await legend.nth(0).getByRole('link').click();
+
+  await expect(page).toHaveURL('/code/p2');
+  await expect(page.getByRole('heading', { name: 'RealPlay' })).toBeVisible();
 });
 
 test('leaves the Backlog with no ratio card at all — it lives on the Dashboard now', async ({

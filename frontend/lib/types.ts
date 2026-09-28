@@ -51,11 +51,11 @@ export type SubtreeRow = Database['public']['Functions']['get_subtree']['Returns
 
 // ── PR ratio — the Dashboard's weekly merged-PR split across repos. ─────────
 
-/** One repo's slice of the week: its merged-PR count and its share of the total. */
+/** One project's slice of the week: its repo's merged-PR count and its share of the total. */
 export interface PrRatioRepoCount {
-  /** `owner/name`, e.g. 'ac3charland/realplay'. */
+  /** The project's repo as `owner/name` (`repo_owner/repo_name`), e.g. 'ac3charland/realplay'. */
   repo: string;
-  /** Display label for the bar segment and legend. */
+  /** The project's name — the bar segment's and legend's label. */
   label: string;
   count: number;
   /** Integer share of `total`; the percentages across all repos sum to exactly 100. */
@@ -63,7 +63,7 @@ export interface PrRatioRepoCount {
 }
 
 /**
- * The catch-all bucket: merged PRs in every repo OUTSIDE the configured set. It carries no
+ * The catch-all bucket: merged PRs in every repo that is NOT a project's. It carries no
  * `repo` because it is not one repo, and its `percentage` shares the same 100 as `repos`.
  */
 export interface PrRatioOtherCount {
@@ -73,7 +73,8 @@ export interface PrRatioOtherCount {
 
 /**
  * `GET /api/code/pr-ratio` — the merged-PR split for the seven days ending when the request
- * was made. `repos` preserves the configured order, which is the bar's left-to-right order.
+ * was made. `repos` holds one entry per Code module project, in project creation order (oldest
+ * first), which is the bar's left-to-right order.
  * Computed live from GitHub, so it is neither persisted nor reconciled into any store.
  *
  * `other` is ABSENT when the deployment can't measure the bucket at all, and present at zero
@@ -105,13 +106,13 @@ export interface LocWeek {
 }
 
 /**
- * `GET /api/code/loc-velocity` — lines changed per week across the configured repos. Computed
+ * `GET /api/code/loc-velocity` — lines changed per week across the project repos. Computed
  * live from GitHub, so it is neither persisted nor reconciled into any store.
  */
 export interface LocVelocityResponse {
   /** One entry per week in the reported window, oldest first; the last is the week in progress. */
   weeks: LocWeek[];
-  /** `owner/name` of every repo counted, in configured order. */
+  /** `owner/name` of every project repo counted, in project creation order (oldest first). */
   repos: string[];
   /** The trailing window the `average` field was computed over. */
   averageWeeks: number;

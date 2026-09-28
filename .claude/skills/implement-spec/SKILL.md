@@ -14,6 +14,36 @@ A spec is **scaffolding**: it gets the right code written, then the code, its te
 comments outlive it. Write for the next reader, who opens the file with the code in front of
 them and **not the spec** — the implementation has to stand on its own.
 
+## The workflow
+
+False confidence creeps in here — smaller models especially plough ahead rather than pause — so
+work these steps in order:
+
+1. **Ground in the codebase.** Read the spec, then the patterns, types, and conventions it
+   touches: the spec describes intent, but the repo (its CLAUDE.md, lint rules, neighbouring
+   code) decides how that intent is expressed, and it wins over a generic reading.
+2. **Ask when the spec is ambiguous or stale.** If a requirement is underspecified or has
+   drifted from the code, surface it and ask — a wrong guess buried in code costs far more to
+   unwind than a question up front.
+3. **Build it test-first, pinning every requirement with a test**, so the spec's intent survives
+   as executable back-pressure once the document is gone. (CLAUDE.md owns the TDD + demo-doc
+   workflow.)
+4. **Archive the spec and open the PR** with its `alfred` block (see below).
+5. **Dispatch the adversarial reviewer.** Spawn a subagent with its model set to Opus — the Agent
+   tool's `model: "opus"`, whatever model you are — briefed per the adversarial-review skill's
+   checklist: the ticket, the spec's path, the PR and its diff, and the repo's CLAUDE.md, but not
+   your reasoning. Tell it to report only. Run it in the foreground and wait for its report —
+   that wait is your own work, not a check-in.
+6. **Repair.** Verify each finding against the code. Fix the in-scope legitimate ones test-first,
+   raise real out-of-scope ones with the human, and decline the rest only with evidence. Push
+   through the normal gates.
+7. **Record the round.** Add an *Adversarial review* section to the PR description — every
+   finding with its disposition — leaving the `alfred` block intact.
+
+One review round unless the ticket context says otherwise. Past that, don't proactively schedule
+a check-in on the PR (CLAUDE.md's "No scheduled check-ins" rule): respond to CI failures or
+comments that reach you, but don't poll for them on a timer.
+
 ## Never carry spec-only references into the code
 
 A spec's section numbers, headings, figure/table labels, and milestone names are coordinates
@@ -38,19 +68,3 @@ Keep the PR's `alfred` block `spec-path` pointing at the **original** active pat
 left un-archived**. This keeps `docs/specs/` holding only specs still awaiting work, while git
 history and the detail modal's sha-pinned "view in repo" link stay intact. A **skip-refinement**
 task has no committed spec, so there is nothing to archive.
-
-## A few more practices when building from a spec
-
-False confidence creeps in here — smaller models especially plough ahead rather than pause:
-
-- **Ground in the codebase first.** Read the patterns, types, and conventions the spec touches
-  before writing: the spec describes intent, but the repo (its CLAUDE.md, lint rules,
-  neighbouring code) decides how that intent is expressed, and it wins over a generic reading.
-- **Ask when the spec is ambiguous or stale.** If a requirement is underspecified or has
-  drifted from the code, surface it and ask — a wrong guess buried in code costs far more to
-  unwind than a question up front.
-- **Pin every requirement with a test**, so the spec's intent survives as executable
-  back-pressure once the document is gone. (CLAUDE.md owns the TDD + demo-doc workflow.)
-- **Don't proactively schedule a check-in after pushing.** CLAUDE.md's "No scheduled
-  check-ins" rule applies here — once the PR is open, respond to CI failures or comments
-  that reach you, but don't poll for them on a timer.

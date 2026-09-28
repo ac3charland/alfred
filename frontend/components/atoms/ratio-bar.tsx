@@ -3,7 +3,10 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 export interface RatioSegment {
-  /** Identifies the segment; not rendered — the caller owns the visible legend. */
+  /**
+   * Identifies the segment; not rendered — the caller owns the visible legend. Used as the
+   * React key below, so it must be unique within `segments`.
+   */
   label: string;
   /** Raw magnitude. Widths are this value's share of the total, not a pre-rounded percent. */
   value: number;

@@ -250,6 +250,17 @@ function emitEpicUpdate(row: Epic) {
   });
 }
 
+/**
+ * A realtime row as Supabase delivers it when the UPDATE left a TOASTed column (a value over
+ * ~2 KB, e.g. any real spec) unchanged: Postgres keeps it out of the replication message, so the
+ * key is ABSENT from `payload.new` — not null (ALF-277).
+ */
+function withoutColumn<T extends object>(row: T, column: keyof T): T {
+  const copy = { ...row };
+  Reflect.deleteProperty(copy, column);
+  return copy;
+}
+
 /** Override `document.hidden` (jsdom leaves it non-configurable false by default). */
 function setHidden(hidden: boolean) {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
@@ -3694,6 +3705,54 @@ describe('code-store', () => {
       expect(findStory(result.current)?.spec_markdown).toBe('# fresh spec');
     });
 
+    it('keeps the held spec when an UPDATE omits the unchanged, TOASTed spec_markdown (ALF-277)', () => {
+      // The launch's own state write echoes back like this; an `undefined` spec crashed the
+      // open detail modal's `spec.trim()` and took the whole page down.
+      const spec = '<!doctype html><html><body>A long refinement spec</body></html>';
+      const story = makeStory('i1', 'e1', 'p1', {
+        ref: 'ALF-42',
+        factory_state: 'ready_for_dev',
+        spec_markdown: spec,
+      });
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      emitUpdate(
+        withoutColumn(
+          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'in_development' }),
+          'spec_markdown',
+        ),
+      );
+
+      expect(findStory(result.current)).toMatchObject({
+        factory_state: 'in_development',
+        spec_markdown: spec,
+      });
+    });
+
+    it('still clears a column the UPDATE delivers as null', () => {
+      const story = makeStory('i1', 'e1', 'p1', {
+        ref: 'ALF-42',
+        factory_state: 'blocked',
+        blocked_from: 'in_development',
+        blocked_reason: 'Waiting on a key',
+      });
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      emitUpdate(
+        makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'in_development' }),
+      );
+
+      expect(findStory(result.current)).toMatchObject({
+        factory_state: 'in_development',
+        blocked_reason: null,
+        blocked_from: null,
+      });
+    });
+
     it('joins both channels only once the socket holds the session token (ALF-258)', async () => {
       // A join sent before the token is loaded goes out as `anon`, which RLS lets see nothing.
       const releaseAuth = holdRealtimeAuth(mockSetAuth);
@@ -3941,6 +4000,30 @@ describe('code-store', () => {
         spec_sha: 'blobsha',
         spec_markdown: '<!doctype html><html><body>Epic plan</body></html>',
         refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/12',
+      });
+    });
+
+    it('keeps the held spec when an UPDATE omits the unchanged, TOASTed spec_markdown (ALF-277)', () => {
+      const spec = '<!doctype html><html><body>Epic plan</body></html>';
+      const held = makeEpic('e1', 'p1', {
+        ref: 'ALF-12',
+        spec_path: 'docs/specs/epics/ALF-12.html',
+        spec_markdown: spec,
+      });
+      const { result } = renderHook(() => useEpics(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [held], stories: [] }),
+      });
+
+      emitEpicUpdate(
+        withoutColumn(
+          { ...held, refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/13' },
+          'spec_markdown',
+        ),
+      );
+
+      expect(result.current[0]).toMatchObject({
+        spec_markdown: spec,
+        refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/13',
       });
     });
 

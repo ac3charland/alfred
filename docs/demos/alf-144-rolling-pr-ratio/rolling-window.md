@@ -6,6 +6,8 @@ branch: claude/pr-ratio-rolling-schedule-s8bmt4
 
 *2026-07-27T15:59:52.746Z*
 
+> This demo was recorded when the measured repos came from `PR_RATIO_REPOS`; ALF-268 replaced that env var with the Code module's `projects` table, so the exec blocks here that configure repos through it no longer reproduce under `demo verify` — see [`docs/demos/alf-268-project-sourced-pr-ratio/project-sourced-pr-ratio.md`](../alf-268-project-sourced-pr-ratio/project-sourced-pr-ratio.md) for the current behaviour.
+
 The weekly review happens on a Friday afternoon — and under the recovery protocol sometimes on the Sunday after. The PR-ratio card and `GET /api/code/pr-ratio` measured a **Monday-anchored ISO week**, so a Friday review saw only Monday→Friday and silently dropped the weekend that had just passed; a slipped or rescheduled review saw a different, arbitrary slice.
 
 ALF-144 makes the window **roll with the request**: always the seven days ending at the moment the ratio is asked for. Whenever the review is held, it sees a full week of merged PRs, and consecutive weekly reviews neither skip a day nor double-count one.

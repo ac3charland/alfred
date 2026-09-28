@@ -364,6 +364,13 @@ binary**: `executablePath()` wants `chromium_headless_shell-<want>/chrome-headle
 levels or the launch fails *after* the full-Chromium link already looks right. Accept the revision
 skew knowingly: it runs the suite locally, and CI still runs the pinned browser.
 
+**A page the browser loads can't fetch from HTTPS hosts through the agent proxy.** The managed
+Chromium doesn't trust the proxy's re-signing CA, so a remote asset (a spec plate's raw-URL font)
+fails `net::ERR_CERT_AUTHORITY_INVALID`, and `launch({ proxy })` doesn't change that. Don't
+disable TLS checks: answer the URL with `context.route(url, (r) => r.fulfill({ body, headers }))`
+from the committed copy of the asset and the real response's headers (curl, which trusts the CA,
+shows them) — `docs/demos/alf-281-spec-template/capture.mjs` does this.
+
 **General container tip:** in memory-constrained containers, add `--disable-dev-shm-usage` to
 `launchOptions.args` — `/dev/shm` is tiny there and Chromium otherwise dies mid-run with
 `page.evaluate: Browser closed`.

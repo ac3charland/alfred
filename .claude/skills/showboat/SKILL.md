@@ -206,6 +206,12 @@ things bite, and both surface as every route answering `{"error":"TypeError: fet
   node: `createServerClient` from `@supabase/ssr` with a `cookies.setAll` that captures into a
   map, then `auth.signInWithPassword` against the mock — the library writes its own cookie
   name/encoding, which you send as `Cookie:` (`docs/demos/alf-261-day-2-wiki/send-contract.mjs`).
+- **A route that calls a third-party API the mock doesn't emulate (GitHub search/stats)** → preload
+  a `fetch` stub into the server: `NODE_OPTIONS="--import <stub>.mjs" npm run start`, answering only
+  that host and passing everything else to the real `fetch`
+  (`docs/demos/alf-268-project-sourced-pr-ratio/github-stub.mjs`). `rm -rf .next/cache/fetch-cache`
+  before starting — a `next: { revalidate }` hit left by an earlier run never reaches the stub — and
+  sort anything the stub logs, since a `Promise.all` fan-out reaches it in no fixed order.
 
 **Bundling a Worker module into a harness** (the `sweep-harness.mjs` pattern): esbuild's ESM
 output throws `Dynamic require of "process" is not supported` when a dependency ships CommonJS
@@ -346,6 +352,12 @@ at `docs/demos/<doc>/<doc>-image-<n>.png` and let it overwrite in place; the doc
 needs no edit. Anchor the spec's fixtures to **today** rather than the dates the original
 run happened to fall on, or a recapture silently redraws a different calendar. Regenerate
 any `exec`-captured `.txt` the same way and re-run `demo -- verify`.
+
+**Shoot a phone layout with `isMobile: true`, not `hasTouch` alone.** A narrow desktop-Chromium
+context (`hasTouch: true, viewport: { width: 390, … }`) paints a phantom ~15px strip over the right
+edge — even with no page overflow (`clientWidth` stays 390) — so every screenshot looks clipped on
+the right, a layout bug that isn't there. Add `isMobile: true` (overlay scrollbars, like a real
+phone); `page.mouse.wheel` still works under it.
 
 **Wait for animations to settle before `page.screenshot()`.** Playwright's
 `toBeVisible()` / `waitFor()` count an element that's still fading or zooming in

@@ -22,9 +22,9 @@ declare namespace NodeJS {
     NEXT_PUBLIC_INSTANCE_ACCENT?: string;
     NEXT_PUBLIC_OTHER_INSTANCE_LABEL?: string;
     NEXT_PUBLIC_OTHER_INSTANCE_URL?: string;
-    // PR ratio — all optional and server-only; unset simply turns the feature off.
+    // The Code Dashboard's GitHub measurements (over the projects' repos) — optional and
+    // server-only; an unset token simply turns the feature off.
     GITHUB_TOKEN?: string;
-    PR_RATIO_REPOS?: string;
     PR_RATIO_AUTHORS?: string;
     // Instapaper — all optional and server-only; any credential unset turns the Send verb off.
     INSTAPAPER_CONSUMER_KEY?: string;

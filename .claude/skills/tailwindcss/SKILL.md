@@ -128,6 +128,8 @@ v3?
 
 - **Always use `focus-visible:` for interactive elements, not bare `focus:`.** Mouse clicks trigger `focus:` rings unnecessarily. In the alfred dark UI this is especially noticeable. Apply `focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue` together.
 
+- **`ring-0` doesn't remove a ring that also sets `ring-offset-*`.** The offset layer still paints a `ring-offset-width` outline in `ring-offset-color` — near-invisible on a matching backdrop, but not gone. That makes `ring-0` (or `ring-transparent`) the *smallest* realistic focus-ring regression, so prove a focus snapshot has teeth against it — stripping the whole `ring-*`/`ring-offset-*` chain also repaints the offset outline, inflating the diff and overstating the margin (`LegendKeyboardFocus` in `components/code/pr-ratio.stories.tsx`).
+
 - **Avoid `@apply` for composing component styles in v4.** It still works but is discouraged for variant-dependent styles. Use `@utility` for reusable single-purpose helpers; write full class strings in JSX for component-specific styles.
 
 ---

@@ -83,11 +83,12 @@ export NEXT_PUBLIC_SUPABASE_URL=http://localhost:54338 \
        NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_mock \
        SUPABASE_SERVICE_ROLE_KEY=sb_secret_mock
 # This deployment measures no repos, so nothing below can reach GitHub.
-unset GITHUB_TOKEN PR_RATIO_REPOS PR_RATIO_AUTHORS
+unset GITHUB_TOKEN PR_RATIO_AUTHORS
 npm run build >/dev/null 2>&1
 node scripts/mock-supabase.mjs >/dev/null 2>&1 & MOCK=$!
 npm run start -- -p 3018 >/dev/null 2>&1 & APP=$!
-cleanup() { pkill -P "$APP" 2>/dev/null; kill "$APP" "$MOCK" 2>/dev/null; }
+kill_tree() { for child in $(pgrep -P "$1"); do kill_tree "$child"; done; kill "$1" 2>/dev/null || true; }
+cleanup() { kill_tree "$APP"; kill_tree "$MOCK"; }
 trap cleanup EXIT
 until curl -sf localhost:54338/__mock__/health >/dev/null 2>&1; do sleep 0.2; done
 until curl -s -o /dev/null localhost:3018/login 2>/dev/null; do sleep 0.5; done
@@ -107,7 +108,7 @@ curl -s -w "\n%{http_code}\n" -H "x-api-key: demo-ingest-key" "$API/loc-velocity
 501
 ```
 
-The two widgets share one repo set and one author set — no new environment variable — but read it under different minimums: a split needs two repos to be a split, while one repo is a perfectly good velocity series. With exactly one repo configured, the ratio reports itself unconfigured and the chart does not. Neither request below reaches GitHub: the ratio stops at its own config gate, and the chart's is satisfied, so its 502 is a real fan-out that the unresolvable host refuses.
+The two widgets share one project set — read from `projects`, not an env var — and one author set (`PR_RATIO_AUTHORS`), but apply the project set under different minimums: a split needs two projects to be a split, while one project is a perfectly good velocity series. With exactly one project seeded, the ratio reports itself unconfigured and the chart does not. The ratio's request never leaves this box — it stops at its own config gate. The chart's gate IS satisfied, so it makes a real fan-out — and GitHub, stubbed at the network boundary (`github-refuses.mjs`, preloaded the same way `alf-268`'s demo stubs it, but only to refuse), says no: a 502. Refusing at the boundary keeps this block deterministic regardless of whether the sandbox it runs in happens to have its own outbound network access to the real GitHub.
 
 ```bash
 cd frontend
@@ -115,33 +116,41 @@ export MOCK_SUPABASE_PORT=54339 INGEST_API_KEY=demo-ingest-key
 export NEXT_PUBLIC_SUPABASE_URL=http://localhost:54339 \
        NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_mock \
        SUPABASE_SERVICE_ROLE_KEY=sb_secret_mock
-# Exactly ONE repo, and a token that is never sent anywhere real.
+# A token that is never sent anywhere real.
 export GITHUB_TOKEN=ghp_demo_not_a_real_token
-export PR_RATIO_REPOS=ac3charland/alfred:Alfred
 export PR_RATIO_AUTHORS=ac3charland
 npm run build >/dev/null 2>&1
+# A cached answer from an earlier run would skip the stub below and leave the query unanswered.
+rm -rf .next/cache/fetch-cache
 node scripts/mock-supabase.mjs >/dev/null 2>&1 & MOCK=$!
-npm run start -- -p 3019 >/dev/null 2>&1 & APP=$!
-cleanup() { pkill -P "$APP" 2>/dev/null; kill "$APP" "$MOCK" 2>/dev/null; }
+# GitHub is refused at the network boundary (github-refuses.mjs), so this block's 502 never
+# depends on the sandbox's own network reachability.
+NODE_OPTIONS="--import $(cd .. && pwd)/docs/demos/code-dashboard/github-refuses.mjs" npm run start -- -p 3019 >/dev/null 2>&1 & APP=$!
+kill_tree() { for child in $(pgrep -P "$1"); do kill_tree "$child"; done; kill "$1" 2>/dev/null || true; }
+cleanup() { kill_tree "$APP"; kill_tree "$MOCK"; }
 trap cleanup EXIT
 until curl -sf localhost:54339/__mock__/health >/dev/null 2>&1; do sleep 0.2; done
+# Exactly ONE project — the measured repo set now comes from `projects`, not an env var.
+curl -s -X POST localhost:54339/__mock__/seed \
+  -H 'content-type: application/json' \
+  -d '{"projects":[{"name":"Alfred","key":"ALF","repo_owner":"ac3charland","repo_name":"alfred","created_at":"2026-01-01T00:00:00Z"}]}' >/dev/null
 until curl -s -o /dev/null localhost:3019/login 2>/dev/null; do sleep 0.5; done
 
 API=localhost:3019/api/code
 KEY="x-api-key: demo-ingest-key"
-echo "--- the ratio still needs two repos"
+echo "--- the ratio still needs two projects"
 curl -s -w "\n%{http_code}\n" -H "$KEY" "$API/pr-ratio"
-echo "--- the chart is configured by the one, and gets past the gate"
+echo "--- the chart is configured by the one project, and gets past the gate"
 curl -s -w "\n%{http_code}\n" -H "$KEY" "$API/loc-velocity"
 echo "--- and neither response carries the token"
 curl -s -H "$KEY" "$API/loc-velocity" | grep -c ghp_demo_not_a_real_token
 ```
 
 ```output
---- the ratio still needs two repos
+--- the ratio still needs two projects
 {"error":"PR ratio is not configured"}
 501
---- the chart is configured by the one, and gets past the gate
+--- the chart is configured by the one project, and gets past the gate
 {"error":"GitHub request failed"}
 502
 --- and neither response carries the token
@@ -150,7 +159,7 @@ curl -s -H "$KEY" "$API/loc-velocity" | grep -c ghp_demo_not_a_real_token
 
 ## 9 · What the numbers mean
 
-The metric is **churn** — additions plus deletions — summed over every commit authored by a configured login, across every configured repo. A week spent deleting a dead module or rewriting a component nets out near zero while being the busiest week of the month, so net growth honestly measures codebase size and misleadingly measures velocity. The authors are the same ones the PR-ratio bar counts, because two widgets in one card stack disagreeing about whose work counts would be worse than either being wrong.
+The metric is **churn** — additions plus deletions — summed over every commit authored by a configured login, across the project repos. A week spent deleting a dead module or rewriting a component nets out near zero while being the busiest week of the month, so net growth honestly measures codebase size and misleadingly measures velocity. The authors are the same ones the PR-ratio bar counts, because two widgets in one card stack disagreeing about whose work counts would be worse than either being wrong.
 
 Three things about GitHub's `stats/contributors` endpoint shape the reading, and each is pinned by a unit test rather than trusted: deletions come back as a **positive** count there (they are negative on the sibling `code_frequency` endpoint, and copying that sign convention would silently subtract deletions from churn); the server reads **fifteen** weeks and returns **twelve**, so the first drawn bar already has a true four-week mean instead of a spurious opening ramp; and the newest bucket is the week still in progress, drawn because it is real work but flagged partial with no average, so the trend line stops at the last complete week.
 

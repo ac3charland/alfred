@@ -54,15 +54,17 @@ Fill in `frontend/.env.local` (Supabase → Project Settings):
 
 `.env.local` is gitignored — never commit real secrets.
 
-Optional — the Backlog's rolling seven-day PR-ratio card and `GET /api/code/pr-ratio`
-(the window is always the seven days ending when the request is made). Leave them unset
-and the endpoint answers 501 and the card renders nothing; the Backlog is unaffected:
+Optional — the Code Dashboard's rolling seven-day PR-ratio card (`GET /api/code/pr-ratio`)
+and lines-changed chart (`GET /api/code/loc-velocity`). The measured repos are the Code
+module's **projects** — every project's repo, oldest project first, each labelled and coloured
+as that project is everywhere else — so there is no repo list to configure. Leave the token
+unset and both endpoints answer 501 and neither card renders; the Dashboard is otherwise
+unaffected. The ratio needs at least two projects, the chart one:
 
 | Var | Where | Notes |
 |---|---|---|
-| `GITHUB_TOKEN` | GitHub → fine-grained PAT | **server-only**; needs Pull requests: read (+ Metadata: read) on the measured repos |
-| `PR_RATIO_REPOS` | `owner/name:Label,owner/name:Label` | the measured repos; order is the bar's left-to-right order, `:Label` optional |
-| `PR_RATIO_AUTHORS` | `login,login` | optional allowlist of GitHub logins whose merged PRs count; unset excludes the known dependency bots instead. **Also switches on the "Other" segment** — those logins' merged PRs in every repo outside `PR_RATIO_REPOS`. Without it there is nothing to anchor that search on, so the bar shows only the measured repos |
+| `GITHUB_TOKEN` | GitHub → fine-grained PAT | **server-only**; needs Pull requests: read (+ Metadata: read) on **every project's repo**. One it can't read fails the whole measurement, so both cards show their error note until the PAT's repository list is widened — add a new project's repo to the PAT when you create the project |
+| `PR_RATIO_AUTHORS` | `login,login` | optional allowlist of GitHub logins whose merged PRs count; unset excludes the known dependency bots instead. **Also switches on the "Other" segment** — those logins' merged PRs in every repo that is not a project's. Without it there is nothing to anchor that search on, so the bar shows only the projects |
 
 ### 3. Apply the database schema
 
