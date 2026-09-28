@@ -63,8 +63,9 @@ Cover these; the template places each above or below the fold:
   doesn't "helpfully" pull them in.
 - **How the work splits into stories** — a sketch: a list of the slices you'd cut and why, not
   specs. The split itself is a decision row; the sketch sits below the fold.
-- **Open questions** — as `open` decision rows. Anything you *can* settle with the human in this
-  session, settle here instead of parking it.
+- **Open questions** — a pick you need from the human in this review is an `open` decision row; a
+  question deliberately left to a later story goes in `#constraints`, naming the story that owns it.
+  Anything you *can* settle with the human in this session, settle here instead of parking it.
 
 ## Refining again updates the same file
 
@@ -116,7 +117,7 @@ where it is, forever. Nothing archives it, and no later session should move it �
   never signed off — and it bites harder at this altitude: story sessions inherit the constraint and
   re-state it, often more forcefully than the epic did, while still pointing at a mockup that never
   drew it. So if the epic asserts what a surface looks like, draw it in the epic's own mockup, or
-  leave it as an open question for the story that owns that surface.
+  defer it in `#constraints` to the story that owns that surface.
 - **Not actually an epic? Say so.** If it's really a single story, or two unrelated bodies of work
   wearing one name, stop and tell the human — propose the split instead of forcing one document to
   cover both.

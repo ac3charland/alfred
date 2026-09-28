@@ -63,7 +63,7 @@ p,ol,ul,figure{margin:0}
 .wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
 .stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
 .stamp::after{content:"Ready for review"}
-body:has([data-state=open]) .stamp::after{content:"Your call needed"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
 .mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
 .ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
 .ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
@@ -84,17 +84,17 @@ body:has([data-state=open]) .stamp::after{content:"Your call needed"}
 .list>li:first-child{border-top:0;padding-top:0}
 .list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
 .list h3::after{font-weight:400}
-[data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
-[data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
-[data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
 .tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
-[data-state=settled] .tag{color:var(--c-set)}
-[data-state=open] .tag{color:var(--c-open)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
 .pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
 .pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
-[data-state=open] .pick{color:var(--c-open)}
-[data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
-[data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
 .why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
 .legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
 .m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
@@ -161,10 +161,10 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 /* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
 /* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
 .switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
-.switch legend{float:left;padding:0;color:var(--c-open)}
-.switch input{margin:0 .3rem 0 0;accent-color:var(--c-open)}
-/* guide: Show one option at a time by hiding the others, e.g.
-   .plate:has([value=b]:checked) [data-opt=a],.plate:has([value=a]:checked) [data-opt=b]{display:none}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+/* guide: Show one option at a time by hiding the others, per plate, e.g.
+   #p1:has([value=b]:checked) [data-opt=a],#p1:has([value=a]:checked) [data-opt=b]{display:none}
    Delete the switcher rules when no plate has a switcher. */
 /* guide: Replace the rest of this section per spec. Scope the product's real tokens as custom properties
    on .app, taking every value from source, not memory: colours, radii and fonts from the app's global
@@ -231,17 +231,19 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
 </section>
 
-<!-- guide: #plates, required when anything the human sees changes. One figure.plate#pN per surface, and
-     every change they'll see drawn: a visual requirement no plate draws was never signed off. UI is drawn
-     in the app's own design system (stylesheet section 4); non-UI output (CLI text, a notification, a
-     written file, a PR comment) is a verbatim sample in the mount. No word budget. Options or states share
-     one switcher per plate, labelled with the decision it settles (D2: A | B); the recommendation's radio
-     rests checked, and each option is drawn in its own [data-opt] block. The legend sits inside the
-     plate. Caption ≤ 1 line; plates number I, II, … -->
+<!-- guide: #plates, required when anything the human sees changes (epic: only when the epic asserts what a
+     surface looks like). One figure.plate#pN per surface, and every change they'll see drawn: a visual
+     requirement no plate draws was never signed off. UI is drawn in the app's own design system
+     (stylesheet section 4); non-UI output (CLI text, a notification, a written file, a PR comment) is a
+     verbatim sample in the mount. No word budget. Options or states share one switcher per plate, its
+     legend the decision it settles (D2) or, when it only steps through states or a before/after, a plain
+     word (States). Name its radios after the plate (name="p2"), rest the recommended one checked, and draw
+     each option in its own [data-opt] block. The legend sits inside the plate. Caption: one sentence;
+     plates number I, II, … -->
 <section id="plates" aria-label="What you’ll see">
   <figure class="plate" id="p1">
     <!-- guide: delete the fieldset when the plate has one state -->
-    <fieldset class="switch"><legend>[D2]</legend>
+    <fieldset class="switch"><legend>[D2|States]</legend>
       <label><input type="radio" name="p1" value="a" checked>[A · …]</label>
       <label><input type="radio" name="p1" value="b">[B · …]</label>
     </fieldset>
@@ -254,7 +256,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
 <!-- guide: #diagram. Story: optional, usually absent; epic: expected. One figure when a flow crosses a
      boundary (a table, a service, a background job, a sync path); before/after when one changes. One SVG,
-     ≤ 7 nodes, a 1-line caption; figures number 1, 2, … Style it with .dg: g.new marks what this spec
+     ≤ 7 nodes, a one-sentence caption; figures number 1, 2, … Style it with .dg: g.new marks what this spec
      adds, path.hot the flow it changes, text.s a sublabel, text.lb an edge label. -->
 <section id="diagram" aria-label="How it fits">
   <figure class="fig">
@@ -339,7 +341,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 </section>
 
 <!-- guide: #constraints (epic), required. Constraints and non-goals in full, including what's deliberately
-     deferred, so a story session doesn't pull it in; #not-doing above carries at most three. -->
+     deferred, so a story session doesn't pull it in, and each question left to a later story, naming the
+     story. #not-doing above carries at most three. -->
 <section id="constraints" data-kind="epic">
   <h2>Constraints &amp; non-goals</h2>
   <ul><li>[…]</li></ul>
