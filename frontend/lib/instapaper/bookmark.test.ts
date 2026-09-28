@@ -246,13 +246,11 @@ describe('sendFailureResponse', () => {
   });
 
   it('never repeats Instapaper’s own message, which is not meant for people', async () => {
-    jest
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        Response.json([{ type: 'error', error_code: 1221, message: 'Internal wording' }], {
-          status: 400,
-        }),
-      );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json([{ type: 'error', error_code: 1221, message: 'Internal wording' }], {
+        status: 400,
+      }),
+    );
     const outcome = await addBookmark(CONFIG, { title: 'x', url: 'https://example.com/p/x' });
     if (outcome.kind === 'saved') throw new Error('expected a refusal');
     expect(JSON.stringify(outcome)).not.toContain('Internal wording');
