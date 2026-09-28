@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-272 — Implement a “To Reader” folder pipeline in Instapaper à la “To Wiki”</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #1f8a5b; --accent-bg: #e3f5ec;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --no: #c2453b; --ok: #2e8a5b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #4cc98e; --accent-bg: #123424;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --no: #e8776a; --ok: #3fbf82;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  pre .c { color: var(--faint); }
+  pre .new { color: var(--accent); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.hi { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.checks { list-style: none; padding-left: 0; }
+  ul.checks li { padding-left: 1.6rem; position: relative; margin: .45rem 0; }
+  ul.checks li::before { content: "☐"; position: absolute; left: 0; color: var(--accent); }
+  .figcap { font-size: .83rem; color: var(--muted); margin: .4rem 0 0; }
+  .toc { columns: 2 240px; font-size: .92rem; }
+  .toc a { text-decoration: none; }
+  .dec { border: 1px solid var(--line); border-radius: 10px; padding: .9rem 1.1rem; margin: 1rem 0; }
+  .dec h3 { margin: 0 0 .4rem; font-size: 1rem; }
+  .dec h3 .n { display: inline-block; min-width: 2.2rem; color: var(--accent); }
+  .dec p { margin: .45rem 0; }
+  .tag { display: inline-block; font-size: .68rem; font-weight: 700; letter-spacing: .04em;
+         text-transform: uppercase; padding: .1rem .45rem; border-radius: 999px;
+         background: var(--accent-bg); color: var(--accent); vertical-align: middle; margin-left: .3rem; }
+  .why { color: var(--muted); font-size: .93rem; }
+
+  /* ── Diagrams: document chrome, so they follow light/dark ─────────────────────── */
+  .dg .n { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+  .dg .n.hot { stroke: var(--accent); stroke-width: 2; }
+  .dg .t { fill: var(--fg); font: 600 12.5px -apple-system, "Segoe UI", sans-serif; }
+  .dg .m { fill: var(--muted); font: 11px -apple-system, "Segoe UI", sans-serif; }
+  .dg .mono { fill: var(--muted); font: 10.5px ui-monospace, Menlo, monospace; }
+  .dg .mono.hot { fill: var(--accent); }
+  .dg .a { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .dg .a.hot { stroke: var(--accent); }
+  .dg .a.dash { stroke-dasharray: 5 4; }
+  .dg .ah { fill: var(--muted); }
+  .dg .ah.hot { fill: var(--accent); }
+
+  /* ── State switcher: document chrome, outside the canvas ─────────────────────── */
+  .switch { display: flex; flex-wrap: wrap; gap: .4rem; margin: 1rem 0 .3rem; }
+  .switch button {
+    font: 600 .8rem -apple-system, "Segoe UI", sans-serif; padding: .35rem .7rem; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer;
+  }
+  .switch button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ── Mockup: alfred's real tokens, scoped to the canvas ─────────────────────────
+       background / foreground / surface / border / muted-foreground / secondary,
+       accent-green / amber / red, --radius 0.5rem, serif = Instrument Serif  → frontend/app/globals.css
+       row shell (rounded-lg border px-3 py-2; transparent border at rest;
+                  expanded border-accent-green/60 bg-secondary/40;
+                  selected ring-1 ring-accent-green/60; dimmed opacity-70)      → components/reader/post-row.styles.ts
+       eyebrow (text-xs 600 text-accent-green = MODULE_ACCENT.reader.text),
+       meta (text-xs muted), title (mt-1.5 font-serif text-lg leading-snug),
+       gist (mt-1 text-sm leading-relaxed), placeholder (italic muted),
+       verb row (mt-2 flex-wrap gap-2), keycap (rounded border bg-background
+                  px-1 py-0.5 font-mono 10px muted, md+ only)                      → components/reader/post-row.styles.ts
+       button sm (h-8 rounded-sm px-3 text-xs 500; outline = 1px border-border;
+                  ghost = borderless)                                           → components/atoms/button.tsx
+       badge (rounded-full px-2 py-0.5 text-xs; muted = border-border/70 muted;
+              alert = bg-amber-500/15 text-amber-400)                           → components/atoms/badge.tsx
+       view heading (40px round icon, border-border bg-surface, text-accent-green;
+                     title font-serif text-2xl; description text-sm muted)      → components/atoms/view-heading.tsx
+       status dot (inline-flex gap-1.5 text-xs muted; dot h-2 w-2 rounded-full
+                   green / amber / red; elapsed muted/70)                       → components/atoms/status-dot.tsx
+       health note (text-[13px] leading-relaxed text-accent-red | amber)        → components/reader/reader-header.tsx
+       empty state (py-16 centred; title font-serif text-2xl muted/50;
+                    description mt-2 text-sm muted/40)                           → components/atoms/empty-state.tsx */
+  .app {
+    --background: #0a0e17; --foreground: #e8edf5; --surface: #0f1626; --border: #1e2a3f;
+    --muted-foreground: #8a96a8; --secondary: #1e2a3f;
+    --green: #34d399; --amber: #f0b429; --red: #f87171; --amber-400: #fbbf24;
+    background: var(--background); color: var(--foreground);
+    font: 14px/1.45 "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    border-radius: 10px; padding: 16px; margin: .4rem 0 1rem; overflow-x: auto;
+  }
+  .app * { box-sizing: border-box; }
+  .app p { margin: 0; }
+  .app code { background: none; padding: 0; color: inherit; font-size: inherit; }
+  .app .serif { font-family: "Instrument Serif", Georgia, "Times New Roman", serif; font-weight: 400; }
+  .app .head { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+  .app .hrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .app .vh { display: flex; align-items: center; gap: 12px; }
+  .app .vh-i { display: flex; width: 40px; height: 40px; flex: 0 0 40px; align-items: center; justify-content: center;
+               border-radius: 9999px; border: 1px solid var(--border); background: var(--surface); color: var(--green); }
+  .app .vh-t { font-size: 24px; line-height: 32px; margin: 0; color: var(--foreground); border: 0; padding: 0; }
+  .app .vh-d { font-size: 14px; color: var(--muted-foreground); }
+  .app .dots { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .app .sd { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); }
+  .app .d { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 9999px; }
+  .app .d.live { background: var(--green); } .app .d.err { background: var(--red); }
+  .app .el { color: rgba(138,150,168,.7); }
+  .app .notes { display: flex; flex-direction: column; gap: 4px; }
+  .app .note { font-size: 13px; line-height: 1.625; }
+  .app .note.red { color: var(--red); }
+  .app .list { display: flex; flex-direction: column; gap: 4px; }
+  .app .row { border: 1px solid transparent; border-radius: 8px; padding: 8px 12px; }
+  .app .row.sel { box-shadow: 0 0 0 1px rgba(52,211,153,.6); }
+  .app .row.dim { opacity: .7; }
+  .app .line1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+  .app .eb { font-size: 12px; font-weight: 600; color: var(--green); }
+  .app .meta { font-size: 12px; color: var(--muted-foreground); }
+  .app .ttl { margin-top: 6px; font-size: 18px; line-height: 1.375; color: var(--foreground); }
+  .app .gist { margin-top: 4px; font-size: 14px; line-height: 1.625; color: var(--foreground); }
+  .app .gist.ph { font-style: italic; color: var(--muted-foreground); }
+  .app .badge { border-radius: 9999px; padding: 2px 8px; font-size: 12px; line-height: 16px; }
+  .app .badge.muted { border: 1px solid rgba(30,42,63,.7); color: var(--muted-foreground); }
+  .app .badge.alert { background: rgba(245,158,11,.15); color: var(--amber-400); }
+  .app .verbs { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .app .btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px;
+              border-radius: 4px; font-size: 12px; font-weight: 500; color: var(--foreground); white-space: nowrap; }
+  .app .btn.o { border: 1px solid var(--border); }
+  .app .btn.g { border: 1px solid transparent; }
+  .app .btn.orig { gap: 6px; color: var(--muted-foreground); }
+  .app .kbd { border-radius: 4px; border: 1px solid var(--border); background: var(--background); padding: 2px 4px;
+              font: 10px/1 "Geist Mono", ui-monospace, Menlo, monospace; color: var(--muted-foreground); }
+  @media (max-width: 767px) { .app .kbd { display: none; } }  /* the keycap's `hidden md:inline-flex` */
+  .app .empty { display: flex; flex-direction: column; align-items: center; justify-content: center;
+                padding: 64px 0; text-align: center; }
+  .app .empty .t { font-size: 24px; color: rgba(138,150,168,.5); }
+  .app .empty .s { margin-top: 8px; font-size: 14px; color: rgba(138,150,168,.4); max-width: 34rem; }
+  .app .new { outline: 1px dashed rgba(52,211,153,.55); outline-offset: 2px; border-radius: 3px; }
+  /* State hiding: an element is hidden in every state its data-hide lists. The markup is the
+     resting state (data-state="live"), so the canvas is correct with scripting off. */
+  .app[data-state="live"]     [data-hide~="live"],
+  .app[data-state="arriving"] [data-hide~="arriving"],
+  .app[data-state="notext"]   [data-hide~="notext"],
+  .app[data-state="erroring"] [data-hide~="erroring"],
+  .app[data-state="empty"]    [data-hide~="empty"] { display: none; }
+  .app[data-state="notext"] .row.ip { opacity: .7; box-shadow: none; }
+  .legend-note { font-size: .83rem; color: var(--muted); margin: .2rem 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Refinement spec · a story in epic ALF-232 (Reader Module)</p>
+<h1>ALF-272 — Implement a “To Reader” folder pipeline in Instapaper à la “To Wiki”</h1>
+<p class="sub">Written 2026-09-28. Epic background: <code>docs/specs/epics/ALF-232.html</code> and its build notes
+<code>docs/specs/epics/ALF-232-notes.md</code>. Sibling pipeline: <code>docs/specs/archive/ALF-263.html</code> (To Wiki,
+built in <code>ac3charland/knowledge</code>). Built in alfred: the Worker, one migration, the Send route, and the Reader row and header.</p>
+
+<div class="card hi">
+  <p style="margin:0"><b>In short.</b> The owner moves an Instapaper article into a folder named <b>To Reader</b>. Within
+  five minutes, the Reader's existing Worker tick lists that folder, takes the article's text from Instapaper, stores it as a
+  <code>reader_posts</code> row, <b>archives the bookmark in Instapaper</b>, and summarises it with the same summariser,
+  prompt, model and daily ceiling as a newsletter. In the reading list it is an ordinary row: the site's host as the eyebrow,
+  and <i>via Instapaper</i> in the meta line. <b>Send to Instapaper</b> on that row moves the bookmark back to the top of
+  Unread instead of saving a copy. <b>Archive</b> makes no Instapaper call. The owner chose both of those behaviours in this
+  session, along with sharing the 30-a-day ceiling.</p>
+</div>
+
+<nav>
+<h3 style="margin-top:1.4rem">Contents</h3>
+<ol class="toc">
+  <li><a href="#context">Context &amp; problem</a></li>
+  <li><a href="#decisions">Decisions</a></li>
+  <li><a href="#flow">How it flows</a></li>
+  <li><a href="#plan">Per-bookmark plan</a></li>
+  <li><a href="#tick">The tick, extended</a></li>
+  <li><a href="#schema">Schema</a></li>
+  <li><a href="#client">The Worker's Instapaper client</a></li>
+  <li><a href="#send">Send restores</a></li>
+  <li><a href="#ui">What it looks like</a></li>
+  <li><a href="#files">Files to touch</a></li>
+  <li><a href="#tests">Tests</a></li>
+  <li><a href="#build">Build plan &amp; evidence</a></li>
+  <li><a href="#setup">Setup checklist (owner)</a></li>
+  <li><a href="#ac">Acceptance criteria</a></li>
+  <li><a href="#out">Out of scope &amp; open questions</a></li>
+</ol>
+</nav>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="context">1 · Context &amp; problem</h2>
+
+<p>The Reader summarises every newsletter that reaches the personal Gmail inbox. For each one it writes a gist that answers
+"should I read this?" and a one-page overview, and puts it in a list the owner skims. Anything the owner saves to Instapaper
+from the web gets none of that: to decide whether an article is worth the time, they have to open it and start reading.</p>
+
+<p>The ticket asks for the same "move it into a folder" gesture that <b>To Wiki</b> (ALF-263) introduced, with a different
+destination. For To Wiki, an article in that Instapaper folder is committed to the wiki's <code>inbox/</code> and moved to
+<b>In Wiki</b> once it has been filed. For To Reader, an article in the folder goes through the Reader's summariser and lands
+in the reading list.</p>
+
+<h3>What already exists, and what this story reuses</h3>
+<div class="scroll"><table>
+<tr><th>Piece</th><th>Where</th><th>Used here for</th></tr>
+<tr><td>The Reader tick (five-minute cron, per-tick cap of 6, lease, daily ceiling, health writes)</td>
+    <td><code>workers/src/reader/scheduled.ts</code></td><td>The home of the new intake leg. No new cron trigger.</td></tr>
+<tr><td>The summariser and its static prompt (<code>READER_PROMPT_VERSION = 1</code>)</td>
+    <td><code>workers/src/reader/summarize.ts</code>, <code>prompt.ts</code></td><td>Unchanged. An article is summarised exactly as a post is.</td></tr>
+<tr><td>HTML → text stripper</td><td><code>workers/src/comms/email-text.ts</code> <code>htmlToText</code> (already exported)</td>
+    <td>Converting Instapaper's <code>get_text</code> HTML to the stored <code>text</code>.</td></tr>
+<tr><td>Send to Instapaper (<code>bookmarks/add</code>, OAuth 1.0a signer, Vercel env)</td>
+    <td><code>frontend/lib/instapaper/*</code>, <code>app/api/reader/posts/[id]/instapaper/route.ts</code> (ALF-238)</td>
+    <td>The signer is ported to the Worker. The route gains an <code>unarchive</code> branch.</td></tr>
+<tr><td>An Instapaper Full API client (folders/list, bookmarks/list, get_text, move)</td>
+    <td><code>knowledge/scripts/lib/instapaper.ts</code> (ALF-263)</td>
+    <td>The shape the Worker's client is ported from. <b>Not yet live-verified:</b> the knowledge README's
+    <code>--dry-run</code> and smoke-test items are still unticked (§15).</td></tr>
+<tr><td><code>reader_posts.instapaper_bookmark_id</code></td><td>migration 0039</td>
+    <td>Until now it held the id of a post the owner sent to Instapaper. It now also identifies a post that came <i>from</i> Instapaper (D5).</td></tr>
+</table></div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="decisions">2 · Decisions</h2>
+<p class="small">Tagged <span class="tag">owner</span> where the owner chose it in this session.</p>
+
+<div class="dec">
+  <h3><span class="n">D1</span>The trigger is an Instapaper folder named exactly “To Reader”, and alfred never creates it</h3>
+  <p>An article is sent by moving it into <b>To Reader</b>, from Unread, Archive or any other folder. The folder is found by
+  exact title through <code>folders/list</code> (<code>TO_READER_FOLDER = 'To Reader'</code>, a constant). If it doesn't
+  exist, the leg records <i>there is no “To Reader” folder in Instapaper</i> on its health and does nothing else (D12).</p>
+  <p class="why">Why: this is To Wiki's gesture (<code>SEND_FOLDER</code>) and uses the same folder mechanism, because
+  Instapaper's API can't change tags on an existing bookmark (ALF-263 §1). The only thing alfred writes to Instapaper is the
+  archive the owner asked for (D3). It never creates folders.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>It runs in alfred's Worker, inside the Reader's five-minute tick</h3>
+  <p>A <b>To Reader leg</b> is added to <code>runReaderTick</code>. It lists the folder, then its bookmarks become work
+  items in the same sequential loop as newsletters (§5). There is no new cron trigger, no new Worker, and nothing in
+  <code>knowledge</code>.</p>
+  <p class="why">Why: To Wiki lives in the wiki repo because its output is a git commit and that repo already had every helper
+  it needed. This leg's output is a <code>reader_posts</code> row plus a model call, and the summariser, lease, ceiling and
+  health writes all live in the Worker. Running it anywhere else would mean a second summariser. It can't have a cron of its
+  own either: this Worker registers four of the account's five cron triggers (the <code>wrangler.toml</code> comment), and
+  the leg fits in a tick that already runs every five minutes. From the owner's side, an article reaches the list within about
+  five minutes plus the summary call.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>alfred archives the bookmark in Instapaper as it takes it <span class="tag">owner</span></h3>
+  <p>The order is <code>get_text</code> → insert the post → <code>bookmarks/archive</code> → summarise. The insert happens
+  before the archive because the row is the floor. If the archive fails, the bookmark is still in To Reader next tick, the
+  "already a post" read finds its row (D5), and the tick archives it without inserting or summarising again.</p>
+  <p class="why">Why (the owner's choice over an "In Reader" folder, or putting it back in Unread): the Reader becomes the one
+  undecided list, which is how newsletters already work, since the owner's Gmail filter archives them on arrival. To Reader
+  empties by itself. Every later decision costs at most one Instapaper call, and archiving in the Reader costs none.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>Send moves the bookmark back to Unread instead of saving a copy. Archive makes no Instapaper call. <span class="tag">owner</span></h3>
+  <p>For a post whose <code>source</code> is <code>instapaper</code>, the row's <b>Send to Instapaper</b> verb calls
+  <code>bookmarks/unarchive</code> with the stored bookmark id, which moves that same bookmark to the top of Unread. It then
+  stamps <code>instapaper_sent_at</code> and archives the Reader post, exactly as a newsletter send does today. If Instapaper
+  says the bookmark no longer exists (the owner deleted it), the route falls back to <code>bookmarks/add</code> with the URL
+  and title, and no <code>content</code> (§8). <b>Archive</b> and <b>Unarchive</b> in the Reader make no Instapaper calls.
+  The verb keeps its label, hotkey (<code>i</code>) and exit animation.</p>
+  <p class="why">Why: <code>unarchive</code> restores the owner's own bookmark, with its reading progress and any highlights,
+  and uploads no body. <code>add</code> would resave by URL and, as built, carry the stored text as content. One label for
+  one meaning ("put this in my reading queue") beats two labels for what is the same act to the owner.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>Identity is Instapaper's bookmark id, checked across both sources</h3>
+  <p>An Instapaper-sourced post stores the bookmark id in the existing <code>instapaper_bookmark_id</code> column. A partial
+  unique index on it (<code>where source = 'instapaper'</code>) is what makes the insert the claim: a 409 means another tick
+  got there first, the same rule as Gmail's <code>(account_key, gmail_message_id)</code>. Before inserting, the leg reads
+  every post that already carries one of the bookmark ids it is about to handle, <b>from either source</b>:</p>
+  <ul>
+    <li><b>An Instapaper post whose archive failed</b> → archive the bookmark, nothing else.</li>
+    <li><b>A newsletter post the owner sent to Instapaper and has now moved into To Reader</b> → no new post. Archive the
+      bookmark, and if the post is archived in the Reader, put it back on the list (<code>archived_at = null</code>). It
+      already has its summary.</li>
+  </ul>
+  <p class="why">Why the bookmark id and not the URL: it is what <code>bookmarks/list</code> hands back, it is stable, and a
+  newsletter post already carries it after a Send. Matching Instapaper articles to newsletters by URL is out of scope (§15).</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span>The text is Instapaper's own, run through the extractor's existing stripper</h3>
+  <p><code>bookmarks/get_text</code> returns the article's HTML as Instapaper's text view renders it. That HTML goes through
+  <code>htmlToText</code> (from <code>comms/email-text.ts</code>, which <code>extract.ts</code> already imports), is cut at
+  <code>READER_TEXT_CHARS</code> (400 000), and gives <code>text</code> and <code>word_count</code>, with
+  <code>html_extracted = true</code>. <code>html</code> stays null because nothing reads it for these posts: Send uses
+  <code>unarchive</code>, and the list never carries it. When Instapaper can't generate text (error 1550), the row is inserted
+  and immediately filed <code>failed</code> with the existing <code>NO_READABLE_BODY</code> reason, and the bookmark is
+  still archived. The title and the Original link are the floor, as for an empty newsletter.</p>
+  <p class="why">Why: this is the text the owner would actually read in Instapaper, including for sites whose raw HTML is
+  mostly chrome. A paywalled article's text is its teaser, which the prompt's existing Paywalls clause already covers.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span><code>received_at</code> is when alfred took the article, and the site stands in for the publication</h3>
+  <table>
+    <tr><th>Column</th><th>An Instapaper-sourced post</th></tr>
+    <tr><td><code>source</code></td><td><code>'instapaper'</code></td></tr>
+    <tr><td><code>title</code></td><td>The bookmark's title, else the site name, else <code>Untitled</code></td></tr>
+    <tr><td><code>canonical_url</code></td><td>The bookmark's <code>url</code> when it is <code>http(s)</code>, else null (a private or emailed bookmark)</td></tr>
+    <tr><td><code>received_at</code></td><td>The tick's instant, <b>not</b> the bookmark's <code>time</code></td></tr>
+    <tr><td><code>author</code></td><td>null. The bookmark carries no author.</td></tr>
+    <tr><td><code>instapaper_bookmark_id</code></td><td>The bookmark id (the identity, D5)</td></tr>
+    <tr><td><code>publication_id</code>, <code>comm_message_id</code>, <code>account_key</code>, <code>gmail_message_id</code>, <code>rfc822_message_id</code></td><td>null</td></tr>
+  </table>
+  <p>The <b>site name</b> is the URL's hostname with a leading <code>www.</code> removed (<code>paulgraham.com</code>), or
+  <code>Instapaper</code> when there is no URL. It is the model's <code>Publication:</code> line, both at intake and on a
+  retry, and the row's eyebrow in the UI. The Worker and the frontend each implement this three-line rule, and each side
+  has a test pinning it.</p>
+  <p class="why">Why the intake instant: the list is ordered by <code>received_at</code>, newest first. An article saved in
+  March and moved into To Reader today would otherwise land months down the list, out of sight, just after the owner asked
+  for it. The 90-day text sweep then also counts from when the Reader got the article.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D8</span>Same summariser, same prompt, same model, and <code>READER_PROMPT_VERSION</code> stays 1</h3>
+  <p><code>summarizePost</code> receives the usual <code>SummaryInput</code>, with the site as <code>publication</code>. The
+  system prompt is not edited.</p>
+  <p class="why">Why: every instruction in it ("novel" against the field, be concrete, ignore chrome, paywalls, the fields)
+  applies unchanged to a web article, and its opening line about newsletters doesn't change an answer. Editing it would mean
+  a version bump and two kinds of stamp in the list for no gain (epic D7).</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D9</span>One daily ceiling. On a capped day, articles wait in To Reader. <span class="tag">owner</span></h3>
+  <p>An article's model call is stamped on <code>model_called_at</code> like any other, so it counts against
+  <code>READER_DAILY_CAP</code> (30, unchanged). The difference from a newsletter is what happens once the cap is spent:
+  <b>the To Reader leg doesn't run at all</b>, and a bookmark whose turn comes after the tick has hit the cap is left alone
+  (no <code>get_text</code>, no insert, no archive). It stays in To Reader until the next UTC day.</p>
+  <p class="why">Why leave it there rather than take it in unsummarised, as Gmail intake does: a newsletter has to be claimed
+  inside the seven-day horizon before comms' 60-day sweep removes it, but a bookmark waits safely. Taking it out of the folder
+  only to show "summarising…" until tomorrow would move the backlog somewhere less useful. At the owner's volume a backlog of
+  40 clears over two or three days, next to newsletters, at about $0.03 an article.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D10</span>The schema gets a <code>source</code> column, and Gmail's identity columns become required only for Gmail posts</h3>
+  <p><code>reader_posts.source</code> is <code>'gmail' | 'instapaper'</code>, defaulting to <code>'gmail'</code>, so every
+  existing row and the untouched Gmail intake need no change. <code>publication_id</code>, <code>account_key</code> and
+  <code>gmail_message_id</code> drop <code>not null</code>. One CHECK constraint states what each source requires (§6).
+  <code>source</code> joins <code>READER_POST_LIST_COLUMNS</code>, and its pinning test enforces that.</p>
+  <p class="why">Why a discriminator instead of a fake "Instapaper" publication: a roster row would appear in the publications
+  view with an enable toggle that does nothing, and would claim to be a sender it isn't. The epic anticipated exactly this seam:
+  "the dedupe key would grow a source discriminator" (epic §5).</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D11</span>The Worker gets its own Instapaper client, ported rather than shared</h3>
+  <p>A new <code>workers/src/instapaper/</code> directory holds the OAuth 1.0a signer, ported from
+  <code>frontend/lib/instapaper/oauth.ts</code> (it imports only <code>node:crypto</code>, which the Worker's
+  <code>nodejs_compat</code> flag provides) together with its RFC 5849 test vectors. It also holds a client ported from
+  <code>knowledge/scripts/lib/instapaper.ts</code> — <code>listFolders</code>, <code>listBookmarks</code>,
+  <code>getText</code> and its typed <code>InstapaperError</code> — plus <code>archive(bookmarkId)</code>. Each file's header
+  names where it was ported from. The four <code>INSTAPAPER_*</code> values become Worker secrets with the same names and
+  values as on Vercel. <code>ReaderEnv</code> gains them as optional strings. If any is blank, the leg is off: no calls, no
+  health stamp, and <code>GET /</code> reports <code>instapaper unconfigured</code> (it reports <code>configured</code> when
+  all four are set). The Work instance's Worker has none of them.</p>
+  <p class="why">Why port instead of sharing: alfred's workspaces share no code package, and the epic's rule for exactly this
+  case is "duplicate the twenty lines rather than couple two modules". Copying a signer pinned to RFC 5849 test vectors is
+  safer than writing a second one.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D12</span>To Reader has its own health, shown as a third dot beside Gmail's</h3>
+  <p>Three nullable columns on <code>reader_health</code>: <code>instapaper_last_success_at</code>,
+  <code>instapaper_last_error</code> and <code>instapaper_last_error_at</code>. <b>Success</b> is stamped when the leg lists
+  the folder and finishes every item it took without an Instapaper failure. <b>Error</b> is stamped for any Instapaper
+  failure: credentials, Premium, rate limit, unavailable, or no folder. The message is written for the owner (§7), and the
+  columns ride the tick's closing health write (§5). The header draws an <b>Instapaper</b> dot:</p>
+  <ul>
+    <li><b>hidden</b> when both timestamps are null (unconfigured, or not yet run),</li>
+    <li><b>live</b> (green) when the last success is newer than the last error,</li>
+    <li><b>erroring</b> (red) otherwise, with a red note underneath:
+      <i>“Instapaper stopped taking articles from To Reader {elapsed} — {error}. Articles wait there until it’s fixed.”</i>
+      Here {elapsed} is the time since <code>instapaper_last_success_at</code>, the same figure the dot shows. The error
+      timestamp can't be used, because a failing leg re-stamps it every tick, so "3m ago" would always be what it said. If
+      the leg has never succeeded, the note reads <i>“Instapaper can’t take articles from To Reader — {error}. Articles wait
+      there until it’s fixed.”</i> and the dot shows no elapsed time.</li>
+  </ul>
+  <p>An Instapaper failure never enters <code>ReaderTickSummary.failures</code>, so it never holds back
+  <code>last_success_at</code> or makes the summariser read as stalled.</p>
+  <p class="why">Why its own surface: the header already separates "the mailbox stopped" from "the summariser stopped",
+  because they need different fixes. A dead Instapaper token is a third fix. Why transient failures go red too: the leg runs
+  every five minutes, so a blip shows red for one cadence and clears itself. That is a deliberate trade, because until the
+  API paths are verified live (§15), a wrongly wired path is the more likely failure, and it must be visible on the first day
+  rather than silent. Staleness isn't tracked: the summariser dot already covers "the tick stopped running".</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="flow">3 · How it flows</h2>
+
+<svg class="dg" viewBox="0 0 920 360" role="img" aria-label="Flow: the owner moves an article into To Reader; the Reader tick lists it, reads its text, inserts a post, archives the bookmark and summarises; the reading list shows it; Send moves the bookmark back to Unread.">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ahh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah hot" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <!-- Instapaper: To Reader -->
+  <rect class="n" x="10" y="30" width="180" height="70" rx="10"/>
+  <text class="t" x="24" y="56">Instapaper · To Reader</text>
+  <text class="m" x="24" y="76">the owner moves an article in</text>
+  <text class="m" x="24" y="91">(from Unread, Archive, anywhere)</text>
+
+  <!-- Reader tick -->
+  <rect class="n hot" x="265" y="14" width="270" height="196" rx="10"/>
+  <text class="t" x="280" y="40">Reader tick · */5 · Worker</text>
+  <text class="mono" x="280" y="62">retries → newsletters → To Reader</text>
+  <text class="mono hot" x="280" y="86">1 folders/list · bookmarks/list</text>
+  <text class="mono hot" x="280" y="106">2 posts already holding these ids?</text>
+  <text class="mono hot" x="280" y="126">3 get_text → htmlToText</text>
+  <text class="mono hot" x="280" y="146">4 insert reader_posts (pending)</text>
+  <text class="mono hot" x="280" y="166">5 bookmarks/archive</text>
+  <text class="mono hot" x="280" y="186">6 summarizePost (shared cap)</text>
+
+  <!-- reader_posts -->
+  <rect class="n" x="600" y="30" width="140" height="70" rx="10"/>
+  <text class="t" x="614" y="56">reader_posts</text>
+  <text class="m" x="614" y="76">source = instapaper</text>
+  <text class="m" x="614" y="91">received_at = now</text>
+
+  <!-- Reading list -->
+  <rect class="n" x="780" y="30" width="130" height="70" rx="10"/>
+  <text class="t" x="794" y="56">Reading list</text>
+  <text class="m" x="794" y="76">site · via Instapaper</text>
+  <text class="m" x="794" y="91">gist · overview</text>
+
+  <!-- Instapaper: Archive -->
+  <rect class="n" x="10" y="250" width="180" height="60" rx="10"/>
+  <text class="t" x="24" y="276">Instapaper · Archive</text>
+  <text class="m" x="24" y="295">To Reader drains itself</text>
+
+  <!-- Instapaper: Unread -->
+  <rect class="n" x="600" y="250" width="310" height="60" rx="10"/>
+  <text class="t" x="614" y="276">Instapaper · Unread (top)</text>
+  <text class="m" x="614" y="295">the same bookmark, progress and highlights kept</text>
+
+  <!-- arrows -->
+  <path class="a hot" d="M190,65 L262,65" marker-end="url(#ahh)"/>
+  <text class="m" x="200" y="56">list</text>
+  <path class="a hot" d="M535,65 L597,65" marker-end="url(#ahh)"/>
+  <text class="m" x="542" y="56">write</text>
+  <path class="a" d="M740,65 L777,65" marker-end="url(#ah)"/>
+  <path class="a hot dash" d="M300,210 L300,235 L100,235 L100,247" marker-end="url(#ahh)"/>
+  <text class="m" x="120" y="229">bookmarks/archive (D3)</text>
+  <path class="a" d="M845,100 L845,247" marker-end="url(#ah)"/>
+  <text class="m" x="700" y="160">Send → app route</text>
+  <text class="m" x="700" y="176">bookmarks/unarchive (D4)</text>
+  <text class="m" x="700" y="222">Archive → no call</text>
+  <path class="a dash" d="M190,280 L597,280" marker-end="url(#ah)"/>
+  <text class="m" x="300" y="272">what Send does to the bookmark</text>
+</svg>
+<p class="figcap">The green box is the only new component. The newsletter half of the tick, the summariser and the list are
+unchanged. The dashed bottom line is the bookmark's own journey: archived on intake, back to the top of Unread if the owner
+presses Send.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="plan">4 · Per-bookmark plan</h2>
+
+<p>Each bookmark the leg takes is evaluated against the "already a post" read (D5). The first matching row wins:</p>
+<div class="scroll"><table>
+<tr><th>#</th><th>Condition</th><th>Action</th><th>Fetches</th></tr>
+<tr><td>1</td><td>The ceiling is spent (before the leg or at this item's turn), or the tick had no free slot for it</td>
+    <td><b>leave</b>: it stays in To Reader</td><td>none</td></tr>
+<tr><td>2</td><td>A post already carries this bookmark id and is archived in the Reader</td>
+    <td><b>restore</b> the post to the list (<code>archived_at = null</code>), then archive the bookmark</td><td>PATCH post · <code>bookmarks/archive</code></td></tr>
+<tr><td>3</td><td>A post already carries this bookmark id and is on the list</td>
+    <td><b>archive</b> the bookmark only</td><td><code>bookmarks/archive</code></td></tr>
+<tr><td>4</td><td>No post, and <code>get_text</code> returns HTML</td>
+    <td><b>take</b>: insert (pending, leased), archive, summarise, terminal patch</td><td><code>get_text</code> · insert · archive · Anthropic ×2 · patch = 6</td></tr>
+<tr><td>5</td><td>No post, and <code>get_text</code> answers 1550 (no text)</td>
+    <td><b>take as failed</b>: insert, file <code>failed</code> / <code>no readable body</code>, archive</td><td><code>get_text</code> · insert · patch · archive = 4</td></tr>
+<tr><td>6</td><td>The insert conflicts (another tick won the race)</td>
+    <td><b>move on</b>. The winning tick archives it.</td><td><code>get_text</code> · insert = 2</td></tr>
+</table></div>
+<p>Instapaper failures part-way through an item:</p>
+<ul>
+  <li><b><code>get_text</code> fails</b> (anything but 1550): nothing is written. The leg stops for this tick, its later
+    bookmarks wait, and the error is stamped (D12). Newsletter and retry items already done this tick are unaffected.</li>
+  <li><b><code>archive</code> fails after the insert</b>: the post stays and is still summarised this tick. The error is
+    stamped, and next tick's row 3 archives the bookmark. A <code>credentials</code>, <code>premium</code> or
+    <code>rate-limited</code> answer also stops the leg's later bookmarks.</li>
+  <li><b><code>archive</code> answers "no such bookmark"</b> (the owner deleted it after the list): treated as archived.
+    That is not an error.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="tick">5 · The tick, extended</h2>
+
+<pre><code><span class="c">runReaderTick(env, now)                                                      fetches</span>
+  config · Anthropic key · Gmail bindings            <span class="c">(unchanged)</span>
+  calls    = count model_called_at ≥ UTC midnight                              1
+  health.start                                                                  1
+  discover · roster                                                             2
+  retries  = capped ? [] : fetchRetries(6)                                      1
+  fresh    = fetchFresh(6)                                                      1
+<span class="new">  slots    = 6 − |retries| − |fresh|                    (floored at 0)
+  toReader = []
+  if instapaper configured AND not capped AND slots &gt; 0:
+     folder   = folders/list → exact title "To Reader"                          1
+     marks    = bookmarks/list(folder, limit 500) → oldest `time` first,
+                take `slots`                                                    1
+     existing = reader_posts where instapaper_bookmark_id in (marks)            1   (skipped if marks is empty)
+     toReader = marks, each paired with its existing post, if any</span>
+  token    = Gmail token mint                                                   1
+  for item of [...retries, ...fresh, <span class="new">...toReader</span>]      <span class="c">(budget clock and cap checks as today)</span>
+     retry     → lease · Anthropic ×2 · patch                                   4
+     fresh     → Gmail get · insert · claim · Anthropic ×2 · patch              6
+<span class="new">     bookmark  → the §4 plan                                                   ≤ 6</span>
+  health.end <span class="new">+ the three instapaper_* columns</span>                                     1</code></pre>
+
+<p>Rules the implementation has to keep:</p>
+<ul>
+  <li><b>Ordering stays retries → newsletters → To Reader.</b> Newsletters are bound by a seven-day horizon, and articles
+    can wait. At eight to ten newsletters a day, the six slots are almost always free.</li>
+  <li><b>A tick that stops for a Gmail reason</b> (a token-mint failure, or a Gmail transport stop mid-loop) stops the
+    To Reader items too, and they wait for the next tick, just as <i>nothing is advanced</i> means today. The leg still
+    records what it learned: when the tick returns <b>without</b> a closing health write and the leg has an outcome to record
+    (a failed list, or a finished leg), one PATCH of only the three <code>instapaper_*</code> columns goes out before the
+    return. Every such path stops early, so that fetch always fits in the budget.</li>
+  <li><b>A capped retry or bookmark is not prepared.</b> Preparing a bookmark means <code>get_text</code> and then the
+    insert, which would take it out of the folder (D9).</li>
+  <li><b><code>ReaderTickSummary</code> gains <code>instapaper: { listed, taken, archived, restored, failures }</code></b>.
+    <code>index.ts</code>'s <code>logReaderTick</code> prints one more line (<code>reader instapaper: 3 listed, 2 taken in,
+    2 archived, 0 restored</code>) and a <code>console.error('reader: instapaper: …')</code> for each failure.</li>
+</ul>
+
+<h3>Subrequest arithmetic (the <code>READER_TICK_LIMIT</code> doc comment's table, updated)</h3>
+<div class="scroll"><table>
+<tr><th>Unit</th><th>Fetches</th><th>Count</th></tr>
+<tr><td>Per tick (today)</td><td>ceiling count · health start · discovery read · discovery upsert · roster read · pending-retry read · worklist read · token mint · health end</td><td>9</td></tr>
+<tr><td>Per tick, To Reader leg (only when configured, not capped, and a slot is free)</td><td>folders/list · bookmarks/list · already-a-post read</td><td>3</td></tr>
+<tr><td>Per fresh newsletter</td><td>Gmail get · insert · claim · Anthropic ×2 · patch</td><td>6</td></tr>
+<tr><td>Per new bookmark</td><td>get_text · insert · archive · Anthropic ×2 · patch</td><td>6</td></tr>
+<tr><td>Per bookmark that is already a post</td><td>(restore PATCH) · archive</td><td>≤ 2</td></tr>
+<tr><td><b>Worst tick</b> (six new bookmarks)</td><td>9 + 3 + 6 × 6</td><td><b>48</b></td></tr>
+</table></div>
+<p>A new bookmark costs the same six fetches as a newsletter, so <code>READER_TICK_LIMIT</code> stays at <b>6</b>. The table
+goes into the doc comment next to the existing sentence: "adding one more fetch per post means dropping this limit to five".</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="schema">6 · Schema</h2>
+
+<p>One migration, <code>database/migrations/&lt;next&gt;_reader_instapaper_source.sql</code>. Take whatever number is free
+at build time; don't pin one here. It creates no new table, view or sequence, so the existing RLS and grants on
+<code>reader_posts</code> and <code>reader_health</code> cover it. It only expands the schema, so the app keeps running while
+it applies.</p>
+
+<pre><code>alter table reader_posts
+  add column source text not null default 'gmail',
+  add constraint reader_posts_source_valid check (source in ('gmail', 'instapaper'));
+
+alter table reader_posts
+  alter column publication_id   drop not null,
+  alter column account_key      drop not null,
+  alter column gmail_message_id drop not null;
+
+<span class="c">-- What each source needs in order to be a post at all. A Gmail post keeps every column it had;
+-- an Instapaper post is identified by its bookmark and carries no mail identity.</span>
+alter table reader_posts add constraint reader_posts_source_identity check (
+     (source = 'gmail'      and publication_id is not null and account_key is not null
+                            and gmail_message_id is not null)
+  or (source = 'instapaper' and instapaper_bookmark_id is not null
+                            and publication_id is null and comm_message_id is null
+                            and account_key is null and gmail_message_id is null)
+);
+
+<span class="c">-- The insert-is-the-claim key for the Instapaper intake, as (account_key, gmail_message_id) is Gmail's.</span>
+create unique index reader_posts_instapaper_source_key
+  on reader_posts (instapaper_bookmark_id) where source = 'instapaper';
+<span class="c">-- The per-tick "already a post?" read spans both sources (D5).</span>
+create index reader_posts_instapaper_bookmark_idx
+  on reader_posts (instapaper_bookmark_id) where instapaper_bookmark_id is not null;
+
+alter table reader_health
+  add column instapaper_last_success_at timestamptz,
+  add column instapaper_last_error      text,
+  add column instapaper_last_error_at   timestamptz;
+
+notify pgrst, 'reload schema';</code></pre>
+
+<ul>
+  <li>Each new column and constraint gets a <code>comment on</code>, in the style of migrations 0035 and 0039. The comment
+    on <code>instapaper_bookmark_id</code> is rewritten because it now has two meanings: the bookmark a Send created, or the
+    bookmark an Instapaper post came from.</li>
+  <li>Unaffected: <code>v_reader_worklist</code> (inner joins on the mail side), <code>v_reader_publications</code> (a null
+    <code>publication_id</code> joins nothing), and <code>reader_sweep_text</code> (it keys on <code>received_at</code>,
+    which D7 sets to the intake instant).</li>
+  <li><code>frontend/lib/database.types.ts</code> is regenerated, never hand-edited. <code>database/README.md</code>'s schema
+    summary gains the columns. <code>database/src/assertions.ts</code> gains the DB-level checks listed in §11.</li>
+  <li>Run <code>migration-lint</code> while drafting (see the <code>migration-lint</code> skill).</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="client">7 · The Worker's Instapaper client</h2>
+
+<p><code>workers/src/instapaper/client.ts</code> implements an <code>InstapaperApi</code> interface that the tick's tests
+fake. <code>fetch</code> is injectable, so no suite touches the network. Every call is a signed <code>POST</code> with an
+<code>application/x-www-form-urlencoded</code> body and a 20-second abort. Every error message names the call, the error
+kind and Instapaper's code, and never includes a header, a request body or a secret.</p>
+<div class="scroll"><table>
+<tr><th>Method</th><th>Endpoint</th><th>Params</th><th>Answer</th></tr>
+<tr><td><code>listFolders()</code></td><td><code>/api/1.1/folders/list</code></td><td>—</td><td><code>{ folderId, title }[]</code></td></tr>
+<tr><td><code>listBookmarks(folderId)</code></td><td><code>/api/1.1/bookmarks/list</code></td><td><code>folder_id</code>, <code>limit=500</code></td>
+    <td><code>{ bookmarkId, url, title, time }[]</code>. Both answer shapes are accepted (the 1.1 object and the older flat array); highlights are ignored.</td></tr>
+<tr><td><code>getText(bookmarkId)</code></td><td><code>/api/1.1/bookmarks/get_text</code></td><td><code>bookmark_id</code></td>
+    <td>The HTML, or <code>null</code> on error 1550. A JSON body is never article text, even with a 2xx.</td></tr>
+<tr><td><code>archive(bookmarkId)</code></td><td><code>/api/1/bookmarks/archive</code></td><td><code>bookmark_id</code></td>
+    <td>Resolves once archived. "No such bookmark" (1241, to be confirmed) resolves too (§4).</td></tr>
+</table></div>
+<p>The first three paths are the ones <code>knowledge</code> built. <code>archive</code> uses the <code>/api/1/</code> prefix
+of the <code>bookmarks/add</code> call that is already proven live. Before coding, read Instapaper's Full API docs using
+the method in <code>docs/specs/archive/ALF-238.html</code> §6 (the pages render client-side, and their markdown lives at
+<code>/assets/&lt;page&gt;-&lt;hash&gt;.md</code>), and take each endpoint's prefix and the missing-bookmark code from there.
+A cloud session can't reach instapaper.com (the egress proxy refuses it). In that case, build to this table: the owner's
+<code>eval:reader -- --instapaper</code> run (§13) is the live check, and a mismatch it reveals is a parser or path fix.</p>
+
+<h3>Failures → what the leg does, and what it stamps</h3>
+<div class="scroll"><table>
+<tr><th>Instapaper answers</th><th>Kind</th><th>The leg</th><th><code>instapaper_last_error</code> (owner's words)</th></tr>
+<tr><td>401 / 403, or 1042</td><td>credentials</td><td>stops for this tick</td><td>Instapaper rejected alfred's credentials</td></tr>
+<tr><td>1041</td><td>premium</td><td>stops</td><td>Instapaper says this needs a Premium account</td></tr>
+<tr><td>1040</td><td>rate-limited</td><td>stops. The next tick resumes.</td><td>Instapaper is rate-limiting alfred</td></tr>
+<tr><td>other code, non-2xx, timeout, network error, unexpected body</td><td>unavailable</td><td>stops</td><td>Instapaper didn't answer</td></tr>
+<tr><td>no folder titled <code>To Reader</code></td><td>—</td><td>stops</td><td>there is no “To Reader” folder in Instapaper</td></tr>
+<tr><td>1550 on <code>get_text</code></td><td>—</td><td>not a failure: plan row 5</td><td>—</td></tr>
+</table></div>
+<p>These strings match the frontend's <code>SEND_FAILURES</code> wording where the two overlap, so the owner sees one voice.
+Any of them stops only the To Reader leg. Newsletters, retries and the summariser's health carry on (D12).</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="send">8 · Send restores</h2>
+
+<p><code>POST /api/reader/posts/[id]/instapaper</code> keeps its order: config first, then the read, then Instapaper, and the
+write only on a confirmed save. <code>getReaderPostForSend</code> also selects <code>source</code> and
+<code>instapaper_bookmark_id</code>, and the call to Instapaper branches on the source:</p>
+<pre><code><span class="c">// app/api/reader/posts/[id]/instapaper/route.ts — the one branch this story adds</span>
+const outcome =
+  post.source === 'instapaper' &amp;&amp; post.instapaper_bookmark_id !== null
+    ? await restoreOrResave(config, post)   <span class="c">// bookmarks/unarchive; on "no such bookmark" → add by URL</span>
+    : await addBookmark(config, params);    <span class="c">// a newsletter, exactly as today</span></code></pre>
+<ul>
+  <li><code>unarchiveBookmark(config, bookmarkId)</code> in <code>lib/instapaper/bookmark.ts</code> uses the same
+    <code>readAnswer</code> and returns the same outcomes (<code>saved</code> with the bookmark's id, or
+    <code>refused</code>/<code>unavailable</code>), plus <code>gone</code> for the missing-bookmark code.</li>
+  <li><code>gone</code> → <code>addBookmark</code> with <code>url</code>, <code>title</code> and the gist as
+    <code>description</code>, and <b>no <code>content</code></b>, so Instapaper fetches the page itself. Only a URL-less
+    bookmark falls back to the stored text as content. The id returned then replaces
+    <code>instapaper_bookmark_id</code>.</li>
+  <li><code>sendUnavailable</code> (<code>lib/reader/send.ts</code>): an Instapaper-sourced post can always be sent when the
+    deployment is configured, because the CHECK constraint guarantees a bookmark id. A newsletter's rule is unchanged.</li>
+  <li>The E2E mock (<code>frontend/scripts/mock-supabase.mjs</code>) answers <code>bookmarks/unarchive</code> as it answers
+    <code>bookmarks/add</code>, records the request, and can be seeded with an error code.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="ui">9 · What it looks like</h2>
+
+<p>Three visible changes, drawn below in the app's own tokens. <b>(a)</b> An Instapaper-sourced row's eyebrow is the site
+name (D7), and its meta line ends in <i>· via Instapaper</i>. <b>(b)</b> The header grows a third status dot,
+<b>Instapaper</b>, with a red note when it is erroring (D12). <b>(c)</b> The empty state's description mentions To Reader.
+The verbs are the existing ones, with the existing labels. The dashed outlines mark what is new and are not part of the UI.
+Switch states:</p>
+
+<div class="switch" role="group" aria-label="Mockup state">
+  <button type="button" data-set="live" aria-pressed="true">Summarised (resting)</button>
+  <button type="button" data-set="arriving" aria-pressed="false">Just arrived</button>
+  <button type="button" data-set="notext" aria-pressed="false">No text</button>
+  <button type="button" data-set="erroring" aria-pressed="false">Instapaper erroring</button>
+  <button type="button" data-set="empty" aria-pressed="false">Empty list</button>
+</div>
+
+<div class="app" id="mock" data-state="live">
+  <div class="head">
+    <div class="hrow">
+      <div class="vh">
+        <div class="vh-i" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        </div>
+        <div>
+          <h4 class="vh-t serif">Reader</h4>
+          <p class="vh-d" data-hide="empty">2 to read</p>
+          <p class="vh-d" data-hide="live arriving notext erroring">Nothing to read</p>
+        </div>
+      </div>
+      <div class="dots">
+        <span class="sd"><span class="d live"></span><span>summariser · live</span></span>
+        <span class="sd"><span class="d live"></span><span>Gmail (personal)</span></span>
+        <span class="sd new" data-hide="erroring"><span class="d live"></span><span>Instapaper</span></span>
+        <span class="sd new" data-hide="live arriving notext empty"><span class="d err"></span><span>Instapaper</span><span class="el">· 35m ago</span></span>
+      </div>
+    </div>
+    <div class="notes new" data-hide="live arriving notext empty">
+      <p class="note red">Instapaper stopped taking articles from To Reader 35m ago — Instapaper rejected alfred's credentials. Articles wait there until it's fixed.</p>
+    </div>
+  </div>
+
+  <div class="list" data-hide="empty">
+    <!-- The Instapaper-sourced row -->
+    <div class="row sel ip">
+      <div class="line1">
+        <span class="eb new">worksinprogress.co</span>
+        <span class="meta">Sep 28 · <span data-hide="notext">12 min read</span><span data-hide="live arriving erroring empty">1 min read</span> <span class="new">· via Instapaper</span></span>
+        <span class="badge muted" data-hide="live notext erroring empty">summarising…</span>
+        <span class="badge alert" data-hide="live arriving erroring empty">summary failed</span>
+      </div>
+      <p class="ttl serif">Cities Are Getting Quieter, and It’s Costing Them</p>
+      <p class="gist" data-hide="arriving notext">Argues that falling street-level noise in six US downtowns tracks lost foot traffic rather than new ordinances, using city sensor data from 2019–2026. The sensor analysis is new; the policy prescription is the familiar one. Read the data section; skip the last third.</p>
+      <p class="gist ph" data-hide="live notext erroring empty">The summary is on its way — send it now, or check back in a few minutes.</p>
+      <p class="gist ph" data-hide="live arriving erroring empty">No summary — no readable body. The post is still here; send it or archive it.</p>
+      <div class="verbs">
+        <span class="btn o">Send to Instapaper <span class="kbd" data-hide="notext">i</span></span>
+        <span class="btn g" data-hide="arriving notext">Overview <span class="kbd">v</span></span>
+        <span class="btn o">Archive <span class="kbd" data-hide="notext">e</span></span>
+        <span class="btn g orig" data-hide="live erroring empty">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+          Original <span class="kbd" data-hide="notext">o</span></span>
+      </div>
+    </div>
+
+    <!-- A newsletter row, unchanged, for contrast -->
+    <div class="row">
+      <div class="line1">
+        <span class="eb">Import AI</span>
+        <span class="meta">Sep 28 · 9 min read</span>
+      </div>
+      <p class="ttl serif">Import AI 431: a benchmark for boring tasks</p>
+      <p class="gist">Roundup. Mostly restates last week’s eval releases; the one new item is a benchmark of long, dull office tasks where agents plateau at 40% regardless of model size. Not worth reading in full unless you track agent evals.</p>
+      <div class="verbs">
+        <span class="btn o">Send to Instapaper</span>
+        <span class="btn g">Overview</span>
+        <span class="btn o">Archive</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="empty" data-hide="live arriving notext erroring">
+    <p class="t serif">Nothing new to read.</p>
+    <p class="s new">Newsletters from your publications, and articles you move to To Reader in Instapaper, land here summarised.</p>
+  </div>
+</div>
+
+<p class="legend-note"><b>Legend.</b> <b>Summarised</b>: an Instapaper article after its summary lands, selected, so the
+desktop keycaps show. Its Original link sits in the overview panel's footer, as for any row with a panel. <b>Just
+arrived</b>: the first seconds, while the leased post waits for its summary call; the existing <i>summarising…</i> marker and
+placeholder apply, and with no panel, Original ends the verb row. <b>No text</b>: Instapaper returned error 1550; the row is
+filed <i>summary failed</i> with the existing floor line and dimmed, and there is no Retry because the word count is 0 (the
+existing <code>canResummarize</code> rule). <b>Instapaper erroring</b>: the third dot is red, showing the time since its
+last success, and the red note beneath it quotes that same time (D12 gives the wording when there has never been a success).
+Its hover title follows the Gmail dot's form: <i>Instapaper — {error}
+({elapsed})</i> when erroring, <i>Instapaper — To Reader last checked {elapsed}</i> when live. The dot is <b>not drawn at
+all</b> on a deployment without Instapaper, or before the leg's first run. <b>Empty list</b>: the resting state with the new
+description. The newsletter row is unchanged and appears only for contrast.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="files">10 · Files to touch</h2>
+<div class="scroll"><table>
+<tr><th>Area</th><th>File</th><th>Change</th></tr>
+<tr><td rowspan="4">Database</td><td><code>database/migrations/&lt;next&gt;_reader_instapaper_source.sql</code></td><td>§6</td></tr>
+<tr><td><code>frontend/lib/database.types.ts</code></td><td>Regenerated</td></tr>
+<tr><td><code>database/README.md</code></td><td>Schema summary: <code>source</code>, the identity CHECK, the health columns</td></tr>
+<tr><td><code>database/src/assertions.ts</code></td><td>DB-level assertions (§11)</td></tr>
+<tr><td rowspan="3">Worker: Instapaper</td><td><code>workers/src/instapaper/oauth.ts</code> (+ test)</td><td>Port of <code>frontend/lib/instapaper/oauth.ts</code> without <code>server-only</code>, with its RFC 5849 vectors</td></tr>
+<tr><td><code>workers/src/instapaper/client.ts</code> (+ test)</td><td>Config, <code>InstapaperApi</code>, <code>InstapaperClient</code>, typed errors (§7)</td></tr>
+<tr><td><code>workers/src/instapaper/types.ts</code></td><td><code>InstapaperEnv</code> (the four optional secrets)</td></tr>
+<tr><td rowspan="8">Worker: Reader</td><td><code>workers/src/reader/to-reader.ts</code> (+ test)</td><td>The leg: list the folder, the pure <code>planBookmark</code> (§4), <code>siteName</code>, and intake of one bookmark</td></tr>
+<tr><td><code>workers/src/reader/scheduled.ts</code> (+ test)</td><td>Slots, the leg's wiring, the bookmark work item, the tally, the arithmetic table (§5)</td></tr>
+<tr><td><code>workers/src/reader/store.ts</code> (+ test)</td><td><code>ReaderPostInsert</code> becomes a union over sources; <code>fetchPostsForBookmarks</code>; restore patch</td></tr>
+<tr><td><code>workers/src/reader/worklist.ts</code> (+ test)</td><td><code>RETRY_COLUMNS</code> gains <code>source</code>; a retry's <code>publication_id</code> is nullable</td></tr>
+<tr><td><code>workers/src/reader/health.ts</code> (+ test)</td><td>The three <code>instapaper_*</code> columns ride the start, success and error writes, plus the stand-alone PATCH (§5)</td></tr>
+<tr><td><code>workers/src/reader/types.ts</code></td><td><code>ReaderEnv</code> extends <code>InstapaperEnv</code></td></tr>
+<tr><td><code>workers/src/index.ts</code> (+ test)</td><td><code>GET /</code>: <code>instapaper configured|unconfigured</code>; the log line</td></tr>
+<tr><td><code>workers/wrangler.toml</code></td><td>The secrets comment lists the four <code>INSTAPAPER_*</code> names and says they share values with Vercel</td></tr>
+<tr><td>Worker: eval</td><td><code>workers/scripts/reader-eval.ts</code></td><td><code>--instapaper</code>: read To Reader (up to <code>--limit</code>) and print each gist. It never archives or writes. <code>--dry-run</code> lists without calling the model.</td></tr>
+<tr><td rowspan="3">Frontend: data &amp; send</td><td><code>frontend/lib/data/reader.ts</code> (+ test)</td><td><code>'source'</code> in <code>READER_POST_LIST_COLUMNS</code>; <code>getReaderPostForSend</code> selects <code>source, instapaper_bookmark_id</code></td></tr>
+<tr><td><code>frontend/lib/instapaper/bookmark.ts</code> (+ test)</td><td><code>unarchiveBookmark</code>; the <code>gone</code> outcome; URL-only resave params</td></tr>
+<tr><td><code>frontend/app/api/reader/posts/[id]/instapaper/route.ts</code> (+ test)</td><td>The branch in §8</td></tr>
+<tr><td rowspan="7">Frontend: UI</td><td><code>frontend/lib/reader/source.ts</code> (+ test)</td><td><code>siteName(url)</code>; <code>postEyebrow(post)</code>: the site for Instapaper, <code>author ?? 'Unknown publication'</code> otherwise</td></tr>
+<tr><td><code>frontend/lib/reader/send.ts</code> (+ test)</td><td>Instapaper-sourced availability (§8)</td></tr>
+<tr><td><code>frontend/components/reader/post-row.tsx</code> (+ test, stories)</td><td>Eyebrow, and <i>· via Instapaper</i> in the meta line</td></tr>
+<tr><td><code>frontend/lib/reader/health.ts</code> (+ test)</td><td><code>instapaperHealth(health)</code> → <code>undefined | 'live' | 'erroring'</code></td></tr>
+<tr><td><code>frontend/components/reader/reader-header.tsx</code> (+ test, stories)</td><td>The third dot and its note</td></tr>
+<tr><td><code>frontend/components/reader/reading-list-view.tsx</code> (+ test)</td><td>The empty state's description</td></tr>
+<tr><td><code>frontend/lib/reader/fixtures.ts</code></td><td>An Instapaper post in each state; health rows with the leg live and erroring</td></tr>
+<tr><td rowspan="2">E2E</td><td><code>frontend/scripts/mock-supabase.mjs</code></td><td><code>source</code> default on seeded posts; <code>bookmarks/unarchive</code></td></tr>
+<tr><td><code>frontend/e2e/reader-instapaper-source.spec.ts</code></td><td>The seeded Instapaper row renders, and Send sends an unarchive and removes the row</td></tr>
+<tr><td>Docs</td><td><code>docs/demos/alf-272-to-reader/…</code></td><td>The demo doc (§12)</td></tr>
+</table></div>
+<p class="small">No comms file changes. The knowledge repo doesn't change. The prompt, schema module and summariser don't
+change.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="tests">11 · Tests</h2>
+<p>Red/Green TDD, per CLAUDE.md. No suite makes a live model call or a live Instapaper call: the SDK and <code>fetch</code>
+are faked.</p>
+<div class="scroll"><table>
+<tr><th>Suite</th><th>Pins</th></tr>
+<tr><td><code>instapaper/oauth.test.ts</code></td><td>The frontend suite's RFC 5849 vectors, ported unchanged: the worked base string and signatures, percent-encoding, form parameters in the base string, and the header's seven <code>oauth_*</code> fields.</td></tr>
+<tr><td><code>instapaper/client.test.ts</code></td><td>Each method's path, form body and signed header. Both <code>bookmarks/list</code> answer shapes. <code>get_text</code>: 1550 → null, and a 2xx JSON body is never text. <code>archive</code> treats "no such bookmark" as success. 401, 403, 1040, 1041, 1042, non-JSON and network failures map to their kinds. No error message contains a credential. Config is null when any value is blank.</td></tr>
+<tr><td><code>reader/to-reader.test.ts</code></td><td>Every row of the §4 plan. <code>siteName</code>: <code>www.</code> stripped, no URL → <code>Instapaper</code>, a non-http URL → <code>Instapaper</code>. Title fallback chain. Oldest-first ordering, and taking only <code>slots</code> bookmarks.</td></tr>
+<tr><td><code>reader/scheduled.test.ts</code></td><td>Unconfigured → no Instapaper fetch, health columns untouched. Configured with an empty folder → two Instapaper fetches and <code>instapaper_last_success_at</code> stamped. One bookmark → <code>get_text</code>, an insert with <code>source instapaper</code>, <code>received_at = now</code> and a null <code>publication_id</code>, then archive, summarise and <code>done</code>, with the model input's <code>Publication:</code> set to the site. Capped at the start → no Instapaper fetch at all. Capped mid-tick → later bookmarks untouched. No free slot → the leg doesn't list. An archive failure after the insert → post summarised, error stamped; the next tick archives only, with no second insert and no model call. A newsletter post holding the bookmark id and archived → restored and archived, with no model call. 1550 → <code>failed</code> / <code>no readable body</code>, then archived. A credentials refusal on the list → error stamped while newsletters still summarise, <code>last_success_at</code> is still stamped, and <code>failures</code> is empty. Missing folder → the owner-facing message. A Gmail transport stop after a failed list → the stand-alone Instapaper PATCH. <b>A worst-case tick counts at most 48 fetches</b> in the fake.</td></tr>
+<tr><td><code>reader/worklist.test.ts</code>, <code>store.test.ts</code>, <code>health.test.ts</code></td><td>A retried Instapaper post's input uses the site; the insert union; the <code>in.(…)</code> read; the health patch shapes.</td></tr>
+<tr><td><code>index.test.ts</code></td><td><code>GET /</code> reports <code>instapaper configured</code> / <code>unconfigured</code>; the log line.</td></tr>
+<tr><td><code>database/src/assertions.ts</code></td><td>Existing rows read <code>gmail</code>. A Gmail row without <code>gmail_message_id</code> is rejected. An Instapaper row without a bookmark id, or with a <code>publication_id</code>, is rejected. A second Instapaper row with the same bookmark id is rejected, while a newsletter row with the same id is allowed. The <code>instapaper_*</code> health columns exist and are nullable.</td></tr>
+<tr><td><code>bookmark.test.ts</code>, <code>route.test.ts</code>, <code>send.test.ts</code></td><td><code>unarchive</code>'s path and params; <code>gone</code> → an add with a URL and no <code>content</code>; the new id stored; a newsletter send unchanged; availability.</td></tr>
+<tr><td><code>source.test.ts</code>, <code>post-row.test.tsx</code>, <code>health.test.ts</code>, <code>reader-header.test.tsx</code>, <code>reading-list-view.test.tsx</code></td><td>The eyebrow and <i>via Instapaper</i> for an Instapaper row and not for a newsletter; Original points at the bookmark URL; the dot is hidden, live or erroring, with the note's exact words; the empty-state copy.</td></tr>
+<tr><td>Storybook</td><td>PostRow: Instapaper summarised / arriving / no text. ReaderHeader: Instapaper live / erroring. Baselines approved through the <code>storybook</code> skill's capture-then-approve flow.</td></tr>
+<tr><td>Playwright</td><td><code>reader-instapaper-source.spec.ts</code>: the seeded row shows the site and <i>via Instapaper</i>; Send → the mock recorded one <code>bookmarks/unarchive</code> with that bookmark id and no <code>bookmarks/add</code>, and the row left the list.</td></tr>
+</table></div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="build">12 · Build plan &amp; evidence</h2>
+<ul>
+  <li><b>One implementation session</b>, one <code>phase: implementation</code> PR, which archives this spec
+    (<code>git mv</code> to <code>docs/specs/archive/</code>) in the same PR.</li>
+  <li><b>Team.</b> The lead writes the migration, the regenerated types and <code>InstapaperApi</code> first, alone. Then,
+    optionally, one mid-tier subagent owns <code>workers/src/instapaper/*</code> and its tests, while the lead builds the leg
+    against a fake of the interface. The file sets are disjoint and <code>InstapaperApi</code> is the only seam. The frontend
+    half (send branch, row, header) is the lead's, because it shares fixtures with the Worker half's types. Subagents never
+    commit.</li>
+  <li><b>Demo doc.</b> Follow the <code>showboat</code> skill's evidence rules rather than inventing new ones here. This change
+    has a visual surface (the row, the header, the empty state) and a non-visual one (the Worker leg, the Send branch), so
+    the demo needs the evidence each kind calls for, covering every acceptance line below.</li>
+  <li><b>Egress.</b> A cloud session can't reach instapaper.com, so everything is verified against fakes, and the live check
+    is the owner's (§13). Never paste live credentials into a session.</li>
+  <li><b>PR description</b> tells the owner the setup steps in §13 and notes that the Instapaper API paths were built to
+    §7's table unless the docs could be read.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="setup">13 · Setup checklist (owner)</h2>
+<p>Not agent work. It goes into the PR description.</p>
+<ul class="checks">
+  <li>In Instapaper, create a folder named exactly <b>To Reader</b>.</li>
+  <li>Put the four values on the personal Worker: <code>npx wrangler secret put INSTAPAPER_CONSUMER_KEY</code>, and the same
+    for <code>_CONSUMER_SECRET</code>, <code>_ACCESS_TOKEN</code> and <code>_ACCESS_TOKEN_SECRET</code>, using the same values
+    as Vercel. A token is bound to the key that issued it. If one is ever re-minted
+    (<code>npm run instapaper:token -w frontend</code>), update Vercel, the Worker and the knowledge repo's secrets together.</li>
+  <li><b>Live check before relying on it.</b> With one article in To Reader, a local Anthropic key and the four values
+    exported: <code>npm run eval:reader -w workers -- --instapaper --limit 1</code>. Expect its title, site and gist, and
+    confirm that it archived nothing. This is the live test of §7's paths.</li>
+  <li><b>After the deploy:</b> <code>curl</code> the Worker's <code>/</code> and look for <code>instapaper configured</code>.
+    Move an article into To Reader. Within about five minutes it should be in the Reader, summarised, with <i>via
+    Instapaper</i>; it should be in Instapaper's Archive; and the header's Instapaper dot should be green. Press Send, and it
+    should be at the top of Unread.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="ac">14 · Acceptance criteria</h2>
+<ul class="checks">
+  <li>With the four <code>INSTAPAPER_*</code> secrets set, an article moved into <b>To Reader</b> becomes one
+    <code>reader_posts</code> row with <code>source = 'instapaper'</code>, its bookmark id, the bookmark's title and URL,
+    <code>received_at</code> = the tick's instant, the text from <code>get_text</code> via <code>htmlToText</code>, and no
+    publication or mail identity.</li>
+  <li>It is summarised in the same tick by the unchanged summariser, prompt (<code>READER_PROMPT_VERSION</code> still 1) and
+    model, with the site as <code>Publication:</code>, and its model call counts against <code>READER_DAILY_CAP</code>.</li>
+  <li>The bookmark is archived in Instapaper after the insert. If that archive fails, the next tick archives it without a
+    second post or a second model call.</li>
+  <li>A bookmark id that an existing post already holds (from either source) gets no new post. The bookmark is archived, and
+    an archived post returns to the reading list.</li>
+  <li>Error 1550 yields a <code>failed</code> / <code>no readable body</code> row with its Original link, and the bookmark is
+    archived.</li>
+  <li>On a capped day the leg makes no Instapaper call, and nothing leaves To Reader. A bookmark whose turn comes after the
+    cap is reached mid-tick is untouched.</li>
+  <li>The leg lists only when a slot is free and takes at most that many bookmarks, oldest first. A worst-case tick stays at or
+    under 48 fetches, and <code>READER_TICK_LIMIT</code> stays 6.</li>
+  <li>An Instapaper failure stops only the leg, is stamped on <code>instapaper_last_error(_at)</code> in the owner-facing
+    words from §7, and never blocks newsletters, retries or <code>last_success_at</code>. A clean leg stamps
+    <code>instapaper_last_success_at</code>.</li>
+  <li>Unconfigured → no Instapaper call and no stamp, <code>GET /</code> says <code>instapaper unconfigured</code>, and the
+    header draws no Instapaper dot.</li>
+  <li>The row's eyebrow is the site (with <code>www.</code> stripped), and its meta line ends <i>· via Instapaper</i>.
+    Newsletter rows are unchanged.</li>
+  <li>The header's Instapaper dot is green when the last success is newer than the last error. Otherwise it is red, with the
+    note <i>“Instapaper stopped taking articles from To Reader {elapsed since the last success} — {error}. Articles wait there
+    until it’s fixed.”</i>, or <i>“Instapaper can’t take articles from To Reader — {error}. …”</i> if it has never succeeded.</li>
+  <li><b>Send to Instapaper</b> on an Instapaper-sourced row calls <code>bookmarks/unarchive</code> with its bookmark id (no
+    <code>bookmarks/add</code>), stamps <code>instapaper_sent_at</code>, and archives the post. If the bookmark is gone, it
+    resaves by URL without <code>content</code>. <b>Archive</b> makes no Instapaper call.</li>
+  <li>The empty state reads <i>“Newsletters from your publications, and articles you move to To Reader in Instapaper, land
+    here summarised.”</i></li>
+  <li>The migration passes <code>migration-lint</code>, types are regenerated, existing rows read <code>source = 'gmail'</code>,
+    and the §11 DB assertions pass.</li>
+  <li><code>npm run eval:reader -w workers -- --instapaper</code> reads To Reader and prints gists without archiving or
+    writing anything.</li>
+  <li><code>check</code> is green; there is a demo doc per the <code>showboat</code> skill; and this spec is archived by the
+    implementation PR.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="out">15 · Out of scope &amp; open questions</h2>
+<h3>Deliberately out</h3>
+<ul>
+  <li><b>Highlights and notes.</b> That is To Wiki's job. The leg ignores the highlights <code>bookmarks/list</code> returns.</li>
+  <li><b>Tags.</b> They can't be written through the API (ALF-263 §1).</li>
+  <li><b>A separate daily cap, or a higher shared one.</b> The owner chose to share 30 (D9). Raising it is a one-line var change if a backlog ever makes that worth it.</li>
+  <li><b>Matching by URL</b> between an Instapaper article and a newsletter post that was never sent. Identity is the bookmark id only (D5).</li>
+  <li><b>Author extraction</b> from the <code>get_text</code> HTML. The row shows the site, and <code>author</code> stays null.</li>
+  <li><b>Wiki picks' <code>published</code> date.</b> For an Instapaper post it is the intake date (the envelope reads <code>received_at</code>), because the bookmark has no publish date.</li>
+  <li><b>An Instapaper article sent through both To Reader picks and To Wiki</b> becomes two <code>raw/</code> folders (reader-post identity vs URL identity), the same known gap ALF-263 §14 names.</li>
+  <li><b>Mirroring Reader decisions back to Instapaper</b> beyond Send. Archive and Unarchive in the Reader make no call (D4).</li>
+  <li><b>A paywalled-teaser marker.</b> It is still unbuilt for newsletters and isn't added here.</li>
+</ul>
+<h3>Genuinely open (for the implementer to confirm, not to decide)</h3>
+<ul>
+  <li><b>The API prefixes and the missing-bookmark error code</b> (§7). The knowledge client's <code>/api/1.1/</code> paths
+    haven't been run live yet (its README's dry-run and smoke-test items are unticked). The owner's <code>eval:reader --instapaper</code>
+    run settles this before the leg is relied on.</li>
+  <li><b>Instapaper's rate limits aren't published.</b> A configured, uncapped tick makes two listing calls every five minutes,
+    about 576 a day. If <code>rate-limited</code> starts showing on the dot, the fix is to list on every other tick (a
+    constant in <code>to-reader.ts</code>). No need to build that until it happens.</li>
+</ul>
+
+<p class="small" style="margin-top:2rem">Sources: <code>docs/specs/epics/ALF-232.html</code> (D2, D6–D10, §3.4, §5) and
+<code>ALF-232-notes.md</code> (the arithmetic as built, and Story 2's health surface); <code>docs/specs/archive/ALF-263.html</code>
+and <code>ac3charland/knowledge</code>'s <code>scripts/lib/instapaper.ts</code> and README; <code>docs/specs/archive/ALF-238.html</code>
+and <code>frontend/lib/instapaper/*</code>; <code>workers/src/reader/*</code>; <code>workers/wrangler.toml</code>; migrations
+0035, 0036, 0039, 0040; <code>frontend/components/reader/*</code>, <code>frontend/lib/reader/*</code>, <code>frontend/app/globals.css</code>.</p>
+
+</div>
+<script>
+  (function () {
+    var mock = document.getElementById('mock');
+    var buttons = document.querySelectorAll('.switch button');
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        mock.setAttribute('data-state', button.getAttribute('data-set'));
+        buttons.forEach(function (other) {
+          other.setAttribute('aria-pressed', String(other === button));
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>
