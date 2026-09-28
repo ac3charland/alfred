@@ -240,8 +240,7 @@ function stdout(message: string): void {
 /**
  * Apply every pending migration to the database named by `SUPABASE_DB_URL` — the merge pipeline's
  * entry point, and a usable local command (`--dry-run` to see what's pending on a live database,
- * `--baseline <file>` to adopt an unadopted one). `INSTANCE` only labels the output, so a matrix
- * run's two jobs stay readable.
+ * `--baseline <file>` to adopt an unadopted one). `INSTANCE` only labels the output.
  */
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
