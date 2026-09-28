@@ -31,9 +31,10 @@ interface RatioEntry {
 }
 
 /**
- * The bar's entries, left to right: every project (kept even at zero — each is a repo the owner
- * ships to), then Other, which is dropped when empty. A zero Other is indistinguishable from an
- * unmeasured one to a reader, so showing it would be noise either way.
+ * The bar's entries, left to right: each project with at least one merged PR this window, then
+ * Other, also dropped when empty. A project that shipped nothing this week reads the same as an
+ * empty Other — nothing happened there — so its row is dropped for the same reason, rather than
+ * crowding a legend that already grows with the project count.
  *
  * Each entry is joined to its project by `owner/name` — unique per project, and the very columns
  * the server built `repo` from — so it wears the colour `projectColorFor` gives that project
@@ -46,18 +47,20 @@ function toEntries(ratio: PrRatioResponse, projects: Project[]): RatioEntry[] {
     projects.map((project) => [`${project.repo_owner}/${project.repo_name}`, project]),
   );
 
-  const entries: RatioEntry[] = ratio.repos.map((repo) => {
-    const project = byRepo.get(repo.repo);
-    return {
-      key: repo.repo,
-      // Already the project's name — the server labels each repo with it.
-      label: repo.label,
-      count: repo.count,
-      percentage: repo.percentage,
-      tone: projectFillClasses(projectColorFor(projects, project?.id ?? null)),
-      ...(project && { href: projectBoardHref(project.id) }),
-    };
-  });
+  const entries: RatioEntry[] = ratio.repos
+    .filter((repo) => repo.count > 0)
+    .map((repo) => {
+      const project = byRepo.get(repo.repo);
+      return {
+        key: repo.repo,
+        // Already the project's name — the server labels each repo with it.
+        label: repo.label,
+        count: repo.count,
+        percentage: repo.percentage,
+        tone: projectFillClasses(projectColorFor(projects, project?.id ?? null)),
+        ...(project && { href: projectBoardHref(project.id) }),
+      };
+    });
 
   if (ratio.other && ratio.other.count > 0) {
     entries.push({

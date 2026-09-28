@@ -169,7 +169,43 @@ describe('PrRatio', () => {
     expect(screen.queryByText('Other')).not.toBeInTheDocument();
   });
 
-  it('keeps a project listed at zero — only Other is dropped when empty', async () => {
+  it('hides a project with no PRs merged this window', async () => {
+    mockGetPrRatio.mockResolvedValue({
+      ...RATIO,
+      repos: [
+        { repo: 'ac3charland/realplay', label: 'RealPlay', count: 0, percentage: 0 },
+        { repo: 'ac3charland/alfred', label: 'Alfred', count: 9, percentage: 100 },
+      ],
+    });
+
+    renderCard();
+
+    const entries = await screen.findAllByRole('listitem');
+    expect(entries.map((entry) => entry.textContent)).toEqual(['Alfred100%(9)']);
+    // The accessible label is built from the same filtered entries — a fix that only hid the
+    // legend row (and left the bar's label naming the zero-count project) would fail this.
+    expect(
+      await screen.findByRole('img', { name: 'Alfred 100 percent, 9 pull requests' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a project whose count rounds down to 0% but merged a real PR', async () => {
+    mockGetPrRatio.mockResolvedValue({
+      ...RATIO,
+      total: 251,
+      repos: [
+        { repo: 'ac3charland/realplay', label: 'RealPlay', count: 1, percentage: 0 },
+        { repo: 'ac3charland/alfred', label: 'Alfred', count: 250, percentage: 100 },
+      ],
+    });
+
+    renderCard();
+
+    const entries = await screen.findAllByRole('listitem');
+    expect(entries.map((entry) => entry.textContent)).toEqual(['RealPlay0%(1)', 'Alfred100%(250)']);
+  });
+
+  it('drops every zero-count project, leaving only what actually shipped', async () => {
     mockGetPrRatio.mockResolvedValue({
       ...RATIO,
       total: 4,
@@ -180,11 +216,7 @@ describe('PrRatio', () => {
     renderCard();
 
     const entries = await screen.findAllByRole('listitem');
-    expect(entries.map((entry) => entry.textContent)).toEqual([
-      'RealPlay0%(0)',
-      'Alfred0%(0)',
-      'Other100%(4)',
-    ]);
+    expect(entries.map((entry) => entry.textContent)).toEqual(['Other100%(4)']);
     expect(screen.getByText(/4 total/)).toBeInTheDocument();
   });
 
