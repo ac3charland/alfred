@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -16,11 +16,11 @@ import { makeWikiPage, toWikiIndexRow } from '@/lib/wiki/fixtures';
 
 // The desktop field renders its popover only on a desktop viewport; report a match for the
 // `(min-width: 768px)` query so the dropdown mounts under jsdom.
-function mockDesktopViewport() {
+function mockDesktopViewport(desktop = true) {
   jest.spyOn(globalThis, 'matchMedia').mockImplementation(
     (query: string) =>
       ({
-        matches: query.includes('min-width'),
+        matches: desktop && query.includes('min-width'),
         media: query,
         onchange: null,
         addEventListener: jest.fn(),
@@ -109,7 +109,7 @@ function renderSearchBox(
                 initialStories={seed.stories ?? []}
               >
                 <SearchProvider>
-                  <SearchBox placement="desktop" />
+                  <SearchBox />
                 </SearchProvider>
               </CodeProvider>
             </TasksProvider>
@@ -351,6 +351,39 @@ describe('SearchBox', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(input).toHaveValue('');
+  });
+
+  it('leaves ⌘P unclaimed on a narrow viewport, where the mobile sheet owns it', () => {
+    jest.restoreAllMocks();
+    mockDesktopViewport(false);
+    renderSearchBox();
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'p',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      globalThis.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.getByRole('combobox')).not.toHaveFocus();
+  });
+
+  it('never renders its listbox on a narrow viewport, even with the shared store open', () => {
+    jest.restoreAllMocks();
+    mockDesktopViewport(false);
+    renderSearchBox({ tasks: [makeItem({ id: 't1', title: 'Firewall triage UI' })] });
+
+    // The store's `open` flag is shared with the mobile sheet; typing sets it, but on a phone the
+    // sheet is the one results surface, so the header field's popover must stay shut.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'firewall' } });
+
+    expect(screen.getByRole('combobox')).toHaveValue('firewall');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Firewall triage UI')).not.toBeInTheDocument();
   });
 
   describe('completed items', () => {
