@@ -52,6 +52,8 @@ export {
 
 /** Likewise the Reader seed builders — the same ones the unit tests and stories use. */
 export {
+  makeInstapaperHealth,
+  makeReaderArticle,
   makeReaderHealth,
   makeReaderOverview,
   makeReaderPost,

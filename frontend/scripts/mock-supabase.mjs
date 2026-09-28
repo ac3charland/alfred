@@ -44,6 +44,7 @@
  *   Instapaper (not part of Supabase — the Reader's Send route calls it from the Next server,
  *   where page.route() can't reach, so INSTAPAPER_API_URL points it here):
  *     POST /api/1/bookmarks/add                               → a bookmark, or a seeded error
+ *     POST /api/1/bookmarks/unarchive                         → the same bookmark, or the error
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed   GET /__mock__/state
  *     POST /__mock__/github/fail-next  → make the next matching GitHub request fail once
@@ -122,11 +123,13 @@ let readerPosts = [];
 // success on it. So it is never auto-seeded — a test that wants a tick's history says so.
 /** @type {Record<string, unknown>[]} */
 let readerHealth = [];
-// ── Instapaper: every bookmarks/add the Send route made, and the error code to answer with. ──
-// Recorded as the route sent them — the Authorization header and the decoded form body — so a
-// test can check the request was signed and carried the post's body. A seeded error code makes
-// every add answer Instapaper's error shape instead of a bookmark; null answers a bookmark.
-/** @type {{ authorization: string, params: Record<string, string> }[]} */
+// ── Instapaper: every call the Send route made, and the error code to answer with. ──
+// Recorded as the route sent them — which endpoint, the Authorization header and the decoded
+// form body — so a test can check the request was signed, carried the post's body, and went to
+// `bookmarks/add` for a newsletter or `bookmarks/unarchive` for an article from To Reader. A
+// seeded error code makes every call answer Instapaper's error shape instead of a bookmark; null
+// answers a bookmark.
+/** @type {{ path: string, authorization: string, params: Record<string, string> }[]} */
 let instapaperRequests = [];
 /** @type {number | null} */
 let instapaperErrorCode = null;
@@ -703,15 +706,24 @@ function newReaderPublication(input) {
   };
 }
 
-/** A post. Unsummarised by default — `summary_state` and its attempts default like the column. */
+/**
+ * A post. Unsummarised by default — `summary_state` and its attempts default like the column. A
+ * newsletter unless it says otherwise (migration 0041's `source` default); an Instapaper article
+ * carries no mail identity, so a seed's explicit nulls for those are kept rather than defaulted.
+ */
 function newReaderPost(input) {
   const receivedAt = input.received_at ?? new Date().toISOString();
+  const source = input.source ?? 'gmail';
+  const mailDefault = (value, fallback) =>
+    value === undefined ? (source === 'gmail' ? fallback : null) : value;
   return {
     id: input.id ?? randomUUID(),
+    source,
+    site: input.site ?? null,
     publication_id: input.publication_id ?? null,
     comm_message_id: input.comm_message_id ?? null,
-    account_key: input.account_key ?? 'gmail-personal',
-    gmail_message_id: input.gmail_message_id ?? randomUUID(),
+    account_key: mailDefault(input.account_key, 'gmail-personal'),
+    gmail_message_id: mailDefault(input.gmail_message_id, randomUUID()),
     rfc822_message_id: input.rfc822_message_id ?? null,
     title: input.title ?? '',
     author: input.author ?? null,
@@ -797,6 +809,10 @@ function newReaderHealth(input) {
     daily_cap: input.daily_cap ?? null,
     calls_today: input.calls_today ?? null,
     calls_day: input.calls_day ?? null,
+    // The To Reader leg's own columns (migration 0041).
+    instapaper_last_success_at: input.instapaper_last_success_at ?? null,
+    instapaper_last_error: input.instapaper_last_error ?? null,
+    instapaper_last_error_at: input.instapaper_last_error_at ?? null,
   };
 }
 
@@ -2381,17 +2397,23 @@ function handleControl(req, res, url, body) {
 }
 
 /**
- * Instapaper's Full API, as much of it as the Send route uses: `bookmarks/add`, answering the
- * JSON array Instapaper does — a bookmark, or (when a test seeded one) an error with its code.
+ * Instapaper's Full API, as much of it as the Send route uses: `bookmarks/add` for a newsletter
+ * and `bookmarks/unarchive` for an article from To Reader, each answering the JSON array
+ * Instapaper does — a bookmark, or (when a test seeded one) an error with its code. An add mints
+ * a new bookmark id; an unarchive answers with the bookmark it was handed.
  */
 function handleInstapaper(req, res, url, raw) {
-  if (url.pathname !== '/api/1/bookmarks/add' || req.method !== 'POST') {
+  const add = url.pathname === '/api/1/bookmarks/add';
+  const unarchive = url.pathname === '/api/1/bookmarks/unarchive';
+  if ((!add && !unarchive) || req.method !== 'POST') {
     sendJson(res, 404, { message: `No Instapaper route: ${req.method} ${url.pathname}` });
     return;
   }
+  const params = Object.fromEntries(new URLSearchParams(raw));
   instapaperRequests.push({
+    path: url.pathname,
     authorization: req.headers.authorization ?? '',
-    params: Object.fromEntries(new URLSearchParams(raw)),
+    params,
   });
   if (instapaperErrorCode !== null) {
     sendJson(res, 400, [
@@ -2399,7 +2421,8 @@ function handleInstapaper(req, res, url, raw) {
     ]);
     return;
   }
-  sendJson(res, 200, [{ type: 'bookmark', bookmark_id: 1000 + instapaperRequests.length }]);
+  const bookmarkId = unarchive ? Number(params['bookmark_id']) : 1000 + instapaperRequests.length;
+  sendJson(res, 200, [{ type: 'bookmark', bookmark_id: bookmarkId }]);
 }
 
 // ── server ───────────────────────────────────────────────────────────────────
