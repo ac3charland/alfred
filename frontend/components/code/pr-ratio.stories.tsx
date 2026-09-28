@@ -159,17 +159,31 @@ export const Failed: Story = {
 };
 
 /**
+ * `LegendKeyboardFocus`'s own capture frame. At the meta's 760px the ring — a thin stroke — is
+ * under 1% of the capture, so a dropped ring would still pass the test-runner's threshold; at
+ * 200px it isn't. Padded so the ring, drawn outside the link's box, isn't clipped.
+ */
+function withNarrowFocusFrame(Story: React.ComponentType) {
+  return (
+    <div data-testid="pr-ratio-focus-frame" className="inline-flex w-[200px] p-2">
+      <Story />
+    </div>
+  );
+}
+
+/**
  * Tabbing into the card lands on the first project's legend row and draws the app's blue focus
- * ring around it. Other is not focusable, so it never takes the ring.
+ * ring around it. Other is not focusable, so it never takes the ring. Captured in its own
+ * narrow frame (`withNarrowFocusFrame`) so a missing ring fails the snapshot.
  *
  * Declared ahead of `LegendHover` on purpose: the test-runner's real pointer stays wherever the
  * last story hovered it, so a focus capture taken after that hover would carry the underline too.
  */
 export const LegendKeyboardFocus: Story = {
   parameters: {
-    visualTest: { focus: true },
+    visualTest: { target: '[data-testid="pr-ratio-focus-frame"]', focus: true },
   },
-  decorators: [stubEndpoint(200, WITH_OTHER)],
+  decorators: [withNarrowFocusFrame, stubEndpoint(200, WITH_OTHER)],
 };
 
 /** Hovering a project's legend row underlines its name — the row is a link to its board. */
