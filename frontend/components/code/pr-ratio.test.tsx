@@ -182,6 +182,27 @@ describe('PrRatio', () => {
 
     const entries = await screen.findAllByRole('listitem');
     expect(entries.map((entry) => entry.textContent)).toEqual(['Alfred100%(9)']);
+    // The accessible label is built from the same filtered entries — a fix that only hid the
+    // legend row (and left the bar's label naming the zero-count project) would fail this.
+    expect(
+      await screen.findByRole('img', { name: 'Alfred 100 percent, 9 pull requests' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a project whose count rounds down to 0% but merged a real PR', async () => {
+    mockGetPrRatio.mockResolvedValue({
+      ...RATIO,
+      total: 251,
+      repos: [
+        { repo: 'ac3charland/realplay', label: 'RealPlay', count: 1, percentage: 0 },
+        { repo: 'ac3charland/alfred', label: 'Alfred', count: 250, percentage: 100 },
+      ],
+    });
+
+    renderCard();
+
+    const entries = await screen.findAllByRole('listitem');
+    expect(entries.map((entry) => entry.textContent)).toEqual(['RealPlay0%(1)', 'Alfred100%(250)']);
   });
 
   it('drops every zero-count project, leaving only what actually shipped', async () => {

@@ -370,6 +370,11 @@ test('hides a project’s legend row when it merged no PRs this window (ALF-284)
   await expect(legend.first()).toContainText('Alfred');
   // RealPlay still names the sidebar's project link — only its PR-ratio legend row is gone.
   await expect(legend.filter({ hasText: 'RealPlay' })).toHaveCount(0);
+  // The bar's accessible label is built from the same filtered set, so it can't still name
+  // the hidden project either.
+  await expect(
+    page.getByRole('img', { name: 'Alfred 100 percent, 9 pull requests' }),
+  ).toBeVisible();
 });
 
 test('opens a project’s board from its PR-ratio legend entry, while Other stays plain text', async ({
