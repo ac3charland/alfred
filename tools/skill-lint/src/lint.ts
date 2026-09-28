@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { type Finding, type Rule, rules as defaultRules } from './rules.ts';
 import type { SkillContext } from './skill.ts';
 
@@ -8,16 +10,28 @@ export interface SkillReport {
 }
 
 /** Run every rule against a single skill and collect the findings. */
-export function lintSkill(skill: SkillContext, rules: readonly Rule[] = defaultRules): Finding[] {
-  return rules.flatMap((rule) => rule.check(skill));
+export function lintSkill(
+  skill: SkillContext,
+  rules: readonly Rule[] = defaultRules,
+  library: readonly SkillContext[] = [skill],
+): Finding[] {
+  return rules.flatMap((rule) => rule.check(skill, library));
 }
 
-/** Run every rule against each skill, preserving input order. */
+/**
+ * Run every rule against each skill, preserving input order. `library` holds every skill a rule
+ * may compare against, even when only the changed skills are linted; each skill sees only the
+ * ones in its own skills directory.
+ */
 export function lintSkills(
   skills: readonly SkillContext[],
   rules: readonly Rule[] = defaultRules,
+  library: readonly SkillContext[] = skills,
 ): SkillReport[] {
-  return skills.map((skill) => ({ skill, findings: lintSkill(skill, rules) }));
+  return skills.map((skill) => {
+    const siblings = library.filter((other) => path.dirname(other.dir) === path.dirname(skill.dir));
+    return { skill, findings: lintSkill(skill, rules, siblings) };
+  });
 }
 
 /** Tally findings by severity across reports. */

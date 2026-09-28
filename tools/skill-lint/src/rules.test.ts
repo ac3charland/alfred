@@ -19,8 +19,23 @@ function makeSkill(overrides: Partial<SkillContext> = {}): SkillContext {
     resourceDirs: [],
     isCompound: false,
     headings: [{ level: 1, text: 'Example', line: 1 }],
+    houseStylesheets: [],
     ...overrides,
   };
+}
+
+function withStylesheet(
+  name: string,
+  css: string | undefined,
+  line = 19,
+  library = '/skills',
+): SkillContext {
+  return makeSkill({
+    name,
+    dir: `${library}/${name}`,
+    skillMdPath: `${library}/${name}/SKILL.md`,
+    houseStylesheets: [{ asset: `${name}/assets/template.html`, line, css }],
+  });
 }
 
 function findingsFor(rule: string, skill: SkillContext): ReturnType<typeof lintSkill> {
@@ -138,6 +153,52 @@ describe('compound-toc', () => {
   });
 });
 
+describe('house-stylesheet', () => {
+  const css = ':root{--ink:#13203a}\nbody{margin:0}';
+
+  it('passes a skill that carries no copy', () => {
+    const skill = makeSkill();
+    expect(lintSkill(skill, rules, [skill, withStylesheet('refinement', css)])).toHaveLength(0);
+  });
+
+  it('passes when every copy in the library matches', () => {
+    const spike = withStylesheet('spike', css);
+    const library = [withStylesheet('refinement', css), spike];
+    expect(lintSkill(spike, rules, library)).toHaveLength(0);
+  });
+
+  it('errors on a copy that differs from another skill’s, naming both and the first differing line', () => {
+    const spike = withStylesheet('spike', ':root{--ink:#000}\nbody{margin:0}', 30);
+    const library = [withStylesheet('refinement', css), spike];
+    const finding = lintSkill(spike, rules, library).find(
+      (found) => found.rule === 'house-stylesheet',
+    );
+    expect(finding?.severity).toBe('error');
+    expect(finding?.message).toContain('spike/assets/template.html:30');
+    expect(finding?.message).toContain('refinement/assets/template.html');
+  });
+
+  it.each([
+    ['a later line', 'a\nX\nc', 31],
+    ['a copy that is a prefix of the other', 'a\nb', 32],
+  ])('points at the first differing line on %s', (_label, drifted, line) => {
+    const spike = withStylesheet('spike', drifted, 30);
+    const [finding] = lintSkill(spike, rules, [withStylesheet('refinement', 'a\nb\nc'), spike]);
+    expect(finding?.message).toContain(`spike/assets/template.html:${String(line)} `);
+  });
+
+  it('errors on a copy that lost its TEMPLATE · 1 line, and compares no one against it', () => {
+    const spike = withStylesheet('spike', undefined, 25);
+    const refinement = withStylesheet('refinement', css);
+    const reports = lintSkills([spike, refinement], rules);
+    expect(reports.map((report) => report.findings.map((finding) => finding.message))).toEqual([
+      [expect.stringContaining('spike/assets/template.html:25')],
+      [],
+    ]);
+    expect(reports[0]?.findings[0]?.message).toContain('TEMPLATE · 1');
+  });
+});
+
 describe('lint orchestration', () => {
   it('registers the rules', () => {
     expect(rules.map((rule) => rule.name)).toEqual([
@@ -146,7 +207,22 @@ describe('lint orchestration', () => {
       'description-no-repo-name',
       'body-length',
       'compound-toc',
+      'house-stylesheet',
     ]);
+  });
+
+  it('compares a skill only with skills from its own skills directory', () => {
+    const spike = withStylesheet('spike', 'b{}');
+    const elsewhere = withStylesheet('refinement', 'a{}', 19, '/elsewhere');
+    expect(lintSkills([spike, elsewhere], rules).flatMap((report) => report.findings)).toEqual([]);
+  });
+
+  it('checks each linted skill against the whole library, reporting only on the linted ones', () => {
+    const refinement = withStylesheet('refinement', 'a{}');
+    const spike = withStylesheet('spike', 'b{}');
+    const reports = lintSkills([refinement], rules, [refinement, spike]);
+    expect(reports.map((report) => report.skill.name)).toEqual(['refinement']);
+    expect(reports[0]?.findings.map((finding) => finding.rule)).toEqual(['house-stylesheet']);
   });
 
   it('tallies errors and warnings across skills', () => {

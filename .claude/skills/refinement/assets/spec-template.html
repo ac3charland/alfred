@@ -2,9 +2,10 @@
 <!-- guide: The house scaffold for a spec. Copy it to docs/specs/<REF>.html (epic: docs/specs/epics/<REF>.html).
      Two readers, split at the fold: #brief holds only what the human needs to approve — ≤ 300 words of prose
      (epic ≤ 450), plates and figures uncounted; #detail holds everything the implementer needs.
-     Keep every id, the order, the fold and stylesheet sections 1–3. One file: CSS stays inline, no build
-     step, no external dependency but the app's own font (section 4). It must read completely with scripting
-     off; inline <script> is enhancement only.
+     Keep every id, the order, the fold and stylesheet sections 1–3 — the house stylesheet, shared verbatim with
+     the spike skill's findings template (skill-lint's house-stylesheet rule keeps the copies identical).
+     One file: CSS stays inline, no build step, no external dependency but the app's own font (section 4).
+     It must read completely with scripting off; inline <script> is enhancement only.
      Each fact lives once: the brief states the pick; the detail explains it by id (D2, P1) and never
      restates or contradicts it. On conflict the brief wins; for anything visual, the plate wins over prose.
      Delete an unused optional section; never write "None". Placeholders are [bracketed]: replace every one.

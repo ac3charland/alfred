@@ -13,6 +13,22 @@ export interface Heading {
 }
 
 /**
+ * One copy of the house stylesheet — the spec template's sections 1–3, which every HTML
+ * template in the library shares verbatim — found in a skill's `assets/`.
+ */
+export interface HouseStylesheet {
+  /** The asset's path within the library, e.g. `spike/assets/findings-template.html`. */
+  readonly asset: string;
+  /** 1-based line in the asset where the copy starts, or its first section marker if it can't. */
+  readonly line: number;
+  /**
+   * The copy: its `TEMPLATE · 1` line up to section 4 or `</style>`, trailing blanks trimmed.
+   * `undefined` when the style block carries section markers but no `TEMPLATE · 1` line to start one.
+   */
+  readonly css: string | undefined;
+}
+
+/**
  * Everything a lint rule needs to know about one skill, parsed once up front so
  * rules stay pure functions of this shape. Adding a field here is how you give a
  * new rule more to work with.
@@ -38,6 +54,8 @@ export interface SkillContext {
   readonly isCompound: boolean;
   /** Headings parsed from the body (code fences excluded). */
   readonly headings: readonly Heading[];
+  /** Copies of the house stylesheet carried by the skill's `assets/*.html`. */
+  readonly houseStylesheets: readonly HouseStylesheet[];
 }
 
 const BLOCK_SCALAR_INDICATORS = new Set(['>', '|', '>-', '|-', '>+', '|+']);
@@ -135,6 +153,34 @@ function listResourceDirs(dir: string): string[] {
   );
 }
 
+/** A copy per HTML file under `assets/` whose `<style>` block carries the section markers. */
+function readHouseStylesheets(dir: string): HouseStylesheet[] {
+  const assets = path.join(dir, 'assets');
+  if (!existsSync(assets)) return [];
+  const files = sorted(
+    readdirSync(assets, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.html'))
+      .map((entry) => path.relative(assets, path.join(entry.parentPath, entry.name))),
+  );
+  return files.flatMap((file): HouseStylesheet[] => {
+    const lines = readFileSync(path.join(assets, file), 'utf8').split(/\r?\n/);
+    const style = lines.findIndex((line) => /^\s*<style\b/.test(line));
+    if (style === -1) return [];
+    const close = lines.findIndex((line, index) => index > style && line.includes('</style>'));
+    const block = lines.slice(0, close === -1 ? lines.length : close);
+    const inBlock = (text: string) =>
+      block.findIndex((line, index) => index > style && line.includes(text));
+    const marker = inBlock('TEMPLATE · ');
+    if (marker === -1) return [];
+    const asset = path.posix.join(path.basename(dir), 'assets', file.split(path.sep).join('/'));
+    const start = inBlock('TEMPLATE · 1');
+    if (start === -1) return [{ asset, line: marker + 1, css: undefined }];
+    const length = block.slice(start + 1).findIndex((line) => line.includes('TEMPLATE · 4'));
+    const end = length === -1 ? block.length : start + 1 + length;
+    return [{ asset, line: start + 1, css: block.slice(start, end).join('\n').trimEnd() }];
+  });
+}
+
 function countLines(body: string): number {
   const trimmed = body.replace(/(\r?\n)+$/, '');
   return trimmed === '' ? 0 : trimmed.split(/\r?\n/).length;
@@ -158,6 +204,7 @@ export function parseSkill(skillMdPath: string, cwd: string = process.cwd()): Sk
     resourceDirs,
     isCompound: resourceDirs.length > 0,
     headings: parseHeadings(body),
+    houseStylesheets: readHouseStylesheets(dir),
   };
 }
 
@@ -210,4 +257,29 @@ export function resolveSkillMdPaths(
     for (const match of matches) addSkillMd(path.resolve(cwd, match), found);
   }
   return sorted([...found]);
+}
+
+/** The SKILL.md files beside the given ones: every other skill in each one's skills directory. */
+function siblingSkillMdPaths(skillMdPaths: readonly string[], cwd: string): string[] {
+  const given = new Set(skillMdPaths.map((skillMdPath) => path.resolve(skillMdPath)));
+  const libraries = new Set(
+    [...given].map((skillMdPath) => path.dirname(path.dirname(skillMdPath))),
+  );
+  const found = [...libraries].flatMap((library) => resolveSkillMdPaths([], cwd, library));
+  return sorted([...new Set(found)].filter((sibling) => !given.has(sibling)));
+}
+
+/**
+ * Parse the skills to lint, and a library of them plus every sibling in their skills directories,
+ * so a rule can compare a linted skill against the ones this run doesn't lint.
+ */
+export function parseLibrary(
+  skillMdPaths: readonly string[],
+  cwd: string,
+): { skills: SkillContext[]; library: SkillContext[] } {
+  const skills = skillMdPaths.map((skillMdPath) => parseSkill(skillMdPath, cwd));
+  const siblings = siblingSkillMdPaths(skillMdPaths, cwd).map((sibling) =>
+    parseSkill(sibling, cwd),
+  );
+  return { skills, library: [...skills, ...siblings] };
 }

@@ -4,7 +4,7 @@ description: >
   Covers skill-lint, the linter that checks SKILL.md files for deterministic failure modes.
   Use when running or interpreting skill-lint, fixing a skill-lint finding, adding or changing
   a lint rule, or wiring the tool into the build. Trigger on: "skill-lint", "lint the skills",
-  "skill lint failing", "compound-toc",
+  "skill lint failing", "compound-toc", "house-stylesheet",
   "description too long", "description too verbose", "description names the repo", "SKILL.md
   too long", "add a skill-lint rule", or editing tools/skill-lint.
 ---
@@ -74,7 +74,8 @@ sweep. `--help` prints usage.
 
 ## The rules
 
-Each rule maps to a piece of `skill-creator` guidance. Severity decides whether it
+Most rules map to a piece of `skill-creator` guidance; `house-stylesheet` guards the HTML
+templates' shared stylesheet instead. Severity decides whether it
 **fails** the lint (errors → exit 1) or is merely **advisory** (warnings never fail it).
 
 | Rule | Severity | Fires when | Fix |
@@ -84,6 +85,7 @@ Each rule maps to a piece of `skill-creator` guidance. Severity decides whether 
 | `description-no-repo-name` | error | the frontmatter `description` names the repo (matches `/alfred/i`) | drop it — the agent already knows the repo from CLAUDE.md, so it's redundant scope that wastes the front-loaded triggering budget; disambiguate *which part* with "the frontend" / "the monorepo" if needed |
 | `body-length` | warn | the SKILL.md body runs past ~500 lines | add a layer of hierarchy and move detail into `references/` that loads on demand |
 | `compound-toc` | error | a **compound** skill (it bundles a `scripts/`, `references/`, `assets/`, … directory) has no `## Contents` / `## Table of Contents` section among its first two top-level sections | add a Table of Contents near the top that lists the body sections and links the bundled resources |
+| `house-stylesheet` | error | a skill's `assets/*.html` carries the house stylesheet (the spec template's sections 1–3, from its `TEMPLATE · 1` line to section 4 or `</style>`) and that copy differs from a sibling skill's — checked against every skill in the same skills directory, not just the changed ones, so editing either copy surfaces the other — or its style block has section markers but lost the `TEMPLATE · 1` line that starts the copy | make the same edit to every copy (the message names both files and the first differing line), or restore the lost marker line |
 
 A skill is **compound** when its directory contains any subdirectory — that's the signal
 it has bundled resources a reader of SKILL.md must discover for progressive disclosure to

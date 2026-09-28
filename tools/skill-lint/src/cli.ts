@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import { changedPathsSinceTrunk, changedSkillNames, selectChangedSkills } from './git.ts';
 import { countBySeverity, lintSkills } from './lint.ts';
-import { parseSkill, resolveSkillMdPaths } from './skill.ts';
+import { rules } from './rules.ts';
+import { parseLibrary, resolveSkillMdPaths } from './skill.ts';
 
 const HELP = `skill-lint — lint .claude/skills SKILL.md files against the authoring guidance.
 
@@ -79,7 +80,10 @@ function main(argv: readonly string[]): number {
     }
   }
 
-  const reports = lintSkills(skillMdPaths.map((skillMdPath) => parseSkill(skillMdPath, cwd)));
+  // A rule may compare a skill against its siblings (house-stylesheet does), so the library holds
+  // every skill in each linted skill's skills directory, including the ones this run doesn't lint.
+  const { skills, library } = parseLibrary(skillMdPaths, cwd);
+  const reports = lintSkills(skills, rules, library);
   for (const report of reports) {
     if (report.findings.length === 0) continue;
     process.stdout.write(`\n${report.skill.displayPath}\n`);

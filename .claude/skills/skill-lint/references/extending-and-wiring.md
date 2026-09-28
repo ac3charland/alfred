@@ -19,11 +19,14 @@ extension point (rules) is isolated from parsing and I/O:
 
 - **`skill.ts`** — turns a `SKILL.md` path into a `SkillContext`: frontmatter `name` /
   `description` (a YAML block scalar is folded to one string), the body, its line count,
-  the parsed headings (code fences excluded), and the bundled resource directories
-  (`isCompound` is just "has at least one subdirectory"). It also resolves CLI
-  path/glob/dir arguments into the list of `SKILL.md` files to lint.
+  the parsed headings (code fences excluded), the bundled resource directories
+  (`isCompound` is just "has at least one subdirectory"), and the house stylesheet copies in
+  its `assets/`. It also resolves CLI path/glob/dir arguments into the list of `SKILL.md`
+  files to lint, and `parseLibrary` adds their unlinted siblings for rules to compare against.
 - **`rules.ts`** — the registry. Each rule is a `Rule` (`{ name, description, check }`)
-  where `check(skill: SkillContext): Finding[]` is a **pure function** of the context.
+  where `check(skill: SkillContext, library: readonly SkillContext[]): Finding[]` is a **pure
+  function** of the context. `library` is every skill, linted or not, for a rule that compares a
+  skill against the rest (`house-stylesheet`); most rules ignore it.
   The exported `rules` array is applied to every skill in order. Thresholds live here as
   named constants.
 - **`lint.ts`** — orchestration: run every rule over every skill, collect `SkillReport`s,
@@ -38,7 +41,7 @@ extension point (rules) is isolated from parsing and I/O:
   else 0; usage errors exit 2).
 
 The data flow is one direction: `cli → resolve paths → (check mode: filter to changed) →
-parseSkill → lintSkills(rules) → report`. A rule never touches the filesystem or argv;
+parseSkill → lintSkills(rules, library) → report`. A rule never touches the filesystem or argv;
 everything it needs is on `SkillContext`. That's what keeps rules trivial to unit-test
 (construct a context literal, call the rule) and the set easy to grow.
 
