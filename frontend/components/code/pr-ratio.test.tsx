@@ -1,13 +1,59 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import type { PrRatioResponse } from '@/lib/types';
+import { renderWithProviders } from '@/lib/test-utils';
+import type { PrRatioResponse, Project } from '@/lib/types';
 
 import { PrRatio } from './pr-ratio';
 
 jest.mock('@/lib/api-client');
 const mockGetPrRatio = jest.mocked(api.getPrRatio);
+
+function makeProject(id: string, name: string, repoName: string, createdAt: string): Project {
+  return {
+    description: null,
+    id,
+    name,
+    key: name.slice(0, 3).toUpperCase(),
+    repo_owner: 'ac3charland',
+    repo_name: repoName,
+    github_url: null,
+    ref_seq: 0,
+    created_at: createdAt,
+  };
+}
+
+/** Oldest first, as the (code) layout seeds the store: RealPlay is #1 (blue), Alfred #2 (amber). */
+const REALPLAY = makeProject('p-realplay', 'RealPlay', 'realplay', '2026-01-01T00:00:00Z');
+const ALFRED = makeProject('p-alfred', 'Alfred', 'alfred', '2026-02-01T00:00:00Z');
+const PROJECTS = [REALPLAY, ALFRED];
+
+/**
+ * The card as the Dashboard mounts it: under a CodeProvider seeded with `projects`. It renders
+ * into its own slot, since the providers around it (the toast region) add markup of their own.
+ */
+function renderCard(projects: Project[] = PROJECTS) {
+  renderWithProviders(
+    <div data-testid="card-slot">
+      <PrRatio />
+    </div>,
+    { projects },
+  );
+  return { slot: screen.getByTestId('card-slot') };
+}
+
+/** The legend dot (the row's one `aria-hidden` swatch) for the entry labelled `label`. */
+function legendDot(label: string): HTMLElement | null {
+  const row = screen.getByText(label).closest('li');
+  return row?.querySelector<HTMLElement>('span[aria-hidden="true"]') ?? null;
+}
+
+/** The bar's segment fills, left to right. */
+function barFills(): string[] {
+  return [...screen.getByRole('img').children].map((segment) => segment.className);
+}
 
 const RATIO: PrRatioResponse = {
   week: {
@@ -44,16 +90,16 @@ describe('PrRatio', () => {
   it('reserves the card with a skeleton bar while the counts are in flight', () => {
     mockGetPrRatio.mockReturnValue(pending());
 
-    render(<PrRatio />);
+    renderCard();
 
     expect(screen.getByText('PRs merged in the last 7 days')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
-  it('renders a percentage and a raw count per repo, in configured order', async () => {
+  it('renders a percentage and a raw count per project, in the order the endpoint lists them', async () => {
     mockGetPrRatio.mockResolvedValue(RATIO);
 
-    render(<PrRatio />);
+    renderCard();
 
     const entries = await screen.findAllByRole('listitem');
     expect(entries.map((entry) => entry.textContent)).toEqual(['RealPlay33%(3)', 'Alfred67%(6)']);
@@ -62,7 +108,7 @@ describe('PrRatio', () => {
   it('names the window by the first and last day it covers, both inclusive', async () => {
     mockGetPrRatio.mockResolvedValue(RATIO);
 
-    render(<PrRatio />);
+    renderCard();
 
     expect(await screen.findByText(/Jul 17 – Jul 24/)).toBeInTheDocument();
     expect(screen.getByText(/9 total/)).toBeInTheDocument();
@@ -71,7 +117,7 @@ describe('PrRatio', () => {
   it("spells the split out in the bar's accessible label", async () => {
     mockGetPrRatio.mockResolvedValue(RATIO);
 
-    render(<PrRatio />);
+    renderCard();
 
     expect(
       await screen.findByRole('img', {
@@ -80,10 +126,10 @@ describe('PrRatio', () => {
     ).toBeInTheDocument();
   });
 
-  it('adds an Other entry after the configured repos for the PRs merged elsewhere', async () => {
+  it('adds an Other entry after the projects for the PRs merged elsewhere', async () => {
     mockGetPrRatio.mockResolvedValue(RATIO_WITH_OTHER);
 
-    render(<PrRatio />);
+    renderCard();
 
     const entries = await screen.findAllByRole('listitem');
     expect(entries.map((entry) => entry.textContent)).toEqual([
@@ -96,7 +142,7 @@ describe('PrRatio', () => {
   it('names Other in the accessible label too, so the bar and the legend agree', async () => {
     mockGetPrRatio.mockResolvedValue(RATIO_WITH_OTHER);
 
-    render(<PrRatio />);
+    renderCard();
 
     expect(
       await screen.findByRole('img', {
@@ -105,10 +151,10 @@ describe('PrRatio', () => {
     ).toBeInTheDocument();
   });
 
-  it('drops the Other entry when nothing merged outside the configured repos', async () => {
+  it('drops the Other entry when nothing merged outside the project repos', async () => {
     mockGetPrRatio.mockResolvedValue({ ...RATIO, other: { count: 0, percentage: 0 } });
 
-    render(<PrRatio />);
+    renderCard();
 
     const entries = await screen.findAllByRole('listitem');
     expect(entries.map((entry) => entry.textContent)).toEqual(['RealPlay33%(3)', 'Alfred67%(6)']);
@@ -117,13 +163,13 @@ describe('PrRatio', () => {
   it('renders no Other entry when the deployment cannot measure the bucket', async () => {
     mockGetPrRatio.mockResolvedValue(RATIO);
 
-    render(<PrRatio />);
+    renderCard();
 
     await screen.findByRole('img');
     expect(screen.queryByText('Other')).not.toBeInTheDocument();
   });
 
-  it('keeps a configured repo listed at zero — only Other is dropped when empty', async () => {
+  it('keeps a project listed at zero — only Other is dropped when empty', async () => {
     mockGetPrRatio.mockResolvedValue({
       ...RATIO,
       total: 4,
@@ -131,7 +177,7 @@ describe('PrRatio', () => {
       other: { count: 4, percentage: 100 },
     });
 
-    render(<PrRatio />);
+    renderCard();
 
     const entries = await screen.findAllByRole('listitem');
     expect(entries.map((entry) => entry.textContent)).toEqual([
@@ -149,7 +195,7 @@ describe('PrRatio', () => {
       repos: RATIO.repos.map((repo) => ({ ...repo, count: 0, percentage: 0 })),
     });
 
-    render(<PrRatio />);
+    renderCard();
 
     expect(await screen.findByText('No PRs merged in the last 7 days.')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
@@ -158,7 +204,7 @@ describe('PrRatio', () => {
   it('shows a muted line when the counts could not be loaded', async () => {
     mockGetPrRatio.mockRejectedValue(new Error('502 GitHub request failed'));
 
-    render(<PrRatio />);
+    renderCard();
 
     expect(await screen.findByText("Couldn't load PR counts.")).toBeInTheDocument();
   });
@@ -166,19 +212,112 @@ describe('PrRatio', () => {
   it('renders NOTHING when the deployment reports the feature unconfigured', async () => {
     mockGetPrRatio.mockResolvedValue(undefined);
 
-    const { container } = render(<PrRatio />);
+    const { slot } = renderCard();
 
     await waitFor(() => {
-      expect(container).toBeEmptyDOMElement();
+      expect(slot).toBeEmptyDOMElement();
     });
   });
 
   it("renders the window in the browser's own timezone", async () => {
     mockGetPrRatio.mockResolvedValue(RATIO);
 
-    render(<PrRatio />);
+    renderCard();
 
     await screen.findByRole('img');
     expect(mockGetPrRatio).toHaveBeenCalledWith(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  });
+
+  describe('each project wears its own colour and links to its board', () => {
+    it('colours each segment and dot by the project’s creation slot, as ProjectNav does', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+
+      renderCard();
+
+      await screen.findByRole('img');
+      expect(legendDot('RealPlay')).toHaveClass('bg-accent-blue');
+      // The 2nd-created project is amber everywhere in the module — not the 2nd env tone (blue).
+      expect(legendDot('Alfred')).toHaveClass('bg-accent-amber');
+      expect(barFills()).toEqual(['bg-accent-blue', 'bg-accent-amber']);
+    });
+
+    it('takes the colour from the project’s slot in the store, not its position in the bar', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+      const lumen = makeProject('p-lumen', 'Lumen', 'lumen', '2025-12-01T00:00:00Z');
+
+      // Lumen is the oldest project, so RealPlay is #2 (amber) and Alfred #3 (green).
+      renderCard([lumen, REALPLAY, ALFRED]);
+
+      await screen.findByRole('img');
+      expect(legendDot('RealPlay')).toHaveClass('bg-accent-amber');
+      expect(legendDot('Alfred')).toHaveClass('bg-accent-green');
+    });
+
+    it('makes each project’s legend row a link to that project’s board', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+
+      renderCard();
+
+      const realplay = await screen.findByRole('link', { name: /RealPlay/ });
+      expect(realplay).toHaveAttribute('href', '/code/p-realplay');
+      expect(screen.getByRole('link', { name: /Alfred/ })).toHaveAttribute(
+        'href',
+        '/code/p-alfred',
+      );
+      // The whole row — dot, name, percent and count — is the link's content.
+      expect(realplay).toHaveTextContent('RealPlay33%(3)');
+    });
+
+    it('opens the board client-side on a plain click', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+      const user = userEvent.setup();
+
+      renderCard();
+
+      await user.click(await screen.findByRole('link', { name: /Alfred/ }));
+
+      expect(globalThis.location.pathname).toBe('/code/p-alfred');
+    });
+
+    it('underlines the name on hover and rings the row on keyboard focus', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+
+      renderCard();
+
+      const link = await screen.findByRole('link', { name: /RealPlay/ });
+      expect(link).toHaveClass('group', 'focus-visible:ring-2', 'focus-visible:ring-accent-blue');
+      expect(within(link).getByText('RealPlay')).toHaveClass('group-hover:underline');
+    });
+
+    it('keeps Other plain text in the muted tone — it is not one place to go', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO_WITH_OTHER);
+
+      renderCard();
+
+      await screen.findByRole('img');
+      expect(screen.getAllByRole('link')).toHaveLength(2);
+      expect(screen.getByText('Other').closest('a')).toBeNull();
+      expect(legendDot('Other')).toHaveClass('bg-muted-foreground');
+      expect(barFills().at(-1)).toBe('bg-muted-foreground');
+    });
+
+    it('renders a repo with no project in the store unlinked, in the blue fallback', async () => {
+      // A project created on another device since this page seeded its store.
+      mockGetPrRatio.mockResolvedValue({
+        ...RATIO,
+        total: 10,
+        repos: [
+          ...RATIO.repos,
+          { repo: 'ac3charland/lumen', label: 'Lumen', count: 1, percentage: 10 },
+        ],
+      });
+
+      renderCard();
+
+      await screen.findByRole('img');
+      expect(screen.getByText('Lumen').closest('a')).toBeNull();
+      expect(legendDot('Lumen')).toHaveClass('bg-accent-blue');
+      expect(screen.getAllByRole('link')).toHaveLength(2);
+    });
   });
 });

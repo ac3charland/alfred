@@ -5,6 +5,7 @@ import {
   projectBadgeClasses,
   projectColorAt,
   projectColorFor,
+  projectFillClasses,
   projectTextClasses,
 } from './project-color';
 
@@ -65,5 +66,21 @@ describe('class helpers', () => {
 
   it('emits a text-only class per colour for glyphs', () => {
     expect(projectTextClasses('amber')).toBe('text-accent-amber');
+  });
+
+  it.each([
+    ['blue', 'bg-accent-blue'],
+    ['amber', 'bg-accent-amber'],
+    ['green', 'bg-accent-green'],
+    ['red', 'bg-accent-red'],
+    ['teal', 'bg-accent-teal'],
+  ] as const)('emits the full solid-fill class for %s', (color, fill) => {
+    expect(projectFillClasses(color)).toBe(fill);
+  });
+
+  it('covers every palette colour with a solid fill', () => {
+    expect(PROJECT_COLORS.map((color) => projectFillClasses(color))).toEqual(
+      PROJECT_COLORS.map((color) => `bg-accent-${color}`),
+    );
   });
 });

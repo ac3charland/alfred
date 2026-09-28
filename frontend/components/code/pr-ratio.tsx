@@ -4,49 +4,60 @@ import * as React from 'react';
 
 import { RatioBar, type RatioSegment } from '@/components/atoms/ratio-bar';
 import { SurfaceCard } from '@/components/atoms/surface-card';
+import { ViewLink } from '@/components/tasks/view-link';
+import { projectBoardHref } from '@/lib/code/board-links';
+import { projectColorFor, projectFillClasses } from '@/lib/code/project-color';
 import { usePrRatio } from '@/lib/hooks/use-pr-ratio';
-import type { PrRatioResponse } from '@/lib/types';
-
-/**
- * Segment fills, cycled by config order, from the existing named-accent tokens. The bar
- * segment and its legend dot share one class so a repo reads the same in both places.
- */
-const TONES = ['bg-accent-teal', 'bg-accent-blue', 'bg-accent-amber', 'bg-accent-green'];
-
-function toneFor(index: number): string {
-  return TONES[index % TONES.length] ?? 'bg-accent-teal';
-}
+import { useProjects } from '@/lib/stores/code-store';
+import type { PrRatioResponse, Project } from '@/lib/types';
 
 const OTHER_LABEL = 'Other';
 
 /**
- * Other gets a de-emphasized neutral rather than the next accent: the accents name the repos
- * the owner chose to measure, and the catch-all shouldn't compete with them for attention.
+ * Other gets a de-emphasized neutral rather than a project colour: the accents name the
+ * projects, and the catch-all shouldn't compete with them for attention.
  */
 const OTHER_TONE = 'bg-muted-foreground';
 
-/** One legend row and its matching bar segment — a configured repo, or the Other bucket. */
+/** One legend row and its matching bar segment — a project's repo, or the Other bucket. */
 interface RatioEntry {
   key: string;
   label: string;
   count: number;
   percentage: number;
   tone: string;
+  /** The project's board. Absent for Other, and for a repo the store has no project for. */
+  href?: string;
 }
 
 /**
- * The bar's entries, left to right: every configured repo (kept even at zero — the owner
- * asked for them), then Other, which is dropped when empty. A zero Other is indistinguishable
- * from an unmeasured one to a reader, so showing it would be noise either way.
+ * The bar's entries, left to right: every project (kept even at zero — each is a repo the owner
+ * ships to), then Other, which is dropped when empty. A zero Other is indistinguishable from an
+ * unmeasured one to a reader, so showing it would be noise either way.
+ *
+ * Each entry is joined to its project by `owner/name` — unique per project, and the very columns
+ * the server built `repo` from — so it wears the colour `projectColorFor` gives that project
+ * everywhere else in the module, and links to its board. A repo with no project in the store (one
+ * created on another device since this page loaded) gets `projectColorFor`'s fallback colour and
+ * no link until the next full load re-seeds the store.
  */
-function toEntries(ratio: PrRatioResponse): RatioEntry[] {
-  const entries: RatioEntry[] = ratio.repos.map((repo, index) => ({
-    key: repo.repo,
-    label: repo.label,
-    count: repo.count,
-    percentage: repo.percentage,
-    tone: toneFor(index),
-  }));
+function toEntries(ratio: PrRatioResponse, projects: Project[]): RatioEntry[] {
+  const byRepo = new Map(
+    projects.map((project) => [`${project.repo_owner}/${project.repo_name}`, project]),
+  );
+
+  const entries: RatioEntry[] = ratio.repos.map((repo) => {
+    const project = byRepo.get(repo.repo);
+    return {
+      key: repo.repo,
+      // Already the project's name — the server labels each repo with it.
+      label: repo.label,
+      count: repo.count,
+      percentage: repo.percentage,
+      tone: projectFillClasses(projectColorFor(projects, project?.id ?? null)),
+      ...(project && { href: projectBoardHref(project.id) }),
+    };
+  });
 
   if (ratio.other && ratio.other.count > 0) {
     entries.push({
@@ -92,18 +103,37 @@ function describeSplit(entries: readonly RatioEntry[]): string {
     .join('; ');
 }
 
+/** One legend row's contents: the swatch, the name, the share and the raw count. */
+function LegendContent({ entry, linked }: { entry: RatioEntry; linked: boolean }) {
+  return (
+    <>
+      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${entry.tone}`} />
+      <span className={linked ? 'text-foreground group-hover:underline' : 'text-foreground'}>
+        {entry.label}
+      </span>
+      <span className="font-medium text-foreground">{entry.percentage}%</span>
+      <span className="text-muted-foreground">({entry.count})</span>
+    </>
+  );
+}
+
 const TITLE = 'PRs merged in the last 7 days';
 
 /**
  * The Dashboard's PR-ratio card: how the last seven days' merged pull requests split across
- * the configured repos, as a stacked bar plus a per-repo legend.
+ * the Code module's projects, as a stacked bar plus a per-project legend. Each project wears
+ * its module-wide colour, and its legend row opens its board; the bar itself is not interactive.
  *
  * It is an ornament, never a gate. An unconfigured deployment renders **nothing at all** (no
  * card, no gap), and a GitHub failure renders one muted line — either way the Dashboard around
  * it stays fully usable.
+ *
+ * Must be mounted under a `CodeProvider` (it reads `useProjects`).
  */
 export function PrRatio() {
   const state = usePrRatio();
+  // Creation order, not the live ranking: it is the slot `projectColorFor` assigns colours by.
+  const projects = useProjects();
 
   if (state.status === 'unconfigured') return null;
 
@@ -136,7 +166,7 @@ export function PrRatio() {
     );
   }
 
-  const entries = toEntries(state.ratio);
+  const entries = toEntries(state.ratio, projects);
   const segments: RatioSegment[] = entries.map((entry) => ({
     label: entry.label,
     value: entry.count,
@@ -149,10 +179,18 @@ export function PrRatio() {
       <ul className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
         {entries.map((entry) => (
           <li key={entry.key} className="flex items-center gap-2 text-sm">
-            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${entry.tone}`} />
-            <span className="text-foreground">{entry.label}</span>
-            <span className="font-medium text-foreground">{entry.percentage}%</span>
-            <span className="text-muted-foreground">({entry.count})</span>
+            {entry.href === undefined ? (
+              <LegendContent entry={entry} linked={false} />
+            ) : (
+              // A real `<a href>`: a plain click opens the board client-side, a modified click
+              // opens a new tab — the same as the digest panes below.
+              <ViewLink
+                href={entry.href}
+                className="group flex items-center gap-2 rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+              >
+                <LegendContent entry={entry} linked />
+              </ViewLink>
+            )}
           </li>
         ))}
       </ul>

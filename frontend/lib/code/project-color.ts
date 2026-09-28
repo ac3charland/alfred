@@ -7,8 +7,9 @@ import type { Project } from '@/lib/types';
  * mapping is positional, not hashed, so a small backlog reads as a clean 1-blue / 2-amber /
  * 3-green / 4-teal sequence rather than a scatter of near-collisions.
  *
- * The single source of the project→colour rule: the backlog badge and the ProjectNav icon both
- * resolve their colour through here so a project wears the same colour everywhere.
+ * The single source of the project→colour rule: the backlog badge, the ProjectNav icon and the
+ * Dashboard's PR-ratio bar all resolve their colour through here so a project wears the same
+ * colour everywhere.
  */
 
 /** The glowing accent palette in assignment order — project #1 is blue, #2 amber, and so on. */
@@ -58,6 +59,14 @@ const PROJECT_CHIP_CLASS: Record<ProjectColor, string> = {
   teal: 'border-accent-teal/30 bg-accent-teal/10 text-accent-teal',
 };
 
+const PROJECT_FILL_CLASS: Record<ProjectColor, string> = {
+  blue: 'bg-accent-blue',
+  amber: 'bg-accent-amber',
+  green: 'bg-accent-green',
+  red: 'bg-accent-red',
+  teal: 'bg-accent-teal',
+};
+
 /** Tinted-pill classes (background + text) for a project badge in the given colour. */
 export function projectBadgeClasses(color: ProjectColor): string {
   return PROJECT_BADGE_CLASS[color];
@@ -66,6 +75,11 @@ export function projectBadgeClasses(color: ProjectColor): string {
 /** Bordered-chip classes (border + faint fill + text) for a detail chip in the given colour. */
 export function projectChipClasses(color: ProjectColor): string {
   return PROJECT_CHIP_CLASS[color];
+}
+
+/** Solid-fill class for a project's PR-ratio bar segment and legend dot in the given colour. */
+export function projectFillClasses(color: ProjectColor): string {
+  return PROJECT_FILL_CLASS[color];
 }
 
 /** Text-colour class for a project glyph (the ProjectNav branch icon) in the given colour. */
