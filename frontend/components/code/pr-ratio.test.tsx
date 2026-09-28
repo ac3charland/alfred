@@ -55,13 +55,6 @@ function barFills(): string[] {
   return [...screen.getByRole('img').children].map((segment) => segment.className);
 }
 
-/** True if `spy` was ever called with a message containing React's duplicate-key warning. */
-function loggedDuplicateKeyWarning(spy: jest.SpiedFunction<typeof console.error>): boolean {
-  return spy.mock.calls.some((call) =>
-    call.some((arg) => typeof arg === 'string' && arg.includes('same key')),
-  );
-}
-
 const RATIO: PrRatioResponse = {
   week: {
     // The seven days ending at a Friday-afternoon request — a rolling window, not a
@@ -351,14 +344,15 @@ describe('PrRatio', () => {
       renderCard([site1, site2]);
 
       await screen.findByRole('img');
-      // One bar segment per entry — a colliding key would let React drop/merge one.
+      // One bar segment per entry. On a duplicate key React warns at mount (caught below)
+      // rather than dropping one.
       expect(barFills()).toHaveLength(2);
       const links = await screen.findAllByRole('link');
       expect(links.map((link) => link.getAttribute('href'))).toEqual([
         '/code/p-site1',
         '/code/p-site2',
       ]);
-      expect(loggedDuplicateKeyWarning(errorSpy)).toBe(false);
+      expect(errorSpy).not.toHaveBeenCalled();
     });
 
     it('keeps a project named "Other" distinct from the Other bucket', async () => {
@@ -379,7 +373,7 @@ describe('PrRatio', () => {
       // Only the project's row is a link — the Other bucket stays plain text either way.
       const links = await screen.findAllByRole('link');
       expect(links.map((link) => link.getAttribute('href'))).toEqual(['/code/p-other']);
-      expect(loggedDuplicateKeyWarning(errorSpy)).toBe(false);
+      expect(errorSpy).not.toHaveBeenCalled();
     });
   });
 });
