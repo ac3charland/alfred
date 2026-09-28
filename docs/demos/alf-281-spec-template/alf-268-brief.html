@@ -53,7 +53,7 @@ p,ol,ul,figure{margin:0}
 .wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
 .stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
 .stamp::after{content:"Ready for review"}
-body:has([data-state=open]) .stamp::after{content:"Your call needed"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
 .mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
 .ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
 .ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
@@ -74,17 +74,17 @@ body:has([data-state=open]) .stamp::after{content:"Your call needed"}
 .list>li:first-child{border-top:0;padding-top:0}
 .list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
 .list h3::after{font-weight:400}
-[data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
-[data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
-[data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
 .tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
-[data-state=settled] .tag{color:var(--c-set)}
-[data-state=open] .tag{color:var(--c-open)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
 .pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
 .pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
-[data-state=open] .pick{color:var(--c-open)}
-[data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
-[data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
 .why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
 .legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
 .m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
@@ -151,9 +151,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 /* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
 /* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
 .switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
-.switch legend{float:left;padding:0;color:var(--c-open)}
-.switch input{margin:0 .3rem 0 0;accent-color:var(--c-open)}
-.plate:has([value=before]:checked) [data-opt=after],.plate:has([value=after]:checked) [data-opt=before]{display:none}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p1:has([value=before]:checked) [data-opt=after],#p1:has([value=after]:checked) [data-opt=before]{display:none}
 /* alfred's tokens: frontend/app/globals.css; card, bar and legend: components/atoms/surface-card.tsx,
    ratio-bar.tsx, components/code/pr-ratio.tsx; project colours: lib/code/project-color.ts; nav row and
    focus ring: lib/ui/nav-link-class.ts; key pill: components/atoms/badge.tsx */
@@ -223,7 +223,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
 <section id="plates" aria-label="What you’ll see">
   <figure class="plate" id="p1">
-    <fieldset class="switch"><legend>D3</legend>
+    <fieldset class="switch"><legend>Compare</legend>
       <label><input type="radio" name="p1" value="before">Before</label>
       <label><input type="radio" name="p1" value="after" checked>After</label>
     </fieldset>
@@ -256,7 +256,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         </div>
       </div>
     </div>
-    <figcaption><b>Plate I.</b>The ratio card beside the sidebar. Before, Alfred is amber in the sidebar but blue in the bar. After, every segment matches its pill; RealPlay’s row is shown hovered, a link to its board.</figcaption>
+    <figcaption><b>Plate I.</b>Before, Alfred is amber in the sidebar but blue in the bar; after, every segment matches its project’s pill (RealPlay’s row shown hovered).</figcaption>
   </figure>
 
   <figure class="plate" id="p2">
@@ -271,7 +271,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         </div>
       </div>
     </div>
-    <figcaption><b>Plate II.</b>Legend row states. Only project rows link; Other and a project created elsewhere since load stay plain.</figcaption>
+    <figcaption><b>Plate II.</b>Legend row states: only project rows link, while Other and a project created elsewhere since load stay plain.</figcaption>
   </figure>
 </section>
 

@@ -1,8 +1,8 @@
 // Renders a spec the way the app's SpecView does — inside <iframe sandbox="" srcdoc>, with
 // scripting off — and reports what the template promises: no horizontal scroll, a switcher that
-// works without script, and how a #dN link behaves in that frame.
+// works without script, a stamp only decision rows can move, and how a #dN link behaves there.
 //
-//   node capture.mjs <spec.html> <shot-dir|-> [check...]   checks: layout switcher jump
+//   node capture.mjs <spec.html> <shot-dir|-> [check...]   checks: layout switcher stamp jump
 //
 // Screenshots go to <shot-dir> ("-" skips them). The page loads its mockup font from
 // raw.githubusercontent.com; this sandbox's browser can't verify the egress proxy's certificate,
@@ -14,7 +14,7 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 const [specPath, shotDirectory, ...requested] = process.argv.slice(2);
-const checks = requested.length > 0 ? requested : ['layout', 'switcher', 'jump'];
+const checks = requested.length > 0 ? requested : ['layout', 'switcher', 'stamp', 'jump'];
 const repoRoot = path.resolve(import.meta.dirname, '../../..');
 const spec = readFileSync(specPath, 'utf8');
 const font = readFileSync(path.join(repoRoot, 'frontend/public/fonts/geist-sans.woff2'));
@@ -94,6 +94,28 @@ if (checks.includes('switcher')) {
   await context.close();
 }
 
+if (checks.includes('stamp')) {
+  // Mockups of Radix-built UI carry data-state="open" (menus, dialogs); only a decision row's state
+  // may move the masthead stamp.
+  const read = (frame) =>
+    frame.evaluate(() => {
+      const after = (selector) => getComputedStyle(document.querySelector(selector), '::after').content;
+      const menu = document.querySelector('#radix-menu h3');
+      return `stamp ${after('.stamp')}` + (menu ? `, the mockup's own heading gains ${after('#radix-menu h3')}` : '');
+    });
+  const radix = spec.replace(/(<div class="app"[^>]*>)/, '$1<div id="radix-menu" data-state="open" hidden><h3>Rename</h3></div>');
+  const openRow = spec.replace('<li data-state="settled">', '<li data-state="open">');
+  for (const [label, html] of [
+    ['as written', spec],
+    ['with a data-state="open" menu drawn in a plate', radix],
+    ['with its first decision row open', openRow],
+  ]) {
+    const { context, frame } = await open(html, { width: 1280, height: 900 });
+    console.log(`${label}: ${await read(frame)}`);
+    await context.close();
+  }
+}
+
 if (checks.includes('jump')) {
   // The SpecView frame is 28rem tall; a row's tag links to its record, #dN, below the fold.
   for (const [label, html] of [
@@ -102,7 +124,7 @@ if (checks.includes('jump')) {
   ]) {
     const { context, page, frame } = await open(html, { width: 1280, height: 448 });
     await frame.locator('a.tag[href="#d2"]').click();
-    await page.waitForTimeout(500);
+    await frame.waitForURL(/#d2$/);
     const after = page.frames()[1];
     const scrolled = await after.evaluate(() => Math.round(window.scrollY) > 0);
     console.log(`#d2 click, ${label}: frame at ${after.url()}, ${scrolled ? 'scrolled to the record' : 'not scrolled'}`);
