@@ -460,10 +460,12 @@ async function prepareBookmark(
   const taken = await intakeBookmark(env, leg.api, item.bookmark, context.now);
   switch (taken.kind) {
     case 'unread': {
-      // Nothing was written, so the bookmark is still in To Reader and still no post's. The leg
-      // stops rather than learning the same answer from every bookmark behind this one.
+      // Nothing was written, so the bookmark is still in To Reader and still no post's. Unless
+      // Instapaper's answer is one every later call would get too (a rejected credential, a lapsed
+      // Premium, a rate limit — `legFailure` stops the leg for those), the tick moves on: the
+      // bookmarks are taken oldest first, so an article Instapaper can never read would otherwise
+      // head the queue every tick and hold the whole folder back. The log names it.
       legFailure(leg, taken.error, item.bookmark.bookmarkId);
-      leg.stopped = true;
       return { kind: 'skip' };
     }
     case 'conflict': {

@@ -101,6 +101,8 @@ interface InstapaperWorld {
   texts?: Record<number, string>;
   /** A status and body to answer one call with, by path (`folders/list`, `bookmarks/archive`, …). */
   fail?: Record<string, { status: number; body: string }>;
+  /** A status and body to answer one bookmark's get_text with, by bookmark id. */
+  failTexts?: Record<number, { status: number; body: string }>;
 }
 
 const INSTAPAPER_PREFIX = 'https://www.instapaper.com/api/';
@@ -172,6 +174,10 @@ function harness(scenario: Scenario = {}): Call[] {
           );
         }
         case 'bookmarks/get_text': {
+          const broken = world.failTexts?.[bookmarkId];
+          if (broken !== undefined) {
+            return Promise.resolve(new Response(broken.body, { status: broken.status }));
+          }
           const html = world.texts?.[bookmarkId];
           return Promise.resolve(
             html === undefined
@@ -1463,27 +1469,67 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
     expect(summary.instapaper).toMatchObject({ taken: 0, archived: 0 });
   });
 
-  it('writes nothing and stops the leg when get_text fails, stamping the error', async () => {
+  it('writes nothing for an article get_text fails on, and carries on with the next one', async () => {
+    // Bookmarks are taken oldest first, so an article Instapaper can never read would otherwise
+    // be first in line every tick and hold the whole folder back behind it.
     const calls = harness({
       instapaper: {
         bookmarks: [bookmarkRow(), bookmarkRow({ bookmark_id: 12, time: 1_789_000_000 })],
         texts: { 12: ARTICLE_HTML },
-        fail: { 'bookmarks/get_text': { status: 503, body: 'down' } },
+        failTexts: { 11: { status: 503, body: 'down' } },
+      },
+    });
+    const summarized = mockSummarize(DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(instapaperCalls(calls, 'bookmarks/get_text').map((call) => bookmarkIdOf(call))).toEqual([
+      11, 12,
+    ]);
+    // Only the readable article became a post and left To Reader; the bad one stays put.
+    expect(
+      restCalls(calls, 'reader_posts', 'POST').map(
+        (call) => payload(call)['instapaper_bookmark_id'],
+      ),
+    ).toEqual([12]);
+    expect(instapaperCalls(calls, 'bookmarks/archive').map((call) => bookmarkIdOf(call))).toEqual([
+      12,
+    ]);
+    expect(summarized).toHaveBeenCalledTimes(1);
+    expect(legColumns(calls)).toEqual([
+      { instapaper_last_error: "Instapaper didn't answer", instapaper_last_error_at: NOW_ISO },
+    ]);
+    expect(summary.instapaper).toMatchObject({
+      taken: 1,
+      failures: ['bookmark 11: bookmarks/get_text: unavailable (HTTP 503)'],
+    });
+  });
+
+  it('stops the leg when get_text’s refusal is Instapaper’s standing answer', async () => {
+    const calls = harness({
+      instapaper: {
+        bookmarks: [bookmarkRow(), bookmarkRow({ bookmark_id: 12, time: 1_789_000_000 })],
+        texts: { 12: ARTICLE_HTML },
+        failTexts: { 11: { status: 401, body: 'Unauthorized' } },
       },
     });
     const summarized = mockSummarize();
 
     const summary = await runReaderTick(instapaperEnv, NOW);
 
-    expect(instapaperCalls(calls, 'bookmarks/get_text')).toHaveLength(1);
+    expect(instapaperCalls(calls, 'bookmarks/get_text').map((call) => bookmarkIdOf(call))).toEqual([
+      11,
+    ]);
     expect(restCalls(calls, 'reader_posts', 'POST')).toEqual([]);
-    expect(instapaperCalls(calls, 'bookmarks/archive')).toEqual([]);
     expect(summarized).not.toHaveBeenCalled();
     expect(legColumns(calls)).toEqual([
-      { instapaper_last_error: "Instapaper didn't answer", instapaper_last_error_at: NOW_ISO },
+      {
+        instapaper_last_error: "Instapaper rejected alfred's credentials",
+        instapaper_last_error_at: NOW_ISO,
+      },
     ]);
     expect(summary.instapaper).toMatchObject({
-      failures: ['bookmark 11: bookmarks/get_text: unavailable (HTTP 503)'],
+      failures: ['bookmark 11: bookmarks/get_text: credentials'],
     });
   });
 });

@@ -223,7 +223,7 @@ export type BookmarkIntake =
   | { kind: 'filed'; archive: { ok: true } | { ok: false; error: unknown } }
   /** Another tick inserted it first, and archives it. */
   | { kind: 'conflict' }
-  /** get_text failed: nothing was written, and the leg stops for this tick. */
+  /** get_text failed: nothing was written, and the bookmark stays in To Reader. */
   | { kind: 'unread'; error: unknown };
 
 /**
