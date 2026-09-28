@@ -18,6 +18,7 @@ import {
   buildSpikeUrl,
   promptFromLaunchUrl,
 } from '@/lib/code/links';
+import type { ProjectColor } from '@/lib/code/project-color';
 import { renameStateChange, requiresRefinementFor } from '@/lib/code/refinement';
 import { refinementMarkTarget } from '@/lib/code/refinement-mark';
 import { codeStoryStatusPatch } from '@/lib/code/status';
@@ -206,6 +207,12 @@ export interface CodeActions {
    * then reconciled with the saved row, rolling the previous value back on error.
    */
   updateProjectDescription: (projectId: string, description: string | null) => Promise<void>;
+  /**
+   * The board toolbar's colour pick: a palette colour, or `null` for Automatic (the project's
+   * creation-slot colour). Optimistic, so every coloured surface of the project changes at once;
+   * a failed save rolls it back everywhere and toasts.
+   */
+  updateProjectColor: (projectId: string, color: ProjectColor | null) => Promise<void>;
   /**
    * The gate from within the Code view: admit an item already known here to the
    * factory. Inserts an optimistic story card and reconciles with the allocated ref.
@@ -826,6 +833,28 @@ export function CodeProvider({
           },
           onError: () => {
             showToastRef.current("Couldn't save the project description");
+          },
+        });
+      },
+      async updateProjectColor(projectId, color) {
+        const previous = stateRef.current.projects.find((p) => p.id === projectId);
+        if (previous === undefined) {
+          throw new Error(`Project ${projectId} not found in the code store`);
+        }
+        const rollback: Partial<Project> = { color: previous.color };
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patchProject', id: projectId, patch: { color } });
+          },
+          apiCall: () => api.updateProject(projectId, { color }),
+          reconcile: (saved) => {
+            dispatch({ type: 'patchProject', id: projectId, patch: { color: saved.color } });
+          },
+          rollback: () => {
+            dispatch({ type: 'patchProject', id: projectId, patch: rollback });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't save the project color");
           },
         });
       },
