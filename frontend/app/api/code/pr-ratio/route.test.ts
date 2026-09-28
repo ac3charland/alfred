@@ -1,13 +1,13 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import {
   PROJECTS,
-  READ_OK,
   keyedCaller,
-  makeSupabase,
   mockCreateAdminClient,
   mockCreateClient,
   signedIn,
-} from '../route-test-support';
+} from '@/lib/api/project-repos-route-double';
+import { makeSignedOutDouble } from '@/lib/api/supabase-route-double';
+
 import { GET } from './route';
 
 // Neutralise `import 'server-only'` reached through the GitHub fan-out under Jest.
@@ -74,7 +74,7 @@ describe('GET /api/code/pr-ratio', () => {
 
   describe('auth', () => {
     it('returns 401 with neither a session nor an API key', async () => {
-      mockCreateClient.mockResolvedValue(makeSupabase(undefined, READ_OK) as never);
+      mockCreateClient.mockResolvedValue(makeSignedOutDouble() as never);
       const requested = mockGithub([3, 6]);
 
       const response = await GET(getRequest());
@@ -128,8 +128,10 @@ describe('GET /api/code/pr-ratio', () => {
 
       await GET(getRequest());
 
-      expect(supabase._chain.select).toHaveBeenCalledWith('name, repo_owner, repo_name');
-      expect(supabase._chain.order).toHaveBeenCalledWith('created_at', { ascending: true });
+      expect(supabase.table('projects').select).toHaveBeenCalledWith('name, repo_owner, repo_name');
+      expect(supabase.table('projects').order).toHaveBeenCalledWith('created_at', {
+        ascending: true,
+      });
     });
 
     it('answers one entry per project, in that order, labelled by the project’s name', async () => {

@@ -1,15 +1,14 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
-import type { LocVelocityResponse } from '@/lib/types';
-
 import {
   PROJECTS,
-  READ_OK,
   keyedCaller,
-  makeSupabase,
   mockCreateAdminClient,
   mockCreateClient,
   signedIn,
-} from '../route-test-support';
+} from '@/lib/api/project-repos-route-double';
+import { makeSignedOutDouble } from '@/lib/api/supabase-route-double';
+import type { LocVelocityResponse } from '@/lib/types';
+
 import { GET } from './route';
 
 // Neutralise `import 'server-only'` reached through the GitHub fan-out under Jest.
@@ -66,7 +65,7 @@ describe('GET /api/code/loc-velocity', () => {
 
   describe('auth', () => {
     it('returns 401 with neither a session nor an API key', async () => {
-      mockCreateClient.mockResolvedValue(makeSupabase(undefined, READ_OK) as never);
+      mockCreateClient.mockResolvedValue(makeSignedOutDouble() as never);
       const requested = mockGithub([{ status: 200, body: [] }]);
 
       const response = await GET(getRequest());
@@ -116,8 +115,10 @@ describe('GET /api/code/loc-velocity', () => {
     const response = await GET(getRequest());
     expect(response.status).toBe(200);
 
-    expect(supabase._chain.select).toHaveBeenCalledWith('name, repo_owner, repo_name');
-    expect(supabase._chain.order).toHaveBeenCalledWith('created_at', { ascending: true });
+    expect(supabase.table('projects').select).toHaveBeenCalledWith('name, repo_owner, repo_name');
+    expect(supabase.table('projects').order).toHaveBeenCalledWith('created_at', {
+      ascending: true,
+    });
 
     const body = (await response.json()) as LocVelocityResponse;
     expect(body.weeks).toHaveLength(12);

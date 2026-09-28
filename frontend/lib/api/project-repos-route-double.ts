@@ -1,3 +1,8 @@
+import {
+  type SupabaseDouble,
+  makeSignedOutDouble,
+  makeSupabaseDouble,
+} from '@/lib/api/supabase-route-double';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -6,6 +11,8 @@ import { createClient } from '@/lib/supabase/server';
  * projects — `pr-ratio` and `loc-velocity`. Both read the exact same `projects` columns
  * through the exact same session-or-admin-client resolution (`resolveIngestClient`), so the
  * Supabase stub and its auth helpers are one thing to maintain, not two copies drifting apart.
+ * Built on the shared route-test double (`lib/api/supabase-route-double`): the `projects` read
+ * is a `list` terminal (the route awaits `.select().order()` directly, no `.single()`).
  *
  * Each consuming test file keeps its own `jest.mock('@/lib/supabase/server', …)` and
  * `jest.mock('@/lib/supabase/admin', …)` calls — Jest hoists `jest.mock` per file, so this
@@ -16,8 +23,6 @@ import { createClient } from '@/lib/supabase/server';
 
 export const mockCreateClient = jest.mocked(createClient);
 export const mockCreateAdminClient = jest.mocked(createAdminClient);
-
-const TEST_USER = { id: 'user-123' };
 
 /** A project row as the route selects it — oldest first, the order the table answers in. */
 export interface ProjectRepoRow {
@@ -36,46 +41,26 @@ export interface ProjectsRead {
   error: { message: string; code?: string } | null;
 }
 
-/** The stubbed `projects` read: a chainable `select().order()` resolving to `read`. */
-export interface SupabaseProjectsDouble {
-  auth: { getUser: jest.Mock };
-  from: jest.Mock;
-  _chain: { select: jest.Mock; order: jest.Mock };
-}
-
-/**
- * A Supabase stub that says whether a session exists and answers the one `projects` read the
- * route makes. The spies are returned so a test can assert which client served the read and
- * how it was ordered.
- */
-export function makeSupabase(
-  user: { id: string } | undefined,
-  read: ProjectsRead,
-): SupabaseProjectsDouble {
-  const chain = {
-    select: jest.fn().mockReturnThis(),
-    order: jest.fn().mockResolvedValue(read),
-  };
-  return {
-    auth: { getUser: jest.fn().mockResolvedValue({ data: { user } }) },
-    from: jest.fn().mockReturnValue(chain),
-    _chain: chain,
-  };
-}
-
 export const READ_OK: ProjectsRead = { data: PROJECTS, error: null };
 
+/** Builds the `projects` table stub the shared double expects from a `ProjectsRead`. */
+function projectsDouble(read: ProjectsRead): SupabaseDouble {
+  return makeSupabaseDouble({
+    projects: { list: { data: read.data, error: read.error ?? undefined } },
+  });
+}
+
 /** A signed-in browser session whose `projects` read answers `read`. */
-export function signedIn(read: ProjectsRead = READ_OK): SupabaseProjectsDouble {
-  const supabase = makeSupabase(TEST_USER, read);
+export function signedIn(read: ProjectsRead = READ_OK): SupabaseDouble {
+  const supabase = projectsDouble(read);
   mockCreateClient.mockResolvedValue(supabase as never);
   return supabase;
 }
 
 /** No session at all; a keyed caller is served by the admin client, which answers `read`. */
-export function keyedCaller(read: ProjectsRead = READ_OK): SupabaseProjectsDouble {
-  mockCreateClient.mockResolvedValue(makeSupabase(undefined, { data: [], error: null }) as never);
-  const admin = makeSupabase(undefined, read);
+export function keyedCaller(read: ProjectsRead = READ_OK): SupabaseDouble {
+  mockCreateClient.mockResolvedValue(makeSignedOutDouble() as never);
+  const admin = projectsDouble(read);
   mockCreateAdminClient.mockReturnValue(admin as never);
   return admin;
 }
