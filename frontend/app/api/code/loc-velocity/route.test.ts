@@ -1,8 +1,15 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
-import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
 import type { LocVelocityResponse } from '@/lib/types';
 
+import {
+  PROJECTS,
+  READ_OK,
+  keyedCaller,
+  makeSupabase,
+  mockCreateAdminClient,
+  mockCreateClient,
+  signedIn,
+} from '../route-test-support';
 import { GET } from './route';
 
 // Neutralise `import 'server-only'` reached through the GitHub fan-out under Jest.
@@ -16,62 +23,7 @@ jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: jest.fn(),
 }));
 
-const mockCreateClient = jest.mocked(createClient);
-const mockCreateAdminClient = jest.mocked(createAdminClient);
-
 const API_KEY = 'ingest-key-abc';
-const TEST_USER = { id: 'user-123' };
-
-/** A project row as the route selects it — oldest first, the order the table answers in. */
-interface ProjectRepoRow {
-  name: string;
-  repo_owner: string;
-  repo_name: string;
-}
-
-const PROJECTS: ProjectRepoRow[] = [
-  { name: 'RealPlay', repo_owner: 'ac3charland', repo_name: 'realplay' },
-  { name: 'Alfred', repo_owner: 'ac3charland', repo_name: 'alfred' },
-];
-
-interface ProjectsRead {
-  data: ProjectRepoRow[] | null;
-  error: { message: string; code?: string } | null;
-}
-
-/**
- * A Supabase stub that says whether a session exists and answers the one `projects` read the
- * route makes. The spies are returned so a test can assert which client served the read and
- * how it was ordered.
- */
-function makeSupabase(user: { id: string } | undefined, read: ProjectsRead) {
-  const chain = {
-    select: jest.fn().mockReturnThis(),
-    order: jest.fn().mockResolvedValue(read),
-  };
-  return {
-    auth: { getUser: jest.fn().mockResolvedValue({ data: { user } }) },
-    from: jest.fn().mockReturnValue(chain),
-    _chain: chain,
-  };
-}
-
-const READ_OK: ProjectsRead = { data: PROJECTS, error: null };
-
-/** A signed-in browser session whose `projects` read answers `read`. */
-function signedIn(read: ProjectsRead = READ_OK) {
-  const supabase = makeSupabase(TEST_USER, read);
-  mockCreateClient.mockResolvedValue(supabase as never);
-  return supabase;
-}
-
-/** No session at all; a keyed caller is served by the admin client, which answers `read`. */
-function keyedCaller(read: ProjectsRead = READ_OK) {
-  mockCreateClient.mockResolvedValue(makeSupabase(undefined, { data: [], error: null }) as never);
-  const admin = makeSupabase(undefined, read);
-  mockCreateAdminClient.mockReturnValue(admin as never);
-  return admin;
-}
 
 /**
  * Stub the per-repo statistics fan-out: one queued response per repo, in project order.
