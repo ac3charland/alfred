@@ -55,6 +55,13 @@ function barFills(): string[] {
   return [...screen.getByRole('img').children].map((segment) => segment.className);
 }
 
+/** True if `spy` was ever called with a message containing React's duplicate-key warning. */
+function loggedDuplicateKeyWarning(spy: jest.SpiedFunction<typeof console.error>): boolean {
+  return spy.mock.calls.some((call) =>
+    call.some((arg) => typeof arg === 'string' && arg.includes('same key')),
+  );
+}
+
 const RATIO: PrRatioResponse = {
   week: {
     // The seven days ending at a Friday-afternoon request — a rolling window, not a
@@ -324,6 +331,55 @@ describe('PrRatio', () => {
       expect(screen.getByText('Lumen').closest('a')).toBeNull();
       expect(legendDot('Lumen')).toHaveClass('bg-accent-blue');
       expect(screen.getAllByRole('link')).toHaveLength(2);
+    });
+  });
+
+  describe('segment identity survives colliding display labels', () => {
+    it('gives each project its own bar segment even when two project names collide', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      // Two distinct projects (different repos) that happen to share a display name.
+      const site1 = makeProject('p-site1', 'Site', 'site1', '2026-01-01T00:00:00Z');
+      const site2 = makeProject('p-site2', 'Site', 'site2', '2026-02-01T00:00:00Z');
+      mockGetPrRatio.mockResolvedValue({
+        ...RATIO,
+        repos: [
+          { repo: 'ac3charland/site1', label: 'Site', count: 3, percentage: 33 },
+          { repo: 'ac3charland/site2', label: 'Site', count: 6, percentage: 67 },
+        ],
+      });
+
+      renderCard([site1, site2]);
+
+      await screen.findByRole('img');
+      // One bar segment per entry — a colliding key would let React drop/merge one.
+      expect(barFills()).toHaveLength(2);
+      const links = await screen.findAllByRole('link');
+      expect(links.map((link) => link.getAttribute('href'))).toEqual([
+        '/code/p-site1',
+        '/code/p-site2',
+      ]);
+      expect(loggedDuplicateKeyWarning(errorSpy)).toBe(false);
+    });
+
+    it('keeps a project named "Other" distinct from the Other bucket', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      // A project literally named "Other", alongside a populated Other bucket.
+      const namedOther = makeProject('p-other', 'Other', 'other-repo', '2026-01-01T00:00:00Z');
+      mockGetPrRatio.mockResolvedValue({
+        ...RATIO,
+        total: 10,
+        repos: [{ repo: 'ac3charland/other-repo', label: 'Other', count: 3, percentage: 30 }],
+        other: { count: 7, percentage: 70 },
+      });
+
+      renderCard([namedOther]);
+
+      await screen.findByRole('img');
+      expect(barFills()).toHaveLength(2);
+      // Only the project's row is a link — the Other bucket stays plain text either way.
+      const links = await screen.findAllByRole('link');
+      expect(links.map((link) => link.getAttribute('href'))).toEqual(['/code/p-other']);
+      expect(loggedDuplicateKeyWarning(errorSpy)).toBe(false);
     });
   });
 });

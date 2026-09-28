@@ -167,8 +167,10 @@ export function PrRatio() {
   }
 
   const entries = toEntries(state.ratio, projects);
+  // `entry.key` (unique per entry), not `entry.label` (the display name, which projects.name
+  // has no unique constraint on — two projects can share a name, or collide with "Other").
   const segments: RatioSegment[] = entries.map((entry) => ({
-    label: entry.label,
+    label: entry.key,
     value: entry.count,
     tone: entry.tone,
   }));
