@@ -2647,7 +2647,8 @@ describe('code-store', () => {
 
     describe('updateProjectColor (the board toolbar picker)', () => {
       it('optimistically patches the colour, then reconciles with the saved row', async () => {
-        mockUpdateProject.mockResolvedValue({ ...PROJECT_A, color: 'green' });
+        // The server's row wins over the optimistic value, so reconcile is observable.
+        mockUpdateProject.mockResolvedValue({ ...PROJECT_A, color: 'teal' });
         const { result } = renderHook(() => useStore('p1'), {
           wrapper: makeWrapper({ projects: [PROJECT_A] }),
         });
@@ -2657,7 +2658,7 @@ describe('code-store', () => {
         });
 
         expect(mockUpdateProject).toHaveBeenCalledWith('p1', { color: 'green' });
-        expect(result.current.board.project?.color).toBe('green');
+        expect(result.current.board.project?.color).toBe('teal');
       });
 
       it('applies the colour before the request resolves', () => {

@@ -225,6 +225,9 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
   // At rest: the first project's automatic colour, glowing on the title only.
   await expect(title).toHaveClass(/\btext-accent-blue\b/);
   await expect(title).toHaveClass(/\btitle-glow-blue\b/);
+  // The glow itself, not just its class: a soft halo in the accent at half strength.
+  await expect(title).toHaveCSS('color', 'rgb(96, 165, 250)');
+  await expect(title).toHaveCSS('text-shadow', 'rgba(96, 165, 250, 0.5) 0px 0px 14px');
   await expect(navPill).toHaveClass(/\btext-accent-blue\b/);
 
   const saved = page.waitForResponse(
@@ -237,6 +240,8 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
 
   // Every coloured surface follows the pick: the title and the sidebar's pill.
   await expect(title).toHaveClass(/\btitle-glow-green\b/);
+  await expect(title).toHaveCSS('color', 'rgb(52, 211, 153)');
+  await expect(title).toHaveCSS('text-shadow', 'rgba(52, 211, 153, 0.5) 0px 0px 14px');
   await expect(navPill).toHaveClass(/\btext-accent-green\b/);
   await expect(page.getByRole('button', { name: 'Project color: Green' })).toBeVisible();
 

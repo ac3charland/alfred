@@ -135,6 +135,7 @@ test.describe('the project colour button at a phone width', () => {
     await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'Board filters' }).click();
+    await expect(page.getByRole('menu')).toBeVisible();
     await expect(page.getByRole('menu').getByText(/project color/i)).toBeHidden();
   });
 });
