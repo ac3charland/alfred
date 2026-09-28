@@ -161,7 +161,7 @@ export const Failed: Story = {
 /**
  * `LegendKeyboardFocus`'s own capture frame. At the meta's 760px the ring — a thin stroke — is
  * under 1% of the capture, so a dropped ring would still pass the test-runner's threshold; at
- * 200px it isn't. Padded so the ring, drawn outside the link's box, isn't clipped.
+ * 200px it isn't. Padded so the card's own border isn't flush against the capture edge.
  */
 function withNarrowFocusFrame(Story: React.ComponentType) {
   return (
