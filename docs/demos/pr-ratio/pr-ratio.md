@@ -6,7 +6,7 @@ branch: claude/pr-ratio-measurement-oy5gbr
 
 *2026-07-25T21:31:56.486Z*
 
-> This demo was recorded when the measured repos came from `PR_RATIO_REPOS`; ALF-268 replaced that env var with the Code module's `projects` table, so the exec blocks here that configure repos through it no longer reproduce under `demo verify` — see [`docs/demos/alf-268-project-sourced-pr-ratio/project-sourced-pr-ratio.md`](../alf-268-project-sourced-pr-ratio/project-sourced-pr-ratio.md) for the current behaviour.
+> This demo no longer reproduces under `demo verify`: it predates the "Other" bucket (ALF-135), so its output carries no `other` key, and it recorded a Monday-anchored week since replaced by a rolling window (ALF-144); since ALF-268, the repo list also comes from the Code module's `projects` rather than `PR_RATIO_REPOS`. See [`docs/demos/alf-268-project-sourced-pr-ratio/project-sourced-pr-ratio.md`](../alf-268-project-sourced-pr-ratio/project-sourced-pr-ratio.md) for the current behaviour.
 
 Tracking the quarter's goals needs one number every week: **of the PRs I merged this week, what share went to RealPlay and what share went to alfred?** ALF-131 answers it in the place where the next piece of work gets picked — the top of the Backlog — and behind an authenticated endpoint, so a script or a Shortcut can ask the same question without a browser.
 
