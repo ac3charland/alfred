@@ -106,12 +106,6 @@
                   padding: 0; cursor: pointer; }
   .app .iconbtn:hover { color: var(--foreground); }
   .app .iconbtn.new { outline: 2px dashed rgba(79,209,224,.55); outline-offset: 2px; }
-  /* InstanceMenu trigger: ghost Button sm, rounded-full border px-2.5 text-sm font-medium, teal pill */
-  .app .pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
-               border-radius: 9999px; border: 1px solid rgba(79,209,224,.4); background: rgba(79,209,224,.15);
-               color: var(--accent-teal); font-size: 14px; font-weight: 500; }
-  .app .pill .dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--accent-teal); }
-  .app .pill svg.ic { width: 14px; height: 14px; }
 
   /* page body behind the sheet */
   .app .page { padding: 16px; display: flex; flex-direction: column; gap: 6px; }
@@ -300,7 +294,7 @@ full-screen sheet with full-width, touch-sized, scrollable results. Desktop (⌘
 <ol>
   <li><b>Entry point.</b> Below <code>md</code> (&lt; 768px), the header gets a <b>Search</b> icon button (lucide
     <code>Search</code>, <code>IconButton size="lg"</code>, <code>aria-label="Search"</code>) at the start of the right-hand
-    cluster, just before the account menu (ALF-206 replaced the pill with an icon trigger). It is hidden at <code>md+</code>, where the header field already exists.</li>
+    cluster, just before the account menu. It is hidden at <code>md+</code>, where the header field already exists.</li>
   <li><b>Sheet.</b> Tapping it opens a <b>full-screen sheet</b> built on the existing <code>FullScreenDialog</code> atom
     (<code>100dvh</code>, <code>bg-surface</code>). The title row reads <b>Search</b> and has the shared <b>×</b> close
     (44px tap target). Below it, in order:
@@ -561,6 +555,7 @@ used to be locked), so pick the medium showboat prescribes for that. The Storybo
     search: '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',
     menu: '<path d="M4 12h16"/><path d="M4 18h16"/><path d="M4 6h16"/>',
     chev: '<path d="m6 9 6 6 6-6"/>',
+    user: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
   };
   const svg = (k) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
@@ -628,7 +623,7 @@ used to be locked), so pick the medium showboat prescribes for that. The Storybo
       <div class="l"><button class="iconbtn" data-act="drawer" aria-label="Open navigation">${svg('menu')}</button>
         <span class="wordmark serif">alfred</span></div>
       <div class="r"><button class="iconbtn new" data-act="open" aria-label="Search">${svg('search')}</button>
-        <span class="pill"><span class="dot"></span>Personal${svg('chev')}</span></div>
+        <button class="iconbtn" aria-label="Account menu">${svg('user')}</button></div>
     </div>`;
   }
   function page() {

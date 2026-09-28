@@ -182,8 +182,8 @@ How it decides what to run:
   gets every migration from `0001` — provisioning a new instance needs no manual bootstrap step.
 - **An _unadopted_ database — schema but no ledger — is refused, loudly.** Its history is
   unknowable from the outside, and a guess is unrecoverable: recording an assumed history marks the
-  gaps it actually has as applied and hides them forever. Both databases live when this landed proved
-  the point — the since-retired Work instance was nine migrations behind (`0018`–`0026`) and Personal
+  gaps it actually has as applied and hides them forever. Both databases that were live when this landed
+  proved the point — the since-retired Work instance was nine migrations behind (`0018`–`0026`) and Personal
   had lost `0016`'s function rewrite, so *neither* stood where an assumed baseline would have put it.
 - **Adoption is one explicit command**, naming the migration you have verified the database stands
   at: `npm run deploy -w database -- --baseline 0017_grant_v_code_stories.sql`. Everything through

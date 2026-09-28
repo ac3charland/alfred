@@ -60,8 +60,7 @@ One line each, with the file that now holds the truth.
   meta, title, gist and verbs.
 - **No index on `reader_publications(enabled)`** and none on `comm_messages`.
 - **The cron-trigger cap**: the Free plan allows five cron triggers per account (Cloudflare limits
-  page); this Worker now registers four. If both alfred instances' Workers live in one Cloudflare
-  account that is eight, and the deploy will refuse — see "Checkpoint results".
+  page); this Worker now registers four of the five.
 - **The daily ceiling counts model calls, not HTTP requests** — the SDK's one retry means a day of
   retried transport failures can reach twice the cap in requests; 30 is sized with that headroom.
   — `workers/src/reader/config.ts`
