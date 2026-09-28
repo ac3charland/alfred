@@ -13,7 +13,6 @@ import { getReaderSettingsSeed } from '@/lib/data/reader-publications';
 import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans';
 import { getWikiSeed } from '@/lib/data/wiki';
 import { todayIn } from '@/lib/habits';
-import { getInstanceConfig } from '@/lib/instance';
 import { getInstapaperConfig } from '@/lib/instapaper/config';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
@@ -54,7 +53,7 @@ import { getWikiClientConfig } from '@/lib/wiki/writer/config';
  */
 export default async function ShellLayout({ children }: { children: React.ReactNode }) {
   // Real auth gate — redirects to /login if no session. The user (its email) feeds the
-  // instance menu header, so keep the return rather than discarding it.
+  // account menu header, so keep the return rather than discarding it.
   const user = await requireUser();
 
   const [
@@ -165,12 +164,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                                           initialPublications={readerSettingsSeed.publications}
                                           initialCandidates={readerSettingsSeed.candidates}
                                         >
-                                          <AppShell
-                                            email={user.email ?? null}
-                                            instance={getInstanceConfig()}
-                                          >
-                                            {children}
-                                          </AppShell>
+                                          <AppShell email={user.email ?? null}>{children}</AppShell>
                                         </ReaderSettingsProvider>
                                       </ReaderProvider>
                                     </CommsSettingsProvider>

@@ -8,7 +8,7 @@ test('signing out returns to the login page', async ({ page, seed }) => {
   await seed({});
   await page.goto('/');
 
-  // Sign out now lives inside the top-right instance/account menu.
+  // Sign out lives inside the top-right account menu.
   await page.getByRole('button', { name: 'Account menu' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
 
