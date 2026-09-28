@@ -298,6 +298,8 @@ export function makeOptimisticProject(input: CreateProjectInput): Project {
     // As with a folder: the new-project dialog takes a name, key and repo; the description is a
     // second, unhurried thought, written from the board header.
     description: null,
+    // Automatic: the project wears its creation-slot colour until the owner picks one.
+    color: null,
   };
 }
 

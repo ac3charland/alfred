@@ -22,6 +22,7 @@ const FOLDERS: Folder[] = [
 
 function project(id: string, name: string, key: string): Project {
   return {
+    color: null,
     description: null,
     id,
     name,

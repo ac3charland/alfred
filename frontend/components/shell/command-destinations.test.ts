@@ -26,6 +26,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     ref_seq: 0,
     repo_name: 'repo',
     repo_owner: 'owner',
+    color: null,
     description: null,
     ...overrides,
   };

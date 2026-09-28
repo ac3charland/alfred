@@ -54,6 +54,7 @@ const FOLDERS: Folder[] = [
 ];
 
 const PROJECT: Project = {
+  color: null,
   description: null,
   id: 'p1',
   name: 'Alfred',

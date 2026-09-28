@@ -13,6 +13,7 @@ const mockGetPrRatio = jest.mocked(api.getPrRatio);
 
 function makeProject(id: string, name: string, repoName: string, createdAt: string): Project {
   return {
+    color: null,
     description: null,
     id,
     name,

@@ -48,6 +48,7 @@ const FOLDERS: Folder[] = [
 
 const PROJECTS: Project[] = [
   {
+    color: null,
     description: null,
     id: 'p1',
     name: 'Alfred',

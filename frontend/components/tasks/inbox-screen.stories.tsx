@@ -9,6 +9,7 @@ import { InboxScreen } from './inbox-screen';
 
 const PROJECTS: Project[] = [
   {
+    color: null,
     description: null,
     id: 'p-alf',
     name: 'Alfred',

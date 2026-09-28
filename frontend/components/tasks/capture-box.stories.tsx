@@ -9,6 +9,7 @@ import { CaptureBox } from './capture-box';
 
 function makeProject(id: string, name: string, key: string): Project {
   return {
+    color: null,
     description: null,
     id,
     name,

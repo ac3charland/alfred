@@ -4,6 +4,7 @@ import { parseProjectPrefix } from './project-prefix';
 
 function makeProject(overrides: Partial<Project> & Pick<Project, 'id' | 'name' | 'key'>): Project {
   return {
+    color: null,
     description: null,
     repo_owner: 'ac3charland',
     repo_name: 'alfred',

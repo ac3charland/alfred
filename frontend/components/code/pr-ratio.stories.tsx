@@ -12,6 +12,7 @@ import { PrRatio } from './pr-ratio';
  */
 const PROJECTS: Project[] = [
   {
+    color: null,
     description: null,
     id: 'p-realplay',
     name: 'RealPlay',
@@ -23,6 +24,7 @@ const PROJECTS: Project[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
+    color: null,
     description: null,
     id: 'p-alfred',
     name: 'Alfred',

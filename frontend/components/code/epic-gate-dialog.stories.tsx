@@ -7,6 +7,7 @@ import { EpicGateDialog } from './epic-gate-dialog';
 
 const PROJECTS: Project[] = [
   {
+    color: null,
     description: null,
     id: 'p1',
     name: 'Alfred',
@@ -18,6 +19,7 @@ const PROJECTS: Project[] = [
     created_at: '2025-01-01T00:00:00Z',
   },
   {
+    color: null,
     description: null,
     id: 'p2',
     name: 'Relay',

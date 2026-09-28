@@ -225,6 +225,7 @@ export function makeProject(name: string, overrides: Partial<Project> = {}): Pro
     github_url: overrides.github_url ?? null,
     ref_seq: overrides.ref_seq ?? 0,
     description: overrides.description ?? null,
+    color: overrides.color ?? null,
   };
 }
 
