@@ -38,6 +38,19 @@ wearing a diff.
 4. **Check the blast radius.** Run the repo's own checks and re-read the diff for anything else
    that relied on the broken behaviour.
 5. **Open the PR** with the `alfred` block below.
+6. **Dispatch the adversarial reviewer.** Spawn a subagent with its model set to Opus — the Agent
+   tool's `model: "opus"`, whatever model you are — briefed per the adversarial-review skill's
+   checklist: the bug report and how to reproduce it, the PR and its diff, and the repo's
+   CLAUDE.md, but not your diagnosis — it judges whether the fix hits the root cause. Tell it to
+   report only. Run it in the foreground and wait for its report — that wait is your own work,
+   not a check-in.
+7. **Repair.** Verify each finding against the code. Fix the in-scope legitimate ones — a new
+   defect gets its own red test first — raise adjacent bugs with the human (they're new stories),
+   and decline the rest only with evidence. Push through the normal gates.
+8. **Record the round.** Add an *Adversarial review* section to the PR description — every
+   finding with its disposition — leaving the `alfred` block intact.
+
+One review round unless the ticket context says otherwise.
 
 ## The PR
 

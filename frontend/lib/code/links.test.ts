@@ -733,6 +733,11 @@ describe('buildBugUrl', () => {
   });
 });
 
+/** The prompt line carrying the adversarial-review step, or '' when the prompt has none. */
+function reviewLine(prompt: string): string {
+  return prompt.split('\n').find((line) => /adversarial review/i.test(line)) ?? '';
+}
+
 describe('the no-scheduled-check-ins guardrail', () => {
   it.each([
     ['buildRefinementUrl', buildRefinementUrl],
@@ -763,6 +768,150 @@ describe('the no-scheduled-check-ins guardrail', () => {
       expect(prompt).toMatch(/CLAUDE\.md/);
     },
   );
+});
+
+describe('the adversarial-review step', () => {
+  const codeLanes = [
+    [
+      'buildImplementationUrl',
+      buildImplementationUrl,
+      makeStory({ spec_path: 'docs/specs/ALF-42.html' }),
+    ],
+    ['buildBypassUrl', buildBypassUrl, makeStory()],
+    ['buildBugUrl', buildBugUrl, makeBug()],
+  ] as const;
+
+  it.each(codeLanes)(
+    '%s spawns an Opus reviewer whatever model the implementer is',
+    (_name, build, story) => {
+      const line = reviewLine(parse(build(makeProject(), story)).prompt ?? '');
+      expect(line).toMatch(/subagent/i);
+      expect(line).toMatch(/\bOpus\b/);
+      expect(line).toMatch(/whatever model you are/i);
+      expect(line).toMatch(/antagonistic/i);
+      // A subagent left without an explicit model inherits the implementer's, so name the knob.
+      expect(line).toContain('model: "opus"');
+    },
+  );
+
+  it.each(codeLanes)(
+    '%s keeps the reviewer report-only and briefed without the implementer reasoning',
+    (_name, build, story) => {
+      const line = reviewLine(parse(build(makeProject(), story)).prompt ?? '');
+      expect(line).toMatch(/report-only \(no edits, commits, or pushes\)/i);
+      expect(line).toMatch(/without your reasoning/i);
+    },
+  );
+
+  it.each(codeLanes)(
+    '%s runs exactly ONE round, after the PR is open, and waits for the report',
+    (_name, build, story) => {
+      const prompt = parse(build(makeProject(), story)).prompt ?? '';
+      const line = reviewLine(prompt);
+      expect(line).toMatch(/\bONE round\b/);
+      expect(line).toMatch(/once the PR is open/i);
+      expect(line).toMatch(/in the foreground and wait for its report/i);
+      // The wait happens after the PR opens, so say outright it isn't the check-in the next
+      // line forbids.
+      expect(line).toMatch(/not a check-in/i);
+      // Right after the pre-PR self-check and right before the check-in guardrail, so it can't
+      // be read as a pre-PR gate or land after the notes.
+      const selfCheckIndex = prompt.search(/Before opening the PR, confirm/);
+      const guardrailIndex = prompt.search(/don't proactively schedule a check-in/i);
+      expect(selfCheckIndex).toBeGreaterThan(-1);
+      expect(prompt.indexOf(line)).toBeGreaterThan(selfCheckIndex);
+      expect(prompt.indexOf(line)).toBeLessThan(guardrailIndex);
+    },
+  );
+
+  it.each([
+    ['buildBypassUrl', buildBypassUrl, makeStory()],
+    ['buildBugUrl', buildBugUrl, makeBug()],
+  ] as const)(
+    '%s keeps its numbered steps contiguous with the review step added',
+    (_name, build, story) => {
+      const prompt = parse(build(makeProject(), story)).prompt ?? '';
+      const numbers = prompt
+        .split('\n')
+        .map((line) => /^(\d+)\. /.exec(line)?.[1])
+        .filter((n) => n !== undefined)
+        .map(Number);
+      expect(numbers).toEqual(numbers.map((_n, index) => index + 1));
+      expect(reviewLine(prompt)).toMatch(new RegExp(String.raw`^${numbers.length}\. `));
+    },
+  );
+
+  it.each(codeLanes)(
+    '%s fixes the in-scope findings verified as legitimate, and raises out-of-scope ones',
+    (_name, build, story) => {
+      const line = reviewLine(parse(build(makeProject(), story)).prompt ?? '');
+      expect(line).toMatch(/in-scope findings you verify as legitimate/i);
+      expect(line).toMatch(/push/i);
+      // The bug lane forbids folding adjacent bugs in, so a real finding outside the ticket
+      // needs a disposition other than "fixed" or "declined".
+      expect(line).toMatch(/raise real but out-of-scope ones with me/i);
+    },
+  );
+
+  it.each(codeLanes)(
+    '%s records every finding and its disposition in the PR description, block intact',
+    (_name, build, story) => {
+      const line = reviewLine(parse(build(makeProject(), story)).prompt ?? '');
+      expect(line).toContain('"Adversarial review" section');
+      expect(line).toMatch(/PR description/);
+      expect(line).toMatch(/fixed, declined and why, or raised with me/i);
+      expect(line).toMatch(/alfred block/i);
+    },
+  );
+
+  it.each(codeLanes)(
+    '%s points at the adversarial-review skill for how to brief and triage',
+    (_name, build, story) => {
+      const line = reviewLine(parse(build(makeProject(), story)).prompt ?? '');
+      expect(line).toContain('.claude/skills/adversarial-review/SKILL.md');
+    },
+  );
+
+  it.each(codeLanes)(
+    '%s lets the ticket context override the default, and that context comes after the step',
+    (_name, build, story) => {
+      const prompt =
+        parse(build(makeProject(), { ...story, notes: 'Two review rounds, please.' })).prompt ?? '';
+      const line = reviewLine(prompt);
+      expect(line).toMatch(/ticket context below says otherwise/i);
+      expect(prompt.indexOf('Two review rounds, please.')).toBeGreaterThan(prompt.indexOf(line));
+    },
+  );
+
+  it('is the identical step in every code lane, bar its step number', () => {
+    const lines = new Set(
+      codeLanes.map(([, build, story]) =>
+        reviewLine(parse(build(makeProject(), story)).prompt ?? '').replace(/^\d+\. /, ''),
+      ),
+    );
+    expect(lines.size).toBe(1);
+    expect(lines).not.toContain('');
+  });
+
+  it.each([
+    ['buildRefinementUrl', buildRefinementUrl],
+    ['buildSpikeUrl', buildSpikeUrl],
+  ] as const)('%s carries no review step (a document lane ships no code)', (_name, build) => {
+    const prompt = parse(build(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).not.toMatch(/adversarial review/i);
+    expect(prompt).not.toContain('.claude/skills/adversarial-review/SKILL.md');
+  });
+
+  it.each([
+    ['buildEpicRefinementUrl', buildEpicRefinementUrl],
+    ['buildEpicImplementationUrl', buildEpicImplementationUrl],
+  ] as const)('%s carries no review step', (_name, build) => {
+    const prompt =
+      parse(build(makeProject(), makeEpic({ spec_path: 'docs/specs/epics/ALF-12.html' }))).prompt ??
+      '';
+    expect(prompt).not.toMatch(/adversarial review/i);
+    expect(prompt).not.toContain('.claude/skills/adversarial-review/SKILL.md');
+  });
 });
 
 describe('promptFromLaunchUrl', () => {
