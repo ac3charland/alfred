@@ -37,9 +37,10 @@ It can't ask you anything, and it shouldn't inherit your reasoning — arguing y
 anchors the reviewer and defeats the point. Give it:
 
 - **What was asked:** the ticket ref, title, and context, plus the plan — the spec's path, the plan
-  you settled with the human (skip-refinement), or the reproduction and root cause (bug).
-- **Where to look:** the PR number, its diff against the base (e.g. `git diff origin/main...HEAD`),
-  and the repo's CLAUDE.md / CONTRIBUTING.
+  you settled with the human (skip-refinement), or the bug report and how to reproduce it (bug; let
+  the reviewer judge whether the fix hits the root cause rather than handing it your diagnosis).
+- **Where to look:** the PR number, its diff against the base, and the repo's CLAUDE.md /
+  CONTRIBUTING. Fetch the base before diffing against it (the git skill's stale-main trap).
 - **Its job:** be adversarial — hunt for bugs, unmet or misread requirements, tests that don't
   actually pin the behavior, missed edge cases, and convention breaks. Each finding carries
   `file:line`, the evidence, a severity, and a concrete fix.
