@@ -11,7 +11,7 @@ describe('planMigrations', () => {
   });
 
   it('refuses to guess for a database that has schema but no ledger', () => {
-    // The failure this exists to prevent: Personal and Work were BOTH somewhere other than the
+    // The failure this exists to prevent: two live databases were BOTH somewhere other than the
     // assumed point, so recording an assumed history would have marked real gaps as applied and
     // hidden them forever. Adoption is an explicit, operator-verified act.
     expect(() => planMigrations({ files: FILES, applied: [], hasAppSchema: true })).toThrow(

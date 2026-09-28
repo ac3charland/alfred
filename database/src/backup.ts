@@ -163,9 +163,8 @@ export function copiedTables(dumpSql: string): CopiedTable[] {
  * whole tables, the dump carries that the verify database has nowhere to put.
  *
  * ONE-DIRECTIONAL by design. The reverse — the repo declaring more than a dump carries — is normal
- * and must never fail a backup: a dump taken between a merge and its migrate job, or against an
- * instance whose migrate job failed (`migrate.yml` runs `fail-fast: false`, so one instance can
- * lag the other), is simply short a column, and COPY leaves the rest at their defaults. Only
+ * and must never fail a backup: a dump taken between a merge and its migrate job, or after a
+ * migrate job failed, is simply short a column, and COPY leaves the rest at their defaults. Only
  * production-ahead-of-repo can abort a load.
  */
 export function schemaDrift(

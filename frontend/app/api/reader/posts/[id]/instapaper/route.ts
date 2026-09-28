@@ -15,9 +15,8 @@ import { getInstapaperConfig } from '@/lib/instapaper/config';
 // email HTML (or its stored text) and the credentials it is signed with must never reach the
 // browser. Node runtime, for `node:crypto`.
 //
-// The order is the design. Configuration first, so an unconfigured deployment (the Work
-// instance, local dev) answers 501 before touching the database or the network. Then the read,
-// then Instapaper, and only on a confirmed save the write — a refused or failed send leaves the
+// The order is the design. Configuration first, so an unconfigured deployment (e.g. local dev)
+// answers 501 before touching the database or the network. Then the read, then Instapaper, and only on a confirmed save the write — a refused or failed send leaves the
 // row exactly as it was. Every failure answers with a sentence the owner's toast can say as-is.
 // If the stamp itself fails after Instapaper saved the post, the store rolls the row back and a
 // second press is safe: Instapaper moves an existing bookmark to the top rather than duplicating it.

@@ -106,8 +106,8 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   };
   /**
    * The wiki's page index and sync row, plus what the shell knows about the repo. The default —
-   * no pages, no repo, not writable — is an unconfigured wiki, and it is what keeps every existing
-   * test rendering exactly as before: a not-writable wiki shows no send affordance anywhere.
+   * no pages, no repo, not writable — is an unconfigured wiki, and it is what keeps every
+   * existing test rendering exactly as before: a not-writable wiki shows no send affordance anywhere.
    */
   wiki?: {
     pages?: WikiPageIndexRow[];

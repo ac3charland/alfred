@@ -8,8 +8,7 @@ import { MIGRATIONS_DIR, migrationFiles, resolveDatabaseUrl } from './migrate.ts
 
 /**
  * The per-database ledger of applied migrations — the source of truth for "what has THIS database
- * seen?" (Personal and Work are separate Supabase databases, so no single shared record could
- * answer that per instance) — exactly what an unattended deploy must know before it runs a file.
+ * seen?" (a restored or newly provisioned database still knows its own history) — exactly what an unattended deploy must know before it runs a file.
  *
  * It lives in `public` so it travels with the schema-scoped nightly dump (`supabase db dump
  * --schema public`) — a database restored from a backup therefore still knows its own history. It
@@ -55,9 +54,9 @@ export interface PlanInput {
  *   the operator has verified it stands at; everything through that file is then recorded as
  *   applied and the rest is run.
  *
- * That last case is deliberately not a guess. Both live databases turned out to sit somewhere
- * other than the point they were assumed to (Work was nine migrations behind; Personal had lost a
- * function rewrite), and recording an assumed history would have marked those real gaps as applied
+ * That last case is deliberately not a guess. Both databases live at the time turned out to sit
+ * somewhere other than the point they were assumed to (one was nine migrations behind; the other
+ * had lost a function rewrite), and recording an assumed history would have marked those real gaps as applied
  * and hidden them permanently. A loud failure is recoverable; a false ledger row is not.
  */
 export function planMigrations({
