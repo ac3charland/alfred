@@ -1,0 +1,16 @@
+{
+  "instapaperRequests": [
+    {
+      "path": "/api/1/bookmarks/unarchive",
+      "params": {
+        "bookmark_id": "1900042"
+      }
+    }
+  ],
+  "post": {
+    "source": "instapaper",
+    "instapaper_bookmark_id": 1900042,
+    "instapaper_sent": true,
+    "archived": true
+  }
+}
