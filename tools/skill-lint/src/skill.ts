@@ -13,6 +13,19 @@ export interface Heading {
 }
 
 /**
+ * One copy of the house stylesheet — the spec template's sections 1–3, which every HTML
+ * template in the library shares verbatim — found in a skill's `assets/`.
+ */
+export interface HouseStylesheet {
+  /** The asset's path within the library, e.g. `spike/assets/findings-template.html`. */
+  readonly asset: string;
+  /** 1-based line in the asset where the copy starts. */
+  readonly line: number;
+  /** The copy: its `TEMPLATE · 1` line up to section 4 or `</style>`, trailing blanks trimmed. */
+  readonly css: string;
+}
+
+/**
  * Everything a lint rule needs to know about one skill, parsed once up front so
  * rules stay pure functions of this shape. Adding a field here is how you give a
  * new rule more to work with.
@@ -38,6 +51,8 @@ export interface SkillContext {
   readonly isCompound: boolean;
   /** Headings parsed from the body (code fences excluded). */
   readonly headings: readonly Heading[];
+  /** Copies of the house stylesheet carried by the skill's `assets/*.html`. */
+  readonly houseStylesheets: readonly HouseStylesheet[];
 }
 
 const BLOCK_SCALAR_INDICATORS = new Set(['>', '|', '>-', '|-', '>+', '|+']);
@@ -135,6 +150,33 @@ function listResourceDirs(dir: string): string[] {
   );
 }
 
+function readHouseStylesheets(dir: string): HouseStylesheet[] {
+  const assets = path.join(dir, 'assets');
+  if (!existsSync(assets)) return [];
+  const files = sorted(
+    readdirSync(assets, { recursive: true, encoding: 'utf8' }).filter((file) =>
+      file.endsWith('.html'),
+    ),
+  );
+  return files.flatMap((file) => {
+    const lines = readFileSync(path.join(assets, file), 'utf8').split(/\r?\n/);
+    const style = lines.findIndex((line) => line.includes('<style'));
+    const start = lines.findIndex((line, index) => index > style && line.includes('TEMPLATE · 1'));
+    if (style === -1 || start === -1) return [];
+    const length = lines
+      .slice(start + 1)
+      .findIndex((line) => line.includes('TEMPLATE · 4') || line.includes('</style>'));
+    const end = length === -1 ? lines.length : start + 1 + length;
+    return [
+      {
+        asset: path.posix.join(path.basename(dir), 'assets', file.split(path.sep).join('/')),
+        line: start + 1,
+        css: lines.slice(start, end).join('\n').trimEnd(),
+      },
+    ];
+  });
+}
+
 function countLines(body: string): number {
   const trimmed = body.replace(/(\r?\n)+$/, '');
   return trimmed === '' ? 0 : trimmed.split(/\r?\n/).length;
@@ -158,6 +200,7 @@ export function parseSkill(skillMdPath: string, cwd: string = process.cwd()): Sk
     resourceDirs,
     isCompound: resourceDirs.length > 0,
     headings: parseHeadings(body),
+    houseStylesheets: readHouseStylesheets(dir),
   };
 }
 
@@ -208,6 +251,21 @@ export function resolveSkillMdPaths(
       continue;
     }
     for (const match of matches) addSkillMd(path.resolve(cwd, match), found);
+  }
+  return sorted([...found]);
+}
+
+/**
+ * The SKILL.md files beside the given ones — every other skill in each one's skills directory —
+ * so a rule can compare a linted skill against the siblings this run doesn't lint.
+ */
+export function siblingSkillMdPaths(skillMdPaths: readonly string[], cwd: string): string[] {
+  const given = new Set(skillMdPaths.map((skillMdPath) => path.resolve(skillMdPath)));
+  const found = new Set<string>();
+  for (const skillMdPath of given) {
+    for (const sibling of resolveSkillMdPaths([], cwd, path.dirname(path.dirname(skillMdPath)))) {
+      if (!given.has(sibling)) found.add(sibling);
+    }
   }
   return sorted([...found]);
 }

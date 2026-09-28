@@ -43,8 +43,11 @@ export interface Rule {
   readonly name: string;
   /** One-line summary of what the rule enforces. */
   readonly description: string;
-  /** Return a finding per problem, or `[]` when the skill passes. */
-  check(skill: SkillContext): Finding[];
+  /**
+   * Return a finding per problem, or `[]` when the skill passes. `library` is every skill,
+   * linted or not, for a rule that compares a skill against the rest.
+   */
+  check(skill: SkillContext, library: readonly SkillContext[]): Finding[];
 }
 
 /** A skill description longer than the listing budget is truncated in practice. */
@@ -167,6 +170,39 @@ const compoundToc: Rule = {
   },
 };
 
+/** 0-based index of the first line where two texts differ. */
+function firstDifferingLine(a: string, b: string): number {
+  const left = a.split('\n');
+  const right = b.split('\n');
+  const index = left.findIndex((line, i) => line !== right[i]);
+  return index === -1 ? left.length : index;
+}
+
+/**
+ * The HTML templates in the library share one house stylesheet, copied verbatim so each
+ * document stays one self-contained file. Checked against the whole library, not just the
+ * changed skills, so an edit to either copy surfaces the other.
+ */
+const houseStylesheet: Rule = {
+  name: 'house-stylesheet',
+  description: 'Every copy of the house stylesheet in skill assets must match the others.',
+  check(skill, library) {
+    const copies = library.flatMap((other) => other.houseStylesheets);
+    return skill.houseStylesheets.flatMap((copy) => {
+      const other = copies.find((each) => each.asset !== copy.asset && each.css !== copy.css);
+      if (!other) return [];
+      const line = copy.line + firstDifferingLine(copy.css, other.css);
+      return [
+        {
+          rule: 'house-stylesheet',
+          severity: 'error',
+          message: `${copy.asset}:${String(line)} — its house stylesheet (sections 1–3) differs from ${other.asset}. The copies are shared verbatim: make the same edit to every copy.`,
+        },
+      ];
+    });
+  },
+};
+
 /**
  * The active rule set, applied to every skill in registration order. This array
  * is the extension point: append a {@link Rule} to lint something new.
@@ -177,4 +213,5 @@ export const rules: readonly Rule[] = [
   descriptionNoRepoName,
   bodyLength,
   compoundToc,
+  houseStylesheet,
 ];
