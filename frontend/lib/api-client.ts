@@ -496,9 +496,9 @@ export async function moveCodeInProject(ref: string, toTop: boolean): Promise<Co
 // ---------------------------------------------------------------------------
 
 /**
- * This week's merged-PR split across the configured repos, or `undefined` when the
- * deployment reports the feature unconfigured (501) — which the Backlog card renders as
- * nothing at all, so a deployment without a GitHub token shows a clean Backlog.
+ * This week's merged-PR split across the Code module's projects, or `undefined` when the
+ * deployment reports the feature unconfigured (501) — which the Dashboard's `PrRatio` card
+ * renders as nothing at all, so a deployment without a GitHub token shows a clean Dashboard.
  *
  * Deliberately not routed through `apiRequest`: that helper collapses every non-2xx into a
  * thrown Error, and this caller has to tell "not configured here" apart from "GitHub is
@@ -533,8 +533,8 @@ export type LocVelocityResult =
   | { status: 'computing' };
 
 /**
- * Lines changed per week across the configured repos. Like `getPrRatio`, deliberately not
- * routed through `apiRequest`: that helper collapses every non-2xx into a thrown Error, and
+ * Lines changed per week across the Code module's projects. Like `getPrRatio`, deliberately
+ * not routed through `apiRequest`: that helper collapses every non-2xx into a thrown Error, and
  * this caller has to tell "not configured here" and "not ready yet" apart from "GitHub is
  * unhappy" — which stays a throw.
  */
