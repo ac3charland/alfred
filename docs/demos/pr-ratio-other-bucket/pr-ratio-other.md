@@ -6,6 +6,8 @@ branch: claude/pr-breakdown-other-category-4wti21
 
 *2026-07-26T03:53:30.518Z*
 
+> This demo no longer reproduces under `demo verify`: the Monday-anchored week it recorded was replaced by a rolling window (ALF-144), and since ALF-268 the repo list comes from the Code module's `projects` rather than `PR_RATIO_REPOS`. See [`docs/demos/alf-268-project-sourced-pr-ratio/project-sourced-pr-ratio.md`](../alf-268-project-sourced-pr-ratio/project-sourced-pr-ratio.md) for the current behaviour.
+
 The Backlog's weekly PR-ratio card (ALF-131) only ever counted the repos named in `PR_RATIO_REPOS`. A PR merged anywhere else was invisible: it didn't appear as a segment, and — worse — it didn't appear in the denominator either, so "67% Alfred" silently meant "67% of the PRs I happened to be measuring", not "67% of the PRs I merged".
 
 ALF-135 adds a final **Other** segment: every PR merged this week in a repo *not* in `PR_RATIO_REPOS`. It shares the same 100 as the measured repos, so the percentages now answer the question the card looks like it's answering.

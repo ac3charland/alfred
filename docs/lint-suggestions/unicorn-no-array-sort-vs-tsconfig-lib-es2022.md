@@ -4,7 +4,9 @@
 `compilerOptions.lib` not including `es2023`
 **Package / scope:** frontend, workers
 **Date / branch:** 2026-07-01 · claude/refetch-ticket-statuses-31flil (hit again
-2026-09-09 · oneshot-comms-module, in `workers`, so the `lib` bump is wanted in both packages)
+2026-09-09 · oneshot-comms-module, in `workers`, so the `lib` bump is wanted in both packages;
+and 2026-09-28 · claude/alf-268-pr-ratio-repos-ybl459 via the sibling `unicorn/no-array-reverse`,
+whose `toReversed()` autofix hits the same TS2550 — the same `lib` bump fixes both)
 
 ## What happened
 Sorting the keys of an object in a unit test:
@@ -70,3 +72,6 @@ step.
       direct form.
 - [ ] `frontend/lib/stores/reader-settings-store.tsx` — `useReaderPublications()` keeps the roster
       in name order with `stableSorted(publications, …)` for the same reason.
+- [ ] `frontend/lib/github/config.test.ts` — the "keeps the caller's order" test lists two named
+      projects in the opposite order by hand, because `PROJECTS.toReversed()` doesn't type-check
+      and `unicorn/no-array-reverse` forbids `[...PROJECTS].reverse()`.

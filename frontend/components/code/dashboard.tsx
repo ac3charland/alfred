@@ -33,9 +33,12 @@ import {
  *   Backlog's states are a superset, so a top-ranked story awaiting review belongs in both.
  *
  * Nothing here is persisted or mutated — the two GitHub series are derived and live, so they
- * stay out of `CodeProvider` entirely (see `useLocVelocity` / `usePrRatio`).
+ * stay out of `CodeProvider`'s store entirely (see `useLocVelocity` / `usePrRatio`). `PrRatio`
+ * still reads the store's projects (`useProjects`) to colour each segment and link its legend
+ * to the project's board.
  *
- * Must be mounted under a `CodeProvider` (the panes read `useBacklog`).
+ * Must be mounted under a `CodeProvider` (the panes read `useBacklog`, and `PrRatio` reads
+ * `useProjects`).
  */
 export function Dashboard() {
   // Both status sets are module constants, so they're referentially stable and `useBacklog`'s

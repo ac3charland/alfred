@@ -206,6 +206,12 @@ things bite, and both surface as every route answering `{"error":"TypeError: fet
   node: `createServerClient` from `@supabase/ssr` with a `cookies.setAll` that captures into a
   map, then `auth.signInWithPassword` against the mock — the library writes its own cookie
   name/encoding, which you send as `Cookie:` (`docs/demos/alf-261-day-2-wiki/send-contract.mjs`).
+- **A route that calls a third-party API the mock doesn't emulate (GitHub search/stats)** → preload
+  a `fetch` stub into the server: `NODE_OPTIONS="--import <stub>.mjs" npm run start`, answering only
+  that host and passing everything else to the real `fetch`
+  (`docs/demos/alf-268-project-sourced-pr-ratio/github-stub.mjs`). `rm -rf .next/cache/fetch-cache`
+  before starting — a `next: { revalidate }` hit left by an earlier run never reaches the stub — and
+  sort anything the stub logs, since a `Promise.all` fan-out reaches it in no fixed order.
 
 **Bundling a Worker module into a harness** (the `sweep-harness.mjs` pattern): esbuild's ESM
 output throws `Dynamic require of "process" is not supported` when a dependency ships CommonJS

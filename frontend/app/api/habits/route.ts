@@ -17,10 +17,10 @@ import type { HabitInsert } from '@/lib/types';
 // GET /api/habits — every habit's definition, a window of its entries, and every derived
 // number, in one payload.
 //
-// Session OR the ingest API key, resolved through `resolveIngestClient` — NOT
-// `withSessionOrApiKey`, which yields no Supabase client. A keyed caller carries no cookie, so
-// a route reaching for `createClient()` under it would read anonymously and answer `200` with
-// `habits: []` — indistinguishable, to the coach, from "the owner has no habits".
+// Session OR the ingest API key, resolved through `resolveIngestClient`, which hands a keyed
+// caller the admin client. A keyed caller carries no cookie, so a route reaching for
+// `createClient()` itself would read anonymously and answer `200` with `habits: []` —
+// indistinguishable, to the coach, from "the owner has no habits".
 //
 // One route and one engine on purpose: the streak rules are subtle enough that a second
 // derivation would disagree with the one the app shows, and a coach quoting a different streak

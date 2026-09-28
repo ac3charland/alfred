@@ -66,7 +66,7 @@ export function buildSearchQuery(
 }
 
 /**
- * The search query for merged PRs OUTSIDE the configured repos — the "Other" bucket — or
+ * The search query for merged PRs OUTSIDE the project repos — the "Other" bucket — or
  * `undefined` when there is no author allowlist to anchor it on.
  *
  * That guard is the whole design constraint: GitHub Search has no "everywhere except these
@@ -108,7 +108,7 @@ export function toPercentages(counts: readonly number[]): number[] {
   const percentages = exact.map((share) => Math.floor(share));
   let leftover = 100 - percentages.reduce((sum, share) => sum + share, 0);
 
-  // `stableSorted` keeps the configured order among equal remainders, which is the tie-break.
+  // `stableSorted` keeps the input (project) order among equal remainders, which is the tie-break.
   const byRemainder = stableSorted(
     exact.map((share, index) => ({ index, remainder: share - Math.floor(share) })),
     (a, b) => b.remainder - a.remainder,
@@ -159,7 +159,7 @@ async function countMergedPrs(
 }
 
 /**
- * The window's split across every configured repo — plus the "Other" bucket for everything
+ * The window's split across every project repo — plus the "Other" bucket for everything
  * merged outside them, when the config can anchor that sweep — or `undefined` when ANY
  * request failed. Partial results are deliberately discarded: a bar whose segments were
  * counted under different rules is a *wrong* ratio, and showing nothing beats showing that.

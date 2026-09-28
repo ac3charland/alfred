@@ -401,17 +401,22 @@ component can't be screenshotted — a dialog containing a **sandboxed `srcDoc` 
 wholesale), while the same capture driven straight from Playwright takes under a second.
 
 **Capturing interactive states — the part the docs skip.** The official page never explains
-hover, focus or keys. Four hard-won rules:
+hover, focus or keys. Five hard-won rules:
 
 - **CSS `:hover` is NOT triggered by `userEvent.hover` in a play function.** `userEvent`
   dispatches pointer *events*; it never moves a real pointer, so the `:hover`
   pseudo-class never matches and the screenshot shows the resting state. To capture a real
   hover, move the actual mouse in `postVisit` with Playwright:
   `await page.locator(target).hover()`. Drive hover from the test-runner, never a play fn.
+- **That real pointer stays put across the stories of a file.** A `visualTest.hover` capture
+  leaves the mouse where it hovered, so a later story drawing something hoverable at that spot
+  captures `:hover` too — a focus baseline silently gains an underline. Declare hover stories
+  last in the file (`components/code/pr-ratio.stories.tsx`).
 - **`:focus-visible` only matches keyboard-driven focus.** Calling `.focus()`
   programmatically yields a plain `:focus` with no ring — Tailwind's `focus-visible:ring-*`
-  won't render. Press Tab instead: `await page.keyboard.press('Tab')`. Each focus story
-  must render a **single** focusable control so the first Tab lands on it.
+  won't render. Press Tab instead: `await page.keyboard.press('Tab')`. The control a focus story
+  captures must be the **first** focusable element in DOM order, since one Tab lands on it (a
+  single focusable control is simplest).
 - **A play function's FIRST `userEvent.keyboard` never reaches a `document`-level listener.**
   Nothing in the story iframe holds focus yet, so a story whose state a hotkey drives (the
   Comms queue's / Reader list's `j`-to-select) screenshots the resting state — silently, like

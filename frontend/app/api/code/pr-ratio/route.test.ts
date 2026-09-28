@@ -1,5 +1,12 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
-import { createClient } from '@/lib/supabase/server';
+import {
+  PROJECTS,
+  keyedCaller,
+  mockCreateAdminClient,
+  mockCreateClient,
+  signedIn,
+} from '@/lib/api/project-repos-route-double';
+import { makeSignedOutDouble } from '@/lib/api/supabase-route-double';
 
 import { GET } from './route';
 
@@ -14,20 +21,10 @@ jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: jest.fn(),
 }));
 
-const mockCreateClient = jest.mocked(createClient);
-
 const API_KEY = 'ingest-key-abc';
-const TEST_USER = { id: 'user-123' };
-
-/** Supabase stub whose only job is to say whether a session exists. */
-function mockSession(user: { id: string } | undefined) {
-  mockCreateClient.mockResolvedValue({
-    auth: { getUser: jest.fn().mockResolvedValue({ data: { user } }) },
-  } as never);
-}
 
 /**
- * Stub GitHub search: one `total_count` per configured repo, in query order. Returns the
+ * Stub GitHub search: one `total_count` per measured repo, in query order. Returns the
  * search URLs it was asked for, so a test can assert what the route sent without reading
  * `mock.calls` (which is `any`).
  */
@@ -55,6 +52,7 @@ interface RatioBody {
   week: { start: string; end: string; timezone: string };
   total: number;
   repos: { repo: string; label: string; count: number; percentage: number }[];
+  other?: { count: number; percentage: number };
 }
 
 describe('GET /api/code/pr-ratio', () => {
@@ -64,7 +62,6 @@ describe('GET /api/code/pr-ratio', () => {
   beforeEach(() => {
     process.env.INGEST_API_KEY = API_KEY;
     process.env.GITHUB_TOKEN = 'ghp_test';
-    process.env.PR_RATIO_REPOS = 'ac3charland/realplay:RealPlay,ac3charland/alfred:Alfred';
     process.env.PR_RATIO_AUTHORS = 'ac3charland';
   });
 
@@ -75,159 +72,244 @@ describe('GET /api/code/pr-ratio', () => {
     jest.useRealTimers();
   });
 
-  it('returns 401 with neither a session nor an API key', async () => {
-    mockSession(undefined);
-    const requested = mockGithub([3, 6]);
+  describe('auth', () => {
+    it('returns 401 with neither a session nor an API key', async () => {
+      mockCreateClient.mockResolvedValue(makeSignedOutDouble() as never);
+      const requested = mockGithub([3, 6]);
 
-    const response = await GET(getRequest());
+      const response = await GET(getRequest());
 
-    expect(response.status).toBe(401);
-    expect(await response.json()).toStrictEqual({ error: 'Unauthorized' });
-    // Nothing reaches GitHub on an unauthenticated call.
-    expect(requested).toHaveLength(0);
+      expect(response.status).toBe(401);
+      expect(await response.json()).toStrictEqual({ error: 'Unauthorized' });
+      // Nothing reaches GitHub on an unauthenticated call.
+      expect(requested).toHaveLength(0);
+    });
+
+    it('reads the projects through the session client for a browser session', async () => {
+      const supabase = signedIn();
+      mockGithub([3, 6, 1]);
+
+      const response = await GET(getRequest());
+
+      expect(response.status).toBe(200);
+      expect(supabase.from).toHaveBeenCalledWith('projects');
+      expect(mockCreateAdminClient).not.toHaveBeenCalled();
+    });
+
+    it('reads the projects through the ADMIN client for a valid x-api-key', async () => {
+      // A keyed caller carries no cookie: a session client would read the projects
+      // anonymously, find none, and answer 501 — "not configured" — to a configured deployment.
+      const admin = keyedCaller();
+      mockGithub([3, 6, 1]);
+
+      const response = await GET(getRequest('', { 'x-api-key': API_KEY }));
+      const body = (await response.json()) as RatioBody;
+
+      expect(response.status).toBe(200);
+      expect(admin.from).toHaveBeenCalledWith('projects');
+      expect(body.total).toBe(10);
+    });
+
+    it('accepts the key as an Authorization: Bearer token too', async () => {
+      const admin = keyedCaller();
+      mockGithub([3, 6, 1]);
+
+      const response = await GET(getRequest('', { authorization: `Bearer ${API_KEY}` }));
+
+      expect(response.status).toBe(200);
+      expect(admin.from).toHaveBeenCalledWith('projects');
+    });
   });
 
-  it('returns the documented envelope for an authenticated browser session', async () => {
-    mockSession(TEST_USER);
-    mockGithub([3, 6]);
+  describe('the measured repos are the projects', () => {
+    it('reads each project’s name and repo, oldest first', async () => {
+      const supabase = signedIn();
+      mockGithub([3, 6, 1]);
 
-    const response = await GET(getRequest('?tz=America/New_York'));
-    expect(response.status).toBe(200);
+      await GET(getRequest());
 
-    const body = (await response.json()) as RatioBody;
-    expect(body.total).toBe(9);
-    expect(body.repos).toEqual([
-      { repo: 'ac3charland/realplay', label: 'RealPlay', count: 3, percentage: 33 },
-      { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 67 },
-    ]);
-    expect(body.repos.reduce((sum, repo) => sum + repo.percentage, 0)).toBe(100);
+      expect(supabase.table('projects').select).toHaveBeenCalledWith('name, repo_owner, repo_name');
+      expect(supabase.table('projects').order).toHaveBeenCalledWith('created_at', {
+        ascending: true,
+      });
+    });
+
+    it('answers one entry per project, in that order, labelled by the project’s name', async () => {
+      signedIn();
+      mockGithub([3, 6, 1]);
+
+      const response = await GET(getRequest('?tz=America/New_York'));
+      expect(response.status).toBe(200);
+
+      const body = (await response.json()) as RatioBody;
+      expect(body.total).toBe(10);
+      expect(body.repos).toEqual([
+        { repo: 'ac3charland/realplay', label: 'RealPlay', count: 3, percentage: 30 },
+        { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 60 },
+      ]);
+      expect(body.other).toEqual({ count: 1, percentage: 10 });
+    });
+
+    it('asks GitHub about exactly the project repos, and subtracts every one from Other', async () => {
+      signedIn({
+        data: [...PROJECTS, { name: 'Lumen', repo_owner: 'ac3charland', repo_name: 'lumen' }],
+        error: null,
+      });
+      const requested = mockGithub([1, 1, 1, 1]);
+
+      await GET(getRequest());
+
+      const queries = requested.map((url) => url.searchParams.get('q') ?? '');
+      expect(queries.slice(0, 3).map((query) => /repo:(\S+)/.exec(query)?.[1])).toEqual([
+        'ac3charland/realplay',
+        'ac3charland/alfred',
+        'ac3charland/lumen',
+      ]);
+      const other = queries.at(-1) ?? '';
+      expect(other).toContain('-repo:ac3charland/realplay');
+      expect(other).toContain('-repo:ac3charland/alfred');
+      expect(other).toContain('-repo:ac3charland/lumen');
+    });
+
+    it('ignores a leftover PR_RATIO_REPOS', async () => {
+      process.env['PR_RATIO_REPOS'] = 'someone/else:Elsewhere,another/repo:Another';
+      signedIn();
+      mockGithub([3, 6, 1]);
+
+      const response = await GET(getRequest());
+      const body = (await response.json()) as RatioBody;
+
+      expect(body.repos.map((repo) => repo.label)).toEqual(['RealPlay', 'Alfred']);
+    });
   });
 
-  it('returns the same envelope for a valid x-api-key, without a session', async () => {
-    mockSession(undefined);
-    mockGithub([3, 6]);
+  describe('the window', () => {
+    it('measures the seven days ending at the moment of the request', async () => {
+      signedIn();
+      // Friday afternoon — the hour the weekly review is actually held.
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-24T20:00:00Z'));
+      const requested = mockGithub([1, 1]);
 
-    const response = await GET(getRequest('', { 'x-api-key': API_KEY }));
-    const body = (await response.json()) as RatioBody;
+      const response = await GET(getRequest('?tz=America/New_York'));
+      const body = (await response.json()) as RatioBody;
 
-    expect(response.status).toBe(200);
-    expect(body.total).toBe(9);
+      // The window reaches back past the weekend a Monday-anchored week would have dropped.
+      expect(body.week.start).toBe('2026-07-17T16:00:00-04:00');
+      expect(body.week.end).toBe('2026-07-24T16:00:00-04:00');
+      // The very window the caller is told about is the one GitHub was asked for.
+      const [first] = requested;
+      expect(first?.searchParams.get('q')).toContain(`merged:${body.week.start}..${body.week.end}`);
+    });
+
+    it('rolls with the clock rather than resetting on Monday', async () => {
+      signedIn();
+      // Monday morning: the old window would have been half an hour long.
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-27T00:30:00Z'));
+      mockGithub([1, 1]);
+
+      const response = await GET(getRequest());
+      const body = (await response.json()) as RatioBody;
+
+      expect(body.week.start).toBe('2026-07-20T00:30:00+00:00');
+      expect(body.week.end).toBe('2026-07-27T00:30:00+00:00');
+    });
+
+    it('evaluates the window in the requested timezone and echoes it back', async () => {
+      signedIn();
+      mockGithub([1, 1]);
+
+      const response = await GET(getRequest('?tz=America/New_York'));
+      const body = (await response.json()) as RatioBody;
+
+      expect(body.week.timezone).toBe('America/New_York');
+      // Both ends carry the zone's offset, not UTC's.
+      expect(body.week.start).toMatch(/-0[45]:00$/);
+      expect(body.week.end).toMatch(/-0[45]:00$/);
+    });
+
+    it('defaults to UTC when no tz is given', async () => {
+      signedIn();
+      mockGithub([1, 1]);
+
+      const response = await GET(getRequest());
+      const body = (await response.json()) as RatioBody;
+
+      expect(body.week.timezone).toBe('UTC');
+      expect(body.week.start).toMatch(/\+00:00$/);
+    });
+
+    it('degrades an unrecognized tz to UTC rather than erroring', async () => {
+      signedIn();
+      mockGithub([1, 1]);
+
+      const response = await GET(getRequest('?tz=Not/AZone'));
+      const body = (await response.json()) as RatioBody;
+
+      expect(response.status).toBe(200);
+      expect(body.week.timezone).toBe('UTC');
+    });
   });
 
-  it('returns the same envelope for a valid Authorization: Bearer key', async () => {
-    mockSession(undefined);
-    mockGithub([3, 6]);
+  describe('failure modes', () => {
+    it('returns 501 without a token, so the Dashboard can render nothing', async () => {
+      signedIn();
+      delete process.env.GITHUB_TOKEN;
+      const requested = mockGithub([3, 6]);
 
-    const response = await GET(getRequest('', { authorization: `Bearer ${API_KEY}` }));
-    const body = (await response.json()) as RatioBody;
+      const response = await GET(getRequest());
 
-    expect(response.status).toBe(200);
-    expect(body.total).toBe(9);
-  });
+      expect(response.status).toBe(501);
+      expect(await response.json()).toStrictEqual({ error: 'PR ratio is not configured' });
+      expect(requested).toHaveLength(0);
+    });
 
-  it('measures the seven days ending at the moment of the request', async () => {
-    mockSession(TEST_USER);
-    // Friday afternoon — the hour the weekly review is actually held.
-    jest.useFakeTimers().setSystemTime(new Date('2026-07-24T20:00:00Z'));
-    const requested = mockGithub([1, 1]);
+    it('returns 501 with a single project — one repo is not a split', async () => {
+      signedIn({ data: PROJECTS.slice(0, 1), error: null });
+      const requested = mockGithub([3]);
 
-    const response = await GET(getRequest('?tz=America/New_York'));
-    const body = (await response.json()) as RatioBody;
+      const response = await GET(getRequest());
 
-    // The window reaches back past the weekend a Monday-anchored week would have dropped.
-    expect(body.week.start).toBe('2026-07-17T16:00:00-04:00');
-    expect(body.week.end).toBe('2026-07-24T16:00:00-04:00');
-    // The very window the caller is told about is the one GitHub was asked for.
-    const [first] = requested;
-    expect(first?.searchParams.get('q')).toContain(`merged:${body.week.start}..${body.week.end}`);
-  });
+      expect(response.status).toBe(501);
+      expect(requested).toHaveLength(0);
+    });
 
-  it('rolls with the clock rather than resetting on Monday', async () => {
-    mockSession(TEST_USER);
-    // Monday morning: the old window would have been half an hour long.
-    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T00:30:00Z'));
-    mockGithub([1, 1]);
+    it('returns 501 with no projects at all', async () => {
+      signedIn({ data: [], error: null });
 
-    const response = await GET(getRequest());
-    const body = (await response.json()) as RatioBody;
+      const response = await GET(getRequest());
 
-    expect(body.week.start).toBe('2026-07-20T00:30:00+00:00');
-    expect(body.week.end).toBe('2026-07-27T00:30:00+00:00');
-  });
+      expect(response.status).toBe(501);
+    });
 
-  it('evaluates the window in the requested timezone and echoes it back', async () => {
-    mockSession(TEST_USER);
-    mockGithub([1, 1]);
+    it('maps a failed projects read to its status — never 501, which would hide the card', async () => {
+      signedIn({ data: null, error: { message: 'connection refused' } });
+      const requested = mockGithub([3, 6]);
 
-    const response = await GET(getRequest('?tz=America/New_York'));
-    const body = (await response.json()) as RatioBody;
+      const response = await GET(getRequest());
 
-    expect(body.week.timezone).toBe('America/New_York');
-    // Both ends carry the zone's offset, not UTC's.
-    expect(body.week.start).toMatch(/-0[45]:00$/);
-    expect(body.week.end).toMatch(/-0[45]:00$/);
-  });
+      expect(response.status).toBe(500);
+      expect(await response.json()).toStrictEqual({ error: 'connection refused' });
+      expect(requested).toHaveLength(0);
+    });
 
-  it('defaults to UTC when no tz is given', async () => {
-    mockSession(TEST_USER);
-    mockGithub([1, 1]);
+    it('returns 502 when a GitHub request fails', async () => {
+      signedIn();
+      mockGithub([0, 0], { ok: false });
 
-    const response = await GET(getRequest());
-    const body = (await response.json()) as RatioBody;
+      const response = await GET(getRequest());
 
-    expect(body.week.timezone).toBe('UTC');
-    expect(body.week.start).toMatch(/\+00:00$/);
-  });
+      expect(response.status).toBe(502);
+      expect(await response.json()).toStrictEqual({ error: 'GitHub request failed' });
+    });
 
-  it('degrades an unrecognized tz to UTC rather than erroring', async () => {
-    mockSession(TEST_USER);
-    mockGithub([1, 1]);
+    it('never leaks the GitHub token into the response', async () => {
+      signedIn();
+      mockGithub([3, 6]);
 
-    const response = await GET(getRequest('?tz=Not/AZone'));
-    const body = (await response.json()) as RatioBody;
+      const response = await GET(getRequest());
+      const body = await response.text();
 
-    expect(response.status).toBe(200);
-    expect(body.week.timezone).toBe('UTC');
-  });
-
-  it('returns 501 when the feature is not configured, so the Backlog can render nothing', async () => {
-    mockSession(TEST_USER);
-    delete process.env.GITHUB_TOKEN;
-    const requested = mockGithub([3, 6]);
-
-    const response = await GET(getRequest());
-
-    expect(response.status).toBe(501);
-    expect(await response.json()).toStrictEqual({ error: 'PR ratio is not configured' });
-    expect(requested).toHaveLength(0);
-  });
-
-  it('returns 501 when fewer than two repos are configured', async () => {
-    mockSession(TEST_USER);
-    process.env.PR_RATIO_REPOS = 'ac3charland/alfred:Alfred';
-
-    const response = await GET(getRequest());
-
-    expect(response.status).toBe(501);
-  });
-
-  it('returns 502 when a GitHub request fails', async () => {
-    mockSession(TEST_USER);
-    mockGithub([0, 0], { ok: false });
-
-    const response = await GET(getRequest());
-
-    expect(response.status).toBe(502);
-    expect(await response.json()).toStrictEqual({ error: 'GitHub request failed' });
-  });
-
-  it('never leaks the GitHub token into the response', async () => {
-    mockSession(TEST_USER);
-    mockGithub([3, 6]);
-
-    const response = await GET(getRequest());
-    const body = await response.text();
-
-    expect(body).not.toContain('ghp_test');
+      expect(body).not.toContain('ghp_test');
+    });
   });
 });
