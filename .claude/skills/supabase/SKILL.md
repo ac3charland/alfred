@@ -317,7 +317,7 @@ databases have been found nine migrations behind, and missing `0016`'s function 
 (`startCluster` + `applyMigrations`, as `src/run.ts` does) and diff the live one against it.** Diff
 *objects* (tables/columns/constraints/indexes) **and** `md5(p.prosrc)` per function — a migration
 that only rewrites a function body is invisible to an object-level diff, which is exactly how
-Personal read as complete while missing `0016`. Compare `prosrc`, not `pg_get_functiondef`: the
+a live database read as complete while missing `0016`. Compare `prosrc`, not `pg_get_functiondef`: the
 latter regenerates its header and differs across server versions (local 16 vs Supabase 17).
 
 Nothing orders that apply against Vercel's deploy of the same commit, so the code can go live a

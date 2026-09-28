@@ -19,7 +19,7 @@ A self-built, single-user task management app that prioritizes **frictionless ca
 - **YAGNI / incremental build.** Ship a real, useful to-do app first. Architect for the future, but do not build the future modules now.
 - **Generic core, specific edges.** Everything enters as a generic *item*. Items are later refined/classified into specific destination types (task, code, knowledge). The core schema must not lock anything into being task-only.
 - **TypeScript everywhere.** Frontend and backend share one language.
-- **Device portability is a hard requirement.** The same data must be reachable from phone, personal desktop, and (optionally) work computer. All state lives in the backend; clients are thin.
+- **Device portability is a hard requirement.** The same data must be reachable from phone and desktop. All state lives in the backend; clients are thin.
 
 ### Scale expectations
 - Order of **hundreds** of active items (historically ~200–300), not thousands. Plus completed items retained over time. Plan for comfortable growth, not for massive scale.
@@ -372,7 +372,7 @@ Each phase is sized to be tractable for an individual agent session. Phases are 
 
 ### Phase 5 — Capture integration
 - Siri Shortcut: dictate → `POST /api/items` with an API key. Apply the delay-before-dictate mitigation (§4.3).
-- Verify cross-device access (phone web-shortcut, desktop, optional work machine).
+- Verify cross-device access (phone web-shortcut, desktop).
 
 ### Phase 6 — (Future) LLM processing layer
 - Stand up first Cloudflare Worker via Wrangler.
