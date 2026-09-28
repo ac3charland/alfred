@@ -414,8 +414,9 @@ hover, focus or keys. Five hard-won rules:
   last in the file (`components/code/pr-ratio.stories.tsx`).
 - **`:focus-visible` only matches keyboard-driven focus.** Calling `.focus()`
   programmatically yields a plain `:focus` with no ring — Tailwind's `focus-visible:ring-*`
-  won't render. Press Tab instead: `await page.keyboard.press('Tab')`. Each focus story
-  must render a **single** focusable control so the first Tab lands on it.
+  won't render. Press Tab instead: `await page.keyboard.press('Tab')`. The control a focus story
+  captures must be the **first** focusable element in DOM order, since one Tab lands on it (a
+  single focusable control is simplest).
 - **A play function's FIRST `userEvent.keyboard` never reaches a `document`-level listener.**
   Nothing in the story iframe holds focus yet, so a story whose state a hotkey drives (the
   Comms queue's / Reader list's `j`-to-select) screenshots the resting state — silently, like
