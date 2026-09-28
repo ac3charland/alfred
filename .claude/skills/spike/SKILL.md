@@ -11,7 +11,8 @@ description: >
 
 # Spike
 
-> This skill is **dropped into each project repo** at `.claude/skills/spike/SKILL.md`.
+> This skill is **dropped into each project repo** as the whole `.claude/skills/spike/` folder
+> (`SKILL.md` + `assets/`).
 > A spike session triggered by our agent orchestrator (alfred) auto-loads it; the launch prompt
 > also points here. It's a committed convention so findings are consistent and the orchestrator's
 > webhook Worker can rely on the PR shape.
@@ -25,27 +26,35 @@ entire deliverable.
 and notes don't pin it down, **ask the human first** — they launched this session and are in the
 tab, so questions are cheap; findings that answer the wrong question are not.
 
+## Contents
+
+- [What to produce](#what-to-produce)
+- [Rules](#rules)
+- **assets/**
+  - [findings-template.html](./assets/findings-template.html) — the findings scaffold: the brief,
+    the fold, the freeform detail, and the house stylesheet
+
 ## What to produce
 
-**One self-contained HTML findings document at `docs/spikes/<REF>-<short-slug>.html`** (e.g.
+**One HTML findings document at `docs/spikes/<REF>-<short-slug>.html`, copied from
+[`assets/findings-template.html`](./assets/findings-template.html)** (e.g.
 `docs/spikes/ALF-173-spike-phase.html`). The slug earns its keep because findings are browsed as a
 library long after the ticket closes — a bare ref is opaque a year later.
 
-- **One self-contained file:** inline all CSS in a `<style>` block; no build step, no external
-  dependencies, no JS required — it opens directly in a browser, and reads well on a phone.
-- **Title:** `<title>` and a top `<h1>` of `<REF> — <spike title>`.
+It wears the refinement spec's house style and splits at the same fold, for two readers:
 
-Its shape, which is the form this repo's existing findings documents already converged on:
-
-1. **Where we landed** — the recommendation, stated **first**, not buried under the analysis.
-   A reader who stops after this section should know what you'd do.
-2. **Why** — the evidence that got you there.
-3. **Technical shape** — enough concrete detail (interfaces, tables, a diagram, the files it
-   touches) for a later spec to expand, without becoming that spec.
-4. **Sidebars: appealing alternatives we're not taking** — the options a future reader would
-   otherwise re-investigate, and what ruled each out.
-5. **Cost & open questions** — effort, money, risk, and what's genuinely still unknown.
-6. **Sources** — real links, and the files/commands you actually looked at.
+- **Above the fold (`#brief`): the answer, for the human** — one sentence, then *Where we
+  landed*: the recommendation stated **first**, so a reader who stops at the fold knows what
+  you'd do. ≤ 300 words of prose; one figure, uncounted. Keep the brief's ids and the stylesheet,
+  and strip every `guide:` comment.
+- **Below (`#detail`): the evidence, freeform.** No required section, order or budget but a
+  closing *Sources* — real links, and the files and commands you actually looked at. The template
+  scaffolds the shape past findings converged on — *Why*, *Technical shape*, *Alternatives we're
+  not taking*, *Cost & open questions* — to rename, merge, reorder or drop as the question needs.
+  No decision rows, plates or acceptance criteria: a spike answers a question; it doesn't ask for
+  sign-off on a build.
+- **Self-contained, and reads with scripting off** — no build step or external dependency; the
+  app renders findings in the same script-less sandbox as specs.
 
 Then **a pull request** whose description carries the machine-readable `alfred` block. `spec-path`
 MUST be the findings document you wrote:
