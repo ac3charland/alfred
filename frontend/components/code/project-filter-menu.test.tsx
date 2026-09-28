@@ -8,6 +8,7 @@ import { ProjectFilterMenu } from './project-filter-menu';
 
 function makeProject(id: string, name: string, key: string): Project {
   return {
+    color: null,
     description: null,
     id,
     name,
@@ -63,6 +64,36 @@ describe('ProjectFilterMenu', () => {
       'aria-checked',
       'true',
     );
+  });
+
+  it("tints each project's glyph with its colour — the owner's pick first, else its slot", async () => {
+    const user = userEvent.setup();
+    const picked = [
+      makeProject('p1', 'Alfred', 'ALF'),
+      { ...makeProject('p2', 'Relay', 'RLP'), color: 'red' },
+    ];
+    render(
+      <ProjectFilterMenu
+        projects={picked}
+        selected={NONE}
+        onToggle={jest.fn()}
+        isFiltering={false}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /filter by project/i }));
+    await screen.findByRole('menu');
+
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Alfred' })
+        .querySelector('svg.lucide-git-branch'),
+    ).toHaveClass('text-accent-blue');
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Relay' })
+        .querySelector('svg.lucide-git-branch'),
+    ).toHaveClass('text-accent-red');
   });
 
   it('reports the toggled project id to the caller', async () => {
