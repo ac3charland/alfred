@@ -1,6 +1,7 @@
 /**
- * The three writes to `reader_health`, the singleton row the migration seeds so the tick only
- * ever patches it.
+ * The writes to `reader_health`, the singleton row the migration seeds so the tick only ever
+ * patches it: the tick's three, and the To Reader leg's own outcome, which rides the tick's closing
+ * write whenever there is one.
  *
  * None of them throws. That is the comms convention (`stampHealth` in `comms/sweep.ts`) and it is
  * load-bearing rather than defensive: the health row is how the module SAYS something is wrong,
@@ -23,6 +24,29 @@ import type { ReaderCeiling } from './types';
 
 /** The singleton's id. The row is seeded by the migration; nothing here ever inserts it. */
 const HEALTH_ROW = '1';
+
+/**
+ * What the To Reader leg has to record this tick: a clean pass, or the Instapaper failure in the
+ * owner's words. A tick where the leg did not run, or ran without finishing, has no outcome and
+ * writes none of its columns — so an unconfigured deployment's row never grows an Instapaper dot.
+ */
+export type InstapaperOutcome = { kind: 'success' } | { kind: 'error'; error: string };
+
+/**
+ * The leg's own columns for one outcome. Kept apart from the summariser's `last_*` columns because
+ * a dead Instapaper token is a different fault with a different fix: newsletters still flow, and a
+ * summariser that read as stalled over it would send the owner to the wrong place.
+ */
+function instapaperColumns(
+  now: Date,
+  outcome: InstapaperOutcome | undefined,
+): Record<string, unknown> {
+  if (outcome === undefined) return {};
+  const at = now.toISOString();
+  return outcome.kind === 'success'
+    ? { instapaper_last_success_at: at }
+    : { instapaper_last_error: outcome.error, instapaper_last_error_at: at };
+}
 
 /**
  * The ceiling columns as one patchable object, dropping whatever the caller could not know yet.
@@ -73,10 +97,15 @@ export function recordRunSuccess(
   env: SupabaseEnv,
   now: Date,
   ceiling?: ReaderCeiling,
+  instapaper?: InstapaperOutcome,
 ): Promise<void> {
   return patchHealth(
     env,
-    { last_success_at: now.toISOString(), ...ceilingColumns(ceiling) },
+    {
+      last_success_at: now.toISOString(),
+      ...ceilingColumns(ceiling),
+      ...instapaperColumns(now, instapaper),
+    },
     'record the run success',
   );
 }
@@ -91,12 +120,32 @@ export function recordRunError(
   now: Date,
   error: string,
   ceiling?: ReaderCeiling,
+  instapaper?: InstapaperOutcome,
 ): Promise<void> {
   return patchHealth(
     env,
-    { last_error: error, last_error_at: now.toISOString(), ...ceilingColumns(ceiling) },
+    {
+      last_error: error,
+      last_error_at: now.toISOString(),
+      ...ceilingColumns(ceiling),
+      ...instapaperColumns(now, instapaper),
+    },
     'record the run error',
   );
+}
+
+/**
+ * The leg's outcome on a tick that has no closing write to carry it — the two Gmail stops (a
+ * token exchange or a message read that had a bad minute), which end the tick without stamping
+ * either of the summariser's columns. One PATCH of the leg's columns alone; those paths stop
+ * early, so the fetch it costs is one the tick never spent on its later posts.
+ */
+export function recordInstapaperHealth(
+  env: SupabaseEnv,
+  now: Date,
+  outcome: InstapaperOutcome,
+): Promise<void> {
+  return patchHealth(env, instapaperColumns(now, outcome), 'record the To Reader leg');
 }
 
 /** PATCH the singleton, swallowing and logging whatever the database says. */

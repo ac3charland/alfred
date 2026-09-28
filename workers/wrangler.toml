@@ -40,6 +40,13 @@ compatibility_flags = ["nodejs_compat"]
 #     client left in "Testing" issues refresh tokens that expire after seven days with no warning,
 #     which would kill both Gmail accounts a week after they start polling — and those are the two
 #     sources that do not depend on a Mac being awake.
+#   INSTAPAPER_CONSUMER_KEY, INSTAPAPER_CONSUMER_SECRET, INSTAPAPER_ACCESS_TOKEN,
+#   INSTAPAPER_ACCESS_TOKEN_SECRET — the OAuth 1.0a values the Reader's To Reader leg signs its
+#     Instapaper calls with: the same names and values as the Vercel env vars the app's Send route
+#     uses. A re-minted token (`npm run instapaper:token -w frontend`) is updated in Vercel, here
+#     and in the knowledge repo's secrets together. All four, or the leg is off — `GET /` says
+#     "instapaper configured" or "unconfigured". The leg also needs an Instapaper folder named
+#     exactly "To Reader"; alfred never creates it.
 
 # ── Cron triggers ─────────────────────────────────────────────────────────────
 # The Inbox classifier sweep. `wrangler deploy` registers this schedule, and the Deploy Worker
@@ -61,9 +68,10 @@ compatibility_flags = ["nodejs_compat"]
 #                normalised by the scheduler and reported as its offset-free form, which made the
 #                poll's dispatch unreachable — see POLL_CRON in src/index.ts.
 #   */5 * * * *  the Reader tick: publication discovery, newsletter intake from the comms mirror,
+#                the To Reader leg (Instapaper articles, in whatever slots the newsletters leave),
 #                and the summariser, up to six posts a tick. Its own trigger for the same budget
-#                reason (a full tick spends ~44 of the 50 subrequests). The Free plan allows five
-#                cron triggers per account; this is the fourth.
+#                reason (a full tick spends up to 48 of the 50 subrequests). The Free plan allows
+#                five cron triggers per account; this is the fourth.
 #   17 9 * * *   the daily Comms retention sweep, which deletes every mirrored message older than
 #                60 days. Cron triggers are UTC-only, so this lands at 03:17 in Chicago in winter
 #                and 04:17 in summer; it is housekeeping in the middle of the night either way and

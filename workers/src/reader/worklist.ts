@@ -12,7 +12,7 @@
  * them and nothing here can get them subtly different from the migration.
  */
 import { type SupabaseEnv, fetchJson, restQueryUrl } from '../supabase';
-import type { WorklistRow } from './types';
+import type { ReaderPostSource, WorklistRow } from './types';
 
 /**
  * How long a lease is honoured before another tick may take the row.
@@ -23,14 +23,21 @@ import type { WorklistRow } from './types';
  */
 export const READER_LEASE_STALE_MS = 15 * 60_000;
 
-/** The columns a retry needs: enough to build the model's input and to CAS the attempt count. */
+/**
+ * The columns a retry needs: enough to build the model's input and to CAS the attempt count. The
+ * source and site are what name an Instapaper article's publication for the model when nothing
+ * links it to a roster row.
+ */
 const RETRY_COLUMNS =
-  'id,publication_id,title,author,canonical_url,received_at,text,word_count,summarize_attempts';
+  'id,source,publication_id,site,title,author,canonical_url,received_at,text,word_count,' +
+  'summarize_attempts';
 
 /** A pending post as PostgREST returns it — JSON nulls, not `undefined`. */
 interface WireRetryRow {
   id: string;
-  publication_id: string;
+  source: ReaderPostSource;
+  publication_id: string | null;
+  site: string | null;
   title: string;
   author: string | null;
   canonical_url: string | null;
@@ -43,7 +50,11 @@ interface WireRetryRow {
 /** A pending post this tick may retry, nulls already mapped away. */
 export interface RetryRow {
   id: string;
-  publication_id: string;
+  source: ReaderPostSource;
+  /** Always set on a newsletter; on an article, only once something links it to a publication. */
+  publication_id?: string | undefined;
+  /** An article's site, for the model's `Publication:` line when no publication is linked. */
+  site?: string | undefined;
   title: string;
   author?: string | undefined;
   canonical_url?: string | undefined;
@@ -93,7 +104,9 @@ export async function fetchRetries(
   const rows = await fetchJson<WireRetryRow[]>(env, url, {}, 'GET reader_posts');
   return rows.map((row) => ({
     id: row.id,
-    publication_id: row.publication_id,
+    source: row.source,
+    publication_id: row.publication_id ?? undefined,
+    site: row.site ?? undefined,
     title: row.title,
     author: row.author ?? undefined,
     canonical_url: row.canonical_url ?? undefined,

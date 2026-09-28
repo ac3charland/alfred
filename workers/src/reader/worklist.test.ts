@@ -61,14 +61,19 @@ describe('fetchRetries', () => {
   it('asks only for the columns a retry needs, never the whole row', async () => {
     const urls = harness([]);
     await fetchRetries(env, NOW, 6);
-    expect(query(urls[0])).toContain('select=id,publication_id,title,author');
+    expect(query(urls[0])).toContain(
+      'select=id,source,publication_id,site,title,author,canonical_url,received_at,text,' +
+        'word_count,summarize_attempts',
+    );
   });
 
   it('maps the wire nulls to undefined, so nothing downstream sees one', async () => {
     harness([
       {
         id: 'post-1',
+        source: 'gmail',
         publication_id: 'pub-1',
+        site: WIRE_NULL,
         title: 'The Grain Ledger',
         author: WIRE_NULL,
         canonical_url: WIRE_NULL,
@@ -82,7 +87,9 @@ describe('fetchRetries', () => {
     await expect(fetchRetries(env, NOW, 6)).resolves.toEqual([
       {
         id: 'post-1',
+        source: 'gmail',
         publication_id: 'pub-1',
+        site: undefined,
         title: 'The Grain Ledger',
         author: undefined,
         canonical_url: undefined,
@@ -91,6 +98,32 @@ describe('fetchRetries', () => {
         word_count: 0,
         summarize_attempts: 1,
       },
+    ]);
+  });
+
+  it('reads an Instapaper article’s site, and its absent publication as undefined', async () => {
+    harness([
+      {
+        id: 'post-article',
+        source: 'instapaper',
+        publication_id: WIRE_NULL,
+        site: 'worksinprogress.co',
+        title: 'Cities Are Getting Quieter',
+        author: WIRE_NULL,
+        canonical_url: 'https://worksinprogress.co/issue/quiet-cities',
+        received_at: '2026-09-28T11:45:00.000Z',
+        text: 'The article.',
+        word_count: 2,
+        summarize_attempts: 0,
+      },
+    ]);
+
+    await expect(fetchRetries(env, NOW, 6)).resolves.toEqual([
+      expect.objectContaining({
+        source: 'instapaper',
+        publication_id: undefined,
+        site: 'worksinprogress.co',
+      }),
     ]);
   });
 });

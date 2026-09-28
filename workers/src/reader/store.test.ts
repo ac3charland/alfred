@@ -1,6 +1,14 @@
 import { type FetchInit, type FetchInput, spyOnFetch } from '../fetch-stub';
 import type { SupabaseEnv } from '../supabase';
-import { JSON_NULL, claimCommMessage, countRows, insertPost, leasePost, patchPost } from './store';
+import {
+  JSON_NULL,
+  claimCommMessage,
+  countRows,
+  fetchPostsForBookmarks,
+  insertPost,
+  leasePost,
+  patchPost,
+} from './store';
 
 const env: SupabaseEnv = {
   SUPABASE_URL: 'https://proj.supabase.co',
@@ -199,5 +207,85 @@ describe('patchPost', () => {
     expect.assertions(1);
     harness([new Response('violates check constraint', { status: 400 })]);
     await expect(patchPost(env, 'post-1', {})).rejects.toThrow('PATCH reader_posts');
+  });
+});
+
+describe('fetchPostsForBookmarks', () => {
+  it('reads every post holding one of the ids, of either source, in one request', async () => {
+    const wireNull: unknown = JSON.parse('null');
+    const calls = harness([
+      Response.json([
+        { id: 'post-article', archived_at: wireNull, instapaper_bookmark_id: 11 },
+        {
+          id: 'post-newsletter',
+          archived_at: '2026-09-17T08:00:00.000Z',
+          instapaper_bookmark_id: 12,
+        },
+      ]),
+    ]);
+
+    const posts = await fetchPostsForBookmarks(env, [11, 12, 13]);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe('GET');
+    expect(query(calls[0])).toContain('select=id,archived_at,instapaper_bookmark_id');
+    expect(query(calls[0])).toContain('instapaper_bookmark_id=in.(11,12,13)');
+    // No `source` filter: a newsletter sent to Instapaper holds its bookmark's id too.
+    expect(query(calls[0])).not.toContain('source=');
+    expect(posts).toEqual([
+      { id: 'post-article', archived: false, bookmarkId: 11 },
+      { id: 'post-newsletter', archived: true, bookmarkId: 12 },
+    ]);
+  });
+
+  it('sends nothing when there are no bookmarks to ask about', async () => {
+    const calls = harness([]);
+    await expect(fetchPostsForBookmarks(env, [])).resolves.toEqual([]);
+    expect(calls).toEqual([]);
+  });
+});
+
+describe('insertPost — an Instapaper article', () => {
+  it('writes the article with its bookmark id and no mail identity', async () => {
+    const calls = harness([Response.json([{ id: 'post-article' }])]);
+
+    await expect(
+      insertPost(env, {
+        source: 'instapaper',
+        instapaper_bookmark_id: 11,
+        title: 'Cities Are Getting Quieter',
+        canonical_url: 'https://worksinprogress.co/issue/quiet-cities',
+        site: 'worksinprogress.co',
+        received_at: NOW.toISOString(),
+        text: 'The article.',
+        word_count: 2,
+        html_extracted: true,
+        summary_state: 'pending',
+        summarizing_since: NOW.toISOString(),
+      }),
+    ).resolves.toEqual({ inserted: true, id: 'post-article' });
+
+    const body = JSON.parse(calls[0]?.body ?? '{}') as Record<string, unknown>;
+    expect(body).toMatchObject({ source: 'instapaper', instapaper_bookmark_id: 11 });
+    for (const column of ['publication_id', 'account_key', 'gmail_message_id', 'comm_message_id']) {
+      expect(body).not.toHaveProperty(column);
+    }
+  });
+
+  it('reads a 409 on the bookmark key as another tick having won', async () => {
+    harness([new Response('duplicate key', { status: 409 })]);
+    await expect(
+      insertPost(env, {
+        source: 'instapaper',
+        instapaper_bookmark_id: 11,
+        title: 'T',
+        received_at: NOW.toISOString(),
+        text: '',
+        word_count: 0,
+        html_extracted: false,
+        summary_state: 'failed',
+        last_error: 'no readable body',
+      }),
+    ).resolves.toEqual({ inserted: false, conflict: true });
   });
 });

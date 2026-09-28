@@ -3,8 +3,8 @@
  *
  * The ordering is the whole module and every step of it is load-bearing:
  *
- *   config → credentials → ceiling → health start → discovery → roster → worklist → token →
- *   the loop → health end
+ *   config → credentials → ceiling → health start → discovery → roster → worklist →
+ *   To Reader listing → token → the loop → health end
  *
  * CONFIG AND CREDENTIALS FIRST, and fail closed. The daily ceiling is the money guard, and the
  * one failure it must not have is an unparsable value silently becoming "unlimited" — so a bad
@@ -41,6 +41,14 @@
  * RETRIES GO AHEAD OF FRESH POSTS, so a post that failed once is never starved by a busy morning.
  * On a capped day the retry read is not even sent: it exists only to feed model calls.
  *
+ * THE TO READER LEG GOES LAST (`to-reader.ts`), and only into the slots the newsletters left: a
+ * newsletter is bound by the worklist's seven-day horizon, a bookmark waits in its folder. It lists
+ * Instapaper before the Gmail token is minted, so its three fetches are counted before any post
+ * is, and on a capped day it does not run at all. Its failures are Instapaper's, never the
+ * summariser's: they go to the leg's own health columns and to `summary.instapaper`, and never
+ * into `summary.failures`, which is what holds back `last_success_at`. Its outcome rides whichever
+ * closing health write the tick makes; the two Gmail stops that make none send it on its own.
+ *
  * THE LOOP IS SEQUENTIAL and bounded twice — by `READER_TICK_LIMIT` (the subrequest budget) and by
  * `READER_TICK_BUDGET_MS` (the wall clock). Rows the budget stops are simply still pending next
  * tick, which is what a cron whose backlog drains over several ticks is for.
@@ -53,15 +61,40 @@
  */
 import { type GmailClient, gmailClient } from '../comms/gmail-api';
 import { fetchAccessToken } from '../comms/gmail-oauth';
+import { instapaperClient, instapaperCredentials } from '../instapaper/client';
+import type { InstapaperApi, InstapaperBookmark } from '../instapaper/types';
 import { type SupabaseEnv, fetchJson, restQueryUrl } from '../supabase';
 import { type ReaderConfig, readReaderConfig } from './config';
 import { discoverPublications } from './discovery';
-import { recordRunError, recordRunStart, recordRunSuccess } from './health';
+import {
+  type InstapaperOutcome,
+  recordInstapaperHealth,
+  recordRunError,
+  recordRunStart,
+  recordRunSuccess,
+} from './health';
 import { type IntakeResult, NO_READABLE_BODY, intakePost } from './intake';
 import { READER_PROMPT_VERSION } from './prompt';
 import { ReaderSweepError, runReaderRetention as sweepReaderText } from './retention';
-import { JSON_NULL, countRows, leasePost, patchPost } from './store';
+import {
+  type BookmarkedPost,
+  JSON_NULL,
+  countRows,
+  fetchPostsForBookmarks,
+  leasePost,
+  patchPost,
+} from './store';
 import { summarizePost } from './summarize';
+import {
+  NO_FOLDER_ERROR,
+  archiveBookmark,
+  articlePublication,
+  instapaperFailureWords,
+  intakeBookmark,
+  listToReader,
+  planBookmark,
+  stopsTheLeg,
+} from './to-reader';
 import type { ReaderCeiling, ReaderEnv, SummaryInput, SummaryOutcome, WorklistRow } from './types';
 import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
 
@@ -72,15 +105,19 @@ import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
  * | Unit | Fetches | Count |
  * |---|---|---|
  * | Per tick | ceiling count · health start · discovery read · discovery upsert · roster read · pending-retry read · worklist read · token mint · health end | 9 |
+ * | Per tick, To Reader leg | Instapaper `folders/list` · `bookmarks/list` · the "already a post?" read | 3 |
  * | Per fresh post | Gmail `messages.get` · insert post · stamp comms row · Anthropic ×2 (one SDK retry) · terminal patch | 6 |
+ * | Per new bookmark | Instapaper `get_text` · insert post · Instapaper `archive` · Anthropic ×2 · terminal patch | 6 |
+ * | Per bookmark already a post | (restore PATCH) · Instapaper `archive` | ≤ 2 |
  * | Per retried pending post | lease CAS · Anthropic ×2 · terminal patch | 4 |
- * | Worst tick (six fresh) | 9 + 6 × 6 | **45** |
+ * | Worst tick (six new bookmarks) | 9 + 3 + 6 × 6 | **48** |
  *
- * The roster read is the ninth per-tick fetch and is not in the spec's original table: the
- * worklist view carries `publication_id` but not the publication's NAME, which the model's input
- * needs, and reading the roster ONCE per tick is the only way to get it that does not cost a
- * fetch per post. On a tick where discovery found nothing to upsert it simply takes that slot back
- * and the per-tick count is 8 again.
+ * Six fresh newsletters cost 9 + 6 × 6 = 45 and leave the leg no slot, so it never lists. The
+ * roster read is the ninth per-tick fetch: the worklist view carries `publication_id` but not the
+ * publication's NAME, which the model's input needs, and reading the roster ONCE per tick is the
+ * only way to get it that does not cost a fetch per post. On a tick where discovery found nothing
+ * to upsert it simply takes that slot back and the per-tick count is 8 again. A bookmark
+ * Instapaper has no text for costs 3: `get_text`, an insert filed as failed, `archive`.
  *
  * Adding one more fetch per post means dropping this limit to five; adding two means four.
  */
@@ -103,11 +140,31 @@ const MISSING_GMAIL_BINDINGS = [
   'GMAIL_PERSONAL_REFRESH_TOKEN',
 ] as const;
 
+/** What the To Reader leg did on a tick where it listed the folder (or tried to). */
+export interface ReaderInstapaperTally {
+  /** Bookmarks in To Reader, however many of them this tick took. */
+  listed: number;
+  /** Articles stored as new posts — including one filed `failed` because Instapaper had no text. */
+  taken: number;
+  /** Bookmarks archived in Instapaper, for new posts and for ones that were already posts. */
+  archived: number;
+  /** Posts the owner had archived in the Reader, back on the list because their bookmark was. */
+  restored: number;
+  /** Each Instapaper failure as the log reads it: the call, the kind and the code. */
+  failures: string[];
+}
+
+/** Why the leg did not list at all this tick. None of them is a failure, and none is stamped. */
+export type ReaderInstapaperSkip = 'unconfigured' | 'capped' | 'no free slot';
+
 /** What one tick did. Every early return reports this same shape. */
 export interface ReaderTickSummary {
   /** Publications the discovery upsert actually stored. */
   discovered: number;
-  /** Posts inserted this tick — including one immediately filed `failed` for an empty body. */
+  /**
+   * Newsletters inserted this tick — including one immediately filed `failed` for an empty body.
+   * Articles are counted by the leg, in `instapaper.taken`.
+   */
   intake: number;
   /** Posts the model summarised, `done` written. */
   summarized: number;
@@ -125,9 +182,14 @@ export interface ReaderTickSummary {
    * Why the tick did not complete — a dead credential, a Gmail outage, a systemic model failure.
    * Per-post content failures are NOT in here: they are ordinary operation and belong to the two
    * counters above, and putting them here would stop `last_success_at` ever being stamped on a
-   * day with one awkward newsletter.
+   * day with one awkward newsletter. Nor are Instapaper's failures: those are the leg's.
    */
   failures: string[];
+  /**
+   * The To Reader leg: its tally when it listed (or tried to), why not when it didn't, and absent
+   * when the tick stopped before deciding.
+   */
+  instapaper?: ReaderInstapaperTally | { skipped: ReaderInstapaperSkip } | undefined;
 }
 
 /**
@@ -141,6 +203,8 @@ export interface ReaderTickSummary {
  */
 interface CeilingHolder {
   read: () => ReaderCeiling;
+  /** The To Reader leg's outcome so far, for the same catch. Nothing until the leg has listed. */
+  leg: () => InstapaperOutcome | undefined;
 }
 
 /** The roster, as the one read per tick returns it. */
@@ -149,8 +213,24 @@ interface RosterRow {
   name: string;
 }
 
-/** One unit of work: a fresh message to read, or a pending post to try again. */
-type WorkItem = { kind: 'fresh'; row: WorklistRow } | { kind: 'retry'; row: RetryRow };
+/** One unit of work: a fresh message to read, a pending post to try again, or a bookmark to take. */
+type WorkItem =
+  | { kind: 'fresh'; row: WorklistRow }
+  | { kind: 'retry'; row: RetryRow }
+  | { kind: 'bookmark'; bookmark: InstapaperBookmark; existing: BookmarkedPost | undefined };
+
+/**
+ * The To Reader leg's state across one tick: the client, the tally, the last failure in the
+ * owner's words, and how many listed bookmarks the loop has yet to reach — a tick that stops
+ * before reaching them has not finished the leg, so it records no success for it.
+ */
+interface Leg {
+  api: InstapaperApi;
+  tally: ReaderInstapaperTally;
+  error: string | undefined;
+  stopped: boolean;
+  unreached: number;
+}
 
 /** A post ready for the model: which row to patch, what to send, and the count to compare against. */
 interface Prepared {
@@ -297,14 +377,165 @@ async function prepareRetry(
   return {
     kind: 'summarize',
     id: row.id,
-    // The post's own TITLE is never the fallback: it is not the name of anything that publishes.
-    // A roster row that has gone (a renamed handle, a deleted publication) leaves the author, and
-    // then the same 'unknown' the eval script prints for a message with no usable `From` name.
-    input: toSummaryInput(
-      { ...row, text },
-      roster.get(row.publication_id) ?? row.author ?? 'unknown',
-    ),
+    input: toSummaryInput({ ...row, text }, retryPublication(row, roster)),
     attempts: row.summarize_attempts,
+  };
+}
+
+/**
+ * The name a retried post is summarised under. An article's is its linked publication's, else its
+ * site, else Instapaper — the same name its row shows. A newsletter's is its roster name. The
+ * post's own TITLE is never the fallback: it is not the name of anything that publishes. A roster
+ * row that has gone (a renamed handle, a deleted publication) leaves the author, and then the same
+ * 'unknown' the eval script prints for a message with no usable `From` name.
+ */
+function retryPublication(row: RetryRow, roster: Map<string, string>): string {
+  if (row.source === 'instapaper') return articlePublication(row.publication_id, row.site, roster);
+  const linked = row.publication_id === undefined ? undefined : roster.get(row.publication_id);
+  return linked ?? row.author ?? 'unknown';
+}
+
+/** A leg failure: logged as the client wrote it, stamped in the owner's words. */
+function legFailure(leg: Leg, error: unknown): void {
+  leg.tally.failures.push(describe(error));
+  leg.error = instapaperFailureWords(error);
+  if (stopsTheLeg(error)) leg.stopped = true;
+}
+
+/** The archive every bookmark plan ends in, tallied either way. */
+function noteArchive(leg: Leg, archive: { ok: true } | { ok: false; error: unknown }): void {
+  if (archive.ok) leg.tally.archived += 1;
+  else legFailure(leg, archive.error);
+}
+
+/**
+ * Carry out one bookmark's plan (`planBookmark`), and say whether there is now a post for the
+ * model. Only a freshly taken article with text is; a bookmark that is already a post is only
+ * archived — restored first, when the owner had archived its post in the Reader.
+ */
+async function prepareBookmark(
+  env: ReaderEnv,
+  leg: Leg,
+  item: { bookmark: InstapaperBookmark; existing: BookmarkedPost | undefined },
+  context: { roster: Map<string, string>; now: Date; capped: boolean; summary: ReaderTickSummary },
+): Promise<PreparedResult> {
+  const plan = planBookmark(item.existing, context.capped);
+  switch (plan.kind) {
+    case 'leave': {
+      context.summary.skippedForCap += 1;
+      return { kind: 'skip' };
+    }
+    case 'restore': {
+      await patchPost(env, plan.postId, { archived_at: JSON_NULL });
+      leg.tally.restored += 1;
+      noteArchive(leg, await archiveBookmark(leg.api, item.bookmark.bookmarkId));
+      return { kind: 'skip' };
+    }
+    case 'archive': {
+      noteArchive(leg, await archiveBookmark(leg.api, item.bookmark.bookmarkId));
+      return { kind: 'skip' };
+    }
+    default: {
+      break;
+    }
+  }
+
+  const taken = await intakeBookmark(env, leg.api, item.bookmark, context.now);
+  switch (taken.kind) {
+    case 'unread': {
+      // Nothing was written, so the bookmark is still in To Reader and still no post's. The leg
+      // stops rather than learning the same answer from every bookmark behind this one.
+      legFailure(leg, taken.error);
+      leg.stopped = true;
+      return { kind: 'skip' };
+    }
+    case 'conflict': {
+      return { kind: 'skip' };
+    }
+    case 'filed': {
+      leg.tally.taken += 1;
+      noteArchive(leg, taken.archive);
+      return { kind: 'skip' };
+    }
+    default: {
+      leg.tally.taken += 1;
+      // A failed archive leaves the post in place and summarised; next tick's "already a post?"
+      // read finds it and archives the bookmark then.
+      noteArchive(leg, taken.archive);
+      return {
+        kind: 'summarize',
+        id: taken.id,
+        input: {
+          publication: articlePublication(undefined, taken.site, context.roster),
+          title: taken.title,
+          receivedAt: context.now.toISOString(),
+          wordCount: taken.wordCount,
+          text: taken.text,
+        },
+        attempts: 0,
+      };
+    }
+  }
+}
+
+/**
+ * The leg's outcome, as a health write records it: its failure when it had one, a success when it
+ * listed and reached every bookmark it took, and nothing otherwise — a leg that did not run, or
+ * that a Gmail stop cut off before its bookmarks, has nothing true to say.
+ */
+function legOutcome(leg?: Leg): InstapaperOutcome | undefined {
+  if (leg === undefined) return undefined;
+  if (leg.error !== undefined) return { kind: 'error', error: leg.error };
+  return leg.unreached === 0 ? { kind: 'success' } : undefined;
+}
+
+/**
+ * List To Reader and read which bookmarks are already posts, or record why it couldn't. Runs only
+ * with the secrets set, the day uncapped and a slot free. A listing failure is the leg's alone:
+ * it is stamped, and the tick carries on with its newsletters.
+ */
+async function openLeg(
+  env: ReaderEnv,
+  api: InstapaperApi,
+  slots: number,
+): Promise<{ leg: Leg; items: WorkItem[] }> {
+  const leg: Leg = {
+    api,
+    tally: { listed: 0, taken: 0, archived: 0, restored: 0, failures: [] },
+    error: undefined,
+    stopped: false,
+    unreached: 0,
+  };
+
+  let listing: Awaited<ReturnType<typeof listToReader>>;
+  try {
+    listing = await listToReader(api, slots);
+  } catch (error) {
+    legFailure(leg, error);
+    return { leg, items: [] };
+  }
+  if (listing.kind === 'no-folder') {
+    leg.tally.failures.push(NO_FOLDER_ERROR);
+    leg.error = NO_FOLDER_ERROR;
+    return { leg, items: [] };
+  }
+
+  leg.tally.listed = listing.listed;
+  leg.unreached = listing.marks.length;
+  const existing = await fetchPostsForBookmarks(
+    env,
+    listing.marks.map((mark) => mark.bookmarkId),
+  );
+  const byBookmark = new Map(existing.map((post) => [post.bookmarkId, post]));
+  return {
+    leg,
+    items: listing.marks.map(
+      (bookmark): WorkItem => ({
+        kind: 'bookmark',
+        bookmark,
+        existing: byBookmark.get(bookmark.bookmarkId),
+      }),
+    ),
   };
 }
 
@@ -427,12 +658,16 @@ export async function runReaderTick(
   // The cap is known here and the count is not, which is exactly what the catch below would
   // otherwise have to guess. `tick` replaces this reader once it has counted.
   const config = parsed.config;
-  const holder: CeilingHolder = { read: () => ({ daily_cap: config.dailyCap }) };
+  const holder: CeilingHolder = {
+    read: () => ({ daily_cap: config.dailyCap }),
+    // No leg has listed yet, which is exactly what this reads as until `tick` replaces it.
+    leg: () => legOutcome(),
+  };
   try {
     return await tick(env, now, clock, config, summary, holder);
   } catch (error) {
     const message = describe(error);
-    await recordRunError(env, now, message, holder.read());
+    await recordRunError(env, now, message, holder.read(), holder.leg());
     summary.failures.push(message);
     return summary;
   }
@@ -508,6 +743,26 @@ async function tick(
     ...fresh.map((row): WorkItem => ({ kind: 'fresh', row })),
   ].slice(0, READER_TICK_LIMIT);
 
+  // The To Reader leg takes only what the newsletters and retries left of the per-tick limit. It
+  // lists before the token is minted, so its fetches are spent, and counted, ahead of any post's.
+  const slots = Math.max(0, READER_TICK_LIMIT - retries.length - fresh.length);
+  const credentials = instapaperCredentials(env);
+  let leg: Leg | undefined;
+  if (credentials === undefined) {
+    summary.instapaper = { skipped: 'unconfigured' };
+  } else if (capped()) {
+    summary.instapaper = { skipped: 'capped' };
+  } else if (slots === 0) {
+    summary.instapaper = { skipped: 'no free slot' };
+  } else {
+    const opened = await openLeg(env, instapaperClient(credentials), slots);
+    leg = opened.leg;
+    summary.instapaper = opened.leg.tally;
+    work.push(...opened.items);
+  }
+  const legNow = (): InstapaperOutcome | undefined => legOutcome(leg);
+  holder.leg = legNow;
+
   const token = await fetchAccessToken(
     {
       GMAIL_OAUTH_CLIENT_ID: env.GMAIL_OAUTH_CLIENT_ID ?? '',
@@ -519,13 +774,21 @@ async function tick(
     // A rejected refresh token needs a human, so it is stamped on the health row. A transport
     // failure is not: Google having a bad minute must not read as a broken module, and the next
     // tick is the retry. Neither stamps success — the work did not happen.
-    if (token.reason === 'rejected') await recordRunError(env, now, token.detail, ceiling());
+    await (token.reason === 'rejected'
+      ? recordRunError(env, now, token.detail, ceiling(), legNow())
+      : recordLegAlone(env, now, legNow()));
     summary.failures.push(token.detail);
     return summary;
   }
   const client = gmailClient(token.token);
 
   for (const item of work) {
+    if (item.kind === 'bookmark' && leg !== undefined) {
+      leg.unreached -= 1;
+      // A leg Instapaper has stopped answering leaves the rest of its bookmarks in To Reader.
+      if (leg.stopped) continue;
+    }
+
     if (clock() - start >= READER_TICK_BUDGET_MS) {
       summary.skippedForBudget += 1;
       continue;
@@ -539,13 +802,17 @@ async function tick(
       continue;
     }
 
-    const prepared =
-      item.kind === 'fresh'
-        ? await prepareFresh(env, client, item.row, { roster, now, capped: capped(), summary })
-        : await prepareRetry(env, item.row, roster, now);
+    const prepared = await prepareItem(env, client, item, leg, {
+      roster,
+      now,
+      capped: capped(),
+      summary,
+    });
 
     if (prepared.kind === 'stop') {
-      if (prepared.systemic) await recordRunError(env, now, prepared.error, ceiling());
+      await (prepared.systemic
+        ? recordRunError(env, now, prepared.error, ceiling(), legNow())
+        : recordLegAlone(env, now, legNow()));
       summary.failures.push(prepared.error);
       return summary;
     }
@@ -565,16 +832,52 @@ async function tick(
       summary,
     });
     if (systemic !== undefined) {
-      await recordRunError(env, now, systemic, ceiling());
+      await recordRunError(env, now, systemic, ceiling(), legNow());
       summary.failures.push(systemic);
       return summary;
     }
   }
 
-  // Only on a clean pass. A Gmail outage that kept stamping success would read as healthy forever,
-  // which is the one thing the health row exists to prevent.
-  if (summary.failures.length === 0) await recordRunSuccess(env, now, ceiling());
+  // Only on a clean pass — every path that pushes a failure has already returned. A Gmail outage
+  // that kept stamping success would read as healthy forever, which is the one thing the health
+  // row exists to prevent.
+  await recordRunSuccess(env, now, ceiling(), legNow());
   return summary;
+}
+
+/** Prepare one unit of work, whichever kind it is. */
+function prepareItem(
+  env: ReaderEnv,
+  client: GmailClient,
+  item: WorkItem,
+  leg: Leg | undefined,
+  context: { roster: Map<string, string>; now: Date; capped: boolean; summary: ReaderTickSummary },
+): Promise<PreparedResult> {
+  switch (item.kind) {
+    case 'fresh': {
+      return prepareFresh(env, client, item.row, context);
+    }
+    case 'retry': {
+      return prepareRetry(env, item.row, context.roster, context.now);
+    }
+    default: {
+      // A bookmark item only exists because a leg listed it.
+      if (leg === undefined) return Promise.resolve({ kind: 'skip' });
+      return prepareBookmark(env, leg, item, context);
+    }
+  }
+}
+
+/**
+ * The leg's outcome on a path that makes no closing health write — so the Instapaper dot still
+ * learns what the leg found. Nothing at all when the leg has nothing to say.
+ */
+async function recordLegAlone(
+  env: ReaderEnv,
+  now: Date,
+  outcome: InstapaperOutcome | undefined,
+): Promise<void> {
+  if (outcome !== undefined) await recordInstapaperHealth(env, now, outcome);
 }
 
 // ── Retention ────────────────────────────────────────────────────────────────
