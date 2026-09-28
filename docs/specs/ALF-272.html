@@ -216,7 +216,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>272</span><span class="sep"> — </span><span class="ttl">Implement a “To Reader” folder pipeline in Instapaper à la “To Wiki”</span></h1>
   <p class="change" id="change">Move an Instapaper article into a To Reader folder and, within five minutes, it’s summarised in the Reader like a newsletter.</p>
-  <p class="revised" id="revised">Revised 2026-09-28: D1 → “Send to Instapaper” (your review).</p>
+  <p class="revised" id="revised">Revised 2026-09-28: D1 → “Send to Instapaper”; domain linking split out, articles kept linkable (your review).</p>
 </header>
 
 <section class="sec" id="decisions">
@@ -373,7 +373,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
 <section class="sec" id="not-doing">
   <h2 class="side">Not doing</h2>
-  <p>Highlights or notes (To Wiki does those), tags, or a separate daily cap for articles.</p>
+  <p>Highlights or notes (To Wiki does those), tags, or linking article sites to your newsletters — a later story; articles stay linkable (<a href="#d16">D16</a>).</p>
 </section>
 
 <section class="sec" id="heads-up">
@@ -424,11 +424,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </section>
   <section class="rec" id="d3">
     <h3><span class="tag">D3</span>How is an article stored? · proposed</h3>
-    <p>Alternative: a synthetic “Instapaper” publication row. That row would sit in the publications view with an enable toggle that does nothing and claim to be a sender it isn’t. A discriminator is the seam the epic anticipated (“the dedupe key would grow a source discriminator”, epic §5). Consequences: <code>publication_id</code>, <code>account_key</code> and <code>gmail_message_id</code> become nullable, a CHECK constraint states what each source requires, and a partial unique index on <code>instapaper_bookmark_id</code> makes the insert the claim, as <code>(account_key, gmail_message_id)</code> does for Gmail. Costly to reverse once rows exist.</p>
+    <p>Alternative: a synthetic “Instapaper” publication row. That row would sit in the publications view with an enable toggle that does nothing and claim to be a sender it isn’t. A discriminator is the seam the epic anticipated (“the dedupe key would grow a source discriminator”, epic §5). Consequences: <code>publication_id</code>, <code>account_key</code> and <code>gmail_message_id</code> become nullable, a CHECK constraint states what each source requires, and a partial unique index on <code>instapaper_bookmark_id</code> makes the insert the claim, as <code>(account_key, gmail_message_id)</code> does for Gmail. An Instapaper post also stores its normalised <code>site</code>, and may later carry a <code>publication_id</code> (D16). Costly to reverse once rows exist.</p>
   </section>
   <section class="rec" id="d4">
     <h3><span class="tag">D4</span>What marks an Instapaper row? · proposed</h3>
-    <p>Alternatives: an “Instapaper” eyebrow with no site, or an “from Instapaper” badge beside the state marker. The site is what a skimmer uses to judge a source, and the eyebrow is where the Reader already puts a newsletter’s publication. The existing “in Instapaper” badge already means <i>sent</i>, so a second Instapaper badge would read as the same claim. The date is the intake instant because the list sorts by <code>received_at</code>, newest first. An article saved in March and moved today would otherwise land months down, out of sight, just after the owner asked for it. The 90-day text sweep then also counts from intake.</p>
+    <p>Alternatives: an “Instapaper” eyebrow with no site, or an “from Instapaper” badge beside the state marker. The site is what a skimmer uses to judge a source, and the eyebrow is where the Reader already puts a newsletter’s publication. The existing “in Instapaper” badge already means <i>sent</i>, so a second Instapaper badge would read as the same claim. Once an article is linked to a publication (D16), the eyebrow shows that publication’s name instead of the site. The date is the intake instant because the list sorts by <code>received_at</code>, newest first. An article saved in March and moved today would otherwise land months down, out of sight, just after the owner asked for it. The 90-day text sweep then also counts from intake.</p>
   </section>
   <section class="rec" id="d5">
     <h3><span class="tag">D5</span>How does a broken Instapaper connection show? · proposed</h3>
@@ -475,6 +475,17 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <section class="rec" id="d15">
     <h4>D15 · The leg stamps its own health on the tick’s closing write</h4>
     <p>New columns: <code>instapaper_last_success_at</code>, <code>instapaper_last_error</code>, <code>instapaper_last_error_at</code>. Success is stamped when the leg lists and finishes every item it took without an Instapaper failure. Error is stamped on any Instapaper failure, in the owner’s words (<a href="#contracts">Contracts</a>). Both ride the tick’s closing health write. On the two paths with no closing write (a Gmail token or transport stop), one PATCH of only these columns goes out when the leg has an outcome to record; those paths stop early, so it fits the budget. Instapaper failures never enter <code>ReaderTickSummary.failures</code>, so they never hold back <code>last_success_at</code>.</p>
+  </section>
+  <section class="rec" id="d16">
+    <h4>D16 · Articles stay linkable to a publication, so a later story can retitle them</h4>
+    <p>The owner asked (review, 2026-09-28) for a separate story that links newsletter senders to their article domains, automatically where possible and by hand where needed. This story must let that one retitle articles already in the Reader by data alone, without a second migration of these rows or a change to the row component. Four things in this build make that true:</p>
+    <ul>
+      <li><b>The site is stored, normalised</b>, as <code>reader_posts.site</code> at intake (<a href="#behavior">Behaviour</a>). That later story can then link existing articles with one update keyed on it, never by re-parsing URLs.</li>
+      <li><b>An Instapaper post may carry a <code>publication_id</code>.</b> The identity CHECK requires one for Gmail posts and forbids nothing for Instapaper posts. This build never sets it.</li>
+      <li><b>The eyebrow prefers a linked publication:</b> its name from <code>useReaderPublications()</code> (the shell already seeds <code>ReaderSettingsProvider</code> with every publication), else <code>site</code>, else <code>Instapaper</code>. The list payload doesn’t change.</li>
+      <li><b>The model’s <code>Publication:</code> prefers it too:</b> the roster’s name when <code>publication_id</code> is set (the tick already reads the roster once), else <code>site</code>.</li>
+    </ul>
+    <p>Linking never re-summarises: a stored summary keeps what it said (epic D7), and only the eyebrow changes. The matching rules, the domains store, the manual surface and the Substack section-address question all belong to the later story.</p>
   </section>
 </section>
 
@@ -531,11 +542,14 @@ health.end + instapaper_* columns                                       1</pre>
     <tr><td><code>title</code></td><td>the bookmark’s title, else the site name, else <code>Untitled</code></td></tr>
     <tr><td><code>canonical_url</code></td><td>the bookmark’s <code>url</code> when <code>http(s)</code>, else null</td></tr>
     <tr><td><code>received_at</code></td><td>the tick’s instant (D4)</td></tr>
+    <tr><td><code>site</code></td><td>the normalised site (below), or null for a URL-less bookmark</td></tr>
     <tr><td><code>author</code></td><td>null</td></tr>
     <tr><td><code>instapaper_bookmark_id</code></td><td>the bookmark id (D3)</td></tr>
-    <tr><td><code>publication_id</code>, <code>comm_message_id</code>, <code>account_key</code>, <code>gmail_message_id</code>, <code>rfc822_message_id</code>, <code>html</code></td><td>null</td></tr>
+    <tr><td><code>publication_id</code></td><td>null in this build; a later story may set it (D16)</td></tr>
+    <tr><td><code>comm_message_id</code>, <code>account_key</code>, <code>gmail_message_id</code>, <code>rfc822_message_id</code>, <code>html</code></td><td>null</td></tr>
   </table></div>
-  <p><b>Site name:</b> the URL’s hostname with a leading <code>www.</code> removed, else <code>Instapaper</code>. It is the model’s <code>Publication:</code> line (at intake and on retry) and the row’s eyebrow. The Worker and the frontend each implement this three-line rule, and each side has a test pinning it.</p>
+  <p><b>The site</b> (<code>siteOf(url)</code>, Worker only, stored once): the URL’s lower-cased hostname with a leading <code>www.</code> removed. A Substack app link, <code>open.substack.com/pub/&lt;name&gt;/…</code>, becomes <code>&lt;name&gt;.substack.com</code>, the domain discovery already stores for that publication. A non-<code>http(s)</code> or missing URL gives null.</p>
+  <p><b>What the row and the model show:</b> the linked publication’s name, else <code>site</code>, else <code>Instapaper</code>. The row gets the name from <code>useReaderPublications()</code> by <code>publication_id</code>; the model’s <code>Publication:</code> line gets it from the roster the tick already reads, at intake and on retry. Newsletter rows keep their current eyebrow (<code>author</code>).</p>
 
   <h3>The Instapaper dot (P1, P3)</h3>
   <ul>
@@ -554,6 +568,8 @@ alter table reader_posts
   add column source text not null default 'gmail',
   add constraint reader_posts_source_valid check (source in ('gmail', 'instapaper'));
 
+alter table reader_posts add column site text;   -- normalised host of an Instapaper post's URL
+
 alter table reader_posts
   alter column publication_id   drop not null,
   alter column account_key      drop not null,
@@ -563,8 +579,9 @@ alter table reader_posts add constraint reader_posts_source_identity check (
      (source = 'gmail'      and publication_id is not null and account_key is not null
                             and gmail_message_id is not null)
   or (source = 'instapaper' and instapaper_bookmark_id is not null
-                            and publication_id is null and comm_message_id is null
+                            and comm_message_id is null
                             and account_key is null and gmail_message_id is null)
+     -- publication_id is deliberately unconstrained for Instapaper posts (D16)
 );
 
 create unique index reader_posts_instapaper_source_key
@@ -578,7 +595,7 @@ alter table reader_health
   add column instapaper_last_error_at   timestamptz;
 
 notify pgrst, 'reload schema';</pre>
-  <p>Comment each new column and constraint in the style of 0035 and 0039, and rewrite <code>instapaper_bookmark_id</code>’s comment for its two meanings. The migration adds no table, view or sequence, so the existing RLS and grants cover it, and it only expands the schema. <code>v_reader_worklist</code>, <code>v_reader_publications</code> and <code>reader_sweep_text</code> are unaffected. <code>database.types.ts</code> is regenerated, never hand-edited, and <code>'source'</code> joins <code>READER_POST_LIST_COLUMNS</code>, enforced by its pinning test.</p>
+  <p>Comment each new column and constraint in the style of 0035 and 0039, and rewrite <code>instapaper_bookmark_id</code>’s comment for its two meanings. The migration adds no table, view or sequence, so the existing RLS and grants cover it, and it only expands the schema. <code>v_reader_worklist</code>, <code>v_reader_publications</code> and <code>reader_sweep_text</code> are unaffected. <code>database.types.ts</code> is regenerated, never hand-edited, and <code>'source'</code> and <code>'site'</code> join <code>READER_POST_LIST_COLUMNS</code>, enforced by its pinning test. No index on <code>site</code> yet; the linking story adds one if its update needs it.</p>
 
   <h3>Worker client (<code>InstapaperApi</code>): signed POST, form body, 20-second abort</h3>
   <div class="scroll"><table>
@@ -619,12 +636,12 @@ const outcome =
     <tr><th>File</th><th>Change</th></tr>
     <tr><td><code>database/migrations/&lt;next&gt;_reader_instapaper_source.sql</code>, <code>frontend/lib/database.types.ts</code>, <code>database/README.md</code>, <code>database/src/assertions.ts</code></td><td>Schema (D3, D15); regenerated types; schema summary; DB assertions</td></tr>
     <tr><td><code>workers/src/instapaper/{oauth,client,types}.ts</code> (+ tests)</td><td>The ported signer and client (D11)</td></tr>
-    <tr><td><code>workers/src/reader/to-reader.ts</code> (+ test)</td><td>List, the pure <code>planBookmark</code>, <code>siteName</code>, intake of one bookmark</td></tr>
+    <tr><td><code>workers/src/reader/to-reader.ts</code> (+ test)</td><td>List, the pure <code>planBookmark</code>, <code>siteOf</code>, intake of one bookmark</td></tr>
     <tr><td><code>workers/src/reader/scheduled.ts</code> (+ test)</td><td>Slots, the bookmark work item, the tally, the arithmetic table (D13)</td></tr>
-    <tr><td><code>workers/src/reader/{store,worklist,health,types}.ts</code> (+ tests)</td><td>Insert union and <code>fetchPostsForBookmarks</code>; <code>RETRY_COLUMNS</code> gains <code>source</code>; the instapaper health patch; <code>ReaderEnv</code></td></tr>
+    <tr><td><code>workers/src/reader/{store,worklist,health,types}.ts</code> (+ tests)</td><td>Insert union and <code>fetchPostsForBookmarks</code>; <code>RETRY_COLUMNS</code> gains <code>source</code> and <code>site</code>; the instapaper health patch; <code>ReaderEnv</code></td></tr>
     <tr><td><code>workers/src/index.ts</code> (+ test), <code>workers/wrangler.toml</code>, <code>workers/scripts/reader-eval.ts</code></td><td><code>GET /</code> and the log line; the secrets comment; <code>--instapaper</code></td></tr>
     <tr><td><code>frontend/lib/data/reader.ts</code>, <code>lib/instapaper/bookmark.ts</code>, <code>app/api/reader/posts/[id]/instapaper/route.ts</code> (+ tests)</td><td>Columns; <code>unarchiveBookmark</code>; the Send branch (D6, D14)</td></tr>
-    <tr><td><code>frontend/lib/reader/{source,send,health}.ts</code> (+ tests)</td><td><code>siteName</code> / <code>postEyebrow</code>; availability; <code>instapaperHealth</code></td></tr>
+    <tr><td><code>frontend/lib/reader/{source,send,health}.ts</code> (+ tests)</td><td><code>postEyebrow(post, publications)</code>; availability; <code>instapaperHealth</code></td></tr>
     <tr><td><code>frontend/components/reader/{post-row,reader-header,reading-list-view}.tsx</code> (+ tests, stories)</td><td>Eyebrow and meta (D4); the third dot and note (D5); empty-state copy</td></tr>
     <tr><td><code>frontend/lib/reader/fixtures.ts</code>, <code>frontend/scripts/mock-supabase.mjs</code>, <code>frontend/e2e/reader-instapaper-source.spec.ts</code></td><td>Fixtures in each state; <code>source</code> default and <code>bookmarks/unarchive</code> in the mock; the E2E</td></tr>
   </table></div>
@@ -634,7 +651,7 @@ const outcome =
 <section id="ac">
   <h2>Acceptance criteria</h2>
   <ul class="checks">
-    <li data-trace="D3 D4 D9">With the secrets set, an article in To Reader becomes one <code>reader_posts</code> row: <code>source = 'instapaper'</code>, its bookmark id, title and URL, <code>received_at</code> = the tick’s instant, text from <code>get_text</code>, and no publication or mail identity.</li>
+    <li data-trace="D3 D4 D9">With the secrets set, an article in To Reader becomes one <code>reader_posts</code> row: <code>source = 'instapaper'</code>, its bookmark id, title and URL, <code>received_at</code> = the tick’s instant, text from <code>get_text</code>, its normalised <code>site</code>, and no publication or mail identity.</li>
     <li data-trace="D2 D10 D7">It is summarised in the same tick by the unchanged summariser and prompt (version 1), with the site as <code>Publication:</code>, and it counts against <code>READER_DAILY_CAP</code>.</li>
     <li data-trace="D6">The bookmark is archived after the insert. A failed archive is retried next tick with no second post and no second model call.</li>
     <li data-trace="D12">A bookmark id an existing post holds, from either source, gets no new post: the bookmark is archived and an archived post returns to the list.</li>
@@ -643,7 +660,8 @@ const outcome =
     <li data-trace="D13">The leg lists only with a free slot and takes at most that many bookmarks, oldest first. A worst tick is ≤ 48 fetches, and <code>READER_TICK_LIMIT</code> stays 6.</li>
     <li data-trace="D5 D15">An Instapaper failure stops only the leg and is stamped in the owner-facing words. Newsletters, retries and <code>last_success_at</code> are unaffected, and a clean leg stamps <code>instapaper_last_success_at</code>.</li>
     <li data-trace="D11">Unconfigured: no Instapaper call, no stamp, <code>GET /</code> says <code>instapaper unconfigured</code>, and no dot.</li>
-    <li data-trace="D4 P1">The eyebrow is the site (<code>www.</code> stripped) and the meta line ends “· via Instapaper”. Newsletter rows are unchanged.</li>
+    <li data-trace="D4 P1">The eyebrow is the site (<code>www.</code> stripped, a Substack app link as <code>&lt;name&gt;.substack.com</code>) and the meta line ends “· via Instapaper”. Newsletter rows are unchanged.</li>
+    <li data-trace="D16">An Instapaper post given a <code>publication_id</code> (in a fixture; nothing in this build sets one) passes the CHECK. Its row shows that publication’s name, and a retry sends that name as <code>Publication:</code>, with no summary rewritten.</li>
     <li data-trace="D1 P1">Every row, article or newsletter, keeps the verb “Send to Instapaper” with hotkey <code>i</code>.</li>
     <li data-trace="D5 P1 P3">The Instapaper dot is hidden, live or erroring by the rules in Behaviour, with the note’s exact words.</li>
     <li data-trace="D6 D14">Send on an Instapaper row calls <code>bookmarks/unarchive</code> (no <code>add</code>), stamps <code>instapaper_sent_at</code> and archives the post. If the bookmark is gone, it resaves by URL without content. Archive makes no Instapaper call.</li>
@@ -660,11 +678,11 @@ const outcome =
     <tr><th>Tier</th><th>Pins</th></tr>
     <tr><td>Jest · <code>instapaper/oauth.test.ts</code></td><td>The frontend suite’s RFC 5849 vectors, ported unchanged</td></tr>
     <tr><td>Jest · <code>instapaper/client.test.ts</code></td><td>Each method’s path, form body and signature. Both list shapes. 1550 → null. A 2xx JSON body is never text. “No such bookmark” on archive resolves. 401/403/1040/1041/1042/non-JSON/network map to their kinds. No message contains a credential.</td></tr>
-    <tr><td>Jest · <code>reader/to-reader.test.ts</code></td><td>Every plan row, <code>siteName</code>, the title fallback, oldest-first, taking only <code>slots</code></td></tr>
+    <tr><td>Jest · <code>reader/to-reader.test.ts</code></td><td>Every plan row; <code>siteOf</code> (<code>www.</code>, case, <code>open.substack.com/pub/…</code>, non-http, missing); the title fallback; oldest-first; taking only <code>slots</code></td></tr>
     <tr><td>Jest · <code>reader/scheduled.test.ts</code></td><td>Unconfigured; empty folder; one bookmark end to end; capped before and mid-tick; no free slot; archive failure then retry; newsletter restore; 1550; credentials refusal with newsletters still summarised; missing folder; the stand-alone health PATCH; <b>a worst tick counts ≤ 48 fetches</b></td></tr>
-    <tr><td>Jest · worklist, store, health, index</td><td>Retry input uses the site; the insert union; the <code>in.(…)</code> read; health patch shapes; <code>GET /</code> and the log line</td></tr>
-    <tr><td>DB · <code>database/src/assertions.ts</code></td><td>Existing rows read <code>gmail</code>. Each source’s identity CHECK accepts and rejects the right rows. A duplicate Instapaper bookmark id is rejected; a newsletter row with the same id is allowed. The health columns exist and are nullable.</td></tr>
-    <tr><td>Jest / RTL · frontend</td><td><code>unarchive</code>, the <code>gone</code> fallback, and newsletter sends unchanged; availability; the eyebrow and meta; the unchanged Send label on an Instapaper row; the dot’s three states and the note’s words; the empty-state copy</td></tr>
+    <tr><td>Jest · worklist, store, health, index</td><td>Retry input uses the roster name when linked, else the site; the insert union; the <code>in.(…)</code> read; health patch shapes; <code>GET /</code> and the log line</td></tr>
+    <tr><td>DB · <code>database/src/assertions.ts</code></td><td>Existing rows read <code>gmail</code>. Each source’s identity CHECK accepts and rejects the right rows. A duplicate Instapaper bookmark id is rejected; a newsletter row with the same id is allowed; an Instapaper row with a <code>publication_id</code> is accepted. The health columns exist and are nullable.</td></tr>
+    <tr><td>Jest / RTL · frontend</td><td><code>unarchive</code>, the <code>gone</code> fallback, and newsletter sends unchanged; availability; the eyebrow and meta, including a linked fixture showing its publication’s name; the unchanged Send label on an Instapaper row; the dot’s three states and the note’s words; the empty-state copy</td></tr>
     <tr><td>Storybook</td><td>PostRow: Instapaper summarised, arriving and no-text. ReaderHeader: Instapaper live and erroring. Baselines approved per the <code>storybook</code> skill.</td></tr>
     <tr><td>Playwright · <code>reader-instapaper-source.spec.ts</code></td><td>The seeded row shows the site and “via Instapaper”. Send → the mock records one <code>bookmarks/unarchive</code> for that id and no <code>add</code>, and the row leaves.</td></tr>
   </table></div>
@@ -679,6 +697,7 @@ const outcome =
   <h2>Out of scope, risks &amp; unknowns</h2>
   <ul>
     <li><b>Highlights and notes</b> are To Wiki’s job; the leg ignores the highlights <code>bookmarks/list</code> returns. <b>Tags</b> can’t be written through the API. <b>A separate cap</b> was declined (D7); raising the shared one is a one-line var change.</li>
+    <li><b>Linking article domains to newsletter senders</b> is a separate story at the owner’s request. D16 is what this one leaves in place for it. That story also owns the question the roster raises: one Substack can mail from several section addresses (<code>&lt;pub&gt;+&lt;section&gt;@substack.com</code>), each its own roster row sharing one domain, so “domain → publication” has to pick among them.</li>
     <li>No author extraction from <code>get_text</code>. Wiki picks’ <code>published</code> date for an article is its intake date. An article sent both through Reader picks and To Wiki becomes two <code>raw/</code> folders (the gap ALF-263 §14 already names). The paywalled-teaser marker is still unbuilt.</li>
     <li><b>Unknown: the API paths and the missing-bookmark code.</b> The knowledge client’s <code>/api/1.1/</code> paths haven’t run live. Before coding, read Instapaper’s Full API docs as <code>docs/specs/archive/ALF-238.html</code> §6 describes; if they’re unreachable, build to Contracts. The owner’s <code>eval:reader -- --instapaper</code> run settles this.</li>
     <li><b>Unknown: Instapaper’s rate limits</b> aren’t published. The leg lists twice a tick, about 576 calls a day. If <code>rate-limited</code> starts showing, list on every other tick (a constant in <code>to-reader.ts</code>); don’t build that until it happens.</li>
