@@ -11,7 +11,7 @@ The coach should end up with a skill that can:
 
 1. **Post the week plan it generates** to alfred's archive, where it renders in the app's
    **Week Plan** view.
-2. **Read this ISO week's merged-PR ratio** — the split of merged pull requests across the
+2. **Read the rolling seven-day merged-PR ratio** — the split of merged pull requests across the
    Code module's projects — as the key metric for the review.
 3. **Read the owner's habit data** — each habit's definition, a window of logged days, and every
    derived number (streaks, hit rate, banked days, formation stage) — so "did you actually get up
@@ -131,12 +131,15 @@ frame has an **opaque origin** and no access to the parent page. So:
 
 ## Endpoint 2 — `GET /api/code/pr-ratio` (read the PR-ratio metric)
 
-Returns this **ISO week's** merged-PR counts, live from the GitHub Search API — Monday 00:00
-through the following Monday 00:00, in the timezone you name. This is the same number the
-app's Backlog card shows.
+Returns a **rolling seven-day window ending at the moment of the request** — not a calendar or
+ISO week — measured live from the GitHub Search API. A review held Friday afternoon (or a
+slipped Sunday) always sees a full seven days of work, instead of only the days since Monday.
+This is the same number the app's Code-module **Dashboard** card shows.
 
-Pass `tz` as an IANA timezone so the week boundary matches the user's actual week. An
-unrecognized zone silently falls back to UTC rather than erroring, so send a valid one.
+Pass `tz` as an IANA timezone to render the window's two ends in the user's own wall clock; it
+does not change which PRs are counted, since the seven days are the same real-world instants
+either way. Omit `tz` and the window renders in UTC; an unrecognized zone also falls back to
+UTC rather than erroring, so send a valid one.
 
 ```http title=pr-ratio-request
 GET /api/code/pr-ratio?tz=America/New_York
@@ -146,8 +149,8 @@ x-api-key: <ALFRED_API_KEY>
 ```json title=pr-ratio-response
 {
   "week": {
-    "start": "2026-07-20T00:00:00-04:00",
-    "end": "2026-07-27T00:00:00-04:00",
+    "start": "2026-07-17T16:00:00-04:00",
+    "end": "2026-07-24T16:00:00-04:00",
     "timezone": "America/New_York"
   },
   "total": 9,
@@ -168,10 +171,12 @@ Reading the payload:
   so they can be quoted directly without re-deriving them from `count`.
 - `other` counts merged PRs **outside** every project's repo and is **optional** — it is absent
   entirely on a deployment that cannot measure it. Handle the missing key.
-- `week.end` is **exclusive**.
+- `week.start` and `week.end` are both **inclusive** instants, exactly seven days apart.
 - A week with no merged PRs returns `total: 0` and all-zero percentages — that is a real answer,
   not an error.
-- Counts are cached for five minutes, so two calls a minute apart can return the same numbers.
+- `week.end` is floored to the start of its five-minute bucket rather than the exact request
+  instant, and GitHub's answer is cached for that same five-minute span — so two calls inside
+  one bucket ask the identical query and get back the identical numbers.
 
 ### Statuses to handle
 
@@ -570,7 +575,7 @@ curl --fail-with-body --silent --show-error \
 
 ```bash title=pr-ratio.sh
 #!/usr/bin/env bash
-# Print this ISO week's merged-PR split. Usage: pr-ratio.sh [IANA timezone]
+# Print the rolling seven-day merged-PR split. Usage: pr-ratio.sh [IANA timezone]
 set -euo pipefail
 
 ALFRED_BASE_URL="https://alfred.example.vercel.app"
