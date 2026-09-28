@@ -67,8 +67,7 @@ alfred is a web app deployed on Vercel, reachable from any device after login:
 
 - **Phone:** open the app URL in Safari and **Add to Home Screen** for an app-like icon;
   use the Siri Shortcut above for hands-free/voice capture.
-- **Personal desktop:** just the URL in any browser.
-- **Work computer (optional):** same URL; all state lives in Supabase, so every device sees
+- **Desktop:** just the URL in any browser; all state lives in Supabase, so every device sees
   the same data.
 
 All clients are thin — there is no local state to sync; the backend is the single source of
