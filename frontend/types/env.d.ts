@@ -17,11 +17,6 @@ declare namespace NodeJS {
     SUPABASE_SERVICE_ROLE_JWT?: string;
     INGEST_API_KEY?: string;
     BASE_URL?: string;
-    // Instance identity for the top-right switcher — all optional (safe defaults in local dev).
-    NEXT_PUBLIC_INSTANCE_LABEL?: string;
-    NEXT_PUBLIC_INSTANCE_ACCENT?: string;
-    NEXT_PUBLIC_OTHER_INSTANCE_LABEL?: string;
-    NEXT_PUBLIC_OTHER_INSTANCE_URL?: string;
     // The Code Dashboard's GitHub measurements (over the projects' repos) — optional and
     // server-only; an unset token simply turns the feature off.
     GITHUB_TOKEN?: string;

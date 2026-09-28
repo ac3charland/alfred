@@ -16,8 +16,7 @@ import type { Project } from '@/lib/types';
  * fan-out, since a partial ratio is a wrong ratio.
  *
  * Kept DB-free: the caller reads the project rows (with whichever Supabase client its auth
- * resolved to) and hands them in, so this stays a pure function of env plus rows. Each var is
- * read by its literal name (never a computed key), mirroring `lib/instance.ts`.
+ * resolved to) and hands them in, so this stays a pure function of env plus rows.
  *
  * `PR_RATIO_AUTHORS` under-describes its widened scope (it also anchors Other, and shares a
  * config with the velocity chart), but renaming it means a coordinated deployment env change

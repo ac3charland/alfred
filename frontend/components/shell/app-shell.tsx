@@ -1,8 +1,8 @@
 import * as React from 'react';
 
+import { AccountMenu } from '@/components/shell/account-menu';
 import { ActiveModuleLabel } from '@/components/shell/active-module-label';
 import { CommandPalette } from '@/components/shell/command-palette';
-import { InstanceMenu } from '@/components/shell/instance-menu';
 import { MobileSearch } from '@/components/shell/mobile-search';
 import { SearchBox } from '@/components/shell/search-box';
 import { ShellMobileNav } from '@/components/shell/shell-mobile-nav';
@@ -10,7 +10,6 @@ import { ShellNav } from '@/components/shell/shell-nav';
 import { ToastViewport } from '@/components/shell/toast-viewport';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
-import type { InstanceConfig } from '@/lib/instance';
 
 import { shellRootClass, sidebarShortcutHintClass } from './app-shell.styles';
 
@@ -18,7 +17,7 @@ import { shellRootClass, sidebarShortcutHintClass } from './app-shell.styles';
  * Shared application shell (Server Component) mounted once by the `(shell)` layout that
  * seeds every module's providers. It owns the chrome that's identical across modules: the
  * `alfred` wordmark (links to `/` capture, unchanged), the Tasks ⇄ Code switcher, the
- * top-right instance/account menu, and the desktop sidebar / mobile header frame.
+ * top-right account menu, and the desktop sidebar / mobile header frame.
  *
  * `ToastProvider` is mounted by the `(shell)` layout (it must wrap `CodeProvider`), so this
  * shell only renders the `ToastViewport` — both live under that provider.
@@ -34,13 +33,10 @@ import { shellRootClass, sidebarShortcutHintClass } from './app-shell.styles';
 export function AppShell({
   children,
   email,
-  instance,
 }: {
   children: React.ReactNode;
-  /** The signed-in user's email, shown in the instance menu header. */
+  /** The signed-in user's email, shown in the account menu header. */
   email: string | null;
-  /** This deployment's instance identity, driving the top-right switcher. */
-  instance: InstanceConfig;
 }) {
   return (
     <>
@@ -100,11 +96,10 @@ export function AppShell({
               <SearchBox className="w-full max-w-md" />
             </div>
 
-            {/* Mobile search icon (hidden at md+), then the instance / account menu (label +
-                Open-other + Sign out) */}
+            {/* Mobile search icon (hidden at md+), then the account menu (email + Sign out) */}
             <div className="flex items-center gap-1">
               <MobileSearch />
-              <InstanceMenu email={email} instance={instance} />
+              <AccountMenu email={email} />
             </div>
           </header>
 
