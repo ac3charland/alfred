@@ -100,7 +100,8 @@ Run once per project repo, in a local session (needs GitHub admin + the Worker s
    `.claude/skills/epic-refinement/SKILL.md`, the spike skill **folder** into
    `.claude/skills/spike/`, the bug skill into `.claude/skills/bug/SKILL.md`, and the
    adversarial-review skill into `.claude/skills/adversarial-review/SKILL.md`, and commit them.
-   Existing project repos re-copy the whole refinement or spike folder whenever that skill changes.
+   Existing project repos re-copy the whole refinement or spike folder whenever that skill changes —
+   both, when the house stylesheet their templates share changes.
 3. **Add the GitHub webhook.** Repo → Settings → Webhooks → Add webhook:
    - **Payload URL:** the deployed Worker's `POST /github/webhook` route.
    - **Content type:** `application/json`.
