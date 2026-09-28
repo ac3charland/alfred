@@ -27,7 +27,7 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { createClient } from '@/lib/supabase/client';
-import { joinWhenAuthenticated } from '@/lib/supabase/realtime';
+import { deliveredColumns, joinWhenAuthenticated } from '@/lib/supabase/realtime';
 import { makeOptimisticEpic, makeOptimisticProject, makeOptimisticStory, tempId } from '@/lib/tree';
 import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
@@ -563,7 +563,8 @@ export function CodeProvider({
   // Live swimlane updates. The webhook Worker (and any other device/tab) writes a story's
   // factory_state out of band, never touching this tab's store — so subscribe to the base
   // `code_items` table (you can't subscribe to the `v_code_stories` view the board reads)
-  // and feed each UPDATE through the SAME sidecar→story projection the reconcile uses.
+  // and feed each UPDATE through the SAME sidecar→story projection the reconcile uses, less any
+  // column the payload left out (an unchanged TOASTed spec arrives absent — `deliveredColumns`).
   // `patchStory` is keyed by `item_id` and a no-op when absent (the race rule), so a change
   // for a story this tab doesn't hold — or one already removed — is harmlessly ignored, and
   // an echo of the user's own optimistic write re-applies identical values (idempotent).
@@ -593,7 +594,11 @@ export function CodeProvider({
       // reasoning that keeps the board stable (no flicker, no double notification).
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
-      dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
+      dispatch({
+        type: 'patchStory',
+        itemId: row.item_id,
+        patch: deliveredColumns(codeItemToStoryPatch(row)),
+      });
       if (!changedState) return;
 
       const label = FACTORY_STATE_LABELS[row.factory_state];
@@ -627,12 +632,12 @@ export function CodeProvider({
       dispatch({
         type: 'patchEpic',
         id: row.id,
-        patch: {
+        patch: deliveredColumns({
           spec_path: row.spec_path,
           spec_sha: row.spec_sha,
           spec_markdown: row.spec_markdown,
           refinement_pr_url: row.refinement_pr_url,
-        },
+        }),
       });
     };
 

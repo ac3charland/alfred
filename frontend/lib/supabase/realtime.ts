@@ -28,3 +28,20 @@ export function joinWhenAuthenticated(realtime: RealtimeClient, join: () => void
     cancelled = true;
   };
 }
+
+/**
+ * Keep only the columns a realtime UPDATE actually delivered, so a patch built from `payload.new`
+ * changes what the payload carried and nothing else.
+ *
+ * `payload.new` is not always the whole row: Postgres leaves an UPDATE's unchanged TOASTed columns
+ * (values over ~2 KB — a snapshotted spec, say) out of the replication message, so Supabase omits
+ * the key entirely. Copied field by field into a patch, that absence becomes `undefined` and
+ * overwrites the value the store holds (ALF-277). An omitted column means "unchanged"; one the
+ * write really cleared arrives as `null` and is kept.
+ */
+export function deliveredColumns<T extends object>(patch: T): Partial<T> {
+  // `fromEntries` can't carry T's keys through; the result is a subset of `patch`'s own entries.
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}
