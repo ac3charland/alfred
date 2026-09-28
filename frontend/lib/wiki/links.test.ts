@@ -105,7 +105,7 @@ describe('resolveWikiLink — the link-resolution table, as the reading room ren
     });
   });
 
-  describe('with no repo configured (the Work instance)', () => {
+  describe('with no repo configured', () => {
     it.each([
       '../../raw/2026/2026-10-01-atomic-habits/excerpts-2026-10-01.md#q-after-i-pour',
       '../../raw/2026/2026-10-01-atomic-habits/',

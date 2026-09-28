@@ -38,8 +38,8 @@ const mockEnvironment: Record<string, string> = {
   INSTAPAPER_API_URL: MOCK_URL,
   // The wiki writer, pointed at the mock's Git Data API emulation so a send's commit lands in
   // the mock and can be read back from /__mock__/state. Deliberate feature wiring: with these
-  // set the harness runs as the Personal deployment (writable), which is the state every send
-  // journey needs; a spec that wants the Work instance's read-only shell has none.
+  // set the harness runs as the production deployment (writable), which is the state every send
+  // journey needs; a spec that wants a read-only shell has none.
   WIKI_GITHUB_TOKEN,
   WIKI_REPO,
   WIKI_GITHUB_API_URL,

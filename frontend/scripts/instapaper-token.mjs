@@ -140,7 +140,7 @@ async function main() {
   process.stdout.write(
     [
       '',
-      'Set these on the Personal instance’s Vercel project (Production), beside the consumer pair:',
+      'Set these on the Vercel project (Production), beside the consumer pair:',
       '',
       `  INSTAPAPER_ACCESS_TOKEN=${token}`,
       `  INSTAPAPER_ACCESS_TOKEN_SECRET=${tokenSecret}`,

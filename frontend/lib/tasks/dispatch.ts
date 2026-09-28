@@ -39,7 +39,7 @@ export type DispatchCandidate = Pick<
 
 /**
  * What readiness needs to know beyond the row itself: whether this instance can write to the
- * wiki at all (the Work instance, or a Personal deploy with its token unset, cannot).
+ * wiki at all (a deploy with its token unset cannot).
  */
 export interface DispatchContext {
   wikiWritable: boolean;

@@ -58,7 +58,7 @@ describe('getWikiConfig', () => {
     expect(getWikiConfig()?.apiUrl).toBe('http://localhost:54331/__mock__/github');
   });
 
-  it('is unconfigured without a token — the Work instance', () => {
+  it('is unconfigured without a token', () => {
     withEnvironment({ WIKI_REPO: 'ac3charland/knowledge' });
     expect(getWikiConfig()).toBeUndefined();
   });
@@ -111,7 +111,7 @@ describe('getWikiClientConfig', () => {
     expect(config).toEqual({ repo: 'ac3charland/knowledge', writable: true });
   });
 
-  it('names the repo but is not writable with a repo and no token — the Work instance', () => {
+  it('names the repo but is not writable with a repo and no token', () => {
     withEnvironment({ WIKI_REPO: 'ac3charland/knowledge' });
 
     const config = getWikiClientConfig();

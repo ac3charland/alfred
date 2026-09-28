@@ -29,7 +29,7 @@ function candidate(
 
 /** The readiness context for an instance with no wiki writer — the default everywhere. */
 const WIKI_OFF = { wikiWritable: false };
-/** The readiness context for the Personal instance, whose wiki writer is configured. */
+/** The readiness context for a deployment whose wiki writer is configured. */
 const WIKI_ON = { wikiWritable: true };
 
 describe('dispatchReadiness', () => {
