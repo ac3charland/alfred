@@ -173,20 +173,14 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .app code{font:inherit;color:inherit}
 .app svg.ic{display:block;flex:none}
 .app.board{min-height:212px}
+.app.board.phone{min-height:0;max-width:360px}
 .app .bh{display:flex;flex-direction:column;gap:8px}
 .app .bh-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
 .app .nk{display:flex;align-items:baseline;gap:8px}
 .app .anc{position:relative;display:inline-flex;align-self:center}
-.app .anc-t{position:relative}
 .app .ttl{margin:0;font:400 24px/32px Georgia,"Times New Roman",serif;color:var(--foreground)}
 .app .glow-a{color:rgb(var(--pc));text-shadow:0 0 14px rgb(var(--pc)/.5)}
-.app .glow-b{color:var(--foreground);text-shadow:0 0 8px rgb(var(--pc)/.75),0 0 20px rgb(var(--pc)/.4)}
-.app .ttl.hover{margin:0 -4px;padding:0 4px;border-radius:4px;background:rgb(30 42 63/.5)}
 .app .key{font:14px/20px "Geist Mono",ui-monospace,Menlo,monospace;color:var(--muted-foreground)}
-.app .swb{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:4px}
-.app .swb.on{background:var(--secondary)}
-.app .swb i{display:block;width:12px;height:12px;border-radius:9999px;background:rgb(var(--pc));box-shadow:0 0 6px rgb(var(--pc)/.6)}
-.app .hov{display:inline-flex;align-self:center;color:var(--muted-foreground)}
 .app .tb{display:flex;align-items:center;gap:8px}
 .app .btn{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-weight:500;color:var(--foreground);white-space:nowrap}
 .app .btn.sq{padding:0 8px}
@@ -248,23 +242,25 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>188</span><span class="sep"> — </span><span class="ttl">Project titles glow in a colour you can pick</span></h1>
   <p class="change" id="change">A project board’s title now glows in the project’s colour, and you can pick that colour from the palette — the pick follows the project everywhere it appears.</p>
+  <p class="revised" id="revised">Revised 2026-09-28: D1 → C and D2 → A (your review); D7 added; Plate I redrawn with a phone state.</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
-    <li data-state="open"><h3><a class="tag" href="#d1">D1</a>Where do you open the colour picker?</h3>
-      <p class="pick">A swatch beside the key ★ · B click the title · C toolbar button</p>
-      <p class="why">A shows the current colour and sits by what it changes; B and C hide it.</p></li>
-    <li data-state="open"><h3><a class="tag" href="#d2">D2</a>What does the glow look like?</h3>
-      <p class="pick">A tinted text, soft glow ★ · B white text, coloured halo</p>
-      <p class="why">A matches the sidebar’s tinted glyphs; B keeps names maximally legible.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d7">D7</a>Should the palette button show the colour?</h3>
+      <p class="pick">Yes — its glyph wears the project’s current colour.</p>
+      <p class="why">Keeps the at-a-glance cue a swatch would have given.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>Which colours are on offer?</h3>
       <p class="pick">The five project accents, plus Automatic to return to the default.</p>
       <p class="why">Adding a sixth would reshuffle every project’s automatic colour.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>Where is the pick stored?</h3>
       <p class="pick">A nullable <code>color</code> column on <code>projects</code>; empty means Automatic.</p>
       <p class="why">Follows you across devices; existing projects need no backfill.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>Where do you open the colour picker?</h3>
+      <p class="pick">A palette button in the board toolbar, after Create epic, at every width.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>What does the glow look like?</h3>
+      <p class="pick">The title in the project colour, with a soft glow.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>Any hex colour?</h3>
       <p class="pick">No — a pick from the app’s palette.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>Which titles glow?</h3>
@@ -276,78 +272,13 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 <section id="plates" aria-label="What you’ll see">
 
   <figure class="plate" id="p1">
-    <fieldset class="switch"><legend>D1</legend>
-      <label><input type="radio" name="p1" value="a" checked>A · Swatch beside the key</label>
-      <label><input type="radio" name="p1" value="b">B · Click the title</label>
-      <label><input type="radio" name="p1" value="c">C · Toolbar button</label>
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="a" checked>Desktop · picker open</label>
+      <label><input type="radio" name="p1" value="b">Phone · at rest</label>
     </fieldset>
     <div class="mount">
-      <!-- A · swatch trigger -->
-      <div class="app board" data-opt="a" role="img" aria-label="Board header for alfred, title glowing green; a green swatch beside the key ALF is pressed and the colour picker is open beneath it, green selected">
-        <div class="bh c-green">
-          <div class="bh-row">
-            <div class="nk">
-              <p class="ttl glow-a">alfred</p>
-              <span class="key">ALF</span>
-              <span class="anc">
-                <span class="swb on"><i></i></span>
-                <div class="pop">
-                  <p class="pk-l">Project color</p>
-                  <div class="pk-sw">
-                    <span class="c-blue"></span><span class="c-amber"></span>
-                    <span class="c-green sel"><svg class="ic" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#0a0e17" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
-                    <span class="c-red"></span><span class="c-teal"></span>
-                  </div>
-                  <div class="pk-sep"></div>
-                  <div class="pk-auto c-blue"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Automatic <span class="dot"></span><span class="m">Blue</span></div>
-                </div>
-              </span>
-            </div>
-            <div class="tb">
-              <span class="btn"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create epic</span>
-              <span class="tg">Collapse all</span>
-              <span class="tg">Filter by status</span>
-            </div>
-          </div>
-          <p class="desc">My capture-first task system.</p>
-        </div>
-        <div class="epic">▸ <b>Capture pipeline</b> · 6 stories</div>
-      </div>
-
-      <!-- B · the title is the trigger -->
-      <div class="app board" data-opt="b" role="img" aria-label="Board header for alfred, title glowing green with a hover wash and a palette glyph beside it; the colour picker is open beneath the title, green selected">
-        <div class="bh c-green">
-          <div class="bh-row">
-            <div class="nk">
-              <span class="anc-t">
-                <p class="ttl glow-a hover">alfred</p>
-                <div class="pop">
-                  <p class="pk-l">Project color</p>
-                  <div class="pk-sw">
-                    <span class="c-blue"></span><span class="c-amber"></span>
-                    <span class="c-green sel"><svg class="ic" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#0a0e17" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
-                    <span class="c-red"></span><span class="c-teal"></span>
-                  </div>
-                  <div class="pk-sep"></div>
-                  <div class="pk-auto c-blue"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Automatic <span class="dot"></span><span class="m">Blue</span></div>
-                </div>
-              </span>
-              <span class="hov"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.640 1.640 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
-              <span class="key">ALF</span>
-            </div>
-            <div class="tb">
-              <span class="btn"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create epic</span>
-              <span class="tg">Collapse all</span>
-              <span class="tg">Filter by status</span>
-            </div>
-          </div>
-          <p class="desc">My capture-first task system.</p>
-        </div>
-        <div class="epic">▸ <b>Capture pipeline</b> · 6 stories</div>
-      </div>
-
-      <!-- C · toolbar palette button -->
-      <div class="app board" data-opt="c" role="img" aria-label="Board header for alfred, title glowing green; a palette icon button in the toolbar is pressed and the colour picker is open beneath it, green selected">
+      <!-- Desktop: picker open -->
+      <div class="app board" data-opt="a" role="img" aria-label="Board header for alfred, title glowing green; a green palette icon button in the toolbar is pressed and the colour picker is open beneath it, green selected">
         <div class="bh c-green">
           <div class="bh-row">
             <div class="nk">
@@ -357,8 +288,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
             <div class="tb">
               <span class="btn"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create epic</span>
               <span class="anc">
-                <span class="btn sq on"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.640 1.640 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
-                <div class="pop">
+                <span class="btn sq on"><svg class="ic gl" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.640 1.640 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
+                <div class="pop end">
                   <p class="pk-l">Project color</p>
                   <div class="pk-sw">
                     <span class="c-blue"></span><span class="c-amber"></span>
@@ -371,6 +302,25 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
               </span>
               <span class="tg">Collapse all</span>
               <span class="tg">Filter by status</span>
+            </div>
+          </div>
+          <p class="desc">My capture-first task system.</p>
+        </div>
+        <div class="epic">▸ <b>Capture pipeline</b> · 6 stories</div>
+      </div>
+      <!-- Phone: the palette button stays inline -->
+      <div class="app board phone" data-opt="b" role="img" aria-label="Phone-width board header: the alfred title glowing green on its own row; below it the toolbar reads Create epic, the collapse glyph, a green palette button, and the filters menu">
+        <div class="bh c-green">
+          <div class="bh-row">
+            <div class="nk">
+              <p class="ttl glow-a">alfred</p>
+              <span class="key">ALF</span>
+            </div>
+            <div class="tb">
+              <span class="btn"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create epic</span>
+              <span class="btn sq"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg></span>
+              <span class="btn sq"><svg class="ic gl" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.640 1.640 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
+              <span class="btn sq"><svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
             </div>
           </div>
           <p class="desc">My capture-first task system.</p>
@@ -378,16 +328,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         <div class="epic">▸ <b>Capture pipeline</b> · 6 stories</div>
       </div>
     </div>
-    <figcaption><b>Plate I.</b>The picker open on a project set to green: five swatches, the current one ringed, and <i>Automatic</i> (its default, blue) below. Same picker under every trigger; toolbar abridged.</figcaption>
+    <figcaption><b>Plate I.</b>The toolbar’s palette button, its glyph in the project’s colour (D7), opens the picker: five swatches, the current one ringed, and <i>Automatic</i> (its default, blue) below. On a phone the button stays inline beside the collapse glyph and the filters menu. Desktop toolbar abridged.</figcaption>
   </figure>
 
   <figure class="plate" id="p2">
-    <fieldset class="switch"><legend>D2</legend>
-      <label><input type="radio" name="p2" value="a" checked>A · Tinted text, soft glow</label>
-      <label><input type="radio" name="p2" value="b">B · White text, coloured halo</label>
-    </fieldset>
     <div class="mount">
-      <div class="app" data-opt="a" role="img" aria-label="Five project titles, each set in and glowing in its own colour: blue, amber, green, red, teal">
+      <div class="app" role="img" aria-label="Five project titles, each set in and glowing in its own colour: blue, amber, green, red, teal">
         <div class="glist">
           <div class="nk c-blue"><p class="ttl glow-a">alfred</p><span class="key">ALF</span></div>
           <div class="nk c-amber"><p class="ttl glow-a">sapling</p><span class="key">SAP</span></div>
@@ -396,17 +342,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
           <div class="nk c-teal"><p class="ttl glow-a">atlas</p><span class="key">ATL</span></div>
         </div>
       </div>
-      <div class="app" data-opt="b" role="img" aria-label="Five project titles in white, each haloed in its own colour: blue, amber, green, red, teal">
-        <div class="glist">
-          <div class="nk c-blue"><p class="ttl glow-b">alfred</p><span class="key">ALF</span></div>
-          <div class="nk c-amber"><p class="ttl glow-b">sapling</p><span class="key">SAP</span></div>
-          <div class="nk c-green"><p class="ttl glow-b">ledger</p><span class="key">LDG</span></div>
-          <div class="nk c-red"><p class="ttl glow-b">relay</p><span class="key">RLY</span></div>
-          <div class="nk c-teal"><p class="ttl glow-b">atlas</p><span class="key">ATL</span></div>
-        </div>
-      </div>
     </div>
-    <figcaption><b>Plate II.</b>The board title in each of the five colours. Only one shows at a time in the app; the trigger is left out here.</figcaption>
+    <figcaption><b>Plate II.</b>The board title in each of the five colours. Only one shows at a time in the app; the toolbar is left out here.</figcaption>
   </figure>
 
   <figure class="plate" id="p3">
@@ -423,7 +360,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         </div>
         <div class="mn">
           <div class="bh c-blue">
-            <div class="nk"><p class="ttl glow-a">alfred</p><span class="key">ALF</span><span class="anc"><span class="swb"><i></i></span></span></div>
+            <div class="nk"><p class="ttl glow-a">alfred</p><span class="key">ALF</span></div>
             <p class="desc">My capture-first task system.</p>
           </div>
           <div class="elsew">
@@ -443,7 +380,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         </div>
         <div class="mn">
           <div class="bh c-green">
-            <div class="nk"><p class="ttl glow-a">alfred</p><span class="key">ALF</span><span class="anc"><span class="swb"><i></i></span></span></div>
+            <div class="nk"><p class="ttl glow-a">alfred</p><span class="key">ALF</span></div>
             <p class="desc">My capture-first task system.</p>
           </div>
           <div class="elsew">
@@ -456,7 +393,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         </div>
       </div>
     </div>
-    <figcaption><b>Plate III.</b>A pick recolours the project everywhere it wears a colour — sidebar glyph and pill, board title, Backlog and Dashboard (and the task key chips, not drawn); other projects keep theirs. Drawn with D1 A and D2 A.</figcaption>
+    <figcaption><b>Plate III.</b>A pick recolours the project everywhere it wears a colour — sidebar glyph and pill, board title, Backlog and Dashboard (and the task key chips, not drawn); other projects keep theirs. Toolbar left out here.</figcaption>
   </figure>
 
 </section>
@@ -486,25 +423,27 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <h2>Context</h2>
   <p>ALF-188 asks for two things: the Code project title should glow in the project’s colour, and the owner should be able to choose that colour. The owner narrowed both in refinement: a <em>palette</em> pick, not any hex (D5), and the glow on the board title only (D6). The ticket also asked for the spec to offer several ways to open the picker (D1).</p>
   <p><strong>Today.</strong> Projects have no stored colour. <code>frontend/lib/code/project-color.ts</code> (ALF-50) assigns each one of five accents — blue, amber, green, red, teal — by its slot in creation order, round-robin (<code>projectColorAt</code> / <code>projectColorFor</code>). Every coloured project surface resolves through it with static Tailwind class maps: the sidebar glyph and key pill (<code>project-nav.tsx</code>), Backlog and Dashboard-queue badges (<code>backlog-list.tsx</code>, <code>queue-widget.tsx</code>), the PR-ratio bar (<code>pr-ratio.tsx</code>), the project filter menu (<code>project-filter-menu.tsx</code>), and the Tasks-side key chip, detail chips and project-suggest popover. The board header (<code>components/code/board.tsx</code>) renders the name as a plain <code>font-serif text-2xl text-foreground</code> <code>h2</code> beside the mono key; it is the one place a project’s name appears uncoloured.</p>
-  <p><strong>Builds on.</strong> ALF-179’s project description edit: <code>PATCH /api/projects/[id]</code>, <code>updateProjectSchema</code>, and the store’s optimistic <code>updateProjectDescription</code> are the exact path the colour write reuses. The <code>glow-*</code> utilities in <code>globals.css</code> are box-shadows at 0.15 alpha — too faint for text, so the title gets its own text-shadow utilities (D9).</p>
+  <p><strong>Builds on.</strong> ALF-179’s project description edit: <code>PATCH /api/projects/[id]</code>, <code>updateProjectSchema</code>, and the store’s optimistic <code>updateProjectDescription</code> are the exact path the colour write reuses. The <code>glow-*</code> utilities in <code>globals.css</code> are box-shadows at 0.15 alpha — too faint for text, so the title gets its own text-shadow utilities (D10).</p>
 </section>
 
 <section id="decision-records">
   <h2>Decision records</h2>
 
   <section class="rec" id="d1">
-    <h3><span class="tag">D1</span>Where do you open the colour picker? · open</h3>
-    <p><strong>A · Swatch beside the key (recommended).</strong> A 12px dot in the project colour after the mono key, inside a 24px button (32px on coarse pointers). It is the only option whose trigger <em>shows</em> the current value, it sits next to what it changes, and it reads as a control at a glance — the GitHub-label / Linear-project pattern. Accessible name: <code>Project color: Green</code> (or <code>Project color: Blue (automatic)</code>).</p>
-    <p><strong>B · Click the title.</strong> The <code>h2</code>’s text becomes a button; hover gives a faint wash and a palette glyph. Zero added chrome, but undiscoverable on touch (no hover), easy to trigger by accident, and it takes the title click away from a future rename.</p>
-    <p><strong>C · Toolbar palette button.</strong> An outline icon button after <em>Create epic</em>. Consistent with the other board controls, but separated from the thing it recolours, and it adds a fourth button to the already-tight phone toolbar (<code>BoardToolbar</code>’s ALF-134 layout).</p>
-    <p>Considered and dropped: a palette button on each sidebar row — a button nested in the row’s <code>ViewLink</code> anchor is invalid HTML, and hover-reveal fails on touch.</p>
+    <h3><span class="tag">D1</span>Where do you open the colour picker? · settled</h3>
+    <p><strong>C · A palette button in the board toolbar</strong> (owner’s pick): an outline, icon-only <code>Button size="sm"</code> with lucide <code>Palette</code>, placed right after <em>Create epic</em>, the popover end-aligned beneath it. It sits with the board’s other controls rather than on the heading. Unlike the view filters (ALF-134) it does <strong>not</strong> fold into the ⋯ menu below <code>md</code>: a menu item would have to close the menu before opening a popover anchored to something no longer on screen, and one more 32px icon button still fits the phone row (Create epic · collapse glyph · palette · ⋯, Plate I). Accessible name: <code>Project color: Green</code>, or <code>Project color: Blue (automatic)</code>; <code>aria-expanded</code> while open.</p>
+    <p>Considered: A, a swatch dot beside the key (recommended in the first draft); B, the title as the trigger; a button on each sidebar row (a button nested in a link is invalid HTML).</p>
   </section>
 
   <section class="rec" id="d2">
-    <h3><span class="tag">D2</span>What does the glow look like? · open</h3>
-    <p><strong>A · Tinted text + soft glow (recommended):</strong> <code>color</code> = the accent, <code>text-shadow: 0 0 14px rgb(&lt;accent&gt; / 0.5)</code>. Echoes how the sidebar and pills already wear the colour (tinted, not white). All five accents are the Tailwind -400 family on <code>#0a0e17</code>, so contrast stays well above AA for 24px text.</p>
-    <p><strong>B · White text + coloured halo:</strong> <code>color</code> = foreground, <code>text-shadow: 0 0 8px rgb(&lt;accent&gt; / 0.75), 0 0 20px rgb(&lt;accent&gt; / 0.4)</code>. Maximally legible; reads more “neon sign”, less “this project is green”.</p>
-    <p>Either is static — no pulse or animation, so no reduced-motion variant is needed.</p>
+    <h3><span class="tag">D2</span>What does the glow look like? · settled</h3>
+    <p><strong>A · Tinted text with a soft glow</strong> (owner’s pick): <code>color</code> is the accent and <code>text-shadow: 0 0 14px rgb(&lt;accent&gt; / 0.5)</code>. All five accents are the Tailwind -400 family on <code>#0a0e17</code>, so contrast stays well above AA for 24px text. The glow is static, so no reduced-motion variant is needed.</p>
+    <p>Considered: B, white text with a coloured halo.</p>
+  </section>
+
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>Should the palette button show the colour? · proposed</h3>
+    <p>The button’s <code>Palette</code> glyph takes <code>projectTextClasses(color)</code>, so it shows the current colour, as the sidebar’s branch glyph already does. This recovers the one thing option A had and C lacks: you can see the colour without opening anything. Otherwise the toolbar, Plate I, is unchanged. Alternative: a muted glyph like the other toolbar icons, but then the only cue left would be the title itself.</p>
   </section>
 
   <section class="rec" id="d3">
@@ -529,28 +468,28 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </section>
 
   <h3>Implementation decisions</h3>
-  <section class="rec" id="d7">
-    <h4>D7 · The override resolves inside <code>projectColorFor</code></h4>
+  <section class="rec" id="d8">
+    <h4>D8 · The override resolves inside <code>projectColorFor</code></h4>
     <p><code>projectColorFor(projects, id)</code> returns the project’s stored <code>color</code> when it is a palette key, else its creation-slot colour. Every call site already passes the creation-ordered list, so they all pick up the override with no change — except <code>ProjectFilterMenu</code>, which calls <code>projectColorAt(index)</code> directly and must switch to <code>projectColorFor(projects, project.id)</code>. Automatic’s label uses <code>projectColorAt(slot)</code> (the colour it would revert to), exposed as <code>projectSlotColorFor(projects, id)</code>.</p>
   </section>
-  <section class="rec" id="d8">
-    <h4>D8 · Narrow the column with a guard</h4>
+  <section class="rec" id="d9">
+    <h4>D9 · Narrow the column with a guard</h4>
     <p>The generated <code>Row.color</code> is <code>string | null</code>. Add <code>isProjectColor(value): value is ProjectColor</code>; a value outside the palette (e.g. a future widened constraint read by an old client) falls back to the slot colour rather than throwing.</p>
   </section>
-  <section class="rec" id="d9">
-    <h4>D9 · Title glow as static utilities</h4>
-    <p>Five <code>@utility text-glow-&lt;colour&gt;</code> rules in <code>globals.css</code>, beside the existing <code>glow-*</code> block, carrying D2’s text-shadow; plus a <code>PROJECT_TITLE_CLASS</code> map and <code>projectTitleClasses(color)</code> in <code>project-color.ts</code> (e.g. <code>'text-accent-green text-glow-green'</code> under D2 A), written out in full so the Tailwind v4 scanner keeps every class — the same pattern as the four existing maps. The <code>h2</code> drops <code>text-foreground</code> for it (D2 A) or keeps it (D2 B).</p>
-  </section>
   <section class="rec" id="d10">
-    <h4>D10 · One <code>ProjectColorPicker</code>, any trigger</h4>
-    <p>New <code>components/code/project-color-picker.tsx</code> composes the <code>Popover</code> atom: controlled <code>open</code>, the trigger passed as <code>children</code> through <code>PopoverTrigger asChild</code>, and the Plate I body. Whatever D1 picks only changes the child. Picking closes the popover and fires <code>onChange(color | null)</code>. UI copy spells “color”, as the ticket does (the app has no prior user-facing instance).</p>
+    <h4>D10 · Title glow as static utilities</h4>
+    <p>Five <code>@utility text-glow-&lt;colour&gt;</code> rules in <code>globals.css</code>, beside the existing <code>glow-*</code> block, carrying D2’s text-shadow; plus a <code>PROJECT_TITLE_CLASS</code> map and <code>projectTitleClasses(color)</code> in <code>project-color.ts</code> (e.g. <code>'text-accent-green text-glow-green'</code>), written out in full so the Tailwind v4 scanner keeps every class — the same pattern as the four existing maps. The <code>h2</code> drops <code>text-foreground</code> for it.</p>
   </section>
   <section class="rec" id="d11">
-    <h4>D11 · Store action mirrors the description write</h4>
-    <p><code>updateProjectColor(projectId, color)</code> uses <code>runOptimisticMutation</code> exactly as <code>updateProjectDescription</code> does: patch → <code>api.updateProject(id, { color })</code> → reconcile from the saved row → roll back and toast <em>Couldn't save the project color</em> on failure.</p>
+    <h4>D11 · One <code>ProjectColorPicker</code>, trigger passed in</h4>
+    <p>New <code>components/code/project-color-picker.tsx</code> composes the <code>Popover</code> atom: controlled <code>open</code>, the trigger passed as <code>children</code> through <code>PopoverTrigger asChild</code>, and the Plate I body. <code>BoardToolbar</code> renders it around its palette button (D1); keeping the trigger a child keeps the picker reusable if another surface wants it later. Picking closes the popover and fires <code>onChange(color | null)</code>. UI copy spells “color”, as the ticket does (the app has no prior user-facing instance).</p>
   </section>
   <section class="rec" id="d12">
-    <h4>D12 · Accessible picker</h4>
+    <h4>D12 · Store action mirrors the description write</h4>
+    <p><code>updateProjectColor(projectId, color)</code> uses <code>runOptimisticMutation</code> exactly as <code>updateProjectDescription</code> does: patch → <code>api.updateProject(id, { color })</code> → reconcile from the saved row → roll back and toast <em>Couldn't save the project color</em> on failure.</p>
+  </section>
+  <section class="rec" id="d13">
+    <h4>D13 · Accessible picker</h4>
     <p>The six options are <code>button</code>s with <code>aria-pressed</code> in a <code>role="group"</code> labelled <em>Project color</em>; swatches are named <em>Blue</em> … <em>Teal</em>, the reset <em>Automatic (blue)</em>. The swatch colour is never the only cue: the pressed one carries the check glyph and ring. Radix supplies focus return and Escape.</p>
   </section>
 </section>
@@ -558,12 +497,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 <section id="behavior" data-kind="story">
   <h2>Behaviour</h2>
   <ul>
-    <li><strong>Title.</strong> The board header resolves the colour with <code>projectColorFor(useProjects(), projectId)</code> — the creation-ordered list, not <code>useProjectBoard</code>’s project alone — and applies <code>projectTitleClasses</code> (P2, D9).</li>
-    <li><strong>Opening.</strong> The D1 trigger opens the picker anchored below it (start-aligned for A and B; end-aligned for C). The trigger shows a pressed state while open (P1).</li>
+    <li><strong>Title.</strong> The board header resolves the colour with <code>projectColorFor(useProjects(), projectId)</code> — the creation-ordered list, not <code>useProjectBoard</code>’s project alone — and applies <code>projectTitleClasses</code> (P2, D10).</li>
+    <li><strong>Opening.</strong> The toolbar’s palette button (D1) opens the picker end-aligned below it and shows a pressed state while open. Its glyph is in the project’s colour (D7). It is present at every width, never folded into the ⋯ menu (P1).</li>
     <li><strong>Picking a swatch</strong> closes the picker and recolours the project on every surface in the same frame (optimistic), P3. Picking the already-selected swatch just closes — no request.</li>
-    <li><strong>Automatic</strong> sends <code>color: null</code>; it is the pressed option whenever the stored value is <code>NULL</code> (or invalid, D8). Picking it while already Automatic just closes.</li>
+    <li><strong>Automatic</strong> sends <code>color: null</code>; it is the pressed option whenever the stored value is <code>NULL</code> (or invalid, D9). Picking it while already Automatic just closes.</li>
     <li><strong>Collisions are allowed.</strong> Two projects may share a colour — e.g. picking amber for project 1 while project 2 is automatically amber. No uniqueness check, no warning.</li>
-    <li><strong>Failure.</strong> A rejected PATCH rolls the colour back everywhere and shows the toast (D11).</li>
+    <li><strong>Failure.</strong> A rejected PATCH rolls the colour back everywhere and shows the toast (D12).</li>
     <li><strong>Unknown project.</strong> The board’s existing “could not be found” state renders no title and no trigger.</li>
   </ul>
 </section>
@@ -605,10 +544,10 @@ export function projectTitleClasses(color: ProjectColor): string;</pre>
   <h2>Plan</h2>
   <ol>
     <li><strong>Schema.</strong> Migration (above); regenerate types. <code>makeOptimisticProject</code> (<code>lib/tree</code>) and every <code>Project</code> test fixture gain <code>color: null</code> — the type-check lists them.</li>
-    <li><strong>Colour rule</strong> (red → green in <code>project-color.test.ts</code>): <code>isProjectColor</code>, <code>projectSlotColorFor</code>, override-first <code>projectColorFor</code>, <code>projectTitleClasses</code>. Switch <code>ProjectFilterMenu</code> to <code>projectColorFor</code> (D7). Update the module doc comment: colour is now “stored override, else creation slot”.</li>
-    <li><strong>Glow utilities</strong> in <code>globals.css</code> (D9).</li>
-    <li><strong>Write path.</strong> Schema + route + their tests; <code>updateProjectColor</code> store action + tests (D11).</li>
-    <li><strong>UI.</strong> <code>ProjectColorPicker</code> (D10, D12) with its RTL test; wire it into <code>Board</code>’s header with the D1 trigger and the title classes. If D1 = C, the trigger goes in <code>BoardToolbar</code> via a new prop instead.</li>
+    <li><strong>Colour rule</strong> (red → green in <code>project-color.test.ts</code>): <code>isProjectColor</code>, <code>projectSlotColorFor</code>, override-first <code>projectColorFor</code>, <code>projectTitleClasses</code>. Switch <code>ProjectFilterMenu</code> to <code>projectColorFor</code> (D8). Update the module doc comment: colour is now “stored override, else creation slot”.</li>
+    <li><strong>Glow utilities</strong> in <code>globals.css</code> (D10).</li>
+    <li><strong>Write path.</strong> Schema + route + their tests; <code>updateProjectColor</code> store action + tests (D12).</li>
+    <li><strong>UI.</strong> <code>ProjectColorPicker</code> (D11, D13) with its RTL test; give <code>BoardToolbar</code> the palette button + picker through new props (<code>projectColor</code>, <code>slotColor</code>, <code>onProjectColorChange</code>) and update its doc comment (the button does not fold at <code>md</code>); apply the title classes in <code>Board</code>.</li>
     <li><strong>E2E.</strong> Extend <code>e2e/code-board.spec.ts</code> (next to the ALF-179 description test).</li>
     <li><strong>Demo doc</strong>, then commit by concern with the <code>batch-commits</code> skill.</li>
   </ol>
@@ -618,7 +557,7 @@ export function projectTitleClasses(color: ProjectColor): string;</pre>
   <h2>Acceptance criteria</h2>
   <ul class="checks">
     <li data-trace="D2 P2 D6">The board title renders in its project’s colour with the D2 glow; no other surface gains a glow.</li>
-    <li data-trace="D1 P1">The D1 trigger is on the board header and opens the picker; its accessible name states the current colour and whether it is automatic.</li>
+    <li data-trace="D1 D7 P1">A palette button after <em>Create epic</em>, its glyph in the project colour, opens the picker. It is visible at desktop and phone widths, and its accessible name states the current colour and whether it is automatic.</li>
     <li data-trace="D3 P1">The picker offers exactly blue, amber, green, red, teal and Automatic (naming the slot colour); the current choice is pressed, ringed and checked.</li>
     <li data-trace="D4 P3">Picking a swatch recolours the title, sidebar glyph + pill, Backlog and Dashboard badges, PR-ratio segment + legend, filter-menu glyph and task key chips at once, and survives a reload.</li>
     <li data-trace="D3 D4">Automatic clears the stored colour and the project returns to its creation-slot colour.</li>
@@ -638,7 +577,9 @@ export function projectTitleClasses(color: ProjectColor): string;</pre>
     <tr><td>PATCH persists <code>color</code>, still strips <code>name</code>/<code>key</code></td><td>Unit · <code>app/api/projects/[id]/route.test.ts</code></td></tr>
     <tr><td>Optimistic patch, reconcile, rollback + toast</td><td>Unit · <code>lib/stores/code-store.test.tsx</code></td></tr>
     <tr><td>Picker options, pressed state, names, close-on-pick, no-op on current</td><td>RTL · <code>components/code/project-color-picker.test.tsx</code></td></tr>
-    <tr><td>Title classes follow colour; trigger present and wired</td><td>RTL · <code>components/code/board.test.tsx</code></td></tr>
+    <tr><td>Title classes follow colour</td><td>RTL · <code>components/code/board.test.tsx</code></td></tr>
+    <tr><td>Palette button: glyph colour class, accessible name, opens picker, <code>onProjectColorChange</code> fired</td><td>RTL · <code>components/code/board/board-toolbar.test.tsx</code></td></tr>
+    <tr><td>Palette button visible (not folded) at phone width</td><td>E2E · <code>e2e/code-board-mobile-toolbar.spec.ts</code></td></tr>
     <tr><td>Nav + filter menu honour the override</td><td>RTL · <code>project-nav.test.tsx</code>, <code>project-filter-menu.test.tsx</code></td></tr>
     <tr><td>Pick → sidebar pill recolours → reload persists → Automatic restores</td><td>E2E · <code>e2e/code-board.spec.ts</code></td></tr>
   </table></div>
