@@ -4,9 +4,9 @@ branch: claude/alf-251-mobile-search-2fa7fe
 
 # Mobile-friendly global search (ALF-251)
 
-*2026-09-28T04:09:44.666Z*
+*2026-09-28T12:31:10.977Z*
 
-On phones, global search moves out of the hamburger drawer. There, its results were a ~190px popover portalled outside the drawer's modal dialog, so the dialog's scroll lock swallowed every touch and wheel event on it: results were tiny and couldn't scroll. Now a search icon in the header opens a full-screen sheet whose results render inside the dialog, full width, 44px rows, scrollable. Desktop is unchanged. Captured at 390×844 with touch, against the Playwright mock backend (10 tasks, 8 stories and 3 wiki pages matching "firewall").
+On phones, global search moves out of the hamburger drawer. There, its results were a ~190px popover portalled outside the drawer's modal dialog, so the dialog's scroll lock swallowed every touch and wheel event on it: results were tiny and couldn't scroll. Now a search icon in the header opens a full-screen sheet whose results render inside the dialog, full width, 44px rows, scrollable. Desktop is unchanged. Captured with Playwright phone emulation (390×844, isMobile + touch) against the mock backend, seeded with 10 tasks, 8 stories and 3 wiki pages matching "firewall".
 
 **1 · The header gains a search icon**, just before the account pill (below md only).
 
@@ -20,13 +20,13 @@ On phones, global search moves out of the hamburger drawer. There, its results w
 
 ![](mobile-search-image-3.png)
 
-**4 · The list scrolls** — the fix for "you can't scroll". The GIF wheels the list down to the very last result and taps it.
+**4 · The list scrolls** — the fix for "you can't scroll". The GIF wheels the list down to the very last result and taps it; the still below is the list scrolled to the end.
 
 ![scrolling the results to the last one and opening it](mobile-search-video-4.gif)
 
 ![](mobile-search-image-5.png)
 
-**5 · Choosing a result navigates exactly as before and closes the sheet** (here a wiki page); reopening starts empty.
+**5 · Choosing a result navigates exactly as before and closes the sheet** (here a wiki page).
 
 ![](mobile-search-image-6.png)
 
