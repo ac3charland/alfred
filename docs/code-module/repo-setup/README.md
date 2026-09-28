@@ -87,6 +87,7 @@ A refinement PR *opening* is a **no-op** for the state machine — the Worker ju
 | the epic-refinement skill (`.claude/skills/epic-refinement/SKILL.md`) | the project repo's `.claude/skills/epic-refinement/SKILL.md` | The same convention one altitude up: how an epic-refinement session writes the epic's context/decisions spec and opens its PR. The epic launch prompt references this committed skill. |
 | the spike skill (`.claude/skills/spike/SKILL.md`) | the project repo's `.claude/skills/spike/SKILL.md` | The spike-guide convention: how a spike session grounds its research, shapes the findings document, and where that document lives. The spike launch prompt references this committed skill; without it a spike session degrades to the prompt's one-line fallback. |
 | the bug skill (`.claude/skills/bug/SKILL.md`) | the project repo's `.claude/skills/bug/SKILL.md` | The bug-guide convention: how a bug-fix session reproduces a defect, pins it with a failing test, and keeps the fix to its root cause. The bug launch prompt references this committed skill; without it a bug session falls back to the repo's own testing conventions. |
+| the adversarial-review skill (`.claude/skills/adversarial-review/SKILL.md`) | the project repo's `.claude/skills/adversarial-review/SKILL.md` | The review-round convention: once an implementation, skip-refinement, or bug-fix PR is open, how the session briefs an Opus review subagent, triages its findings, and records each disposition in the PR description. Those three launch prompts carry the review step themselves and reference this skill for the how. |
 
 ## One-time per-repo setup checklist (Phase C — credentialed)
 
@@ -97,8 +98,8 @@ Run once per project repo, in a local session (needs GitHub admin + the Worker s
 2. **Commit the session guides.** Drop the refinement skill into
    `.claude/skills/refinement/SKILL.md`, the epic-refinement skill into
    `.claude/skills/epic-refinement/SKILL.md`, the spike skill into
-   `.claude/skills/spike/SKILL.md`, and the bug skill into `.claude/skills/bug/SKILL.md`, and
-   commit them.
+   `.claude/skills/spike/SKILL.md`, the bug skill into `.claude/skills/bug/SKILL.md`, and the
+   adversarial-review skill into `.claude/skills/adversarial-review/SKILL.md`, and commit them.
 3. **Add the GitHub webhook.** Repo → Settings → Webhooks → Add webhook:
    - **Payload URL:** the deployed Worker's `POST /github/webhook` route.
    - **Content type:** `application/json`.
