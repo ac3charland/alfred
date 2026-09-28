@@ -167,7 +167,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <div class="mast-bar">
     <span class="wordmark">alfred</span>
     <span>alfred · Spike findings</span>
-    <span class="stamp"></span>
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>286</span><span class="sep"> — </span><span class="ttl">Composable shared skills across repos</span></h1>
   <p class="change" id="answer">Yes — with a small composer, not a framework: shared templates with variables and named slots, vendored into each repo, compose a committed SKILL.md.</p>
@@ -186,7 +185,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
       <p class="why">Its What to produce list read 1, 3 — <a href="#why">§1</a></p></li>
     <li><h3>Novelty</h3>
       <p class="pick">Only LLM-mediated merge of prose, in both directions, is new.</p>
-      <p class="why">copier and cruft flow one way; nothing has both — <a href="#project">§3</a></p></li>
+      <p class="why">copier and cruft flow one way; nothing has both — <a href="#project">§4</a></p></li>
   </ol>
 </section>
 
@@ -258,17 +257,17 @@ alfred/.claude/
   <p><code>npm run skills:sync</code> is the only writer: shallow-clone upstream, overwrite, record the SHA, recompose.</p>
 </section>
 
-<section id="project">
-  <h2>Is this a project of its own?</h2>
-  <p>The plumbing is commodity — copier and cruft have kept many downstream copies in sync with a template for years. The skills-specific case is empty: <a href="https://github.com/anthropics/skills/discussions/380">anthropics/skills Discussion #380</a> asks for exactly this and has no maintainer response in seven months. Nobody has built it — an opening; almost nobody is asking — a thin market.</p>
-  <p>What’s genuinely new is merging <em>prose</em>, in both directions: every existing tool assumes structured data and flows one way. Build the composer with a real CLI boundary, instrument it, and decide with numbers.</p>
-</section>
-
 <section id="alternatives">
   <h2>Alternatives we’re not taking</h2>
   <aside><h3>copier instead of a composer</h3><p>Its <code>copier update</code> three-way merge assumes the output is hand-edited; ours is generated and a check fails if anyone touches it. Steal the design — answers-file as manifest, CI opening an MR when upstream moves — not the tool.</p></aside>
   <aside><h3>An npm git dependency</h3><p><code>oddobot-skills</code> is private, so every <code>npm ci</code> in every web container would need a GitHub token.</p></aside>
   <aside><h3>A git submodule</h3><p>A fresh web-session clone can land with an empty directory and no skills at all — silently.</p></aside>
+</section>
+
+<section id="project">
+  <h2>Is this a project of its own?</h2>
+  <p>The plumbing is commodity — copier and cruft have kept many downstream copies in sync with a template for years. The skills-specific case is empty: <a href="https://github.com/anthropics/skills/discussions/380">anthropics/skills Discussion #380</a> asks for exactly this and has no maintainer response in seven months. Nobody has built it — an opening; almost nobody is asking — a thin market.</p>
+  <p>What’s genuinely new is merging <em>prose</em>, in both directions: every existing tool assumes structured data and flows one way. Build the composer with a real CLI boundary, instrument it, and decide with numbers.</p>
 </section>
 
 <section id="cost">
