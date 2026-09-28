@@ -2,10 +2,13 @@ import type { Project } from '@/lib/types';
 
 /**
  * Per-project colour from the glowing accent palette (ALF-50). Projects have no stored colour;
- * one is assigned deterministically by the project's position in the ProjectNav order
- * (`getProjects` → oldest-first), cycling through the palette so adjacent projects differ. The
- * mapping is positional, not hashed, so a small backlog reads as a clean 1-blue / 2-amber /
- * 3-green / 4-teal sequence rather than a scatter of near-collisions.
+ * one is assigned deterministically by the project's position in CREATION order (`getProjects` /
+ * `useProjects` → oldest-first), cycling through the palette so adjacent projects differ. This is
+ * independent of any display ordering — e.g. ProjectNav lists projects by its own ranked order
+ * (`useRankedProjects`) but still colours each one by its creation slot, so a project keeps the
+ * same colour even as its rank (and row position) shifts. The mapping is positional, not hashed,
+ * so a small backlog reads as a clean 1-blue / 2-amber / 3-green / 4-red sequence rather than a
+ * scatter of near-collisions.
  *
  * The single source of the project→colour rule: the backlog badge, the ProjectNav icon and the
  * Dashboard's PR-ratio bar all resolve their colour through here so a project wears the same

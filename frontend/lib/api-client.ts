@@ -496,7 +496,7 @@ export async function moveCodeInProject(ref: string, toTop: boolean): Promise<Co
 // ---------------------------------------------------------------------------
 
 /**
- * This week's merged-PR split across the Code module's projects, or `undefined` when the
+ * The rolling seven-day merged-PR split across the Code module's projects, or `undefined` when the
  * deployment reports the feature unconfigured (501) — which the Dashboard's `PrRatio` card
  * renders as nothing at all, so a deployment without a GitHub token shows a clean Dashboard.
  *
