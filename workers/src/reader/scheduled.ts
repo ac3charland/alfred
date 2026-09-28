@@ -221,8 +221,9 @@ type WorkItem =
 
 /**
  * The To Reader leg's state across one tick: the client, the tally, the last failure in the
- * owner's words, and how many listed bookmarks the loop has yet to reach — a tick that stops
- * before reaching them has not finished the leg, so it records no success for it.
+ * owner's words, and how many listed bookmarks have not been handled to the end — a tick that
+ * stops before handling them, or that the time budget cut short, has not finished the leg, so it
+ * records no success for it. One left in To Reader for the cap is handled: leaving it is its plan.
  */
 interface Leg {
   api: InstapaperApi;
@@ -395,17 +396,25 @@ function retryPublication(row: RetryRow, roster: Map<string, string>): string {
   return linked ?? row.author ?? 'unknown';
 }
 
-/** A leg failure: logged as the client wrote it, stamped in the owner's words. */
-function legFailure(leg: Leg, error: unknown): void {
-  leg.tally.failures.push(describe(error));
+/**
+ * A leg failure: logged as the client wrote it — prefixed with the bookmark it was about, when it
+ * was about one, so the log says which article to look at — and stamped in the owner's words.
+ */
+function legFailure(leg: Leg, error: unknown, bookmarkId?: number): void {
+  const about = bookmarkId === undefined ? '' : `bookmark ${String(bookmarkId)}: `;
+  leg.tally.failures.push(`${about}${describe(error)}`);
   leg.error = instapaperFailureWords(error);
   if (stopsTheLeg(error)) leg.stopped = true;
 }
 
 /** The archive every bookmark plan ends in, tallied either way. */
-function noteArchive(leg: Leg, archive: { ok: true } | { ok: false; error: unknown }): void {
+function noteArchive(
+  leg: Leg,
+  bookmarkId: number,
+  archive: { ok: true } | { ok: false; error: unknown },
+): void {
   if (archive.ok) leg.tally.archived += 1;
-  else legFailure(leg, archive.error);
+  else legFailure(leg, archive.error, bookmarkId);
 }
 
 /**
@@ -428,11 +437,19 @@ async function prepareBookmark(
     case 'restore': {
       await patchPost(env, plan.postId, { archived_at: JSON_NULL });
       leg.tally.restored += 1;
-      noteArchive(leg, await archiveBookmark(leg.api, item.bookmark.bookmarkId));
+      noteArchive(
+        leg,
+        item.bookmark.bookmarkId,
+        await archiveBookmark(leg.api, item.bookmark.bookmarkId),
+      );
       return { kind: 'skip' };
     }
     case 'archive': {
-      noteArchive(leg, await archiveBookmark(leg.api, item.bookmark.bookmarkId));
+      noteArchive(
+        leg,
+        item.bookmark.bookmarkId,
+        await archiveBookmark(leg.api, item.bookmark.bookmarkId),
+      );
       return { kind: 'skip' };
     }
     default: {
@@ -445,7 +462,7 @@ async function prepareBookmark(
     case 'unread': {
       // Nothing was written, so the bookmark is still in To Reader and still no post's. The leg
       // stops rather than learning the same answer from every bookmark behind this one.
-      legFailure(leg, taken.error);
+      legFailure(leg, taken.error, item.bookmark.bookmarkId);
       leg.stopped = true;
       return { kind: 'skip' };
     }
@@ -454,14 +471,14 @@ async function prepareBookmark(
     }
     case 'filed': {
       leg.tally.taken += 1;
-      noteArchive(leg, taken.archive);
+      noteArchive(leg, item.bookmark.bookmarkId, taken.archive);
       return { kind: 'skip' };
     }
     default: {
       leg.tally.taken += 1;
       // A failed archive leaves the post in place and summarised; next tick's "already a post?"
       // read finds it and archives the bookmark then.
-      noteArchive(leg, taken.archive);
+      noteArchive(leg, item.bookmark.bookmarkId, taken.archive);
       return {
         kind: 'summarize',
         id: taken.id,
@@ -783,10 +800,18 @@ async function tick(
   const client = gmailClient(token.token);
 
   for (const item of work) {
-    if (item.kind === 'bookmark' && leg !== undefined) {
-      leg.unreached -= 1;
-      // A leg Instapaper has stopped answering leaves the rest of its bookmarks in To Reader.
-      if (leg.stopped) continue;
+    // A bookmark counts as reached only once its handling is over — never before its writes, so
+    // a throw part-way through cannot leave the leg reading as finished. One the budget leaves in
+    // To Reader is never reached, which is what keeps that tick from stamping the leg's success.
+    const reached = (): void => {
+      if (item.kind === 'bookmark' && leg !== undefined) leg.unreached -= 1;
+    };
+
+    // A leg Instapaper has stopped answering leaves the rest of its bookmarks in To Reader; the
+    // failure that stopped it is the leg's outcome.
+    if (item.kind === 'bookmark' && leg?.stopped === true) {
+      reached();
+      continue;
     }
 
     if (clock() - start >= READER_TICK_BUDGET_MS) {
@@ -816,10 +841,14 @@ async function tick(
       summary.failures.push(prepared.error);
       return summary;
     }
-    if (prepared.kind === 'skip') continue;
+    if (prepared.kind === 'skip') {
+      reached();
+      continue;
+    }
     if (capped()) {
       // The row is stored and unleased; tomorrow's tick summarises it.
       summary.skippedForCap += 1;
+      reached();
       continue;
     }
 
@@ -831,6 +860,7 @@ async function tick(
       nowIso,
       summary,
     });
+    reached();
     if (systemic !== undefined) {
       await recordRunError(env, now, systemic, ceiling(), legNow());
       summary.failures.push(systemic);

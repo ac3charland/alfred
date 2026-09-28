@@ -1483,7 +1483,7 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
       { instapaper_last_error: "Instapaper didn't answer", instapaper_last_error_at: NOW_ISO },
     ]);
     expect(summary.instapaper).toMatchObject({
-      failures: ['bookmarks/get_text: unavailable (HTTP 503)'],
+      failures: ['bookmark 11: bookmarks/get_text: unavailable (HTTP 503)'],
     });
   });
 });
@@ -1536,7 +1536,7 @@ describe('runReaderTick — the To Reader leg, a failed archive', () => {
     ]);
     expect(summary.instapaper).toMatchObject({
       taken: 1,
-      failures: ['bookmarks/archive: rate-limited (error 1040)'],
+      failures: ['bookmark 11: bookmarks/archive: rate-limited (error 1040)'],
     });
   });
 
@@ -1759,5 +1759,137 @@ describe('runReaderTick — the To Reader leg’s subrequests', () => {
     const fetches = calls.length + 2 * summarized.mock.calls.length;
     expect(fetches).toBe(48);
     expect(fetches).toBeLessThanOrEqual(50);
+  });
+});
+
+describe('runReaderTick — the To Reader leg only succeeds when it finished', () => {
+  it('stamps no Instapaper success when the tick throws on the last bookmark', async () => {
+    const calls = harness({
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    // The article's insert is rejected outright: nothing was taken in, so nothing succeeded.
+    spyOnFetch().mockImplementation((input: FetchInput, init?: FetchInit) => {
+      const url = input as string;
+      calls.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      });
+      if (url.includes('reader_posts') && init?.method === 'POST') {
+        return Promise.resolve(new Response('boom', { status: 500 }));
+      }
+      if (url.startsWith(INSTAPAPER_PREFIX) && url.endsWith('/folders/list')) {
+        return Promise.resolve(
+          Response.json([{ type: 'folder', folder_id: 77, title: 'To Reader' }]),
+        );
+      }
+      if (url.startsWith(INSTAPAPER_PREFIX) && url.endsWith('/bookmarks/list')) {
+        return Promise.resolve(Response.json({ bookmarks: [bookmarkRow()] }));
+      }
+      if (url.startsWith(INSTAPAPER_PREFIX) && url.endsWith('/get_text')) {
+        return Promise.resolve(new Response(ARTICLE_HTML));
+      }
+      if (url.startsWith(OAUTH_ENDPOINT)) {
+        return Promise.resolve(Response.json({ access_token: 'ya29.access' }));
+      }
+      if (url.includes('reader_posts') && url.includes('select=id&')) {
+        return Promise.resolve(new Response('[]', { headers: { 'Content-Range': '0-0/0' } }));
+      }
+      return Promise.resolve(Response.json(url.includes('reader_health') ? [{ id: 1 }] : []));
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.failures).toEqual([expect.stringContaining('POST reader_posts')]);
+    expect(legColumns(calls)).toEqual([]);
+  });
+
+  it('stamps no Instapaper success when the time budget left a bookmark in To Reader', async () => {
+    const calls = harness({
+      instapaper: {
+        bookmarks: [bookmarkRow(), bookmarkRow({ bookmark_id: 12, time: 1_789_000_000 })],
+        texts: { 11: ARTICLE_HTML, 12: ARTICLE_HTML },
+      },
+    });
+    mockSummarize();
+    // The first bookmark takes the whole eight minutes; the second is never started.
+    let elapsed = 0;
+    const clock = () => {
+      const now = elapsed;
+      elapsed += READER_TICK_BUDGET_MS / 2;
+      return now;
+    };
+
+    const summary = await runReaderTick(instapaperEnv, NOW, clock);
+
+    expect(summary.skippedForBudget).toBe(1);
+    expect(instapaperCalls(calls, 'bookmarks/get_text').map((call) => bookmarkIdOf(call))).toEqual([
+      11,
+    ]);
+    expect(legColumns(calls)).toEqual([]);
+  });
+
+  it('names the bookmark in the log line when a call about one bookmark fails', async () => {
+    harness({
+      instapaper: {
+        bookmarks: [bookmarkRow()],
+        texts: { 11: ARTICLE_HTML },
+        fail: { 'bookmarks/archive': { status: 500, body: 'oops' } },
+      },
+    });
+    mockSummarize(DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.instapaper).toMatchObject({
+      failures: ['bookmark 11: bookmarks/archive: unavailable (HTTP 500)'],
+    });
+  });
+
+  it('restores the post and stamps the error when the archive after a restore fails', async () => {
+    const calls = harness({
+      bookmarked: [
+        {
+          id: 'post-newsletter',
+          archived_at: '2026-09-17T08:00:00.000Z',
+          instapaper_bookmark_id: 11,
+        },
+      ],
+      instapaper: {
+        bookmarks: [bookmarkRow()],
+        fail: { 'bookmarks/archive': { status: 503, body: 'down' } },
+      },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(payload(restCalls(calls, 'reader_posts', 'PATCH')[0])).toEqual({
+      archived_at: WIRE_NULL,
+    });
+    expect(summary.instapaper).toMatchObject({ restored: 1, archived: 0 });
+    expect(legColumns(calls)).toEqual([
+      { instapaper_last_error: "Instapaper didn't answer", instapaper_last_error_at: NOW_ISO },
+    ]);
+  });
+
+  it('sends the leg’s outcome on its own when a Gmail read stops the tick', async () => {
+    const calls = harness({
+      fresh: [worklistRow()],
+      messageStatus: { [ESSAY_MESSAGE.id]: 503 },
+      instapaper: { fail: { 'folders/list': { status: 401, body: 'Unauthorized' } } },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.failures).toEqual([expect.stringContaining('gmail')]);
+    const writes = healthWrites(calls);
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual({
+      instapaper_last_error: "Instapaper rejected alfred's credentials",
+      instapaper_last_error_at: NOW_ISO,
+    });
   });
 });
