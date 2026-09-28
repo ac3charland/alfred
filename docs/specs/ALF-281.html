@@ -6,90 +6,98 @@
 <title>ALF-281 — Update refinement skill to split spec into above- and below-the-fold and take on mid-century design principles</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════════════
-   TEMPLATE · 1 · TOKENS — the ink budget. Paper + three inks; every other
-   value is a tint of one of them. Day is ink on cool paper, night is alfred's
-   own dark tokens; both are Lit (alfred's glow). Settled: italic title, plain
-   rules, Lit. Sections 1–4 are the template stylesheet at the Ledger base;
-   section 5 holds the open D1 options.
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–4 are the template stylesheet at every settled pick;
+   section 5 holds the one open D1 option (ink roles).
    ═══════════════════════════════════════════════════════════════════════ */
 :root{
   color-scheme:light dark;
   --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
   --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
-  --rubric:#8e2a22;                        /* the second ink: only for what needs the reader */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
   --rule:color-mix(in srgb,var(--ink) 20%,transparent);
   --wash:color-mix(in srgb,var(--ink) 5%,transparent);
   --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
-  --brass:#7d5a0e; --id:var(--teal);      /* --id marks identity (ref prefix, D#); the "both inks" option makes it brass */
-  --card:color-mix(in srgb,var(--paper),#fff 60%);
   --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
   --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles (D1 ★ "whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --c-id:var(--teal); --c-fig:var(--ink); --c-note:var(--muted); --c-heads:var(--muted);
   --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
   --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
   --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
   --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --w-display:400; --measure:36rem; --side:8rem;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
 }
 @media (prefers-color-scheme:dark){:root{
-  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0; --rubric:#f87171;
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
   --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
-  --brass:#f0b429; --card:#121a2b;
   --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
   --lift:0 0 .4em rgb(79 209 224/.45);
 }}
 
-/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) ════════════════════ */
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
-.page{max-width:46rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
 a{color:var(--teal);text-underline-offset:2px}
 code{font:.86em var(--f-mono)}
 p,ol,ul,figure{margin:0}
 
 .mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
 .wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
-.stamp{margin-left:auto;border:1px solid var(--rubric);color:var(--rubric);border-radius:999px;padding:.1rem .7rem}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
 .stamp::after{content:"Ready for review"}
 body:has([data-state=open]) .stamp::after{content:"Your call needed"}
-.mast h1{display:grid;grid-template-columns:minmax(var(--side),max-content) minmax(0,1fr);gap:0 1.5rem;align-items:end;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
-.ref{font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
-.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--id);text-shadow:none;margin-bottom:.4rem}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--c-id);text-shadow:none;margin-bottom:.4rem}
 .sep{display:none}
 .mast h1 .hy{font-size:0}
-.ttl{font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
-.change,.revised{margin-left:calc(var(--side) + 1.5rem);max-width:var(--measure);font-size:1.1875rem;line-height:1.5}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
 .revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
 .mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
 
 .sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
 .side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
 .sec>.side~*{grid-column:2}
-.sec>p,.sec>ul{max-width:var(--measure)}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
 .sec>ul{padding-left:1.1rem}
-.list{list-style:none;padding:0;max-width:var(--measure)}
-.list>li{padding:.85rem 0;border-top:1px solid var(--rule)}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
 .list>li:first-child{border-top:0;padding-top:0}
-.list h3{margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
 .list h3::after{font-weight:400}
-[data-state=open] h3::after{content:" · open — your pick"}
-[data-state=proposed] h3::after{content:" · proposed"}
-[data-state=settled] h3::after{content:" · settled"}
-.tag{font-weight:700;color:var(--id);margin-right:.35rem;text-decoration:none}
-.pick{position:relative;font-size:1.125rem;line-height:1.4}
-.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--teal)}
-[data-state=open] .tag,[data-state=open] .pick,[data-state=open] h3::after{color:var(--rubric)}
-[data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--rubric)}
-[data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--muted)}
-.why{margin-top:.25rem;font-size:.9375rem;color:var(--muted)}
-.legend{margin-top:.9rem;max-width:var(--measure);font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+[data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+[data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+[data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-tag,var(--c-prop))}
+[data-state=settled] .tag{color:var(--c-tag,var(--c-set))}
+[data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+[data-state=open] .pick{color:var(--c-open)}
+[data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+[data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--c-note)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+#heads-up .side,#heads-up li::marker{color:var(--c-heads)}
 
-.plate,.fig{margin-top:2.5rem}
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
 .plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
 .plate .app{position:relative;box-shadow:var(--shadow)}
-figcaption{margin:.75rem 0 0 calc(var(--side) + 1.5rem);max-width:var(--measure);font-size:.9375rem;color:var(--muted)}
-figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
-.fig svg{display:block;width:100%;max-width:34rem;height:auto;margin-left:calc(var(--side) + 1.5rem)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--c-fig);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
 .dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
 .dg .new rect{stroke:var(--teal);stroke-width:1.5}
 .dg text{font:600 12px var(--f-label);fill:var(--ink)}
@@ -101,14 +109,18 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .dg .rl{stroke:var(--ink)}
 .dg .knock{fill:var(--paper);stroke:none}
 
+/* Phones: one column. The margin notes and captions drop under what they explain. */
 @media (max-width:43.99rem){
-  :root{--side:0rem}
+  :root{--side:0rem;--gut:0rem}
   .mast h1{grid-template-columns:1fr;gap:.9rem}
-  .ref{font-size:4.5rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
   .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
   .sec>.side~*{grid-column:auto}
-  .change,.revised,figcaption,.fig svg{margin-left:0}
   .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
 }
 
 /* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
@@ -159,144 +171,23 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
    Pure CSS: each dial is a radio group; html:has(#id:checked) re-inks the
    page, so it works with scripting off (and in the app's script-less view).
    ═══════════════════════════════════════════════════════════════════════ */
-:root{--r-day:#8e2a22;--r-night:#f87171;--rubric:var(--r-day)}
-@media (prefers-color-scheme:dark){:root{--rubric:var(--r-night)}}
-/* Edition — forced day / night (Auto = the media query above) */
-html:has(#ed-day:checked){--paper:#edf0f1;--ink:#13203a;--muted:#4e5a6e;--teal:#0b6b78;--brass:#7d5a0e;
+/* Preview — forced day / night, to check the inks in both (Auto = the media query) */
+html:has(#ed-day:checked){--paper:#edf0f1;--ink:#13203a;--muted:#4e5a6e;--teal:#0b6b78;--oxblood:#8e2a22;--brass:#7d5a0e;
   --rule:color-mix(in srgb,var(--ink) 20%,transparent);--wash:color-mix(in srgb,var(--ink) 5%,transparent);
-  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));--card:color-mix(in srgb,var(--paper),#fff 60%);
-  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);--lift:0 0 .3em rgb(11 107 120/.35);
-  --rubric:var(--r-day);color-scheme:light}
-html:has(#ed-night:checked){--paper:#0f1626;--ink:#e8edf5;--muted:#8a96a8;--teal:#4fd1e0;--brass:#f0b429;--rule:#1e2a3f;
-  --wash:rgb(232 237 245/.04);--mount:#131c2e;--card:#121a2b;
-  --shadow:0 0 24px 2px rgb(79 209 224/.15);--lift:0 0 .4em rgb(79 209 224/.45);
-  --rubric:var(--r-night);color-scheme:dark}
-/* Second ink — "both" keeps oxblood for what needs you and gives brass the ids */
-html:has(#ink-brass:checked){--r-day:#7d5a0e;--r-night:#f0b429}
-html:has(#ink-both:checked){--id:var(--brass)}
-/* Type */
-html:has(#ty-playbill:checked){--f-display:Superclarendon,Rockwell,"Rockwell Nova","Roboto Slab",Georgia,serif;
-  --f-label:Futura,"Futura PT",Jost,"Century Gothic","Avenir Next",sans-serif;--w-display:700}
-html:has(#ty-didone:checked){--f-display:"Bodoni 72",Didot,"Bodoni Moda","Bodoni MT",serif;
-  --f-label:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif}
-html:has(#ty-app:checked){--f-display:Georgia,serif;--f-label:system-ui,-apple-system,"Segoe UI",sans-serif;
-  --f-body:system-ui,-apple-system,"Segoe UI",sans-serif}
-html:has(#ty-app:checked) .ref{font-size:4rem}
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);--lift:0 0 .3em rgb(11 107 120/.35);color-scheme:light}
+html:has(#ed-night:checked){--paper:#0f1626;--ink:#e8edf5;--muted:#8a96a8;--teal:#4fd1e0;--oxblood:#f87171;--brass:#f0b429;
+  --rule:#1e2a3f;--wash:rgb(232 237 245/.04);--mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);--lift:0 0 .4em rgb(79 209 224/.45);color-scheme:dark}
 
-/* Layout — every option restyles the SAME markup, so a layout can't add or hide
-   anything you approve. Ledger is the base stylesheet (sections 1–4). */
-
-/* Title page — centred, from round one */
-html:has(#ly-title:checked){
-  .mast{text-align:center}
-  .mast-bar{justify-content:center}
-  .stamp{margin-left:0}
-  .mast h1{display:block;margin:2.5rem 0 1.25rem}
-  .ref{display:block;margin-bottom:1rem;font:500 1rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none}
-  .ref small,.hy{display:inline;margin:0;font:inherit;color:inherit}
-  .ttl{font-size:clamp(1.75rem,1.1rem + 2.4vw,2.75rem)}
-  .change{margin:0 auto}
-  .revised{margin:.6rem auto 0}
-}
-
-/* Margin notes — the Victorian scholarly page (and Tufte after it): numeral as a
-   folio in the outer margin, each "why" a numbered sidenote beside its pick */
-html:has(#ly-margin:checked){
-  .list{counter-reset:n}
-  .list>li{counter-increment:n}
-  .pick::after{content:counter(n);margin-left:.15em;font:600 .6em var(--f-label);vertical-align:super;color:var(--id)}
-  [data-state=open] .pick::after{color:var(--rubric)}
-  .why::before{content:counter(n) "\2002";font:600 .75rem var(--f-label);color:var(--id)}
-}
-@media (min-width:44rem){html:has(#ly-margin:checked){
-  --note:11rem;
-  .page{max-width:58rem}
-  .mast h1{grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start}
-  .ref{grid-area:1/2;justify-self:end;text-align:right}
-  .ttl{grid-area:1/1}
-  .change,.revised{margin-left:0;max-width:none;padding-right:calc(var(--note) + 2rem)}
-  .list,.legend,.sec>p,.sec>ul{max-width:none}
-  .legend,.sec>p,.sec>ul{padding-right:calc(var(--note) + 2rem)}
-  .list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem}
-  .list h3{grid-area:1/1}
-  .pick{grid-area:2/1;align-self:start}
-  .why{grid-area:1/2/3/3;margin:0;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body)}
-  .plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end}
-  figcaption{margin:0;font-size:.8125rem}
-  .fig svg{margin-left:0}
-}}
-
-/* Index card — the library catalogue card (Dewey, 1876) and the mid-century office:
-   the brief is one card, oxblood header rule, teal-ruled rows, double margin line */
-html:has(#ly-card:checked){
-  #brief{padding:1.25rem 1.5rem 2rem;background-color:var(--card);border:1px solid var(--rule);box-shadow:var(--shadow)}
-  .mast-bar{padding-bottom:.6rem;border-bottom:2px solid var(--rubric)}
-  .ref{font:500 3.25rem/.9 var(--f-mono);letter-spacing:-.03em}
-  .ref small{font:500 .75rem var(--f-mono)}
-  .list>li{border-top-color:color-mix(in srgb,var(--teal) 30%,transparent)}
-  .mast::after{border-top-color:color-mix(in srgb,var(--teal) 45%,transparent)}
-}
-@media (min-width:44rem){html:has(#ly-card:checked) #brief{
-  background-image:linear-gradient(var(--rubric),var(--rubric)),linear-gradient(var(--rubric),var(--rubric));
-  background-size:1px calc(100% - 3.4rem);background-repeat:no-repeat;
-  background-position:calc(1.5rem + var(--side) - .8rem) 3.4rem,calc(1.5rem + var(--side) - .55rem) 3.4rem}}
-@media (max-width:43.99rem){html:has(#ly-card:checked) #brief{margin:0 -6px;padding:1rem .9rem 1.5rem}}
-
-/* Spec card — the plate book's Plate 01: a banner carries the numeral and the change,
-   decisions become a label → value grid at extreme scale contrast */
-html:has(#ly-spec:checked){
-  .mast{display:grid;grid-template-columns:auto minmax(0,1fr)}
-  .mast h1{display:contents}
-  .mast-bar{grid-area:1/1/2/3}
-  .ttl{grid-area:2/1/3/3;margin:1.5rem 0 1.1rem;font-size:clamp(1.5rem,1.05rem + 1.6vw,2.125rem);line-height:1.12}
-  .ref,.change{background:var(--teal);color:var(--paper);box-shadow:var(--shadow)}
-  .ref{grid-area:3/1;padding:.75rem .9rem .6rem 1.1rem;font-size:3.75rem;line-height:.85;text-shadow:none}
-  .ref small{color:inherit;opacity:.8;margin-bottom:.3rem}
-  .change{grid-area:3/2;margin:0;max-width:none;padding:.9rem 1.25rem .9rem .6rem;display:flex;align-items:center;font:600 1rem/1.4 var(--f-label)}
-  .revised{grid-area:4/1/5/3;margin:.75rem 0 0}
-  .mast::after{grid-area:5/1/6/3}
-  .sec{display:block}
-  .side{margin-bottom:.9rem}
-  .list{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1.6rem 2.25rem;max-width:none;padding-left:1.35em}
-  .list>li,.list>li:first-child{border:0;padding:0}
-  .pick{font-size:1.3125rem;line-height:1.25}
-  .why{font-size:.8125rem;line-height:1.45}
-  .legend,.sec>p,.sec>ul{max-width:none}
-  figcaption,.fig svg{margin-left:0}
-}
-
-/* Blade sign — the vertical neon blade over a 1930s Odeon and the Googie signs after
-   it: the ref runs upright in a glowing frame pinned beside the brief (desktop) */
-@media (min-width:44rem){html:has(#ly-blade:checked){
-  .page{max-width:54rem}
-  #brief{display:grid;grid-template-columns:6rem minmax(0,1fr);column-gap:2.25rem}
-  .mast,.mast h1{display:contents}
-  #brief>*,.mast>*,.mast h1>*,.mast::after{grid-column:2}
-  .mast h1>.ref{grid-column:1;grid-row:1/span 12;align-self:start;justify-self:center;position:sticky;top:1.25rem;
-    writing-mode:vertical-rl;text-orientation:upright;padding:1.1rem .55rem;border:2px solid var(--teal);
-    font-size:4.25rem;line-height:1;letter-spacing:-.04em;box-shadow:var(--shadow)}
-  .ref small{display:inline;margin:0 0 .5rem;font:600 1.25rem var(--f-label);letter-spacing:0}
-  .ttl{margin:1.75rem 0 1rem;font-size:clamp(1.75rem,1.1rem + 1.8vw,2.5rem);line-height:1.1}
-  .change{margin:0;max-width:var(--measure)}
-  .revised{margin:.6rem 0 0}
-  figcaption,.fig svg{margin-left:0}
-}}
-
-/* Contents — the Victorian contents page (and Bradshaw's timetable): each question an
-   italic entry, dot leaders running out to its state, the pick beneath */
-html:has(#ly-contents:checked){
-  .list>li{border-top:0;padding:.5rem 0 .65rem}
-  .list h3{display:flex;align-items:baseline;gap:.45rem;margin:0 0 .2rem;font:italic 400 1.1875rem/1.3 var(--f-display);color:var(--ink)}
-  .list h3::before{content:"";order:2;flex:1 1 1.5rem;align-self:flex-end;margin-bottom:.4em;border-bottom:2px dotted var(--rule)}
-  .list h3::after{order:3;font:500 .8125rem var(--f-label);white-space:nowrap}
-  [data-state=open] h3::after{content:"open — your pick"}
-  [data-state=proposed] h3::after{content:"proposed"}
-  [data-state=settled] h3::after{content:"settled"}
-  .tag{min-width:1.75rem;font:600 .8125rem var(--f-label)}
-  .pick,.why{margin-left:2.2rem}
-  .pick{font-size:1rem}
-  .why{font-size:.875rem}
-}
+/* Ink roles — what oxblood and brass each mean. "Whose move" (★) is the base in section 1. */
+/* Rubric & gilt: oxblood is the rubric (what needs you); brass is gilt lettering on every id */
+html:has(#ro-gilt:checked){--c-set:var(--muted);--c-tag:var(--brass);--c-id:var(--brass);--c-fig:var(--brass)}
+/* Decide & beware: oxblood asks for a decision; brass flags what to know before merging */
+html:has(#ro-beware:checked){--c-set:var(--muted);--c-heads:var(--brass)}
+html:has(#ro-beware:checked) #heads-up>ul{border-left:2px solid var(--brass);padding-left:1.4rem}
+/* Marginalia: oxblood in the text column; brass is the annotating hand — notes and captions */
+html:has(#ro-margin:checked){--c-set:var(--muted);--c-note:var(--brass);--c-fig:var(--brass)}
 
 /* The dial panel itself — deliberately not the spec's voice */
 .vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;margin:0}
@@ -327,10 +218,7 @@ html:has(#ly-contents:checked){
   .dials legend{width:100%}
 }
 /* readout — generated from the checked radios, so it's right with JS off */
-html:has(#ed-auto:checked) [data-k=ed]::after{content:"auto"}html:has(#ed-day:checked) [data-k=ed]::after{content:"day"}html:has(#ed-night:checked) [data-k=ed]::after{content:"night"}
-html:has(#ink-oxblood:checked) [data-k=ink]::after{content:"oxblood"}html:has(#ink-brass:checked) [data-k=ink]::after{content:"brass"}html:has(#ink-both:checked) [data-k=ink]::after{content:"both"}
-html:has(#ty-penguin:checked) [data-k=type]::after{content:"penguin"}html:has(#ty-playbill:checked) [data-k=type]::after{content:"playbill"}html:has(#ty-didone:checked) [data-k=type]::after{content:"didone"}html:has(#ty-app:checked) [data-k=type]::after{content:"app"}
-html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#ly-margin:checked) [data-k=layout]::after{content:"margin"}html:has(#ly-card:checked) [data-k=layout]::after{content:"card"}html:has(#ly-spec:checked) [data-k=layout]::after{content:"spec"}html:has(#ly-blade:checked) [data-k=layout]::after{content:"blade"}html:has(#ly-contents:checked) [data-k=layout]::after{content:"contents"}html:has(#ly-title:checked) [data-k=layout]::after{content:"title"}
+html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#ro-gilt:checked) [data-k=roles]::after{content:"rubric-gilt"}html:has(#ro-beware:checked) [data-k=roles]::after{content:"decide-beware"}html:has(#ro-margin:checked) [data-k=roles]::after{content:"marginalia"}
 </style>
 </head>
 <body data-kind="story">
@@ -340,41 +228,25 @@ html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#l
   <input type="checkbox" id="dials-open" class="vh">
   <label for="dials-open" class="dials-tab">Dials</label>
   <div class="dials-body">
-    <h2>D1 · Dial the look</h2>
-    <p class="note">This page is written in the proposed template; the dials re-ink it. ★ marks my pick. Reply with the line below.</p>
-    <p class="note">Settled in your review: italic title · plain rules · Lit.</p>
-    <div class="inks" aria-hidden="true"><i style="background:var(--paper)"></i><i style="background:var(--ink)"></i><i style="background:var(--teal)"></i><i style="background:var(--rubric)"></i><i style="background:var(--id)"></i></div>
+    <h2>D1 · Ink roles</h2>
+    <p class="note">This page is written in the proposed template. ★ marks my pick. Reply with the line below.</p>
+    <p class="note">Settled: margin notes · Penguin · auto · italic title · plain rules · Lit. Open: what oxblood and brass each mean.</p>
+    <div class="inks" aria-hidden="true"><i style="background:var(--paper)"></i><i style="background:var(--ink)"></i><i style="background:var(--teal)"></i><i style="background:var(--oxblood)"></i><i style="background:var(--brass)"></i></div>
 
-    <fieldset><legend>Layout</legend><div class="opts">
-      <input class="vh" type="radio" name="layout" id="ly-ledger" value="ledger"><label for="ly-ledger">Ledger</label>
-      <input class="vh" type="radio" name="layout" id="ly-margin" value="margin" checked><label for="ly-margin" data-rec>Margin notes</label>
-      <input class="vh" type="radio" name="layout" id="ly-card" value="card"><label for="ly-card">Index card</label>
-      <input class="vh" type="radio" name="layout" id="ly-spec" value="spec"><label for="ly-spec">Spec card</label>
-      <input class="vh" type="radio" name="layout" id="ly-blade" value="blade"><label for="ly-blade">Blade sign</label>
-      <input class="vh" type="radio" name="layout" id="ly-contents" value="contents"><label for="ly-contents">Contents</label>
-      <input class="vh" type="radio" name="layout" id="ly-title" value="title"><label for="ly-title">Title page</label>
+    <fieldset><legend>Ink roles</legend><div class="opts">
+      <input class="vh" type="radio" name="roles" id="ro-move" value="whose-move" checked><label for="ro-move" data-rec>Whose move</label>
+      <input class="vh" type="radio" name="roles" id="ro-gilt" value="rubric-gilt"><label for="ro-gilt">Rubric &amp; gilt</label>
+      <input class="vh" type="radio" name="roles" id="ro-beware" value="decide-beware"><label for="ro-beware">Decide &amp; beware</label>
+      <input class="vh" type="radio" name="roles" id="ro-margin" value="marginalia"><label for="ro-margin">Marginalia</label>
     </div></fieldset>
 
-    <fieldset><legend>Second ink</legend><div class="opts">
-      <input class="vh" type="radio" name="ink" id="ink-oxblood" value="oxblood" checked><label for="ink-oxblood" data-rec>Oxblood</label>
-      <input class="vh" type="radio" name="ink" id="ink-brass" value="brass"><label for="ink-brass">Brass</label>
-      <input class="vh" type="radio" name="ink" id="ink-both" value="both"><label for="ink-both">Both</label>
-    </div></fieldset>
-
-    <fieldset><legend>Type</legend><div class="opts">
-      <input class="vh" type="radio" name="type" id="ty-penguin" value="penguin" checked><label for="ty-penguin" data-rec>Penguin</label>
-      <input class="vh" type="radio" name="type" id="ty-playbill" value="playbill"><label for="ty-playbill">Playbill</label>
-      <input class="vh" type="radio" name="type" id="ty-didone" value="didone"><label for="ty-didone">Didone</label>
-      <input class="vh" type="radio" name="type" id="ty-app" value="app"><label for="ty-app">App</label>
-    </div></fieldset>
-
-    <fieldset><legend>Edition</legend><div class="opts">
-      <input class="vh" type="radio" name="ed" id="ed-auto" value="auto" checked><label for="ed-auto" data-rec>Auto</label>
+    <fieldset><legend>Preview</legend><div class="opts">
+      <input class="vh" type="radio" name="ed" id="ed-auto" value="auto" checked><label for="ed-auto">Auto</label>
       <input class="vh" type="radio" name="ed" id="ed-day" value="day"><label for="ed-day">Day</label>
       <input class="vh" type="radio" name="ed" id="ed-night" value="night"><label for="ed-night">Night</label>
     </div></fieldset>
 
-    <p class="readout" id="picks">D1: layout=<span data-k="layout"></span> ink=<span data-k="ink"></span> type=<span data-k="type"></span> edition=<span data-k="ed"></span></p>
+    <p class="readout" id="picks">D1: roles=<span data-k="roles"></span></p>
     <button type="button" id="copy" hidden>Copy my picks</button>
   </div>
 </aside>
@@ -392,15 +264,15 @@ html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#l
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>281</span><span class="sep"> — </span><span class="ttl">Update refinement skill to split spec into above- and below-the-fold and take on mid-century design principles</span></h1>
   <p class="change" id="change">Every story and epic spec opens with a brief — the change, the calls you must see, the pictures — then a fold, then the implementer’s detail, in one house look.</p>
-  <p class="revised" id="revised">Revised 09-28: italic title, plain rules and Lit settled (your review); D1 now offers seven layouts and a two-ink option.</p>
+  <p class="revised" id="revised">Revised 09-28, round 2: margin notes, Penguin and Auto settled (your review); D1 narrows to what oxblood and brass mean.</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
     <li data-state="open"><h3><a class="tag" href="#d1">D1</a>The look of the brief</h3>
-      <p class="pick">Pick a layout and an ink on the dials. ★ margin notes · oxblood</p>
-      <p class="why">The dials sit at the right, or behind the Dials button on a phone.</p></li>
+      <p class="pick">Choose what oxblood and brass each mean. ★ whose move: oxblood awaits you, brass you settled.</p>
+      <p class="why">Teal stays alfred’s. Dials at the right; on a phone, the Dials button.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>What sits above the fold</h3>
       <p class="pick">The change in one sentence, the calls you must see, and pictures.</p>
       <p class="why">≤ 300 words. ALF-268 would drop from ~1,500 words before its mockup to ~130.</p></li>
@@ -419,7 +291,7 @@ html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#l
     <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>Scope and delivery</h3>
       <p class="pick">Story and epic specs, via a template in the refinement skill. Spikes unchanged.</p></li>
   </ol>
-  <p class="legend">☞ open: your pick · → proposed: my call · ✓ settled: yours. Merging accepts every proposed row.</p>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
 </section>
 
 <section id="plates" aria-label="What you’ll see">
@@ -521,55 +393,37 @@ html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#l
 
   <section class="rec" id="d1">
     <h3><span class="tag">D1</span>The look of the brief · open</h3>
-    <p><b>Settled in review (2026-09-28):</b></p>
+    <p><b>Settled in review:</b></p>
     <ul>
-      <li><b>Italic display title</b> (from Title page).</li>
-      <li><b>Plain rules:</b> single hairlines at the masthead and the fold; no Oxford rules, ⁂, fleurons or drop caps.</li>
-      <li><b>Lit finish:</b> alfred’s teal glow in both editions. By day it is a soft backlit halo with a 1px teal edge, tuned from round one’s cyan, which read as a smudge on paper.</li>
+      <li><b>Italic display title, plain rules and the Lit finish</b> (round 1). Plain means single hairlines at the masthead and the fold, with no Oxford rules, ⁂, fleurons or drop caps. Lit means alfred’s teal glow in both editions; by day it is a soft backlit halo with a 1px teal edge.</li>
+      <li><b>Margin notes layout, Penguin type and the Auto edition</b> (round 2).
+        <ul>
+          <li>The numeral sits as a folio in the outer margin.</li>
+          <li>Each pick stays in the text column, and its “why” sits beside it as an unnumbered italic sidenote. A row without a why leaves that spot empty.</li>
+          <li>Plate and figure captions sit in the margin.</li>
+          <li>On a phone, notes and captions drop under what they explain.</li>
+        </ul></li>
     </ul>
-    <p><b>Still open:</b> the layout and the second ink. Type and edition keep their ★ unless you say otherwise.</p>
-    <p><b>Thesis, revised for Lit.</b> Mid-century print, the Victorian book and alfred share one belief: a limited kit, spent on structure. With Lit settled, the page no longer imitates a press. It borrows the print traditions’ <em>structure</em>: an ink budget, scale contrast, hairline rules, marks that encode, the italic display of a Victorian title page, and the tipped-in plate. It renders that structure in alfred’s medium, which is light.</p>
-
-    <h4>Layouts</h4>
-    <p>Every layout restyles the <em>same</em> markup: the CSS Zen Garden approach. So no layout can add or hide anything you approve, and the template’s HTML is the same whichever you pick. Each option below is one commented block in this file’s stylesheet section 5.</p>
+    <p><b>Still open: ink roles.</b> You want both oxblood and brass in the palette, each meaning something different. Teal stays alfred’s in every option: links, the glow, and the calls alfred proposes.</p>
+    <p>My round-2 objection to a fourth ink falls away with Lit settled. Teal is now the light, not a printing ink, so the printed inks are navy, oxblood and brass: three inks and a light, which keeps the plate book’s budget intact.</p>
     <div class="scroll"><table>
-      <thead><tr><th>Layout</th><th>Lineage</th><th>What it does</th><th>Trade-off</th></tr></thead>
+      <thead><tr><th>Roles</th><th>Oxblood means</th><th>Brass means</th><th>Where you’d see it on this page</th></tr></thead>
       <tbody>
-        <tr><td>Margin notes ★</td><td>The Victorian scholarly page, and Tufte after it</td><td>The numeral sits as a folio in the outer margin. Each pick carries a superscript note number, and its “why” becomes a numbered italic sidenote beside it. Plate captions move into the margin.</td><td>The picks form one scannable column, and the reasons are there when wanted, which is exactly the approve-or-query reading. It needs about 50rem for the margin; on a phone the notes drop under their picks, which is Ledger plus numbers.</td></tr>
-        <tr><td>Ledger</td><td>Round one</td><td>The numeral as hero on the left, the title on the right, side-heads.</td><td>The safest option, and the most conventional.</td></tr>
-        <tr><td>Blade sign</td><td>The vertical neon blade over a 1930s Odeon; Googie signage</td><td>The ref runs upright in a glowing frame, pinned beside the brief as you scroll (desktop). The body is Ledger.</td><td>The most distinctive, and the most alfred at night. It spends about 8rem of width on identity, and phones fall back to Ledger.</td></tr>
-        <tr><td>Index card</td><td>The library catalogue card (Dewey, 1876); the mid-century office</td><td>The brief sits on one card, with an oxblood header rule, teal-ruled rows, a double oxblood margin line and a call-number numeral in mono.</td><td>The card makes the fold literal: it ends where approval ends. The mono numeral is humbler than the others.</td></tr>
-        <tr><td>Spec card</td><td>The plate book’s Plate 01</td><td>The title sits above a teal banner carrying the numeral and the change. Decisions become a label → value grid at extreme scale contrast.</td><td>The fastest to scan. It loses the ruled rhythm between rows, and long picks make cells uneven. The banner is loud at night.</td></tr>
-        <tr><td>Contents</td><td>The Victorian contents page; Bradshaw’s railway timetable</td><td>Each question is an italic entry, with dot leaders running out to its state and the pick beneath.</td><td>It foregrounds the question and its state (easy to scan for “open”) over the pick.</td></tr>
-        <tr><td>Title page</td><td>Round one</td><td>Centred.</td><td>Ragged on long titles.</td></tr>
+        <tr><td>Whose move ★</td><td>Waiting on you: open rows (☞) and the stamp</td><td>You decided: settled rows (✓, their D#, the state word)</td><td>D1 oxblood, D2–D6 teal, D7 brass. Each colour names who holds the decision: teal is alfred, oxblood awaits you, brass is yours. The colours stay meaningful through the whole review loop, because every round moves rows from teal or oxblood into brass.</td></tr>
+        <tr><td>Rubric &amp; gilt</td><td>The rubric: open rows and the stamp</td><td>Gilt lettering on every id: the ref prefix, D-numbers, and the Plate / Fig. labels</td><td>Brass on every handle; settled rows go back to muted. It is the book tradition (red rubrics, gilt titles), but brass then encodes <em>what kind of text</em> rather than state.</td></tr>
+        <tr><td>Decide &amp; beware</td><td>Decide: open rows and the stamp</td><td>Beware: the heads-up section (its side-head, bullets and a brass rule)</td><td>Only the one heads-up line here. On specs with manual steps, irreversible effects or running cost (ALF-268’s PAT warning, say) it earns more. It splits “act” from “know”.</td></tr>
+        <tr><td>Marginalia</td><td>Open rows and the stamp</td><td>The annotating hand: margin notes and the Plate / Fig. labels, like a scholar’s notes in browned iron-gall ink</td><td>The most visible brass, and the strongest split between the key points and the detail beside them. By night it is alfred’s amber italic, which is loud for running notes.</td></tr>
       </tbody>
     </table></div>
-    <p>The pieces can mix, for example the Blade sign’s numeral over Margin notes’ body. If you want a combination, name it; it would become one more option here before it is settled.</p>
-
-    <h4>Second ink</h4>
+    <p><b>Considered, not taken:</b></p>
     <ul>
-      <li><b>Oxblood ★</b> stays the rubric: used only for what needs you.</li>
-      <li><b>Brass</b> replaces it.</li>
-      <li><b>Both</b> keeps oxblood for “needs you” and gives brass the ids (ref prefix, D-numbers, note numbers). That is a real job, so it passes “marks must encode”. But it is a fourth ink (navy, teal, oxblood, brass), past the plate book’s three-ink budget. At night brass becomes alfred’s amber (<code>#f0b429</code>), which the app already uses as a module accent. That is why my ★ stays on oxblood alone.</li>
+      <li><b>Layouts:</b> Ledger, Blade sign, Index card, Spec card, Contents and Title page.</li>
+      <li><b>Type:</b> Playbill, Didone and App.</li>
+      <li><b>Round 1 options:</b> the Oxford-rule and Victorian ornaments; the Matched, Printed and Flat finishes; the Band masthead.</li>
+      <li><b>Hatched fills in figures:</b> tried in review, and they looked busy in practice.</li>
     </ul>
-
-    <h4>Type and edition</h4>
-    <p>Unchanged from round one:</p>
-    <ul>
-      <li><b>Penguin ★</b>: Baskerville display, Gill Sans labels, Georgia body. English book type, all preinstalled on Apple devices, and Georgia is what the wordmark actually renders in.</li>
-      <li><b>Playbill</b>: Clarendon slab with Futura.</li>
-      <li><b>Didone</b>: Bodoni/Didot with Avenir. Its italic is the most Victorian of the four, and worth a look now that the title is italic.</li>
-      <li><b>App</b>: today’s look, as the control.</li>
-    </ul>
-    <p>Edition Auto ★ follows the device; picking Day or Night ships that edition only (D10).</p>
-
-    <p><b>From the plate book:</b></p>
-    <ul>
-      <li><b>Kept:</b> the ink budget, paper never <code>#fff</code> and ink never <code>#000</code>, scale contrast of at least 4:1, radius 0 or 999px in the chrome, marks that encode, flush left, one display face used sparingly, and CSS-only <code>:has()</code> switching.</li>
-      <li><b>Dropped by your picks:</b> misregistration offsets and texture.</li>
-      <li><b>Rejected:</b> overprint, ink starvation, uppercase tracked labels, and webfont CDNs (D6).</li>
-    </ul>
-    <p><b>On your reply:</b> fold the picked layout, ink and type into the template’s base CSS as the only look. Delete every other option, all dial markup, CSS and script, and every <code>html:has(#…)</code> rule. The losing options must not survive in the template.</p>
+    <p><b>Thesis.</b> Mid-century print, the Victorian book and alfred share one belief: a limited kit, spent on structure. The page borrows the print traditions’ <em>structure</em>: an ink budget, scale contrast, hairline rules, marks that encode, the italic display of a Victorian title page, the tipped-in plate, and the scholar’s margin. It renders that structure in alfred’s medium, which is light.</p>
+    <p><b>On your reply:</b> fold the picked roles into the section 1 tokens (already ★ “whose move”). Then delete section 5, the dial markup and the script. The losing role mappings must not survive in the template.</p>
   </section>
 
   <section class="rec" id="d2">
@@ -799,16 +653,16 @@ html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#l
       <tr><td><code>--ink</code></td><td><code>#13203a</code></td><td><code>#e8edf5</code> (app foreground)</td><td>Contrast 14.3 / 15.4</td></tr>
       <tr><td><code>--muted</code></td><td><code>#4e5a6e</code></td><td><code>#8a96a8</code></td><td>6.1 / 6.0</td></tr>
       <tr><td><code>--teal</code></td><td><code>#0b6b78</code></td><td><code>#4fd1e0</code> (app primary)</td><td>Pressed dark by day for AA: 5.5 / 9.9</td></tr>
-      <tr><td><code>--rubric</code></td><td><code>#8e2a22</code> oxblood</td><td><code>#f87171</code> (app accent-red)</td><td>Only open rows and the stamp. Brass option: <code>#7d5a0e</code> / <code>#f0b429</code>.</td></tr>
+      <tr><td><code>--oxblood</code>, <code>--brass</code></td><td><code>#8e2a22</code> / <code>#7d5a0e</code></td><td><code>#f87171</code> / <code>#f0b429</code> (app accent-red / accent-amber)</td><td>The two printed inks besides navy. Contrast by day 7.4 / 5.5.</td></tr>
       <tr><td><code>--rule</code>, <code>--wash</code>, <code>--mount</code></td><td>ink at 20% / 5% / 8% into paper</td><td><code>#1e2a3f</code> / fg at 4% / <code>#131c2e</code></td><td>Tints, not new hues</td></tr>
       <tr><td><code>--shadow</code></td><td><code>0 0 0 1px rgb(11 107 120/.22), 0 0 28px 4px rgb(11 107 120/.2)</code></td><td><code>0 0 24px 2px rgb(79 209 224/.15)</code></td><td>Lit (settled): a backlit halo by day, alfred’s glow-teal by night</td></tr>
       <tr><td><code>--lift</code></td><td><code>0 0 .3em rgb(11 107 120/.35)</code></td><td><code>0 0 .4em rgb(79 209 224/.45)</code></td><td>The ref numeral only</td></tr>
-      <tr><td><code>--id</code>, <code>--brass</code></td><td><code>var(--teal)</code> / <code>#7d5a0e</code></td><td><code>var(--teal)</code> / <code>#f0b429</code></td><td>Identity marks (ref prefix, D#). The Both ink sets <code>--id</code> to brass.</td></tr>
+      <tr><td><code>--c-open</code>, <code>--c-prop</code>, <code>--c-set</code></td><td colspan="2">oxblood, teal, brass (★ whose move)</td><td>Ink roles: open, proposed and settled rows, their marks and state words; <code>--c-open</code> also colours the stamp. Other roles tokens (<code>--c-id</code>, <code>--c-fig</code>, <code>--c-note</code>, <code>--c-heads</code>, <code>--c-tag</code>) exist so the D1 pick is a token swap.</td></tr>
     </tbody>
   </table></div>
   <p>This file’s sections 1–4 of the stylesheet are the template stylesheet at the ★ options. Every other option’s tokens live in section 5, one commented block per option.</p>
 
-  <h3>Type roles (Penguin, ★)</h3>
+  <h3>Type roles (Penguin, settled)</h3>
   <ul>
     <li><code>--f-display</code> Baskerville → Libre Baskerville → Baskerville Old Face → Hoefler Text → Georgia. Used for the ref numeral, title, plate and figure captions, and the fold head.</li>
     <li><code>--f-label</code> Gill Sans → Gill Sans MT → Seravek → Avenir Next → Calibri → system-ui. Used for side-heads, row handles, meta, detail headings and SVG labels. Sentence case, never tracked caps.</li>
@@ -820,19 +674,20 @@ html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#l
   <div class="scroll"><table>
     <thead><tr><th>Mark</th><th>Means</th></tr></thead>
     <tbody>
-      <tr><td>☞ in rubric ink</td><td>An open row: needs your pick</td></tr>
-      <tr><td>→ in teal</td><td>A proposed pick (points from the question to the answer)</td></tr>
-      <tr><td>✓ in muted</td><td>A settled pick</td></tr>
+      <tr><td>☞ in oxblood</td><td>An open row: waiting on you</td></tr>
+      <tr><td>→ in teal</td><td>A proposed pick: alfred’s call (the arrow points from the question to the answer)</td></tr>
+      <tr><td>✓ in brass</td><td>A settled pick: you decided (★ whose move; muted in the other role options)</td></tr>
       <tr><td>Hairline rule</td><td>The two major divisions: end of masthead, the fold (plain, settled)</td></tr>
-      <tr><td>Superscript note number</td><td>Margin notes only: ties a pick to its sidenote</td></tr>
       <tr><td>Plate I, II… / Fig. 1, 2…</td><td>A drawing of the product / a diagram, in sequence</td></tr>
-      <tr><td>Rubric capsule stamp</td><td>Review status, derived from the rows (D12)</td></tr>
+      <tr><td>Oxblood capsule stamp</td><td>Review status, derived from the rows (D12)</td></tr>
     </tbody>
   </table></div>
 
-  <h3>Layout (Ledger base; the D1 pick restyles it)</h3>
+  <h3>Layout (margin notes, settled)</h3>
   <ul>
-    <li>The page is at most 46rem. There is an 8rem side-head column with a 1.5rem gutter and a 36rem measure. Below 44rem the side column collapses and the gutters become 16px.</li>
+    <li>The page is at most 58rem: an 8rem side-head column, the text column, and an 11rem margin column with a 2rem gutter.</li>
+    <li>In the margin: the ref numeral (as a folio, right-aligned), each decision’s “why” (an unnumbered italic sidenote, left empty when a row has none), and plate and figure captions (bottom-aligned beside their picture).</li>
+    <li>Below 44rem everything is one column with 16px gutters. Notes and captions drop under what they explain.</li>
     <li>Radius is 0 in the chrome and 999px for the stamp only.</li>
     <li>The detail is capped at 40rem, calm and dense. Its sections are numbered by CSS counter.</li>
   </ul>
@@ -855,7 +710,7 @@ html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#l
 
   <h3>Building the template</h3>
   <ol>
-    <li>Start from this file. Keep stylesheet sections 1–3; they already carry the settled picks (italic title, plain rules, Lit). Fold in D1’s picked layout, ink and type from section 5, then delete section 5, the <code>aside.dials</code> markup and the script.</li>
+    <li>Start from this file. Keep stylesheet sections 1–3 as they are: they carry every settled pick (margin notes, Penguin, italic title, plain rules, Lit, Auto) and the ★ ink roles. If D1 settles on other roles, swap the role tokens in section 1. Then delete section 5, the <code>aside.dials</code> markup and the script.</li>
     <li>Make stylesheet section 4 generic: an <code>.app</code> block whose <code>guide:</code> comment says to scope the app’s own tokens there. The tokens come from the app’s global stylesheet and each component’s source, and the app’s own committed font loads by raw URL when it isn’t a system face (D6). Keep the <code>.mount</code> and <code>.plate</code> rules.</li>
     <li>Replace the body with the skeleton below. Each section’s <code>guide:</code> comment carries its row from the <a href="#behavior">§3</a> tables: what it holds, required/optional, and budget.</li>
     <li>Check it: no <code>ALF-</code>, <code>frontend/</code>, <code>globals.css</code> or alfred token values (the <code>alfred</code> imprint excepted, D14); no base64; stylesheet ≤ ~9 KB (it is 8.9 KB with comments at the ★ options).</li>
@@ -877,7 +732,7 @@ html:has(#ly-ledger:checked) [data-k=layout]::after{content:"ledger"}html:has(#l
       &lt;li data-state="[open|proposed|settled]"&gt;&lt;h3&gt;&lt;a class="tag" href="#d1"&gt;D1&lt;/a&gt;[question]&lt;/h3&gt;
         &lt;p class="pick"&gt;[pick; open rows: "A … · B … ★"]&lt;/p&gt;&lt;p class="why"&gt;[why]&lt;/p&gt;&lt;/li&gt;
     &lt;/ol&gt;
-    &lt;p class="legend"&gt;☞ open: your pick · → proposed: my call · ✓ settled: yours. Merging accepts every proposed row.&lt;/p&gt;
+    &lt;p class="legend"&gt;&lt;span class="m-open"&gt;☞ open&lt;/span&gt;: your pick · &lt;span class="m-prop"&gt;→ proposed&lt;/span&gt;: my call · &lt;span class="m-set"&gt;✓ settled&lt;/span&gt;: yours. Merging accepts every proposed row.&lt;/p&gt;
   &lt;/section&gt;
   &lt;section id="plates" aria-label="What you’ll see"&gt;
     &lt;figure class="plate" id="p1"&gt;[switcher: radios labelled "D2: A | B"]
@@ -982,6 +837,7 @@ Cover these; the template places each above or below the fold:</pre>
     <li data-trace="D4 D12">Decision rows are <code>li[data-state]</code> linking to <code>#dN</code>. The ☞/→/✓ mark, the state word and the stamp all render from <code>data-state</code> through CSS, and the legend is present.</li>
     <li data-trace="D5">Acceptance-criteria items carry <code>data-trace</code>, which is rendered visibly.</li>
     <li data-trace="D1 D10">The template stylesheet contains only D1’s picked options: no dial markup, dial CSS, <code>html:has(#…)</code> option rules or dial script. Rendered, it matches this page at those picks.</li>
+    <li data-trace="D1">Each ink carries one meaning, per the D1 roles pick (★: teal = proposed / alfred, oxblood = open / the stamp, brass = settled). The legend shows each mark in its colour, and no role is coloured outside its token.</li>
     <li data-trace="D11">The template renders completely with scripting off and inside <code>&lt;iframe sandbox="" srcdoc&gt;</code>, with no horizontal scroll at 390px, in both editions (or the single edition D1 picks).</li>
     <li data-trace="D6">The chrome uses no webfont, and the file has no base64 or binary data. The stylesheet is ≤ ~9 KB. The plate section’s guide says to load the app’s own committed font by raw URL when it isn’t a system face.</li>
     <li data-trace="D14">The template is project-agnostic: no <code>ALF-</code>, <code>frontend/</code>, <code>globals.css</code> or alfred token values. The <code>alfred</code> imprint is the one exception.</li>
@@ -1059,12 +915,12 @@ Cover these; the template places each above or below the fold:</pre>
 (function(){
   'use strict';
   /* Enhancement only: remember D1 picks per viewer, and copy the readout. */
-  var KEY='alf281-dials-2', radios=document.querySelectorAll('.dials input[type=radio]');
+  var KEY='alf281-dials-3', radios=document.querySelectorAll('.dials input[type=radio]');
   try{ var saved=JSON.parse(localStorage.getItem(KEY)||'{}');
     radios.forEach(function(r){ if(saved[r.name]===r.value) r.checked=true; }); }catch(e){}
   function picks(){ var o={},s=[];
     radios.forEach(function(r){ if(r.checked) o[r.name]=r.value; });
-    ['layout','ink','type','ed'].forEach(function(k){ s.push((k==='ed'?'edition':k)+'='+o[k]); });
+    ['roles'].forEach(function(k){ s.push(k+'='+o[k]); });
     return {map:o,text:'D1: '+s.join(' ')}; }
   radios.forEach(function(r){ r.addEventListener('change',function(){
     try{ localStorage.setItem(KEY,JSON.stringify(picks().map)); }catch(e){} }); });
