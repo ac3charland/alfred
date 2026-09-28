@@ -345,6 +345,33 @@ test('drops the Other entry when nothing merged outside the project repos', asyn
   await expect(page.getByText('Other')).toBeHidden();
 });
 
+test('hides a project’s legend row when it merged no PRs this window (ALF-284)', async ({
+  page,
+  seed,
+}) => {
+  await seed({ projects: [project, realplay], epics: [epic], items, codeItems });
+  await stubGithub(page, {
+    ratio: {
+      status: 200,
+      json: {
+        ...RATIO,
+        repos: [
+          { repo: 'ac3charland/realplay', label: 'RealPlay', count: 0, percentage: 0 },
+          { repo: 'ac3charland/alfred', label: 'Alfred', count: 9, percentage: 100 },
+        ],
+      },
+    },
+  });
+
+  await page.goto('/code/dashboard');
+
+  const legend = page.getByRole('listitem').filter({ hasText: '%' });
+  await expect(legend).toHaveCount(1);
+  await expect(legend.first()).toContainText('Alfred');
+  // RealPlay still names the sidebar's project link — only its PR-ratio legend row is gone.
+  await expect(legend.filter({ hasText: 'RealPlay' })).toHaveCount(0);
+});
+
 test('opens a project’s board from its PR-ratio legend entry, while Other stays plain text', async ({
   page,
   seed,
