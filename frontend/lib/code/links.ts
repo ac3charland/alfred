@@ -42,7 +42,7 @@ const SPIKE_SKILL_PATH = '.claude/skills/spike/SKILL.md';
 /** The bug-guide skill dropped into each project repo; a bug-fix session auto-loads it. */
 const BUG_SKILL_PATH = '.claude/skills/bug/SKILL.md';
 
-/** The review-round skill dropped into each project repo; every code-shipping prompt points at it. */
+/** The review-round skill dropped into each project repo; the implementation, bypass and bug prompts point at it. */
 const ADVERSARIAL_REVIEW_SKILL_PATH = '.claude/skills/adversarial-review/SKILL.md';
 
 /**
@@ -212,16 +212,19 @@ function noScheduledCheckInsStep(): string {
  * the implementer runs on — a fresh context and the strongest reviewer, not a second look by the
  * same eyes. It lives in the prompt rather than only in the skill for the reason the check-in
  * guardrail does (the session has stopped reading files by the time its PR is open), and because
- * the bypass and bug lanes never load implement-spec, the one skill it could otherwise hang off.
+ * the bypass lane loads no skill at all. So the step carries the load-bearing details itself: the
+ * explicit model (a subagent left unset inherits the implementer's), report-only, and the
+ * foreground wait — which it names as not the check-in the very next line forbids.
  *
  * The implementer — possibly the weaker model — is the one judging which findings are legitimate,
  * so the step makes it record every disposition in the PR description, where the human can audit
- * what it declined. The ticket notes arrive after this step in every prompt, so "the ticket
- * context below" is where a human's override (more rounds, or none) lands. Document lanes and the
- * epic orchestrator (which already reviews its subagents' diffs itself) don't carry it.
+ * what it declined. Out-of-scope findings get their own disposition because the bug lane forbids
+ * folding adjacent bugs into the fix. The ticket notes arrive after this step in every prompt, so
+ * "the ticket context below" is where a human's override (more rounds, or none) lands. The
+ * document lanes ship no code; the epic lane is deliberately left out for now.
  */
 function adversarialReviewStep(): string {
-  return `Once the PR is open, run ONE round of adversarial review: spawn a subagent on Opus — whatever model you are — to review the PR cold and antagonistically, wait for its report, fix the findings you verify as legitimate, and push. Then add an "Adversarial review" section to the PR description listing each finding and what you did with it (fixed, or declined and why), leaving the alfred block intact. Follow the adversarial-review skill at \`${ADVERSARIAL_REVIEW_SKILL_PATH}\` where present — it owns how to brief the reviewer and triage its findings. If the ticket context below says otherwise (more rounds, or none), follow it.`;
+  return `Once the PR is open, run ONE round of adversarial review: spawn a subagent with its model set to Opus (e.g. the Agent tool's \`model: "opus"\` — left unset, it typically inherits yours), whatever model you are yourself, to review the PR antagonistically — briefed without your reasoning, and report-only (no edits, commits, or pushes). Run it in the foreground and wait for its report; that wait is your own work, not a check-in. Fix the in-scope findings you verify as legitimate and push; raise real but out-of-scope ones with me rather than widening the diff. Then add an "Adversarial review" section to the PR description listing each finding and what you did with it (fixed, declined and why, or raised with me), leaving the alfred block intact. Follow the adversarial-review skill at \`${ADVERSARIAL_REVIEW_SKILL_PATH}\` where present — it owns how to brief the reviewer and triage its findings. If the ticket context below says otherwise (more rounds, or none), follow it.`;
 }
 
 /** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */

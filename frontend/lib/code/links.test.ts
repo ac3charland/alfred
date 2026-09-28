@@ -789,6 +789,17 @@ describe('the adversarial-review step', () => {
       expect(line).toMatch(/\bOpus\b/);
       expect(line).toMatch(/whatever model you are/i);
       expect(line).toMatch(/antagonistic/i);
+      // A subagent left without an explicit model inherits the implementer's, so name the knob.
+      expect(line).toContain('model: "opus"');
+    },
+  );
+
+  it.each(codeLanes)(
+    '%s keeps the reviewer report-only and briefed without the implementer reasoning',
+    (_name, build, story) => {
+      const line = reviewLine(parse(build(makeProject(), story)).prompt ?? '');
+      expect(line).toMatch(/report-only \(no edits, commits, or pushes\)/i);
+      expect(line).toMatch(/without your reasoning/i);
     },
   );
 
@@ -799,20 +810,46 @@ describe('the adversarial-review step', () => {
       const line = reviewLine(prompt);
       expect(line).toMatch(/\bONE round\b/);
       expect(line).toMatch(/once the PR is open/i);
-      expect(line).toMatch(/wait for its report/i);
-      // Ordered after the open-a-PR instruction, so the step can't be read as a pre-PR gate.
-      const openIndex = prompt.search(/open a pull request/i);
-      expect(openIndex).toBeGreaterThan(-1);
-      expect(prompt.indexOf(line)).toBeGreaterThan(openIndex);
+      expect(line).toMatch(/in the foreground and wait for its report/i);
+      // The wait happens after the PR opens, so say outright it isn't the check-in the next
+      // line forbids.
+      expect(line).toMatch(/not a check-in/i);
+      // Right after the pre-PR self-check and right before the check-in guardrail, so it can't
+      // be read as a pre-PR gate or land after the notes.
+      const selfCheckIndex = prompt.search(/Before opening the PR, confirm/);
+      const guardrailIndex = prompt.search(/don't proactively schedule a check-in/i);
+      expect(selfCheckIndex).toBeGreaterThan(-1);
+      expect(prompt.indexOf(line)).toBeGreaterThan(selfCheckIndex);
+      expect(prompt.indexOf(line)).toBeLessThan(guardrailIndex);
+    },
+  );
+
+  it.each([
+    ['buildBypassUrl', buildBypassUrl, makeStory()],
+    ['buildBugUrl', buildBugUrl, makeBug()],
+  ] as const)(
+    '%s keeps its numbered steps contiguous with the review step added',
+    (_name, build, story) => {
+      const prompt = parse(build(makeProject(), story)).prompt ?? '';
+      const numbers = prompt
+        .split('\n')
+        .map((line) => /^(\d+)\. /.exec(line)?.[1])
+        .filter((n) => n !== undefined)
+        .map(Number);
+      expect(numbers).toEqual(numbers.map((_n, index) => index + 1));
+      expect(reviewLine(prompt)).toMatch(new RegExp(String.raw`^${numbers.length}\. `));
     },
   );
 
   it.each(codeLanes)(
-    '%s fixes only the findings verified as legitimate, and pushes them',
+    '%s fixes the in-scope findings verified as legitimate, and raises out-of-scope ones',
     (_name, build, story) => {
       const line = reviewLine(parse(build(makeProject(), story)).prompt ?? '');
-      expect(line).toMatch(/verify as legitimate/i);
+      expect(line).toMatch(/in-scope findings you verify as legitimate/i);
       expect(line).toMatch(/push/i);
+      // The bug lane forbids folding adjacent bugs in, so a real finding outside the ticket
+      // needs a disposition other than "fixed" or "declined".
+      expect(line).toMatch(/raise real but out-of-scope ones with me/i);
     },
   );
 
@@ -822,7 +859,7 @@ describe('the adversarial-review step', () => {
       const line = reviewLine(parse(build(makeProject(), story)).prompt ?? '');
       expect(line).toContain('"Adversarial review" section');
       expect(line).toMatch(/PR description/);
-      expect(line).toMatch(/fixed, or declined and why/i);
+      expect(line).toMatch(/fixed, declined and why, or raised with me/i);
       expect(line).toMatch(/alfred block/i);
     },
   );
