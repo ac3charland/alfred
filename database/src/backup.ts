@@ -42,15 +42,15 @@ export function utcMonthStamp(date: Date): string {
 }
 
 /**
- * Validate the instance name that partitions the R2 keys (e.g. `personal`, `work`). alfred runs as
- * two physically-isolated instances, each its own Supabase database, so every key carries the
- * instance it came from. The name lands inside an object-key path, so it's held to a strict lowercase
+ * Validate the instance name that partitions the R2 keys (`personal`). The partition dates from
+ * when alfred ran a second, Work instance; it stays so new backups land beside existing ones. The
+ * name lands inside an object-key path, so it's held to a strict lowercase
  * token — no slashes, dots, or surprises that could reshape the key.
  */
 export function assertInstanceName(instance: string): void {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(instance)) {
     throw new Error(
-      `invalid INSTANCE name "${instance}" — expected a lowercase token like "personal" or "work"`,
+      `invalid INSTANCE name "${instance}" — expected a lowercase token like "personal"`,
     );
   }
 }
@@ -362,9 +362,8 @@ export async function buildVerifySchema(client: InstanceType<typeof Client>): Pr
  *             the verification that matters, and it sidesteps the vanilla-vs-Supabase schema mismatch.
  *  3. UPLOAD: copy the SAME verified gzip to both the instance's daily and monthly keys.
  *
- * Runs for ONE instance (`INSTANCE`, e.g. `personal` / `work`); the workflow fans out over the
- * instances so each isolated Supabase database is dumped in its own job. Any failed step or
- * assertion exits non-zero → red run → GitHub emails the repo owner.
+ * Runs for the instance named by `INSTANCE` (`personal`). Any failed step or assertion exits
+ * non-zero → red run → GitHub emails the repo owner.
  */
 async function main(): Promise<number> {
   const instance = requireEnv('INSTANCE');
