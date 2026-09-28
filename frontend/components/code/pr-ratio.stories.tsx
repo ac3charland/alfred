@@ -111,10 +111,10 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * The resting state: a stacked bar whose segments are sized by each project's share, plus a
- * legend giving every project its percentage and its raw count. Each project wears the colour
- * it wears everywhere else in the Code module, and its legend row links to its board. The
- * percentages sum to exactly 100 — largest-remainder rounding, so the classic "33% / 66%" bar
- * can't happen.
+ * legend giving every project that merged a PR its percentage and its raw count. Each project
+ * wears the colour it wears everywhere else in the Code module, and its legend row links to its
+ * board. The percentages sum to exactly 100 — largest-remainder rounding, so the classic
+ * "33% / 66%" bar can't happen.
  */
 export const Ready: Story = {
   decorators: [stubEndpoint(200, SPLIT)],
@@ -135,6 +135,24 @@ export const WithOther: Story = {
  */
 export const OtherEmpty: Story = {
   decorators: [stubEndpoint(200, { ...SPLIT, other: { count: 0, percentage: 0 } })],
+};
+
+/**
+ * A project that merged nothing this window (ALF-284): its legend row is dropped the same way
+ * Other's is when empty, rather than sitting there at 0%. RealPlay merged no PRs; only Alfred,
+ * which merged all nine, gets a row.
+ */
+export const ProjectEmpty: Story = {
+  decorators: [
+    stubEndpoint(200, {
+      ...SPLIT,
+      repos: SPLIT.repos.map((repo) =>
+        repo.label === 'Alfred'
+          ? { ...repo, count: 9, percentage: 100 }
+          : { ...repo, count: 0, percentage: 0 },
+      ),
+    }),
+  ],
 };
 
 /**
