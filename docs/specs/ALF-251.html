@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-251 — Redesign search to be mobile-friendly</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.checks { list-style: none; padding-left: 0; }
+  ul.checks li { padding-left: 1.6rem; position: relative; margin: .4rem 0; }
+  ul.checks li::before { content: "☐"; position: absolute; left: 0; color: var(--accent); }
+
+  /* ── Mockup stage (document chrome around the phones) ─────────────────── */
+  .stage { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; margin: 1rem 0; }
+  .controls { flex: 1 1 260px; min-width: 240px; }
+  .controls .group { margin: 0 0 1rem; }
+  .controls .group > p.gh { margin: 0 0 .4rem; font-size: .8rem; font-weight: 700; text-transform: uppercase;
+                         letter-spacing: .06em; color: var(--muted); }
+  .controls button.preset {
+    display: block; width: 100%; text-align: left; margin: 0 0 .35rem; padding: .5rem .7rem;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg);
+    font: inherit; font-size: .88rem; cursor: pointer;
+  }
+  .controls button.preset:hover { border-color: var(--accent); }
+  .controls button.preset[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-bg); }
+  .controls .hint { font-size: .82rem; color: var(--muted); margin: .25rem 0 0; }
+  .caption { font-size: .8rem; color: var(--muted); text-align: center; margin: .4rem 0 0; }
+  .phone-col { flex: 0 0 auto; width: min(360px, 100%); }
+  .noscript { display: block; }
+
+  /* ── Mockups: the app's own tokens (frontend/app/globals.css, dark :root) ───────── */
+  .app {
+    --background: #0a0e17; --foreground: #e8edf5; --surface: #0f1626; --border: #1e2a3f;
+    --muted-foreground: #8a96a8; --secondary: #1e2a3f; --input: #1e2a3f;
+    --accent-teal: #4fd1e0; --accent-amber: #f0b429; --accent-violet: #a78bfa; --amber-400: #fbbf24;
+    --radius-sm: .25rem; --radius-md: .375rem;
+    background: var(--background); color: var(--foreground);
+    font: 14px/1.45 "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app code { background: none; padding: 0; color: inherit; font-size: inherit; font-family: inherit; }
+  .app svg.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+                stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .app .serif { font-family: "Instrument Serif", Georgia, "Times New Roman", serif; }
+
+  /* phone frame (not the app — just a device outline) */
+  .phone { position: relative; width: 100%; height: 680px; border-radius: 28px; overflow: hidden;
+           border: 8px solid #2a2f37; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+  .phone.short { height: 470px; }
+
+  /* AppShell header: h-14 border-b bg-surface px-4 */
+  .app .hdr { height: 56px; display: flex; align-items: center; justify-content: space-between;
+              padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .app .hdr .l, .app .hdr .r { display: flex; align-items: center; }
+  .app .hdr .l { gap: 12px; }
+  .app .hdr .r { gap: 4px; }
+  .app .wordmark { font-size: 20px; line-height: 1; color: var(--foreground); }
+  /* IconButton size lg, tone neutral: h-8 w-8 rounded text-muted-foreground */
+  .app .iconbtn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+                  border-radius: var(--radius-sm); color: var(--muted-foreground); background: none; border: 0;
+                  padding: 0; cursor: pointer; }
+  .app .iconbtn:hover { color: var(--foreground); }
+  .app .iconbtn.new { outline: 2px dashed rgba(79,209,224,.55); outline-offset: 2px; }
+  /* InstanceMenu trigger: ghost Button sm, rounded-full border px-2.5 text-sm font-medium, teal pill */
+  .app .pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
+               border-radius: 9999px; border: 1px solid rgba(79,209,224,.4); background: rgba(79,209,224,.15);
+               color: var(--accent-teal); font-size: 14px; font-weight: 500; }
+  .app .pill .dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--accent-teal); }
+  .app .pill svg.ic { width: 14px; height: 14px; }
+
+  /* page body behind the sheet */
+  .app .page { padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .app .page .h { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em;
+                  color: var(--muted-foreground); margin: 0 0 4px; }
+  .app .page .trow { padding: 8px 12px; border-radius: .5rem; border: 1px solid transparent; font-size: 14px;
+                     display: flex; gap: 10px; align-items: center; }
+  .app .page .trow .box { width: 16px; height: 16px; border: 1px solid var(--border); border-radius: .25rem; flex-shrink: 0; }
+  .app .page .trow.ring { border-color: var(--accent-teal); box-shadow: 0 0 16px 2px rgba(79,209,224,.15); }
+  .app .page .route { font-size: 12px; color: var(--muted-foreground); margin: 0 0 8px; }
+
+  /* FullScreenDialog: fixed inset-0 flex flex-col bg-surface; title row border-b px-4 py-2 */
+  .app .sheet { position: absolute; inset: 0; background: var(--surface); display: flex; flex-direction: column;
+                animation: fadein 200ms ease-out; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .app .sheet { animation: none; } }
+  .app .sheet .titlerow { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                          padding: 8px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .app .sheet .titlerow h4 { margin: 0; font-size: 18px; font-weight: 400; line-height: 1.5; color: var(--foreground); }
+  /* CloseButton variant dialog: h-11 w-11 text-2xl text-muted-foreground */
+  .app .closex { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+                 font-size: 24px; line-height: 1; color: var(--muted-foreground); background: none; border: 0;
+                 border-radius: var(--radius-sm); cursor: pointer; }
+  .app .sheet .body { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+  .app .field { position: relative; display: flex; align-items: center; padding: 12px 16px 8px; flex-shrink: 0; }
+  .app .field svg.ic { position: absolute; left: 28px; width: 16px; height: 16px; color: var(--muted-foreground);
+                       pointer-events: none; }
+  /* Input atom: rounded-sm border bg-input px-3 text-sm (16px under pointer:coarse); here h-11 pl-9 */
+  .app .field input { width: 100%; height: 44px; padding: 0 12px 0 36px; border-radius: var(--radius-sm);
+                      border: 1px solid var(--border); background: var(--input); color: var(--foreground);
+                      font: inherit; font-size: 16px; outline: none; }
+  .app .field input::placeholder { color: var(--muted-foreground); }
+  .app .field input.focus { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-teal); }
+  .app .status { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                 padding: 0 16px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .app .count { font-size: 11px; color: rgba(138,150,168,.7); }
+  /* CheckboxField: CheckboxButton h-4 w-4 + FieldLabel text-xs font-semibold tracking-widest uppercase */
+  .app .cbf { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0;
+              cursor: pointer; color: var(--muted-foreground); }
+  .app .cbf .box { width: 16px; height: 16px; border: 1px solid var(--border); border-radius: .25rem;
+                   display: inline-flex; align-items: center; justify-content: center; }
+  .app .cbf.on .box { background: var(--accent-teal); border-color: var(--accent-teal); color: var(--background); }
+  .app .cbf .box svg.ic { width: 11px; height: 11px; stroke-width: 3; }
+  .app .cbf .lab { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
+  .app .results { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px 16px; }
+  .app ul { list-style: none; margin: 0; padding: 0; }
+  .app .glabel { padding: 8px 8px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase;
+                 letter-spacing: .1em; color: rgba(138,150,168,.7); }
+  /* OptionRow, touch density: flex min-h-11 items-center gap-3 rounded-md px-2 py-2 */
+  .app .opt { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px; border-radius: var(--radius-md);
+              cursor: pointer; }
+  .app .opt.active { background: var(--secondary); box-shadow: inset 0 0 0 1px var(--accent-teal); }
+  .app .opt.done { opacity: .6; }
+  .app .opt .txt { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+  .app .opt .t { font-size: 14px; color: var(--foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app .opt .s { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app .opt .ref { margin-right: 6px; font-family: ui-monospace, "Geist Mono", monospace; font-size: 12px; color: var(--accent-amber); }
+  /* Badge: rounded-full px-2 py-0.5 text-xs font-medium */
+  .app .badge { flex-shrink: 0; border-radius: 9999px; padding: 2px 8px; font-size: 12px; line-height: 16px; font-weight: 500; }
+  .app .badge.task { background: rgba(79,209,224,.15); color: var(--accent-teal); }
+  .app .badge.code { background: rgba(245,158,11,.15); color: var(--amber-400); }
+  .app .badge.wiki { background: rgba(167,139,250,.15); color: var(--accent-violet); }
+  .app .more { padding: 4px 8px; font-size: 12px; color: rgba(138,150,168,.7); }
+  .app .msg { padding: 8px; font-size: 12px; color: var(--muted-foreground); margin: 0; }
+
+  /* simulated OS keyboard — NOT app UI */
+  .kbd-sim { position: absolute; left: 0; right: 0; bottom: 0; height: 40%; background: #2b2f36;
+             border-top: 1px solid #3a404a; display: flex; flex-direction: column; justify-content: space-evenly;
+             padding: 6px 4px 10px; transition: transform 180ms ease-out; }
+  .kbd-sim.hidden { transform: translateY(101%); }
+  @media (prefers-reduced-motion: reduce) { .kbd-sim { transition: none; } }
+  .kbd-sim.hidden .tag { display: none; }
+  .kbd-sim .krow { display: flex; justify-content: center; gap: 5px; }
+  .kbd-sim .k { flex: 0 0 8.4%; height: 36px; border-radius: 5px; background: #4a505a; color: #e8edf5;
+                font: 15px/36px -apple-system, system-ui, sans-serif; text-align: center; }
+  .kbd-sim .k.w { flex-basis: 48%; font-size: 12px; }
+  .kbd-sim .k.go { flex-basis: 20%; background: #3b82f6; font-size: 13px; }
+  .kbd-sim .tag { position: absolute; top: -20px; right: 8px; font: 10px/1 system-ui, sans-serif; color: #8a94a0;
+                  background: #14181d; padding: 3px 6px; border-radius: 4px; }
+
+  /* "today" mockup: the hamburger drawer (w-56) + its field-width popover */
+  .app .overlay { position: absolute; inset: 0; background: rgba(0,0,0,.6); }
+  .app .drawer { position: absolute; left: 0; top: 0; bottom: 0; width: 224px; background: var(--surface);
+                 border-right: 1px solid var(--border); }
+  .app .drawer .top { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .app .drawer .sw { height: 32px; border-radius: .375rem; background: var(--secondary); opacity: .7; }
+  .app .drawer .sf { position: relative; }
+  .app .drawer .sf input { width: 100%; height: 32px; padding: 0 8px 0 32px; border-radius: var(--radius-sm);
+                           border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 16px;
+                           box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-teal); }
+  .app .drawer .sf svg.ic { position: absolute; left: 10px; top: 9px; width: 14px; height: 14px; color: var(--muted-foreground); }
+  .app .navrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-md);
+                 font-size: 14px; color: var(--muted-foreground); }
+  .app .navrow.on { background: var(--secondary); color: var(--foreground); }
+  .app .drawer .navs { padding: 8px; }
+  .app .pop { position: absolute; left: 16px; top: 138px; width: 192px; max-height: 250px; overflow: hidden;
+              background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px;
+              box-shadow: 0 4px 6px -1px rgba(0,0,0,.4); }
+  .app .pop .opt { min-height: 0; padding: 6px 8px; gap: 8px; }
+  .app .pop .cbrow { display: flex; justify-content: flex-end; padding: 4px 8px 6px; border-bottom: 1px solid var(--border); }
+  .app .pop .cbf .lab { font-size: 12px; }
+  .blocked { position: absolute; left: 16px; top: 394px; width: 192px; text-align: center;
+             font: 600 11px/1.3 system-ui, sans-serif; color: #f87171; background: rgba(248,113,113,.12);
+             border: 1px dashed rgba(248,113,113,.6); border-radius: 6px; padding: 5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Refinement spec · alfred · Shell</p>
+<h1>ALF-251 — Redesign search to be mobile-friendly</h1>
+<p class="sub">On phones, global search moves out of the hamburger drawer. A search icon in the header opens a
+full-screen sheet with full-width, touch-sized, scrollable results. Desktop (⌘P field and dropdown) is unchanged.</p>
+
+<div class="card small">
+  <b>Decisions confirmed with the human before writing:</b> (1) The entry point is a header search icon that opens a full-screen
+  sheet, and the field is removed from the drawer, so there is one entry point. (2) The per-group cap stays at 8
+  (<code>RESULTS_PER_GROUP</code>), with the same “+N more — keep typing” line; the pure filter layer in
+  <code>search-results.ts</code> is not changed.
+</div>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2>1. Context / problem</h2>
+
+<p>Ticket: <i>“Results are small and you can’t scroll.”</i> Both complaints come from how the phone layout of
+<code>SearchBox</code> is built today:</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Symptom</th><th>Cause in the current code</th></tr>
+  <tr>
+    <td><b>Results are small</b></td>
+    <td>The mobile field is inside the hamburger drawer (<code>shell-mobile-nav.tsx</code>, <code>w-56</code> = 224px).
+      <code>SearchResultsPopover</code> sets its width to <code>var(--radix-popover-trigger-width)</code>, so on a 390px phone the
+      results panel is about <b>192px</b> wide. Titles truncate after a few words, and rows are the dense desktop
+      <code>py-1.5</code> (about 30px tall), well under the app’s 44px mobile tap target.</td>
+  </tr>
+  <tr>
+    <td><b>You can’t scroll</b></td>
+    <td>The drawer is a modal Radix <code>Dialog</code>, which locks scrolling everywhere outside its own content
+      (<code>react-remove-scroll</code>). The results are a <code>Popover.Portal</code> rendered to <code>&lt;body&gt;</code>,
+      <i>outside</i> the dialog’s content, so touch and wheel scrolling on the list are blocked. The list is also capped at
+      <code>max-h-[70vh]</code> and anchored below a field that already sits some way down the drawer, so with the keyboard up
+      most of it is off-screen and can’t be reached.</td>
+  </tr>
+  <tr>
+    <td>Two taps before you can type</td>
+    <td>You have to open the drawer, then tap the field. <code>ShellMobileNav</code> deliberately stops the field autofocusing when
+      the drawer opens, because that would pop the keyboard every time someone opens the menu.</td>
+  </tr>
+</table>
+</div>
+
+<h3>Today (390px phone, “fire” typed in the drawer field)</h3>
+<div class="stage">
+  <div class="phone-col">
+    <div class="phone short app" aria-label="Mockup: current mobile search inside the drawer">
+      <div class="hdr"><div class="l"><span class="iconbtn"><svg class="ic" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M4 18h16"/><path d="M4 6h16"/></svg></span><span class="wordmark serif">alfred</span></div></div>
+      <div class="overlay"></div>
+      <div class="drawer">
+        <div class="top">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="wordmark serif">alfred</span><span style="font-size:12px;color:var(--muted-foreground)">Tasks</span></div>
+          <div class="sw"></div>
+          <div class="sf"><svg class="ic" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><input value="fire" readonly aria-label="drawer search field (today)"></div>
+        </div>
+      </div>
+      <div class="pop">
+        <div class="cbrow"><span class="cbf"><span class="box"></span><span class="lab">Show completed</span></span></div>
+        <div class="glabel">Tasks</div>
+        <div class="opt active"><div class="txt"><span class="t">Firewall triage workflow</span><span class="s">Software</span></div><span class="badge task">Task</span></div>
+        <div class="opt"><div class="txt"><span class="t">Firewall audit checklist</span><span class="s">Software</span></div><span class="badge task">Task</span></div>
+        <div class="opt"><div class="txt"><span class="t">Fix the firewall logging gap</span><span class="s">Software</span></div><span class="badge task">Task</span></div>
+        <div class="opt"><div class="txt"><span class="t">Reply to firewall vendor email</span><span class="s">Inbox</span></div><span class="badge task">Task</span></div>
+        <div class="opt"><div class="txt"><span class="t">Review firewall rules doc</span><span class="s">Software</span></div><span class="badge task">Task</span></div>
+      </div>
+      <div class="blocked">↕ scroll blocked by the drawer’s scroll lock</div>
+    </div>
+    <p class="caption">Static picture of the current behaviour, for reference only.</p>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2>2. Proposed change</h2>
+
+<h3>2.1 Behaviour</h3>
+<ol>
+  <li><b>Entry point.</b> Below <code>md</code> (&lt; 768px), the header gets a <b>Search</b> icon button (lucide
+    <code>Search</code>, <code>IconButton size="lg"</code>, <code>aria-label="Search"</code>) at the start of the right-hand
+    cluster, just before the account pill. It is hidden at <code>md+</code>, where the header field already exists.</li>
+  <li><b>Sheet.</b> Tapping it opens a <b>full-screen sheet</b> built on the existing <code>FullScreenDialog</code> atom
+    (<code>100dvh</code>, <code>bg-surface</code>). The title row reads <b>Search</b> and has the shared <b>×</b> close
+    (44px tap target). Below it, in order:
+    <ul>
+      <li>the <b>field</b>: full width, <code>h-11</code>, leading search glyph, 16px text, placeholder “Search…”, no ⌘P hint.
+        It has the same combobox ARIA as the desktop field and is <b>focused when the sheet opens</b>, so the keyboard comes up.</li>
+      <li>a <b>status row</b>, shown only once the trimmed query is non-empty: the result count
+        (“N result(s)”) on the left and the existing <b>Show completed</b> <code>CheckboxField</code> on the right. On touch the
+        count moves here from the desktop footer.</li>
+      <li>the <b>results region</b>: fills the rest of the height, <code>overflow-y-auto overscroll-contain</code>,
+        with the safe-area inset as bottom padding. It holds the same Tasks / Stories / Wiki groups, the same ranking, the same
+        cap of 8 and “+N more — keep typing” line, and the same empty and no-match messages as desktop.</li>
+    </ul></li>
+  <li><b>Rows.</b> Rows use the full sheet width and a <b>touch density</b>: <code>min-h-11</code> (44px),
+    <code>gap-3</code>, <code>py-2</code>. Title, subtitle, story ref and kind badge are unchanged. Completed rows keep
+    <code>opacity-60</code>. The first result keeps the active ring, because the keyboard’s <b>Go</b> key (Enter) opens it,
+    exactly like ↵ on desktop.</li>
+  <li><b>Scrolling.</b> The results render <b>inside</b> the dialog content, not in a portalled popover, so the dialog’s own
+    scroll lock doesn’t block them. Dragging the results list <b>blurs the field</b>, which dismisses the keyboard (the same
+    behaviour as native iOS and Android search screens). This lets rows that were behind the keyboard scroll into view. The
+    query and results stay. Tapping the field again brings the keyboard back.</li>
+  <li><b>Choosing a result</b> navigates exactly as today (a task goes through <code>navigateToTaskAndFocus</code>, a story or
+    wiki page through <code>history.pushState</code>), then closes the sheet and clears the query.</li>
+  <li><b>Closing without choosing.</b> ×, the Android back gesture that Radix maps to Escape, or a hardware Esc closes the
+    sheet and clears the query and Show completed (the existing <code>closeDropdown</code> semantics). The next open starts
+    empty.</li>
+  <li><b>The drawer loses its search field.</b> <code>ShellMobileNav</code> no longer renders <code>SearchBox</code>.
+    Its “close on arrival” rule keeps working for module-nav links.</li>
+  <li><b>⌘P below md.</b> If the viewport is narrow (a desktop browser window under 768px, or an iPad with a keyboard),
+    ⌘P opens the sheet instead of focusing a hidden field. Only one listener ever claims the key, as today.</li>
+  <li><b>Desktop is unchanged</b>: the header field, the anchored popover, keyboard hints, the popover width, and the
+    <code>shell-searchbox--open-with-results</code> visual baseline.</li>
+</ol>
+
+<h3>2.2 Interactive mockup (390px phone, drawn in the app’s tokens)</h3>
+<p class="small">Tap the header <b>search icon</b> (dashed outline = new) and type, or tap <b>☰</b> to see the drawer without its field. Try <code>fire</code> (overflows, shows the cap),
+<code>alf-</code> (stories), <code>habit</code> (wiki), <code>zzz</code> (no match). Drag or wheel the results to dismiss the simulated keyboard,
+tap the field to bring it back, and tap a result to “navigate”. The presets on the side jump straight to each state. The dark
+keyboard is a stand-in for the phone’s OS keyboard, not app UI.</p>
+
+<div class="stage" id="demo">
+  <div class="phone-col">
+    <div class="phone app" id="phone" aria-label="Interactive mockup: mobile search sheet">
+      <noscript><p class="msg" style="padding:16px">This mockup needs JavaScript. §2.1 above has the full written description.</p></noscript>
+    </div>
+    <p class="caption" id="phone-caption">State: closed</p>
+  </div>
+  <div class="controls">
+    <div class="group">
+      <p class="gh">Jump to a state</p>
+      <button class="preset" data-preset="closed">1 · Closed: header with the new search icon</button>
+      <button class="preset" data-preset="empty">2 · Sheet open, empty query (keyboard up)</button>
+      <button class="preset" data-preset="results">3 · Results for “fire”: cap + “+N more”</button>
+      <button class="preset" data-preset="scrolled">4 · Dragged: keyboard dismissed, list scrollable</button>
+      <button class="preset" data-preset="completed">5 · Show completed on (de-emphasised rows)</button>
+      <button class="preset" data-preset="nomatch">6 · No matches</button>
+      <button class="preset" data-preset="arrived">7 · After choosing a task: sheet closed, row ringed</button>
+      <button class="preset" data-preset="drawer">8 · Hamburger drawer: search field removed</button>
+    </div>
+    <div class="group">
+      <p class="gh">Legend</p>
+      <p class="hint"><b>Teal-ringed row</b>: the active option, which the keyboard’s Go key opens.<br>
+      <b>Faded row</b>: a completed task or terminal story (only when Show completed is on).<br>
+      <b>“+N more — keep typing”</b>: the matches beyond the per-group cap of 8.<br>
+      <b>Count (top left)</b>: the total number of results rendered.<br>
+      <b>Dashed outline</b> on the header icon: marks what’s new in this mockup only; not shipped.<br>
+      <b>Grey bar</b> in the drawer: the module switcher, unchanged and simplified here.</p>
+    </div>
+  </div>
+</div>
+
+<h3>2.3 Component plan</h3>
+
+<svg viewBox="0 0 900 330" role="img" aria-label="Component diagram: header MobileSearch and desktop SearchBox share useSearchCombobox and SearchResultsList">
+  <style>
+    .bx { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+    .nw { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+    .tx { font: 600 14px system-ui, sans-serif; fill: var(--fg); }
+    .tt { font: 12px ui-monospace, monospace; fill: var(--muted); }
+    .ln { stroke: var(--faint); stroke-width: 1.5; fill: none; marker-end: url(#ar); }
+  </style>
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--faint)"/></marker></defs>
+  <rect class="bx" x="330" y="10" width="240" height="50" rx="8"/>
+  <text class="tx" x="450" y="32" text-anchor="middle">AppShell header</text>
+  <text class="tt" x="450" y="50" text-anchor="middle">app-shell.tsx</text>
+
+  <rect class="bx" x="40" y="100" width="300" height="56" rx="8"/>
+  <text class="tx" x="190" y="123" text-anchor="middle">SearchBox (desktop only, md+)</text>
+  <text class="tt" x="190" y="142" text-anchor="middle">input + Popover → results</text>
+  <rect class="nw" x="560" y="100" width="300" height="56" rx="8"/>
+  <text class="tx" x="710" y="123" text-anchor="middle">MobileSearch (new, &lt; md)</text>
+  <text class="tt" x="710" y="142" text-anchor="middle">IconButton + FullScreenDialog</text>
+
+  <rect class="nw" x="300" y="190" width="300" height="56" rx="8"/>
+  <text class="tx" x="450" y="213" text-anchor="middle">useSearchCombobox (new hook)</text>
+  <text class="tt" x="450" y="232" text-anchor="middle">results · activeIndex · keys · select</text>
+
+  <rect class="nw" x="40" y="264" width="300" height="56" rx="8"/>
+  <text class="tx" x="190" y="287" text-anchor="middle">SearchResultsList (extracted)</text>
+  <text class="tt" x="190" y="306" text-anchor="middle">density: compact | touch</text>
+  <rect class="bx" x="560" y="264" width="300" height="56" rx="8"/>
+  <text class="tx" x="710" y="287" text-anchor="middle">search-store + search-results.ts</text>
+  <text class="tt" x="710" y="306" text-anchor="middle">unchanged</text>
+
+  <path class="ln" d="M400 60 L240 100"/>
+  <path class="ln" d="M500 60 L660 100"/>
+  <path class="ln" d="M190 156 L380 190"/>
+  <path class="ln" d="M710 156 L520 190"/>
+  <path class="ln" d="M130 156 L130 264"/>
+  <path class="ln" d="M620 156 C 560 200, 360 230, 250 264"/>
+  <path class="ln" d="M530 246 L640 264"/>
+</svg>
+<p class="small">Teal = new or extracted. Both surfaces render the same rows and share one piece of combobox logic, so the
+desktop and mobile results can’t drift apart (see the <code>frontend-architecture</code> skill).</p>
+
+<div class="scroll">
+<table>
+  <tr><th>File (under <code>frontend/</code>)</th><th>Change</th></tr>
+  <tr><td><code>components/shell/use-search-combobox.ts</code> <b>(new)</b></td>
+    <td>Moved out of <code>SearchBox</code> unchanged: reading the stores, <code>buildResults</code> / <code>flattenResults</code>,
+      the reset-active-index-on-query-change and clamp logic, <code>select()</code> (navigate, <code>closeDropdown</code>, blur, and an
+      <code>onNavigate</code> callback), and <code>handleKeyDown</code> (↑↓ / Enter / Esc). Takes <code>inputRef</code> and
+      <code>onNavigate</code>. Both surfaces call it.</td></tr>
+  <tr><td><code>components/shell/search-results-list.tsx</code> <b>(new)</b></td>
+    <td>The body of <code>SearchResultsPopover</code> (its <code>Group</code>, <code>OptionRow</code>, empty and no-match messages, and
+      Show-completed row), minus the Popover wrapper. Adds <code>density: 'compact' | 'touch'</code>. <code>compact</code> is
+      today’s markup, pixel for pixel: checkbox row at the top right, footer with key hints and count. <code>touch</code> gives
+      <code>min-h-11 gap-3 py-2</code> rows, a status row with the count on the left and the checkbox on the right, and no key-hint
+      footer. The row styling belongs in a co-located <code>search-results-list.styles.ts</code>, following the
+      <code>app-shell.styles.ts</code> pattern.</td></tr>
+  <tr><td><code>components/shell/search-results-popover.tsx</code></td>
+    <td>Becomes a thin <code>Popover.Portal</code> / <code>Popover.Content</code> wrapper around
+      <code>&lt;SearchResultsList density="compact" /&gt;</code>. The outside-click and autofocus handling stays here.</td></tr>
+  <tr><td><code>components/shell/mobile-search.tsx</code> <b>(new)</b></td>
+    <td><code>MobileSearch</code> is the header trigger plus the sheet. Open state is <code>!isDesktop &amp;&amp; useSearch().open</code>.
+      The trigger calls <code>openDropdown</code>, and <code>onOpenChange(false)</code> calls <code>closeDropdown</code>.
+      <code>onOpenAutoFocus</code> prevents the default and focuses the field (otherwise Radix would focus the × first).
+      The results region has <code>onTouchMove</code>, which blurs the field if it is focused. It registers
+      <code>useGlobalSearchShortcut(openDropdown, !isDesktop)</code>. Input: <code>enterKeyHint="go"</code>, the same
+      <code>role="combobox"</code> and <code>aria-*</code> wiring and the same accessible name as the desktop field, and its own listbox id
+      (<code>global-search-results-mobile</code>) so ids never collide.</td></tr>
+  <tr><td><code>components/shell/search-box.tsx</code></td>
+    <td>Drop the <code>placement</code> prop and the <code>'mobile'</code> branch. It is now desktop-only and uses
+      <code>useSearchCombobox</code>. Keep the <code>isDesktop</code> gate on the popover’s <code>open</code>. This matters: the store’s
+      <code>open</code> flag is shared, so without the gate, opening the mobile sheet would also open a popover anchored to the
+      hidden header field.</td></tr>
+  <tr><td><code>components/shell/app-shell.tsx</code></td>
+    <td>Put the right-hand cluster in a <code>flex items-center gap-1</code> wrapper containing
+      <code>&lt;MobileSearch /&gt;</code> (<code>md:hidden</code>) and then <code>&lt;InstanceMenu /&gt;</code>.</td></tr>
+  <tr><td><code>components/shell/shell-mobile-nav.tsx</code></td>
+    <td>Remove <code>&lt;SearchBox placement="mobile" … /&gt;</code> and its import. Update the doc comments that mention the
+      drawer’s search field and closing on a search result, and the <code>onOpenAutoFocus</code> comment, whose reason (the
+      search field) goes away. Whether that handler stays is up to the implementer: without it Radix would focus the first
+      switcher link.</td></tr>
+  <tr><td><code>lib/hooks/use-media-query.ts</code></td>
+    <td>Doc comment only: it now picks between the header field and the mobile sheet.</td></tr>
+</table>
+</div>
+
+<pre><code>// mobile-search.tsx — the shape (not final code)
+export function MobileSearch() {
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const { open } = useSearch();
+  const { openDropdown, closeDropdown } = useSearchActions();
+  const inputRef = React.useRef&lt;HTMLInputElement&gt;(null);
+  const combobox = useSearchCombobox({ inputRef });        // select() already calls closeDropdown
+  useGlobalSearchShortcut(openDropdown, !isDesktop);
+
+  return (
+    &lt;&gt;
+      &lt;IconButton size="lg" aria-label="Search" className="md:hidden" onClick={openDropdown}&gt;
+        &lt;Search size={18} /&gt;
+      &lt;/IconButton&gt;
+      &lt;FullScreenDialog
+        open={!isDesktop &amp;&amp; open}
+        onOpenChange={(next) =&gt; { if (!next) closeDropdown(); }}
+        title="Search"
+        closeLabel="Close search"
+        onOpenAutoFocus={(e) =&gt; { e.preventDefault(); inputRef.current?.focus(); }}
+      &gt;
+        {/* field · status row · &lt;SearchResultsList density="touch" …/&gt; in a
+            flex-1 overflow-y-auto region whose onTouchMove blurs the field */}
+      &lt;/FullScreenDialog&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+
+<div class="callout"><b>Why the scroll fix is structural:</b> don’t “fix” this by adding the popover as a scroll-lock shard or
+changing <code>modal</code>. Rendering the list inside the dialog content is what fixes it, because the only element Radix
+leaves scrollable is the content node. Don’t nest a <code>Popover</code> inside the sheet.</div>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2>3. Tests (red/green, per CLAUDE.md)</h2>
+<div class="scroll">
+<table>
+  <tr><th>Layer</th><th>What it pins</th></tr>
+  <tr><td>RTL: <code>mobile-search.test.tsx</code> (new; mock <code>matchMedia</code> to a narrow viewport, the same way <code>search-box.test.tsx</code> does)</td>
+    <td>The trigger is named “Search”. Tapping it opens a dialog named “Search” whose combobox is focused. Typing renders grouped options
+      inside that dialog. Choosing a task calls the navigation, closes the dialog, and leaves an empty query on the next open. × closes and
+      clears. Show completed shows the de-emphasised completed row. The status row shows the count, and there is no “↑↓ navigate”
+      text. A <code>touchMove</code> on the results blurs the field and the dialog stays open. Enter opens the active (first) option. On a narrow
+      viewport, Ctrl/⌘P opens the sheet.</td></tr>
+  <tr><td>RTL: <code>search-box.test.tsx</code></td>
+    <td>Update for the removed <code>placement</code> prop. Add: on a narrow viewport, the store being <code>open</code> does not render the
+      desktop listbox.</td></tr>
+  <tr><td>RTL: <code>shell-mobile-nav.test.tsx</code></td>
+    <td>The opened drawer contains no search combobox.</td></tr>
+  <tr><td>Storybook: <code>mobile-search.stories.tsx</code> (new, at a mobile viewport)</td>
+    <td>“Open with results” (cap line visible) and “Show completed”. These are new visual baselines. The existing
+      <code>shell-searchbox--open-with-results.png</code> must <b>not</b> move, which proves the extraction left desktop pixel-identical.</td></tr>
+  <tr><td>Playwright: <code>e2e/mobile-search.spec.ts</code> (new; <code>hasTouch</code>, 390×844)</td>
+    <td>Seed enough matches to overflow the screen (for example 10 tasks, 8 stories and 3 wiki pages sharing a term). Tap “Search”, type, and check
+      the listbox is at least 90% of the viewport width and each option is at least 44px tall. <b>Regression for “can’t scroll”:</b> wheel over the
+      results and check the region’s <code>scrollTop</code> increases, then tap the <i>last</i> option and check the URL changed to its
+      destination and the dialog is gone. The combobox renders at 16px or more (the ALF-115 zoom rule still applies). The drawer has no search field.</td></tr>
+  <tr><td>Playwright: <code>e2e/global-search.spec.ts</code></td>
+    <td>Unchanged. Desktop flows must stay green as they are.</td></tr>
+</table>
+</div>
+<p class="small"><b>Demo doc:</b> follow the <code>showboat</code> skill’s evidence rules (“Choosing your evidence” and the
+screenshot, GIF and video medium guidance). Don’t restate them here. The change is visual <i>and</i> about motion (scrolling a list that
+used to be locked), so pick the medium showboat prescribes for that. The Storybook baselines above go through its capture-then-approve flow.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2>4. Acceptance criteria</h2>
+<ul class="checks">
+  <li>At &lt; 768px the header shows a Search icon button before the account pill. At ≥ 768px it is absent and the header field is unchanged.</li>
+  <li>Tapping it opens a full-screen “Search” sheet (<code>FullScreenDialog</code>) with the field focused. The field is 44px tall, at least 16px text, with no ⌘P hint.</li>
+  <li>Results fill the sheet’s width (≥ 90% of the viewport), rows are ≥ 44px tall, and grouping, ranking, badges and the 8-per-group cap with “+N more — keep typing” match desktop.</li>
+  <li>With more results than fit, the results region scrolls by touch and wheel, and the last result can be reached and tapped.</li>
+  <li>Dragging the results blurs the field (dismisses the keyboard) without closing the sheet or clearing the query.</li>
+  <li>The status row (count on the left, Show completed on the right) appears only when the query isn’t empty. On touch there is no key-hint footer.</li>
+  <li>Choosing a task, story or wiki result navigates exactly as today, then closes the sheet. The next open starts empty.</li>
+  <li>× / Esc closes the sheet and clears the query and Show completed.</li>
+  <li>The hamburger drawer no longer contains a search field.</li>
+  <li>⌘P / Ctrl P opens the sheet on a narrow viewport and focuses the header field on a wide one. Only one listener is active.</li>
+  <li>Only one results surface is ever open: the desktop popover never opens while the viewport is narrow.</li>
+  <li>Desktop rendering is pixel-identical: the <code>shell-searchbox--open-with-results</code> baseline is unchanged and <code>e2e/global-search.spec.ts</code> passes unmodified.</li>
+  <li>The tests in §3 exist and <code>check</code> is green. The demo doc follows the showboat evidence rules.</li>
+</ul>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2>5. Out of scope / open questions</h2>
+<ul>
+  <li><b>Out of scope:</b> any change to matching or ranking, the cap, desktop layout, a clear-text (⊗) button in the field, recent searches,
+    wiki <i>body</i> search, and making the sheet a history entry (so browser Back would close it rather than leave the page).</li>
+  <li><b>Open, to verify on a real iPhone:</b> iOS Safari only raises the keyboard for a <code>focus()</code> made inside the tap’s
+    user gesture. Radix’s <code>onOpenAutoFocus</code> runs during React’s synchronous commit of the click, which normally counts, but Playwright
+    can’t prove it. If the keyboard doesn’t come up on device, the fallback is to focus the field directly in the trigger’s
+    <code>onClick</code> after <code>flushSync(openDropdown)</code>. Record the outcome in the <code>react</code> or <code>shadcn-ui</code> skill.</li>
+</ul>
+
+</div>
+
+<script>
+(() => {
+  const ICON = {
+    search: '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',
+    menu: '<path d="M4 12h16"/><path d="M4 18h16"/><path d="M4 6h16"/>',
+    chev: '<path d="m6 9 6 6 6-6"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+  };
+  const svg = (k) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  // Fixture data — shaped like buildResults' inputs (title / subtitle / completed).
+  const TASKS = [
+    ['Firewall triage workflow', 'Software', '2025-06-10'],
+    ['Reply to firewall vendor email', 'Inbox', '2025-06-12'],
+    ['Firewall audit checklist', 'Software', '2025-06-08'],
+    ['Fix the firewall logging gap', 'Software', '2025-06-11'],
+    ['Review firewall rules doc', 'Software', '2025-06-09'],
+    ['Book the firewall renewal call', 'Work admin', '2025-06-07'],
+    ['Ask Sam about the office firewall', 'Inbox', '2025-06-13'],
+    ['Draft firewall exception policy', 'Software', '2025-06-05'],
+    ['Firewall: block the old VPN range', 'Software', '2025-06-14'],
+    ['Budget for a new firewall appliance', 'Finance', '2025-06-03'],
+    ['Research daycare options', 'Family', '2025-06-01'],
+    ['Renew passport', 'Errands', '2025-05-30'],
+    ['Plan the trip to Lisbon', 'Travel', '2025-05-28'],
+    ['Update firewall allowlist', 'Completed', '2025-06-15', true],
+  ].map(([title, subtitle, created, completed]) => ({ kind: 'task', title, subtitle, created, completed: !!completed }));
+  const STORIES = [
+    ['ALF-31', 'Build the communication firewall triage UI', 'Communication Firewall · Ready for Dev', '2025-06-02'],
+    ['ALF-88', 'Firewall rule editor', 'Communication Firewall · Needs Refinement', '2025-06-06'],
+    ['ALF-112', 'Retry firewall webhooks on 5xx', 'Communication Firewall · In Development', '2025-06-09'],
+    ['ALF-251', 'Redesign search to be mobile-friendly', 'Shell polish · In Refinement', '2025-06-12'],
+    ['ALF-207', 'Pin the sidebar shortcut hint', 'Shell polish · Done', '2025-05-18', true],
+    ['ALF-64', 'Firewall digest email', 'Communication Firewall · Abandoned', '2025-05-10', true],
+  ].map(([ref, title, subtitle, created, completed]) => ({ kind: 'story', ref, title, subtitle, created, completed: !!completed }));
+  const WIKI = [
+    ['Communication firewall', 'Why inbound messages are triaged before they reach you', '2025-06-10'],
+    ['Firewall heuristics', 'The signals the classifier weighs for each message', '2025-06-04'],
+    ['Habit stacking', 'Anchor a new habit to one you already do', '2025-05-22'],
+    ['Atomic Habits', 'James Clear on compounding tiny changes', '2025-05-15'],
+  ].map(([title, subtitle, created]) => ({ kind: 'wiki', title, subtitle, created, completed: false }));
+
+  const CAP = 8; // RESULTS_PER_GROUP
+  const rank = (q, title) => (title.startsWith(q) ? 0 : title.includes(q) ? 1 : null);
+  function group(list, q, showCompleted) {
+    const scored = [];
+    for (const r of list) {
+      if (r.completed && !showCompleted) continue;
+      const t = r.title.toLowerCase();
+      let k = rank(q, t);
+      if (r.kind === 'story') {
+        const ref = r.ref.toLowerCase();
+        k = ref === q ? -1 : (k ?? (ref.includes(q) ? 2 : null));
+      }
+      if (r.kind === 'wiki' && k === null && r.subtitle.toLowerCase().includes(q)) k = 2;
+      if (k === null) continue;
+      scored.push({ r, k });
+    }
+    scored.sort((a, b) => a.k - b.k || b.r.created.localeCompare(a.r.created));
+    return { items: scored.slice(0, CAP).map((s) => s.r), more: Math.max(0, scored.length - CAP) };
+  }
+
+  const S = { drawer: false, open: false, query: '', showCompleted: false, keyboard: false, arrived: null, scrollTop: 0 };
+  const phone = document.getElementById('phone');
+  const caption = document.getElementById('phone-caption');
+  let flat = [];
+
+  function header() {
+    return `<div class="hdr">
+      <div class="l"><button class="iconbtn" data-act="drawer" aria-label="Open navigation">${svg('menu')}</button>
+        <span class="wordmark serif">alfred</span></div>
+      <div class="r"><button class="iconbtn new" data-act="open" aria-label="Search">${svg('search')}</button>
+        <span class="pill"><span class="dot"></span>Personal${svg('chev')}</span></div>
+    </div>`;
+  }
+  function page() {
+    const rows = S.arrived
+      ? [S.arrived.title, 'Firewall audit checklist', 'Fix the firewall logging gap', 'Review firewall rules doc']
+      : ['Renew passport', 'Research daycare options', 'Plan the trip to Lisbon', 'Pay the water bill'];
+    const title = S.arrived ? S.arrived.subtitle : 'Priority';
+    return `<div class="page">
+      ${S.arrived ? `<p class="route">→ navigated to <b>${esc(S.arrived.kind === 'task' ? '/folders/…' : S.arrived.kind === 'story' ? '/code/…?story=' + S.arrived.ref : '/wiki/…')}</b></p>` : ''}
+      <p class="h">${esc(title)}</p>
+      ${rows.map((t, i) => `<div class="trow${S.arrived && i === 0 ? ' ring' : ''}"><span class="box"></span>${esc(t)}</div>`).join('')}
+    </div>`;
+  }
+  function optRow(r, idx, active) {
+    const ref = r.kind === 'story' ? `<span class="ref">${esc(r.ref)}</span>` : '';
+    const badge = { task: ['task', 'Task'], story: ['code', 'Code'], wiki: ['wiki', 'Wiki'] }[r.kind];
+    return `<li class="opt${active ? ' active' : ''}${r.completed ? ' done' : ''}" role="option" aria-selected="${active}" data-idx="${idx}">
+      <div class="txt"><span class="t">${ref}${esc(r.title)}</span>${r.subtitle ? `<span class="s">${esc(r.subtitle)}</span>` : ''}</div>
+      <span class="badge ${badge[0]}">${badge[1]}</span></li>`;
+  }
+  function statusAndBody() {
+    const q = S.query.trim().toLowerCase();
+    flat = [];
+    if (q === '') return { status: '', body: `<p class="msg">Search tasks, stories, and wiki pages</p>` };
+    const groups = [['Tasks', group(TASKS, q, S.showCompleted)], ['Stories', group(STORIES, q, S.showCompleted)], ['Wiki', group(WIKI, q, S.showCompleted)]];
+    const total = groups.reduce((n, [, g]) => n + g.items.length, 0);
+    const status = `<div class="status"><span class="count">${total} result${total === 1 ? '' : 's'}</span>
+      <button class="cbf${S.showCompleted ? ' on' : ''}" data-act="toggle" role="checkbox" aria-checked="${S.showCompleted}">
+        <span class="box">${S.showCompleted ? svg('check') : ''}</span><span class="lab">Show completed</span></button></div>`;
+    if (total === 0) return { status, body: `<p class="msg">No matches for “${esc(S.query.trim())}”</p>` };
+    const body = `<ul role="listbox" aria-label="Search results">` + groups.map(([label, g]) => {
+      if (g.items.length === 0) return '';
+      const lis = g.items.map((r) => { const i = flat.length; flat.push(r); return optRow(r, i, i === 0); }).join('');
+      return `<li><div class="glabel">${label}</div><ul>${lis}</ul>${g.more > 0 ? `<div class="more">+${g.more} more — keep typing</div>` : ''}</li>`;
+    }).join('') + `</ul>`;
+    return { status, body };
+  }
+  function sheet() {
+    const { status, body } = statusAndBody();
+    return `<div class="sheet" role="dialog" aria-label="Search">
+      <div class="titlerow"><h4 class="serif">Search</h4><button class="closex" data-act="close" aria-label="Close search">×</button></div>
+      <div class="body">
+        <div class="field">${svg('search')}<input id="mock-input" class="${S.keyboard ? 'focus' : ''}" role="combobox" aria-label="Search tasks, stories, and wiki pages"
+          placeholder="Search…" autocomplete="off" spellcheck="false" enterkeyhint="go" value="${esc(S.query)}"></div>
+        <div id="mock-status">${status}</div>
+        <div class="results" id="mock-results">${body}</div>
+      </div>
+    </div>`;
+  }
+  // Typing only swaps the status row + results, never the <input>, so the caret and keyboard stay put.
+  function renderResults() {
+    const { status, body } = statusAndBody();
+    document.getElementById('mock-status').innerHTML = status;
+    const results = document.getElementById('mock-results');
+    results.innerHTML = body;
+    results.scrollTop = 0;
+    caption.textContent = 'State: ' + describe();
+  }
+  function drawer() {
+    const navs = ['Priority', 'Today', 'Inbox', 'Plan', 'Software', 'Errands'];
+    return `<div class="overlay" data-act="undrawer"></div><div class="drawer" role="dialog" aria-label="Navigation">
+      <div class="top">
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="wordmark serif">alfred</span><span style="font-size:12px;color:var(--muted-foreground)">Tasks</span></div>
+        <div class="sw" title="module switcher (unchanged)"></div>
+      </div>
+      <div class="navs">${navs.map((n, i) => `<div class="navrow${i === 0 ? ' on' : ''}">${esc(n)}</div>`).join('')}</div>
+    </div>`;
+  }
+  function keyboard() {
+    const row = (keys) => `<div class="krow">${keys.split('').map((k) => `<span class="k">${k}</span>`).join('')}</div>`;
+    return `<div class="kbd-sim${S.keyboard && S.open ? '' : ' hidden'}" aria-hidden="true"><span class="tag">simulated OS keyboard</span>
+      ${row('qwertyuiop')}${row('asdfghjkl')}${row('zxcvbnm')}
+      <div class="krow"><span class="k">123</span><span class="k w">space</span><span class="k go">go</span></div></div>`;
+  }
+
+  function render(focusInput) {
+    const active = document.activeElement && document.activeElement.id === 'mock-input';
+    const caret = active ? document.activeElement.selectionStart : null;
+    phone.innerHTML = header() + page() + (S.drawer ? drawer() : '') + (S.open ? sheet() : '') + keyboard();
+    const input = document.getElementById('mock-input');
+    const results = document.getElementById('mock-results');
+    if (results) results.scrollTop = S.scrollTop;
+    if (input && (active || focusInput)) {
+      input.focus({ preventScroll: true });
+      const at = caret ?? input.value.length;
+      input.setSelectionRange(at, at);
+    }
+    caption.textContent = 'State: ' + describe();
+  }
+  function describe() {
+    if (S.drawer) return 'hamburger drawer open: switcher + module nav, no search field';
+    if (!S.open) return S.arrived ? 'closed, arrived at the chosen task (row rings)' : 'closed';
+    const q = S.query.trim();
+    if (q === '') return 'sheet open, empty query';
+    const kb = S.keyboard ? 'keyboard up' : 'keyboard dismissed';
+    return `sheet open, “${q}”, ${flat.length} result${flat.length === 1 ? '' : 's'}, ${kb}${S.showCompleted ? ', show completed' : ''}`;
+  }
+  function openSheet() { Object.assign(S, { drawer: false, open: true, query: '', showCompleted: false, keyboard: true, arrived: null, scrollTop: 0 }); render(true); }
+  function closeSheet() { Object.assign(S, { open: false, query: '', showCompleted: false, keyboard: false, scrollTop: 0 }); render(); }
+  function choose(r) { Object.assign(S, { open: false, query: '', showCompleted: false, keyboard: false, arrived: r, scrollTop: 0 }); render(); }
+  function dismissKeyboard() {
+    if (!S.keyboard) return;
+    S.keyboard = false;
+    const input = document.getElementById('mock-input');
+    if (input) input.blur();
+    phone.querySelector('.kbd-sim')?.classList.add('hidden');
+    input?.classList.remove('focus');
+    caption.textContent = 'State: ' + describe();
+  }
+
+  phone.addEventListener('click', (e) => {
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'drawer') { S.drawer = true; return render(); }
+    if (act === 'undrawer') { S.drawer = false; return render(); }
+    if (act === 'open') return openSheet();
+    if (act === 'close') return closeSheet();
+    if (act === 'toggle') { S.showCompleted = !S.showCompleted; return renderResults(); }
+    const opt = e.target.closest('.opt[data-idx]');
+    if (opt) return choose(flat[Number(opt.dataset.idx)]);
+    if (e.target.id === 'mock-input' && !S.keyboard) { S.keyboard = true; render(true); }
+  });
+  phone.addEventListener('input', (e) => {
+    if (e.target.id !== 'mock-input') return;
+    S.query = e.target.value; S.scrollTop = 0; S.keyboard = true; renderResults();
+  });
+  phone.addEventListener('focusin', (e) => {
+    if (e.target.id === 'mock-input' && !S.keyboard) { S.keyboard = true; phone.querySelector('.kbd-sim')?.classList.remove('hidden'); e.target.classList.add('focus'); caption.textContent = 'State: ' + describe(); }
+  });
+  phone.addEventListener('keydown', (e) => {
+    if (e.target.id !== 'mock-input') return;
+    if (e.key === 'Enter' && flat[0]) { e.preventDefault(); choose(flat[0]); }
+    if (e.key === 'Escape') { e.preventDefault(); closeSheet(); }
+  });
+  // Dragging (touch) or wheeling the results list dismisses the keyboard; the list keeps its scroll.
+  phone.addEventListener('touchmove', (e) => { if (e.target.closest('#mock-results')) dismissKeyboard(); }, { passive: true });
+  phone.addEventListener('wheel', (e) => { if (e.target.closest('#mock-results')) dismissKeyboard(); }, { passive: true });
+  phone.addEventListener('scroll', (e) => { if (e.target.id === 'mock-results') S.scrollTop = e.target.scrollTop; }, true);
+
+  const PRESETS = {
+    closed: { drawer: false, open: false, query: '', showCompleted: false, keyboard: false, arrived: null, scrollTop: 0 },
+    empty: { drawer: false, open: true, query: '', showCompleted: false, keyboard: true, arrived: null, scrollTop: 0 },
+    results: { drawer: false, open: true, query: 'fire', showCompleted: false, keyboard: true, arrived: null, scrollTop: 0 },
+    scrolled: { drawer: false, open: true, query: 'fire', showCompleted: false, keyboard: false, arrived: null, scrollTop: 260 },
+    completed: { drawer: false, open: true, query: 'fire', showCompleted: true, keyboard: false, arrived: null, scrollTop: 330 },
+    nomatch: { drawer: false, open: true, query: 'zzz', showCompleted: false, keyboard: true, arrived: null, scrollTop: 0 },
+    drawer: { drawer: true, open: false, query: '', showCompleted: false, keyboard: false, arrived: null, scrollTop: 0 },
+    arrived: { drawer: false, open: false, query: '', showCompleted: false, keyboard: false, arrived: TASKS[0], scrollTop: 0 },
+  };
+  const buttons = document.querySelectorAll('button.preset');
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    Object.assign(S, PRESETS[b.dataset.preset]);
+    buttons.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    render(false);
+  }));
+  render();
+})();
+</script>
+</body>
+</html>
