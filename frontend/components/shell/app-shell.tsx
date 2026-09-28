@@ -3,6 +3,7 @@ import * as React from 'react';
 import { ActiveModuleLabel } from '@/components/shell/active-module-label';
 import { CommandPalette } from '@/components/shell/command-palette';
 import { InstanceMenu } from '@/components/shell/instance-menu';
+import { MobileSearch } from '@/components/shell/mobile-search';
 import { SearchBox } from '@/components/shell/search-box';
 import { ShellMobileNav } from '@/components/shell/shell-mobile-nav';
 import { ShellNav } from '@/components/shell/shell-nav';
@@ -27,7 +28,8 @@ import { shellRootClass, sidebarShortcutHintClass } from './app-shell.styles';
  * mounts `ShellMobileNav` (the hamburger drawer), each deriving the active module itself.
  *
  * The switcher sits beneath the wordmark in the desktop sidebar's top-left square; on
- * mobile it moves into the hamburger, so the header bar there is just hamburger + wordmark.
+ * mobile it moves into the hamburger, so the header bar there is hamburger + wordmark on the
+ * left and the search icon (which opens the full-screen search sheet) beside the account menu.
  */
 export function AppShell({
   children,
@@ -95,11 +97,15 @@ export function AppShell({
 
             {/* Desktop: the global search field (wordmark + switcher live in the sidebar) */}
             <div className="hidden flex-1 justify-center px-4 md:flex">
-              <SearchBox placement="desktop" className="w-full max-w-md" />
+              <SearchBox className="w-full max-w-md" />
             </div>
 
-            {/* Instance / account menu (label + Open-other + Sign out) */}
-            <InstanceMenu email={email} instance={instance} />
+            {/* Mobile search icon (hidden at md+), then the instance / account menu (label +
+                Open-other + Sign out) */}
+            <div className="flex items-center gap-1">
+              <MobileSearch />
+              <InstanceMenu email={email} instance={instance} />
+            </div>
           </header>
 
           {/* Page content */}
