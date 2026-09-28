@@ -3,9 +3,9 @@
  *
  * Alfred writes into the knowledge wiki's repo through GitHub's Git Data API with a fine-grained
  * PAT scoped to that one repo. Without the token (e.g. local dev) `getWikiConfig()` answers
- * `undefined` and every send affordance disappears (the layout seeds `writable: false`). The token is
- * server-only: it is never `NEXT_PUBLIC_`, never seeded to the client, and never echoed in an
- * error or a log line. Each var is read by its literal name.
+ * `undefined` and every send affordance disappears (the layout seeds `writable: false`). The
+ * token is server-only: it is never `NEXT_PUBLIC_`, never seeded to the client, and never echoed
+ * in an error or a log line.
  */
 import 'server-only';
 

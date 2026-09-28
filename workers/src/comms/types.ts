@@ -243,7 +243,7 @@ export type ClassifierHealthPatch = { at: Date; ok: true } | { at: Date; ok: fal
 
 /**
  * What a poller claims about an account when it registers itself. Accounts self-register rather
- * than being seeded by a migration, because the two alfred instances hold different accounts.
+ * than being seeded by a migration, because which accounts exist is deployment data, not schema.
  * Deliberately only the columns a poller owns: cursor and health are written by their own calls,
  * so a re-registration on every poll can never clobber them.
  */

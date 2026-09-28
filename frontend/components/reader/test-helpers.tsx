@@ -10,8 +10,8 @@ import type { ReaderHealthSnapshot, ReaderPostListItem } from '@/lib/types';
 
 export interface RenderReaderOptions {
   /**
-   * Whether this deployment can write into the wiki. Off by default, as on an unconfigured deployment, so
-   * a test sees a send affordance only when it asks for one.
+   * Whether this deployment can write into the wiki. Off by default, as on an unconfigured
+   * deployment, so a test sees a send affordance only when it asks for one.
    */
   wikiWritable?: boolean;
   /** Whether the deployment can send to Instapaper. On by default, as in production. */

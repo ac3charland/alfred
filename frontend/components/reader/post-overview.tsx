@@ -15,10 +15,10 @@ import { WikiPicks } from './wiki-picks';
  *
  * Where this deployment can write into the wiki, Novel ideas and Evidence become checklists over
  * one selection that sends picked bullets there ({@link WikiPicks}); each section is a checklist
- * only when it has a bullet to pick, and the pair is handed over when either is. Everywhere else —
- * a deployment with no wiki token, or a post with neither — both sections, like the other two, are exactly the
- * plain lists they always were. A bullet that is empty or only whitespace is no bullet, so neither
- * view draws it: a list of nothing else reads as the honest empty line, never as a checklist with
+ * only when it has a bullet to pick, and the pair is handed over when either is. Everywhere
+ * else — a deployment with no wiki token, or a post with neither — both sections, like the other
+ * two, are exactly the plain lists they always were. A bullet that is empty or only whitespace is
+ * no bullet, so neither view draws it: a list of nothing else reads as the honest empty line, never as a checklist with
  * nothing to tick ("All sent to wiki").
  */
 

@@ -163,8 +163,8 @@ function toAccount(row: WireAccount): CommAccount {
  * Register an account, or re-register one that already exists, and hand back its current row.
  *
  * Accounts self-register on their poller's first run rather than being seeded by a migration,
- * because two alfred instances hold different accounts and a migration may not assume either's
- * data. The payload carries ONLY the columns a poller owns: cursor, health and `enabled` are
+ * because which accounts exist is deployment data, not schema — a migration may not assume it.
+ * The payload carries ONLY the columns a poller owns: cursor, health and `enabled` are
  * written by their own calls, so a daemon that re-registers on every heartbeat — which it does —
  * can never reset the account to "never polled" with the very call that reports it is working.
  */
