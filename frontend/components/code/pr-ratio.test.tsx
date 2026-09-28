@@ -169,7 +169,22 @@ describe('PrRatio', () => {
     expect(screen.queryByText('Other')).not.toBeInTheDocument();
   });
 
-  it('keeps a project listed at zero — only Other is dropped when empty', async () => {
+  it('hides a project with no PRs merged this window', async () => {
+    mockGetPrRatio.mockResolvedValue({
+      ...RATIO,
+      repos: [
+        { repo: 'ac3charland/realplay', label: 'RealPlay', count: 0, percentage: 0 },
+        { repo: 'ac3charland/alfred', label: 'Alfred', count: 9, percentage: 100 },
+      ],
+    });
+
+    renderCard();
+
+    const entries = await screen.findAllByRole('listitem');
+    expect(entries.map((entry) => entry.textContent)).toEqual(['Alfred100%(9)']);
+  });
+
+  it('drops every zero-count project, leaving only what actually shipped', async () => {
     mockGetPrRatio.mockResolvedValue({
       ...RATIO,
       total: 4,
@@ -180,11 +195,7 @@ describe('PrRatio', () => {
     renderCard();
 
     const entries = await screen.findAllByRole('listitem');
-    expect(entries.map((entry) => entry.textContent)).toEqual([
-      'RealPlay0%(0)',
-      'Alfred0%(0)',
-      'Other100%(4)',
-    ]);
+    expect(entries.map((entry) => entry.textContent)).toEqual(['Other100%(4)']);
     expect(screen.getByText(/4 total/)).toBeInTheDocument();
   });
 
