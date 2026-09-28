@@ -99,8 +99,11 @@ export async function getReaderPosts(
   const scoped =
     query.scope === 'active' ? base.is('archived_at', null) : base.not('archived_at', 'is', null);
 
+  // The insert breaks a tie on the arrival instant: every article the tick takes in at once
+  // shares the tick's instant, and an order the query leaves open is one a refetch may reshuffle.
   return scoped
     .order('received_at', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(query.limit)
     .overrideTypes<ReaderPostListItem[]>();
 }

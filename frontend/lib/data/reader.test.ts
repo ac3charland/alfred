@@ -101,6 +101,18 @@ describe('getReaderPosts', () => {
     });
   });
 
+  it('breaks a tie on the arrival instant by the newest insert, so a refetch never reshuffles', async () => {
+    // Every article one tick takes in shares the tick's instant as its `received_at`.
+    const supabase = makeSupabaseDouble({ reader_posts: { list: { data: [] } } });
+
+    await getReaderPosts(supabase as never, { scope: 'active', limit: 200 });
+
+    expect(supabase.table('reader_posts').order.mock.calls).toEqual([
+      ['received_at', { ascending: false }],
+      ['created_at', { ascending: false }],
+    ]);
+  });
+
   it('applies the given limit', async () => {
     const supabase = makeSupabaseDouble({ reader_posts: { list: { data: [] } } });
 

@@ -366,7 +366,56 @@ describe('POST /api/reader/posts/[id]/instapaper', () => {
       const response = await send();
 
       expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        error: 'Its Instapaper bookmark was deleted, and there is no link or text to save again',
+      });
       expect(supabase.table('reader_posts').update).not.toHaveBeenCalled();
+    });
+
+    it('keeps the post’s own bookmark id when the resave hands back one another post already holds', async () => {
+      // The owner deleted this article's bookmark, then saved the same URL again, and that new
+      // bookmark came in through To Reader as a post of its own. Instapaper answers the resave
+      // with that bookmark — already moved to Unread — so the send has worked; only the id can't
+      // move over without breaking the bookmark key.
+      const supabase = makeSupabaseDouble({});
+      supabase
+        .table('reader_posts')
+        .maybeSingle.mockResolvedValueOnce({ data: ARTICLE, error: null })
+        .mockResolvedValueOnce({
+          data: null,
+          error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+        })
+        .mockResolvedValueOnce({ data: savedRow({ instapaper_bookmark_id: 4242 }), error: null });
+      mockCreateClient.mockResolvedValue(supabase as never);
+      jest
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }),
+        )
+        .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 5151 }]));
+
+      const response = await send();
+
+      expect(response.status).toBe(200);
+      expect(supabase.table('reader_posts').update.mock.calls).toEqual([
+        [expect.objectContaining({ instapaper_bookmark_id: 5151 })],
+        [expect.objectContaining({ instapaper_bookmark_id: 4242 })],
+      ]);
+    });
+
+    it('does not retry a newsletter’s stamp that failed on the bookmark key', async () => {
+      const supabase = makeSupabaseDouble({});
+      supabase
+        .table('reader_posts')
+        .maybeSingle.mockResolvedValueOnce({ data: STORED, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'duplicate' } });
+      mockCreateClient.mockResolvedValue(supabase as never);
+      instapaperAnswers([{ type: 'bookmark', bookmark_id: 1 }]);
+
+      const response = await send();
+
+      expect(response.status).toBe(409);
+      expect(supabase.table('reader_posts').update).toHaveBeenCalledTimes(1);
     });
 
     it('answers a refused unarchive in the owner’s words and writes nothing', async () => {
