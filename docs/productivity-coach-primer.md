@@ -12,7 +12,7 @@ The coach should end up with a skill that can:
 1. **Post the week plan it generates** to alfred's archive, where it renders in the app's
    **Week Plan** view.
 2. **Read this ISO week's merged-PR ratio** — the split of merged pull requests across the
-   configured repos — as the key metric for the review.
+   Code module's projects — as the key metric for the review.
 3. **Read the owner's habit data** — each habit's definition, a window of logged days, and every
    derived number (streaks, hit rate, banked days, formation stage) — so "did you actually get up
    at 6 this week?" has an answer.
@@ -161,10 +161,12 @@ x-api-key: <ALFRED_API_KEY>
 
 Reading the payload:
 
-- `repos` is in the deployment's configured order, which is the order to report them in.
+- `repos` holds one entry per project in alfred's Code module — `repo` is that project's GitHub
+  repo and `label` is the project's name — oldest project first, which is the order to report
+  them in.
 - `percentage` values are whole numbers that sum to exactly 100 (largest-remainder rounding),
   so they can be quoted directly without re-deriving them from `count`.
-- `other` counts merged PRs **outside** the configured repos and is **optional** — it is absent
+- `other` counts merged PRs **outside** every project's repo and is **optional** — it is absent
   entirely on a deployment that cannot measure it. Handle the missing key.
 - `week.end` is **exclusive**.
 - A week with no merged PRs returns `total: 0` and all-zero percentages — that is a real answer,
@@ -177,7 +179,8 @@ Reading the payload:
 | --- | --- |
 | `200` | The week's split, as above. |
 | `401` | Missing, empty, or wrong key. |
-| `501` | This deployment has no PR-ratio configuration. The metric doesn't exist here — say so instead of reporting zero. |
+| `500` | alfred couldn't read its own project list. Transient; retry later. Never report this as "no PRs merged." |
+| `501` | This deployment has no PR-ratio configuration (no GitHub token, or fewer than two projects). The metric doesn't exist here — say so instead of reporting zero. |
 | `502` | GitHub could not be reached or refused the query. Transient; retry later. Never report this as "no PRs merged." |
 
 ---
