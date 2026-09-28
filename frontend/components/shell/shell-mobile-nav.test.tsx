@@ -2,7 +2,6 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
-import { SearchProvider } from '@/lib/stores/search-store';
 import { renderWithProviders } from '@/lib/test-utils';
 
 import { ShellMobileNav } from './shell-mobile-nav';
@@ -50,48 +49,19 @@ beforeEach(() => {
 });
 
 function renderMobileNav() {
-  return renderWithProviders(
-    <SearchProvider>
-      <ShellMobileNav />
-    </SearchProvider>,
-  );
+  return renderWithProviders(<ShellMobileNav />);
 }
 
 describe('ShellMobileNav', () => {
-  it('does not autofocus the search field when the drawer opens', async () => {
+  it('opens the drawer with its navigation and no search field', async () => {
     const user = userEvent.setup();
     renderMobileNav();
 
     await user.click(screen.getByRole('button', { name: 'Open navigation' }));
 
-    // The drawer's search field must not steal focus on open — auto-focusing it pops the
-    // mobile keyboard and (via onFocus) opens the results dropdown every time the drawer opens.
-    const search = await screen.findByRole('combobox', {
-      name: 'Search tasks, stories, and wiki pages',
-    });
-    expect(search).not.toHaveFocus();
-  });
-
-  it('does not open the search results dropdown when the drawer opens', async () => {
-    const user = userEvent.setup();
-    renderMobileNav();
-
-    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
-    await screen.findByRole('combobox', { name: 'Search tasks, stories, and wiki pages' });
-
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
-  });
-
-  it('still opens the drawer with its search field and navigation', async () => {
-    const user = userEvent.setup();
-    renderMobileNav();
-
-    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
-
-    expect(
-      await screen.findByRole('combobox', { name: 'Search tasks, stories, and wiki pages' }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Tasks' })).toBeInTheDocument();
+    // Search lives in the header's own full-screen sheet on phones, not in this drawer.
+    expect(await screen.findByRole('link', { name: 'Tasks' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   });
 
   it('stays open when the switcher moves to the other module, swapping in its nav', async () => {
@@ -142,7 +112,7 @@ describe('ShellMobileNav', () => {
     await user.click(screen.getByRole('link', { name: 'Tasks' }));
 
     // No segment of the switcher closes the drawer: only a destination inside a module's nav
-    // (or a search result) is an "arrived", so the rule stays simple to predict.
+    // is an "arrived", so the rule stays simple to predict.
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Navigation' })).toBeInTheDocument();
   });

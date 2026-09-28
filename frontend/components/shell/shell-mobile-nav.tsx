@@ -17,7 +17,6 @@ import { ProjectNav } from '@/components/code/project-nav';
 import { CommsNav } from '@/components/comms/comms-nav';
 import { ReaderNav } from '@/components/reader/reader-nav';
 import { ActiveModuleLabel } from '@/components/shell/active-module-label';
-import { SearchBox } from '@/components/shell/search-box';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { FolderNav } from '@/components/tasks/folder-nav';
 import { WikiNav } from '@/components/wiki/wiki-nav';
@@ -31,9 +30,11 @@ import { cn } from '@/lib/utils';
  * `activeModule` — `ProjectNav` for Code, `CommsNav` for Comms, `ReaderNav` for Reader,
  * `WikiNav` for Wiki, `FolderNav` for Tasks.
  *
- * The sheet closes when the user *arrives* somewhere — a module-nav destination or a search
- * result — but NOT when the switcher flips module: that's still navigating the menu, so the
- * drawer stays open and swaps in the other module's nav to keep drilling in from (ALF-157).
+ * Global search is not in here: on phones it has its own header icon and full-screen sheet.
+ *
+ * The sheet closes when the user *arrives* somewhere — a module-nav destination — but NOT when
+ * the switcher flips module: that's still navigating the menu, so the drawer stays open and
+ * swaps in the other module's nav to keep drilling in from (ALF-157).
  */
 export function ShellMobileNav() {
   const [open, setOpen] = React.useState(false);
@@ -53,8 +54,8 @@ export function ShellMobileNav() {
         <DialogOverlay />
         <DialogContent
           // Keep focus on the trigger when the drawer opens: Radix otherwise auto-focuses the
-          // first focusable child — the search field — which pops the mobile keyboard and (via
-          // its onFocus) opens the results dropdown every time the drawer is opened.
+          // first focusable child — the first switcher link — drawing a focus ring on it every
+          // time the menu is opened by touch.
           onOpenAutoFocus={(event) => {
             event.preventDefault();
           }}
@@ -75,8 +76,6 @@ export function ShellMobileNav() {
             {/* No `onNavigate`: switching module is a move *within* this menu, not an arrival,
                 so the drawer stays open and just re-derives which module's nav it shows. */}
             <ViewSwitcher />
-            {/* The header bar is tight on mobile, so the search field is surfaced here. */}
-            <SearchBox placement="mobile" className="w-full" onNavigate={close} />
           </div>
           <div className="overflow-y-auto px-2">
             <ModuleNav active={activeModule(pathname)} onClose={close} />

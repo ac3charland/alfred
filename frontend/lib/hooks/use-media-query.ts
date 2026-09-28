@@ -7,8 +7,8 @@ import * as React from 'react';
  * `useSyncExternalStore` — mirrors `usePrefersReducedMotion`. Returns `false` on the server
  * (no `matchMedia`) and corrects after hydration.
  *
- * Used to decide which global-search field is the active one for a viewport (the desktop header
- * field vs the mobile hamburger field), so only one renders its results popover.
+ * Used to decide which global-search surface is the active one for a viewport (the desktop header
+ * field vs the mobile full-screen sheet), so only one ever shows results.
  */
 export function useMediaQuery(query: string): boolean {
   const subscribe = React.useCallback(

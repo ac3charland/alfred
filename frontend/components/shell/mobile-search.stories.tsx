@@ -1,11 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 
-import { SearchBox } from '@/components/shell/search-box';
+import { MobileSearch } from '@/components/shell/mobile-search';
 import { CodeProvider } from '@/lib/stores/code-store';
-import { FoldersProvider } from '@/lib/stores/folders-store';
 import { SearchProvider, useSearchActions } from '@/lib/stores/search-store';
-import { TasksProvider } from '@/lib/stores/tasks-store';
 import type { CodeStory, Folder, Item, WikiPageIndexRow } from '@/lib/types';
 import { makeWikiPage, toWikiIndexRow } from '@/lib/wiki/fixtures';
 
@@ -33,10 +31,8 @@ const task = (overrides: Partial<Item>): Item => ({
   due_date: null,
   status: 'active',
   completed_at: null,
-  folder_id: null,
-  // A fixture with a folder is a filed item, so it defaults to dispatched. `...overrides` lands
-  // last, so a fixture can still state `dispatched_at: null` for a foldered Inbox item.
-  dispatched_at: overrides.folder_id == null ? null : DISPATCHED_AT,
+  folder_id: 'f1',
+  dispatched_at: DISPATCHED_AT,
   parent_id: null,
   occurrence_index: null,
   priority: null,
@@ -55,9 +51,26 @@ const task = (overrides: Partial<Item>): Item => ({
   ...overrides,
 });
 
+// Ten active "firewall" tasks overflow the per-group cap of 8, so the "+N more" line shows; the
+// completed one only appears with "Show completed" on.
+const FIREWALL_TITLES = [
+  'Firewall triage workflow',
+  'Firewall audit checklist',
+  'Fix the firewall logging gap',
+  'Review firewall rules doc',
+  'Firewall alert thresholds',
+  'Document the firewall exceptions',
+  'Firewall vendor renewal',
+  'Rotate firewall admin keys',
+  'Firewall change freeze plan',
+  'Firewall dashboard cleanup',
+];
+
 const TASKS: Item[] = [
-  task({ id: 't1', title: 'Build the communication firewall triage UI', folder_id: 'f1' }),
-  task({ id: 't2', title: 'Reply to firewall vendor email' }),
+  ...FIREWALL_TITLES.map((title, index) =>
+    task({ id: `t${String(index)}`, title, sort_order: index }),
+  ),
+  task({ id: 'done', title: 'Firewall migration (done)', status: 'completed', sort_order: 99 }),
 ];
 
 const STORY: CodeStory = {
@@ -102,48 +115,52 @@ const WIKI_PAGES: WikiPageIndexRow[] = [
   ),
 ];
 
-/** Seed the live query so the anchored dropdown renders with mixed results for the snapshot. */
-function SeedQuery({ query }: { query: string }) {
-  const { setQuery } = useSearchActions();
+/** Seed the live query (which also opens the sheet) and, optionally, "Show completed". */
+function SeedSearch({ query, showCompleted }: { query: string; showCompleted: boolean }) {
+  const { setQuery, setShowCompleted } = useSearchActions();
   React.useEffect(() => {
     setQuery(query);
-  }, [setQuery, query]);
+    setShowCompleted(showCompleted);
+  }, [setQuery, setShowCompleted, query, showCompleted]);
   return null;
 }
 
+/** The sheet with its search state seeded, so each story opens straight onto a result set. */
+function SeededMobileSearch({ query, showCompleted }: { query: string; showCompleted: boolean }) {
+  return (
+    <SearchProvider>
+      <SeedSearch query={query} showCompleted={showCompleted} />
+      <MobileSearch />
+    </SearchProvider>
+  );
+}
+
 const meta = {
-  title: 'Shell/SearchBox',
-  component: SearchBox,
+  title: 'Shell/MobileSearch',
+  component: SeededMobileSearch,
   parameters: {
     layout: 'fullscreen',
-    // The results panel is portaled to <body>, so capture the whole page, not just the field.
-    visualTest: { target: 'body' },
-    // The global preview decorator already mounts WikiProvider, seeded from `store.wiki` here —
-    // no private WikiProvider needed in this file's own decorators below.
-    store: { wiki: { pages: WIKI_PAGES } },
+    // The sheet only opens below `md`, and it's a full-screen dialog portalled to <body> — so
+    // capture the whole page at a phone viewport.
+    visualTest: { target: 'body', viewport: { width: 390, height: 844 } },
+    store: { folders: FOLDERS, tasks: TASKS, wiki: { pages: WIKI_PAGES } },
   },
+  args: { query: 'firewall', showCompleted: false },
   decorators: [
     (Story) => (
-      <FoldersProvider initialFolders={FOLDERS}>
-        <TasksProvider initialTasks={TASKS}>
-          <CodeProvider initialProjects={[]} initialEpics={[]} initialStories={[STORY]}>
-            <SearchProvider>
-              <SeedQuery query="firewall" />
-              <div className="h-[420px] w-[760px] bg-background p-3">
-                <Story />
-              </div>
-            </SearchProvider>
-          </CodeProvider>
-        </TasksProvider>
-      </FoldersProvider>
+      <CodeProvider initialProjects={[]} initialEpics={[]} initialStories={[STORY]}>
+        <Story />
+      </CodeProvider>
     ),
   ],
-  args: { className: 'w-[420px]' },
-} satisfies Meta<typeof SearchBox>;
+} satisfies Meta<typeof SeededMobileSearch>;
 
 export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** The top-bar field with its open results dropdown showing mixed Tasks + Stories + Wiki matches. */
+/** Grouped, full-width, touch-sized results — ten task matches overflow the cap of 8. */
 export const OpenWithResults: Story = {};
+
+/** "Show completed" on: the completed task joins the list, de-emphasised. */
+export const ShowCompleted: Story = { args: { showCompleted: true } };

@@ -347,6 +347,12 @@ needs no edit. Anchor the spec's fixtures to **today** rather than the dates the
 run happened to fall on, or a recapture silently redraws a different calendar. Regenerate
 any `exec`-captured `.txt` the same way and re-run `demo -- verify`.
 
+**Shoot a phone layout with `isMobile: true`, not `hasTouch` alone.** A narrow desktop-Chromium
+context (`hasTouch: true, viewport: { width: 390, … }`) paints a phantom ~15px strip over the right
+edge — even with no page overflow (`clientWidth` stays 390) — so every screenshot looks clipped on
+the right, a layout bug that isn't there. Add `isMobile: true` (overlay scrollbars, like a real
+phone); `page.mouse.wheel` still works under it.
+
 **Wait for animations to settle before `page.screenshot()`.** Playwright's
 `toBeVisible()` / `waitFor()` count an element that's still fading or zooming in
 (opacity 0 mid-transition — a Radix dialog, a toast) as *visible*, so a shot fired the

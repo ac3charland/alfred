@@ -6,10 +6,9 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
 
 /**
  * Search store — the tiny shared state behind the top-bar global search: the live `query`,
- * whether the results dropdown is `open`, and whether completed items are shown. It's a store
- * (not local `SearchBox` state) so
- * the desktop header field and the mobile hamburger field stay in sync and the ⌘P shortcut has
- * one place to drive. Mounted once in the shell, around `AppShell`.
+ * whether the results are `open`, and whether completed items are shown. It's a store (not local
+ * `SearchBox` state) so the desktop header field and the mobile search sheet stay in sync and
+ * the ⌘P shortcut has one place to drive. Mounted once in the shell, around `AppShell`.
  *
  * State and actions are split into two contexts (the house pattern) so a mutate-only consumer
  * doesn't re-render when the query changes.
