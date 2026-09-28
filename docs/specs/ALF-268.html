@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-268 — Unify PR ratio repos with actual projects in code module to synchronize name, color, etc.</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --no: #c2453b; --ok: #2e8a5b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --no: #e8776a; --ok: #3fbf82;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  pre .c { color: var(--faint); }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+  }
+  .callout ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+  .callout li { margin: .35rem 0; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  ul.checks { list-style: none; padding-left: 0; }
+  ul.checks li { padding-left: 1.6rem; position: relative; margin: .45rem 0; }
+  ul.checks li::before { content: "☐"; position: absolute; left: 0; color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+  .figcap { font-size: .83rem; color: var(--muted); margin: .4rem 0 0; }
+
+  /* ── Diagrams: document chrome, so they follow light/dark ─────────────────────── */
+  .dg .n { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+  .dg .n.hot { stroke: var(--accent); }
+  .dg .n.bad { stroke: var(--no); stroke-dasharray: 4 3; }
+  .dg .t { fill: var(--fg); font: 600 12px -apple-system, "Segoe UI", sans-serif; }
+  .dg .m { fill: var(--muted); font: 11px -apple-system, "Segoe UI", sans-serif; }
+  .dg .mono { fill: var(--muted); font: 10.5px ui-monospace, Menlo, monospace; }
+  .dg .a { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .dg .a.hot { stroke: var(--accent); }
+  .dg .x { fill: var(--no); font: 700 12px -apple-system, "Segoe UI", sans-serif; }
+  .dg .ah { fill: var(--muted); }
+  .dg .ah.hot { fill: var(--accent); }
+
+  /* ── Mockups: alfred's real tokens (frontend/app/globals.css, dark-only :root) ────
+       background / surface / border / foreground / muted-foreground / secondary,
+       accent-blue / amber / green / red / teal                  → frontend/app/globals.css
+       card (rounded-lg, 1px border, bg-surface, p-4, gap-3)    → components/atoms/surface-card.tsx
+       card title (text-sm 500) + detail (text-xs muted)        → components/atoms/surface-card.tsx
+       bar (h-2.5, rounded-full, bg-border track)               → components/atoms/ratio-bar.tsx
+       legend (flex-wrap justify-between gap-x-6 gap-y-1;
+               row gap-2 text-sm; dot h-2 w-2 rounded-full)      → components/code/pr-ratio.tsx
+       project colours, badge (/15 fill) + text classes         → lib/code/project-color.ts
+       nav row (gap-2.5 rounded-sm px-3 py-2 text-sm muted)     → lib/ui/nav-link-class.ts
+       nav section label (text-xs 600 tracking-widest upper /70) → components/code/project-nav.tsx
+       key pill (Badge: rounded-full px-2 py-0.5 text-xs 500 + font-mono)
+                                                                 → components/atoms/badge.tsx
+       focus ring (ring-2 ring-accent-blue ring-offset-1 offset-background) → lib/ui/nav-link-class.ts
+       hover (group-hover:underline on the label)               → components/code/dashboard/queue-widget.tsx */
+  .app {
+    --background: #0a0e17; --foreground: #e8edf5; --surface: #0f1626; --border: #1e2a3f;
+    --muted-foreground: #8a96a8; --secondary: #1e2a3f;
+    --blue: #60a5fa; --amber: #f0b429; --green: #34d399; --red: #f87171; --teal: #4fd1e0;
+    background: var(--background); color: var(--foreground);
+    font: 14px/1.45 "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    border-radius: 10px; padding: 16px; margin: 1rem 0; overflow-x: auto;
+  }
+  .app code { background: none; padding: 0; color: inherit; font-size: inherit; }
+  .app .lbl { font: 600 11px/1 ui-monospace, monospace; color: #6b7682; text-transform: uppercase;
+              letter-spacing: .08em; margin: 0 0 10px; }
+  .app .lbl.bad { color: var(--red); }
+  .app .lbl.good { color: var(--green); }
+  .app .shell { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .app .rail { width: 224px; flex: 0 0 224px; background: var(--surface); border: 1px solid var(--border);
+               border-radius: 8px; padding: 8px; }
+  .app .sec { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; }
+  .app .sec span { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+                   color: rgba(138,150,168,.7); }
+  .app .nl { display: flex; align-items: center; gap: 10px; border-radius: 4px; padding: 8px 12px;
+             font-size: 14px; color: var(--muted-foreground); }
+  .app .nl svg { width: 14px; height: 14px; flex: 0 0 14px; }
+  .app .nl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .app .pill { margin-left: auto; border-radius: 9999px; padding: 2px 8px; font-size: 12px; font-weight: 500;
+               line-height: 16px; font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .app .t-blue { color: var(--blue); } .app .t-amber { color: var(--amber); }
+  .app .p-blue { background: rgba(96,165,250,.15); color: var(--blue); }
+  .app .p-amber { background: rgba(240,180,41,.15); color: var(--amber); }
+  .app .scard { flex: 1 1 300px; min-width: 280px; display: flex; flex-direction: column; gap: 12px;
+                border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 16px; }
+  .app .shead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+  .app .shead h4 { margin: 0; font-size: 14px; font-weight: 500; color: var(--foreground);
+                   text-transform: none; letter-spacing: 0; }
+  .app .shead p { margin: 0; font-size: 12px; color: var(--muted-foreground); }
+  .app .bar { display: flex; height: 10px; width: 100%; overflow: hidden; border-radius: 9999px; background: var(--border); }
+  .app .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center;
+                 justify-content: space-between; gap: 4px 24px; }
+  .app .legend li, .app .lrow { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .app a.lrow { color: inherit; text-decoration: none; border-radius: 4px; }
+  .app .dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 9999px; }
+  .app .fg { color: var(--foreground); }
+  .app .pct { color: var(--foreground); font-weight: 500; }
+  .app .cnt { color: var(--muted-foreground); }
+  .app .hov .fg { text-decoration: underline; }
+  .app .foc { box-shadow: 0 0 0 1px var(--background), 0 0 0 3px var(--blue); }
+  .app .b-blue { background: var(--blue); } .app .b-amber { background: var(--amber); }
+  .app .b-teal { background: var(--teal); } .app .b-muted { background: var(--muted-foreground); }
+  .app .note { font-size: 12px; color: var(--muted-foreground); margin: 10px 0 0; line-height: 1.5; }
+  .app .note b { color: var(--foreground); font-weight: 500; }
+  .app .states { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .app .st { border: 1px dashed var(--border); border-radius: 8px; padding: 12px; display: flex;
+             flex-direction: column; gap: 10px; }
+  .app .st .cap { font-size: 11.5px; color: var(--muted-foreground); line-height: 1.45; margin: 0; }
+  .app .cursor { font-size: 12px; margin-left: 2px; color: var(--foreground); }
+  @media (max-width: 560px) { .app .rail { width: 100%; flex-basis: 100%; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Refinement spec · Code module · Software Factory dashboard</p>
+<h1>ALF-268 — Unify PR ratio repos with actual projects in code module to synchronize name, color, etc.</h1>
+<p class="sub">Make the Code module's <code>projects</code> table the <em>only</em> list of measured repos.
+Both Dashboard widgets then measure exactly the project repos. On the PR-ratio card, each project's
+segment and dot use that project's own name and color, and its legend entry opens the project's board.</p>
+
+<div class="card teal">
+  <strong>In one paragraph.</strong> Today the PR ratio and the lines-changed chart measure the repos
+  listed in the <code>PR_RATIO_REPOS</code> env var, labelled by the var's <code>:Label</code> suffix and
+  colored teal → blue → amber → green in env order. The rest of the Code module colors each project
+  blue → amber → green → red → teal by creation order. The same repo can therefore show a different
+  name and a different color on one screen. This change retires <code>PR_RATIO_REPOS</code>. Both routes
+  read the repo set from <code>projects</code> (oldest first). Each ratio label is the project's
+  <code>name</code>, and the card colors every segment with <code>projectColorFor</code>, the same rule
+  that colors ProjectNav, the Backlog and the task chips. Each project's legend row also becomes a link
+  to <code>/code/&lt;projectId&gt;</code>. The API response keeps its shape.
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2>1 · Context &amp; problem</h2>
+
+<p>The Dashboard (<code>components/code/dashboard.tsx</code>) shows two GitHub-derived ornaments above the
+queue digests: <code>LocVelocity</code> and <code>PrRatio</code>. Both get their repos from
+<code>getGithubRepoConfig()</code> in <code>frontend/lib/github/config.ts</code>, which parses
+<code>PR_RATIO_REPOS</code> (<code>owner/name:Label,…</code>). The header comment there says this was on purpose:</p>
+
+<pre><code><span class="c">// config.ts, today</span>
+ * The measured repos are env-configured rather than read from the `projects` table on
+ * purpose: not every repo the owner ships to runs through the Software Factory, and adding
+ * one as a project row would surface it in every project nav, board and epic picker in the
+ * Code module.</code></pre>
+
+<p>The drawback is two lists that describe the same repos and don't know about each other:</p>
+
+<div class="scroll"><table>
+  <tr><th></th><th><code>PR_RATIO_REPOS</code> → PR ratio card</th><th><code>projects</code> → ProjectNav, Backlog, boards, task chips</th></tr>
+  <tr><td>Name</td><td>the <code>:Label</code> suffix, else the repo name</td><td><code>projects.name</code></td></tr>
+  <tr><td>Color</td><td><code>TONES[index % 4]</code> = teal, blue, amber, green by <strong>env order</strong> (<code>pr-ratio.tsx</code>)</td><td><code>projectColorFor</code> = blue, amber, green, red, teal by <strong>creation order</strong> (<code>lib/code/project-color.ts</code>)</td></tr>
+  <tr><td>Membership</td><td>edited in Vercel, needs a redeploy</td><td>created in the app (New Project dialog / inbox dispatch)</td></tr>
+</table></div>
+
+<p>So on one screen, Alfred can show amber with an <code>ALF</code> pill in the sidebar and blue in the ratio
+bar just beside it (see the <a href="#mockup">mockup</a>). Adding a project doesn't add it to the
+ratio, and a renamed <code>:Label</code> doesn't match the project name. The ticket asks for one list.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2>2 · Decisions taken with the owner up front</h2>
+
+<div class="scroll"><table>
+  <tr><th>Question</th><th>Decision</th><th>Consequence</th></tr>
+  <tr><td>Where does the measured repo set come from?</td>
+      <td><strong>Projects only.</strong> Every row in <code>projects</code> is one measured repo. <code>PR_RATIO_REPOS</code> is deleted.</td>
+      <td>This reverses the documented config.ts decision. A repo you ship to that isn't a project counts only toward <strong>Other</strong>, and only when <code>PR_RATIO_AUTHORS</code> is set.</td></tr>
+  <tr><td>Does the lines-changed chart follow the same set?</td>
+      <td><strong>Yes.</strong> Both widgets keep sharing one config.</td>
+      <td>Both Dashboard measurements keep covering the same repos, as they do today.</td></tr>
+  <tr><td>How is a project's color decided?</td>
+      <td><strong>The existing rule:</strong> <code>projectColorFor(projects, id)</code>, by creation order. No schema change.</td>
+      <td>Colors reshuffle when a project is created or deleted, as they already do in ProjectNav and the Backlog.</td></tr>
+  <tr><td>What else ("etc.") is shared?</td>
+      <td><strong>Legend links to the project.</strong> Each project's legend row opens its board.</td>
+      <td>Not chosen: matching ProjectNav's order, a key pill in the legend, and adding key/color to the API. See <a href="#oos">Out of scope</a>.</td></tr>
+</table></div>
+
+<p><strong>Bar order</strong> follows from the color decision rather than being a new choice. Segments run left
+to right in project <strong>creation order</strong>, the same order <code>projectColorFor</code> indexes, so the bar
+always reads blue, amber, green, red, teal. This is <em>not</em> ProjectNav's order, which ranks projects by
+their best Backlog priority (<code>useRankedProjects</code>). It keeps the bar stable week to week while the ranking moves.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2>3 · Proposed change</h2>
+
+<h3>3.1 Where names and colors come from, before and after</h3>
+
+<div class="grid2">
+<figure style="margin:0">
+<svg class="dg" viewBox="0 0 440 290" role="img" aria-label="Before: PR_RATIO_REPOS feeds both GitHub widgets with its own labels and colors, while the projects table feeds ProjectNav and the rest of the module with different ones.">
+  <defs>
+    <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <text class="t" x="10" y="18">BEFORE: two lists</text>
+
+  <rect class="n bad" x="10" y="36" width="170" height="64" rx="8"/>
+  <text class="t" x="22" y="58">Vercel env</text>
+  <text class="mono" x="22" y="76">PR_RATIO_REPOS</text>
+  <text class="m" x="22" y="92">owner/name:Label, env order</text>
+
+  <rect class="n" x="10" y="190" width="170" height="64" rx="8"/>
+  <text class="t" x="22" y="212">projects table</text>
+  <text class="m" x="22" y="230">name · key · repo_owner/name</text>
+  <text class="m" x="22" y="246">created_at</text>
+
+  <rect class="n" x="260" y="30" width="170" height="46" rx="8"/>
+  <text class="t" x="272" y="50">PR ratio card</text>
+  <text class="m" x="272" y="67">:Label · TONES by env order</text>
+
+  <rect class="n" x="260" y="90" width="170" height="40" rx="8"/>
+  <text class="t" x="272" y="115">Lines-changed chart</text>
+
+  <rect class="n" x="260" y="190" width="170" height="64" rx="8"/>
+  <text class="t" x="272" y="212">ProjectNav · Backlog</text>
+  <text class="t" x="272" y="228">boards · task chips</text>
+  <text class="m" x="272" y="246">name · color by creation order</text>
+
+  <path class="a" d="M180 58 L258 53" marker-end="url(#ar1)"/>
+  <path class="a" d="M180 78 L258 108" marker-end="url(#ar1)"/>
+  <path class="a" d="M180 222 L258 222" marker-end="url(#ar1)"/>
+
+  <text class="x" x="330" y="165" text-anchor="middle">≠ same repo: two names, two colors</text>
+  <path class="a" d="M345 78 L345 150" stroke-dasharray="3 3"/>
+  <path class="a" d="M345 172 L345 188" stroke-dasharray="3 3"/>
+</svg>
+<p class="figcap">The ratio card and the sidebar sit on one screen but take name and color from unrelated sources.</p>
+</figure>
+
+<figure style="margin:0">
+<svg class="dg" viewBox="0 0 440 290" role="img" aria-label="After: the projects table is the one source. Both GitHub routes read it; the ratio card joins its response back to the project store for color and link.">
+  <defs>
+    <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah hot" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <text class="t" x="10" y="18">AFTER: one list</text>
+
+  <rect class="n hot" x="10" y="110" width="150" height="64" rx="8"/>
+  <text class="t" x="22" y="132">projects table</text>
+  <text class="m" x="22" y="150">oldest first</text>
+  <text class="m" x="22" y="166">(created_at asc)</text>
+
+  <rect class="n" x="10" y="30" width="150" height="50" rx="8"/>
+  <text class="m" x="22" y="46">env (unchanged)</text>
+  <text class="mono" x="22" y="61">GITHUB_TOKEN</text>
+  <text class="mono" x="22" y="74">PR_RATIO_AUTHORS</text>
+
+  <rect class="n" x="200" y="30" width="230" height="60" rx="8"/>
+  <text class="t" x="212" y="50">/api/code/pr-ratio</text>
+  <text class="t" x="212" y="66">/api/code/loc-velocity</text>
+  <text class="m" x="212" y="82">label = project.name</text>
+
+  <rect class="n" x="200" y="200" width="230" height="64" rx="8"/>
+  <text class="t" x="212" y="220">CodeProvider · useProjects()</text>
+  <text class="m" x="212" y="237">seeded at the (code) layout</text>
+  <text class="m" x="212" y="253">→ ProjectNav, Backlog, chips…</text>
+
+  <rect class="n hot" x="200" y="116" width="230" height="58" rx="8"/>
+  <text class="t" x="212" y="136">PR ratio card</text>
+  <text class="m" x="212" y="152">match repo → projectColorFor</text>
+  <text class="m" x="212" y="166">+ projectBoardHref link</text>
+
+  <path class="a hot" d="M160 128 L198 70" marker-end="url(#ar2)"/>
+  <path class="a" d="M160 56 L198 56" marker-end="url(#ar3)"/>
+  <path class="a hot" d="M160 160 L198 222" marker-end="url(#ar2)"/>
+  <path class="a hot" d="M315 90 L315 114" marker-end="url(#ar2)"/>
+  <path class="a hot" d="M315 200 L315 176" marker-end="url(#ar2)"/>
+</svg>
+<p class="figcap">The routes and the store read the same table, so the card's join by <code>owner/name</code> always finds its project.</p>
+</figure>
+</div>
+
+<h3>3.2 Server: the repo set comes from <code>projects</code></h3>
+
+<p><strong><code>lib/github/config.ts</code> stops reading repos from env.</strong> It becomes a pure function of
+env (token, authors) plus the project rows it is given, so it stays DB-free and unit-testable. The
+<code>REPO_ENTRY</code> regex, <code>parseRepo</code> and every mention of <code>PR_RATIO_REPOS</code> are removed.
+<code>RatioRepo</code> keeps its shape, so <code>pr-ratio.ts</code> and <code>loc.ts</code> need no logic change.</p>
+
+<pre><code><span class="c">/** The project columns a measurement needs, in the order the caller read them. */</span>
+export type MeasuredProject = Pick&lt;Project, 'name' | 'repo_owner' | 'repo_name'&gt;;
+
+<span class="c">/** Token + ≥ 1 project, else undefined. Never throws. Repos keep the given order. */</span>
+export function getGithubRepoConfig(projects: readonly MeasuredProject[]): GithubRepoConfig | undefined {
+  const token = envValue(process.env.GITHUB_TOKEN);
+  if (token === undefined || projects.length &lt; MINIMUM_REPOS) return undefined;
+  const repos = projects.map((p) =&gt; ({ owner: p.repo_owner, name: p.repo_name, label: p.name }));
+  return { repos, authors: splitList(envValue(process.env.PR_RATIO_AUTHORS)), token };
+}
+
+<span class="c">/** Same config under the ratio's stricter minimum (≥ 2 projects), unchanged in meaning. */</span>
+export function getPrRatioConfig(projects: readonly MeasuredProject[]): PrRatioConfig | undefined</code></pre>
+
+<p>Rewrite the header comment. The measured set is now the project set by definition; say that a repo which
+isn't a project lands in Other (when <code>PR_RATIO_AUTHORS</code> anchors it) and that <code>GITHUB_TOKEN</code>
+must be able to read every project's repo. Keep the note that <code>PR_RATIO_AUTHORS</code> under-describes its
+scope but isn't renamed.</p>
+
+<p><strong>A reader that takes the resolved client</strong> is added to <code>lib/data/code.ts</code> next to
+<code>getProjectList</code>. That file's readers build their own cookie client, which an API-key caller doesn't
+have, so this one takes the client as a parameter:</p>
+
+<pre><code><span class="c">/** Every project's repo, oldest first: the order `projectColorFor` indexes, so bar order = color order. */</span>
+export async function listProjectRepos(supabase: SupabaseClient&lt;Database&gt;) {
+  return supabase
+    .from('projects')
+    .select('name, repo_owner, repo_name')
+    .order('created_at', { ascending: true });
+}</code></pre>
+
+<p><strong>Both routes switch from <code>withSessionOrApiKey</code> to <code>resolveIngestClient</code></strong>, the way
+<code>/api/habits</code> does: a valid ingest key gets the admin client and a browser session gets its own RLS client.
+The API-key contract doesn't change for callers. Sketch for the ratio route (<code>loc-velocity</code> mirrors it
+with <code>getGithubRepoConfig</code> and no query params):</p>
+
+<pre><code>export async function GET(request: Request): Promise&lt;Response&gt; {
+  const client = await resolveIngestClient(request);
+  if (client instanceof Response) return client;               <span class="c">// 401, as before</span>
+
+  const query = parseQueryParams(request, prRatioQuerySchema);
+  if (query instanceof Response) return query;
+
+  const { data: projects, error } = await listProjectRepos(client.supabase);
+  if (error) {
+    const { status, message } = mapSupabaseError(error);       <span class="c">// NOT 501: the card must not go silent</span>
+    return jsonError(status, message);
+  }
+
+  const config = getPrRatioConfig(projects);
+  if (!config) return jsonError(501, 'PR ratio is not configured');
+  <span class="c">// …unchanged: rollingWeekWindow → fetchPrRatio → 502 | 200</span>
+}</code></pre>
+
+<div class="scroll"><table>
+  <tr><th>Condition</th><th><code>GET /api/code/pr-ratio</code></th><th><code>GET /api/code/loc-velocity</code></th><th>Card shows</th></tr>
+  <tr><td>No session and no valid key</td><td>401</td><td>401</td><td>error note</td></tr>
+  <tr><td>Projects read fails</td><td>mapped status</td><td>mapped status</td><td>error note</td></tr>
+  <tr><td><code>GITHUB_TOKEN</code> unset</td><td>501</td><td>501</td><td>nothing (no gap)</td></tr>
+  <tr><td>0 projects</td><td>501</td><td>501</td><td>nothing</td></tr>
+  <tr><td>1 project</td><td>501 (a split needs ≥ 2)</td><td>200</td><td>velocity only</td></tr>
+  <tr><td>≥ 2 projects</td><td>200</td><td>200 (202 while GitHub computes)</td><td>both cards</td></tr>
+  <tr><td>Any GitHub query fails</td><td>502 (whole response discarded, unchanged)</td><td>502</td><td>error note</td></tr>
+</table></div>
+
+<p>The Other query is unchanged in form. <code>buildOtherQuery</code> already subtracts every measured repo, so it now
+subtracts every project repo.</p>
+
+<p><strong><code>withSessionOrApiKey</code> is deleted.</strong> After this change these two routes are its only callers.
+Remove it from <code>lib/api/auth.ts</code>, remove its cases from <code>auth.test.ts</code>, and reword the two comments in
+<code>app/api/habits/route.ts</code> and <code>app/api/weekly-plans/[id]/items/route.ts</code> that name it as the thing
+<em>not</em> to use, so they don't point at a deleted symbol.</p>
+
+<h3>3.3 API contract: same shape, new meaning</h3>
+
+<p><code>PrRatioResponse</code> and <code>LocVelocityResponse</code> keep every field and type. Only what the values mean changes.
+That matters because the productivity coach's <code>alfred</code> skill reads <code>/api/code/pr-ratio</code> with the ingest key.</p>
+
+<div class="scroll"><table>
+  <tr><th>Field</th><th>Before</th><th>After</th></tr>
+  <tr><td><code>repos[]</code> membership and order</td><td><code>PR_RATIO_REPOS</code>, env order</td><td>every project, <code>created_at</code> ascending</td></tr>
+  <tr><td><code>repos[].repo</code></td><td><code>owner/name</code> from env</td><td><code>${repo_owner}/${repo_name}</code> from the project row</td></tr>
+  <tr><td><code>repos[].label</code></td><td><code>:Label</code>, else the repo name</td><td><code>projects.name</code></td></tr>
+  <tr><td><code>other</code></td><td>merged PRs outside the env repos</td><td>merged PRs outside every project repo</td></tr>
+  <tr><td>velocity <code>repos</code></td><td>env repos</td><td>project repos, same order</td></tr>
+</table></div>
+
+<p>Update the doc comments in <code>lib/types.ts</code> ("configured order" → project creation order; <code>label</code> is the
+project's name) and the endpoint description in <code>docs/productivity-coach-primer.md</code> ("the configured
+repos" → the Code module's projects). No field is added: <code>key</code>/<code>color</code>/<code>projectId</code> were
+offered and declined (§2). The card gets what it needs from the store.</p>
+
+<h3>3.4 Client: the card takes color and link from the project</h3>
+
+<p><strong><code>lib/code/project-color.ts</code></strong> gains a solid-fill class map for the bar segment and legend dot. The
+existing badge, text and chip maps are all translucent or text-only. Write the strings out in full, as the file's
+own comment requires, so the Tailwind v4 scanner keeps them:</p>
+
+<pre><code>const PROJECT_FILL_CLASS: Record&lt;ProjectColor, string&gt; = {
+  blue: 'bg-accent-blue',
+  amber: 'bg-accent-amber',
+  green: 'bg-accent-green',
+  red: 'bg-accent-red',
+  teal: 'bg-accent-teal',
+};
+
+<span class="c">/** Solid fill for a project's ratio-bar segment and legend dot. */</span>
+export function projectFillClasses(color: ProjectColor): string { return PROJECT_FILL_CLASS[color]; }</code></pre>
+
+<p><strong><code>components/code/pr-ratio.tsx</code></strong> drops <code>TONES</code>/<code>toneFor</code>. It reads
+<code>useProjects()</code>; the Dashboard already mounts it under <code>CodeProvider</code>, and <code>QueueWidget</code> does
+the same. <code>toEntries</code> joins each response entry to its project by <code>owner/name</code>. This lookup can't
+collide: <code>projects</code> has <code>unique (repo_owner, repo_name)</code>, and the server builds <code>repo</code> from
+those same columns, so the strings match exactly with no case folding.</p>
+
+<pre><code>function toEntries(ratio: PrRatioResponse, projects: Project[]): RatioEntry[] {
+  const byRepo = new Map(projects.map((p) =&gt; [`${p.repo_owner}/${p.repo_name}`, p]));
+
+  const entries: RatioEntry[] = ratio.repos.map((repo) =&gt; {
+    const project = byRepo.get(repo.repo);
+    return {
+      key: repo.repo,
+      label: repo.label,                                            <span class="c">// = project.name, server-side</span>
+      count: repo.count,
+      percentage: repo.percentage,
+      tone: projectFillClasses(projectColorFor(projects, project?.id ?? null)),
+      href: project ? projectBoardHref(project.id) : undefined,
+    };
+  });
+  <span class="c">// Other: unchanged — OTHER_TONE (bg-muted-foreground), dropped at zero, href undefined.</span>
+  return entries;
+}</code></pre>
+
+<ul>
+  <li><strong>Legend rows with an <code>href</code></strong> render their contents (dot, name, percent, count) inside a
+      <code>ViewLink</code> to <code>/code/&lt;projectId&gt;</code>. It is a real <code>&lt;a href&gt;</code>, so a plain click navigates
+      client-side and a modified click opens a new tab, as on the Dashboard's digest panes. Classes:
+      <code>group flex items-center gap-2 rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue
+      focus-visible:ring-offset-1 focus-visible:ring-offset-background</code>. The label span adds
+      <code>group-hover:underline</code>, the hover cue <code>QueueWidget</code>'s header uses. The <code>&lt;li&gt;</code> and its layout are unchanged.</li>
+  <li><strong>The Other row stays plain text.</strong> It isn't one place, so it has nowhere to link.</li>
+  <li><strong>The bar is not interactive.</strong> <code>RatioBar</code> is unchanged: presentation only, one <code>role="img"</code> with its label.</li>
+  <li><strong>Unmatched entry</strong> (a project created on another device after this page seeded its store): no link, and
+      the color falls back to <code>projectColorFor</code>'s documented default for an unknown id (blue). This is rare, and it
+      fixes itself on the next full load. It's handled only so the card can't crash or show a dead link.</li>
+  <li>Accessible label (<code>describeSplit</code>), zero-total, loading, error and unconfigured states: unchanged.</li>
+</ul>
+
+<h3 id="mockup">3.5 Mockup</h3>
+
+<p class="small">Drawn in the app's real tokens and component classes (sources listed in this file's <code>&lt;style&gt;</code>).
+The sample deployment has two projects: <strong>RealPlay</strong> (<code>RPL</code>, created first → blue) and
+<strong>Alfred</strong> (<code>ALF</code>, created second → amber). <code>PR_RATIO_AUTHORS</code> is set, so Other is measured. The
+sidebar lists Alfred first because it holds the higher Backlog rank. The <em>colors</em> follow creation order, which
+is why the bar still runs RealPlay → Alfred.</p>
+
+<div class="app">
+  <p class="lbl bad">Before: the sidebar and the ratio disagree</p>
+  <div class="shell">
+    <div class="rail">
+      <div class="sec"><span>Projects</span></div>
+      <div class="nl"><svg class="t-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span class="nm">Alfred</span><span class="pill p-amber">ALF</span></div>
+      <div class="nl"><svg class="t-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span class="nm">RealPlay</span><span class="pill p-blue">RPL</span></div>
+    </div>
+    <div class="scard">
+      <div class="shead"><h4>PRs merged in the last 7 days</h4><p>Jul 17 – Jul 24 · 12 total</p></div>
+      <div class="bar"><div class="b-teal" style="width:25%"></div><div class="b-blue" style="width:50%"></div><div class="b-muted" style="width:25%"></div></div>
+      <ul class="legend">
+        <li><span class="dot b-teal"></span><span class="fg">RealPlay</span><span class="pct">25%</span><span class="cnt">(3)</span></li>
+        <li><span class="dot b-blue"></span><span class="fg">alfred</span><span class="pct">50%</span><span class="cnt">(6)</span></li>
+        <li><span class="dot b-muted"></span><span class="fg">Other</span><span class="pct">25%</span><span class="cnt">(3)</span></li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">Alfred is <b>amber</b> in the sidebar and <b>blue</b> in the bar; RealPlay is <b>blue</b> beside
+  <b>teal</b>. Labels come from <code>PR_RATIO_REPOS</code>, not the project rows: <code>ac3charland/alfred</code> was listed
+  without a <code>:Label</code> suffix, so the bar shows the repo name <b>alfred</b>, not the project name <b>Alfred</b>.</p>
+</div>
+
+<div class="app">
+  <p class="lbl good">After: each project looks the same everywhere</p>
+  <div class="shell">
+    <div class="rail">
+      <div class="sec"><span>Projects</span></div>
+      <div class="nl"><svg class="t-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span class="nm">Alfred</span><span class="pill p-amber">ALF</span></div>
+      <div class="nl"><svg class="t-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span class="nm">RealPlay</span><span class="pill p-blue">RPL</span></div>
+    </div>
+    <div class="scard">
+      <div class="shead"><h4>PRs merged in the last 7 days</h4><p>Jul 17 – Jul 24 · 12 total</p></div>
+      <div class="bar"><div class="b-blue" style="width:25%"></div><div class="b-amber" style="width:50%"></div><div class="b-muted" style="width:25%"></div></div>
+      <ul class="legend">
+        <li><a class="lrow hov" href="#mockup"><span class="dot b-blue"></span><span class="fg">RealPlay</span><span class="pct">25%</span><span class="cnt">(3)</span><span class="cursor" aria-hidden="true">↖</span></a></li>
+        <li><a class="lrow" href="#mockup"><span class="dot b-amber"></span><span class="fg">Alfred</span><span class="pct">50%</span><span class="cnt">(6)</span></a></li>
+        <li><span class="dot b-muted"></span><span class="fg">Other</span><span class="pct">25%</span><span class="cnt">(3)</span></li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">RealPlay is shown <b>hovered</b> (label underlined): its row is a link to <code>/code/&lt;RealPlay id&gt;</code>,
+  and so is Alfred's. Other is unchanged: muted, last, and not a link.</p>
+</div>
+
+<div class="app">
+  <p class="lbl">Legend row states</p>
+  <div class="states">
+    <div class="st">
+      <a class="lrow" href="#mockup"><span class="dot b-amber"></span><span class="fg">Alfred</span><span class="pct">50%</span><span class="cnt">(6)</span></a>
+      <p class="cap">Project, at rest: looks exactly like today's row, with the project's color.</p>
+    </div>
+    <div class="st">
+      <a class="lrow hov" href="#mockup"><span class="dot b-amber"></span><span class="fg">Alfred</span><span class="pct">50%</span><span class="cnt">(6)</span></a>
+      <p class="cap">Project, hover: the name underlines. Click → that project's board.</p>
+    </div>
+    <div class="st">
+      <a class="lrow foc" href="#mockup"><span class="dot b-amber"></span><span class="fg">Alfred</span><span class="pct">50%</span><span class="cnt">(6)</span></a>
+      <p class="cap">Project, keyboard focus: the app's blue focus ring (the nav-link ring).</p>
+    </div>
+    <div class="st">
+      <div class="lrow"><span class="dot b-muted"></span><span class="fg">Other</span><span class="pct">25%</span><span class="cnt">(3)</span></div>
+      <p class="cap">Other: plain text, no hover, not focusable.</p>
+    </div>
+    <div class="st">
+      <div class="lrow"><span class="dot b-blue"></span><span class="fg">Lumen</span><span class="pct">0%</span><span class="cnt">(0)</span></div>
+      <p class="cap">Unmatched project (created on another device since load): blue fallback, not a link. Kept at zero like any project.</p>
+    </div>
+  </div>
+</div>
+
+<p class="small">Fidelity (exact padding, underline offset) is the implementer's call. What must appear: project-colored
+segments and dots, project names as labels, project rows as links with the hover and focus cues above,
+and Other unchanged.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2>4 · Consequences &amp; deploy notes</h2>
+
+<div class="callout">
+  <strong>Projects-only makes the project list a measurement setting too.</strong> Read these before merging.
+  <ul>
+    <li><strong>The PAT must cover every project's repo.</strong> If a project's repo is private and <code>GITHUB_TOKEN</code>
+        can't read it, that repo's search or stats call fails. The existing "a partial ratio is a wrong ratio" rule then
+        turns <em>both</em> Dashboard cards into their error note until the PAT's repository list is widened. The README
+        must say so next to <code>GITHUB_TOKEN</code>. Degrading per repo instead is out of scope.</li>
+    <li><strong>Check the current <code>PR_RATIO_REPOS</code> before deploying.</strong> Any repo in it that isn't a project
+        leaves its own segment. It moves into Other when <code>PR_RATIO_AUTHORS</code> is set and drops out of the bar when it
+        isn't. If that repo should keep its own segment, create it as a project first.</li>
+    <li><strong>Labels change.</strong> Env labels (e.g. <code>RealPlay</code>) are replaced by <code>projects.name</code>. Project
+        names can't be edited (<code>PATCH /api/projects/[id]</code> accepts only <code>description</code>), so a label that reads badly
+        stays that way until renaming projects becomes its own feature.</li>
+    <li><strong>After deploying,</strong> delete <code>PR_RATIO_REPOS</code> from the Vercel project. Nothing reads it, so leaving it
+        breaks nothing but misleads the next person who reads the env list.</li>
+  </ul>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2>5 · Files</h2>
+
+<div class="scroll"><table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>frontend/lib/github/config.ts</code></td><td>Repos from passed project rows; drop env repo parsing; rewrite header comment (§3.2).</td></tr>
+  <tr><td><code>frontend/lib/data/code.ts</code></td><td>Add <code>listProjectRepos(supabase)</code>.</td></tr>
+  <tr><td><code>frontend/app/api/code/pr-ratio/route.ts</code></td><td><code>resolveIngestClient</code> → read projects → config (§3.2).</td></tr>
+  <tr><td><code>frontend/app/api/code/loc-velocity/route.ts</code></td><td>Same.</td></tr>
+  <tr><td><code>frontend/lib/api/auth.ts</code></td><td>Delete <code>withSessionOrApiKey</code>.</td></tr>
+  <tr><td><code>frontend/app/api/habits/route.ts</code>, <code>…/weekly-plans/[id]/items/route.ts</code></td><td>Comments only: stop naming the deleted wrapper.</td></tr>
+  <tr><td><code>frontend/lib/code/project-color.ts</code></td><td>Add <code>projectFillClasses</code>.</td></tr>
+  <tr><td><code>frontend/components/code/pr-ratio.tsx</code></td><td>Project color and legend links (§3.4); update the header and <code>toEntries</code> comments.</td></tr>
+  <tr><td><code>frontend/components/code/pr-ratio.stories.tsx</code></td><td>Wrap in <code>CodeProvider</code> seeded with projects whose repos match the stubbed payloads (the <code>needs-human-action.stories.tsx</code> pattern); fix the comment naming <code>PR_RATIO_REPOS</code>.</td></tr>
+  <tr><td><code>frontend/__image_snapshots__/code-prratio--*.png</code></td><td>Re-baseline the ones whose colors move (at least <code>ready</code>, <code>with-other</code>, <code>other-empty</code>) through the storybook skill's capture-then-approve flow. Never edit them by hand.</td></tr>
+  <tr><td><code>frontend/lib/types.ts</code></td><td>Doc comments on <code>PrRatioResponse</code> / <code>PrRatioRepoCount</code> / <code>LocVelocityResponse</code> (§3.3).</td></tr>
+  <tr><td><code>frontend/types/env.d.ts</code></td><td>Remove <code>PR_RATIO_REPOS</code>.</td></tr>
+  <tr><td><code>README.md</code></td><td>Env table: remove <code>PR_RATIO_REPOS</code>; <code>GITHUB_TOKEN</code> must read every project's repo; <code>PR_RATIO_AUTHORS</code>'s Other now means outside every project repo.</td></tr>
+  <tr><td><code>docs/productivity-coach-primer.md</code></td><td>Endpoint 2's description: repos are the Code module's projects and <code>label</code> is the project name.</td></tr>
+  <tr><td><code>frontend/lib/github/pr-ratio.ts</code>, <code>loc.ts</code></td><td>Comments only, wherever "configured repos" should now say project repos. No logic change.</td></tr>
+</table></div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2>6 · Tests (red → green)</h2>
+
+<div class="scroll"><table>
+  <tr><th>Suite</th><th>What it must pin</th></tr>
+  <tr><td><code>lib/github/config.test.ts</code> (rewrite)</td><td>undefined without a token; undefined with 0 projects; repos keep the given order with <code>label = name</code> and <code>owner/name</code> from the row; <code>getPrRatioConfig</code> needs ≥ 2 projects; authors still come from <code>PR_RATIO_AUTHORS</code>; <strong>a set <code>PR_RATIO_REPOS</code> is ignored</strong>.</td></tr>
+  <tr><td><code>app/api/code/pr-ratio/route.test.ts</code></td><td>401 without session or key; the key path reads with the admin client and the session path with the session client; the projects query orders by <code>created_at</code> ascending; response <code>repos</code> follow that order with project names; 501 at &lt; 2 projects and without a token; a projects read error gives a mapped non-501 status; 502 unchanged.</td></tr>
+  <tr><td><code>app/api/code/loc-velocity/route.test.ts</code></td><td>Same auth and read cases; 501 at 0 projects; 200 at 1; 202 and 502 unchanged.</td></tr>
+  <tr><td><code>lib/api/auth.test.ts</code></td><td>Remove the <code>withSessionOrApiKey</code> cases along with the function.</td></tr>
+  <tr><td><code>lib/code/project-color.test.ts</code></td><td><code>projectFillClasses</code> returns the full <code>bg-accent-&lt;color&gt;</code> string for each palette color.</td></tr>
+  <tr><td><code>components/code/pr-ratio.test.tsx</code></td><td>Rendered inside <code>CodeProvider</code>: the 2nd-created project's dot has the amber fill (not <code>TONES[1]</code>); each project row is a link to <code>/code/&lt;id&gt;</code>; Other is not a link and keeps the muted tone; an unmatched repo renders unlinked with the blue fallback; existing order, zero-row, Other, accessible-label and state cases still pass.</td></tr>
+  <tr><td><code>e2e/code-dashboard.spec.ts</code></td><td>Seed a second project so the two stubbed repos match two projects (<code>makeProject</code> with distinct <code>repo_name</code>/<code>key</code>); clicking a project's legend entry lands on <code>/code/&lt;id&gt;</code> with its board visible; Other has no link. Keep the network stubs, since no test may reach GitHub.</td></tr>
+  <tr><td>Storybook visual snapshots</td><td>The moved <code>code-prratio--*</code> baselines are the visual regression proof that the segments now use project colors.</td></tr>
+</table></div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2>7 · Demo evidence</h2>
+
+<p>This change moves committed visual snapshots and changes a live screen. Capture its evidence following the
+<strong><code>showboat</code> skill's evidence-matching rules</strong> and the <strong><code>storybook</code> skill's</strong>
+capture-then-approve flow for the moved baselines; those skills are the source of truth, and this spec doesn't
+restate them. The demo should let a reviewer see the before/after contrast in §3.5 on the real Dashboard, with the
+sidebar in frame.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2 id="oos">8 · Out of scope</h2>
+
+<ul>
+  <li><strong>A stored per-project color or a color picker.</strong> The owner chose the existing creation-order rule.</li>
+  <li><strong>Matching the bar to ProjectNav's order.</strong> Not chosen; the bar uses creation order (§2).</li>
+  <li><strong>A key pill in the legend</strong> and <strong>adding <code>key</code>/<code>color</code>/<code>projectId</code> to the API</strong>. Not chosen.</li>
+  <li><strong>Clickable bar segments.</strong> Only the legend links.</li>
+  <li><strong>Excluding a project from measurement</strong> (e.g. a <code>measured</code> flag), or <strong>measuring a non-project repo</strong> as its own segment. With projects as the only source, neither exists.</li>
+  <li><strong>Degrading per repo</strong> when the PAT can't read one project's repo, and <strong>checking PAT coverage</strong> in the New Project flow (§4).</li>
+  <li><strong>A ratio for a one-project deployment</strong> (one project vs Other). The ≥ 2-repo minimum stays as it is.</li>
+  <li><strong>Renaming</strong> <code>PR_RATIO_AUTHORS</code> / <code>GITHUB_TOKEN</code>, or <strong>renaming projects</strong>.</li>
+</ul>
+
+<h2>9 · Open questions</h2>
+<p>None. The scope questions (source, LOC chart, color rule, extras) were settled with the owner during refinement (§2).</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<h2>10 · Acceptance criteria</h2>
+
+<ul class="checks">
+  <li>Nothing in <code>frontend/</code> reads <code>PR_RATIO_REPOS</code>. It is gone from <code>env.d.ts</code>, <code>config.ts</code>, the README and the stories.</li>
+  <li><code>GET /api/code/pr-ratio</code> measures exactly the repos in <code>projects</code>, in <code>created_at</code> ascending order, with <code>label</code> = the project's <code>name</code> and <code>repo</code> = <code>repo_owner/repo_name</code>. The response shape is unchanged.</li>
+  <li><code>GET /api/code/loc-velocity</code> measures the same project repos, and its <code>repos</code> lists them in the same order.</li>
+  <li>Both routes accept a browser session <em>or</em> the ingest API key (401 with neither). The key path reads projects with the admin client.</li>
+  <li>501 when <code>GITHUB_TOKEN</code> is unset, or with fewer than 2 projects (ratio) / 0 projects (velocity). A failed projects read returns a mapped error status, never 501.</li>
+  <li>The Other bucket, when <code>PR_RATIO_AUTHORS</code> is set, excludes every project's repo.</li>
+  <li>Each project's bar segment and legend dot use the same color <code>projectColorFor</code> gives that project in ProjectNav, via <code>projectFillClasses</code>. <code>TONES</code> is gone.</li>
+  <li>Each project's legend row is a link to <code>/code/&lt;projectId&gt;</code>. A plain click opens that board client-side; hover underlines the name; keyboard focus shows the blue focus ring.</li>
+  <li>The Other row is unchanged: muted tone, last, dropped at zero, not a link.</li>
+  <li>A response entry with no matching project in the store renders unlinked in the blue fallback and doesn't throw.</li>
+  <li>A project with zero merged PRs is still listed. The loading, zero-total, error and unconfigured states behave as before.</li>
+  <li><code>withSessionOrApiKey</code> and its tests are removed, and no comment still names it.</li>
+  <li>The moved <code>code-prratio--*</code> baselines are regenerated through the approve flow, and the stories render inside <code>CodeProvider</code>.</li>
+  <li>The README documents that <code>GITHUB_TOKEN</code> must read every project's repo. The productivity-coach primer describes the repos as the Code module's projects.</li>
+  <li>A demo doc captures the change per the <code>showboat</code> skill, and <code>npm run check</code> is green.</li>
+</ul>
+
+</div>
+</body>
+</html>
