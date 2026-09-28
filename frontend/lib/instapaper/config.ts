@@ -7,7 +7,7 @@ import type { OAuthCredentials } from './oauth';
  * is signed with, and where the API lives.
  *
  * All four credentials, or the feature is off: `getInstapaperConfig()` is null, the send route
- * answers 501 and the Reader draws its Send verb disabled. That is the Work instance and local dev
+ * answers 501 and the Reader draws its Send verb disabled. That is local dev
  * — a deployment that sends nothing to anyone's Instapaper. Each var is read by its literal name
  * (never a computed key), mirroring `lib/github/config.ts`, and none is `NEXT_PUBLIC_`: the
  * consumer secret and token secret together are the owner's Instapaper account.

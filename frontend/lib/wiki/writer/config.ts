@@ -2,11 +2,10 @@
  * The wiki writer's configuration, read from environment.
  *
  * Alfred writes into the knowledge wiki's repo through GitHub's Git Data API with a fine-grained
- * PAT scoped to that one repo. The token is set on the Personal deployment only; the Work
- * instance runs the identical code with no token, so `getWikiConfig()` answers `undefined` there
- * and every send affordance disappears (the layout seeds `writable: false`). The token is
+ * PAT scoped to that one repo. Without the token (e.g. local dev) `getWikiConfig()` answers
+ * `undefined` and every send affordance disappears (the layout seeds `writable: false`). The token is
  * server-only: it is never `NEXT_PUBLIC_`, never seeded to the client, and never echoed in an
- * error or a log line. Each var is read by its literal name, mirroring `lib/instance.ts`.
+ * error or a log line. Each var is read by its literal name.
  */
 import 'server-only';
 

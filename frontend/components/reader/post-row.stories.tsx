@@ -15,7 +15,7 @@ import { PostRow } from './post-row';
  * its two reasons, and a sent post in the archive. Each is its own `ReaderProvider` seed (rather
  * than the shared shell seed) so its verbs have something real to act on in an isolated story.
  * `parameters.instapaperConfigured` says whether the story's deployment can send; it defaults to
- * true, the Personal instance.
+ * true, as in production.
  *
  * The `Wiki…` stories are the Novel-ideas checklist on a deployment that can write into the
  * wiki (the preview's `store.wiki.writable`), one per state it draws: nothing ticked beside a
@@ -291,7 +291,7 @@ export const SendNothingToSend: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** Send disabled: this deployment has no Instapaper credentials (the Work instance, local dev). */
+/** Send disabled: this deployment has no Instapaper credentials (local dev). */
 export const SendNotConfigured: Story = {
   args: { selected: true },
   parameters: {
@@ -524,7 +524,7 @@ export const WikiEvidenceOnly: Story = {
 };
 
 /**
- * The same post with the wiki NOT connected (the Work instance, `writable: false`): Novel ideas
+ * The same post with the wiki NOT connected (no wiki token, `writable: false`): Novel ideas
  * and Evidence are the plain bulleted lists, with no tick boxes, no Select all and no selection
  * bar. Its one evidence bullet is the one this baseline was first captured with, so the capture
  * proves the plain view did not move.

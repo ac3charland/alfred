@@ -23,7 +23,7 @@ function post(
   return row;
 }
 
-/** Not writable — the Work instance. No provider needed: nothing here reads a store. */
+/** Not writable — no wiki token configured. No provider needed: nothing here reads a store. */
 function renderPlain(overview: ReaderOverview) {
   return render(<PostOverview overview={overview} post={post(overview)} writable={false} />);
 }

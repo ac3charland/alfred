@@ -96,7 +96,7 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   reader?: {
     posts?: ReaderPostListItem[];
     health?: ReaderHealth;
-    /** Whether the deployment can send to Instapaper. Defaults to true — the Personal instance. */
+    /** Whether the deployment can send to Instapaper. Defaults to true, as in production. */
     instapaperConfigured?: boolean;
   };
   /** The Reader's roster seed: the publications and the off-roster senders offered beside them. */
@@ -106,7 +106,7 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   };
   /**
    * The wiki's page index and sync row, plus what the shell knows about the repo. The default —
-   * no pages, no repo, not writable — is the Work instance, and it is what keeps every existing
+   * no pages, no repo, not writable — is an unconfigured wiki, and it is what keeps every existing
    * test rendering exactly as before: a not-writable wiki shows no send affordance anywhere.
    */
   wiki?: {

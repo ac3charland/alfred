@@ -67,7 +67,7 @@ describe('getInstapaperConfig', () => {
     expect(getInstapaperConfig()).toBeNull();
   });
 
-  it('is null with nothing set at all — the Work instance and local dev', () => {
+  it('is null with nothing set at all — local dev', () => {
     withEnvironment({});
     expect(getInstapaperConfig()).toBeNull();
   });

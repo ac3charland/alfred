@@ -7,7 +7,7 @@ import type { WikiWriteError } from './commit';
  * items"), so the two never drift on wording — the Reader store toasts these sentences verbatim.
  */
 
-/** No writer on this deployment (the Work instance, or Personal with a var unset) — 501. */
+/** No writer on this deployment (a var unset) — 501. */
 export function wikiUnconfiguredResponse(): Response {
   return jsonError(501, 'The wiki is not configured on this deployment');
 }

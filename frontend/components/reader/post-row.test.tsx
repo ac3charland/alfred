@@ -31,7 +31,7 @@ function post(
   return listItem;
 }
 
-/** Render on a deployment with no Instapaper credentials — the Work instance, local dev. */
+/** Render on a deployment with no Instapaper credentials — local dev. */
 function renderReaderUnconfigured(ui: React.ReactElement) {
   return renderReader(ui, [], undefined, { instapaperConfigured: false });
 }
