@@ -2,7 +2,13 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 import { expect, userEvent, within } from 'storybook/test';
 
-import { NO_READER_HEALTH, makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
+import {
+  NO_READER_HEALTH,
+  makeReaderArticle,
+  makeReaderOverview,
+  makeReaderPost,
+} from '@/lib/reader/fixtures';
+import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
@@ -36,6 +42,20 @@ function post(
   return listItem;
 }
 
+/** An article from Instapaper's To Reader folder, as the list carries it. */
+function article(overrides: Parameters<typeof makeReaderArticle>[0] = {}): ReaderPostListItem {
+  const {
+    text: _text,
+    html: _html,
+    ...listItem
+  } = makeReaderArticle({
+    received_at: '2026-09-18T08:30:00.000Z',
+    instapaper_bookmark_id: 1_900_001,
+    ...overrides,
+  });
+  return listItem;
+}
+
 const withFrame: Decorator = (Story) => (
   <div data-testid="row-frame" className="w-[640px] bg-background p-2">
     <Story />
@@ -52,7 +72,9 @@ const withProviders: Decorator = (Story, context) => {
         initialHealth={NO_READER_HEALTH}
         instapaperConfigured={configured ?? true}
       >
-        <Story />
+        <ReaderSettingsProvider initialPublications={[]} initialCandidates={[]}>
+          <Story />
+        </ReaderSettingsProvider>
       </ReaderProvider>
     </ToastProvider>
   );
@@ -546,4 +568,50 @@ export const WikiNotConnected: Story = {
     await expect(canvas.queryByRole('checkbox')).not.toBeInTheDocument();
     await expect(canvas.queryByRole('button', { name: /Select all/ })).not.toBeInTheDocument();
   },
+};
+
+/**
+ * An article the To Reader leg took in from Instapaper and summarised: its site as the eyebrow,
+ * "via Instapaper" closing the meta line, and every verb a newsletter row has.
+ */
+export const InstapaperSummarised: Story = {
+  args: {
+    post: article({
+      id: 'p-article-done',
+      summary_state: 'done',
+      gist:
+        'Argues that falling street-level noise in six US downtowns tracks lost foot traffic ' +
+        'rather than new ordinances, using city sensor data from 2019–2026. The sensor analysis ' +
+        'is new; the policy prescription is the familiar one. Read the data section; skip the ' +
+        'last third.',
+      overview: makeReaderOverview(),
+      model: 'claude-sonnet-5',
+      prompt_version: 1,
+      summarized_at: '2026-09-18T08:31:00.000Z',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** Just taken in: the post is leased and waiting on its summary, with the newsletter's floor. */
+export const InstapaperArriving: Story = {
+  args: { post: article({ id: 'p-article-arriving', summary_state: 'pending' }) },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** Instapaper had no text for it (error 1550): filed failed, with its Original link still there. */
+export const InstapaperNoText: Story = {
+  args: {
+    post: article({
+      id: 'p-article-no-text',
+      title: 'A page Instapaper couldn’t parse',
+      site: 'example.org',
+      canonical_url: 'https://example.org/interactive/a-page',
+      word_count: 0,
+      html_extracted: false,
+      summary_state: 'failed',
+      last_error: 'no readable body',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };

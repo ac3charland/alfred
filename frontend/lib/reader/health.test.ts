@@ -11,6 +11,7 @@ import {
   READER_STALL_MINUTES,
   RETRYABLE_ATTEMPTS,
   ceilingReached,
+  instapaperHealth,
   readerBanner,
   summariserStalled,
   waitingPosts,
@@ -584,5 +585,86 @@ describe('readerBanner', () => {
         NOW,
       ),
     ).toBeNull();
+  });
+});
+
+describe('instapaperHealth', () => {
+  it('is hidden with no row, and with a row the leg has never stamped', () => {
+    expect(instapaperHealth()).toEqual({ state: 'hidden' });
+    // Unconfigured, or not yet run: both leave the three columns null.
+    expect(instapaperHealth(makeReaderHealth('live'))).toEqual({ state: 'hidden' });
+  });
+
+  it('is live when the last success is newer than the last error', () => {
+    expect(
+      instapaperHealth(makeReaderHealth('live', { instapaper_last_success_at: ago(3) })),
+    ).toEqual({ state: 'live', checkedAt: ago(3) });
+    expect(
+      instapaperHealth(
+        makeReaderHealth('live', {
+          instapaper_last_success_at: ago(3),
+          instapaper_last_error: "Instapaper didn't answer",
+          instapaper_last_error_at: ago(8),
+        }),
+      ),
+    ).toEqual({ state: 'live', checkedAt: ago(3) });
+  });
+
+  it('is erroring when the error is newer, and counts from the last success, never the error', () => {
+    expect(
+      instapaperHealth(
+        makeReaderHealth('live', {
+          instapaper_last_success_at: ago(35),
+          instapaper_last_error: "Instapaper rejected alfred's credentials.",
+          instapaper_last_error_at: ago(2),
+        }),
+      ),
+    ).toEqual({
+      state: 'erroring',
+      // The terminator goes: the note that quotes it supplies its own.
+      error: "Instapaper rejected alfred's credentials",
+      errorAt: ago(2),
+      since: ago(35),
+    });
+  });
+
+  it('is erroring with no success to count from when the leg has never succeeded', () => {
+    expect(
+      instapaperHealth(
+        makeReaderHealth('live', {
+          instapaper_last_error: 'there is no “To Reader” folder in Instapaper',
+          instapaper_last_error_at: ago(2),
+        }),
+      ),
+    ).toEqual({
+      state: 'erroring',
+      error: 'there is no “To Reader” folder in Instapaper',
+      errorAt: ago(2),
+      since: null,
+    });
+  });
+
+  it('reads a tie as erroring: the error was written after the success it followed', () => {
+    const at = ago(5);
+    expect(
+      instapaperHealth(
+        makeReaderHealth('live', {
+          instapaper_last_success_at: at,
+          instapaper_last_error: "Instapaper didn't answer",
+          instapaper_last_error_at: at,
+        }),
+      ),
+    ).toMatchObject({ state: 'erroring' });
+  });
+
+  it('words an error with no words of its own', () => {
+    expect(
+      instapaperHealth(
+        makeReaderHealth('live', {
+          instapaper_last_error: '  ',
+          instapaper_last_error_at: ago(2),
+        }),
+      ),
+    ).toMatchObject({ state: 'erroring', error: "Instapaper didn't answer" });
   });
 });

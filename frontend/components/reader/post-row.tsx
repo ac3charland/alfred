@@ -12,6 +12,8 @@ import { readerHotkeyAction } from '@/lib/reader/hotkeys';
 import { postOpenLink } from '@/lib/reader/open-link';
 import { isReaderOverview } from '@/lib/reader/overview';
 import { sendUnavailable } from '@/lib/reader/send';
+import { VIA_INSTAPAPER, isInstapaperPost, postEyebrow } from '@/lib/reader/source';
+import { useReaderPublications } from '@/lib/stores/reader-settings-store';
 import { useInstapaperConfigured, useReaderActions } from '@/lib/stores/reader-store';
 import { useWikiConfig } from '@/lib/stores/wiki-store';
 import type { ReaderPostListItem, ReaderSummaryState } from '@/lib/types';
@@ -43,7 +45,9 @@ import {
 /**
  * One row of the reading list: publication, arrival, title, gist — and once opened, the
  * overview. Its primary verb sends the post to the owner's Instapaper, which is where they read;
- * the original stays one quiet link away.
+ * the original stays one quiet link away. An article that came in through Instapaper's To Reader
+ * folder is the same row with its site as the eyebrow and "via Instapaper" closing the meta line —
+ * every verb, Send included, is the one a newsletter row has.
  *
  * The row owns its own exit animation (archiving collapses before the mutation commits, so the
  * list doesn't jump), its own overview toggle (local `useState`; no cross-row coordination
@@ -174,6 +178,7 @@ export function PostRow({
 }: PostRowProperties) {
   const actions = useReaderActions();
   const instapaperConfigured = useInstapaperConfigured();
+  const publications = useReaderPublications();
   const { writable } = useWikiConfig();
   const prefersReducedMotion = usePrefersReducedMotion();
   const [overviewOpen, setOverviewOpen] = React.useState(false);
@@ -407,9 +412,10 @@ export function PostRow({
               }}
             >
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className={eyebrowClass}>{post.author ?? 'Unknown publication'}</span>
+                <span className={eyebrowClass}>{postEyebrow(post, publications)}</span>
                 <span className={metaClass}>
                   {formatPostDate(post.received_at, now)} · {formatReadMinutes(post.word_count)}
+                  {isInstapaperPost(post) && ` · ${VIA_INSTAPAPER}`}
                 </span>
                 <PostMarkers state={state} sent={post.instapaper_sent_at !== null} />
               </div>

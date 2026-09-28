@@ -5,6 +5,7 @@ import { makeCommAccount } from '@/lib/comms/fixtures';
 import {
   NO_READER_HEALTH,
   READER_HEALTH_FIXTURE_NOW,
+  makeInstapaperHealth,
   makeReaderHealth,
   makeReaderPost,
   resetReaderFixtureClock,
@@ -285,5 +286,60 @@ describe('ReaderHeader — holding the mailbox dot through a reconnect (ALF-252)
     renderHeader({ health: liveHealth(), account }, [], secondsAgo(30));
 
     expect(screen.getByRole('img', { name: `${GMAIL_LABEL} · stale` })).toBeInTheDocument();
+  });
+});
+
+describe('ReaderHeader — the Instapaper dot', () => {
+  it('draws no dot, and says nothing, while the leg has never stamped its columns', () => {
+    renderHeader({ health: liveHealth(), account: LIVE_ACCOUNT });
+
+    expect(screen.queryByRole('img', { name: /^Instapaper/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Instapaper/)).not.toBeInTheDocument();
+  });
+
+  it('draws a live third dot with when To Reader was last checked, and no note', () => {
+    renderHeader({ health: liveHealth(makeInstapaperHealth('live', NOW)), account: LIVE_ACCOUNT });
+
+    const dots = screen.getByTestId('reader-health-dots');
+    expect(dots.lastElementChild).toHaveTextContent('Instapaper');
+    expect(screen.getByRole('img', { name: 'Instapaper · live' })).toBeInTheDocument();
+    expect(screen.getByTitle('Instapaper — To Reader last checked 3m ago')).toBeInTheDocument();
+    expect(screen.queryByTestId('reader-health-notes')).not.toBeInTheDocument();
+  });
+
+  it('goes red after a success, with the time since that success and one red note', () => {
+    renderHeader({
+      health: liveHealth(makeInstapaperHealth('erroring', NOW)),
+      account: LIVE_ACCOUNT,
+    });
+
+    expect(screen.getByRole('img', { name: 'Instapaper · erroring' })).toBeInTheDocument();
+    expect(screen.getByText('· 35m ago')).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Instapaper — Instapaper rejected alfred's credentials (2m ago)"),
+    ).toBeInTheDocument();
+    const note = screen.getByText(
+      "Instapaper stopped taking articles from To Reader 35m ago — Instapaper rejected alfred's " +
+        "credentials. Articles wait there until it's fixed.",
+    );
+    expect(note).toHaveClass('text-accent-red');
+    // Newsletters still flow: the summariser is not blamed for Instapaper's refusal.
+    expect(screen.getByText('summariser · live')).toBeInTheDocument();
+  });
+
+  it('shows no time on the dot when the leg has never succeeded, and says it can’t take articles', () => {
+    renderHeader({
+      health: liveHealth(makeInstapaperHealth('refused', NOW)),
+      account: LIVE_ACCOUNT,
+    });
+
+    expect(screen.getByRole('img', { name: 'Instapaper · erroring' })).toBeInTheDocument();
+    expect(screen.queryByText(/^· \d+[mhd] ago$/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Instapaper can't take articles from To Reader — there is no “To Reader” folder in " +
+          "Instapaper. Articles wait there until it's fixed.",
+      ),
+    ).toBeInTheDocument();
   });
 });

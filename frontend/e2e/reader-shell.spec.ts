@@ -35,7 +35,9 @@ test.describe('the Reader module shell', () => {
     await expect(page.getByRole('heading', { level: 2, name: 'Reader' })).toBeVisible();
     await expect(page.getByText('Nothing new to read.')).toBeVisible();
     await expect(
-      page.getByText('Newsletters from your publications land here as they arrive, summarised.'),
+      page.getByText(
+        'Newsletters from your publications, and articles you move to To Reader in Instapaper, land here summarised.',
+      ),
     ).toBeVisible();
   });
 

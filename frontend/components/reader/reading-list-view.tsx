@@ -73,7 +73,7 @@ export function ReadingListView({ now: pinnedNow }: ReadingListViewProperties) {
       {posts.length === 0 ? (
         <EmptyState
           title="Nothing new to read."
-          description="Newsletters from your publications land here as they arrive, summarised."
+          description="Newsletters from your publications, and articles you move to To Reader in Instapaper, land here summarised."
         />
       ) : (
         <PostList posts={posts} now={now} />

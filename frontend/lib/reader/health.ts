@@ -293,3 +293,44 @@ export function readerBanner(
 
   return null;
 }
+
+/**
+ * The To Reader leg's own health, apart from the summariser's: Instapaper refusing alfred leaves
+ * newsletters flowing, and a summariser dot that went amber over it would send the owner to the
+ * wrong fix.
+ *
+ * `hidden` is a row the leg has never stamped — a deployment without the Instapaper secrets, or
+ * one where the leg has not run yet — so an owner who never set it up is never shown a dot for it.
+ * `live` is a last pass newer than the last failure. Anything else is `erroring`, including a
+ * blip: until the API paths have been checked against Instapaper itself, a wrongly wired call is
+ * the likelier failure, and one cadence of red is the price of never having it go unseen.
+ *
+ * `since` is the last success, never the error's own stamp: a failing leg re-stamps its error
+ * every tick, so the error's age would always read "just now". Null when the leg never succeeded.
+ * There is no staleness rule of its own — the summariser's dot already says when the tick stopped.
+ */
+export type InstapaperHealthReading =
+  | { state: 'hidden' }
+  | { state: 'live'; checkedAt: string }
+  | { state: 'erroring'; error: string; errorAt: string; since: string | null };
+
+/** What the leg is put down to when it recorded a failure but no words for it. */
+const INSTAPAPER_SILENT_CAUSE = "Instapaper didn't answer";
+
+/** The To Reader leg's state, read off the health row. Clock-free: nothing here ages. */
+export function instapaperHealth(health?: ReaderHealth): InstapaperHealthReading {
+  const success = health?.instapaper_last_success_at ?? null;
+  const errorAt = health?.instapaper_last_error_at ?? null;
+  if (errorAt === null) {
+    return success === null ? { state: 'hidden' } : { state: 'live', checkedAt: success };
+  }
+  if (success !== null && Date.parse(success) > Date.parse(errorAt)) {
+    return { state: 'live', checkedAt: success };
+  }
+  return {
+    state: 'erroring',
+    error: recordedWords(health?.instapaper_last_error ?? null) ?? INSTAPAPER_SILENT_CAUSE,
+    errorAt,
+    since: success,
+  };
+}

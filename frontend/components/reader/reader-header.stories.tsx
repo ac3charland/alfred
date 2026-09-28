@@ -2,15 +2,21 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 
 import { makeCommAccount } from '@/lib/comms/fixtures';
-import { READER_HEALTH_FIXTURE_NOW, makeReaderHealth, makeReaderPost } from '@/lib/reader/fixtures';
+import {
+  READER_HEALTH_FIXTURE_NOW,
+  makeInstapaperHealth,
+  makeReaderHealth,
+  makeReaderPost,
+} from '@/lib/reader/fixtures';
 import type { ReaderPostListItem } from '@/lib/types';
 
 import { ReaderHeader } from './reader-header';
 
 /**
  * One story per state the health block can be in — healthy, mailbox dead, summariser stalled,
- * daily ceiling spent, summariser never run. Everything here is read against `now`, so the
- * instant is pinned: an unpinned header would bake the capture day into its own baseline.
+ * daily ceiling spent, summariser never run — and the To Reader leg's third dot: live, refused
+ * after a success, and refused before any. Everything here is read against `now`, so the instant
+ * is pinned: an unpinned header would bake the capture day into its own baseline.
  */
 
 const NOW = new Date(READER_HEALTH_FIXTURE_NOW);
@@ -137,5 +143,39 @@ export const ReconnectingHoldsLive: Story = {
       },
     },
     reconcileStartedAt: new Date(NOW.getTime() - 2000).toISOString(),
+  },
+};
+
+/** The To Reader leg is working: a third green dot, and nothing more to say. */
+export const InstapaperLive: Story = {
+  args: {
+    snapshot: {
+      health: makeReaderHealth('live', makeInstapaperHealth('live', NOW), NOW),
+      account: LIVE_ACCOUNT,
+    },
+  },
+};
+
+/**
+ * Instapaper started refusing alfred 35 minutes after its last clean pass: the third dot goes red
+ * with how long it has been, and one red line says what waits where. The summariser stays green —
+ * newsletters are still flowing.
+ */
+export const InstapaperErroring: Story = {
+  args: {
+    snapshot: {
+      health: makeReaderHealth('live', makeInstapaperHealth('erroring', NOW), NOW),
+      account: LIVE_ACCOUNT,
+    },
+  },
+};
+
+/** The leg has failed since it first ran — here, no "To Reader" folder: red, and no time. */
+export const InstapaperNeverSucceeded: Story = {
+  args: {
+    snapshot: {
+      health: makeReaderHealth('live', makeInstapaperHealth('refused', NOW), NOW),
+      account: LIVE_ACCOUNT,
+    },
   },
 };
