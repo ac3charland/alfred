@@ -38,6 +38,7 @@ wearing a diff.
 4. **Check the blast radius.** Run the repo's own checks and re-read the diff for anything else
    that relied on the broken behaviour.
 5. **Open the PR** with the `alfred` block below.
+6. **Get it reviewed.** Once the PR is open, run the adversarial-review skill's round.
 
 ## The PR
 
