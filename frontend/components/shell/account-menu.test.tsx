@@ -19,9 +19,7 @@ describe('AccountMenu', () => {
   it('renders an icon-only trigger labelled "Account menu" with no instance label', () => {
     render(<AccountMenu email="ac3charland@gmail.com" />);
 
-    const trigger = screen.getByRole('button', { name: 'Account menu' });
-    // One deployment now: the trigger names no instance (the old Personal/Work pill is gone).
-    expect(trigger).toHaveTextContent('');
+    expect(screen.getByRole('button', { name: 'Account menu' })).toHaveTextContent('');
   });
 
   it('reveals the signed-in email when opened', async () => {
