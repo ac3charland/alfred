@@ -1,33 +1,39 @@
-import { getGithubRepoConfig, getPrRatioConfig } from './config';
+import { type MeasuredProject, getGithubRepoConfig, getPrRatioConfig } from './config';
 
-/** The three vars this feature reads. `undefined` means "unset on this deployment". */
-interface PrRatioEnvironment {
+/** The two vars this feature still reads. `undefined` means "unset on this deployment". */
+interface GithubEnvironment {
   GITHUB_TOKEN?: string | undefined;
-  PR_RATIO_REPOS?: string | undefined;
   PR_RATIO_AUTHORS?: string | undefined;
 }
 
-const CONFIGURED: PrRatioEnvironment = {
+const CONFIGURED: GithubEnvironment = {
   GITHUB_TOKEN: 'ghp_test',
-  PR_RATIO_REPOS: 'ac3charland/realplay:RealPlay,ac3charland/alfred:Alfred',
   PR_RATIO_AUTHORS: 'ac3charland',
 };
+
+const REALPLAY: MeasuredProject = {
+  name: 'RealPlay',
+  repo_owner: 'ac3charland',
+  repo_name: 'realplay',
+};
+const ALFRED: MeasuredProject = { name: 'Alfred', repo_owner: 'ac3charland', repo_name: 'alfred' };
+
+/** Two project rows, oldest first — the order the routes read them in. */
+const PROJECTS: MeasuredProject[] = [REALPLAY, ALFRED];
 
 const originalEnvironment = { ...process.env };
 
 /**
- * Give this feature exactly the vars the case declares, and nothing else. The three are
- * cleared first because the ambient environment may well carry a `GITHUB_TOKEN` of its own (a
- * dev machine, CI) — an "unset" case would otherwise inherit it and assert nothing.
+ * Give this feature exactly the vars the case declares, and nothing else. Both are cleared
+ * first because the ambient environment may well carry a `GITHUB_TOKEN` of its own (a dev
+ * machine, CI) — an "unset" case would otherwise inherit it and assert nothing.
  */
-function withEnvironment(values: PrRatioEnvironment): void {
+function withEnvironment(values: GithubEnvironment): void {
   process.env = { ...originalEnvironment };
   delete process.env.GITHUB_TOKEN;
-  delete process.env.PR_RATIO_REPOS;
   delete process.env.PR_RATIO_AUTHORS;
 
   if (values.GITHUB_TOKEN !== undefined) process.env.GITHUB_TOKEN = values.GITHUB_TOKEN;
-  if (values.PR_RATIO_REPOS !== undefined) process.env.PR_RATIO_REPOS = values.PR_RATIO_REPOS;
   if (values.PR_RATIO_AUTHORS !== undefined) process.env.PR_RATIO_AUTHORS = values.PR_RATIO_AUTHORS;
 }
 
@@ -36,10 +42,10 @@ describe('getPrRatioConfig', () => {
     process.env = { ...originalEnvironment };
   });
 
-  it('parses repos with their display labels, in configured order', () => {
+  it('measures every given project, in the given order, labelled by project name', () => {
     withEnvironment(CONFIGURED);
 
-    expect(getPrRatioConfig()).toEqual({
+    expect(getPrRatioConfig(PROJECTS)).toEqual({
       token: 'ghp_test',
       authors: ['ac3charland'],
       repos: [
@@ -49,76 +55,67 @@ describe('getPrRatioConfig', () => {
     });
   });
 
-  it('falls the label back to the repo name when the :Label suffix is omitted', () => {
-    withEnvironment({ ...CONFIGURED, PR_RATIO_REPOS: 'ac3charland/realplay,ac3charland/alfred' });
+  it('keeps the caller’s order rather than sorting — it is the bar’s left-to-right order', () => {
+    withEnvironment(CONFIGURED);
 
-    expect(getPrRatioConfig()?.repos).toEqual([
-      { owner: 'ac3charland', name: 'realplay', label: 'realplay' },
-      { owner: 'ac3charland', name: 'alfred', label: 'alfred' },
+    expect(getPrRatioConfig([ALFRED, REALPLAY])?.repos.map((repo) => repo.label)).toEqual([
+      'Alfred',
+      'RealPlay',
     ]);
   });
 
-  it('trims whitespace around entries, labels and author logins', () => {
-    withEnvironment({
-      ...CONFIGURED,
-      PR_RATIO_REPOS: '  ac3charland/realplay : RealPlay , ac3charland/alfred : Alfred ',
-      PR_RATIO_AUTHORS: ' ac3charland , claude-bot ',
-    });
+  it('is unconfigured with a single project — a one-repo ratio is meaningless', () => {
+    withEnvironment(CONFIGURED);
 
-    const config = getPrRatioConfig();
-    expect(config?.repos).toEqual([
-      { owner: 'ac3charland', name: 'realplay', label: 'RealPlay' },
-      { owner: 'ac3charland', name: 'alfred', label: 'Alfred' },
-    ]);
-    expect(config?.authors).toEqual(['ac3charland', 'claude-bot']);
+    expect(getPrRatioConfig([REALPLAY])).toBeUndefined();
   });
 
-  it('skips a malformed entry rather than failing the whole config', () => {
-    withEnvironment({
-      ...CONFIGURED,
-      PR_RATIO_REPOS: 'not-a-repo,ac3charland/realplay:RealPlay,,ac3charland/alfred:Alfred',
-    });
+  it('is unconfigured with no projects at all', () => {
+    withEnvironment(CONFIGURED);
 
-    expect(getPrRatioConfig()?.repos).toEqual([
-      { owner: 'ac3charland', name: 'realplay', label: 'RealPlay' },
-      { owner: 'ac3charland', name: 'alfred', label: 'Alfred' },
-    ]);
-  });
-
-  it('is unconfigured when fewer than two repos survive parsing — a one-repo ratio is meaningless', () => {
-    withEnvironment({ ...CONFIGURED, PR_RATIO_REPOS: 'ac3charland/alfred:Alfred' });
-
-    expect(getPrRatioConfig()).toBeUndefined();
-  });
-
-  it('is unconfigured when the repo list is missing entirely', () => {
-    withEnvironment({ ...CONFIGURED, PR_RATIO_REPOS: undefined });
-
-    expect(getPrRatioConfig()).toBeUndefined();
+    expect(getPrRatioConfig([])).toBeUndefined();
   });
 
   it('is unconfigured when the token is missing', () => {
     withEnvironment({ ...CONFIGURED, GITHUB_TOKEN: undefined });
 
-    expect(getPrRatioConfig()).toBeUndefined();
+    expect(getPrRatioConfig(PROJECTS)).toBeUndefined();
   });
 
-  it('treats a blank value as unset', () => {
+  it('treats a blank token as unset', () => {
     withEnvironment({ ...CONFIGURED, GITHUB_TOKEN: ' '.repeat(3) });
 
-    expect(getPrRatioConfig()).toBeUndefined();
+    expect(getPrRatioConfig(PROJECTS)).toBeUndefined();
+  });
+
+  it('trims whitespace around author logins', () => {
+    withEnvironment({ ...CONFIGURED, PR_RATIO_AUTHORS: ' ac3charland , claude-bot ' });
+
+    expect(getPrRatioConfig(PROJECTS)?.authors).toEqual(['ac3charland', 'claude-bot']);
   });
 
   it('yields no authors when the allowlist is unset', () => {
     withEnvironment({ ...CONFIGURED, PR_RATIO_AUTHORS: undefined });
 
-    expect(getPrRatioConfig()?.authors).toEqual([]);
+    expect(getPrRatioConfig(PROJECTS)?.authors).toEqual([]);
   });
 
   it('yields no authors when the allowlist is blank', () => {
     withEnvironment({ ...CONFIGURED, PR_RATIO_AUTHORS: ' , ' });
 
-    expect(getPrRatioConfig()?.authors).toEqual([]);
+    expect(getPrRatioConfig(PROJECTS)?.authors).toEqual([]);
+  });
+
+  it('ignores a leftover PR_RATIO_REPOS — the projects are the only repo list', () => {
+    withEnvironment(CONFIGURED);
+    process.env['PR_RATIO_REPOS'] = 'someone/else:Elsewhere,another/repo:Another';
+
+    expect(getPrRatioConfig(PROJECTS)?.repos.map((repo) => repo.label)).toEqual([
+      'RealPlay',
+      'Alfred',
+    ]);
+    // Nor does it rescue a deployment whose projects alone don't configure the ratio.
+    expect(getPrRatioConfig([REALPLAY])).toBeUndefined();
   });
 });
 
@@ -127,38 +124,42 @@ describe('getGithubRepoConfig vs getPrRatioConfig', () => {
     process.env = { ...originalEnvironment };
   });
 
-  it('configures the velocity chart from a single repo, but not the ratio', () => {
-    withEnvironment({ ...CONFIGURED, PR_RATIO_REPOS: 'ac3charland/alfred:Alfred' });
-
-    // One repo is a perfectly good velocity series; it is not a split.
-    expect(getGithubRepoConfig()?.repos).toHaveLength(1);
-    expect(getPrRatioConfig()).toBeUndefined();
-  });
-
-  it('configures both once a second repo is measured', () => {
+  it('configures the velocity chart from a single project, but not the ratio', () => {
     withEnvironment(CONFIGURED);
 
-    expect(getGithubRepoConfig()?.repos).toHaveLength(2);
-    expect(getPrRatioConfig()?.repos).toHaveLength(2);
+    // One repo is a perfectly good velocity series; it is not a split.
+    expect(getGithubRepoConfig([REALPLAY])?.repos).toEqual([
+      { owner: 'ac3charland', name: 'realplay', label: 'RealPlay' },
+    ]);
+    expect(getPrRatioConfig([REALPLAY])).toBeUndefined();
   });
 
-  it('configures neither without a token, however many repos are listed', () => {
+  it('configures both once a second project exists', () => {
+    withEnvironment(CONFIGURED);
+
+    expect(getGithubRepoConfig(PROJECTS)?.repos).toHaveLength(2);
+    expect(getPrRatioConfig(PROJECTS)?.repos).toHaveLength(2);
+  });
+
+  it('configures neither with no projects', () => {
+    withEnvironment(CONFIGURED);
+
+    expect(getGithubRepoConfig([])).toBeUndefined();
+    expect(getPrRatioConfig([])).toBeUndefined();
+  });
+
+  it('configures neither without a token, however many projects exist', () => {
     withEnvironment({ ...CONFIGURED, GITHUB_TOKEN: undefined });
 
-    expect(getGithubRepoConfig()).toBeUndefined();
-    expect(getPrRatioConfig()).toBeUndefined();
-  });
-
-  it('configures neither when no repo entry is well-formed', () => {
-    withEnvironment({ ...CONFIGURED, PR_RATIO_REPOS: 'not-a-repo' });
-
-    expect(getGithubRepoConfig()).toBeUndefined();
-    expect(getPrRatioConfig()).toBeUndefined();
+    expect(getGithubRepoConfig(PROJECTS)).toBeUndefined();
+    expect(getPrRatioConfig(PROJECTS)).toBeUndefined();
   });
 
   it('hands both widgets the same authors, so the page cannot disagree with itself', () => {
     withEnvironment(CONFIGURED);
 
-    expect(getGithubRepoConfig()?.authors).toStrictEqual(getPrRatioConfig()?.authors);
+    expect(getGithubRepoConfig(PROJECTS)?.authors).toStrictEqual(
+      getPrRatioConfig(PROJECTS)?.authors,
+    );
   });
 });

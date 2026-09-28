@@ -1,7 +1,9 @@
-import type { PostgrestError } from '@supabase/supabase-js';
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
 import type { ListEpicsQuery } from '@/lib/api/schemas';
+import type { Database } from '@/lib/database.types';
+import type { MeasuredProject } from '@/lib/github/config';
 import { createClient } from '@/lib/supabase/server';
 import type { CodeStory, Epic, Project } from '@/lib/types';
 
@@ -67,6 +69,25 @@ export async function getProjectList(): Promise<{
 }> {
   const supabase = await createClient();
   return supabase.from('projects').select('*').order('created_at', { ascending: true });
+}
+
+/**
+ * Every project's repo, oldest first — the Dashboard's GitHub measurements measure exactly
+ * these. Oldest first is the order `projectColorFor` indexes, so the ratio bar's left-to-right
+ * order is its colour order.
+ *
+ * Unlike the readers around it, this takes the Supabase client rather than building a cookie
+ * one: its routes also answer the ingest API key, whose caller has no cookie and is served by
+ * the admin client (`resolveIngestClient`).
+ */
+export async function listProjectRepos(supabase: SupabaseClient<Database>): Promise<{
+  data: MeasuredProject[] | null;
+  error: PostgrestError | null;
+}> {
+  return supabase
+    .from('projects')
+    .select('name, repo_owner, repo_name')
+    .order('created_at', { ascending: true });
 }
 
 /**

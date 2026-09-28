@@ -6,7 +6,7 @@ import type { GithubRepoConfig, RatioRepo } from './config';
 import { DEPENDENCY_BOTS } from './pr-ratio';
 
 /**
- * Lines changed per calendar week across the configured repos, counted live from GitHub's
+ * Lines changed per calendar week across the project repos, counted live from GitHub's
  * pre-aggregated contributor statistics.
  *
  * `server-only`: the fan-out carries the fine-grained PAT, so importing this from a Client
@@ -218,7 +218,7 @@ export function toWeeks(series: readonly { week: number; lines: number }[]): Loc
 }
 
 /**
- * The velocity series across every configured repo, or the outcome that stopped it.
+ * The velocity series across every project repo, or the outcome that stopped it.
  *
  * Any repo failing sinks the whole response, exactly as `fetchPrRatio` discards a partial
  * ratio: a velocity number missing one repo's lines is a WRONG number, and showing nothing

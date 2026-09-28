@@ -1,25 +1,30 @@
+import type { Project } from '@/lib/types';
+
 /**
- * GitHub measurement configuration, read from environment. Shared by the two widgets on the
- * Code Dashboard: the merged-PR ratio and the lines-changed-per-week chart. One repo set feeds
- * both, so the two measurements on one page cover the same ground. The author allowlist is the
- * RATIO's alone — it names who opens a pull request, which says nothing about who authored the
- * commits the velocity chart counts (see `loc.ts`).
+ * GitHub measurement configuration: which repos to measure, and with what. Shared by the two
+ * widgets on the Code Dashboard — the merged-PR ratio and the lines-changed-per-week chart. One
+ * repo set feeds both, so the two measurements on one page cover the same ground. The author
+ * allowlist is the RATIO's alone — it names who opens a pull request, which says nothing about
+ * who authored the commits the velocity chart counts (see `loc.ts`).
  *
- * The measured repos are env-configured rather than read from the `projects` table on
- * purpose: not every repo the owner ships to runs through the Software Factory, and adding
- * one as a project row would surface it in every project nav, board and epic picker in the
- * Code module. Each var is read by its literal name (never a computed key), mirroring
- * `lib/instance.ts`.
+ * The measured repos ARE the Code module's projects: every `projects` row is one measured repo,
+ * labelled by the project's name, in the creation order the caller read them in. So a project
+ * reads the same on the ratio bar as in ProjectNav, and a new project is measured without a
+ * redeploy. A repo the owner ships to that is not a project has no segment of its own: its
+ * merged PRs land in "Other", and only when `PR_RATIO_AUTHORS` is set to anchor that sweep.
+ * `GITHUB_TOKEN` must be able to read every project's repo — one it can't read fails the whole
+ * fan-out, since a partial ratio is a wrong ratio.
  *
- * `PR_RATIO_REPOS` / `PR_RATIO_AUTHORS` under-describe that widened scope, but renaming them
- * means a coordinated deployment env change for zero functional gain — and a half-done rename
- * leaves a deployment with an unconfigured dashboard.
+ * Kept DB-free: the caller reads the project rows (with whichever Supabase client its auth
+ * resolved to) and hands them in, so this stays a pure function of env plus rows. Each var is
+ * read by its literal name (never a computed key), mirroring `lib/instance.ts`.
+ *
+ * `PR_RATIO_AUTHORS` under-describes its widened scope (it also anchors Other, and shares a
+ * config with the velocity chart), but renaming it means a coordinated deployment env change
+ * for zero functional gain.
  *
  * Nothing here is `NEXT_PUBLIC_` — above all the token, which must never reach the browser.
  */
-
-/** `owner/name` with an optional `:Label` suffix; surrounding whitespace is tolerated. */
-const REPO_ENTRY = /^\s*([\w.-]+)\/([\w.-]+)\s*(?::\s*(.+?)\s*)?$/;
 
 /** A measurement needs somewhere to measure; below this the feature reports itself unconfigured. */
 const MINIMUM_REPOS = 1;
@@ -32,12 +37,12 @@ export interface RatioRepo {
   owner: string;
   /** GitHub repo name, e.g. 'realplay'. */
   name: string;
-  /** Display label for the bar segment; defaults to `name` when the suffix is omitted. */
+  /** Display label for the bar segment — the project's name. */
   label: string;
 }
 
 export interface GithubRepoConfig {
-  /** The measured repos, in configured order — which is the bar's left-to-right order. */
+  /** The measured repos, in project creation order — which is the bar's left-to-right order. */
   repos: RatioRepo[];
   /**
    * GitHub logins whose merged PRs count; empty means "anyone but the known bots". Also the
@@ -45,7 +50,7 @@ export interface GithubRepoConfig {
    * everything outside `repos` needs some qualifier to bound it.
    */
   authors: string[];
-  /** Fine-grained PAT with read access to the measured repos. */
+  /** Fine-grained PAT with read access to every project's repo. */
   token: string;
 }
 
@@ -72,37 +77,34 @@ function splitList(raw: string | undefined): string[] {
     .filter((entry) => entry !== '');
 }
 
-function parseRepo(entry: string): RatioRepo | undefined {
-  const match = REPO_ENTRY.exec(entry);
-  if (!match) return undefined;
-  const [, owner, name, label] = match;
-  if (owner === undefined || name === undefined) return undefined;
-  return { owner, name, label: label ?? name };
-}
+/** The project columns a measurement needs, in the order the caller read them. */
+export type MeasuredProject = Pick<Project, 'name' | 'repo_owner' | 'repo_name'>;
 
 /**
- * The shared base both widgets read: a token plus at least one well-formed repo, or
- * `undefined` when the deployment has configured neither. A malformed entry is skipped rather
- * than fatal, so one typo degrades a widget instead of breaking the view around it. Never throws.
+ * The shared base both widgets read: a token plus at least one project, or `undefined` when
+ * the deployment has neither. Repos keep the given order — the caller reads projects oldest
+ * first, the order `projectColorFor` indexes, so the bar's order is its colour order. Never throws.
  */
-export function getGithubRepoConfig(): GithubRepoConfig | undefined {
+export function getGithubRepoConfig(
+  projects: readonly MeasuredProject[],
+): GithubRepoConfig | undefined {
   const token = envValue(process.env.GITHUB_TOKEN);
-  if (token === undefined) return undefined;
+  if (token === undefined || projects.length < MINIMUM_REPOS) return undefined;
 
-  const repos = splitList(envValue(process.env.PR_RATIO_REPOS))
-    .map((entry) => parseRepo(entry))
-    .filter((repo): repo is RatioRepo => repo !== undefined);
-  if (repos.length < MINIMUM_REPOS) return undefined;
-
+  const repos = projects.map((project) => ({
+    owner: project.repo_owner,
+    name: project.repo_name,
+    label: project.name,
+  }));
   return { repos, authors: splitList(envValue(process.env.PR_RATIO_AUTHORS)), token };
 }
 
 /**
  * The ratio's stricter view of the same config: a split needs at least two repos to be a
- * split, so a one-repo deployment gets the velocity chart and no ratio bar.
+ * split, so a one-project deployment gets the velocity chart and no ratio bar.
  */
-export function getPrRatioConfig(): PrRatioConfig | undefined {
-  const config = getGithubRepoConfig();
+export function getPrRatioConfig(projects: readonly MeasuredProject[]): PrRatioConfig | undefined {
+  const config = getGithubRepoConfig(projects);
   if (config === undefined || config.repos.length < MINIMUM_RATIO_REPOS) return undefined;
   return config;
 }

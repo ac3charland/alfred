@@ -79,7 +79,7 @@ function LegendEntry({ mark, children }: { mark: React.ReactNode; children: Reac
 
 /**
  * The Dashboard's lines-changed card: additions plus deletions per calendar week across the
- * configured repos, as one bar per week with a four-week trailing-average line over them.
+ * project repos, as one bar per week with a four-week trailing-average line over them.
  *
  * Churn rather than net growth, so a week spent deleting a dead module reads as the busy week
  * it was. The line runs in the neutral foreground, not the bars' teal — a teal line over teal
