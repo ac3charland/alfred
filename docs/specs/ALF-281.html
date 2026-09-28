@@ -9,8 +9,7 @@
    TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
    oxblood, brass) and one light (alfred's teal, the Lit glow); every other
    value is a tint. Day is ink on cool paper, night is alfred's own dark
-   tokens. Sections 1–4 are the template stylesheet at every settled pick;
-   section 5 holds the one open D1 option (ink roles).
+   tokens. Sections 1–4 are the template stylesheet, every D1 pick settled.
    ═══════════════════════════════════════════════════════════════════════ */
 :root{
   color-scheme:light dark;
@@ -22,11 +21,10 @@
   --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
   --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
   --lift:0 0 .3em rgb(11 107 120/.35);
-  /* Ink roles (D1 ★ "whose move"): colour says who holds the decision */
+  /* Ink roles (D1, "whose move"): colour says who holds the decision */
   --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
   --c-prop:var(--teal);                    /* proposed: alfred's call — → */
   --c-set:var(--brass);                    /* settled: you decided — ✓ */
-  --c-id:var(--teal); --c-fig:var(--ink); --c-note:var(--muted); --c-heads:var(--muted);
   --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
   --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
   --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
@@ -58,7 +56,7 @@ p,ol,ul,figure{margin:0}
 body:has([data-state=open]) .stamp::after{content:"Your call needed"}
 .mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
 .ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
-.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--c-id);text-shadow:none;margin-bottom:.4rem}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
 .sep{display:none}
 .mast h1 .hy{font-size:0}
 .ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
@@ -79,24 +77,23 @@ body:has([data-state=open]) .stamp::after{content:"Your call needed"}
 [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
 [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
 [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
-.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-tag,var(--c-prop))}
-[data-state=settled] .tag{color:var(--c-tag,var(--c-set))}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+[data-state=settled] .tag{color:var(--c-set)}
 [data-state=open] .tag{color:var(--c-open)}
 .pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
 .pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
 [data-state=open] .pick{color:var(--c-open)}
 [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
 [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
-.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--c-note)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
 .legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
 .m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
-#heads-up .side,#heads-up li::marker{color:var(--c-heads)}
 
 .plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
 .plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
 .plate .app{position:relative;box-shadow:var(--shadow)}
 figcaption{font-size:.8125rem;color:var(--muted)}
-figcaption b{font:italic 400 1rem var(--f-display);color:var(--c-fig);margin-right:.3rem}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
 .fig svg{display:block;width:100%;max-width:34rem;height:auto}
 .dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
 .dg .new rect{stroke:var(--teal);stroke-width:1.5}
@@ -166,90 +163,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--c-fig);margin-rig
 .app .cb{width:16px;height:16px;flex:none;border:1px solid rgb(138 150 168/.5);border-radius:4px}
 
 
-/* ═══════════════════════════════════════════════════════════════════════
-   5 · DIALS (D1) — THIS SPEC ONLY. Nothing below ships in the template.
-   Pure CSS: each dial is a radio group; html:has(#id:checked) re-inks the
-   page, so it works with scripting off (and in the app's script-less view).
-   ═══════════════════════════════════════════════════════════════════════ */
-/* Preview — forced day / night, to check the inks in both (Auto = the media query) */
-html:has(#ed-day:checked){--paper:#edf0f1;--ink:#13203a;--muted:#4e5a6e;--teal:#0b6b78;--oxblood:#8e2a22;--brass:#7d5a0e;
-  --rule:color-mix(in srgb,var(--ink) 20%,transparent);--wash:color-mix(in srgb,var(--ink) 5%,transparent);
-  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
-  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);--lift:0 0 .3em rgb(11 107 120/.35);color-scheme:light}
-html:has(#ed-night:checked){--paper:#0f1626;--ink:#e8edf5;--muted:#8a96a8;--teal:#4fd1e0;--oxblood:#f87171;--brass:#f0b429;
-  --rule:#1e2a3f;--wash:rgb(232 237 245/.04);--mount:#131c2e;
-  --shadow:0 0 24px 2px rgb(79 209 224/.15);--lift:0 0 .4em rgb(79 209 224/.45);color-scheme:dark}
-
-/* Ink roles — what oxblood and brass each mean. "Whose move" (★) is the base in section 1. */
-/* Rubric & gilt: oxblood is the rubric (what needs you); brass is gilt lettering on every id */
-html:has(#ro-gilt:checked){--c-set:var(--muted);--c-tag:var(--brass);--c-id:var(--brass);--c-fig:var(--brass)}
-/* Decide & beware: oxblood asks for a decision; brass flags what to know before merging */
-html:has(#ro-beware:checked){--c-set:var(--muted);--c-heads:var(--brass)}
-html:has(#ro-beware:checked) #heads-up>ul{border-left:2px solid var(--brass);padding-left:1.4rem}
-/* Marginalia: oxblood in the text column; brass is the annotating hand — notes and captions */
-html:has(#ro-margin:checked){--c-set:var(--muted);--c-note:var(--brass);--c-fig:var(--brass)}
-
-/* The dial panel itself — deliberately not the spec's voice */
-.vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;margin:0}
-.dials{font:500 .8125rem/1.3 var(--f-label);color:var(--ink)}
-.dials-tab{position:fixed;right:16px;bottom:16px;z-index:20;padding:.6rem 1.1rem;border-radius:999px;background:var(--ink);color:var(--paper);cursor:pointer;box-shadow:0 2px 0 var(--teal)}
-.dials-body{display:none;position:fixed;z-index:19;left:0;right:0;bottom:0;max-height:50vh;overflow:auto;padding:.75rem 16px 4.5rem;background:var(--paper);border-top:3px solid var(--ink)}
-#dials-open:checked~.dials-body{display:block}
-#dials-open:focus-visible+.dials-tab{outline:2px solid var(--teal);outline-offset:3px}
-.dials h2{margin:0 0 .15rem;font:italic 400 1.125rem var(--f-display)}
-.dials .note{color:var(--muted);margin-bottom:.8rem}
-.inks{display:flex;height:14px;margin:.25rem 0 1rem;outline:1px solid var(--ink)}
-.inks i{flex:1}
-.dials fieldset{border:0;border-top:1px solid var(--rule);margin:0;padding:.45rem 0;display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .75rem}
-.dials legend{padding:0;font-weight:600;float:left;width:5.5rem}
-.opts{display:flex;flex-wrap:wrap;gap:4px}
-.opts label{padding:.3rem .55rem;border:1px solid var(--rule);cursor:pointer}
-.opts input:checked+label{background:var(--ink);color:var(--paper);border-color:var(--ink)}
-.opts input:focus-visible+label{outline:2px solid var(--teal);outline-offset:2px}
-.opts label[data-rec]::after{content:" \2605\FE0E";color:var(--teal)}
-.opts input:checked+label[data-rec]::after{color:inherit}
-.readout{margin-top:.5rem;padding:.6rem;background:var(--wash);font:.75rem/1.5 var(--f-mono);word-break:break-word}
-.readout span::after{font-weight:700}
-.dials button{margin-top:.5rem;font:inherit;padding:.4rem .9rem;border:1px solid var(--ink);background:none;color:var(--ink);border-radius:999px;cursor:pointer}
-@media (min-width:1100px){
-  body{padding-right:18rem}
-  .dials-tab{display:none}
-  .dials-body{display:block;left:auto;right:16px;top:16px;bottom:16px;width:16.5rem;max-height:none;padding:1rem;border:1px solid var(--rule);border-top:3px solid var(--ink)}
-  .dials legend{width:100%}
-}
-/* readout — generated from the checked radios, so it's right with JS off */
-html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#ro-gilt:checked) [data-k=roles]::after{content:"rubric-gilt"}html:has(#ro-beware:checked) [data-k=roles]::after{content:"decide-beware"}html:has(#ro-margin:checked) [data-k=roles]::after{content:"marginalia"}
 </style>
 </head>
 <body data-kind="story">
-
-<!-- ─── D1 DIAL PANEL (document chrome — not spec content, never copied into the template) ─── -->
-<aside class="dials" aria-label="D1 dials: restyle this page's brief. Controls, not part of the spec">
-  <input type="checkbox" id="dials-open" class="vh">
-  <label for="dials-open" class="dials-tab">Dials</label>
-  <div class="dials-body">
-    <h2>D1 · Ink roles</h2>
-    <p class="note">This page is written in the proposed template. ★ marks my pick. Reply with the line below.</p>
-    <p class="note">Settled: margin notes · Penguin · auto · italic title · plain rules · Lit. Open: what oxblood and brass each mean.</p>
-    <div class="inks" aria-hidden="true"><i style="background:var(--paper)"></i><i style="background:var(--ink)"></i><i style="background:var(--teal)"></i><i style="background:var(--oxblood)"></i><i style="background:var(--brass)"></i></div>
-
-    <fieldset><legend>Ink roles</legend><div class="opts">
-      <input class="vh" type="radio" name="roles" id="ro-move" value="whose-move" checked><label for="ro-move" data-rec>Whose move</label>
-      <input class="vh" type="radio" name="roles" id="ro-gilt" value="rubric-gilt"><label for="ro-gilt">Rubric &amp; gilt</label>
-      <input class="vh" type="radio" name="roles" id="ro-beware" value="decide-beware"><label for="ro-beware">Decide &amp; beware</label>
-      <input class="vh" type="radio" name="roles" id="ro-margin" value="marginalia"><label for="ro-margin">Marginalia</label>
-    </div></fieldset>
-
-    <fieldset><legend>Preview</legend><div class="opts">
-      <input class="vh" type="radio" name="ed" id="ed-auto" value="auto" checked><label for="ed-auto">Auto</label>
-      <input class="vh" type="radio" name="ed" id="ed-day" value="day"><label for="ed-day">Day</label>
-      <input class="vh" type="radio" name="ed" id="ed-night" value="night"><label for="ed-night">Night</label>
-    </div></fieldset>
-
-    <p class="readout" id="picks">D1: roles=<span data-k="roles"></span></p>
-    <button type="button" id="copy" hidden>Copy my picks</button>
-  </div>
-</aside>
 
 <main class="page">
 
@@ -264,15 +180,12 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>281</span><span class="sep"> — </span><span class="ttl">Update refinement skill to split spec into above- and below-the-fold and take on mid-century design principles</span></h1>
   <p class="change" id="change">Every story and epic spec opens with a brief — the change, the calls you must see, the pictures — then a fold, then the implementer’s detail, in one house look.</p>
-  <p class="revised" id="revised">Revised 09-28, round 2: margin notes, Penguin and Auto settled (your review); D1 narrows to what oxblood and brass mean.</p>
+  <p class="revised" id="revised">Revised 09-28, round 3: ink roles settled on “whose move” (your review); D1 is now settled.</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
-    <li data-state="open"><h3><a class="tag" href="#d1">D1</a>The look of the brief</h3>
-      <p class="pick">Choose what oxblood and brass each mean. ★ whose move: oxblood awaits you, brass you settled.</p>
-      <p class="why">Teal stays alfred’s. Dials at the right; on a phone, the Dials button.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>What sits above the fold</h3>
       <p class="pick">The change in one sentence, the calls you must see, and pictures.</p>
       <p class="why">≤ 300 words. ALF-268 would drop from ~1,500 words before its mockup to ~130.</p></li>
@@ -288,6 +201,8 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
     <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>Fonts</h3>
       <p class="pick">System fonts for the page; mockups load the app’s own committed Geist.</p>
       <p class="why">Every face ships on your devices; no Google face beat Apple’s Baskerville.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>The look of the brief</h3>
+      <p class="pick">Margin notes, Penguin italic, plain rules, Lit; oxblood awaits you, brass you settled.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>Scope and delivery</h3>
       <p class="pick">Story and epic specs, via a template in the refinement skill. Spikes unchanged.</p></li>
   </ol>
@@ -305,7 +220,7 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
         <div class="row"><i class="cb"></i>Reply to Sam about the lease</div>
       </div>
     </div>
-    <figcaption><b>Plate I.</b>Specimen: a UI mockup sits on a mount, in the app’s own tokens — here, today’s Inbox. The rest of this page is the template itself; dial it under D1.</figcaption>
+    <figcaption><b>Plate I.</b>Specimen: a UI mockup sits on a mount, in the app’s own tokens — here, today’s Inbox. The rest of this page is the template’s look itself (D1).</figcaption>
   </figure>
 </section>
 
@@ -392,38 +307,43 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
   <h2>Decision records</h2>
 
   <section class="rec" id="d1">
-    <h3><span class="tag">D1</span>The look of the brief · open</h3>
-    <p><b>Settled in review:</b></p>
+    <h3><span class="tag">D1</span>The look of the brief · settled</h3>
+    <p>Settled over three review rounds, by dialling this page:</p>
     <ul>
-      <li><b>Italic display title, plain rules and the Lit finish</b> (round 1). Plain means single hairlines at the masthead and the fold, with no Oxford rules, ⁂, fleurons or drop caps. Lit means alfred’s teal glow in both editions; by day it is a soft backlit halo with a 1px teal edge.</li>
-      <li><b>Margin notes layout, Penguin type and the Auto edition</b> (round 2).
+      <li><b>Layout: margin notes.</b>
         <ul>
-          <li>The numeral sits as a folio in the outer margin.</li>
-          <li>Each pick stays in the text column, and its “why” sits beside it as an unnumbered italic sidenote. A row without a why leaves that spot empty.</li>
-          <li>Plate and figure captions sit in the margin.</li>
+          <li>The ref numeral sits as a folio in the outer margin.</li>
+          <li>Each pick stays in the text column, with its “why” as an unnumbered italic sidenote beside it. A row without a why leaves that spot empty.</li>
+          <li>Plate and figure captions (“Plate I.”, “Fig. 1.”) sit in the margin.</li>
           <li>On a phone, notes and captions drop under what they explain.</li>
         </ul></li>
+      <li><b>Type: Penguin.</b> Baskerville italic display, Gill Sans labels and Georgia body: English book type, all preinstalled on Apple devices. Georgia is what the wordmark actually renders in.</li>
+      <li><b>Rules: plain.</b> Single hairlines at the masthead and the fold.</li>
+      <li><b>Finish: Lit.</b> alfred’s teal glow in both editions. By day it is a soft backlit halo with a 1px teal edge; by night it is the app’s own glow-teal.</li>
+      <li><b>Edition: Auto.</b> It follows the device.</li>
+      <li><b>Ink roles: whose move.</b> Colour names who holds each decision:
+        <ul>
+          <li>Teal is alfred’s: → proposed rows, as well as links and the glow.</li>
+          <li>Oxblood is waiting on you: ☞ open rows, and the stamp.</li>
+          <li>Brass is yours: ✓ settled rows.</li>
+        </ul>
+        Every review round moves rows out of teal and oxblood into brass, so the colours stay meaningful for the life of a spec.</li>
     </ul>
-    <p><b>Still open: ink roles.</b> You want both oxblood and brass in the palette, each meaning something different. Teal stays alfred’s in every option: links, the glow, and the calls alfred proposes.</p>
-    <p>My round-2 objection to a fourth ink falls away with Lit settled. Teal is now the light, not a printing ink, so the printed inks are navy, oxblood and brass: three inks and a light, which keeps the plate book’s budget intact.</p>
-    <div class="scroll"><table>
-      <thead><tr><th>Roles</th><th>Oxblood means</th><th>Brass means</th><th>Where you’d see it on this page</th></tr></thead>
-      <tbody>
-        <tr><td>Whose move ★</td><td>Waiting on you: open rows (☞) and the stamp</td><td>You decided: settled rows (✓, their D#, the state word)</td><td>D1 oxblood, D2–D6 teal, D7 brass. Each colour names who holds the decision: teal is alfred, oxblood awaits you, brass is yours. The colours stay meaningful through the whole review loop, because every round moves rows from teal or oxblood into brass.</td></tr>
-        <tr><td>Rubric &amp; gilt</td><td>The rubric: open rows and the stamp</td><td>Gilt lettering on every id: the ref prefix, D-numbers, and the Plate / Fig. labels</td><td>Brass on every handle; settled rows go back to muted. It is the book tradition (red rubrics, gilt titles), but brass then encodes <em>what kind of text</em> rather than state.</td></tr>
-        <tr><td>Decide &amp; beware</td><td>Decide: open rows and the stamp</td><td>Beware: the heads-up section (its side-head, bullets and a brass rule)</td><td>Only the one heads-up line here. On specs with manual steps, irreversible effects or running cost (ALF-268’s PAT warning, say) it earns more. It splits “act” from “know”.</td></tr>
-        <tr><td>Marginalia</td><td>Open rows and the stamp</td><td>The annotating hand: margin notes and the Plate / Fig. labels, like a scholar’s notes in browned iron-gall ink</td><td>The most visible brass, and the strongest split between the key points and the detail beside them. By night it is alfred’s amber italic, which is loud for running notes.</td></tr>
-      </tbody>
-    </table></div>
+    <p>With Lit settled, teal is the light rather than a printing ink. The printed inks are navy, oxblood and brass: three inks and a light, within the plate book’s budget.</p>
+    <p><b>Thesis.</b> Mid-century print, the Victorian book and alfred share one belief: a limited kit, spent on structure. The page borrows the print traditions’ <em>structure</em>: an ink budget, scale contrast, hairline rules, marks that encode, the italic display of a Victorian title page, the tipped-in plate, and the scholar’s margin. It renders that structure in alfred’s medium, which is light.</p>
     <p><b>Considered, not taken:</b></p>
     <ul>
       <li><b>Layouts:</b> Ledger, Blade sign, Index card, Spec card, Contents and Title page.</li>
       <li><b>Type:</b> Playbill, Didone and App.</li>
-      <li><b>Round 1 options:</b> the Oxford-rule and Victorian ornaments; the Matched, Printed and Flat finishes; the Band masthead.</li>
-      <li><b>Hatched fills in figures:</b> tried in review, and they looked busy in practice.</li>
+      <li><b>Ornament and finish:</b> Oxford-rule and Victorian ornaments; Matched, Printed and Flat finishes; the Band masthead.</li>
+      <li><b>Ink roles:</b> Rubric &amp; gilt (brass on ids), Decide &amp; beware (brass on heads-up) and Marginalia (brass notes).</li>
+      <li><b>Hatched figure fills:</b> busy in practice.</li>
     </ul>
-    <p><b>Thesis.</b> Mid-century print, the Victorian book and alfred share one belief: a limited kit, spent on structure. The page borrows the print traditions’ <em>structure</em>: an ink budget, scale contrast, hairline rules, marks that encode, the italic display of a Victorian title page, the tipped-in plate, and the scholar’s margin. It renders that structure in alfred’s medium, which is light.</p>
-    <p><b>On your reply:</b> fold the picked roles into the section 1 tokens (already ★ “whose move”). Then delete section 5, the dial markup and the script. The losing role mappings must not survive in the template.</p>
+    <p>From the plate book:</p>
+    <ul>
+      <li><b>Kept:</b> the ink budget, paper never <code>#fff</code> and ink never <code>#000</code>, scale contrast of at least 4:1, radius 0 or 999px in the chrome, marks that encode, flush left, and one display face used sparingly.</li>
+      <li><b>Dropped:</b> misregistration offsets, texture, overprint, ink starvation and uppercase tracked labels.</li>
+    </ul>
   </section>
 
   <section class="rec" id="d2">
@@ -526,11 +446,11 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
   </section>
   <section class="rec" id="d10">
     <h4>D10 · The template ships one look</h4>
-    <p>No dials and no runtime toggle: every CSS byte is paid in every spec, forever. The edition follows <code>prefers-color-scheme</code> unless D1 picks a single edition.</p>
+    <p>No dials and no runtime toggle: every CSS byte is paid in every spec, forever. The edition follows <code>prefers-color-scheme</code> (D1 settled on Auto).</p>
   </section>
   <section class="rec" id="d11">
     <h4>D11 · Static first</h4>
-    <p>The brief, plates and switchers render with scripting off, including inside the app’s <code>sandbox=""</code> view. Switchers are radio inputs with CSS selecting on <code>:has(:checked)</code>, as this page’s dials are. Script is enhancement only, such as “Copy my picks”.</p>
+    <p>The brief, plates and switchers render with scripting off, including inside the app’s <code>sandbox=""</code> view. Switchers are radio inputs with CSS selecting on <code>:has(:checked)</code>, as this page’s dials were during review. Script is enhancement only.</p>
   </section>
   <section class="rec" id="d12">
     <h4>D12 · State renders from <code>data-state</code></h4>
@@ -645,7 +565,7 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
       #ac &gt; ul.checks &gt; li[data-trace="D1 P1"|"impl"]</pre>
   <p>Sections marked <code>?</code> are optional; delete them when unused. Sections for the other <code>data-kind</code> are deleted. These ids are what a future spec-lint would check (<a href="#out">§9</a>).</p>
 
-  <h3>Tokens at the settled and ★ options</h3>
+  <h3>Tokens</h3>
   <div class="scroll"><table>
     <thead><tr><th>Token</th><th>Day (prints)</th><th>Night (glows)</th><th>Notes</th></tr></thead>
     <tbody>
@@ -657,10 +577,10 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
       <tr><td><code>--rule</code>, <code>--wash</code>, <code>--mount</code></td><td>ink at 20% / 5% / 8% into paper</td><td><code>#1e2a3f</code> / fg at 4% / <code>#131c2e</code></td><td>Tints, not new hues</td></tr>
       <tr><td><code>--shadow</code></td><td><code>0 0 0 1px rgb(11 107 120/.22), 0 0 28px 4px rgb(11 107 120/.2)</code></td><td><code>0 0 24px 2px rgb(79 209 224/.15)</code></td><td>Lit (settled): a backlit halo by day, alfred’s glow-teal by night</td></tr>
       <tr><td><code>--lift</code></td><td><code>0 0 .3em rgb(11 107 120/.35)</code></td><td><code>0 0 .4em rgb(79 209 224/.45)</code></td><td>The ref numeral only</td></tr>
-      <tr><td><code>--c-open</code>, <code>--c-prop</code>, <code>--c-set</code></td><td colspan="2">oxblood, teal, brass (★ whose move)</td><td>Ink roles: open, proposed and settled rows, their marks and state words; <code>--c-open</code> also colours the stamp. Other roles tokens (<code>--c-id</code>, <code>--c-fig</code>, <code>--c-note</code>, <code>--c-heads</code>, <code>--c-tag</code>) exist so the D1 pick is a token swap.</td></tr>
+      <tr><td><code>--c-open</code>, <code>--c-prop</code>, <code>--c-set</code></td><td colspan="2">oxblood, teal, brass (“whose move”)</td><td>Ink roles: open, proposed and settled rows, with their tags, marks and state words. <code>--c-open</code> also colours the stamp and the legend.</td></tr>
     </tbody>
   </table></div>
-  <p>This file’s sections 1–4 of the stylesheet are the template stylesheet at the ★ options. Every other option’s tokens live in section 5, one commented block per option.</p>
+  <p>This file’s stylesheet sections 1–3 are the template’s, verbatim. Section 4 holds this spec’s app tokens and becomes generic in the template (<a href="#plan">§5</a>).</p>
 
   <h3>Type roles (Penguin, settled)</h3>
   <ul>
@@ -676,7 +596,7 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
     <tbody>
       <tr><td>☞ in oxblood</td><td>An open row: waiting on you</td></tr>
       <tr><td>→ in teal</td><td>A proposed pick: alfred’s call (the arrow points from the question to the answer)</td></tr>
-      <tr><td>✓ in brass</td><td>A settled pick: you decided (★ whose move; muted in the other role options)</td></tr>
+      <tr><td>✓ in brass</td><td>A settled pick: you decided</td></tr>
       <tr><td>Hairline rule</td><td>The two major divisions: end of masthead, the fold (plain, settled)</td></tr>
       <tr><td>Plate I, II… / Fig. 1, 2…</td><td>A drawing of the product / a diagram, in sequence</td></tr>
       <tr><td>Oxblood capsule stamp</td><td>Review status, derived from the rows (D12)</td></tr>
@@ -710,10 +630,10 @@ html:has(#ro-move:checked) [data-k=roles]::after{content:"whose-move"}html:has(#
 
   <h3>Building the template</h3>
   <ol>
-    <li>Start from this file. Keep stylesheet sections 1–3 as they are: they carry every settled pick (margin notes, Penguin, italic title, plain rules, Lit, Auto) and the ★ ink roles. If D1 settles on other roles, swap the role tokens in section 1. Then delete section 5, the <code>aside.dials</code> markup and the script.</li>
+    <li>Start from this file. Copy stylesheet sections 1–3 verbatim: they carry every D1 pick (margin notes, Penguin, italic title, plain rules, Lit, Auto, whose-move ink roles).</li>
     <li>Make stylesheet section 4 generic: an <code>.app</code> block whose <code>guide:</code> comment says to scope the app’s own tokens there. The tokens come from the app’s global stylesheet and each component’s source, and the app’s own committed font loads by raw URL when it isn’t a system face (D6). Keep the <code>.mount</code> and <code>.plate</code> rules.</li>
     <li>Replace the body with the skeleton below. Each section’s <code>guide:</code> comment carries its row from the <a href="#behavior">§3</a> tables: what it holds, required/optional, and budget.</li>
-    <li>Check it: no <code>ALF-</code>, <code>frontend/</code>, <code>globals.css</code> or alfred token values (the <code>alfred</code> imprint excepted, D14); no base64; stylesheet ≤ ~9 KB (it is 8.9 KB with comments at the ★ options).</li>
+    <li>Check it: no <code>ALF-</code>, <code>frontend/</code>, <code>globals.css</code> or alfred token values (the <code>alfred</code> imprint excepted, D14); no base64; stylesheet ≤ ~10 KB before its generic section 4 (sections 1–3 here are 9.3 KB with comments, 7.8 KB without).</li>
   </ol>
 <pre>&lt;!-- guide: Copy to docs/specs/&lt;REF&gt;.html (epic: docs/specs/epics/&lt;REF&gt;.html). Keep every id, the order,
      the fold and the stylesheet. Delete an unused optional section; never write "None". Delete every
@@ -836,10 +756,10 @@ Cover these; the template places each above or below the fold:</pre>
     <li data-trace="D2 D3 D13">Every template section has a <code>guide:</code> comment giving what it holds, whether it is required, and its budget, including the D3 filter and the 7/12 row cap. Placeholders are <code>[bracketed]</code>, with no sample content.</li>
     <li data-trace="D4 D12">Decision rows are <code>li[data-state]</code> linking to <code>#dN</code>. The ☞/→/✓ mark, the state word and the stamp all render from <code>data-state</code> through CSS, and the legend is present.</li>
     <li data-trace="D5">Acceptance-criteria items carry <code>data-trace</code>, which is rendered visibly.</li>
-    <li data-trace="D1 D10">The template stylesheet contains only D1’s picked options: no dial markup, dial CSS, <code>html:has(#…)</code> option rules or dial script. Rendered, it matches this page at those picks.</li>
-    <li data-trace="D1">Each ink carries one meaning, per the D1 roles pick (★: teal = proposed / alfred, oxblood = open / the stamp, brass = settled). The legend shows each mark in its colour, and no role is coloured outside its token.</li>
-    <li data-trace="D11">The template renders completely with scripting off and inside <code>&lt;iframe sandbox="" srcdoc&gt;</code>, with no horizontal scroll at 390px, in both editions (or the single edition D1 picks).</li>
-    <li data-trace="D6">The chrome uses no webfont, and the file has no base64 or binary data. The stylesheet is ≤ ~9 KB. The plate section’s guide says to load the app’s own committed font by raw URL when it isn’t a system face.</li>
+    <li data-trace="D1 D10">The template stylesheet is this spec’s sections 1–3 verbatim plus a generic section 4, with no option switching. A filled template renders like this page.</li>
+    <li data-trace="D1">Each ink carries one meaning (D1, whose move): teal = proposed and alfred’s, oxblood = open and the stamp, brass = settled. The legend shows each mark in its colour, and no role is coloured outside its token.</li>
+    <li data-trace="D11">The template renders completely with scripting off and inside <code>&lt;iframe sandbox="" srcdoc&gt;</code>, with no horizontal scroll at 390px, in both editions.</li>
+    <li data-trace="D6">The chrome uses no webfont, and the file has no base64 or binary data. Stylesheet sections 1–3 are ≤ ~10 KB. The plate section’s guide says to load the app’s own committed font by raw URL when it isn’t a system face.</li>
     <li data-trace="D14">The template is project-agnostic: no <code>ALF-</code>, <code>frontend/</code>, <code>globals.css</code> or alfred token values. The <code>alfred</code> imprint is the one exception.</li>
     <li data-trace="D2 D3 D4 D5 D11">In <code>refinement/SKILL.md</code>:
       <ul>
@@ -911,24 +831,5 @@ Cover these; the template places each above or below the fold:</pre>
 </section>
 </main>
 
-<script>
-(function(){
-  'use strict';
-  /* Enhancement only: remember D1 picks per viewer, and copy the readout. */
-  var KEY='alf281-dials-3', radios=document.querySelectorAll('.dials input[type=radio]');
-  try{ var saved=JSON.parse(localStorage.getItem(KEY)||'{}');
-    radios.forEach(function(r){ if(saved[r.name]===r.value) r.checked=true; }); }catch(e){}
-  function picks(){ var o={},s=[];
-    radios.forEach(function(r){ if(r.checked) o[r.name]=r.value; });
-    ['roles'].forEach(function(k){ s.push(k+'='+o[k]); });
-    return {map:o,text:'D1: '+s.join(' ')}; }
-  radios.forEach(function(r){ r.addEventListener('change',function(){
-    try{ localStorage.setItem(KEY,JSON.stringify(picks().map)); }catch(e){} }); });
-  var b=document.getElementById('copy'); b.hidden=false;
-  b.addEventListener('click',function(){ var t=picks().text, done=function(){ b.textContent='Copied'; setTimeout(function(){ b.textContent='Copy my picks'; },1400); };
-    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(done,function(){ prompt('Copy:',t); }); }
-    else prompt('Copy:',t); });
-})();
-</script>
 </body>
 </html>
