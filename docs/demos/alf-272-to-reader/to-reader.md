@@ -131,7 +131,7 @@ node docs/demos/alf-272-to-reader/to-reader-harness.mjs archive-fails
 ```output
 — tick 1: the archive fails
 runReaderTick → summarised 1, failures []
-  instapaper {"listed":1,"taken":1,"archived":0,"restored":0,"failures":["bookmarks/archive: unavailable (HTTP 500)"]}
+  instapaper {"listed":1,"taken":1,"archived":0,"restored":0,"failures":["bookmark 501: bookmarks/archive: unavailable (HTTP 500)"]}
 subrequests 16
   GET    reader_posts (ceiling count)
   PATCH  reader_health last_run_at
