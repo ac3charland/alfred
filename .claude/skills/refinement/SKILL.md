@@ -38,18 +38,20 @@ once the scope is clear do you write the spec below.
    — HTML, not markdown. Two readers, split at a fold:
    - **Above the fold (`#brief`): only what the human needs to approve** — the change in one
      sentence, the decisions they must see, and a picture of everything they'll see; ≤ 300 words of
-     prose, pictures uncounted. **Below (`#detail`): everything the implementer needs.** Keep the
-     template's ids, order, budgets and stylesheet; delete an unused optional section rather than
-     writing "None", and strip every `guide:` comment.
+     prose (epic 450), pictures uncounted. **Below (`#detail`): everything the implementer
+     needs.** Keep the template's ids, order, budgets and stylesheet; delete an unused optional
+     section rather than writing "None", and strip every `guide:` comment.
    - **A decision reaches the brief only if the human would see its result, it's costly to
-     reverse, or it departs from the ticket or epic** — every other call is recorded below only.
-     Mark each row `open` (needs their pick — a taste call, not a check you skipped), `proposed`
-     (your call; merging accepts it) or `settled` (they decided). Over 7 rows means split the spec.
+     reverse, or it departs from the ticket, the epic or a prior spec** — every other call is
+     recorded below only. Mark each row `open` (needs their pick — a taste call, not a check you
+     skipped), `proposed` (your call; merging accepts it) or `settled` (they decided). Over 7 rows
+     (epic 12) means split the spec. No `open` row survives merge: if the human approves with one
+     open, say so in your PR reply.
    - **Each fact lives once.** The brief states the pick; the detail explains it by id (`D2`,
      `P1`) and never contradicts it — on conflict the brief wins. Trace every acceptance
      criterion to the row or plate it realizes, or `impl`: a visible behaviour tracing to nothing
      above was never signed off — promote it or cut it.
-   - **Reads with scripting off.** The app's spec view is a script-less sandbox, so plates and
+   - **Reads with scripting off.** alfred's spec view is a script-less sandbox, so plates and
      switchers are static markup + CSS; inline `<script>` only as enhancement.
    - **Mockups are drawn in the app's design system** — not default browser styling, and not the
      document's own palette or an older spec's stylesheet. A mockup in another visual language
@@ -70,11 +72,11 @@ once the scope is clear do you write the spec below.
      viewport, output that depends on time or input). Draw every option/state and add one
      switcher per plate, labelled with the decision it settles (`D2: A | B`) — radio inputs, CSS
      selecting on `:has(:checked)` so it works without script — so the human compares them in
-     place and picks one. Author the markup at the recommended option's resting state, so it's
-     still the correct static mockup with scripting off, and keep the switcher in the document's
-     chrome, outside the canvas, so it isn't read as product UI. Ask up front only when the
-     direction hinges on taste you can't infer from the ticket or the app. Skip it for non-UI
-     stories and single-state changes the ticket already pins.
+     place and picks one. Rest the recommended option's radio checked, so the plate opens on it,
+     and keep the switcher in the document's chrome, outside the canvas, so it isn't read as
+     product UI. Ask up front only when the direction hinges on taste you can't infer from the
+     ticket or the app. Skip it for non-UI stories and single-state changes the ticket already
+     pins.
    - **Never pin a sequence-allocated number** — a **migration number** above all. Other work
      merges while the spec waits, so the number you pick is stale by the time it's built: write
      "the next available migration number" / `<next>_<name>.sql` and let the implementation
@@ -107,7 +109,8 @@ once the scope is clear do you write the spec below.
   picture, not the prose beside it — a cue, glyph or state that exists only in a prose table was
   never agreed to, and building it ships something they've never seen and will read as invented.
   So before a UI section is done, take every sentence that changes what appears on screen and find
-  it in the mockup: draw it, or demote it to an `open` decision row. (Prose the picture can't carry —
+  it in the mockup: draw it or cut it — a genuine taste call becomes an `open` row with each option
+  drawn in its plate's switcher. (Prose the picture can't carry —
   API contracts, arithmetic, validation — needs no drawing; the test is whether the human would
   *see* it.) Three ways this slips: alternatives you offer them to pick between must each carry
   the requirements already written, because the pick **is** the sign-off; the **legend is part of
@@ -122,8 +125,10 @@ once the scope is clear do you write the spec below.
   restate.** When the spec pins the demo or verification evidence for a user-visible change,
   follow the `showboat` skill's evidence-matching rather than inventing your own. Point it at the showboat rules and let those stay the source of truth.
 - **Iterate via PR comments, answered by id** (`D2: B`). Fold each answer back in the same round:
-  flip its row to `settled` and rewrite the pick, re-rest its plate on the chosen option and drop
-  the losers, sweep the behaviour and criteria that hung on the old pick, and replace `#revised`.
+  flip its row to `settled` and rewrite the pick, update its `#dN` record to match (the state in its
+  heading, the chosen option up, the rest one "considered" line), re-rest its plate on the chosen
+  option and drop the losers, sweep the behaviour and criteria that hung on the old pick, and
+  replace `#revised`.
 - **Don't proactively schedule a check-in on the PR.** CLAUDE.md's "No scheduled
   check-ins" rule applies here — once the spec PR is open, respond to CI failures or
   comments that reach you, but don't poll for them on a timer.
