@@ -118,6 +118,8 @@ v3?
 
 - **Never use `@layer utilities` to define custom classes expecting variant support.** Tailwind v4 no longer hijacks the native `@layer` at-rule. Use `@utility my-class { ... }` instead.
 
+- **Never name a custom `@utility` `text-<word>` (or any other built-in prefix) unless it sets that property.** `cn()`'s tailwind-merge doesn't know the utility, reads `text-glow-blue` as a text colour, and silently drops the `text-accent-blue` beside it — the element loses its colour with no error. Pick a prefix no built-in owns (`title-glow-blue` in `globals.css`), and pin the merged class string in a test that goes through `cn()`.
+
 - **Always pair `motion-reduce:` with every animated class.** The alfred project's design spec requires respecting `prefers-reduced-motion`. Minimum: `motion-reduce:transition-none` or `motion-reduce:animate-none` alongside every `transition-*` or `animate-*`.
 
 - **The shadow scale shifted by one step in v4.** The old `shadow` is now `shadow-sm`; old `shadow-sm` is now `shadow-xs`. If a shadow looks larger than expected, you are probably hitting v3 muscle memory on the class name.
