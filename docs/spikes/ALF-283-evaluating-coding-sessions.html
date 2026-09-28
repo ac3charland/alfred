@@ -126,8 +126,8 @@ needs:</p>
 <p>So first build a thin <b>session ledger</b> that joins ticket, launch, session and PR outcome. Then answer each
 question with the cheapest instrument that can actually resolve it at alfred's volume:</p>
 <ol class="tight">
-  <li><b>Effort and model defaults.</b> Use the ledger. Cost differences show up within weeks. For quality, run a
-  <b>non-inferiority</b> check (the cheaper arm is acceptable unless the guardrails show it is clearly worse), not a
+  <li><b>Effort and model defaults.</b> Use the ledger. Halving cost is detectable in about two months of implementation launches, and sooner once
+  runs are adjusted for ticket size. For quality, run a <b>non-inferiority</b> check (the cheaper arm is acceptable unless the guardrails show it is clearly worse), not a
   superiority test.</li>
   <li><b>Launch-prompt instructions</b>, such as the review round or the clarification gate. Use <b>randomised arms
   in the launcher</b>, assigned per ticket and recorded at launch. It stays free and ToS-clean, because a human still
@@ -143,12 +143,13 @@ cheaper instruments leave open. It costs real money and months of setup.</p>
 </div>
 
 <div class="callout">
-<b>Three things the question takes for granted that the evidence doesn't support:</b>
+<b>Four things the question takes for granted that the evidence doesn't support:</b>
 <ol class="tight" style="margin:.4rem 0 .2rem">
-  <li><b>Today's default is itself an untested choice.</b> Every session sampled runs Opus 5.5 at <b>xhigh</b>
-  effort. Anthropic documents <code>medium</code> as Opus 5.5's default and says "tuning effort is often a better
-  lever than switching models". The cheapest, highest-leverage first experiment is <b>effort</b>, not the model or
-  the architecture.</li>
+  <li><b>You are already running a model experiment, but it can't be read.</b> The 82 most recent sessions ran on
+  five models and three effort levels, with <code>xhigh</code> on 52 of them. Nothing records why each launch got the
+  model it did, so the variation is tangled up with the ticket. Recording that choice costs one column. Effort is also
+  the cheapest lever: Anthropic documents <code>medium</code> as Opus 5.5's default and says "tuning effort is often
+  a better lever than switching models". Yet only 2 of the 23 Opus 5.5 sessions used <code>medium</code>.</li>
   <li><b>The review round's findings are not evidence of its value.</b> Claude Code's own docs warn that "a reviewer
   prompted to find gaps will usually report some, even when the work is sound". A count of findings measures
   diligence. What would show value is <b>recall</b> (seeded and real bugs caught) and <b>precision</b> (findings you
@@ -156,6 +157,9 @@ cheaper instruments leave open. It costs real money and months of setup.</p>
   <li><b>Most quality questions can't be settled at this volume.</b> Only large gaps are detectable, around 85% vs
   50% success with 20 sessions per arm (§2.3). So the realistic decision rule is "take the cheaper option unless a
   guardrail trips", backed by reading transcripts. Proving the better option better is out of reach.</li>
+  <li><b>The cost risk is the tail, not the median.</b> The median session costs $22 at API-equivalent prices. One
+  Fable 5.1 implementation that ran five review rounds cost $1,004. Review rounds and session length multiply cost
+  faster than any model switch divides it, so a per-session cost flag is worth more than a cheaper default.</li>
 </ol>
 </div>
 
@@ -185,7 +189,7 @@ cheaper instruments leave open. It costs real money and months of setup.</p>
 <tr><td>Decision rule</td>
     <td><b>Cost-first non-inferiority</b>: adopt the cheaper arm unless it trips a guardrail (rework rate, red-CI
     count, escaped bugs)</td>
-    <td>Cost differences are measurable within weeks. Quality differences mostly are not.</td></tr>
+    <td>A cost halving shows up within about two months. Most quality differences never show up.</td></tr>
 <tr><td>Reviewer questions</td>
     <td>An offline <b>defect-recall bench</b>: real bugs traced back to the PR that introduced them, plus Stryker
     mutants that survive the test suite, with reviewer variants × 3 runs</td>
@@ -239,7 +243,7 @@ cheaper instruments leave open. It costs real money and months of setup.</p>
 
 <h4>The data a session already leaves behind</h4>
 <p>Each PR description ends with its session link. Called on an archived session from this repo, <code>get_session</code>
-returns the following (trimmed; one of the three sessions sampled):</p>
+returns the following (trimmed):</p>
 <pre><code>"id": "session_012rAhVixMoNJrXEghwHiNjC",            // ALF-282, PR #386
 "created_at": "2026-09-28T12:52:53Z", "updated_at": "2026-09-28T15:19:30Z",
 "session_context": { "model": "claude-opus-5-5", "effort_level": "xhigh", ... },
@@ -268,25 +272,82 @@ launch time, the prompt version, the arm, or which session ran it. Sessions that
 to any PR-based view, which is a survivorship bias.</p>
 
 <h3>2.2 · The history, measured</h3>
+<p>This section covers all 390 PRs (#1–#390), parsed for their <code>alfred</code> block, session link and review
+section. Of the 262 distinct linked sessions, the 82 most recent (11 Aug–28 Sep) were joined to their records. Two of
+those records were spot-checked field for field against the live API and matched exactly.</p>
+
+<h4>Volume</h4>
+<div class="scroll">
+<table>
+<thead><tr><th>PR phase</th><th class="num">Jun</th><th class="num">Jul</th><th class="num">Aug</th><th class="num">Sep</th><th class="num">Total</th><th>Median PR open → merge</th></tr></thead>
+<tbody>
+<tr><td>implementation</td><td class="num">37</td><td class="num">77</td><td class="num">19</td><td class="num">51</td><td class="num">184</td><td>2.2 h</td></tr>
+<tr><td>refinement</td><td class="num">19</td><td class="num">18</td><td class="num">11</td><td class="num">18</td><td class="num">66</td><td>1.1 h</td></tr>
+<tr><td>epic refinement / epic implementation / spike</td><td class="num">—</td><td class="num">2</td><td class="num">—</td><td class="num">6</td><td class="num">8</td><td>11 h (epic refinement)</td></tr>
+<tr><td>no <code>alfred</code> block (mostly pre-Code-module)</td><td class="num">99</td><td class="num">14</td><td class="num">7</td><td class="num">12</td><td class="num">132</td><td>0.5 h</td></tr>
+</tbody>
+</table>
+</div>
+<p>That is <b>about 45 implementation launches a month</b>, which sets the pace of any production trial. Closed
+without merging is rare: 6 of 184 implementation PRs.</p>
+
+<h4>What the sessions ran on, and what they cost</h4>
+<div class="scroll">
+<table>
+<thead><tr><th>Slice (82 sessions)</th><th class="num">n</th><th class="num">Median $</th><th class="num">IQR $</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>All sessions</td><td class="num">82</td><td class="num">22.17</td><td class="num">11.39–44.78</td><td>$4,313 in total, API-equivalent</td></tr>
+<tr><td>Implementation</td><td class="num">54</td><td class="num">26.33</td><td class="num">12.04–49.55</td><td>about 6 h wall clock (an upper bound)</td></tr>
+<tr><td>Refinement</td><td class="num">17</td><td class="num">17.99</td><td class="num">10.03–26.06</td><td></td></tr>
+<tr><td>Epic refinement / epic implementation</td><td class="num">3 / 1</td><td class="num">65.67 / 176.53</td><td class="num">—</td><td>The only epic implementation: 2.6M output tokens</td></tr>
+<tr><td>Implementation · Opus 5.5</td><td class="num">12</td><td class="num">14.96</td><td class="num">10.07–36.34</td><td rowspan="4"><b>Confounded</b>: you chose the model per ticket and the lineup changed over time. A prior, not a result.</td></tr>
+<tr><td>Implementation · Sonnet 5</td><td class="num">20</td><td class="num">20.23</td><td class="num">11.58–31.61</td></tr>
+<tr><td>Implementation · Opus 5</td><td class="num">18</td><td class="num">30.00</td><td class="num">18.97–49.55</td></tr>
+<tr><td>Implementation · Fable 5.1</td><td class="num">3</td><td class="num">222.53</td><td class="num">203.91–613.18</td></tr>
+</tbody>
+</table>
+</div>
 <ul class="tight">
-  <li><b>Volume.</b> About 390 PRs since the repo was created on 9 June 2026, or roughly 100 a month across every lane
-  and phase. Implementation, bug and bypass launches are a fraction of that.</li>
-  <li><b>Model mix.</b> All three sessions sampled ran <code>claude-opus-5-5</code> at <code>xhigh</code>, including
-  this one, and cost $9.15–9.70 at API-equivalent prices. If that holds across the history, the past offers no
-  natural variation to compare against: every arm has to be created on purpose.</li>
-  <li><b>The review round</b> is recorded in 14 merged PR descriptions (search: "Adversarial review" in the
-  description). Some predate ALF-282 as ad-hoc reviews. On the two ALF-281 PRs (#389 and #390), the round came back
-  after merge with <b>1 major, 9 minor and 4 nit</b> findings. All were fixed, except that one was only partly fixed, and a
-separate aside was declined. That is one real bug the gates had
-  passed, and an anecdote, not a rate.</li>
-  <li><b>Escaped bugs.</b> There are 67 merged PRs titled <code>fix(…)</code>, the raw material for the reviewer
+  <li><b>You already vary the model and effort.</b> The model that actually served each session:
+    <ul class="tight">
+      <li>Opus 5: 32</li>
+      <li>Opus 5.5: 23</li>
+      <li>Sonnet 5: 21</li>
+      <li>Fable 5.1: 5</li>
+      <li>Opus 4.8: 1</li>
+    </ul>
+    Effort was <code>xhigh</code> on 52, <code>high</code> on 27 and <code>medium</code> on 3. Only 2 of the 23 Opus
+    5.5 sessions ran at that model's documented default. Nothing records <em>why</em> a launch got its model, so this
+    variation can't be read as an experiment.</li>
+  <li><b>Sonnet has not been cheaper per session.</b> Sonnet 5 implementation sessions cost more at the median than
+  Opus 5.5 ones and produced more output tokens (127k against 117k). §5 shows why price per token undersells this:
+  on long sessions, token count and length matter more than the model's list price.</li>
+  <li><b>The tail is the cost risk.</b> One Fable 5.1 implementation (ALF-234, PR #340) ran <b>five review rounds</b>
+  and cost <b>$1,004</b>: 5.2M output tokens and 1.5B cache-read tokens, 45× the median. Per-session cost ranges from
+  $1.65 to $1,004. The spread (log sd 1.13) is what makes cost comparisons slower than a price sheet suggests.</li>
+  <li><b>Mid-session switches happen.</b> 3 of the 82 sessions changed model, all upward. The ledger needs the model
+  actually served, not only the one configured.</li>
+</ul>
+
+<h4>What the PR view misses</h4>
+<ul class="tight">
+  <li><b>Survivorship.</b> Of 381 alfred-repo sessions since the first PR, <b>120 (31%) appear in no PR
+  description</b>, and 17 of those failed. Some did ship: 123 PRs, mostly older ones, carry no session link at all.
+  So a PR-only ledger can't see abandoned launches. The ledger has to list sessions as well as PRs.</li>
+  <li><b>The review round is barely recorded yet.</b> Only 4 PRs carry an "Adversarial review" section:
+    <ul class="tight">
+      <li>#322, a one-off on 10 Sep: four rounds, 36 defects.</li>
+      <li>#386, #389 and #390, since ALF-282 made the round standard on 28 Sep.</li>
+    </ul>
+  Where findings are labelled (25 findings): about 8% major, 56% minor and 36% nit, with 85–90% fixed. On ALF-281,
+  the round came back after merge and caught a real major bug the gates had passed. That is an anecdote, not a
+  rate.</li>
+  <li><b>Escaped bugs.</b> 67 merged PRs are titled <code>fix(…)</code>. They are the raw material for the reviewer
   bench's real-defect cases.</li>
 </ul>
-<p class="small">A full backfill joins every PR to its session record (model, effort and cost by lane) and is being
-added to this section.</p>
 
 <h3>2.3 · What alfred's volume can and cannot resolve</h3>
-<p>These are simulations, computed in this session (§7, commands 3–4). Each figure is the power to detect the stated
+<p>These are simulations, computed in this session (§7, command 3). Each figure is the power to detect the stated
 gap at α = 0.05.</p>
 <div class="scroll">
 <table>
@@ -302,15 +363,23 @@ gap at α = 0.05.</p>
 <tr><td rowspan="2">Replay bench, paired: same tickets in both arms, 3 trials each</td>
     <td>65% → 85%, 20 tickets (120 sessions)</td><td class="num">56%</td></tr>
 <tr><td>65% → 85%, 30 tickets (180 sessions)</td><td class="num">75%</td></tr>
-<tr><td rowspan="2">Production, <b>cost per session</b> (log-normal, sd 0.6)</td>
-    <td>×0.5 (half the cost), 10 per arm</td><td class="num">64%</td></tr>
-<tr><td>×0.5, 20 per arm</td><td class="num">91%</td></tr>
+<tr><td rowspan="3">Production, <b>cost per session</b> (log-normal, observed sd 1.13)</td>
+    <td>×0.5 (half the cost), 20 per arm</td><td class="num">44%</td></tr>
+<tr><td>×0.5, 40 per arm</td><td class="num">72%</td></tr>
+<tr><td>×0.67 (a third cheaper), 40 per arm</td><td class="num">32%</td></tr>
 </tbody>
 </table>
 </div>
-<p><b>Read it this way:</b> at alfred's volume, <b>cost is measurable and quality mostly is not</b>. A 2× cost
-difference is visible within a few weeks. A 20-point quality difference needs roughly 80 sessions per arm in
-production, or about 180 replayed sessions. Hence the cost-first, non-inferiority decision rule.</p>
+<p><b>Read it this way:</b> at alfred's volume, <b>cost is measurable and quality mostly is not</b>.</p>
+<ul class="tight">
+  <li>With about 45 implementation launches a month split two ways, a 2× cost difference takes about two
+  months.</li>
+  <li><b>Regression adjustment</b> on a size covariate shortens that. Use spec length or diff size, the way online
+  experiments use pre-period data (CUPED).</li>
+  <li>A 20-point quality difference needs roughly 80 sessions per arm in production, or about 180 replayed
+  sessions.</li>
+</ul>
+<p>Hence the cost-first, non-inferiority decision rule.</p>
 <p>The ledger still earns its keep on quality in two ways:</p>
 <ul class="tight">
   <li>It <b>bounds</b> how much worse the cheaper arm can plausibly be.</li>
@@ -354,8 +423,8 @@ production, or about 180 replayed sessions. Hence the cost-first, non-inferiorit
     not coding.</td>
     <td>Only if the epic lane survives its case review. Then use the ledger's cost with a rework guardrail.</td></tr>
 <tr><td><b>Effort level</b></td>
-    <td>Anthropic's docs describe <code>xhigh</code> as "deeper reasoning at higher token spend". Opus 5.5 defaults
-    to <code>medium</code>, and <code>max</code> is "prone to overthinking; test before adoption".</td>
+    <td>Anthropic's docs describe <code>xhigh</code> as "deeper reasoning at higher token spend". Your history runs
+    <code>xhigh</code> on 52 of the last 82 sessions. Opus 5.5 defaults to <code>medium</code>, and <code>max</code> is "prone to overthinking; test before adoption".</td>
     <td><b>First.</b> It is a one-click, per-session change, and the ledger shows its cost at once.</td></tr>
 <tr><td><b>Model</b>: Opus 5.5, Sonnet 5 or Fable 5.1</td>
     <td>Public leaderboards rank the <em>model plus scaffold</em> on someone else's tasks, and Terminal-Bench
@@ -475,8 +544,8 @@ difference. The Anthropic statistics post and the Wilson and McNemar machinery i
   <text x="432" y="196" class="lbl">base commit + spec · hidden FAIL_TO_PASS tests + gates</text>
   <text x="432" y="212" class="lbl">+ blind mergeability read · runner: Harbor (Docker)</text>
   <text x="432" y="228" class="lbl">only for one high-stakes default change</text>
-  <path class="arr" d="M760,104 C760,130 600,130 600,154"/>
-  <text x="640" y="135" class="lbl">escaped bugs feed cases</text>
+  <path class="arr" d="M690,104 C690,128 330,124 300,154"/>
+  <text x="150" y="130" class="lbl">escaped bugs become cases</text>
 </svg>
 
 <h4>The ledger: one row per launch (sketch)</h4>
@@ -559,8 +628,9 @@ difference. The Anthropic statistics post and the Wilson and McNemar machinery i
 
 <h4>Suggested order (each step pays for itself)</h4>
 <ol class="tight">
-  <li><b>Backfill the ledger from history.</b> It is read-only and needs no product change. It answers "what does
-  each lane cost today, and how often is it reworked?"</li>
+  <li><b>Backfill the ledger from history.</b> This spike sampled 82 of the 262 linked sessions; the backfill covers
+  all of them, plus the sessions with no PR. It is read-only and needs no product change. It answers "what does each
+  lane cost today, and how often is it reworked?"</li>
   <li><b>Run an effort trial on one lane</b>: xhigh against the model's default <code>medium</code> or
   <code>high</code>, alternated by ref hash. Implementation and bug fixes have the most volume.</li>
   <li><b>Record launches</b> (the table and the prompt versions) so future arms are clean.</li>
@@ -579,8 +649,8 @@ isolation, and Harbor runs Claude Code on private task sets.</p>
 <p><b>Why not first:</b></p>
 <ul class="tight">
   <li>alfred's gates need Docker, a Postgres cluster and Playwright's Chromium inside every task image.</li>
-  <li>Runs are API-billed. At the API-equivalent cost of the sessions sampled here (about $9–10 each), 180 sessions
-  is about $1,700 for about 75% power on a 20-point gap.</li>
+  <li>Runs are API-billed. At the history's median of $26 per implementation session, 180 sessions is about $4,700
+  for about 75% power on a 20-point gap, before the tail: one session has cost $1,004.</li>
   <li>The interactive gates ("ASK ME HERE") have to be stubbed, which changes the very prompt under test.</li>
 </ul>
 <p class="verdict"><span class="k">Revisit if</span> a model-default change is proposed that the ledger's guardrails
@@ -637,7 +707,8 @@ both times, so the formula reproduces. This is a non-obvious finding: <b>Opus 5.
 Sonnet 5's ($0.20 per million tokens)</b>, and cache reads are about half of a long session's cost. So at equal
 tokens, switching to Sonnet saves only about 30%, not 50%. The bigger levers are effort (output tokens) and context
 length (cache reads grow with every turn). A different model also spends different tokens, which is exactly what
-the ledger measures.</p>
+the ledger measures. In the history, Sonnet 5 implementation sessions cost <em>more</em> at the median than
+Opus 5.5 ones (§2.2). The per-session spread is also huge ($1.65–$1,004), which dwarfs any price-sheet ratio.</p>
 
 <div class="scroll">
 <table>
@@ -646,7 +717,7 @@ the ledger measures.</p>
 <tr><td>Ledger backfill (read-only CLI)</td><td>One story. Its only external dependencies are GitHub and the session records.</td></tr>
 <tr><td>Launch recording and arms</td><td>One story: a migration, <code>links.ts</code> and the store.</td></tr>
 <tr><td>Defect-recall bench</td><td>One story, plus about 2 hours of owner time confirming SZZ traces and labelling false positives.</td></tr>
-<tr><td>Replay bench (reserved)</td><td>Several stories: task images that run alfred's gates, and stubbed human turns. About $1,700 in API spend for a decision-grade run.</td></tr>
+<tr><td>Replay bench (reserved)</td><td>Several stories: task images that run alfred's gates, and stubbed human turns. About $4,700 in API spend for a decision-grade run, plus a per-run cost cap.</td></tr>
 </tbody>
 </table>
 </div>
@@ -700,9 +771,9 @@ needs. Build it once in a shared place.</p>
 <ol class="tight small">
   <li>Read: <code>frontend/lib/code/links.ts</code> (all eight builders, <code>adversarialReviewStep</code>); <code>.claude/skills/{implement-epic,adversarial-review,implement-spec,bug,stryker}/SKILL.md</code>; <code>CLAUDE.md</code> "Model Assignment Rules"; <code>docs/specs/code-module/code-module-spec.md</code> §1, §11–13; <code>database/migrations/0002_software_factory.sql</code> (<code>code_items</code>), <code>0030_weekly_plan_items.sql</code> (<code>done_at</code>).</li>
   <li><code>get_session</code> on <code>session_012rAhVixMoNJrXEghwHiNjC</code> (#386), <code>session_01VqVMqGas1aEWWfArJi9wZp</code> (#387) and this session; PR list and descriptions via the GitHub MCP; searches for merged <code>fix(</code> PRs (67) and "Adversarial review" in PR descriptions (14).</li>
-  <li><code>node power2.mjs</code>: Fisher-exact power for unpaired arms; paired-replay power (ticket difficulty sd 1.5 logits); log-normal cost-ratio power.</li>
+  <li><code>node power2.mjs</code> and <code>power3.mjs</code>: Fisher-exact power for unpaired arms; paired-replay power (ticket difficulty sd 1.5 logits); log-normal cost-ratio power at the observed sd of 1.13.</li>
   <li><code>node power.mjs</code> and <code>reprice.mjs</code>: exact McNemar tables (§6), and the per-model reprice of the session records (§5).</li>
-  <li>History mining: every PR description, parsed for its <code>alfred</code> block, session links and review sections, joined to <code>get_session</code> (§2.2).</li>
+  <li>History mining: all 390 PR descriptions, parsed for their <code>alfred</code> block, session links and review sections; <code>get_session</code> for the 82 most recent linked sessions; <code>list_sessions</code> (600 rows) for sessions with no PR. The aggregates were recomputed from the joined JSON (<code>agg.mjs</code>), and two records re-fetched and matched exactly (§2.2).</li>
   <li>First version's prototypes: promptfoo and Evalite driving <code>buildCommsRequest</code> over the 68 comms fixtures, in a scratchpad; nothing committed.</li>
 </ol>
 <h4>External</h4>
@@ -712,6 +783,7 @@ needs. Build it once in a shared place.</p>
   <li>Frameworks: <a href="https://github.com/laude-institute/harbor">Harbor</a> <span class="tag">fetched</span>; <a href="https://github.com/harbor-framework/terminal-bench">Terminal-Bench</a> <span class="tag">fetched</span>; <a href="https://github.com/meridianlabs-ai/inspect_swe">inspect_swe</a> <span class="tag">fetched</span>; <a href="https://github.com/UKGovernmentBEIS/inspect_ai">Inspect AI</a>; <a href="https://github.com/princeton-nlp/SWE-bench">SWE-bench</a> <span class="tag">fetched</span></li>
   <li>METR: <a href="https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/">early-2025 developer RCT</a>; <a href="https://metr.org/notes/2026-03-10-many-swe-bench-passing-prs-would-not-be-merged-into-main/">many SWE-bench-passing PRs would not be merged</a> <span class="tag snip">snippet</span></li>
   <li>Multi-agent and review: Cognition, <a href="https://cognition.com/blog/dont-build-multi-agents">Don't Build Multi-Agents</a> and <a href="https://cognition.com/blog/multi-agents-working">follow-up</a> <span class="tag snip">snippet</span>; Cemri et al., <a href="https://arxiv.org/abs/2503.13657">Why Do Multi-Agent LLM Systems Fail?</a>; Huang et al., <a href="https://arxiv.org/abs/2310.01798">LLMs Cannot Self-Correct Reasoning Yet</a>; Panickssery et al., <a href="https://proceedings.neurips.cc/paper_files/paper/2024/hash/7f1f0218e45f5414c79c0679633e47bc-Abstract-Conference.html">LLM Evaluators Recognize and Favor Their Own Generations</a>; McAleese et al., <a href="https://cdn.openai.com/llm-critics-help-catch-llm-bugs-paper.pdf">LLM Critics Help Catch LLM Bugs</a> <span class="tag snip">snippet</span></li>
+  <li>Variance reduction: Deng, Xu, Kohavi &amp; Walker, <a href="https://dl.acm.org/doi/10.1145/2433396.2433413">Improving the sensitivity of online controlled experiments by utilizing pre-experiment data</a> (CUPED, WSDM 2013) <span class="tag snip">snippet</span></li>
   <li>Bug tracing: Śliwerski, Zimmermann &amp; Zeller, <a href="https://www.researchgate.net/publication/221656991_When_do_changes_induce_fixes">When do changes induce fixes?</a> (MSR 2005); <a href="https://arxiv.org/abs/2603.29378">LLM-based agents for identifying bug-introducing commits</a> <span class="tag snip">snippet</span></li>
   <li>Agent PRs in the wild: <a href="https://arxiv.org/abs/2602.08915">task-stratified PR acceptance across five agents</a>; <a href="https://arxiv.org/abs/2607.01418">Microsoft's 2026 Claude Code / Copilot CLI rollout</a> <span class="tag snip">snippet</span></li>
   <li>From the first version (the classifiers): <a href="https://github.com/promptfoo/promptfoo">promptfoo</a>, <a href="https://github.com/mattpocock/evalite">Evalite</a>, OpenAI Evals shutdown (<a href="https://community.openai.com/t/deprecation-notice-evals-will-be-shut-down-on-november-30th-2026/1385537">notice</a>), Husain &amp; Shankar <a href="https://hamel.dev/blog/posts/evals-faq/">AI Evals FAQ</a>, Zheng et al. <a href="https://arxiv.org/abs/2306.05685">MT-Bench judge biases</a></li>
