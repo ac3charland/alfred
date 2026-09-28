@@ -99,8 +99,10 @@ git rebase --onto origin/main <parent-sha>
 git branch -f main origin/main
 ```
 
-**Prevention:** Always use `origin/main` (not `main`) as the base in rebase and
-filter-branch commands:
+**Prevention:** Always use `origin/main` (not `main`) as the base in rebase, filter-branch, and
+PR-diff commands — after `git fetch origin main`. A cloud session's clone can record
+`origin/main` *older* than its own branch's base, so an unfetched `origin/main...HEAD` pulls
+already-merged commits into the diff:
 
 ```bash
 git filter-branch -f --env-filter '...' origin/main..HEAD  # ✓
