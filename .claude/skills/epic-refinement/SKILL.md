@@ -48,14 +48,12 @@ What it is **not**:
 `docs/specs/epics/ALF-12.html`, using the *epic's* ref). Epic specs live in their own folder,
 separate from the active story specs, because they never leave it (see *Never archived* below).
 
-The authoring rules are the **same as a story spec's** — inline all CSS, no external dependencies,
-no JS required, mobile-friendly, `<title>` and `<h1>` of `<EPIC-REF> — <epic name>`. The
-[`refinement`](../refinement/SKILL.md) skill's "What to produce" section is the source of truth for
-those mechanics; don't re-derive them, and don't let the two drift.
+Copy the same template, [`refinement/assets/spec-template.html`](../refinement/assets/spec-template.html),
+keeping its `epic` sections. The fold, the decision states and the authoring mechanics are the
+[`refinement`](../refinement/SKILL.md) skill's "What to produce" — the source of truth; don't
+re-derive them, and don't let the two drift. `<title>` and `<h1>` read `<EPIC-REF> — <epic name>`.
 
-Cover these, in whatever order and format reads best (tables for option matrices, an inline SVG for
-an architecture or data flow, a small mockup where UI is involved — drawn in the app's own design
-system, per [`refinement`](../refinement/SKILL.md)):
+Cover these; the template places each above or below the fold:
 
 - **Problem space & why now** — what this epic is about and what makes it worth a body of work.
 - **Decisions, each with its rationale.** The heart of the document. A decision without its *why*
@@ -64,16 +62,17 @@ system, per [`refinement`](../refinement/SKILL.md)):
 - **Constraints and non-goals** — including things deliberately deferred, so a story session
   doesn't "helpfully" pull them in.
 - **How the work splits into stories** — a sketch: a list of the slices you'd cut and why, not
-  specs.
-- **Open questions** — genuinely open ones. Anything you *can* settle with the human in this
+  specs. The split itself is a decision row; the sketch sits below the fold.
+- **Open questions** — as `open` decision rows. Anything you *can* settle with the human in this
   session, settle here instead of parking it.
 
 ## Refining again updates the same file
 
 An epic has **at most one spec**. When the epic already carries one (the launch prompt names its
-path when it does), **revise that file in place** — record what changed and why it changed, so the
-document reads as the epic's current state with its history intact. A second document just splits
-the context every story session is supposed to read from one place.
+path when it does), **revise that file in place** — record what changed in the brief's `#revised`
+line and why in each decision's record, so the document reads as the epic's current state with its
+history intact. A second document just splits the context every story session is supposed to read
+from one place.
 
 **A round that settles something invalidates the earlier drawings too.** Sweep the whole document
 for mockups and captions still illustrating the old answer, not just the section you're editing —
