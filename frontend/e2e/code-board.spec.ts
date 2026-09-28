@@ -207,3 +207,59 @@ test('describes a project from the board header, and clears the description agai
   await page.reload();
   await expect(page.getByRole('button', { name: 'Add project description…' })).toBeVisible();
 });
+
+test('picks a project colour from the board toolbar, keeps it across a reload, and resets it', async ({
+  page,
+  seed,
+}) => {
+  // Real UUID id: the pick PATCHes the project by id, which the route validates as a UUID.
+  const project = makeProject('Alfred', { key: 'ALF' });
+  await seed({ projects: [project] });
+  await page.goto(`/code/${project.id}`);
+
+  const title = page.getByRole('heading', { name: 'Alfred' });
+  const navLink = page.getByRole('navigation', { name: 'Projects' }).getByRole('link', {
+    name: /alfred/i,
+  });
+  const navPill = navLink.getByText('ALF', { exact: true });
+  // At rest: the first project's automatic colour, glowing on the title only.
+  await expect(title).toHaveClass(/\btext-accent-blue\b/);
+  await expect(title).toHaveClass(/\btitle-glow-blue\b/);
+  // The glow itself, not just its class: a soft halo in the accent at half strength.
+  await expect(title).toHaveCSS('color', 'rgb(96, 165, 250)');
+  await expect(title).toHaveCSS('text-shadow', 'rgba(96, 165, 250, 0.5) 0px 0px 14px');
+  await expect(navPill).toHaveClass(/\btext-accent-blue\b/);
+
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/projects/') && response.request().method() === 'PATCH',
+  );
+  await page.getByRole('button', { name: 'Project color: Blue (automatic)' }).click();
+  await page.getByRole('button', { name: 'Green' }).click();
+  await saved;
+
+  // Every coloured surface follows the pick: the title and the sidebar's pill.
+  await expect(title).toHaveClass(/\btitle-glow-green\b/);
+  await expect(title).toHaveCSS('color', 'rgb(52, 211, 153)');
+  await expect(title).toHaveCSS('text-shadow', 'rgba(52, 211, 153, 0.5) 0px 0px 14px');
+  await expect(navPill).toHaveClass(/\btext-accent-green\b/);
+  await expect(page.getByRole('button', { name: 'Project color: Green' })).toBeVisible();
+
+  // Persisted on the row, not held in the client store: a reload reads it back.
+  await page.reload();
+  await expect(title).toHaveClass(/\btext-accent-green\b/);
+  await expect(navPill).toHaveClass(/\btext-accent-green\b/);
+
+  // Automatic clears the pick: back to the creation-slot colour, and that survives a reload too.
+  const reset = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/projects/') && response.request().method() === 'PATCH',
+  );
+  await page.getByRole('button', { name: 'Project color: Green' }).click();
+  await page.getByRole('button', { name: 'Automatic (blue)' }).click();
+  await reset;
+  await page.reload();
+  await expect(title).toHaveClass(/\btext-accent-blue\b/);
+  await expect(navPill).toHaveClass(/\btext-accent-blue\b/);
+  await expect(page.getByRole('button', { name: 'Project color: Blue (automatic)' })).toBeVisible();
+});

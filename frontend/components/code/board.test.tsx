@@ -96,6 +96,7 @@ const PROJECT: Project = {
   github_url: null,
   ref_seq: 9,
   created_at: '2025-01-01T00:00:00Z',
+  color: null,
   description: null,
 };
 
@@ -674,6 +675,73 @@ describe('Board', () => {
     });
   });
 
+  describe('the project colour', () => {
+    const SECOND: Project = { ...PROJECT, id: 'p2', name: 'Sapling', key: 'SAP' };
+
+    it('glows the title in the creation-slot colour when there is no pick', () => {
+      renderBoard({ projects: [PROJECT, SECOND], projectId: 'p2' });
+
+      // Second-created project → the palette's second colour.
+      const title = screen.getByRole('heading', { name: 'Sapling' });
+      expect(title).toHaveClass('text-accent-amber', 'title-glow-amber');
+      expect(title).not.toHaveClass('text-foreground');
+    });
+
+    it("glows the title in the owner's pick", () => {
+      renderBoard({ projects: [PROJECT, { ...SECOND, color: 'teal' }], projectId: 'p2' });
+
+      expect(screen.getByRole('heading', { name: 'Sapling' })).toHaveClass(
+        'text-accent-teal',
+        'title-glow-teal',
+      );
+    });
+
+    it('falls back to the slot colour for a stored value outside the palette', () => {
+      renderBoard({ projects: [PROJECT, { ...SECOND, color: 'violet' }], projectId: 'p2' });
+
+      expect(screen.getByRole('heading', { name: 'Sapling' })).toHaveClass('text-accent-amber');
+      expect(
+        screen.getByRole('button', { name: 'Project color: Amber (automatic)' }),
+      ).toBeInTheDocument();
+    });
+
+    it('recolours the title at once on a pick and saves it through the store', async () => {
+      mockUpdateProject.mockReturnValue(new Promise<Project>(() => {}));
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'Project color: Blue (automatic)' }));
+      await user.click(await screen.findByRole('button', { name: 'Green' }));
+
+      expect(mockUpdateProject).toHaveBeenCalledWith('p1', { color: 'green' });
+      expect(screen.getByRole('heading', { name: 'Alfred' })).toHaveClass('text-accent-green');
+      expect(screen.getByRole('button', { name: 'Project color: Green' })).toBeInTheDocument();
+    });
+
+    it('rolls the colour back when the save fails', async () => {
+      mockUpdateProject.mockRejectedValue(new Error('patch failed'));
+      const user = userEvent.setup();
+      renderBoard({ projects: [{ ...PROJECT, color: 'red' }], epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'Project color: Red' }));
+      await user.click(await screen.findByRole('button', { name: 'Automatic (blue)' }));
+
+      expect(mockUpdateProject).toHaveBeenCalledWith('p1', { color: null });
+      // The failure's toast is the store's to show (covered in code-store.test).
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Alfred' })).toHaveClass('text-accent-red');
+      });
+      expect(screen.getByRole('button', { name: 'Project color: Red' })).toBeInTheDocument();
+    });
+
+    it('renders no title and no colour button for an unknown project', () => {
+      renderBoard({ projectId: 'nope' });
+
+      expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^project color/i })).not.toBeInTheDocument();
+    });
+  });
+
   describe('the project description line', () => {
     it('shows the placeholder when the project has no description', () => {
       renderBoard({ epics: [makeEpic('e1')] });
@@ -800,8 +868,8 @@ describe('Board', () => {
       const user = userEvent.setup();
       renderBoard({ epics: [makeEpic('e1')] });
 
-      // The toolbar row keeps exactly the controls it has today: the description line sits on its
-      // own row beneath, and adds nothing here.
+      // The toolbar row keeps exactly its own controls: the description line sits on its own row
+      // beneath, and adds nothing here.
       const createEpic = screen.getByRole('button', { name: 'Create epic' });
       const toolbarRow = createEpic.parentElement ?? createEpic;
       expect(
@@ -810,6 +878,7 @@ describe('Board', () => {
           .map((button) => button.getAttribute('aria-label') ?? button.textContent),
       ).toStrictEqual([
         'Create epic',
+        'Project color: Blue (automatic)',
         'Collapse all',
         'Filter by status',
         'Show abandoned',

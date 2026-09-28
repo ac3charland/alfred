@@ -2,15 +2,19 @@ import type { Project } from '@/lib/types';
 
 import {
   PROJECT_COLORS,
+  isProjectColor,
   projectBadgeClasses,
   projectColorAt,
   projectColorFor,
   projectFillClasses,
+  projectSlotColorFor,
   projectTextClasses,
+  projectTitleClasses,
 } from './project-color';
 
-function makeProject(id: string): Project {
+function makeProject(id: string, color: string | null = null): Project {
   return {
+    color,
     description: null,
     id,
     name: id,
@@ -55,6 +59,47 @@ describe('projectColorFor', () => {
     expect(projectColorFor(projects, 'missing')).toBe('blue');
     expect(projectColorFor(projects, null)).toBe('blue');
   });
+
+  it("prefers the owner's stored pick over the creation slot", () => {
+    const picked = [makeProject('p1'), makeProject('p2', 'teal'), makeProject('p3')];
+
+    expect(projectColorFor(picked, 'p2')).toBe('teal');
+    // The pick is the project's alone — its neighbours keep their slot colours.
+    expect(projectColorFor(picked, 'p1')).toBe('blue');
+    expect(projectColorFor(picked, 'p3')).toBe('green');
+  });
+
+  it('lets two projects share a colour — a pick never shifts another project', () => {
+    const picked = [makeProject('p1', 'amber'), makeProject('p2')];
+
+    expect(projectColorFor(picked, 'p1')).toBe('amber');
+    expect(projectColorFor(picked, 'p2')).toBe('amber');
+  });
+
+  it('falls back to the slot colour for a stored value outside the palette', () => {
+    const odd = [makeProject('p1'), makeProject('p2', 'violet')];
+
+    expect(projectColorFor(odd, 'p2')).toBe('amber');
+  });
+});
+
+describe('projectSlotColorFor', () => {
+  it('names the creation-slot colour Automatic would return to, ignoring any pick', () => {
+    const picked = [makeProject('p1'), makeProject('p2', 'teal')];
+
+    expect(projectSlotColorFor(picked, 'p2')).toBe('amber');
+    expect(projectSlotColorFor(picked, 'p1')).toBe('blue');
+  });
+});
+
+describe('isProjectColor', () => {
+  it.each(PROJECT_COLORS)('accepts the palette key %s', (color) => {
+    expect(isProjectColor(color)).toBe(true);
+  });
+
+  it.each([null, undefined, '', 'violet', '#ff0000', 'Blue'])('rejects %p', (value) => {
+    expect(isProjectColor(value)).toBe(false);
+  });
 });
 
 describe('class helpers', () => {
@@ -66,6 +111,16 @@ describe('class helpers', () => {
 
   it('emits a text-only class per colour for glyphs', () => {
     expect(projectTextClasses('amber')).toBe('text-accent-amber');
+  });
+
+  it.each([
+    ['blue', 'text-accent-blue title-glow-blue'],
+    ['amber', 'text-accent-amber title-glow-amber'],
+    ['green', 'text-accent-green title-glow-green'],
+    ['red', 'text-accent-red title-glow-red'],
+    ['teal', 'text-accent-teal title-glow-teal'],
+  ] as const)('emits the full glowing-title classes for %s', (color, classes) => {
+    expect(projectTitleClasses(color)).toBe(classes);
   });
 
   it.each([

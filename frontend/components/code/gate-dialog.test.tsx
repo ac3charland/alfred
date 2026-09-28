@@ -27,6 +27,7 @@ const ITEM: GateItem = {
 };
 
 const PROJECT: Project = {
+  color: null,
   description: null,
   id: 'p1',
   name: 'Alfred',
@@ -39,6 +40,7 @@ const PROJECT: Project = {
 };
 
 const PROJECT_2: Project = {
+  color: null,
   description: null,
   id: 'p2',
   name: 'Relay',

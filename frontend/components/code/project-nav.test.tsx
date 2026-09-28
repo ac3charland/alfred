@@ -27,6 +27,7 @@ let pushStateSpy: jest.SpyInstance;
 
 const PROJECTS: Project[] = [
   {
+    color: null,
     description: null,
     id: 'p1',
     name: 'Alfred',
@@ -38,6 +39,7 @@ const PROJECTS: Project[] = [
     created_at: '2025-01-01T00:00:00Z',
   },
   {
+    color: null,
     description: null,
     id: 'p2',
     name: 'Relay',
@@ -225,6 +227,20 @@ describe('ProjectNav', () => {
     expect(screen.getByText('RLP')).toHaveClass('bg-accent-amber/15', 'text-accent-amber');
   });
 
+  it("wears the owner's picked colour on the icon and key pill, leaving the others on their slot", () => {
+    const [alfred, relay] = PROJECTS;
+    if (alfred === undefined || relay === undefined) throw new Error('fixture');
+    renderNav([alfred, { ...relay, color: 'teal' }]);
+
+    expect(screen.getByRole('link', { name: /relay/i }).querySelector('svg')).toHaveClass(
+      'text-accent-teal',
+    );
+    expect(screen.getByText('RLP')).toHaveClass('bg-accent-teal/15', 'text-accent-teal');
+    expect(screen.getByText('ALF')).toHaveClass('bg-accent-blue/15', 'text-accent-blue');
+    // The sidebar carries the colour on its glyph and pill only — the name never glows.
+    expect(screen.getByText('Relay')).not.toHaveClass('title-glow-teal');
+  });
+
   it('orders projects by their best outstanding story priority (ALF-49)', () => {
     // Relay (p2) holds the highest-ranked open story (priority 5) → it leads Alfred (p1, priority 20),
     // overriding the seed order in which Alfred comes first.
@@ -324,6 +340,7 @@ describe('ProjectNav', () => {
     // NB: the seeded PROJECTS already use ALF + RLP, so the new key must be distinct
     // (the dialog rejects a duplicate key — covered in gate-dialog.test).
     const created: Project = {
+      color: null,
       description: null,
       id: 'p-new',
       name: 'Beacon',

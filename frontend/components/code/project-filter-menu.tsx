@@ -4,7 +4,7 @@ import { GitBranch } from 'lucide-react';
 import * as React from 'react';
 
 import { CheckboxFilterMenu, type FilterOption } from '@/components/atoms/checkbox-filter-menu';
-import { projectColorAt, projectTextClasses } from '@/lib/code/project-color';
+import { projectColorFor, projectTextClasses } from '@/lib/code/project-color';
 import type { Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -12,7 +12,7 @@ export interface ProjectFilterMenuProperties {
   /**
    * The projects offered as checkboxes. Pass them in CREATION order (`useProjects`), not the
    * live ranking — a checklist whose rows reshuffle as work is re-ranked is unusable, and the
-   * creation slot is also what assigns each project its palette colour (ALF-50).
+   * list is what each project's colour resolves against (its pick, else its creation slot).
    */
   projects: Project[];
   /** The ids of the projects picked out; empty means the Backlog lists every project (ALF-201). */
@@ -38,13 +38,13 @@ export function ProjectFilterMenu({
 }: ProjectFilterMenuProperties) {
   const options = React.useMemo<readonly FilterOption<string>[]>(
     () =>
-      projects.map((project, index) => ({
+      projects.map((project) => ({
         value: project.id,
         label: (
           <span className="flex items-center gap-1.5">
             <GitBranch
               size={13}
-              className={cn('shrink-0', projectTextClasses(projectColorAt(index)))}
+              className={cn('shrink-0', projectTextClasses(projectColorFor(projects, project.id)))}
             />
             {project.name}
           </span>

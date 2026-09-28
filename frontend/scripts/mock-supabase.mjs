@@ -815,6 +815,8 @@ function newProject(input) {
     ref_seq: input.ref_seq ?? 0,
     // What this project is and what work belongs in it (migration 0028).
     description: input.description ?? null,
+    // The owner's palette pick; null = Automatic, the creation-slot colour (migration 0041).
+    color: input.color ?? null,
   };
 }
 

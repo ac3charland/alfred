@@ -8,6 +8,7 @@ import { TaskDetailPanel } from './task-detail-panel';
 
 const PROJECTS: Project[] = [
   {
+    color: null,
     description: null,
     id: 'p-alf',
     name: 'Alfred',

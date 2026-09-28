@@ -2811,6 +2811,7 @@ describe('TaskRow — classification & type-gating', () => {
 
   describe('Dispatch — the row menu (ALF-185)', () => {
     const PROJECT: Project = {
+      color: null,
       description: null,
       id: 'p1',
       name: 'Alfred',
@@ -3312,6 +3313,7 @@ describe('TaskRow — epic construction (ALF-129)', () => {
   ];
 
   const PROJECT: Project = {
+    color: null,
     description: null,
     id: 'p1',
     name: 'Alfred',
@@ -4318,6 +4320,7 @@ describe('TaskRow — dismissing the add-subtask entry on an outside click (ALF-
 
 describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
   const PROJECT: Project = {
+    color: null,
     description: null,
     id: 'p1',
     name: 'Alfred',
@@ -4768,6 +4771,7 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
 
 describe('TaskRow — label chips & per-type detail fields (ALF-170)', () => {
   const PROJECT: Project = {
+    color: null,
     description: null,
     id: 'p1',
     name: 'Alfred',
@@ -5182,6 +5186,7 @@ describe('provenance mark', () => {
 describe('dispatch-ready pip', () => {
   const PIP_NAME = 'Ready to dispatch';
   const PROJECT: Project = {
+    color: null,
     description: null,
     id: 'p1',
     name: 'Alfred',

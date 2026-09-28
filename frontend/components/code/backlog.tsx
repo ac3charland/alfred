@@ -42,7 +42,7 @@ export function Backlog() {
   // and back. Statuses default to the outstanding states; projects to none of them (ALF-201).
   const { statuses, toggle, isFiltering } = useStatusFilter('backlog', DEFAULT_BACKLOG_STATUSES);
   // Creation order, not the live ranking: a checklist that reshuffles as work is re-ranked is
-  // unusable, and the creation slot is what assigns each project its palette colour (ALF-50).
+  // unusable, and it is the list each project's colour resolves against (pick, else slot).
   const projects = useProjects();
   const {
     projectIds,

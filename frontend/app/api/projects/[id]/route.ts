@@ -8,12 +8,13 @@ import { toUpdatePayload } from '@/lib/api/updates';
 import type { ProjectUpdate } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
-// PATCH /api/projects/[id] — the project's description, and nothing else (ALF-179)
+// PATCH /api/projects/[id] — the project's description (ALF-179) and colour (ALF-188)
 //
-// The only editable field a project has. `name`, `key`, `github_url` and the repo fields stay
+// The only editable fields a project has. `name`, `key`, `github_url` and the repo fields stay
 // immutable: `key` is carried by every ref, branch name and PR frontmatter, so a rename is a
 // feature with its own consequences rather than a side effect of a text column. The schema
-// strips every other key, so a body naming one changes nothing. `null` clears the description.
+// strips every other key, so a body naming one changes nothing. `null` clears the description,
+// or returns the colour to Automatic (the project's creation-slot colour).
 // ---------------------------------------------------------------------------
 
 export const PATCH = withSession(
@@ -26,7 +27,7 @@ export const PATCH = withSession(
     const input = await parseRequestBody(request, updateProjectSchema);
     if (input instanceof Response) return input;
 
-    const updates = toUpdatePayload<ProjectUpdate>(input, ['description']);
+    const updates = toUpdatePayload<ProjectUpdate>(input, ['description', 'color']);
 
     const { data, error } = await supabase
       .from('projects')

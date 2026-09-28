@@ -7,6 +7,7 @@ import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 import { Board } from './board';
 
 const PROJECT: Project = {
+  color: null,
   description: null,
   id: 'p1',
   name: 'Alfred',

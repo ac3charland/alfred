@@ -13,6 +13,7 @@ const WORK: Folder = {
 const HOME: Folder = { ...WORK, id: 'folder-2', name: 'Home', sort_order: 2 };
 
 const ALFRED: Project = {
+  color: null,
   description: null,
   id: 'p1',
   name: 'Alfred',

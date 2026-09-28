@@ -10,9 +10,21 @@ import { EpicBlock, type OpenSessionHandler } from '@/components/code/board/epic
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
 import { StoryDetailModal } from '@/components/code/story-detail-modal';
 import { ENTITY_DESCRIPTION_MAX } from '@/lib/api/schemas';
+import {
+  isProjectColor,
+  projectColorFor,
+  projectSlotColorFor,
+  projectTitleClasses,
+} from '@/lib/code/project-color';
 import { useStatusFilter } from '@/lib/hooks/use-status-filter';
-import { HAPPY_PATH_STATES, useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
+import {
+  HAPPY_PATH_STATES,
+  useCodeActions,
+  useProjectBoard,
+  useProjects,
+} from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 export interface BoardProperties {
   /** The project whose board to render (the `/code/[projectId]` route segment). */
@@ -32,6 +44,9 @@ export interface BoardProperties {
  *   distinct card treatment; each epic header badges how many it holds (ALF-136).
  * - **abandoned** stories have no lane to return to, so they stay in a per-epic bucket behind a
  *   *Show abandoned* toggle.
+ * - **The title glows in the project's colour** (ALF-188) — its stored pick, else its creation-slot
+ *   colour, resolved against the creation-ordered `useProjects` list like every other coloured
+ *   project surface. The toolbar's palette button changes it.
  * - **The header controls** live in `BoardToolbar`, which owns their responsive shape (the
  *   view filters fold into a ⋯ menu below `md`); the board keeps the state they act on.
  *
@@ -41,7 +56,10 @@ export interface BoardProperties {
  */
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);
-  const { openClaudeSession, createEpic, updateProjectDescription } = useCodeActions();
+  const { openClaudeSession, createEpic, updateProjectDescription, updateProjectColor } =
+    useCodeActions();
+  // Creation-ordered, not `project` alone: the slot colour is the project's position in it.
+  const projects = useProjects();
   // A `?story=<ref>` deep-link (e.g. from a Backlog row) opens that story's modal — see below.
   const storyParam = useSearchParams().get('story');
 
@@ -139,12 +157,17 @@ export function Board({ projectId }: BoardProperties) {
 
   const openStory = openStoryId === null ? null : allStories.find((s) => s.item_id === openStoryId);
 
+  const pickedColor = isProjectColor(project.color) ? project.color : null;
+  const titleColor = projectColorFor(projects, projectId);
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
-            <h2 className="font-serif text-2xl text-foreground">{project.name}</h2>
+            <h2 className={cn('font-serif text-2xl', projectTitleClasses(titleColor))}>
+              {project.name}
+            </h2>
             <span className="font-mono text-sm text-muted-foreground">{project.key}</span>
           </div>
           <BoardToolbar
@@ -172,6 +195,13 @@ export function Board({ projectId }: BoardProperties) {
             showArchived={showArchived}
             onToggleArchived={() => {
               setShowArchived((on) => !on);
+            }}
+            projectColor={pickedColor}
+            slotColor={projectSlotColorFor(projects, projectId)}
+            onProjectColorChange={(color) => {
+              void updateProjectColor(projectId, color).catch(() => {
+                // The store already rolled the colour back and toasted.
+              });
             }}
           />
         </div>

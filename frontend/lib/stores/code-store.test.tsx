@@ -100,6 +100,7 @@ beforeEach(() => {
 });
 
 const PROJECT_A: Project = {
+  color: null,
   description: null,
   id: 'p1',
   name: 'Alfred',
@@ -2639,6 +2640,80 @@ describe('code-store', () => {
           await expect(
             result.current.updateProjectDescription('missing', 'Described'),
           ).rejects.toThrow(/not found/i);
+        });
+        expect(mockUpdateProject).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('updateProjectColor (the board toolbar picker)', () => {
+      it('optimistically patches the colour, then reconciles with the saved row', async () => {
+        // The server's row wins over the optimistic value, so reconcile is observable.
+        mockUpdateProject.mockResolvedValue({ ...PROJECT_A, color: 'teal' });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateProjectColor('p1', 'green');
+        });
+
+        expect(mockUpdateProject).toHaveBeenCalledWith('p1', { color: 'green' });
+        expect(result.current.board.project?.color).toBe('teal');
+      });
+
+      it('applies the colour before the request resolves', () => {
+        mockUpdateProject.mockReturnValue(new Promise<Project>(() => {}));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        act(() => {
+          void result.current.actions.updateProjectColor('p1', 'teal');
+        });
+
+        expect(result.current.board.project?.color).toBe('teal');
+      });
+
+      it('clears the pick with null — back to Automatic', async () => {
+        const picked: Project = { ...PROJECT_A, color: 'red' };
+        mockUpdateProject.mockResolvedValue({ ...picked, color: null });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [picked] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateProjectColor('p1', null);
+        });
+
+        expect(mockUpdateProject).toHaveBeenCalledWith('p1', { color: null });
+        expect(result.current.board.project?.color).toBeNull();
+      });
+
+      it('restores the previous colour and toasts on failure', async () => {
+        mockUpdateProject.mockRejectedValue(new Error('patch failed'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [{ ...PROJECT_A, color: 'amber' }] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.actions.updateProjectColor('p1', 'blue')).rejects.toThrow(
+            'patch failed',
+          );
+        });
+
+        expect(result.current.board.project?.color).toBe('amber');
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't save the project color");
+      });
+
+      it('throws when the project is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.updateProjectColor('missing', 'blue')).rejects.toThrow(
+            /not found/i,
+          );
         });
         expect(mockUpdateProject).not.toHaveBeenCalled();
       });

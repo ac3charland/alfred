@@ -881,6 +881,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          color: string | null
           created_at: string
           description: string | null
           github_url: string | null
@@ -892,6 +893,7 @@ export type Database = {
           repo_owner: string
         }
         Insert: {
+          color?: string | null
           created_at?: string
           description?: string | null
           github_url?: string | null
@@ -903,6 +905,7 @@ export type Database = {
           repo_owner: string
         }
         Update: {
+          color?: string | null
           created_at?: string
           description?: string | null
           github_url?: string | null

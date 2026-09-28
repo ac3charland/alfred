@@ -30,6 +30,7 @@ jest.mock('@/lib/clipboard', () => ({
 }));
 
 const PROJECT: Project = {
+  color: null,
   description: null,
   id: 'p1',
   name: 'Alfred',

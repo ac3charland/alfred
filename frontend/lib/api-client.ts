@@ -287,8 +287,8 @@ export function createProject(input: CreateProjectInput): Promise<Project> {
 }
 
 /**
- * Patch a project's description — its only editable field (ALF-179). Lives in `lib/` (the
- * null-aware layer) because clearing the description sends an explicit `null` — the Postgres
+ * Patch a project's editable fields — its description (ALF-179) and colour (ALF-188). Lives in
+ * `lib/` (the null-aware layer) because clearing either sends an explicit `null` — the Postgres
  * absent value — which component code can't mint (unicorn/no-null). Returns the updated row.
  */
 export function updateProject(id: string, input: UpdateProjectInput): Promise<Project> {

@@ -15,6 +15,7 @@ const PROJECTS: Project[] = [
   ['Corral', 'COR', 'corral'],
   ['Drift', 'DRF', 'drift'],
 ].map(([name, key, repo], index) => ({
+  color: null,
   description: null,
   id: `pp${String(index + 1)}`,
   name: name ?? '',

@@ -9,7 +9,7 @@ import { expect, test } from './support/fixtures';
  * - below `md` the three view filters (Filter by status / Show abandoned / Show archived) are gone
  *   from the header and live inside a single ⋯ menu, which still drives the board;
  * - "Collapse all" keeps its accessible name but shows only its chevron glyph;
- * - "Create epic" stays a visible button at every width;
+ * - "Create epic" stays a visible button at every width, and so does the project colour button;
  * - at desktop width nothing changed: the filters are inline and the ⋯ is absent.
  */
 
@@ -109,6 +109,34 @@ test.describe('at a phone width', () => {
     await collapseAll.click();
     await expect(page.getByRole('region', { name: 'Needs Refinement' })).toBeHidden();
     await expect(page.getByRole('button', { name: 'Open all' })).toBeVisible();
+  });
+});
+
+test.describe('the project colour button at a phone width', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('stays inline beside the other controls — never folded into the ⋯ menu', async ({
+    page,
+    seed,
+  }) => {
+    await seed(SEED);
+    await page.goto('/code/p1');
+
+    const palette = page.getByRole('button', { name: 'Project color: Blue (automatic)' });
+    await expect(palette).toBeVisible();
+    // The same 32px height as the controls it sits between, so the row still reads as one bar.
+    const box = await palette.boundingBox();
+    const more = await page.getByRole('button', { name: 'Board filters' }).boundingBox();
+    expect(box?.height).toBe(more?.height);
+
+    // It opens the picker right here, rather than from inside the menu.
+    await palette.click();
+    await expect(page.getByRole('group', { name: 'Project color' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('button', { name: 'Board filters' }).click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expect(page.getByRole('menu').getByText(/project color/i)).toBeHidden();
   });
 });
 

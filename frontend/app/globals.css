@@ -210,6 +210,25 @@
 @utility glow-emphasis {
   box-shadow: 0 0 24px 4px rgba(79, 209, 224, 0.4);
 }
+/* Text glows for a project board's title, one per project colour (`projectTitleClasses`). The
+   box-shadow glows above are too faint to read on text, so these are a tighter, stronger halo.
+   Not `text-glow-*`: tailwind-merge (`cn`) reads any `text-<word>` as a text colour and would
+   drop the `text-accent-*` beside it. */
+@utility title-glow-blue {
+  text-shadow: 0 0 14px rgba(96, 165, 250, 0.5);
+}
+@utility title-glow-amber {
+  text-shadow: 0 0 14px rgba(240, 180, 41, 0.5);
+}
+@utility title-glow-green {
+  text-shadow: 0 0 14px rgba(52, 211, 153, 0.5);
+}
+@utility title-glow-red {
+  text-shadow: 0 0 14px rgba(248, 113, 113, 0.5);
+}
+@utility title-glow-teal {
+  text-shadow: 0 0 14px rgba(79, 209, 224, 0.5);
+}
 
 /* ── Base body styles ────────────────────────────────────────────────────── */
 body {

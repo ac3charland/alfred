@@ -127,6 +127,7 @@ test('Dispatch on a labelled code row → it leaves the inbox and lands on the b
     ],
     projects: [
       {
+        color: null,
         description: null,
         id: projectId,
         name: 'Alfred',
@@ -198,6 +199,7 @@ test('the "Created …" toast is clickable and deep-links to the new story (ALF-
     ],
     projects: [
       {
+        color: null,
         description: null,
         id: projectId,
         name: 'Alfred',

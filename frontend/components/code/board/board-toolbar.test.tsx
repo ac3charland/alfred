@@ -21,6 +21,9 @@ function renderToolbar(overrides: Partial<BoardToolbarProperties> = {}) {
     hasArchivedEpics: false,
     showArchived: false,
     onToggleArchived: jest.fn(),
+    projectColor: null,
+    slotColor: 'blue',
+    onProjectColorChange: jest.fn(),
     ...overrides,
   };
   render(<BoardToolbar {...properties} />);
@@ -51,6 +54,57 @@ describe('BoardToolbar', () => {
       await user.click(screen.getByRole('button', { name: /create epic/i }));
 
       expect(onCreateEpic).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the project colour button', () => {
+    it('sits right after "Create epic" and stays visible at every viewport', () => {
+      renderToolbar({ projectColor: 'green' });
+
+      const buttons = screen.getAllByRole('button');
+      const createIndex = buttons.findIndex((b) => b.textContent === 'Create epic');
+      const palette = screen.getByRole('button', { name: /^project color/i });
+      expect(buttons[createIndex + 1]).toBe(palette);
+      // Unlike the view filters, it never folds into the ⋯ menu below `md`.
+      expect(palette).not.toHaveClass('md:hidden');
+      expect(palette).not.toHaveClass('hidden');
+      expect(palette.closest('.hidden')).toBeNull();
+    });
+
+    it('names a picked colour and wears it on the glyph', () => {
+      renderToolbar({ projectColor: 'green', slotColor: 'blue' });
+
+      const palette = screen.getByRole('button', { name: 'Project color: Green' });
+      expect(palette.querySelector('svg')).toHaveClass('text-accent-green');
+    });
+
+    it('names the slot colour and says it is automatic when there is no pick', () => {
+      renderToolbar({ projectColor: null, slotColor: 'amber' });
+
+      const palette = screen.getByRole('button', { name: 'Project color: Amber (automatic)' });
+      expect(palette.querySelector('svg')).toHaveClass('text-accent-amber');
+    });
+
+    it('opens the picker, reporting it as expanded while open', async () => {
+      const user = userEvent.setup();
+      renderToolbar({ projectColor: 'green' });
+
+      const palette = screen.getByRole('button', { name: 'Project color: Green' });
+      expect(palette).toHaveAttribute('aria-expanded', 'false');
+      await user.click(palette);
+
+      expect(await screen.findByRole('group', { name: 'Project color' })).toBeInTheDocument();
+      expect(palette).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('reports a pick through onProjectColorChange', async () => {
+      const user = userEvent.setup();
+      const { onProjectColorChange } = renderToolbar({ projectColor: null, slotColor: 'blue' });
+
+      await user.click(screen.getByRole('button', { name: 'Project color: Blue (automatic)' }));
+      await user.click(await screen.findByRole('button', { name: 'Red' }));
+
+      expect(onProjectColorChange).toHaveBeenCalledWith('red');
     });
   });
 

@@ -8,6 +8,7 @@ import type { CodeStory, Project } from '@/lib/types';
 import { QUEUE_WIDGET_ROWS, QueueWidget } from './queue-widget';
 
 const PROJECT: Project = {
+  color: null,
   description: null,
   id: 'p1',
   name: 'Alfred',
