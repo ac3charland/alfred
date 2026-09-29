@@ -78,3 +78,43 @@ export const updateReaderPublicationSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: 'No fields to update' });
 
 export type UpdateReaderPublicationInput = z.infer<typeof updateReaderPublicationSchema>;
+
+/**
+ * The most research items one dispatch request takes. The route fires the research Routine once
+ * per post, sequentially, each fire bounded by a 10 s timeout, so five fit inside the route's
+ * 60 s budget; the Inbox store sends a bigger dispatch as several requests.
+ */
+export const RESEARCH_SEND_MAX = 5;
+
+/**
+ * Body for POST /api/reader/research — the research rows to consume into Reader posts and fire.
+ * `.strict()`, so a stray key is a 400 rather than something silently ignored.
+ */
+export const sendItemsToResearchSchema = z
+  .object({
+    ids: z.array(z.uuid()).min(1).max(RESEARCH_SEND_MAX),
+  })
+  .strict();
+
+export type SendItemsToResearchInput = z.infer<typeof sendItemsToResearchSchema>;
+
+/**
+ * The longest report delivery accepts, in characters. The research skill asks for 1 200–3 000
+ * words, so this is several times any honest report — a ceiling on a runaway session, not a
+ * length the owner will ever meet.
+ */
+export const RESEARCH_REPORT_MAX_CHARS = 200_000;
+
+/**
+ * Body for PUT /api/reader/research/[id] — the research session's markdown report. Blank after
+ * trimming is refused (a delivery with nothing in it would land an empty post as done); the report
+ * is stored as sent, untrimmed.
+ */
+export const researchReportSchema = z.object({
+  report: z
+    .string()
+    .max(RESEARCH_REPORT_MAX_CHARS)
+    .refine((report) => report.trim() !== '', 'The report must not be blank'),
+});
+
+export type ResearchReportInput = z.infer<typeof researchReportSchema>;

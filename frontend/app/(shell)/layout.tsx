@@ -14,6 +14,7 @@ import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans
 import { getWikiSeed } from '@/lib/data/wiki';
 import { todayIn } from '@/lib/habits';
 import { getInstapaperConfig } from '@/lib/instapaper/config';
+import { getResearchConfig } from '@/lib/research/config';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
@@ -27,6 +28,7 @@ import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
+import { ResearchConfigProvider } from '@/lib/stores/research-config';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
@@ -102,87 +104,94 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     // (Folders / Tasks / Code) sit inside it and can fire an error toast from their
     // rollback path via useToastActions (ALF-33). AppShell renders the ToastViewport.
     <ToastProvider>
-      {/* WikiProvider sits directly inside ToastProvider, OUTSIDE every other store: it depends
+      {/* ResearchConfigProvider, like WikiProvider below it, sits OUTSIDE every other store: the
+      tasks store (readiness), both Classify menus and the Reader read it. Only whether research is
+      configured crosses to the browser — never the fire token or the delivery key. */}
+      <ResearchConfigProvider configured={getResearchConfig() !== undefined}>
+        {/* WikiProvider sits directly inside ToastProvider, OUTSIDE every other store: it depends
       on none of them, and three of them read it — ⌘P (wiki pages in global search), the Reader
       (whether ideas can be sent) and TasksProvider itself (whether a knowledge row is
       dispatchable). `config` is the repo name and a writable flag, never the token. */}
-      <WikiProvider
-        initialPages={wikiSeed.pages}
-        initialSync={wikiSeed.sync}
-        config={getWikiClientConfig()}
-      >
-        <FoldersProvider initialFolders={folders}>
-          {/* ExpansionProvider wraps TasksProvider (rather than nesting inside it, where the other
+        <WikiProvider
+          initialPages={wikiSeed.pages}
+          initialSync={wikiSeed.sync}
+          config={getWikiClientConfig()}
+        >
+          <FoldersProvider initialFolders={folders}>
+            {/* ExpansionProvider wraps TasksProvider (rather than nesting inside it, where the other
         coordination stores sit) so the tasks store can hand it a create's temp id → saved id
         swap and keep the row's open disclosures across it — ALF-199. */}
-          <ExpansionProvider>
-            <TasksProvider initialTasks={items}>
-              <TaskDndProvider>
-                <ActiveEditorProvider>
-                  <InboxSelectionProvider>
-                    <DepartingItemsProvider>
-                      <CodeProvider
-                        initialProjects={projects}
-                        initialEpics={epics}
-                        initialStories={stories}
-                      >
-                        <CodeFilterProvider>
-                          <FolderSortProvider>
-                            <SearchProvider>
-                              {/* Only the index + the latest document are seeded — an older week's
+            <ExpansionProvider>
+              <TasksProvider initialTasks={items}>
+                <TaskDndProvider>
+                  <ActiveEditorProvider>
+                    <InboxSelectionProvider>
+                      <DepartingItemsProvider>
+                        <CodeProvider
+                          initialProjects={projects}
+                          initialEpics={epics}
+                          initialStories={stories}
+                        >
+                          <CodeFilterProvider>
+                            <FolderSortProvider>
+                              <SearchProvider>
+                                {/* Only the index + the latest document are seeded — an older week's
                             HTML is pulled on demand (see the weekly plan store). */}
-                              <WeeklyPlanProvider
-                                initialIndex={weeklyPlanIndex}
-                                initialLatest={latestWeeklyPlan}
-                              >
-                                {/* The server can't know the browser's zone, so today is seeded in
-                              UTC and corrected in a mount effect (see the habits store). */}
-                                <HabitsProvider
-                                  initialHabits={habitSeed.habits}
-                                  initialEntries={habitSeed.entries}
-                                  initialStats={habitSeed.stats}
-                                  serverToday={todayIn('UTC')}
+                                <WeeklyPlanProvider
+                                  initialIndex={weeklyPlanIndex}
+                                  initialLatest={latestWeeklyPlan}
                                 >
-                                  <CommsProvider
-                                    initialSeed={commsSeed.seed}
-                                    initialFailed={commsSeed.failed}
+                                  {/* The server can't know the browser's zone, so today is seeded in
+                              UTC and corrected in a mount effect (see the habits store). */}
+                                  <HabitsProvider
+                                    initialHabits={habitSeed.habits}
+                                    initialEntries={habitSeed.entries}
+                                    initialStats={habitSeed.stats}
+                                    serverToday={todayIn('UTC')}
                                   >
-                                    <CommsSettingsProvider
-                                      initialPeople={commsSettingsSeed.people}
-                                      initialRubrics={commsSettingsSeed.rubrics}
-                                      initialCorrections={commsSettingsSeed.corrections}
+                                    <CommsProvider
+                                      initialSeed={commsSeed.seed}
+                                      initialFailed={commsSeed.failed}
                                     >
-                                      <ReaderProvider
-                                        initialPosts={readerSeed.posts}
-                                        initialHealth={readerHealthSeed}
-                                        // Only whether the credentials exist crosses to the
-                                        // browser — never the credentials. Off draws the Send verb
-                                        // disabled.
-                                        instapaperConfigured={getInstapaperConfig() !== null}
+                                      <CommsSettingsProvider
+                                        initialPeople={commsSettingsSeed.people}
+                                        initialRubrics={commsSettingsSeed.rubrics}
+                                        initialCorrections={commsSettingsSeed.corrections}
                                       >
-                                        <ReaderSettingsProvider
-                                          initialPublications={readerSettingsSeed.publications}
-                                          initialCandidates={readerSettingsSeed.candidates}
+                                        <ReaderProvider
+                                          initialPosts={readerSeed.posts}
+                                          initialHealth={readerHealthSeed}
+                                          // Only whether the credentials exist crosses to the
+                                          // browser — never the credentials. Off draws the Send verb
+                                          // disabled.
+                                          instapaperConfigured={getInstapaperConfig() !== null}
                                         >
-                                          <AppShell email={user.email ?? null}>{children}</AppShell>
-                                        </ReaderSettingsProvider>
-                                      </ReaderProvider>
-                                    </CommsSettingsProvider>
-                                  </CommsProvider>
-                                </HabitsProvider>
-                              </WeeklyPlanProvider>
-                            </SearchProvider>
-                          </FolderSortProvider>
-                        </CodeFilterProvider>
-                      </CodeProvider>
-                    </DepartingItemsProvider>
-                  </InboxSelectionProvider>
-                </ActiveEditorProvider>
-              </TaskDndProvider>
-            </TasksProvider>
-          </ExpansionProvider>
-        </FoldersProvider>
-      </WikiProvider>
+                                          <ReaderSettingsProvider
+                                            initialPublications={readerSettingsSeed.publications}
+                                            initialCandidates={readerSettingsSeed.candidates}
+                                          >
+                                            <AppShell email={user.email ?? null}>
+                                              {children}
+                                            </AppShell>
+                                          </ReaderSettingsProvider>
+                                        </ReaderProvider>
+                                      </CommsSettingsProvider>
+                                    </CommsProvider>
+                                  </HabitsProvider>
+                                </WeeklyPlanProvider>
+                              </SearchProvider>
+                            </FolderSortProvider>
+                          </CodeFilterProvider>
+                        </CodeProvider>
+                      </DepartingItemsProvider>
+                    </InboxSelectionProvider>
+                  </ActiveEditorProvider>
+                </TaskDndProvider>
+              </TasksProvider>
+            </ExpansionProvider>
+          </FoldersProvider>
+        </WikiProvider>
+      </ResearchConfigProvider>
     </ToastProvider>
   );
 }

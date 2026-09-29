@@ -20,7 +20,7 @@ type ExactOptional<T> = { [K in keyof T]?: Exclude<T[K], undefined> };
 // Shared field definitions
 // ---------------------------------------------------------------------------
 
-const itemType = z.enum(['unclassified', 'task', 'code', 'knowledge']);
+const itemType = z.enum(['unclassified', 'task', 'code', 'knowledge', 'research']);
 const itemStatus = z.enum(['active', 'completed']);
 const uuid = z.uuid();
 const nullableUuid = z.uuid().nullable();
