@@ -74,7 +74,7 @@ import {
   recordRunSuccess,
 } from './health';
 import { type IntakeResult, NO_READABLE_BODY, intakePost } from './intake';
-import { READER_PROMPT_VERSION } from './prompt';
+import { READER_PROMPT_VERSION, RESEARCH_AUTHOR, RESEARCH_PUBLICATION } from './prompt';
 import { ReaderSweepError, runReaderRetention as sweepReaderText } from './retention';
 import {
   type BookmarkedPost,
@@ -378,22 +378,32 @@ async function prepareRetry(
   return {
     kind: 'summarize',
     id: row.id,
-    input: toSummaryInput({ ...row, text }, retryPublication(row, roster)),
+    input: toSummaryInput(
+      { ...row, author: retryAuthor(row), text },
+      retryPublication(row, roster),
+    ),
     attempts: row.summarize_attempts,
   };
 }
 
 /**
- * The name a retried post is summarised under. An article's is its linked publication's, else its
- * site, else Instapaper — the same name its row shows. A newsletter's is its roster name. The
+ * The name a retried post is summarised under. A research report's is the research routine's own
+ * label, whatever its row carries. An article's is its linked publication's, else its site, else
+ * Instapaper — the same name its row shows. A newsletter's is its roster name. The
  * post's own TITLE is never the fallback: it is not the name of anything that publishes. A roster
  * row that has gone (a renamed handle, a deleted publication) leaves the author, and then the same
  * 'unknown' the eval script prints for a message with no usable `From` name.
  */
 function retryPublication(row: RetryRow, roster: Map<string, string>): string {
+  if (row.source === 'research') return RESEARCH_PUBLICATION;
   if (row.source === 'instapaper') return articlePublication(row.publication_id, row.site, roster);
   const linked = row.publication_id === undefined ? undefined : roster.get(row.publication_id);
   return linked ?? row.author ?? 'unknown';
+}
+
+/** The author a retried post is summarised under: the row's own, except a report's — the routine. */
+function retryAuthor(row: RetryRow): string | undefined {
+  return row.source === 'research' ? RESEARCH_AUTHOR : row.author;
 }
 
 /**

@@ -1,4 +1,10 @@
-import { READER_MODEL_INPUT_CHARS, READER_PROMPT_VERSION, buildReaderRequest } from './prompt';
+import {
+  READER_MODEL_INPUT_CHARS,
+  READER_PROMPT_VERSION,
+  RESEARCH_AUTHOR,
+  RESEARCH_PUBLICATION,
+  buildReaderRequest,
+} from './prompt';
 import { READER_SUMMARY_SCHEMA } from './schema';
 import type { SummaryInput } from './types';
 
@@ -103,6 +109,18 @@ describe('buildReaderRequest — the user turn', () => {
     const { user } = buildReaderRequest(withoutAuthor);
 
     expect(user).toContain('Author: unknown');
+  });
+
+  // A research report has no publisher and no byline; the metadata block says what it is instead.
+  // The system prompt is untouched, which is why READER_PROMPT_VERSION stays 1.
+  it('names the source of a research report on its publication and author lines', () => {
+    const { user } = buildReaderRequest(
+      post({ publication: RESEARCH_PUBLICATION, author: RESEARCH_AUTHOR }),
+    );
+
+    expect(user).toContain(
+      'Publication: alfred research — a report written for the owner\nAuthor: Claude Code research routine\n',
+    );
   });
 
   it('leaves a short post untruncated', () => {

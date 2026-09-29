@@ -24,7 +24,7 @@ import {
 
 /** The prompt version stamped onto every verdict. Bump BY HAND when the prompt text or the
  *  output schema changes meaningfully — it is what makes a prompt change safely replayable. */
-export const PROMPT_VERSION = 3;
+export const PROMPT_VERSION = 4;
 
 /** How many worked examples the few-shot block carries. */
 export const EXAMPLE_LIMIT = 12;
@@ -70,11 +70,12 @@ function nullableEnum(values: readonly string[]): Record<string, unknown> {
  * `heldType` PINS `item_type` to a single-value enum with no null branch, so echoing the type the
  * owner already chose is the only legal response. It has to be pinned rather than merely stated,
  * because a disagreement here is not one wrong field but a wasted call: every task-only field is
- * dropped by validation against a `code` (or `knowledge`) verdict, every code-only field is
- * dropped by the merge against a `task` (or `knowledge`) row, every field but `item_type` itself
- * is dropped on both sides of a `knowledge` row however the model answered, and the row is
- * stamped regardless. Echoing also keeps `classified_guess.item_type` equal to the row's type, so
- * the dispatch-time diff logs no phantom correction. It is OPTIONAL rather than a required
+ * dropped by validation against a `code` (or `knowledge` or `research`) verdict, every code-only
+ * field is dropped by the merge against a `task` (or `knowledge` or `research`) row, every field
+ * but `item_type` itself is dropped on both sides of a `knowledge` or `research` row however the
+ * model answered, and the row is stamped regardless. Echoing also keeps
+ * `classified_guess.item_type` equal to the row's type, so the dispatch-time diff logs no phantom
+ * correction. It is OPTIONAL rather than a required
  * `ItemType | undefined` because `unicorn/no-useless-undefined` autofixes a trailing `undefined`
  * argument away — a required parameter would be silently un-passed by `eslint --fix`.
  */
@@ -167,7 +168,7 @@ function renderClosedWorld(world: ClosedWorld): string {
  * preamble states the setting rather than naming it. Three things it must establish before any rule
  * below can be followed: WHERE this is happening (alfred, and what an Inbox capture is within it),
  * WHAT this step produces (metadata on one item — never an action taken on it), and WHY abstaining
- * is cheap while a confident wrong label is not. It also names the three `item_type` values
+ * is cheap while a confident wrong label is not. It also names the four `item_type` values
  * against the world they describe, which is what lets the abstention rule below say "work on
  * alfred itself" and be understood by a reader who has never seen this codebase.
  */
@@ -177,8 +178,9 @@ const SYSTEM_PREAMBLE =
   'called the Inbox, then triages them later by hand: setting the fields on each one, then filing it ' +
   'somewhere. You go first, pre-filling those fields so that triage becomes a review instead of data ' +
   'entry. The owner also builds alfred itself, so a capture is sometimes an ordinary to-do (`task`), ' +
-  "sometimes a piece of work on alfred's own codebase (`code`), and sometimes an idea or piece of " +
-  'knowledge worth keeping, with nothing to do about it (`knowledge`).\n\n' +
+  "sometimes a piece of work on alfred's own codebase (`code`), sometimes an idea or piece of " +
+  'knowledge worth keeping, with nothing to do about it (`knowledge`), and sometimes a question ' +
+  'the owner wants researched on the web and written up as a report (`research`).\n\n' +
   'You will be shown exactly one captured item. Decide the six fields the response schema defines: ' +
   'item_type, priority, due_date, folder_id, intended_project_id, and intended_epic_id. Every field ' +
   'may be null — null is always a legal answer, and often the correct one.\n\n' +
@@ -194,9 +196,14 @@ const SYSTEM_PREAMBLE =
  */
 const ABSTENTION_RULES =
   'Abstain rather than guess. Optimise for precision and accept low recall:\n' +
-  '- item_type: answer only when the text clearly reads as a task, as work on alfred itself, or as ' +
-  'an idea to keep with no action in it. A capture that asks the owner to read, look up, try, or do ' +
-  'something with an idea is a task, not knowledge. It may stay null.\n' +
+  '- item_type: answer only when the text clearly reads as a task, as work on alfred itself, as an ' +
+  'idea to keep with no action in it, or as a question to research. A capture that asks the owner ' +
+  'to read, look up, try, or do something with an idea is a task, not knowledge. It may stay null. ' +
+  'Research is an open question to be answered from outside sources and written up (“research…”, ' +
+  '“what’s the evidence on…”, “is X worth it for us”, “compare A vs B”). A quick lookup or errand ' +
+  '(“look up the dentist’s hours”) stays a task, and a thought to keep stays knowledge. When ' +
+  'unsure between task and research, answer null. A Research label that gets dispatched spends a ' +
+  'research run, so abstain unless it is clearly research.\n' +
   '- due_date: answer only when the text actually states a date or a day. Never infer it from urgency.\n' +
   '- priority: answer only when the text itself signals it. No default guess.\n' +
   '- folder_id: answer only when exactly one existing folder is a clear fit. Never invent a folder.\n' +
