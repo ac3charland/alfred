@@ -18,7 +18,7 @@ Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 fo
 
 ### `0001_initial_schema.sql`
 
-- **`item_type`** enum: `unclassified | task | code | knowledge`
+- **`item_type`** enum: `unclassified | task | code | knowledge` (`research` added by `0042`)
 - **`item_status`** enum: `active | completed`
 - **`folders`** — flat organizational buckets (`id`, `name`, `created_at`, and an optional
   `description` saying what belongs there — see `0028`).
@@ -184,6 +184,35 @@ and summarised by the Worker's Reader tick.
   read across both sources.
 - **`reader_health.instapaper_last_success_at` / `_last_error` / `_last_error_at`** — the To Reader
   leg's own health, apart from the summariser's, read by the Reader header's Instapaper dot.
+
+### `0042_research_item_type.sql` — the `research` item type (ALF-298)
+
+- **`item_type`** gains `research`: an open question the owner wants researched on the web and
+  written up. Alone in its file because Postgres refuses to use an enum value inside the
+  transaction that added it; everything that names it is in `0043`.
+
+### `0043_research.sql` — research items become Reader posts (ALF-298)
+
+Dispatching a research row consumes it into a Reader post that waits for its report; a Claude Code
+Routine researches the question and delivers the report to the app, and from then on the post is
+summarised and read like any other.
+
+- **`items_dispatched_needs_folder`** — a `research` row, like `code` and `knowledge`, leaves the
+  Inbox without a folder.
+- **`reader_posts.source`** gains `research`, and **`reader_posts_source_identity`** a third branch:
+  a research post carries none of the mail identity and no publication.
+- **`reader_posts.research_*`** — the post's lifecycle beside the summary's own: `research_brief`
+  (the question as fired: title, blank line, notes), `research_state` (`queued | researching |
+  done | failed`, null off-source), `research_attempts`, `research_fired_at`,
+  `research_session_url`, `research_error`, `research_delivered_at`. CHECKs: the state's values;
+  a research post always has a brief and a state and nothing else does; a done post has its
+  delivery stamp (not its text — the ninety-day sweep takes that like any post's); attempts not
+  negative.
+- **`send_items_to_research(p_ids)`** — all-or-nothing, `send_items_to_wiki`'s guards: stamps
+  `dispatched_at` (logging any classifier correction), inserts one queued post per item, deletes
+  the items, and returns the new posts.
+- **`reader_sweep_text`** is unchanged: a report's body sweeps at ninety days; its brief, summary
+  and session link stay.
 
 ## Applying on merge (the default path)
 
