@@ -268,15 +268,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>298</span><span class="sep"> — </span><span class="ttl">Add “Research” as an inbox item type</span></h1>
   <p class="change" id="change">Classify a capture as Research and Dispatch it: a Claude Code Routine researches it on the web, and the report lands in your Reader like any post, wiki picks included.</p>
-  <p class="revised" id="revised">Revised 2026-09-29: D4 → the 90-day sweep; D5 reopened on your three glyphs (your review).</p>
+  <p class="revised" id="revised">Revised 2026-09-29: D5 → Binoculars (your pick); D4 → the 90-day sweep.</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
-    <li data-state="open"><h3><a class="tag" href="#d5">D5</a>Which glyph marks a Research row?</h3>
-      <p class="pick">A · Binoculars ★ · B · Search · C · Notebook-pen</p>
-      <p class="why">Search already means the app’s search box; Notebook-pen reads as notes.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>What does the Reader show meanwhile?</h3>
       <p class="pick">The post appears at dispatch and steps through Plate II’s states.</p>
       <p class="why">A dispatched question never vanishes; a stuck run is visible and retryable.</p></li>
@@ -287,6 +284,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
       <p class="pick">In alfred, at <code>routines/research/SKILL.md</code> — outside the dev skill library.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>How does the report get back?</h3>
       <p class="pick">PUT to a new alfred endpoint, into Supabase; a research-only key the session never sees.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>Which glyph marks a Research row?</h3>
+      <p class="pick">Binoculars (Plate I).</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>What runs the research?</h3>
       <p class="pick">A Claude Code Routine that clones alfred and follows that skill, like wiki ingest.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>Can the classifier guess Research?</h3>
@@ -297,20 +296,13 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
 <section id="plates" aria-label="What you’ll see">
   <figure class="plate" id="p1">
-    <fieldset class="switch"><legend>D5</legend>
-      <label><input type="radio" name="p1" value="a" checked>A · Binoculars ★</label>
-      <label><input type="radio" name="p1" value="b">B · Search</label>
-      <label><input type="radio" name="p1" value="c">C · Notebook-pen</label>
-    </fieldset>
     <div class="mount">
       <div class="app inbox" role="img" aria-label="The Inbox with a Research row whose menu is open on Classify as, listing Task, Code, Knowledge and Research, beside a Knowledge row, a task and an unclassified capture">
         <div class="tlist">
           <div class="trow cur">
             <span class="chev"></span>
             <span class="slot" aria-label="Research">
-              <svg class="ic" data-opt="a" width="14" height="14" viewBox="0 0 24 24"><path d="M10 10h4"/><path d="M19 7V4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3"/><path d="M20 21a2 2 0 0 0 2-2v-3.851c0-1.39-2-2.962-2-4.829V8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v11a2 2 0 0 0 2 2z"/><path d="M 22 16 L 2 16"/><path d="M4 21a2 2 0 0 1-2-2v-3.851c0-1.39 2-2.962 2-4.829V8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11a2 2 0 0 1-2 2z"/><path d="M9 7V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3"/></svg>
-              <svg class="ic" data-opt="b" width="14" height="14" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-              <svg class="ic" data-opt="c" width="14" height="14" viewBox="0 0 24 24"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/></svg>
+              <svg class="ic" width="14" height="14" viewBox="0 0 24 24"><path d="M10 10h4"/><path d="M19 7V4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3"/><path d="M20 21a2 2 0 0 0 2-2v-3.851c0-1.39-2-2.962-2-4.829V8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v11a2 2 0 0 0 2 2z"/><path d="M 22 16 L 2 16"/><path d="M4 21a2 2 0 0 1-2-2v-3.851c0-1.39 2-2.962 2-4.829V8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11a2 2 0 0 1-2 2z"/><path d="M9 7V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3"/></svg>
             </span>
             <div class="tmain">
               <p class="tt">Is a cold-climate heat pump worth it for our Chicago house?</p>
@@ -562,8 +554,8 @@ ratio [4][6] — the one number I couldn't pin down is your utility's …
   </section>
 
   <section class="rec" id="d5">
-    <h3><span class="tag">D5</span>Which glyph marks a Research row? · open</h3>
-    <p>Your comparison, all in <code>lucide-react</code> 1.17.0. <b>A · Binoculars ★</b> — “looking out for something”, and not used anywhere in the app. Its silhouette is unlike the lightbulb, the code brackets and the tick box at 14 px. <b>B · Search</b> — the most literal, but it is already alfred’s search affordance (the shell search box, mobile search, the wiki index), so on a row it reads as “search this” and invites a click that does nothing. <b>C · Notebook-pen</b> — reads as “notes” or “write”, which is closer to Knowledge’s meaning and to every item’s own notes than to a question sent out. Considered earlier and set aside in review: Telescope, Microscope, Flask. Whatever the pick, the accessible name is “Research” and it takes Knowledge’s two slots.</p>
+    <h3><span class="tag">D5</span>Which glyph marks a Research row? · settled</h3>
+    <p>Lucide <code>Binoculars</code> (<code>lucide-react</code> 1.17.0), your pick. It suggests looking out for something, nothing else in the app uses it, and its shape is unlike the lightbulb, the code brackets and the tick box at 14 px. The accessible name is “Research”, and it takes Knowledge’s two slots (the checkbox slot and beside the select tick). Considered: Search (already the app’s search affordance), Notebook-pen (reads as notes), and, earlier, Telescope, Microscope and Flask.</p>
   </section>
 
   <section class="rec" id="d6">
@@ -824,7 +816,7 @@ Never commit, push, open a pull request, or modify any file in the repository.</
 <section id="ac" data-kind="story">
   <h2>Acceptance criteria</h2>
   <ul class="checks">
-    <li data-trace="D5 P1">A <code>research</code> row shows D5’s glyph (accessible name “Research”) in the checkbox slot and beside the select tick; it is not completable, takes no subtasks and is not draggable at root.</li>
+    <li data-trace="D5 P1">A <code>research</code> row shows the Binoculars glyph (accessible name “Research”) in the checkbox slot and beside the select tick; it is not completable, takes no subtasks and is not draggable at root.</li>
     <li data-trace="P1 D15">Both Classify menus list Research after Knowledge when research is configured, and omit it when not; classifying to Research clears every label in one PATCH.</li>
     <li data-trace="P1 D15">Readiness: a childless research root is ready; with children it reads <code>has subtasks</code>; unconfigured it reads <code>research not connected</code>.</li>
     <li data-trace="P1 D9">Dispatching research rows removes them from the Inbox, creates one <code>queued</code> research post each (brief = title + notes), logs a correction when the classifier had guessed another type, and toasts <code>Sent N question(s) to research</code> linked to <code>/reader</code>.</li>
