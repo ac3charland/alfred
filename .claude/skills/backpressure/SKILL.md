@@ -34,7 +34,7 @@ A check's **scope** — the files it's responsible for — decides where it's wi
   ```jsonc
   // root package.json
   "check:fast": "npm run lint:secrets -w tools/secret-scan && npm run lint:skills -w tools/skill-lint && npm run lint:migrations -w tools/migration-lint && npm run check:fast --workspaces --if-present",
-  "check:slow": "npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
+  "check:slow": "npm run lint:secrets:branch -w tools/secret-scan && npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
   ```
 
 The tool that *implements* a repo-wide check is usually itself a workspace (e.g.
@@ -91,11 +91,11 @@ Playwright flow, or the database integration suite, so those minutes buy nothing
 
 ```jsonc
 // root package.json
-"check:slow": "npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
+"check:slow": "npm run lint:secrets:branch -w tools/secret-scan && npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
 ```
 
-Only the fan-out is wrapped — `demo-lint` stays ahead of it, because a docs-only push is exactly
-when it has something to say. One wiring serves both callers of the tier: the pre-push hook and
+Only the fan-out is wrapped — the branch secret scan and `demo-lint` stay ahead of it, because a
+docs-only push is exactly when they have something to say. One wiring serves both callers of the tier: the pre-push hook and
 CI's `check-slow` job.
 
 **Every uncertain case runs the full tier**: an unknown diff (no git, no usable trunk ref), an
