@@ -1431,12 +1431,13 @@ export function useRankedProjects(): Project[] {
 }
 
 /**
- * The ids of projects with active work: at least one OUTSTANDING story (anything but done/
- * abandoned — the same set the Backlog shows by default and `projectRank` reads, so a blocked
- * story still counts). The sidebar grays out every project not in this set. A project with no
- * stories at all is not in it either. Memoized on the story slice.
+ * The ids of projects holding outstanding work: at least one OUTSTANDING story (anything but
+ * done/abandoned — the same set the Backlog shows by default and `projectRank` reads, so a
+ * blocked story still counts, and so does one under an archived epic). The sidebar grays out every
+ * project not in this set. A project with no stories at all is not in it either. Memoized on the
+ * story slice.
  */
-export function useProjectIdsWithActiveWork(): ReadonlySet<string> {
+export function useProjectIdsWithOutstandingWork(): ReadonlySet<string> {
   const stories = useCodeStories();
 
   return React.useMemo(() => {

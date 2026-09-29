@@ -12,7 +12,7 @@ import { projectBoardHref } from '@/lib/code/board-links';
 import { projectBadgeClasses, projectColorFor, projectTextClasses } from '@/lib/code/project-color';
 import {
   useCodeActions,
-  useProjectIdsWithActiveWork,
+  useProjectIdsWithOutstandingWork,
   useProjects,
   useRankedProjects,
 } from '@/lib/stores/code-store';
@@ -27,10 +27,14 @@ interface ProjectNavProperties {
 
 /**
  * A project with no active items: dimmed and desaturated so the list reads as "where the work is".
- * It stays a live link — hover or keyboard focus brings its colour back at full strength.
+ * It stays a live link — hover or keyboard focus brings its colour back at full strength. The
+ * transition replaces the row's `transition-colors` so opacity and grayscale ease with the colours
+ * instead of snapping.
  */
-const IDLE_PROJECT_CLASS =
-  'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 focus-visible:opacity-100 focus-visible:grayscale-0';
+const IDLE_PROJECT_CLASS = cn(
+  'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 focus-visible:opacity-100 focus-visible:grayscale-0',
+  'transition-[color,background-color,opacity,filter]',
+);
 
 /**
  * Code-module sidebar navigation: the project list. Mirrors FolderNav's folder list
@@ -57,7 +61,7 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
   // so a project keeps the same colour even as its rank (and thus its row position) shifts.
   const projectsByCreation = useProjects();
   // Projects holding no outstanding story (or none at all) are grayed out below (ALF-273).
-  const activeProjectIds = useProjectIdsWithActiveWork();
+  const outstandingProjectIds = useProjectIdsWithOutstandingWork();
   const { createProject } = useCodeActions();
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 
@@ -136,7 +140,7 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
             const color = projectColorFor(projectsByCreation, project.id);
             const selected = pathname === href;
             // The board you're on keeps its full-strength highlight even with nothing active.
-            const idle = !selected && !activeProjectIds.has(project.id);
+            const idle = !selected && !outstandingProjectIds.has(project.id);
             return (
               <ViewLink
                 key={project.id}
