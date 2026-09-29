@@ -167,45 +167,48 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <span>alfred · Spike findings</span>
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>267</span><span class="sep"> — </span><span class="ttl">Explore Jev for communication/inbox triage</span></h1>
-  <p class="change" id="answer">Jev can’t replace either of alfred’s classifiers — it emits no text, so no ask, reason or date — but its calibrated probabilities could give Comms an independent false-negative check.</p>
+  <p class="change" id="answer">Jev can’t replace alfred’s classifiers, but as a first-stage scorer or gate it fits the Inbox best and Comms second; a shadow run per surface would test it.</p>
+  <p class="revised" id="revised">Revised 2026-09-29: the Inbox is now the first candidate, since its override log already exists, and the two-stage Comms gate is weighed as its own design.</p>
 </header>
 
 <section class="sec" id="landed">
   <h2 class="side">Where we landed</h2>
-  <p>Don’t adopt Jev as a classifier. Cost won’t decide it (about $0.15 a month against $4.50), and the ask and reason the owner reads on every Comms row are text Jev cannot write. The one experiment worth its cost: score Comms messages with Jev beside Haiku, store the probabilities, and show the owner only the disagreements — the sole instrument that could see a wrongly shelved message. Gate it behind an afternoon’s screen on the existing fixtures, since third-party reviews list dates and adversarial input as weak spots. Story to cut, if wanted: “Shadow-score Comms with Jev and sample disagreements”. Caveat: TypeSafe’s docs were unreachable from this sandbox, so vendor claims rest on its SDK source and third-party reports.</p>
+  <p>Don’t swap Haiku out for Jev; test Jev in front of it, Inbox first. The Inbox already has what a fair test needs — closed-set fields, a provider stamp, and a trigger that logs every override at dispatch — so a paired shadow run costs pennies and needs no fixtures. Jev’s probabilities turn abstention from a prompt request into a per-field threshold. For Comms, a gate (Jev shelves only the confident “nothing owed”, Haiku judges the rest) is a stronger idea than I first allowed, since ALF-7 D13 already accepts shelving before the model. But a gate can only lose recall, so score every message first and replay the gate offline. Begin by reading Haiku’s current override rates. Story to cut, if wanted: “Shadow-score Inbox items with Jev”. Caveat: TypeSafe’s docs were unreachable from this sandbox, so vendor claims rest on its SDK source and third-party reports.</p>
   <ol class="list">
     <li><h3>Typed answers only</h3>
       <p class="pick">Choice, yes/no and score questions; no free text, so no ask or date.</p>
       <p class="why">wire contract — <a href="#contract">§2</a></p></li>
-    <li><h3>Cost is noise</h3>
-      <p class="pick">About $0.15 a month against $4.50; too small to justify a vendor.</p>
-      <p class="why">arithmetic — <a href="#cost-table">§5</a></p></li>
     <li><h3>Probabilities are the value</h3>
-      <p class="pick">Prose recall-bias rules become tunable thresholds, with errors independent of Haiku’s.</p>
+      <p class="pick">They make abstention and recall bias thresholds, at about $0.15 a month.</p>
       <p class="why">what it adds — <a href="#adds">§4</a></p></li>
-    <li><h3>The provider seam isn’t free</h3>
-      <p class="pick">The request type is chat-shaped; Jev needs its own builders.</p>
+    <li><h3>The Inbox has the instrument</h3>
+      <p class="pick">Overrides are already logged per provider; no fixtures needed.</p>
       <p class="why">code read — <a href="#fit">§3</a></p></li>
+    <li><h3>A gate can only lose recall</h3>
+      <p class="pick">It saves about $1.40 a month; D13’s three conditions apply.</p>
+      <p class="why">the gate — <a href="#gate">§5</a></p></li>
   </ol>
 </section>
 
 <section id="diagram" aria-label="How it fits">
   <figure class="fig">
-    <svg class="dg" viewBox="0 0 620 220" role="img" aria-label="Every mirrored message goes to the existing Haiku judge, which produces the verdict as today. The same message also goes to a new Jev shadow scorer; only messages where Haiku said FYI and Jev scored high are sampled for review.">
+    <svg class="dg" viewBox="0 0 730 220" role="img" aria-label="Every capture or message still goes to the Haiku judge, which writes the verdict as today. The same input also goes to a new Jev shadow scorer whose probabilities are stored and replayed offline against the owner's overrides, to test a gate or an OR-check.">
       <defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,1 L7,4 L1,7"/></marker></defs>
-      <g><rect x="10" y="88" width="146" height="46" rx="6"/><text x="22" y="108">Mirrored message</text><text class="s" x="22" y="124">Gmail · iMessage</text></g>
-      <g><rect x="184" y="20" width="160" height="52" rx="6"/><text x="196" y="42">Haiku 4.5 judge</text><text class="s" x="196" y="59">tier · ask · reason</text></g>
-      <g><rect x="404" y="20" width="200" height="52" rx="6"/><text x="416" y="42">Verdict → queue or FYI</text><text class="s" x="416" y="59">unchanged</text></g>
-      <g class="new"><rect x="184" y="148" width="160" height="52" rx="6"/><text x="196" y="170">Jev shadow scorer</text><text class="s" x="196" y="187">P(owes reply) · P(asap)</text></g>
-      <g class="new"><rect x="404" y="148" width="200" height="52" rx="6"/><text x="416" y="170">Disagreements only</text><text class="s" x="416" y="187">Haiku fyi, Jev high → review</text></g>
-      <path d="M156,104 L170,104 L170,46 L184,46" marker-end="url(#ah)"/>
-      <path class="hot" d="M156,118 L170,118 L170,174 L184,174" marker-end="url(#ah)"/>
-      <path d="M344,46 L404,46" marker-end="url(#ah)"/>
-      <path class="hot" d="M344,174 L404,174" marker-end="url(#ah)"/>
-      <path class="hot" d="M264,72 L264,110 L504,110 L504,148" marker-end="url(#ah)"/>
-      <text class="lb" x="330" y="104">Haiku’s tier, for comparison</text>
+      <g><rect x="10" y="88" width="146" height="46" rx="6"/><text x="22" y="108">Item or message</text><text class="s" x="22" y="124">Inbox · Comms</text></g>
+      <g><rect x="196" y="20" width="160" height="52" rx="6"/><text x="208" y="42">Haiku 4.5 judge</text><text class="s" x="208" y="59">as today</text></g>
+      <g><rect x="416" y="20" width="200" height="52" rx="6"/><text x="428" y="42">Verdict written</text><text class="s" x="428" y="59">unchanged</text></g>
+      <g class="new"><rect x="196" y="148" width="160" height="52" rx="6"/><text x="208" y="170">Jev shadow scorer</text><text class="s" x="208" y="187">typed questions</text></g>
+      <g class="new"><rect x="396" y="148" width="130" height="52" rx="6"/><text x="408" y="170">Stored P(…)</text><text class="s" x="408" y="187">per field / owes</text></g>
+      <g class="new"><rect x="556" y="148" width="164" height="52" rx="6"/><text x="568" y="170">Offline replay</text><text class="s" x="568" y="187">gate · OR · overrides</text></g>
+      <path d="M156,104 L176,104 L176,46 L196,46" marker-end="url(#ah)"/>
+      <path class="hot" d="M156,118 L176,118 L176,174 L196,174" marker-end="url(#ah)"/>
+      <path d="M356,46 L416,46" marker-end="url(#ah)"/>
+      <path class="hot" d="M356,174 L396,174" marker-end="url(#ah)"/>
+      <path class="hot" d="M526,174 L556,174" marker-end="url(#ah)"/>
+      <path class="hot" d="M516,72 L516,110 L638,110 L638,148" marker-end="url(#ah)"/>
+      <text class="lb" x="530" y="104">owner’s overrides</text>
     </svg>
-    <figcaption><b>Fig. 1.</b>The recommended experiment: Jev scores in shadow and never touches a verdict; the new parts are outlined.</figcaption>
+    <figcaption><b>Fig. 1.</b>The recommended experiment: Jev scores in shadow and never touches a verdict; any gate is replayed offline from the stored probabilities before it is built. New parts are outlined.</figcaption>
   </figure>
 </section>
 
@@ -281,7 +284,17 @@ SystemOneResult {
     <tr><td><code>folder_id</code>, <code>intended_project_id</code>, <code>intended_epic_id</code></td><td>enum of live ids, rebuilt each sweep (D3 layer 1)</td><td><code>choice</code> whose criteria map is the closed world, owner-written folder descriptions as the values</td><td>best fit — the closed world is the criteria map</td></tr>
     <tr><td><code>due_date</code></td><td><code>YYYY-MM-DD</code> or null</td><td>none — answers are typed, not free</td><td><b>gap</b></td></tr>
   </table></div>
-  <p>The date gap has two untested workarounds: a <code>noul</code> for “states a date” plus a <code>choice</code> over weekday/relative tokens that code resolves against <code>referenceDate()</code>; or leave the field to a deterministic parser or Haiku. The former leans on the date reasoning third-party reviewers call weak.</p>
+  <p>The date gap has three untested workarounds: a <code>noul</code> for “states a date” plus a <code>choice</code> over weekday/relative tokens that code resolves against <code>referenceDate()</code> (this leans on the date reasoning third-party reviewers call weak); a deterministic parser; or a two-stage shape like the Comms gate — Haiku called only for captures where a Jev <code>noul</code> says a date is stated, which pays off only if few captures state one. Recurrence would be the same gap if story J lands: the verdict has six fields today and no <code>recurrence_preset</code>.</p>
+  <h3>Why the Inbox, not Comms, is the better first test</h3>
+  <p>My first draft set the Inbox aside because “there is nothing to measure a swap against”. That confused “no fixtures” with “no instrument”, and it was wrong.</p>
+  <ul>
+    <li><b>The instrument is built.</b> Migration <code>0029_llm_classifier.sql</code> adds <code>classified_provider</code>, <code>classified_model</code>, <code>classified_prompt_version</code> and <code>classified_guess</code> to <code>items</code>, plus a <code>classification_corrections</code> table with the same provider/model/version columns. A trigger, <code>log_classification_corrections</code>, fires on the first dispatch and diffs the guess against the fields the owner finally chose, in three directions (changed, filled in, blanked). ALF-158 §3 says of the provider stamp that a future comparison “stops needing a fixture harness at all: run both for a fortnight and compare corrections per item”. A Jev arm is exactly that.</li>
+    <li><b>Free labels, on the same items.</b> Unlike Comms, where a false negative sits unseen on the shelf, an Inbox guess is always in front of the owner, so the final field values are the label. A Jev guess kept in a side column instead of the real fields can be diffed against those same final values offline: both providers scored on identical items, with no live risk. (Needs a column, and the <code>task_items</code> view recreation ALF-158 warns about.)</li>
+    <li><b>The downstream is already provider-neutral.</b> <code>validateVerdict</code>, <code>mergeIntoItem</code> and the write all operate on a <code>Verdict</code>, and <code>classify()</code> returns a <code>ClassifyOutcome</code>. Only <code>buildRequest</code> and <code>classifyJson</code> are chat-shaped, so a Jev path is one builder that turns the <code>ClosedWorld</code> into questions and one adapter that turns probabilities into a <code>Verdict</code>. That is a smaller change than the Comms one, and a held <code>item_type</code> is simply a question not asked, rather than a schema pin.</li>
+    <li><b>Lower privacy stakes.</b> Inbox captures are the owner’s own words, which ALF-158 D14 already accepted sending to a third-party API. Comms holds other people’s messages.</li>
+    <li><b>The objective matches.</b> ALF-158 D8 optimises for precision — a confident wrong label is the failure — and enforces it with a paragraph of prompt (<code>ABSTENTION_RULES</code>). Per-field thresholds on <code>probabilities</code> are that abstention made explicit, and the correction log is where they would be fitted.</li>
+  </ul>
+  <p>What I have not checked: how often Haiku is overridden today. That number decides whether there is anything for Jev to improve (§8, Step 0). One cost to count first: the Inbox sweep shares the two-minute tick, and therefore the 50-fetch budget, with the Comms judge, and <code>SWEEP_LIMIT</code> is 10 items.</p>
   <h3>Comms judge (ALF-7) — <code>workers/src/comms/verdict.ts</code>, <code>prompt.ts</code></h3>
   <div class="scroll"><table>
     <tr><th>Field</th><th>Today</th><th>Jev question</th><th>Fit</th></tr>
@@ -291,7 +304,7 @@ SystemOneResult {
     <tr><td><code>reason</code></td><td>one sentence, why this tier</td><td>none; Jev is reported to give “a number, not a rationale”</td><td><b>gap</b> — <code>message-detail.tsx</code>: “a verdict with no reason is a verdict that can’t be audited”</td></tr>
   </table></div>
   <h3>The seam</h3>
-  <p><code>classifier.ts</code> opens by claiming to be “the only module allowed to import <code>@anthropic-ai/sdk</code>, so swapping providers later touches this file and nothing else”, and ALF-158 D2 tells story sessions to keep the swap “a contained change”. That holds for another chat-completions provider. It does not hold for Jev: <code>classifyJson(env, request: ClassifyRequest)</code> takes <code>{ system, user, schema }</code>, and Jev takes neither a system prompt nor a JSON Schema. Both request builders (<code>prompt.ts</code> <code>buildRequest</code>, <code>comms/prompt.ts</code> <code>buildCommsRequest</code>) would need Jev-shaped siblings built from the same <code>ClosedWorld</code>, roster, rubric and thread. The provenance half <em>is</em> ready: <code>comms/sweep.ts</code> already stamps <code>PROVIDER = 'anthropic'</code> on every verdict “so a future provider comparison is a query, not a migration”. What has no home yet is the probability distribution; J-Mail (a community Jev integration) stores “full probability distributions and the model version” for exactly the reason that thresholds can then change without re-inference.</p>
+  <p><code>classifier.ts</code> opens by claiming to be “the only module allowed to import <code>@anthropic-ai/sdk</code>, so swapping providers later touches this file and nothing else”, and ALF-158 D2 tells story sessions to keep the swap “a contained change”. That holds for another chat-completions provider. It does not hold for Jev: <code>classifyJson(env, request: ClassifyRequest)</code> takes <code>{ system, user, schema }</code>, and Jev takes neither a system prompt nor a JSON Schema. Both request builders (<code>prompt.ts</code> <code>buildRequest</code>, <code>comms/prompt.ts</code> <code>buildCommsRequest</code>) would need Jev-shaped siblings built from the same <code>ClosedWorld</code>, roster, rubric and thread. The provenance half <em>is</em> ready: both sweeps stamp <code>PROVIDER = 'anthropic'</code> on every verdict “so a future provider comparison is a query, not a migration”. For Comms, what has no home yet is the probability distribution (the Inbox’s <code>classified_guess</code> jsonb could hold one); J-Mail (a community Jev integration) stores “full probability distributions and the model version” for exactly the reason that thresholds can then change without re-inference.</p>
 </section>
 
 <section id="adds">
@@ -311,6 +324,33 @@ SystemOneResult {
   </ul>
 </section>
 
+<section id="gate">
+  <h2>Comms: the two-stage gate</h2>
+  <p>The proposal: Jev scores each message first, and only messages it thinks likely need a response go on to Haiku. There are three designs hiding in that, and they behave differently.</p>
+  <div class="scroll"><table>
+    <tr><th>Design</th><th>Jev decides</th><th>Haiku decides</th><th>Verdict</th></tr>
+    <tr><td><b>Gate</b> (the proposal)</td><td>Shelve only when P(owes a response) &lt; ε; otherwise pass on</td><td>Everything passed on, in full: tier, ask, reason</td><td>Viable; see below</td></tr>
+    <tr><td><b>Tier by Jev, words by Haiku</b></td><td>The tier</td><td>Ask and reason for queued messages</td><td>Rejected (§9): the reason explains a decision Haiku did not make</td></tr>
+    <tr><td><b>OR-check</b> (shadow)</td><td>Nothing yet; scores in the background</td><td>Everything, as today</td><td>A high P(owes) on a shelved message is flagged for review</td></tr>
+  </table></div>
+  <p>My first draft dismissed the second design and called it “the cascade”. That is not what was proposed. In the gate, Haiku still makes and explains every decision it makes, so the audit-trail objection does not apply to it. And the gate has a precedent I should have weighed: ALF-7 D13 already files header-detected bulk mail on the shelf before any model call, because “a model call to decide that is pure waste”.</p>
+  <h3>D13’s three conditions carry over</h3>
+  <ul>
+    <li><b>Strong signals only.</b> Shelve only in the confident tail, P(owes) &lt; ε with ε small and fitted on data; anything ambiguous goes on to Haiku. That is ALF-7 D7’s rule — uncertainty resolves into the queue — written as a number.</li>
+    <li><b>Record that the filter, not the model, shelved it.</b> A gate-shelved row has no verdict and no reason and must say so. The mechanism exists: <code>ingest.ts</code> writes <code>judged_by: 'filter'</code> with a <code>filtered_reason</code>, and <code>frontend/lib/comms/markers.ts</code> flags any row whose reason is set. But <code>FilteredReason</code> is <code>'newsletter'</code> alone (<code>types.ts</code>), so a second value needs a type change and, very likely, a migration for its CHECK constraint (not confirmed).</li>
+    <li><b>Never filter a sender on the people list.</b> Check the roster in code before calling Jev, which also saves the call. D13’s own filter already builds <code>rosterHandles</code> for this.</li>
+  </ul>
+  <h3>What the gate buys, and what it risks</h3>
+  <ul>
+    <li><b>It can only lose recall.</b> A gate removes messages from Haiku’s consideration and can never add one to the queue. ALF-7 D7 says recall is the number that decides, and D13 calls a wrongly filtered real message “the expensive one” — it “never reaches the classifier”, “where no amount of tuning the rubric can reach it”. The OR-check goes the other way: it can only add. Neither is free, but they are not symmetric, and the spec sides with the second.</li>
+    <li><b>The saving is small.</b> Comms is about $3.30 a month on Haiku. If a third to a half of messages are confidently “nothing owed” (28 of the 68 fixtures are fyi, but the header filter has already removed newsletters, so real traffic will differ — this is an assumption, not a measurement), the saving is roughly $1.10–1.65 a month. Subrequests are roughly neutral: a gated message skips Haiku and the verdict insert, so it is cheaper than today’s ~5, while a passed one costs one more. Count against the store calls before touching <code>COMMS_SWEEP_LIMIT</code>.</li>
+    <li><b>The boundary is where Jev is reported to be weakest.</b> “Silence would be a lapse” (rule 1(b), the ALF-244 fix) is an indirect ask, and “just landed, flight was brutal” is the kind of text a “does this need a response” question is most likely to score low. This is the specific case the Step 2 screen tests.</li>
+  </ul>
+  <h3>One dataset settles all three designs</h3>
+  <p>A shadow run that stores Jev’s P(owes) for every message lets the gate, the OR-check and a future tier-by-Jev design be replayed offline at any ε: how many Haiku calls the gate would have saved, and how many messages Haiku queued — or the owner later corrected — that it would have shelved.</p>
+  <p>It also offers a false-negative proxy the spec does not mention. Outbound messages are stored with their <code>thread_key</code>, and <code>comm_record_reply</code> drains only queued rows, so an owner reply after a shelved message leaves no mark today. But the rows are in <code>comm_messages</code> for 60 days, so a query can find shelved inbound messages followed by an owner reply in the same thread. That is my inference from <code>store.ts</code> and the schema, not something I ran, and a reply may answer something else in the thread: a lead, not a label. If it holds, it contradicts the spec’s claim that fixtures are the only false-negative instrument.</p>
+</section>
+
 <section id="cost-table">
   <h2>Cost</h2>
   <div class="scroll"><table>
@@ -319,7 +359,7 @@ SystemOneResult {
     <tr><td>Comms</td><td>~45 a day → 1,350 a month (ALF-7 D7, §6)</td><td>~2k tokens (1.5k prefix plus a body I estimated at ~500)</td><td>~$3.30, excluding the example set</td><td>2.7M tokens → $0.11</td></tr>
     <tr><td><b>Total</b></td><td></td><td></td><td><b>≈ $4.50</b></td><td><b>≈ $0.15</b></td></tr>
   </table></div>
-  <p>The ratio is dramatic and the delta — about $4.35 a month, $52 a year — is immaterial: the same conclusion ALF-158 D2 reached about GPT-5.6 Luna. Speed does not help either. Both classifiers run on a cron with nobody waiting, and the Comms tick is bounded by subrequests, not model latency. Running Jev as a Comms shadow adds about $0.11 a month.</p>
+  <p>The ratio is dramatic and the delta — about $4.35 a month, $52 a year — is immaterial: the same conclusion ALF-158 D2 reached about GPT-5.6 Luna. Speed does not help either. Both classifiers run on a cron with nobody waiting, and the Comms tick is bounded by subrequests, not model latency. Running Jev as a Comms shadow adds about $0.11 a month; a Comms gate would save the share of Haiku calls it prevents, roughly $1.10–1.65 (§5).</p>
 </section>
 
 <section id="weak">
@@ -329,7 +369,7 @@ SystemOneResult {
     <tr><td>Date comparisons</td><td>Prompt rule 5: asap needs “a deadline inside the next few hours” stated in the message, resolved against a reference date the prompt supplies. The backlog cap is code, so it is unaffected.</td></tr>
     <tr><td>Indirect questions, distracting context</td><td>Rule 1(b): a message that asks nothing but was written to the owner personally still owes a reply (“Just landed, flight was brutal”). ALF-244 rebuilt the entry test around exactly this, and it is inference about etiquette, not classification.</td></tr>
     <tr><td>Adversarial input</td><td>Rule 10 and the forged-marker stripping: a sender writing “[priority person]” into a display name.</td></tr>
-    <tr><td>Overconfident probabilities</td><td>Every threshold in §4 is only as good as the calibration, and the only measurement found is 60 self-written support emails — not personal texts.</td></tr>
+    <tr><td>Overconfident probabilities</td><td>Every threshold in §4 and §5 is only as good as the calibration, and the only measurement found is 60 self-written support emails — not personal texts.</td></tr>
     <tr><td>Reruns shift confidences</td><td>A near-threshold decision can flip between runs. Run each fixture twice before trusting a threshold.</td></tr>
     <tr><td><em>Not reported — my inference:</em> positional reasoning</td><td>Rule 3: “who spoke last decides most of it” over a thread transcript. Nothing found says Jev can or cannot do this; the four thread fixtures test it.</td></tr>
   </table></div>
@@ -337,35 +377,39 @@ SystemOneResult {
 
 <section id="plan">
   <h2>A test plan, if the owner wants one</h2>
-  <p>Not a spec — the shape of the cheapest experiment, with its stop conditions proposed rather than settled.</p>
-  <h3>Step 1 — a one-afternoon screen, no personal data</h3>
+  <p>Not a spec — the shape of the cheapest experiments, in order, with stop conditions proposed rather than settled.</p>
+  <h3>Step 0 — read the incumbent’s baseline (free, no Jev)</h3>
+  <p>Group <code>classification_corrections</code> by field, direction and provider, and <code>comm_corrections</code> by kind, over the weeks since each shipped. If Haiku’s override rate on a field is already low there is little for Jev to improve; if <code>folder_id</code> or <code>item_type</code> is overridden often, that is the opening. I could not query production from this sandbox, so this number is missing from the findings.</p>
+  <h3>Step 1 — the Inbox paired shadow (first live test)</h3>
+  <p>A Jev guess stored in a side column, never written to the fields; questions built from the live <code>ClosedWorld</code>, one <code>choice</code> per id field with the owner’s folder descriptions as criteria, a <code>score</code> for priority, no question for a held type. Two to four weeks; at 20 captures a day that is 280–560 paired items. Compare per field: agreement with the value the owner finally chose, and whether Jev’s probabilities separate right from wrong (precision at each threshold). <code>due_date</code> is excluded. Stop if Jev’s confident answers are overridden as often as Haiku’s, or if its probabilities do not separate right from wrong.</p>
+  <h3>Step 2 — a one-afternoon Comms screen, no personal data</h3>
   <p><code>workers/scripts/comms-eval.ts</code> already runs every fixture through <code>classifyJson</code> and scores it with <code>scoreRun</code> (queue recall, asap precision, Wilson intervals). Add a Jev path: <code>state</code> = account, sender with roster marker, received stamp, today’s date, thread and message; three questions — <code>noul</code> “does the owner owe this person a response”, <code>noul</code> “is someone blocked or is a deadline inside a few hours”, and <code>score</code> 0–3 for the tier. Run each fixture twice. Cost: pennies, on synthetic messages. Stop if queue recall falls below Haiku’s, or if it misses the priority-roster, deadline-hours and thread fixtures (<code>spouse-call-me</code>, the <code>text-*</code> family).</p>
   <h3>What that screen cannot tell you</h3>
   <p>I counted the fixtures with <code>node --experimental-strip-types</code> over <code>fixtures.ts</code>: 68 in all — asap 10, today 25, whenever 5, fyi 28 — of which 40 are queued, 4 carry a thread, and the longest body is 161 characters. No adversarial cases and nothing email-length. With five <code>whenever</code> cases it cannot rank two models; it can only catch a gross failure, which is what it is for. (ALF-7 §6 budgets roughly 200–400 tokens for a real email body.)</p>
-  <h3>Step 2 — a shadow run, only if Step 1 passes, and only with the owner’s privacy sign-off</h3>
-  <p>Four weeks of real traffic, Jev scoring alongside Haiku with the distribution stored, nothing user-visible except a short weekly list: messages Haiku shelved that Jev scored high, and the reverse. The owner adjudicates the list; that is the labelled false-negative data nothing else produces.</p>
-  <h3>The Inbox classifier has no instrument yet</h3>
-  <p><code>workers/package.json</code> defines only <code>eval:comms</code> and <code>eval:reader</code>. The epic’s story F (evaluation fixtures) has no counterpart in the tree — the only fixture sets are Comms and Reader — so even though Inbox fields fit Jev best, there is nothing to measure a swap against.</p>
+  <h3>Step 3 — the Comms shadow, only if Step 2 passes, and only with the owner’s privacy sign-off</h3>
+  <p>Four weeks of real traffic, Jev scoring alongside Haiku with P(owes) and P(asap) stored, nothing user-visible except a short weekly list of disagreements. Then replay offline (§5): the gate at several ε, the OR-check, and the shelved-then-replied query. The owner adjudicates the disagreement list; that is labelled false-negative data nothing else produces.</p>
 </section>
 
 <section id="alternatives">
   <h2>Alternatives we’re not taking</h2>
   <aside><h3>Replace the Comms judge with Jev</h3><p>Ruled out by <code>ask</code> and <code>reason</code>, both of which the UI shows and the spec treats as load-bearing.</p></aside>
-  <aside><h3>Cascade: Jev picks the tier, Haiku writes ask and reason only for queued messages</h3><p>Saves roughly $1.40 a month at best — 28 of the 68 fixtures are fyi, about 41%, and 41% of $3.30; real traffic differs, and the header filter already removes newsletters before the model. Worse, the <code>reason</code> would be written after the fact for a tier Haiku did not choose: a confabulated audit trail, which defeats the purpose ALF-7 D11 versions everything for. It also puts two vendors in the hot path.</p></aside>
-  <aside><h3>Swap the Inbox classifier now</h3><p>The best field fit, but <code>due_date</code> is a gap, there are no Inbox fixtures to measure against, and the saving is about $1.16 a month.</p></aside>
+  <aside><h3>Tier by Jev, then Haiku writes ask and reason for the queued</h3><p>The <code>reason</code> would be written after the fact for a tier Haiku did not choose: a confabulated audit trail, which defeats the purpose ALF-7 D11 versions everything for. It puts two vendors in the hot path for a saving of about $1.40 a month. This is <em>not</em> the gate in §5, which stays open.</p></aside>
+  <aside><h3>Swap the Inbox classifier outright</h3><p>The best field fit, but <code>due_date</code> is a gap, Haiku’s baseline has not been read, and the saving is about $1.16 a month. The paired shadow in §8 comes first; a swap is what its result would justify, not a starting point.</p></aside>
   <aside><h3>Reach Jev through a gateway (Vercel AI Gateway, Cloudflare, OpenRouter)</h3><p>Adds a hop and a second data policy that applies on top of TypeSafe’s. The jevmail README records a gateway free tier of 5 calls per 5 minutes, so real use needs the paid tier. Cloudflare’s catalogue listing was seen only as a search-result title. Worth a look only if one billing or logging surface matters more than one fewer hop.</p></aside>
   <aside><h3>Use Jev for the deterministic newsletter header filter</h3><p>ALF-7 D13’s filter is free, deterministic and explainable already.</p></aside>
 </section>
 
 <section id="open">
   <h2>Cost &amp; open questions</h2>
-  <p><b>Effort.</b> Step 1 is a script and an afternoon. Step 2 is a migration for the distribution, a Jev-shaped request builder, a second secret, a tick-budget change and one small UI list — a real story, and not one to cut before Step 1 passes.</p>
+  <p><b>Effort.</b> Step 0 is two queries. Step 2 is a script and an afternoon. Step 1 is a migration for the side column (with the <code>task_items</code> view recreation), one Jev request builder and adapter, a second secret and a tick-budget check. Step 3 adds a migration for the distribution, a UI list and, if a gate follows, a new <code>filtered_reason</code>. Each is a real story, and none should be cut before the step before it passes.</p>
   <ol>
+    <li><b>What is the two-stage design for?</b> If the goal is cost, the ceiling is about $1.40 a month. If it is fewer noisy rows, or keeping machine mail away from Haiku, the correction log should show that first; the motive sets ε.</li>
     <li><b>Does Jev use a long prose policy at all?</b> The owner’s rubric, the people roster and the corrections-as-examples loop (ALF-7 D11, ALF-158 D16) all assume in-context adaptation. Jev’s weights are reportedly identical for every customer, so putting text in <code>instructions</code> or <code>state</code> is the only personalization route, and whether it moves the answer is untested. This decides whether the learning loop can live on Jev.</li>
     <li><b>Is a second processor acceptable for message bodies, other people’s included?</b> And what are default retention terms for a direct-API account? Needs TypeSafe’s DPA and privacy page, which this sandbox could not reach.</li>
-    <li><b>The unchecked vendor claims.</b> Limits, rate limits, pricing for output tokens, whether <code>state</code> handles JSON well, what <code>jev-latest</code> resolves to. A session with normal network access should read <code>docs.typesafe.ai</code> (in particular <code>/models</code> and the SDK page) before Step 1.</li>
+    <li><b>The unchecked vendor claims.</b> Limits, rate limits, pricing for output tokens, whether <code>state</code> handles JSON well, what <code>jev-latest</code> resolves to. A session with normal network access should read <code>docs.typesafe.ai</code> (in particular <code>/models</code> and the SDK page) before the first step that calls it.</li>
     <li><b>Calibration on this owner’s traffic.</b> The 98.2%-above-0.6 figure is one person’s synthetic support inbox. Thresholds should be fitted on alfred’s own correction log and disagreement list, not borrowed.</li>
     <li><b>Where the shadow call runs.</b> Inside the existing judge tick at a lower per-tick limit, or on the last free cron slot. Both have costs (§4).</li>
+    <li><b>Haiku’s current override rates.</b> Step 0 above; not read here.</li>
   </ol>
 </section>
 
@@ -385,7 +429,7 @@ SystemOneResult {
     <li><a href="https://www.developersdigest.tech/blog/typesafe-jev-system-one-models-release-guide-2026">Developers Digest</a> and <a href="https://www.winzheng.com/en/article/typesafe-ai-jev-system-one-model-launch">Winzheng</a> (launch, funding, pricing); <a href="https://www.npmjs.com/package/@typesafe-ai/sdk">@typesafe-ai/sdk on npm</a> (version); <a href="https://developers.cloudflare.com/ai/models/typesafe/jev/">Cloudflare model catalogue</a>; <a href="https://docs.typesafe.ai/models">docs.typesafe.ai/models</a>.</li>
   </ol>
   <p><b>Blocked by the sandbox’s egress policy:</b> <code>docs.typesafe.ai</code>, <code>typesafe.ai</code>, <code>www.jevtypesafeai.com</code>, <code>vercel.com</code>, <code>developers.cloudflare.com</code>, <code>opper.ai</code>, <code>www.datacamp.com</code>, <code>az9713.github.io</code>, <code>www.shipwithjev.com</code>, <code>www.ai.joaoqueiros.com</code>, <code>jev-ai-guide.com</code>.</p>
-  <p><b>Files read in this repo:</b> <code>docs/specs/epics/ALF-158.html</code> (D2, D3, D8, D14, D16, story F); <code>docs/specs/epics/ALF-7.html</code> (D7, D11, D13, D14, D15, §6, §8); <code>workers/src/classifier.ts</code>, <code>prompt.ts</code>, <code>verdict.ts</code>; <code>workers/src/comms/prompt.ts</code>, <code>verdict.ts</code>, <code>sweep.ts</code>, <code>types.ts</code>, <code>eval/fixtures.ts</code>, <code>eval/score.ts</code>; <code>workers/scripts/comms-eval.ts</code>; <code>workers/wrangler.toml</code>; <code>workers/package.json</code>; <code>frontend/components/comms/message-detail.tsx</code>.</p>
+  <p><b>Files read in this repo:</b> <code>docs/specs/epics/ALF-158.html</code> (D2, D3, D8, D14, D16, story F); <code>docs/specs/epics/ALF-7.html</code> (D7, D11, D13, D14, D15, §6, §8); <code>database/migrations/0029_llm_classifier.sql</code>; <code>workers/src/classifier.ts</code>, <code>prompt.ts</code>, <code>verdict.ts</code>, <code>sweep.ts</code>; <code>workers/src/comms/prompt.ts</code>, <code>verdict.ts</code>, <code>sweep.ts</code>, <code>types.ts</code>, <code>ingest.ts</code>, <code>store.ts</code>, <code>eval/fixtures.ts</code>, <code>eval/score.ts</code>; <code>workers/scripts/comms-eval.ts</code>; <code>workers/wrangler.toml</code>; <code>workers/package.json</code>; <code>frontend/components/comms/message-detail.tsx</code>, <code>frontend/lib/comms/markers.ts</code>.</p>
   <p><b>Command run:</b> <code>node --experimental-strip-types</code> importing <code>FIXTURES</code> from <code>workers/src/comms/eval/fixtures.ts</code> and tallying <code>expected.tier</code>, <code>thread</code> and <code>message.body.length</code> → 68 fixtures; asap 10, today 25, whenever 5, fyi 28; 4 with threads; longest body 161 characters.</p>
 </section>
 
