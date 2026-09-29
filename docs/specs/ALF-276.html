@@ -154,7 +154,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .switch legend{float:left;padding:0;color:var(--ink)}
 .switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
 .plate:has(input[value=a]:checked) [data-opt]:not([data-opt=a]),
-.plate:has(input[value=b]:checked) [data-opt]:not([data-opt=b]){display:none}
+.plate:has(input[value=b]:checked) [data-opt]:not([data-opt=b]),
+.plate:has(input[value=c]:checked) [data-opt]:not([data-opt=c]){display:none}
+.app .mline{font-size:14px;color:var(--muted-foreground)}
 
 /* alfred's tokens: frontend/app/globals.css (colours, accents, title-glow-green; --radius is unmapped,
    so Tailwind's defaults: sm 4px, lg 8px, xl 12px). Card: components/atoms/surface-card.tsx; bar:
@@ -212,7 +214,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>276</span><span class="sep"> — </span><span class="ttl">Exclude projects from the PR ratio</span></h1>
   <p class="change" id="change">The Dashboard’s PR-ratio card gets a ⋯ menu where ticking a project excludes it, stored on its row; knowledge ships ticked, so its PRs drop out.</p>
-  <p class="revised" id="revised">Revised 2026-09-29: D1 → B, as a ⋯ menu whose ticks exclude (your review); Plates I–II redrawn, D7 and D9 follow.</p>
+  <p class="revised" id="revised">Revised 2026-09-29: an “all projects excluded” line replaces the card body when every project is ticked (your review) — Plate II gains the state; D11 added.</p>
 </header>
 
 <section class="sec" id="decisions">
@@ -227,6 +229,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>What does the PR-ratio API return?</h3>
       <p class="pick">Excluded projects are omitted from <code>repos</code>; <code>total</code> and percentages ignore them.</p>
       <p class="why">The weekly-review skill reads this endpoint; it should match the card.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d11">D11</a>All excluded, but Other has PRs?</h3>
+      <p class="pick">Still the muted line — never an Other-only bar.</p>
+      <p class="why">A split across zero projects says nothing.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>Where do you flip the switch?</h3>
       <p class="pick">A ⋯ menu on the Dashboard card; tick a project to exclude it.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Where does the exclude list live?</h3>
@@ -267,6 +272,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <fieldset class="switch"><legend>States</legend>
       <label><input type="radio" name="p2" value="a">Before</label>
       <label><input type="radio" name="p2" value="b" checked>After — knowledge excluded</label>
+      <label><input type="radio" name="p2" value="c">All projects excluded</label>
     </fieldset>
     <div class="mount">
       <div class="app" data-opt="a" role="img" aria-label="Before: Alfred 46 percent (6), RealPlay 15 percent (2), Knowledge 31 percent (4), Other 8 percent (1); 13 total">
@@ -292,8 +298,14 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
           </ul>
         </div>
       </div>
+      <div class="app" data-opt="c" role="img" aria-label="Every project ticked in the menu: the card shows its title and three-dots button, then one muted line reading All projects excluded from the PR ratio. No bar, no legend, no date range">
+        <div class="scard">
+          <div class="shead"><h3 class="stitle">PRs merged in the last 7 days</h3><span class="sdet-wrap"><span class="gbtn"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span></span></div>
+          <p class="mline">All projects excluded from the PR ratio.</p>
+        </div>
+      </div>
     </div>
-    <figcaption><b>Plate II.</b>The Dashboard card. Knowledge’s four PRs leave the bar, the legend and the total; Other stays at one. The others keep their colours; the ⋯ stays at the end of the header in every state.</figcaption>
+    <figcaption><b>Plate II.</b>The Dashboard card. Knowledge’s four PRs leave the bar, the legend and the total; Other stays at one. The others keep their colours; the ⋯ stays at the end of the header in every state. With every project ticked, one muted line replaces the range, bar and legend.</figcaption>
   </figure>
 </section>
 
@@ -353,6 +365,10 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <p>The response shape is unchanged; excluded projects simply aren’t in <code>repos</code>, and <code>total</code>/<code>percentage</code> are computed without them. The skill that reads it keeps working and now agrees with the card. Considered: include them with an <code>excluded: true</code> flag and zero counts — a shape change for a reader that has no use for it.</p>
   </section>
 
+  <section class="rec" id="d11">
+    <h3><span class="tag">D11</span>All excluded, but Other has PRs? · proposed</h3>
+    <p>The owner asked for a muted “all projects excluded” line in place of the misleading quiet-week line. The card decides it from the store alone — every <code>useProjects()</code> row has <code>exclude_from_pr_ratio</code> — so the line shows immediately, with no loading pulse and no date range, and it wins over every fetch state (loading, error, empty, ready). It wins even when Other has merged PRs: a bar that is 100% Other isn’t a split between projects. The API is <em>not</em> special-cased: with no counted repos it returns <code>repos: []</code> and whatever Other counts, which is an honest answer for a script. Considered: only replacing the <code>total: 0</code> case, leaving an Other-only bar when Other is non-zero.</p>
+  </section>
   <h3>Implementation decisions</h3>
   <section class="rec" id="d7">
     <h4>D7 · The two-repo minimum counts all projects, before exclusion</h4>
@@ -365,7 +381,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <section class="rec" id="d9">
     <h4>D9 · Menu mechanics</h4>
     <ul>
-      <li>Trigger <code>aria-label="PR ratio options"</code>; it renders in every state the card renders — loading, error, empty and ready — so the header never jumps, and so a repo the token can’t read (which fails the whole fan-out as a 502) can be excluded from the error state.</li>
+      <li>Trigger <code>aria-label="PR ratio options"</code>; it renders in every state the card renders — loading, error, empty, ready and all-excluded (D11) — so the header never jumps, and so a repo the token can’t read (which fails the whole fan-out as a 502) can be excluded from the error state.</li>
       <li>Each item’s <code>onSelect</code> calls <code>event.preventDefault()</code> so the menu stays open (precedent: <code>board-toolbar.tsx</code>’s checkbox items).</li>
       <li>The heading is a non-interactive label: add a <code>DropdownMenuLabel</code> (Radix <code>Label</code>, <code>px-2 py-1.5 text-xs text-muted-foreground</code>) to <code>atoms/dropdown-menu.tsx</code> rather than a bare <code>&lt;p&gt;</code>.</li>
       <li>The items read the store’s <code>useProjects()</code> (already <code>select('*')</code>, so the column arrives with the type regen); the toggle is the store action <code>updateProjectPrRatioExclusion</code> (optimistic tick, rollback + toast on failure).</li>
@@ -386,7 +402,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
       <tr><td>Alfred, RealPlay, Knowledge (✓)</td><td>set</td><td>Alfred, RealPlay, Other <code>-repo:</code> all three</td><td>Plate II “After”</td></tr>
       <tr><td>Alfred, RealPlay, Knowledge (✓)</td><td>unset</td><td>Alfred, RealPlay</td><td>Two segments, no Other</td></tr>
       <tr><td>Alfred, Knowledge (✓)</td><td>unset</td><td>Alfred</td><td>One full-width Alfred segment; card and ⋯ stay (D7)</td></tr>
-      <tr><td>Alfred, RealPlay — both ✓</td><td>unset</td><td>none</td><td><code>total: 0</code> → the quiet-week line, ⋯ still there</td></tr>
+      <tr><td>Alfred, RealPlay — both ✓</td><td>any</td><td>Other only, if authors set</td><td>Card: the muted “All projects excluded from the PR ratio.” line, ⋯ still there (D11). API: <code>repos: []</code></td></tr>
       <tr><td>none flagged</td><td>any</td><td>as today</td><td>Unchanged — regression guard</td></tr>
     </tbody>
   </table></div>
@@ -422,7 +438,7 @@ exclude_from_pr_ratio: z.boolean().optional(),
     <li><strong>Schema.</strong> Add the migration above (next free number — never reuse one); regenerate <code>frontend/lib/database.types.ts</code> with <code>npm run gen-types -w database</code> and commit its raw output. Read the <code>supabase</code> and <code>migration-lint</code> skills first.</li>
     <li><strong>Server measurement.</strong> <code>frontend/lib/github/config.ts</code> (D7, D10), <code>frontend/lib/data/code.ts</code> (select the column), <code>frontend/lib/github/pr-ratio.ts</code> (<code>buildOtherQuery</code> subtracts excluded repos). Update the module doc comments that say every project is a measured repo.</li>
     <li><strong>Edit path.</strong> <code>updateProjectSchema</code> + <code>app/api/projects/[id]/route.ts</code>; <code>lib/api-client.ts</code> <code>updateProject</code> body type; store action <code>updateProjectPrRatioExclusion(projectId, excluded)</code> modelled on <code>updateProjectColor</code>.</li>
-    <li><strong>UI (D1, D9).</strong> <code>atoms/surface-card.tsx</code> gains an optional <code>action</code> node rendered after <code>detail</code>; <code>atoms/dropdown-menu.tsx</code> gains <code>DropdownMenuLabel</code>; <code>lib/hooks/use-pr-ratio.ts</code> gains <code>refetch</code>; <code>components/code/pr-ratio.tsx</code> renders the ⋯ menu (a small <code>PrRatioExcludeMenu</code> beside it is fine) in every state.</li>
+    <li><strong>UI (D1, D9).</strong> <code>atoms/surface-card.tsx</code> gains an optional <code>action</code> node rendered after <code>detail</code>; <code>atoms/dropdown-menu.tsx</code> gains <code>DropdownMenuLabel</code>; <code>lib/hooks/use-pr-ratio.ts</code> gains <code>refetch</code>; <code>components/code/pr-ratio.tsx</code> renders the ⋯ menu (a small <code>PrRatioExcludeMenu</code> beside it is fine) in every state, and the D11 line (<code>text-sm text-muted-foreground</code>, like the error and quiet-week lines) ahead of the fetch-state branches.</li>
     <li><strong>Docs.</strong> README’s PR-ratio paragraph and <code>docs/productivity-coach-primer.md</code> Endpoint 2 (“one entry per project” → “per project not excluded from the ratio”); <code>frontend/.env.example</code> comment that says every project is measured.</li>
   </ol>
   <p>Small enough for one session; no subagents needed.</p>
@@ -440,7 +456,8 @@ exclude_from_pr_ratio: z.boolean().optional(),
     <li data-trace="D7">Exclusions never produce a 501: the route gates on two projects before exclusion.</li>
     <li data-trace="D4">The lines-changed chart still measures excluded projects.</li>
     <li data-trace="D1 P1">The card’s ⋯ menu lists every project with a tick for each excluded one; ticking or unticking persists across reload and the bar updates without a page load.</li>
-    <li data-trace="D9 P2">The ⋯ shows in the loading, error, empty and ready states, and the menu stays open between ticks.</li>
+    <li data-trace="D9 P2">The ⋯ shows in the loading, error, empty, ready and all-excluded states, and the menu stays open between ticks.</li>
+    <li data-trace="D11 P2">With every project excluded, the card shows only its title, the ⋯ and the muted line “All projects excluded from the PR ratio.” — no range, bar or legend — even when Other has PRs; unticking one brings the bar back.</li>
     <li data-trace="impl">PATCH accepts a boolean <code>exclude_from_pr_ratio</code>, rejects other types with 400, and a failed PATCH rolls the UI back.</li>
     <li data-trace="impl">With no project flagged, the card and API behave exactly as before.</li>
   </ul>
@@ -450,7 +467,7 @@ exclude_from_pr_ratio: z.boolean().optional(),
   <h2>Tests</h2>
   <ul>
     <li><strong>Unit (Jest)</strong> — <code>lib/github/config.test.ts</code>: excluded projects leave <code>repos</code>, land in <code>excludedRepos</code>, D7 minimum, <code>getGithubRepoConfig</code> unaffected. <code>lib/github/pr-ratio.test.ts</code>: <code>buildOtherQuery</code> subtracts excluded repos; <code>fetchPrRatio</code> sends no query for them and omits them. <code>app/api/code/pr-ratio/route.test.ts</code>: flagged row → absent from payload. <code>app/api/projects/[id]/route.test.ts</code> + schema: boolean accepted, string → 400. Store test for optimistic flip + rollback.</li>
-    <li><strong>Component (RTL)</strong> — <code>pr-ratio.test.tsx</code>: the ⋯ renders in all four states; the menu lists projects in creation order with <code>aria-checked</code> tracking the flag; a click calls the store action with the negation, keeps the menu open, and refetches after it resolves; a failed PATCH unticks. <code>surface-card.test.tsx</code>: <code>action</code> renders after <code>detail</code>. <code>use-pr-ratio</code>: <code>refetch</code> keeps the old ratio until the new one lands.</li>
+    <li><strong>Component (RTL)</strong> — <code>pr-ratio.test.tsx</code>: the ⋯ renders in all five states; every project excluded → the D11 line and no bar, even with a non-zero Other and while the fetch is still loading; the menu lists projects in creation order with <code>aria-checked</code> tracking the flag; a click calls the store action with the negation, keeps the menu open, and refetches after it resolves; a failed PATCH unticks. <code>surface-card.test.tsx</code>: <code>action</code> renders after <code>detail</code>. <code>use-pr-ratio</code>: <code>refetch</code> keeps the old ratio until the new one lands.</li>
     <li><strong>E2E (Playwright)</strong> — <code>e2e/code-dashboard.spec.ts</code> mocks the ratio route, so add a test: open the card’s ⋯, tick a seeded project, reload, still ticked (proves the PATCH round-trip against the seeded DB).</li>
   </ul>
   <p>Write each red first.</p>
