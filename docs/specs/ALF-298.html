@@ -268,21 +268,21 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>298</span><span class="sep"> — </span><span class="ttl">Add “Research” as an inbox item type</span></h1>
   <p class="change" id="change">Classify a capture as Research and Dispatch it: a Claude Code Routine researches it on the web, and the report lands in your Reader like any post, wiki picks included.</p>
-  <p class="revised" id="revised">Revised 2026-09-29: D4 → research bodies sweep at 90 days like any post’s (your review).</p>
+  <p class="revised" id="revised">Revised 2026-09-29: D4 → the 90-day sweep; D5 reopened on your three glyphs (your review).</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
+    <li data-state="open"><h3><a class="tag" href="#d5">D5</a>Which glyph marks a Research row?</h3>
+      <p class="pick">A · Binoculars ★ · B · Search · C · Notebook-pen</p>
+      <p class="why">Search already means the app’s search box; Notebook-pen reads as notes.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>What does the Reader show meanwhile?</h3>
       <p class="pick">The post appears at dispatch and steps through Plate II’s states.</p>
       <p class="why">A dispatched question never vanishes; a stuck run is visible and retryable.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>Are report bodies ever swept?</h3>
       <p class="pick">Yes, at 90 days like any post; the summary and brief stay.</p>
       <p class="why">Send keeps a copy in Instapaper; the brief can regenerate an unread one.</p></li>
-    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>Which glyph marks a Research row?</h3>
-      <p class="pick">Telescope — Plate I compares Microscope and Flask.</p>
-      <p class="why">Distinct from Knowledge’s lightbulb at 14 px.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>Where does the research skill live?</h3>
       <p class="pick">In alfred, at <code>routines/research/SKILL.md</code> — outside the dev skill library.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>How does the report get back?</h3>
@@ -298,9 +298,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 <section id="plates" aria-label="What you’ll see">
   <figure class="plate" id="p1">
     <fieldset class="switch"><legend>D5</legend>
-      <label><input type="radio" name="p1" value="a" checked>A · Telescope ★</label>
-      <label><input type="radio" name="p1" value="b">B · Microscope</label>
-      <label><input type="radio" name="p1" value="c">C · Flask</label>
+      <label><input type="radio" name="p1" value="a" checked>A · Binoculars ★</label>
+      <label><input type="radio" name="p1" value="b">B · Search</label>
+      <label><input type="radio" name="p1" value="c">C · Notebook-pen</label>
     </fieldset>
     <div class="mount">
       <div class="app inbox" role="img" aria-label="The Inbox with a Research row whose menu is open on Classify as, listing Task, Code, Knowledge and Research, beside a Knowledge row, a task and an unclassified capture">
@@ -308,9 +308,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
           <div class="trow cur">
             <span class="chev"></span>
             <span class="slot" aria-label="Research">
-              <svg class="ic" data-opt="a" width="14" height="14" viewBox="0 0 24 24"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg>
-              <svg class="ic" data-opt="b" width="14" height="14" viewBox="0 0 24 24"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>
-              <svg class="ic" data-opt="c" width="14" height="14" viewBox="0 0 24 24"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg>
+              <svg class="ic" data-opt="a" width="14" height="14" viewBox="0 0 24 24"><path d="M10 10h4"/><path d="M19 7V4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3"/><path d="M20 21a2 2 0 0 0 2-2v-3.851c0-1.39-2-2.962-2-4.829V8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v11a2 2 0 0 0 2 2z"/><path d="M 22 16 L 2 16"/><path d="M4 21a2 2 0 0 1-2-2v-3.851c0-1.39 2-2.962 2-4.829V8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11a2 2 0 0 1-2 2z"/><path d="M9 7V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3"/></svg>
+              <svg class="ic" data-opt="b" width="14" height="14" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+              <svg class="ic" data-opt="c" width="14" height="14" viewBox="0 0 24 24"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/></svg>
             </span>
             <div class="tmain">
               <p class="tt">Is a cold-climate heat pump worth it for our Chicago house?</p>
@@ -503,7 +503,7 @@ ratio [4][6] — the one number I couldn't pin down is your utility's …
   <h2 class="side">Heads-up</h2>
   <ul>
     <li>Manual setup: the Routine and its trigger, an environment, three Vercel vars — <a href="#after-merge">steps</a>.</li>
-    <li>Each dispatch is one Routine run: subscription usage, and the daily run cap wiki ingest shares.</li>
+    <li>Each dispatch is one Routine run, drawing on the daily cap wiki ingest shares.</li>
     <li>Sessions browse the open web (Full network) but hold no readable secret.</li>
   </ul>
 </section>
@@ -562,8 +562,8 @@ ratio [4][6] — the one number I couldn't pin down is your utility's …
   </section>
 
   <section class="rec" id="d5">
-    <h3><span class="tag">D5</span>Which glyph marks a Research row? · proposed</h3>
-    <p>Lucide <code>Telescope</code> (<code>lucide-react</code> 1.17.0 ships all three candidates). Microscope reads as close inspection of something at hand, Flask as experiment; the telescope’s silhouette is also the most different from the lightbulb and the code brackets at 14 px. Accessible name “Research”, same slots as Knowledge.</p>
+    <h3><span class="tag">D5</span>Which glyph marks a Research row? · open</h3>
+    <p>Your comparison, all in <code>lucide-react</code> 1.17.0. <b>A · Binoculars ★</b> — “looking out for something”, and not used anywhere in the app. Its silhouette is unlike the lightbulb, the code brackets and the tick box at 14 px. <b>B · Search</b> — the most literal, but it is already alfred’s search affordance (the shell search box, mobile search, the wiki index), so on a row it reads as “search this” and invites a click that does nothing. <b>C · Notebook-pen</b> — reads as “notes” or “write”, which is closer to Knowledge’s meaning and to every item’s own notes than to a question sent out. Considered earlier and set aside in review: Telescope, Microscope, Flask. Whatever the pick, the accessible name is “Research” and it takes Knowledge’s two slots.</p>
   </section>
 
   <section class="rec" id="d6">
@@ -824,7 +824,7 @@ Never commit, push, open a pull request, or modify any file in the repository.</
 <section id="ac" data-kind="story">
   <h2>Acceptance criteria</h2>
   <ul class="checks">
-    <li data-trace="D5 P1">A <code>research</code> row shows the Telescope glyph (accessible name “Research”) in the checkbox slot and beside the select tick; it is not completable, takes no subtasks and is not draggable at root.</li>
+    <li data-trace="D5 P1">A <code>research</code> row shows D5’s glyph (accessible name “Research”) in the checkbox slot and beside the select tick; it is not completable, takes no subtasks and is not draggable at root.</li>
     <li data-trace="P1 D15">Both Classify menus list Research after Knowledge when research is configured, and omit it when not; classifying to Research clears every label in one PATCH.</li>
     <li data-trace="P1 D15">Readiness: a childless research root is ready; with children it reads <code>has subtasks</code>; unconfigured it reads <code>research not connected</code>.</li>
     <li data-trace="P1 D9">Dispatching research rows removes them from the Inbox, creates one <code>queued</code> research post each (brief = title + notes), logs a correction when the classifier had guessed another type, and toasts <code>Sent N question(s) to research</code> linked to <code>/reader</code>.</li>
