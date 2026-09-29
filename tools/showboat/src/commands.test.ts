@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   SecretError,
@@ -503,6 +505,36 @@ describe('secret guard', () => {
     init(file, 'D');
     const directive = ['secretlint', 'disable'].join('-');
     await expect(note(file, `<!-- ${directive} -->\n${LEAKED_URI}`)).rejects.toThrow(SecretError);
+  });
+
+  it('cannot be made to print the raw text by DEBUG=@secretlint/*', () => {
+    const { file } = tempDoc();
+    init(file, 'D');
+    const cli = fileURLToPath(new URL('cli.ts', import.meta.url));
+    const env = { ...process.env, DEBUG: '@secretlint/*,secretlint*' };
+    const run = spawnSync('node', [cli, 'note', file, `connect with ${LEAKED_URI}`], {
+      encoding: 'utf8',
+      env,
+    });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('refused to record');
+    expect(`${run.stdout}${run.stderr}`).not.toContain(PASSWORD);
+    expect(`${run.stdout}${run.stderr}`).not.toContain('executeOnContent');
+  });
+
+  it('leaves DEBUG as it found it, so exec children still inherit it', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const saved = process.env['DEBUG'];
+    process.env['DEBUG'] = 'app:*';
+    try {
+      await exec(file, 'bash', 'echo "debug=$DEBUG"', directory);
+      expect(process.env['DEBUG']).toBe('app:*');
+      expect(readFileSync(file, 'utf8')).toContain('debug=app:*');
+    } finally {
+      if (saved === undefined) delete process.env['DEBUG'];
+      else process.env['DEBUG'] = saved;
+    }
   });
 
   it('verify withholds a fresh output that carries a secret from its diff report', async () => {
