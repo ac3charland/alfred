@@ -43,3 +43,21 @@ After picking Red from the palette button (saved through the real PATCH): the ti
 After — the same board, slugs in the project's blue, matching the title:
 
 ![](slug-project-colour-image-9.png)
+
+**Review follow-up: the same ticket on the other surfaces that print its slug.** An adversarial review pointed out that a story would otherwise be amber on its board card but teal in the Backlog / Needs human action list and in the detail modal it opens. Both now take the project colour too, through one shared `StoryRef` atom that the board card, its drag ghost, the dashboard queue row, the Backlog row and the modal all render.
+
+The Backlog (and, identically, Needs human action): each row's slug matches the project badge beside it — Alfred blue, Sapling amber, Reef green.
+
+![](slug-project-colour-image-10.png)
+
+The detail modal opened from Sapling's amber card: its header slug is amber, so the card and the modal it opens agree.
+
+![](slug-project-colour-image-11.png)
+
+**Baselines moved by this follow-up:** the four `code-backlog--*` baselines, `code-needshumanaction--seeded` and the eight `code-storydetailmodal--*` ones, all removed and regenerated because the tint is under the snapshot threshold. Measured against the previous baselines, the modal ones differ by about 45 pixels and the Needs-human-action one by 142, all inside the ref; the Backlog ones differ by about 1,000 pixels because they also pick up an unrelated, already-stale heading — the old baselines still read "The Software Factory" where the Backlog has said "Backlog" since before this branch (compare the two images below). Before:
+
+![](slug-project-colour-image-12.png)
+
+After:
+
+![](slug-project-colour-image-13.png)
