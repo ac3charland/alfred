@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-267 — Explore Jev for communication/inbox triage</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · FINDINGS — what a findings document adds to the house stylesheet ═══ */
+#landed>.side~*+*{margin-top:.75rem}
+.detail aside{margin:0 0 .9rem;padding:.75rem 1rem;background:var(--wash);border-left:3px solid var(--rule)}
+.detail aside>h3:first-child{margin-top:0}
+.detail aside>:last-child{margin-bottom:0}
+</style>
+<body>
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>alfred · Spike findings</span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>267</span><span class="sep"> — </span><span class="ttl">Explore Jev for communication/inbox triage</span></h1>
+  <p class="change" id="answer">Jev can’t replace either of alfred’s classifiers — it emits no text, so no ask, reason or date — but its calibrated probabilities could give Comms an independent false-negative check.</p>
+</header>
+
+<section class="sec" id="landed">
+  <h2 class="side">Where we landed</h2>
+  <p>Don’t adopt Jev as a classifier. Cost won’t decide it (about $0.15 a month against $4.50), and the ask and reason the owner reads on every Comms row are text Jev cannot write. The one experiment worth its cost: score Comms messages with Jev beside Haiku, store the probabilities, and show the owner only the disagreements — the sole instrument that could see a wrongly shelved message. Gate it behind an afternoon’s screen on the existing fixtures, since third-party reviews list dates and adversarial input as weak spots. Story to cut, if wanted: “Shadow-score Comms with Jev and sample disagreements”. Caveat: TypeSafe’s docs were unreachable from this sandbox, so vendor claims rest on its SDK source and third-party reports.</p>
+  <ol class="list">
+    <li><h3>Typed answers only</h3>
+      <p class="pick">Choice, yes/no and score questions; no free text, so no ask or date.</p>
+      <p class="why">wire contract — <a href="#contract">§2</a></p></li>
+    <li><h3>Cost is noise</h3>
+      <p class="pick">About $0.15 a month against $4.50; too small to justify a vendor.</p>
+      <p class="why">arithmetic — <a href="#cost-table">§5</a></p></li>
+    <li><h3>Probabilities are the value</h3>
+      <p class="pick">Prose recall-bias rules become tunable thresholds, with errors independent of Haiku’s.</p>
+      <p class="why">what it adds — <a href="#adds">§4</a></p></li>
+    <li><h3>The provider seam isn’t free</h3>
+      <p class="pick">The request type is chat-shaped; Jev needs its own builders.</p>
+      <p class="why">code read — <a href="#fit">§3</a></p></li>
+  </ol>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 620 220" role="img" aria-label="Every mirrored message goes to the existing Haiku judge, which produces the verdict as today. The same message also goes to a new Jev shadow scorer; only messages where Haiku said FYI and Jev scored high are sampled for review.">
+      <defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,1 L7,4 L1,7"/></marker></defs>
+      <g><rect x="10" y="88" width="146" height="46" rx="6"/><text x="22" y="108">Mirrored message</text><text class="s" x="22" y="124">Gmail · iMessage</text></g>
+      <g><rect x="184" y="20" width="160" height="52" rx="6"/><text x="196" y="42">Haiku 4.5 judge</text><text class="s" x="196" y="59">tier · ask · reason</text></g>
+      <g><rect x="404" y="20" width="200" height="52" rx="6"/><text x="416" y="42">Verdict → queue or FYI</text><text class="s" x="416" y="59">unchanged</text></g>
+      <g class="new"><rect x="184" y="148" width="160" height="52" rx="6"/><text x="196" y="170">Jev shadow scorer</text><text class="s" x="196" y="187">P(owes reply) · P(asap)</text></g>
+      <g class="new"><rect x="404" y="148" width="200" height="52" rx="6"/><text x="416" y="170">Disagreements only</text><text class="s" x="416" y="187">Haiku fyi, Jev high → review</text></g>
+      <path d="M156,104 L170,104 L170,46 L184,46" marker-end="url(#ah)"/>
+      <path class="hot" d="M156,118 L170,118 L170,174 L184,174" marker-end="url(#ah)"/>
+      <path d="M344,46 L404,46" marker-end="url(#ah)"/>
+      <path class="hot" d="M344,174 L404,174" marker-end="url(#ah)"/>
+      <path class="hot" d="M264,72 L264,110 L504,110 L504,148" marker-end="url(#ah)"/>
+      <text class="lb" x="330" y="104">Haiku’s tier, for comparison</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b>The recommended experiment: Jev scores in shadow and never touches a verdict; the new parts are outlined.</figcaption>
+  </figure>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>The evidence</h2>
+  <p>Everything below is for whoever builds on this. Acting on the answer needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="what">
+  <h2>What Jev is, and how well that’s established</h2>
+  <p><b>The question.</b> The ticket says only “explore Jev for communication/inbox triage”, and the only “Jev” in the repo is “Jevons paradox” in the Communication Firewall transcript. I took it to mean the model TypeSafe AI released on 15 September 2026 (per search summaries), and “communication/inbox triage” to mean both classifiers alfred already runs in <code>workers/</code>: the Inbox classifier (epic ALF-158, the one this story sits under) and the Comms judge (epic ALF-7). Neither was in my training data — the model post-dates my knowledge cutoff — so everything here was read this session.</p>
+  <p><b>The evidence limit.</b> This sandbox’s network policy blocks every host except github.com (<code>typesafe.ai</code>, <code>docs.typesafe.ai</code>, <code>jevtypesafeai.com</code>, <code>vercel.com</code>, <code>developers.cloudflare.com</code> and the rest all returned <code>EGRESS_BLOCKED</code>). So I could not read TypeSafe’s docs, pricing page, privacy terms or model card. What I could read is the official TypeScript SDK on GitHub and four community integrations, all through a page-fetch tool that summarises rather than returns raw bytes — treat the code below as extracted, and re-check it against the repo before building on it. Each claim is graded:</p>
+  <div class="scroll"><table>
+    <tr><th>Claim</th><th>Basis</th><th>Grade</th></tr>
+    <tr><td>Jev returns typed answers (<code>choice</code>, <code>score</code>, <code>noul</code>) with probabilities, and writes no text</td><td>SDK <code>types.ts</code> / <code>questions.ts</code>; jevmail and az9713 READMEs</td><td>read in source</td></tr>
+    <tr><td>Endpoint, auth, defaults, retry policy, Workers support</td><td>SDK <code>client.ts</code>, <code>retry.ts</code>, <code>runtime.ts</code></td><td>read in source</td></tr>
+    <tr><td>$0.042 per million input tokens</td><td>Vipea README: 32,120 input tokens cost $0.0013 — 32,120 × $0.042 / 10⁶ = $0.00135, consistent</td><td>README + arithmetic</td></tr>
+    <tr><td>Output tokens are free</td><td>Search-result summary; the SDK does report <code>output_tokens</code>, so it is billable in principle</td><td>snippet only</td></tr>
+    <tr><td>338 ms median, 714 ms p95 for three questions on one email</td><td>Vipea README, measured “during heavy gateway load”. Vendor claim of 70–500 ms is a search snippet</td><td>README / snippet</td></tr>
+    <tr><td>93% team-routing accuracy; 98.2% on the 93.3% of emails with confidence ≥ 0.6</td><td>Vipea README — 60 support emails “I wrote and labelled myself”</td><td>README; weak evidence for alfred</td></tr>
+    <tr><td>Reruns can shift individual confidences</td><td>Vipea README, stated limitation</td><td>README</td></tr>
+    <tr><td>Limits: 64k tokens across state and questions, 32k for state plus longest question, 255 options per choice</td><td>Third-party site (typesafe-jev.com) in search results; not present in SDK types</td><td>snippet only</td></tr>
+    <tr><td>Weak at arithmetic, counting, date comparisons, indirect questions, distracting context, adversarial input; gives no rationale; can be confidently wrong</td><td>Same third-party site</td><td>snippet only</td></tr>
+    <tr><td>Not trained on customer data; one set of weights for every account; zero data retention is an enterprise/DPA option</td><td>Third-party FAQ pages in search results</td><td>snippet only</td></tr>
+    <tr><td>Launched 15 Sep 2026, $40M led by DCVC, founder Diogo Almeida; listed on Vercel AI Gateway, OpenRouter, Cloudflare’s model catalogue</td><td>Search-result summaries and titles</td><td>snippet only</td></tr>
+  </table></div>
+</section>
+
+<section id="contract">
+  <h2>The wire contract</h2>
+  <p>From the official SDK (<code>@typesafe-ai/sdk</code>, 0.6.0 per npm and the J-Mail pin — pre-1.0):</p>
+<pre>POST https://api.typesafe.ai/v1/systemone          (src/client.ts: baseURL, path)
+Authorization: Bearer $TYPESAFE_API_KEY
+Content-Type: application/json
+
+SystemOneRequest {                                  (src/types.ts)
+  state:     string | object | array | null         // EntryType — structured JSON is fine
+  questions: { [name]: Question }
+  model?:    string                                 // SDK default "jev-latest"
+}
+Question = { type:"choice", instructions, criteria: { [label]: description|null } }
+         | { type:"score",  instructions, criteria: [desc, desc, ...desc] }   // ≥ 2 entries, index = score
+         | { type:"noul",   instructions?, criteria?: { true?, false? } }
+
+SystemOneResult {
+  model:   string                                   // the resolved model — see §4
+  answers: { [name]:
+      { type:"choice", choice, confidence, probabilities: { [label]: number } }
+    | { type:"score",  score,  confidence, probabilities, legend }
+    | { type:"noul",   noul: number } }             // a probability of "true"
+  usage:   { input_tokens, output_tokens }
+}</pre>
+  <ul>
+    <li><b>Fit for the Worker.</b> The client uses only <code>globalThis.fetch</code>, <code>AbortController</code> and <code>setTimeout</code>, takes an injectable <code>fetch</code>, and its runtime probe names <code>cloudflare-workers</code> explicitly. <code>nodejs_compat</code> is already on in <code>workers/wrangler.toml</code>. A plain-<code>fetch</code> call is also possible, but the body shape is documented only through these types, so the SDK is the safer contract.</li>
+    <li><b>Retries.</b> SDK default: 2 retries, 500 ms → 5 s backoff with 25% jitter, on 408/429/5xx and connection errors, honouring <code>Retry-After</code> up to 60 s. alfred deliberately runs Anthropic at a 10 s timeout and 1 retry (<code>workers/src/classifier.ts</code>: <code>REQUEST_TIMEOUT_MS</code>, <code>MAX_RETRIES</code>), sized so two cron ticks cannot pile up; a Jev client would have to be configured to the same arithmetic, not left on defaults.</li>
+    <li><b>A decision model has fewer ways to fail.</b> <code>ClassifyFailure</code> today has <code>refusal</code>, <code>truncated</code> and <code>unparseable</code> beside the transport and credential classes. A model that generates no text has nothing to refuse, truncate or mis-format, so those three plausibly disappear. Unconfirmed: whether the API can reject content.</li>
+  </ul>
+</section>
+
+<section id="fit">
+  <h2>Fit against alfred’s two classifiers</h2>
+  <h3>Inbox classifier (ALF-158) — <code>workers/src/verdict.ts</code>, <code>prompt.ts</code></h3>
+  <div class="scroll"><table>
+    <tr><th>Field</th><th>Today</th><th>Jev question</th><th>Fit</th></tr>
+    <tr><td><code>item_type</code></td><td>enum task / code / knowledge, or null</td><td><code>choice</code>; abstain below a confidence threshold</td><td>native</td></tr>
+    <tr><td><code>priority</code></td><td>high / medium / low, or null</td><td><code>score</code> with a three-line legend</td><td>native, and ordinal</td></tr>
+    <tr><td><code>folder_id</code>, <code>intended_project_id</code>, <code>intended_epic_id</code></td><td>enum of live ids, rebuilt each sweep (D3 layer 1)</td><td><code>choice</code> whose criteria map is the closed world, owner-written folder descriptions as the values</td><td>best fit — the closed world is the criteria map</td></tr>
+    <tr><td><code>due_date</code></td><td><code>YYYY-MM-DD</code> or null</td><td>none — answers are typed, not free</td><td><b>gap</b></td></tr>
+  </table></div>
+  <p>The date gap has two untested workarounds: a <code>noul</code> for “states a date” plus a <code>choice</code> over weekday/relative tokens that code resolves against <code>referenceDate()</code>; or leave the field to a deterministic parser or Haiku. The former leans on the date reasoning third-party reviewers call weak.</p>
+  <h3>Comms judge (ALF-7) — <code>workers/src/comms/verdict.ts</code>, <code>prompt.ts</code></h3>
+  <div class="scroll"><table>
+    <tr><th>Field</th><th>Today</th><th>Jev question</th><th>Fit</th></tr>
+    <tr><td><code>tier</code></td><td>asap / today / whenever / fyi</td><td><code>score</code> 0–3 with the four tier definitions as the legend</td><td>native</td></tr>
+    <tr><td><code>owes_reply</code></td><td>boolean, the floor rule’s trigger</td><td><code>noul</code> — and the number is a dial (§4)</td><td>native</td></tr>
+    <tr><td><code>ask</code></td><td>one line: what the message wants, and by when</td><td>none</td><td><b>gap</b> — ALF-7 D14 makes stating the ask the verdict’s job; <code>frontend/lib/comms/ask.ts</code> renders it on every row</td></tr>
+    <tr><td><code>reason</code></td><td>one sentence, why this tier</td><td>none; Jev is reported to give “a number, not a rationale”</td><td><b>gap</b> — <code>message-detail.tsx</code>: “a verdict with no reason is a verdict that can’t be audited”</td></tr>
+  </table></div>
+  <h3>The seam</h3>
+  <p><code>classifier.ts</code> opens by claiming to be “the only module allowed to import <code>@anthropic-ai/sdk</code>, so swapping providers later touches this file and nothing else”, and ALF-158 D2 tells story sessions to keep the swap “a contained change”. That holds for another chat-completions provider. It does not hold for Jev: <code>classifyJson(env, request: ClassifyRequest)</code> takes <code>{ system, user, schema }</code>, and Jev takes neither a system prompt nor a JSON Schema. Both request builders (<code>prompt.ts</code> <code>buildRequest</code>, <code>comms/prompt.ts</code> <code>buildCommsRequest</code>) would need Jev-shaped siblings built from the same <code>ClosedWorld</code>, roster, rubric and thread. The provenance half <em>is</em> ready: <code>comms/sweep.ts</code> already stamps <code>PROVIDER = 'anthropic'</code> on every verdict “so a future provider comparison is a query, not a migration”. What has no home yet is the probability distribution; J-Mail (a community Jev integration) stores “full probability distributions and the model version” for exactly the reason that thresholds can then change without re-inference.</p>
+</section>
+
+<section id="adds">
+  <h2>What Jev would add, and what it would cost</h2>
+  <h3>The real upside</h3>
+  <ol>
+    <li><b>Thresholds instead of prose.</b> ALF-158 D8 (abstain unless the text is clear) and ALF-7 D7 (“uncertainty resolves into the queue and down to Today”, never ASAP; prompt rules 4 and 5) are requests made in words, enforced by nothing but the model’s compliance. With <code>noul</code> and <code>confidence</code> they become numbers: queue iff P(owes reply) ≥ t, asap iff P(asap) ≥ t<sub>hi</sub>. Stored distributions let those thresholds be tuned offline against the correction log with no re-inference.</li>
+    <li><b>A second, differently built opinion on the failure nothing else sees.</b> ALF-7 §6 is explicit that the correction rate “measures the demotion rate” and is “structurally blind” to false negatives, and that the re-run fixtures are “the only instrument in this epic that ever measures a false negative”. ALF-7 Q8 asks whether the FYI shelf needs a forcing function and floats “a small periodic sample in the existing weekly review”. Disagreement sampling is a principled version of that: the set where Haiku said fyi and Jev says P(owes) is high is small and worth an adjudication. The premise that the two models’ errors are independent is an assumption; both may miss the same ambiguous personal text.</li>
+    <li><b>Structural separation of instructions from sender text</b> — rules live in question definitions, the message lives in <code>state</code>. Plausibly helpful against injection, but third-party reviewers list adversarial input as a weakness and alfred’s current defences (<code>stripForgedLiterals</code>, the message fences, prompt rule 10) are prompt-level and would not carry across. Unproven either way.</li>
+  </ol>
+  <h3>The costs beyond dollars</h3>
+  <ul>
+    <li><b>A second processor for the most sensitive data.</b> ALF-158 D14 accepted that captures leave the box. Comms mirrors <em>other people’s</em> texts and mail. Whether a direct-API account gets any retention commitment at all is unverified; the only statement found is that zero data retention is an enterprise option obtained through a DPA. This is the owner’s call, not a technical one.</li>
+    <li><b>The subrequest budget.</b> <code>COMMS_SWEEP_LIMIT = 6</code> was sized to spend “~42” of the Free plan’s 50 outbound fetches per invocation. A shadow call per message adds six, landing at about 48 — too close to a ceiling whose breach “throws part-way, and a half-swept tick bills model calls for verdicts it never managed to store”. The shadow would need a limit of 5 or its own trigger; <code>wrangler.toml</code> notes the plan allows five cron triggers and four are used.</li>
+    <li><b>An alias that floats.</b> The SDK default model is <code>jev-latest</code>. If provenance stamps the requested alias, the stamp stays constant while the weights change. Stamp <code>SystemOneResult.model</code>, the resolved name.</li>
+    <li><b>Housekeeping.</b> A new Worker secret (<code>TYPESAFE_API_KEY</code>) beside the list in the <code>wrangler.toml</code> header, set by hand with <code>wrangler secret put</code> like <code>ANTHROPIC_API_KEY</code>, and a pre-1.0 SDK dependency.</li>
+  </ul>
+</section>
+
+<section id="cost-table">
+  <h2>Cost</h2>
+  <div class="scroll"><table>
+    <tr><th></th><th>Volume</th><th>Input per item</th><th>Haiku 4.5 (the specs’ own figures)</th><th>Jev at $0.042 / MTok in</th></tr>
+    <tr><td>Inbox</td><td>20 a day → 600 a month (ALF-158 D2)</td><td>~1.5k tokens</td><td>~$1.20</td><td>0.9M tokens → $0.04</td></tr>
+    <tr><td>Comms</td><td>~45 a day → 1,350 a month (ALF-7 D7, §6)</td><td>~2k tokens (1.5k prefix plus a body I estimated at ~500)</td><td>~$3.30, excluding the example set</td><td>2.7M tokens → $0.11</td></tr>
+    <tr><td><b>Total</b></td><td></td><td></td><td><b>≈ $4.50</b></td><td><b>≈ $0.15</b></td></tr>
+  </table></div>
+  <p>The ratio is dramatic and the delta — about $4.35 a month, $52 a year — is immaterial: the same conclusion ALF-158 D2 reached about GPT-5.6 Luna. Speed does not help either. Both classifiers run on a cron with nobody waiting, and the Comms tick is bounded by subrequests, not model latency. Running Jev as a Comms shadow adds about $0.11 a month.</p>
+</section>
+
+<section id="weak">
+  <h2>Where third-party sources say Jev is weak, and what that lands on</h2>
+  <div class="scroll"><table>
+    <tr><th>Reported weakness</th><th>alfred rule it lands on</th></tr>
+    <tr><td>Date comparisons</td><td>Prompt rule 5: asap needs “a deadline inside the next few hours” stated in the message, resolved against a reference date the prompt supplies. The backlog cap is code, so it is unaffected.</td></tr>
+    <tr><td>Indirect questions, distracting context</td><td>Rule 1(b): a message that asks nothing but was written to the owner personally still owes a reply (“Just landed, flight was brutal”). ALF-244 rebuilt the entry test around exactly this, and it is inference about etiquette, not classification.</td></tr>
+    <tr><td>Adversarial input</td><td>Rule 10 and the forged-marker stripping: a sender writing “[priority person]” into a display name.</td></tr>
+    <tr><td>Overconfident probabilities</td><td>Every threshold in §4 is only as good as the calibration, and the only measurement found is 60 self-written support emails — not personal texts.</td></tr>
+    <tr><td>Reruns shift confidences</td><td>A near-threshold decision can flip between runs. Run each fixture twice before trusting a threshold.</td></tr>
+    <tr><td><em>Not reported — my inference:</em> positional reasoning</td><td>Rule 3: “who spoke last decides most of it” over a thread transcript. Nothing found says Jev can or cannot do this; the four thread fixtures test it.</td></tr>
+  </table></div>
+</section>
+
+<section id="plan">
+  <h2>A test plan, if the owner wants one</h2>
+  <p>Not a spec — the shape of the cheapest experiment, with its stop conditions proposed rather than settled.</p>
+  <h3>Step 1 — a one-afternoon screen, no personal data</h3>
+  <p><code>workers/scripts/comms-eval.ts</code> already runs every fixture through <code>classifyJson</code> and scores it with <code>scoreRun</code> (queue recall, asap precision, Wilson intervals). Add a Jev path: <code>state</code> = account, sender with roster marker, received stamp, today’s date, thread and message; three questions — <code>noul</code> “does the owner owe this person a response”, <code>noul</code> “is someone blocked or is a deadline inside a few hours”, and <code>score</code> 0–3 for the tier. Run each fixture twice. Cost: pennies, on synthetic messages. Stop if queue recall falls below Haiku’s, or if it misses the priority-roster, deadline-hours and thread fixtures (<code>spouse-call-me</code>, the <code>text-*</code> family).</p>
+  <h3>What that screen cannot tell you</h3>
+  <p>I counted the fixtures with <code>node --experimental-strip-types</code> over <code>fixtures.ts</code>: 68 in all — asap 10, today 25, whenever 5, fyi 28 — of which 40 are queued, 4 carry a thread, and the longest body is 161 characters. No adversarial cases and nothing email-length. With five <code>whenever</code> cases it cannot rank two models; it can only catch a gross failure, which is what it is for. (ALF-7 §6 budgets roughly 200–400 tokens for a real email body.)</p>
+  <h3>Step 2 — a shadow run, only if Step 1 passes, and only with the owner’s privacy sign-off</h3>
+  <p>Four weeks of real traffic, Jev scoring alongside Haiku with the distribution stored, nothing user-visible except a short weekly list: messages Haiku shelved that Jev scored high, and the reverse. The owner adjudicates the list; that is the labelled false-negative data nothing else produces.</p>
+  <h3>The Inbox classifier has no instrument yet</h3>
+  <p><code>workers/package.json</code> defines only <code>eval:comms</code> and <code>eval:reader</code>. The epic’s story F (evaluation fixtures) has no counterpart in the tree — the only fixture sets are Comms and Reader — so even though Inbox fields fit Jev best, there is nothing to measure a swap against.</p>
+</section>
+
+<section id="alternatives">
+  <h2>Alternatives we’re not taking</h2>
+  <aside><h3>Replace the Comms judge with Jev</h3><p>Ruled out by <code>ask</code> and <code>reason</code>, both of which the UI shows and the spec treats as load-bearing.</p></aside>
+  <aside><h3>Cascade: Jev picks the tier, Haiku writes ask and reason only for queued messages</h3><p>Saves roughly $1.40 a month at best — 28 of the 68 fixtures are fyi, about 41%, and 41% of $3.30; real traffic differs, and the header filter already removes newsletters before the model. Worse, the <code>reason</code> would be written after the fact for a tier Haiku did not choose: a confabulated audit trail, which defeats the purpose ALF-7 D11 versions everything for. It also puts two vendors in the hot path.</p></aside>
+  <aside><h3>Swap the Inbox classifier now</h3><p>The best field fit, but <code>due_date</code> is a gap, there are no Inbox fixtures to measure against, and the saving is about $1.16 a month.</p></aside>
+  <aside><h3>Reach Jev through a gateway (Vercel AI Gateway, Cloudflare, OpenRouter)</h3><p>Adds a hop and a second data policy that applies on top of TypeSafe’s. The jevmail README records a gateway free tier of 5 calls per 5 minutes, so real use needs the paid tier. Cloudflare’s catalogue listing was seen only as a search-result title. Worth a look only if one billing or logging surface matters more than one fewer hop.</p></aside>
+  <aside><h3>Use Jev for the deterministic newsletter header filter</h3><p>ALF-7 D13’s filter is free, deterministic and explainable already.</p></aside>
+</section>
+
+<section id="open">
+  <h2>Cost &amp; open questions</h2>
+  <p><b>Effort.</b> Step 1 is a script and an afternoon. Step 2 is a migration for the distribution, a Jev-shaped request builder, a second secret, a tick-budget change and one small UI list — a real story, and not one to cut before Step 1 passes.</p>
+  <ol>
+    <li><b>Does Jev use a long prose policy at all?</b> The owner’s rubric, the people roster and the corrections-as-examples loop (ALF-7 D11, ALF-158 D16) all assume in-context adaptation. Jev’s weights are reportedly identical for every customer, so putting text in <code>instructions</code> or <code>state</code> is the only personalization route, and whether it moves the answer is untested. This decides whether the learning loop can live on Jev.</li>
+    <li><b>Is a second processor acceptable for message bodies, other people’s included?</b> And what are default retention terms for a direct-API account? Needs TypeSafe’s DPA and privacy page, which this sandbox could not reach.</li>
+    <li><b>The unchecked vendor claims.</b> Limits, rate limits, pricing for output tokens, whether <code>state</code> handles JSON well, what <code>jev-latest</code> resolves to. A session with normal network access should read <code>docs.typesafe.ai</code> (in particular <code>/models</code> and the SDK page) before Step 1.</li>
+    <li><b>Calibration on this owner’s traffic.</b> The 98.2%-above-0.6 figure is one person’s synthetic support inbox. Thresholds should be fitted on alfred’s own correction log and disagreement list, not borrowed.</li>
+    <li><b>Where the shadow call runs.</b> Inside the existing judge tick at a lower per-tick limit, or on the last free cron slot. Both have costs (§4).</li>
+  </ol>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <p><b>Opened this session</b> (github.com, via a summarising fetch tool):</p>
+  <ol>
+    <li><a href="https://github.com/typesafe-ai/typesafe-sdk-js">typesafe-ai/typesafe-sdk-js</a> — the official SDK: <code>src/client.ts</code> (base URL, <code>/v1/systemone</code>, bearer auth, <code>jev-latest</code>, <code>globalThis.fetch</code>), <code>src/types.ts</code>, <code>src/questions.ts</code>, <code>src/retry.ts</code>, <code>src/runtime.ts</code>, <code>src/resources/models.ts</code>.</li>
+    <li><a href="https://github.com/Vipea/jev-inbox-triage">Vipea/jev-inbox-triage</a> — README and <code>experiment.py</code>: accuracy, latency, cost, confidence-threshold table, stated limitations.</li>
+    <li><a href="https://github.com/fazlerocks/jevmail">fazlerocks/jevmail</a> — README: five trays, urgency 1–5, three questions per message, gateway free tier, “about 3 cents” per 1,000 emails.</li>
+    <li><a href="https://github.com/az9713/jev-email-triage">az9713/jev-email-triage</a> — README: four questions, ~$0.00003 per email, 41-email sample.</li>
+    <li><a href="https://github.com/Michaelvasandani/J-Mail/pull/2">Michaelvasandani/J-Mail PR #2</a> — six questions per message; stores full distributions and the model version.</li>
+  </ol>
+  <p><b>Seen only as search-result summaries — not opened</b> (grade “snippet only” above):</p>
+  <ol start="6">
+    <li><a href="https://typesafe-jev.com/en/limitations/">typesafe-jev.com — Limitations &amp; known issues</a> (limits, weaknesses); <a href="https://jevaiguide.com/faq/does-jev-train-on-your-data/">jevaiguide.com — Does Jev train on your data?</a> and <a href="https://jev101.org/guides/jev-privacy-guide">jev101.org privacy guide</a> (retention).</li>
+    <li><a href="https://www.developersdigest.tech/blog/typesafe-jev-system-one-models-release-guide-2026">Developers Digest</a> and <a href="https://www.winzheng.com/en/article/typesafe-ai-jev-system-one-model-launch">Winzheng</a> (launch, funding, pricing); <a href="https://www.npmjs.com/package/@typesafe-ai/sdk">@typesafe-ai/sdk on npm</a> (version); <a href="https://developers.cloudflare.com/ai/models/typesafe/jev/">Cloudflare model catalogue</a>; <a href="https://docs.typesafe.ai/models">docs.typesafe.ai/models</a>.</li>
+  </ol>
+  <p><b>Blocked by the sandbox’s egress policy:</b> <code>docs.typesafe.ai</code>, <code>typesafe.ai</code>, <code>www.jevtypesafeai.com</code>, <code>vercel.com</code>, <code>developers.cloudflare.com</code>, <code>opper.ai</code>, <code>www.datacamp.com</code>, <code>az9713.github.io</code>, <code>www.shipwithjev.com</code>, <code>www.ai.joaoqueiros.com</code>, <code>jev-ai-guide.com</code>.</p>
+  <p><b>Files read in this repo:</b> <code>docs/specs/epics/ALF-158.html</code> (D2, D3, D8, D14, D16, story F); <code>docs/specs/epics/ALF-7.html</code> (D7, D11, D13, D14, D15, §6, §8); <code>workers/src/classifier.ts</code>, <code>prompt.ts</code>, <code>verdict.ts</code>; <code>workers/src/comms/prompt.ts</code>, <code>verdict.ts</code>, <code>sweep.ts</code>, <code>types.ts</code>, <code>eval/fixtures.ts</code>, <code>eval/score.ts</code>; <code>workers/scripts/comms-eval.ts</code>; <code>workers/wrangler.toml</code>; <code>workers/package.json</code>; <code>frontend/components/comms/message-detail.tsx</code>.</p>
+  <p><b>Command run:</b> <code>node --experimental-strip-types</code> importing <code>FIXTURES</code> from <code>workers/src/comms/eval/fixtures.ts</code> and tallying <code>expected.tier</code>, <code>thread</code> and <code>message.body.length</code> → 68 fixtures; asap 10, today 25, whenever 5, fyi 28; 4 with threads; longest body 161 characters.</p>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
