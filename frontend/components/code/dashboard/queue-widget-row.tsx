@@ -2,12 +2,12 @@
 
 import * as React from 'react';
 
+import { StoryRef } from '@/components/atoms/story-ref';
 import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
 import { storyBoardHref } from '@/lib/code/board-links';
-import { type ProjectColor, projectTextClasses } from '@/lib/code/project-color';
+import type { ProjectColor } from '@/lib/code/project-color';
 import type { CodeStory } from '@/lib/types';
-import { cn } from '@/lib/utils';
 
 interface QueueWidgetRowProperties {
   story: CodeStory;
@@ -31,11 +31,9 @@ export function QueueWidgetRow({ story, projectColor }: QueueWidgetRowProperties
         href={storyBoardHref(story.project_id ?? '', story.ref ?? '')}
         className="flex min-w-0 items-center gap-2 rounded px-1.5 py-1 hover:bg-secondary/60"
       >
-        <span
-          className={cn('shrink-0 font-mono text-xs font-medium', projectTextClasses(projectColor))}
-        >
+        <StoryRef color={projectColor} className="shrink-0 text-xs">
           {story.ref}
-        </span>
+        </StoryRef>
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">{story.title}</span>
         <StateChip state={story.factory_state} />
       </ViewLink>

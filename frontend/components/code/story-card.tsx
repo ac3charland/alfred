@@ -3,9 +3,10 @@
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { LaunchButton } from '@/components/atoms/launch-button';
 import { ReviewPrChip } from '@/components/atoms/review-pr-chip';
+import { StoryRef } from '@/components/atoms/story-ref';
 import { StoryKindBadge } from '@/components/code/story-kind-badge';
 import { type LaunchPhase, launchPhasesFor } from '@/lib/code/launch';
-import { type ProjectColor, projectTextClasses } from '@/lib/code/project-color';
+import type { ProjectColor } from '@/lib/code/project-color';
 import { reviewPrUrlFor } from '@/lib/code/review-pr';
 import { dragSurfaceProperty } from '@/lib/dnd/pointer-sensor';
 import { isEscapeState } from '@/lib/stores/code-store';
@@ -77,9 +78,9 @@ export function StoryCard({ story, projectColor, onOpen, onOpenSession }: StoryC
         className="px-3 py-2"
       >
         <span className="flex items-center gap-2">
-          <span className={cn('font-mono text-xs font-medium', projectTextClasses(projectColor))}>
+          <StoryRef color={projectColor} className="text-xs">
             {story.ref}
-          </span>
+          </StoryRef>
           <StoryKindBadge story={story} />
           {escape ? (
             <span

@@ -11,11 +11,11 @@ import {
 } from '@dnd-kit/core';
 import * as React from 'react';
 
-import { type ProjectColor, projectTextClasses } from '@/lib/code/project-color';
+import { StoryRef } from '@/components/atoms/story-ref';
+import type { ProjectColor } from '@/lib/code/project-color';
 import { type DraggedStory, resolveLaneDrop } from '@/lib/dnd/move-story-lane';
 import { RowMouseSensor, RowTouchSensor } from '@/lib/dnd/pointer-sensor';
 import { useCodeActions, useCodeStories } from '@/lib/stores/code-store';
-import { cn } from '@/lib/utils';
 
 /** What the lanes need to know about the drag in flight so they can offer themselves as targets. */
 interface BoardDragState {
@@ -118,11 +118,9 @@ export function BoardDndProvider({
               data-testid="board-drag-ghost"
               className="w-60 rounded-lg bg-surface/70 px-3 py-2 ring-1 ring-inset ring-border backdrop-blur-sm shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]"
             >
-              <span
-                className={cn('font-mono text-xs font-medium', projectTextClasses(projectColor))}
-              >
+              <StoryRef color={projectColor} className="text-xs">
                 {activeStory.ref}
-              </span>
+              </StoryRef>
               <span className="mt-1 line-clamp-2 block text-sm text-foreground">
                 {activeStory.title}
               </span>
