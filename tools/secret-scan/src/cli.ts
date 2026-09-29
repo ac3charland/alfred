@@ -5,6 +5,7 @@ import {
   type ScanResult,
   branchRange,
   committableFiles,
+  pushRevs,
   rangeEntries,
   scanEntries,
   scanFiles,
@@ -19,8 +20,13 @@ Usage:
                               added/modified path. The check:fast gate.
   secret-scan --range <A..B>  Scan the content every commit in A..B added or modified, so a
                               secret added and later removed is still caught.
-  secret-scan --branch        --range <merge-base with origin/main>..HEAD: every commit this
-                              branch would publish. The check:slow (pre-push) gate.
+  secret-scan --branch        --range origin/main..HEAD: every commit this branch would publish.
+                              Fails (exit 1) when there is no origin/main. The check:slow gate,
+                              and the fallback for a new branch in CI.
+  secret-scan --push <remote> Read git's pre-push stdin (one "<local ref> <local sha> <remote ref>
+                              <remote sha>" line per ref) and scan the commits being pushed that
+                              <remote> does not have yet, whichever branch is checked out. The
+                              .husky/pre-push gate.
 
 Options:
   --help, -h        Show this help.
@@ -28,6 +34,7 @@ Options:
 All modes use the repo-root .secretlintrc.json. In this repo, run it through the package scripts:
   npm run lint:secrets -w tools/secret-scan
   npm run lint:secrets:branch -w tools/secret-scan
+  npm run lint:secrets:push -w tools/secret-scan -- <remote>   (stdin from git's pre-push hook)
 `;
 
 const REMEDY = `
@@ -50,7 +57,18 @@ async function scanTree(repoRoot: string): Promise<ScanResult[]> {
   ];
 }
 
-async function scan(repoRoot: string, argv: readonly string[]): Promise<ScanResult[] | undefined> {
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) {
+    throw new UsageError(
+      '--push reads the pre-push hook\'s "<local ref> <local sha> <remote ref> <remote sha>" lines from stdin',
+    );
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function scan(repoRoot: string, argv: readonly string[]): Promise<ScanResult[]> {
   const [flag, value, ...extra] = argv;
   if (extra.length > 0) throw new UsageError(`unexpected argument "${extra.join(' ')}"`);
   switch (flag) {
@@ -63,8 +81,13 @@ async function scan(repoRoot: string, argv: readonly string[]): Promise<ScanResu
     }
     case '--branch': {
       if (value !== undefined) throw new UsageError(`unexpected argument "${value}"`);
-      const range = branchRange(repoRoot);
-      return range === undefined ? undefined : [await scanEntries(rangeEntries(repoRoot, range))];
+      return [await scanEntries(rangeEntries(repoRoot, branchRange(repoRoot)))];
+    }
+    case '--push': {
+      if (value === undefined)
+        throw new UsageError('--push needs the remote name git passes the hook');
+      const revs = pushRevs(repoRoot, value, await readStdin());
+      return [await scanEntries(revs.length === 0 ? [] : rangeEntries(repoRoot, revs))];
     }
     default: {
       throw new UsageError(`unknown option "${flag}"`);
@@ -82,12 +105,6 @@ async function main(argv: readonly string[]): Promise<number> {
   }).trim();
 
   const results = await scan(repoRoot, argv);
-  if (results === undefined) {
-    process.stdout.write(
-      'secret-scan: no origin/main to measure the branch from; skipped the commit scan.\n',
-    );
-    return 0;
-  }
   const failed = results.filter((result) => !result.ok);
   if (failed.length > 0) {
     process.stdout.write(`${failed.map((result) => result.output).join('\n')}\n`);
@@ -106,6 +123,10 @@ try {
     process.stderr.write(`secret-scan: ${error.message}. Run "secret-scan --help".\n`);
     process.exitCode = 2;
   } else {
-    throw error;
+    // Only the message: a Node child-process error also carries the git output (`stdout`,
+    // `stderr` buffers), which can hold file content — printing the object would leak it.
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`secret-scan: error: ${message}\n`);
+    process.exitCode = 1;
   }
 }

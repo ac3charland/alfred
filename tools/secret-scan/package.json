@@ -11,6 +11,7 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests",
     "lint:secrets": "node src/cli.ts",
     "lint:secrets:branch": "node src/cli.ts --branch",
+    "lint:secrets:push": "node src/cli.ts --push",
     "check:fast": "npm run typecheck && npm run lint && npm run format && npm run test"
   },
   "dependencies": {
