@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-276 — Exclude projects from the PR ratio</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+.plate:has(input[value=a]:checked) [data-opt]:not([data-opt=a]),
+.plate:has(input[value=b]:checked) [data-opt]:not([data-opt=b]),
+.plate:has(input[value=c]:checked) [data-opt]:not([data-opt=c]){display:none}
+.app .mline{font-size:14px;color:var(--muted-foreground)}
+
+/* alfred's tokens: frontend/app/globals.css (colours, accents, title-glow-green; --radius is unmapped,
+   so Tailwind's defaults: sm 4px, lg 8px, xl 12px). Card: components/atoms/surface-card.tsx; bar:
+   components/atoms/ratio-bar.tsx; legend: components/code/pr-ratio.tsx.
+   ⋯ trigger: atoms/icon-button.tsx (md, neutral); menu: atoms/dropdown-menu.tsx. */
+@font-face{font-family:Geist;font-weight:100 900;font-display:swap;src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-sans.woff2) format("woff2")}
+@font-face{font-family:"Geist Mono";font-weight:100 900;font-display:swap;src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-mono.woff2) format("woff2")}
+.app{--background:#0a0e17;--foreground:#e8edf5;--surface:#0f1626;--border:#1e2a3f;--muted-foreground:#8a96a8;--secondary:#1e2a3f;
+  --teal:#4fd1e0;--green:#34d399;--blue:#60a5fa;--amber:#f0b429;--pop:#0d1320;--pop-border:#25324a;
+  background:var(--background);color:var(--foreground);padding:20px;overflow:hidden;
+  font:14px/1.45 Geist,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.app p,.app ul,.app h2,.app h3{margin:0;padding:0}
+.app ul{list-style:none}
+.app code{font:inherit;color:inherit}
+.app svg.ic{display:block;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Surface card + ratio bar + legend */
+.app .scard{display:flex;flex-direction:column;gap:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:16px;position:relative}
+.app .shead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px}
+.app .stitle{font-size:14px;font-weight:500;color:var(--foreground)}
+.app .sdetail{font-size:12px;color:var(--muted-foreground);white-space:pre}
+.app .sdet-wrap{position:relative;display:flex;align-items:center;gap:8px}
+.app .rbar{display:flex;height:10px;width:100%;overflow:hidden;border-radius:9999px;background:var(--border)}
+.app .rleg{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 24px}
+.app .rleg li{display:flex;align-items:center;gap:8px;font-size:14px}
+.app .dot{width:8px;height:8px;flex:none;border-radius:9999px}
+.app .pct{font-weight:500}
+.app .cnt{color:var(--muted-foreground)}
+.app .f-blue{background:var(--blue)} .app .f-amber{background:var(--amber)} .app .f-green{background:var(--green)} .app .f-other{background:var(--muted-foreground)}
+.app .gbtn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:4px;color:var(--muted-foreground)}
+.app .gbtn.on{background:var(--secondary);color:var(--foreground)}
+
+/* Dropdown menu (atoms/dropdown-menu.tsx: content, checkbox item, proposed DropdownMenuLabel) */
+.app .dmenu{position:absolute;z-index:2;min-width:8rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);padding:4px;box-shadow:0 4px 6px -1px rgb(0 0 0/.4),0 2px 4px -2px rgb(0 0 0/.4)}
+.app .mlabel{padding:6px 8px;font-size:12px;color:var(--muted-foreground)}
+.app .mitem{position:relative;display:flex;align-items:center;gap:8px;border-radius:4px;padding:6px 8px 6px 32px;font-size:14px;line-height:20px;color:var(--foreground)}
+.app .mitem.focus{background:var(--secondary)}
+.app .mind{position:absolute;left:8px;display:flex;width:14px;height:14px;align-items:center;justify-content:center}
+
+.app.wide{min-height:230px;position:relative}
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Code · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>276</span><span class="sep"> — </span><span class="ttl">Exclude projects from the PR ratio</span></h1>
+  <p class="change" id="change">The Dashboard’s PR-ratio card gets a ⋯ menu where ticking a project excludes it, stored on its row; knowledge ships ticked, so its PRs drop out.</p>
+  <p class="revised" id="revised">Revised 2026-09-29: an “all projects excluded” line replaces the card body when every project is ticked (your review) — Plate II gains the state; D11 added.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>Does the lines-changed chart honour it?</h3>
+      <p class="pick">No — the velocity chart keeps counting every project.</p>
+      <p class="why">The ticket scopes the ratio bar; widening later is one filter.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>How does knowledge get excluded?</h3>
+      <p class="pick">The migration ticks it for <code>ac3charland/knowledge</code>, if that project exists.</p>
+      <p class="why">Ships configured, as the ticket asks; a no-op anywhere else.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>What does the PR-ratio API return?</h3>
+      <p class="pick">Excluded projects are omitted from <code>repos</code>; <code>total</code> and percentages ignore them.</p>
+      <p class="why">The weekly-review skill reads this endpoint; it should match the card.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d11">D11</a>All excluded, but Other has PRs?</h3>
+      <p class="pick">Still the muted line — never an Other-only bar.</p>
+      <p class="why">A split across zero projects says nothing.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>Where do you flip the switch?</h3>
+      <p class="pick">A ⋯ menu on the Dashboard card; tick a project to exclude it.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Where does the exclude list live?</h3>
+      <p class="pick">A boolean on each project row, default off — flipped without a deploy.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>What happens to an excluded project’s PRs?</h3>
+      <p class="pick">They leave the bar, legend and total silently — never falling into Other.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <div class="mount">
+      <div class="app wide" role="img" aria-label="The Dashboard PR-ratio card with a three-dots button at the end of its header, open, showing a menu headed Exclude from PR ratio that lists every project: Knowledge ticked, Alfred and RealPlay unticked">
+        <div class="scard">
+          <div class="shead">
+            <h3 class="stitle">PRs merged in the last 7 days</h3>
+            <span class="sdet-wrap"><span class="sdetail">Sep 22 – Sep 29  ·  9 total</span><span class="gbtn on"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><div class="dmenu" style="top:30px;right:0;width:200px">
+            <p class="mlabel">Exclude from PR ratio</p>
+            <div class="mitem"><span class="mind"></span><span class="dot f-blue"></span>Alfred</div>
+            <div class="mitem"><span class="mind"></span><span class="dot f-amber"></span>RealPlay</div>
+            <div class="mitem focus"><span class="mind"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="dot f-green"></span>Knowledge</div>
+            </div></span>
+          </div>
+          <div class="rbar"><span class="f-blue" style="width:66.67%"></span><span class="f-amber" style="width:22.22%"></span><span class="f-other" style="width:11.11%"></span></div>
+          <ul class="rleg">
+            <li><span class="dot f-blue"></span>Alfred <span class="pct">67%</span><span class="cnt">(6)</span></li>
+            <li><span class="dot f-amber"></span>RealPlay <span class="pct">22%</span><span class="cnt">(2)</span></li>
+            <li><span class="dot f-other"></span>Other <span class="pct">11%</span><span class="cnt">(1)</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The card’s ⋯ menu lists every project in creation order; a tick excludes it. Knowledge ships ticked, and the menu stays open so several can be flipped in one pass.</figcaption>
+  </figure>
+
+  <figure class="plate" id="p2">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p2" value="a">Before</label>
+      <label><input type="radio" name="p2" value="b" checked>After — knowledge excluded</label>
+      <label><input type="radio" name="p2" value="c">All projects excluded</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" data-opt="a" role="img" aria-label="Before: Alfred 46 percent (6), RealPlay 15 percent (2), Knowledge 31 percent (4), Other 8 percent (1); 13 total">
+        <div class="scard">
+          <div class="shead"><h3 class="stitle">PRs merged in the last 7 days</h3><span class="sdet-wrap"><span class="sdetail">Sep 22 – Sep 29  ·  13 total</span><span class="gbtn"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span></span></div>
+          <div class="rbar"><span class="f-blue" style="width:46.15%"></span><span class="f-amber" style="width:15.38%"></span><span class="f-green" style="width:30.77%"></span><span class="f-other" style="width:7.69%"></span></div>
+          <ul class="rleg">
+            <li><span class="dot f-blue"></span>Alfred <span class="pct">46%</span><span class="cnt">(6)</span></li>
+            <li><span class="dot f-amber"></span>RealPlay <span class="pct">15%</span><span class="cnt">(2)</span></li>
+            <li><span class="dot f-green"></span>Knowledge <span class="pct">31%</span><span class="cnt">(4)</span></li>
+            <li><span class="dot f-other"></span>Other <span class="pct">8%</span><span class="cnt">(1)</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="app" data-opt="b" role="img" aria-label="After: Alfred 67 percent (6), RealPlay 22 percent (2), Other 11 percent (1); 9 total. Knowledge has no segment and no legend row">
+        <div class="scard">
+          <div class="shead"><h3 class="stitle">PRs merged in the last 7 days</h3><span class="sdet-wrap"><span class="sdetail">Sep 22 – Sep 29  ·  9 total</span><span class="gbtn"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span></span></div>
+          <div class="rbar"><span class="f-blue" style="width:66.67%"></span><span class="f-amber" style="width:22.22%"></span><span class="f-other" style="width:11.11%"></span></div>
+          <ul class="rleg">
+            <li><span class="dot f-blue"></span>Alfred <span class="pct">67%</span><span class="cnt">(6)</span></li>
+            <li><span class="dot f-amber"></span>RealPlay <span class="pct">22%</span><span class="cnt">(2)</span></li>
+            <li><span class="dot f-other"></span>Other <span class="pct">11%</span><span class="cnt">(1)</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="app" data-opt="c" role="img" aria-label="Every project ticked in the menu: the card shows its title and three-dots button, then one muted line reading All projects excluded from the PR ratio. No bar, no legend, no date range">
+        <div class="scard">
+          <div class="shead"><h3 class="stitle">PRs merged in the last 7 days</h3><span class="sdet-wrap"><span class="gbtn"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span></span></div>
+          <p class="mline">All projects excluded from the PR ratio.</p>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate II.</b>The Dashboard card. Knowledge’s four PRs leave the bar, the legend and the total; Other stays at one. The others keep their colours; the ⋯ stays at the end of the header in every state. With every project ticked, one muted line replaces the range, bar and legend.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>Excluding repos that aren’t Code projects (they still land in Other), and any “N excluded” note on the card.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul><li>If knowledge isn’t a Code project when this ships, D5 ticks nothing — <a href="#after-merge">create it, then tick it in the card’s ⋯ menu</a>.</li></ul>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p>The Dashboard’s PR-ratio card (<code>frontend/components/code/pr-ratio.tsx</code>) splits the last seven days’ merged PRs across the Code module’s projects, plus an Other bucket when <code>PR_RATIO_AUTHORS</code> is set. Since ALF-268 the measured repos <em>are</em> the <code>projects</code> rows (<code>frontend/lib/github/config.ts</code> → <code>getPrRatioConfig</code>), read by <code>listProjectRepos</code> in <code>frontend/lib/data/code.ts</code>; <code>frontend/lib/github/pr-ratio.ts</code> issues one Search query per project plus one for Other (which subtracts every project repo with <code>-repo:</code>), and <code>toPercentages</code> shares 100 across them. The same route serves <code>GET /api/code/pr-ratio</code>, which the weekly-review-prep skill reads (<code>docs/productivity-coach-primer.md</code>, Endpoint 2).</p>
+  <p>The ticket asks for an exclude list, configured to drop the knowledge repo (<code>ac3charland/knowledge</code>, also <code>WIKI_REPO</code>). In refinement the owner redirected it: the list should be <strong>dynamic, a column on <code>projects</code></strong>, and knowledge should <strong>behave like every other project unless excluded</strong> by this switch — i.e. it is (or will be) a Code project, and exclusion is a per-project property, not an env list and not a special case for the wiki repo. Excluded PRs should vanish silently.</p>
+  <p>Precedent for a per-project owner setting: ALF-188’s <code>projects.color</code> (<code>database/migrations/0041_project_color.sql</code>), editable through <code>PATCH /api/projects/[id]</code> (<code>updateProjectSchema</code> in <code>frontend/lib/api/schemas.ts</code>), the store’s optimistic <code>updateProjectColor</code> (<code>frontend/lib/stores/code-store.tsx</code>), and the board toolbar’s palette popover. This spec reuses that pipe (PATCH → optimistic store action → rollback toast) but puts the control on the ratio card itself.</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>Where do you flip the switch? · settled</h3>
+    <p><strong>A ⋯ menu on the Dashboard card, ticks meaning “exclude”.</strong> An <code>IconButton</code> (size md, neutral tone, lucide <code>MoreHorizontal</code> 14px) at the end of the card header opens a <code>DropdownMenu</code> headed “Exclude from PR ratio”: one <code>DropdownMenuCheckboxItem</code> per project, creation order, each with its colour dot, <code>checked</code> = <code>exclude_from_pr_ratio</code>. The ticked set <em>is</em> the exclude list, matching the column and the ticket’s wording. It sits beside its effect and shows every project at once. It costs a header-action slot on <code>SurfaceCard</code>, a refetch after each toggle (D9), and D7’s all-projects minimum so an exclusion can’t make the card, and its menu, disappear.</p>
+    <p>Considered: a “PR ratio” group in the board’s palette popover; a popover on the card whose ticks meant “count” — the owner chose the menu with exclude-ticks.</p>
+  </section>
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>Where does the exclude list live? · settled</h3>
+    <p><code>projects.exclude_from_pr_ratio boolean not null default false</code>. The owner chose a column over an env list so it changes without a redeploy. Default <code>false</code> means every existing and new project keeps counting — no backfill. Considered: <code>PR_RATIO_EXCLUDE_REPOS</code> env list (reaches non-project repos, needs a deploy); auto-excluding <code>WIKI_REPO</code> (couples two features).</p>
+  </section>
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>What happens to an excluded project’s PRs? · settled</h3>
+    <p>No Search query is issued for an excluded project, so it has no segment, no legend row, and adds nothing to <code>total</code> or the percentage base. Its repo is <em>still</em> subtracted from the Other query with <code>-repo:</code>, so its PRs don’t reappear as Other. Nothing on the card says anything was excluded. Side effect: one fewer Search request per excluded project against the 30/min cap. Considered: a muted “N excluded” detail — declined by the owner.</p>
+  </section>
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>Does the lines-changed chart honour it? · proposed</h3>
+    <p><code>getGithubRepoConfig</code> (shared with <code>loc.ts</code>) is unchanged; only <code>getPrRatioConfig</code> applies the flag. This knowingly departs from <code>DEPENDENCY_BOTS</code>’ “two widgets, same ground” principle, because the ticket and the column name are about the ratio. Considered: honour it in both (rename the column <code>exclude_from_measurement</code>) — a one-line filter if the owner wants it later.</p>
+  </section>
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>How does knowledge get excluded? · proposed</h3>
+    <p>The same migration that adds the column ends with <code>update projects set exclude_from_pr_ratio = true where repo_owner = 'ac3charland' and repo_name = 'knowledge';</code> — idempotent, and a no-op locally, in CI and anywhere the row doesn’t exist. The ticket asks for the configuration to ship; this keeps that without an env var. Considered: leave it to the owner to tick after merge (the fallback when the row is absent — see <a href="#after-merge">after-merge</a>).</p>
+  </section>
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>What does the PR-ratio API return? · proposed</h3>
+    <p>The response shape is unchanged; excluded projects simply aren’t in <code>repos</code>, and <code>total</code>/<code>percentage</code> are computed without them. The skill that reads it keeps working and now agrees with the card. Considered: include them with an <code>excluded: true</code> flag and zero counts — a shape change for a reader that has no use for it.</p>
+  </section>
+
+  <section class="rec" id="d11">
+    <h3><span class="tag">D11</span>All excluded, but Other has PRs? · proposed</h3>
+    <p>The owner asked for a muted “all projects excluded” line in place of the misleading quiet-week line. The card decides it from the store alone — every <code>useProjects()</code> row has <code>exclude_from_pr_ratio</code> — so the line shows immediately, with no loading pulse and no date range, and it wins over every fetch state (loading, error, empty, ready). It wins even when Other has merged PRs: a bar that is 100% Other isn’t a split between projects. The API is <em>not</em> special-cased: with no counted repos it returns <code>repos: []</code> and whatever Other counts, which is an honest answer for a script. Considered: only replacing the <code>total: 0</code> case, leaving an Other-only bar when Other is non-zero.</p>
+  </section>
+  <h3>Implementation decisions</h3>
+  <section class="rec" id="d7">
+    <h4>D7 · The two-repo minimum counts all projects, before exclusion</h4>
+    <p><code>MINIMUM_RATIO_REPOS</code> keeps gating on every project row, so exclusions never turn the route into a 501: the card, and with it the only control that un-excludes (D1), stays on screen. Two projects with one excluded therefore draw a single-project bar (plus Other when measured). Considered: gating on counted projects only — cleaner semantics, but ticking the second-to-last project would hide the menu you’d need to undo it.</p>
+  </section>
+  <section class="rec" id="d8">
+    <h4>D8 · Colours don’t shift</h4>
+    <p><code>toEntries</code> already colours by <code>projectColorFor(projects, id)</code> over the store’s full creation-ordered list, so excluding knowledge leaves every other project’s colour as it is (Plate II). Don’t filter the store list before colouring.</p>
+  </section>
+  <section class="rec" id="d9">
+    <h4>D9 · Menu mechanics</h4>
+    <ul>
+      <li>Trigger <code>aria-label="PR ratio options"</code>; it renders in every state the card renders — loading, error, empty, ready and all-excluded (D11) — so the header never jumps, and so a repo the token can’t read (which fails the whole fan-out as a 502) can be excluded from the error state.</li>
+      <li>Each item’s <code>onSelect</code> calls <code>event.preventDefault()</code> so the menu stays open (precedent: <code>board-toolbar.tsx</code>’s checkbox items).</li>
+      <li>The heading is a non-interactive label: add a <code>DropdownMenuLabel</code> (Radix <code>Label</code>, <code>px-2 py-1.5 text-xs text-muted-foreground</code>) to <code>atoms/dropdown-menu.tsx</code> rather than a bare <code>&lt;p&gt;</code>.</li>
+      <li>The items read the store’s <code>useProjects()</code> (already <code>select('*')</code>, so the column arrives with the type regen); the toggle is the store action <code>updateProjectPrRatioExclusion</code> (optimistic tick, rollback + toast on failure).</li>
+      <li><code>usePrRatio</code> gains <code>refetch()</code>, called after the PATCH resolves (the server reads the DB, so an optimistic refetch would race it). While it refetches the card keeps the previous ratio rather than flashing the loading bar.</li>
+    </ul>
+  </section>
+  <section class="rec" id="d10">
+    <h4>D10 · Config shape</h4>
+    <p><code>PrRatioConfig</code> stops being an alias: <code>GithubRepoConfig &amp; { excludedRepos: RatioRepo[] }</code>, where <code>repos</code> holds only counted projects. <code>buildOtherQuery</code> subtracts <code>[...repos, ...excludedRepos]</code>. <code>MeasuredProject</code> gains <code>exclude_from_pr_ratio</code> and <code>listProjectRepos</code> selects it; <code>getGithubRepoConfig</code> ignores it (D4).</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Projects (flag)</th><th><code>PR_RATIO_AUTHORS</code></th><th>Queries issued</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Alfred, RealPlay, Knowledge (✓)</td><td>set</td><td>Alfred, RealPlay, Other <code>-repo:</code> all three</td><td>Plate II “After”</td></tr>
+      <tr><td>Alfred, RealPlay, Knowledge (✓)</td><td>unset</td><td>Alfred, RealPlay</td><td>Two segments, no Other</td></tr>
+      <tr><td>Alfred, Knowledge (✓)</td><td>unset</td><td>Alfred</td><td>One full-width Alfred segment; card and ⋯ stay (D7)</td></tr>
+      <tr><td>Alfred, RealPlay — both ✓</td><td>any</td><td>Other only, if authors set</td><td>Card: the muted “All projects excluded from the PR ratio.” line, ⋯ still there (D11). API: <code>repos: []</code></td></tr>
+      <tr><td>none flagged</td><td>any</td><td>as today</td><td>Unchanged — regression guard</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>A tick takes effect as soon as its PATCH lands and the card refetches (D9); no cache key needs busting, since the per-project and Other query strings don’t change (an excluded project’s query just isn’t sent).</li>
+    <li>PATCH failure: the store rolls the flag back and toasts, as <code>updateProjectColor</code> does.</li>
+    <li><code>PATCH /api/projects/[id]</code> with a non-boolean <code>exclude_from_pr_ratio</code> → 400.</li>
+  </ul>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+<pre>-- database/migrations/&lt;next&gt;_project_pr_ratio_exclusion.sql
+alter table projects
+  add column exclude_from_pr_ratio boolean not null default false;
+
+comment on column projects.exclude_from_pr_ratio is
+  'ALF-276: true drops this project from the Dashboard PR ratio (no segment, not in the total, never counted as Other).';
+
+update projects set exclude_from_pr_ratio = true
+  where repo_owner = 'ac3charland' and repo_name = 'knowledge';   -- D5
+
+// frontend/lib/api/schemas.ts — updateProjectSchema gains
+exclude_from_pr_ratio: z.boolean().optional(),
+
+// PATCH /api/projects/[id] — toUpdatePayload keys: ['description', 'color', 'exclude_from_pr_ratio']
+// GET /api/code/pr-ratio — shape unchanged; excluded projects absent from repos[] (D6)</pre>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <ol>
+    <li><strong>Schema.</strong> Add the migration above (next free number — never reuse one); regenerate <code>frontend/lib/database.types.ts</code> with <code>npm run gen-types -w database</code> and commit its raw output. Read the <code>supabase</code> and <code>migration-lint</code> skills first.</li>
+    <li><strong>Server measurement.</strong> <code>frontend/lib/github/config.ts</code> (D7, D10), <code>frontend/lib/data/code.ts</code> (select the column), <code>frontend/lib/github/pr-ratio.ts</code> (<code>buildOtherQuery</code> subtracts excluded repos). Update the module doc comments that say every project is a measured repo.</li>
+    <li><strong>Edit path.</strong> <code>updateProjectSchema</code> + <code>app/api/projects/[id]/route.ts</code>; <code>lib/api-client.ts</code> <code>updateProject</code> body type; store action <code>updateProjectPrRatioExclusion(projectId, excluded)</code> modelled on <code>updateProjectColor</code>.</li>
+    <li><strong>UI (D1, D9).</strong> <code>atoms/surface-card.tsx</code> gains an optional <code>action</code> node rendered after <code>detail</code>; <code>atoms/dropdown-menu.tsx</code> gains <code>DropdownMenuLabel</code>; <code>lib/hooks/use-pr-ratio.ts</code> gains <code>refetch</code>; <code>components/code/pr-ratio.tsx</code> renders the ⋯ menu (a small <code>PrRatioExcludeMenu</code> beside it is fine) in every state, and the D11 line (<code>text-sm text-muted-foreground</code>, like the error and quiet-week lines) ahead of the fetch-state branches.</li>
+    <li><strong>Docs.</strong> README’s PR-ratio paragraph and <code>docs/productivity-coach-primer.md</code> Endpoint 2 (“one entry per project” → “per project not excluded from the ratio”); <code>frontend/.env.example</code> comment that says every project is measured.</li>
+  </ol>
+  <p>Small enough for one session; no subagents needed.</p>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D2">A migration adds <code>projects.exclude_from_pr_ratio</code> (boolean, not null, default false) and regenerated types include it.</li>
+    <li data-trace="D5">The same migration sets it true for <code>ac3charland/knowledge</code> and is a no-op when that row is absent.</li>
+    <li data-trace="D3 P2">With a project excluded, the card shows no segment or legend row for it and its PRs are in neither <code>total</code> nor Other.</li>
+    <li data-trace="D3">No Search request is made for an excluded project; the Other query still carries <code>-repo:</code> for it.</li>
+    <li data-trace="D8 P2">Excluding a project leaves every other project’s colour unchanged.</li>
+    <li data-trace="D6"><code>GET /api/code/pr-ratio</code> omits excluded projects from <code>repos</code>; percentages sum to 100 over the rest.</li>
+    <li data-trace="D7">Exclusions never produce a 501: the route gates on two projects before exclusion.</li>
+    <li data-trace="D4">The lines-changed chart still measures excluded projects.</li>
+    <li data-trace="D1 P1">The card’s ⋯ menu lists every project with a tick for each excluded one; ticking or unticking persists across reload and the bar updates without a page load.</li>
+    <li data-trace="D9 P2">The ⋯ shows in the loading, error, empty, ready and all-excluded states, and the menu stays open between ticks.</li>
+    <li data-trace="D11 P2">With every project excluded, the card shows only its title, the ⋯ and the muted line “All projects excluded from the PR ratio.” — no range, bar or legend — even when Other has PRs; unticking one brings the bar back.</li>
+    <li data-trace="impl">PATCH accepts a boolean <code>exclude_from_pr_ratio</code>, rejects other types with 400, and a failed PATCH rolls the UI back.</li>
+    <li data-trace="impl">With no project flagged, the card and API behave exactly as before.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><strong>Unit (Jest)</strong> — <code>lib/github/config.test.ts</code>: excluded projects leave <code>repos</code>, land in <code>excludedRepos</code>, D7 minimum, <code>getGithubRepoConfig</code> unaffected. <code>lib/github/pr-ratio.test.ts</code>: <code>buildOtherQuery</code> subtracts excluded repos; <code>fetchPrRatio</code> sends no query for them and omits them. <code>app/api/code/pr-ratio/route.test.ts</code>: flagged row → absent from payload. <code>app/api/projects/[id]/route.test.ts</code> + schema: boolean accepted, string → 400. Store test for optimistic flip + rollback.</li>
+    <li><strong>Component (RTL)</strong> — <code>pr-ratio.test.tsx</code>: the ⋯ renders in all five states; every project excluded → the D11 line and no bar, even with a non-zero Other and while the fetch is still loading; the menu lists projects in creation order with <code>aria-checked</code> tracking the flag; a click calls the store action with the negation, keeps the menu open, and refetches after it resolves; a failed PATCH unticks. <code>surface-card.test.tsx</code>: <code>action</code> renders after <code>detail</code>. <code>use-pr-ratio</code>: <code>refetch</code> keeps the old ratio until the new one lands.</li>
+    <li><strong>E2E (Playwright)</strong> — <code>e2e/code-dashboard.spec.ts</code> mocks the ratio route, so add a test: open the card’s ⋯, tick a seeded project, reload, still ticked (proves the PATCH round-trip against the seeded DB).</li>
+  </ul>
+  <p>Write each red first.</p>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the <code>showboat</code> skill’s evidence-matching rules: a screenshot of the card’s ⋯ menu with a project ticked, and the Dashboard card before/after with a mocked ratio, plus an <code>exec</code> of the config/pr-ratio unit tests.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li>Non-project repos stay unexcludable — D2 chose a project column, and with <code>PR_RATIO_AUTHORS</code> set they land in Other as today.</li>
+    <li>“N excluded” note — declined (D3).</li>
+    <li>Unknown: whether <code>ac3charland/knowledge</code> is already a project row in production. D5 handles both; confirm after deploy.</li>
+    <li>To confirm while building: an excluded repo is only ever negated (<code>-repo:</code> in the Other query), so <code>GITHUB_TOKEN</code> shouldn’t need read access to it — check that negating an unreadable repo doesn’t 422 before telling the owner the PAT can drop it.</li>
+  </ul>
+</section>
+
+<section id="after-merge">
+  <h2>After it ships (for you)</h2>
+  <ol>
+    <li>Open the Dashboard: knowledge should have no segment. If it has one, its project was created after the migration ran; if it isn’t a Code project yet, create it.</li>
+    <li>Either way, then tick Knowledge in the card’s ⋯ menu.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
