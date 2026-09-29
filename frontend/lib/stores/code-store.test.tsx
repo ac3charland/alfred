@@ -281,7 +281,7 @@ function BoardCards() {
   return (
     <>
       {stories.map((liveStory) => (
-        <StoryCard key={liveStory.item_id ?? ''} story={liveStory} />
+        <StoryCard key={liveStory.item_id ?? ''} projectColor="blue" story={liveStory} />
       ))}
     </>
   );

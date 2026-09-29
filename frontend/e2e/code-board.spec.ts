@@ -214,10 +214,26 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
 }) => {
   // Real UUID id: the pick PATCHes the project by id, which the route validates as a UUID.
   const project = makeProject('Alfred', { key: 'ALF' });
-  await seed({ projects: [project] });
+  const epic = makeEpic('Communication Firewall', {
+    project_id: project.id,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const item = makeItem('Draft the inbound filter spec', { item_type: 'code' });
+  const story = makeCodeStory({
+    item_id: item.id,
+    project_id: project.id,
+    epic_id: epic.id,
+    ref_number: 3,
+    ref: 'ALF-3',
+    factory_state: 'needs_refinement',
+  });
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
   await page.goto(`/code/${project.id}`);
 
   const title = page.getByRole('heading', { name: 'Alfred' });
+  // The story card's ref: it wears the project's colour too, not a fixed accent.
+  const cardRef = page.getByRole('region', { name: 'Needs Refinement' }).getByText('ALF-3');
   const navLink = page.getByRole('navigation', { name: 'Projects' }).getByRole('link', {
     name: /alfred/i,
   });
@@ -229,6 +245,7 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
   await expect(title).toHaveCSS('color', 'rgb(96, 165, 250)');
   await expect(title).toHaveCSS('text-shadow', 'rgba(96, 165, 250, 0.5) 0px 0px 14px');
   await expect(navPill).toHaveClass(/\btext-accent-blue\b/);
+  await expect(cardRef).toHaveClass(/\btext-accent-blue\b/);
 
   const saved = page.waitForResponse(
     (response) =>
@@ -238,7 +255,8 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
   await page.getByRole('button', { name: 'Green' }).click();
   await saved;
 
-  // Every coloured surface follows the pick: the title and the sidebar's pill.
+  // Every coloured surface follows the pick: the title, the sidebar's pill and the card's ref.
+  await expect(cardRef).toHaveClass(/\btext-accent-green\b/);
   await expect(title).toHaveClass(/\btitle-glow-green\b/);
   await expect(title).toHaveCSS('color', 'rgb(52, 211, 153)');
   await expect(title).toHaveCSS('text-shadow', 'rgba(52, 211, 153, 0.5) 0px 0px 14px');
@@ -249,6 +267,7 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
   await page.reload();
   await expect(title).toHaveClass(/\btext-accent-green\b/);
   await expect(navPill).toHaveClass(/\btext-accent-green\b/);
+  await expect(cardRef).toHaveClass(/\btext-accent-green\b/);
 
   // Automatic clears the pick: back to the creation-slot colour, and that survives a reload too.
   const reset = page.waitForResponse(
@@ -261,5 +280,6 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
   await page.reload();
   await expect(title).toHaveClass(/\btext-accent-blue\b/);
   await expect(navPill).toHaveClass(/\btext-accent-blue\b/);
+  await expect(cardRef).toHaveClass(/\btext-accent-blue\b/);
   await expect(page.getByRole('button', { name: 'Project color: Blue (automatic)' })).toBeVisible();
 });
