@@ -40,7 +40,7 @@ This always/never-against-the-condition pattern is the most common source of rul
 ```
 .husky/commit-msg  → npx --no -- commitlint --edit $1
 .husky/pre-commit  → npm run check:fast   (fans out via workspace runner)
-.husky/pre-push    → npm run check:slow   (fans out via workspace runner)
+.husky/pre-push    → secret scan of the pushed refs, then npm run check:slow   (fans out via workspace runner)
 ```
 commitlint reads `commitlint.config.*` from the repo root and applies a single rule set to every commit regardless of which package changed.
 
@@ -148,6 +148,7 @@ npm run check:fast
 ```shell
 # .husky/pre-push
 unset $(git rev-parse --local-env-vars)
+npm run --silent lint:secrets:push -w tools/secret-scan -- "$1"   # scans what is being pushed (stdin + remote)
 npm run check:slow
 ```
 
@@ -166,6 +167,8 @@ env:
 **Rule tuples:**
 - Always read the rule's condition name first before choosing `'always'` vs `'never'`. `body-empty` + `'always'` = forbid body. `body-empty` + `'never'` = require body. Swapping them produces the opposite of what you intend with no obvious error at config-parse time.
 - Never partially update a tuple. `'subject-case': [2, 'always', 'lower-case']` replaces the entire `config-conventional` entry — you can't inherit the level and only change the value.
+
+**A message can't carry a CI-skip token.** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]` and `***NO_CI***` make GitHub skip the push workflows, including the secret scan, so `commitlint.config.js` rejects them with a local plugin rule (`no-ci-skip`, checked against the whole raw message).
 
 **scope-empty is not in config-conventional.** The default `@commitlint/config-conventional` does not include `scope-empty`. If you extend it and forget to add `'scope-empty': [2, 'never']`, scope is optional even if you think the parent config handles it.
 

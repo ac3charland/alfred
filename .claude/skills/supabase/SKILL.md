@@ -204,7 +204,7 @@ useEffect(() => {
 
 - **Fractional ranking exhausts `double precision` — a midpoint rank needs a respace, or it eventually collides forever.** Inserting at `(above + below) / 2.0` halves the gap it lands in, so ~50 insertions into the *same* gap leave the two bounds as adjacent doubles, the midpoint rounds onto one of them, and `unique(priority)` answers 23505 → PostgREST **409**. It is permanent, not flaky: the failed transaction rolls back, so the next attempt recomputes the same collision (alfred's `code_items.priority` reached this in production — every code dispatch 409'd while task dispatch, which never touches the column, was fine). Guard every midpoint site (`top_of_project_priority`, `move_code_priority_in_project`; the `min - 1` / `max + 1` jump branches can't collide): `exit when v_new <> v_above and v_new <> v_best`, else `perform respace_code_priorities()` and take a second pass against consecutive-integer neighbours. The respace rewrites every rank in one statement, so the unique index must be a `deferrable` **constraint** (per the entry above) and the function must `set constraints … deferred`. Two traps in the respace itself: `setval` to re-park the sequence needs **UPDATE** on it, not just the `usage` grant (`0008`); and a two-pass "park in a disjoint band, then land" rewrite must **add** the row number to the parking offset — subtracting it (`-1000000 - rn`) silently **reverses** the whole order.
 
-- **A live Supabase project is diagnosable over HTTPS when port 5432 isn't reachable.** Sandboxed/remote sessions (Claude Code for web) commonly block direct Postgres egress — `psql` and `pg` just `ETIMEDOUT`. With `SUPABASE_ACCESS_TOKEN` set, the Management API reaches the same database: `POST https://api.supabase.com/v1/projects/<ref>/database/query` with `{"query": "…", "read_only": true}` runs SQL, and `GET /v1/projects/<ref>/analytics/endpoints/logs.all?sql=…&iso_timestamp_start=…&iso_timestamp_end=…` reads the project's own logs. The **logs are what name a production failure**: `edge_logs` (join `metadata` → `request`/`response` via `cross join unnest`) gives the failing path and status code, and `postgres_logs.event_message` gives the Postgres error behind it. Default the window explicitly — an unbounded log query returns `[]`. The project ref is the `postgres.<ref>` username in `DATABASE_URL`.
+- **A live Supabase project is diagnosable over HTTPS when port 5432 isn't reachable.** Sandboxed/remote sessions (Claude Code for web) commonly block direct Postgres egress — `psql` and `pg` just `ETIMEDOUT`. With `SUPABASE_ACCESS_TOKEN` set (added per session; see *query Postgres via the Management API* below), the Management API reaches the same database: `POST https://api.supabase.com/v1/projects/<ref>/database/query` with `{"query": "…", "read_only": true}` runs SQL, and `GET /v1/projects/<ref>/analytics/endpoints/logs.all?sql=…&iso_timestamp_start=…&iso_timestamp_end=…` reads the project's own logs. The **logs are what name a production failure**: `edge_logs` (join `metadata` → `request`/`response` via `cross join unnest`) gives the failing path and status code, and `postgres_logs.event_message` gives the Postgres error behind it. Default the window explicitly — an unbounded log query returns `[]`. The project ref is the `<ref>` subdomain of the public Supabase URL.
 
 ### Security traps
 
@@ -330,13 +330,11 @@ The remote sandbox allows outbound **HTTPS only** (through the agent proxy); raw
 to the pooler (5432 **and** 6543) is blocked, so `psql` and `pg.Client` both hang and fail with
 a bare `timeout expired`. There is no sanctioned way to hand-apply a migration any more (see
 above — CI applies on merge), but ad-hoc read SQL — e.g. verifying what a merge just applied —
-still has nowhere else to go from the sandbox. When a `SUPABASE_ACCESS_TOKEN` (a PAT) is in
-the environment, run it over the **Management API** instead:
-
-**Check the ENVIRONMENT for credentials, not `frontend/.env.local`.** That file is gitignored
-and absent from a fresh sandbox clone, so its absence proves nothing — `SUPABASE_ACCESS_TOKEN`
-and `DATABASE_URL` are injected as env vars. `env | grep -c SUPABASE_ACCESS_TOKEN` before
-concluding you can't reach prod.
+still has nowhere else to go from the sandbox. It runs over the **Management API** with a
+`SUPABASE_ACCESS_TOKEN` (a PAT). The cloud environment deliberately **doesn't** inject one: the
+PAT can run any SQL and reset the database password. When a task needs prod diagnostics, ask
+the user to add it to that session's environment. `env | grep -c SUPABASE_ACCESS_TOKEN` shows
+whether it's there; `frontend/.env.local` is absent from a sandbox clone, so don't look there.
 
 ```bash
 curl -sS -X POST "https://api.supabase.com/v1/projects/<ref>/database/query" \
@@ -346,8 +344,8 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/<ref>/database/query" \
 
 A multi-statement migration body applies in one call; success returns the last statement's
 rows (`[]` for DDL), HTTP 201. Build `body.json` with `JSON.stringify` from the `.sql` file
-rather than escaping by hand. The **project ref** is the `postgres.<ref>` username in
-`DATABASE_URL`. This same endpoint is the way to verify a change afterwards (query
+rather than escaping by hand. The **project ref** is the `<ref>` subdomain of the public
+Supabase URL (`https://<ref>.supabase.co`). This same endpoint is the way to verify a change afterwards (query
 `information_schema` / `pg_constraint`), since no Postgres client can reach the DB directly.
 
 ### A new CHECK constraint breaks the DEPLOYED frontend until the PR ships

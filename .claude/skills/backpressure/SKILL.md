@@ -77,6 +77,9 @@ The hooks (see the `commitlint` skill) map tiers to git events:
   needed until right before the PR, so gating it per-push instead of per-commit keeps it from
   **harassing an agent committing as it goes**. (It also can't run earlier than it does: it
   reads the git branch to check the branch owns a demo doc.)
+  The pre-push hook also runs `lint:secrets:push` ahead of the tier: it needs git's pre-push
+  stdin (the refs being pushed), which CI doesn't have, so it lives in the hook and
+  `lint:secrets:branch` stays in `check:slow`.
 
 Put a check in the **earliest tier where it's actually relevant** — fast feedback is the point,
 but a check that's only needed at push/PR time, or that costs seconds, belongs in slow so it

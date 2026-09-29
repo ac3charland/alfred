@@ -88,7 +88,8 @@ The hooks enforce the suites automatically, so you do **not** need to run
 `check` manually before committing:
 
 - **pre-commit** → root `check:fast` (secret scan → type-check → lint+format → unit).
-- **pre-push** → root `check:slow` (branch secret scan → frontend Storybook snapshots +
+- **pre-push** → secret scan of the commits being pushed (`lint:secrets:push`, fed by git's
+  stdin), then root `check:slow` (branch secret scan → frontend Storybook snapshots +
   Playwright E2E). A branch whose every change lives under `docs/` skips the package suites —
   see the `backpressure` skill.
 - **commit-msg** → commitlint (one-line Conventional Commits: subject + scope

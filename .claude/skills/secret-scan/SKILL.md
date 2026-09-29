@@ -1,13 +1,14 @@
 ---
 name: secret-scan
 description: >
-  Covers secret-scan, the secretlint gate over every committable file (first step of the global
-  check:fast, so pre-commit and CI, plus a workflow on every push), and the shared
-  /.secretlintrc.json that showboat's record-time guard also reads. Use when the scan fails, a
-  placeholder or test fixture trips a rule, or adding a secret pattern. Trigger on:
+  Covers secret-scan, the secretlint gate over files on disk and staged (first step of the global
+  check:fast, so pre-commit and CI) and the commits a push carries (pre-push hook, check:slow, a
+  workflow on every push), plus the shared /.secretlintrc.json that showboat's guard reads. Use
+  when the scan fails, a placeholder or test fixture trips a rule, or adding a secret pattern.
+  Trigger on:
   "secret-scan", "secretlint", "lint:secrets", "leaked secret", "credential in a commit",
   "found PostgreSQL connection string", ".secretlintrc", "refused to record", "SecretError",
-  or editing tools/secret-scan. For gathering live-database demo evidence, see the showboat skill.
+  or editing tools/secret-scan. For live-database demo evidence, see the showboat skill.
 ---
 
 # secret-scan — keep secrets out of the public repo
@@ -16,17 +17,20 @@ description: >
 
 The repo is **public**: every pushed commit, on any branch, is published. `tools/secret-scan`
 runs secretlint (`preset-recommend` plus patterns for Supabase keys/tokens, `PGPASSWORD=`, libpq
-`password=`, and JWTs) in three scopes:
+`password=` incl. quoted/spaced, `DB_PASSWORD`-style env assignments, `supabase --password`, and
+JWTs) in four scopes:
 
 | Script | Scans | Runs in |
 | --- | --- | --- |
-| `npm run lint:secrets -w tools/secret-scan` | every committable file on disk (tracked, or untracked and not ignored) **and** the staged content of every added/modified path | first step of root `check:fast` (pre-commit, CI `check-fast`) |
-| `npm run lint:secrets:branch -w tools/secret-scan` | every blob each commit in `<merge-base with origin/main>..HEAD` added | first step of root `check:slow` (pre-push, CI `check-slow`) |
+| `npm run lint:secrets -w tools/secret-scan` | every committable file on disk (tracked, or untracked and not ignored) **and** the staged content of every added/modified/type-changed path | first step of root `check:fast` (pre-commit, CI `check-fast`) |
+| `npm run lint:secrets:push -w tools/secret-scan -- <remote>` | every blob added by the commits being pushed that `<remote>` doesn't have, read from git's pre-push stdin, so pushing a branch that isn't checked out is covered | `.husky/pre-push`, before `check:slow` |
+| `npm run lint:secrets:branch -w tools/secret-scan` | every blob each commit in `origin/main..HEAD` added; **exits 1 when there is no `origin/main`** | first step of root `check:slow` (pre-push, CI `check-slow`) |
 | `… lint:secrets -w tools/secret-scan -- --range A..B` | the same, for an explicit range | `.github/workflows/secret-scan.yml` on every push, which also covers web-UI/API commits that skip the hooks |
 
 Untracked files count because the `batch-commits` script runs the gate *before* `git add`. The
 range scans exist because a secret added in one commit and removed in the next is still
-published. Gitignored files (`.env.local`) are never scanned. Background:
+published; they include merge commits' own resolutions (`git log -m`) and type changes.
+Gitignored files (`.env.local`) are never scanned. Background:
 [the 2026-09-27 postmortem](../../../docs/postmortems/2026-09-27-postgres-credential-leak.md).
 
 `/.secretlintrc.json` is the one config. `tools/showboat/src/secrets.ts` loads it too, so the
@@ -62,11 +66,37 @@ against the pooler **hangs** rather than fails. Use `echo`.
 
 - **Always pass `maskSecrets: true` to `createEngine`.** secretlint 13 documents it as the
   default, but the stylish formatter prints the raw secret unless it's set, and CI logs are public.
+- **`DEBUG=@secretlint/*` makes secretlint print every scanned file's raw content.** The `debug`
+  module reads `DEBUG` once as it loads, so both scanners import `@secretlint/node` dynamically
+  with `DEBUG` removed from `process.env` (restored right after, since showboat's `exec` children
+  inherit it). Never import it statically.
+- **Errors print `error.message` only.** A failed `execFileSync` carries git's `stdout` buffer —
+  file content — so the CLI catches everything and never prints the error object.
 - **`secretlint-disable` comments are defused, not honoured.** secretlint obeys the directive
   anywhere in the content, and a preset sub-rule's `"disabled": true` is silently ignored, so the
   scanner rewrites `secretlint-disable`/`-enable` to an inert form before scanning.
-- **`git ls-files` lists more than files.** Symlinks to directories and tracked files deleted
-  from the working tree both appear; `committableFiles` keeps regular files only.
-- **Blind spots:** binary and UTF-16 files are skipped; a Postgres URI whose password contains
-  `/`, or `$` followed by a capital, reads as a template to the connection-string rule; Cloudflare
-  and R2 credentials have no rule; merge commits' own resolutions aren't range-scanned.
+- **"Binary" means a known signature, not a NUL byte.** PNG/GIF/JPEG/WebP/WOFF/PDF/ZIP/gzip
+  headers are skipped (the repo tracks ~1,100 PNGs); everything else is scanned with NULs turned
+  into newlines, and UTF-16 with a BOM is decoded, so a stray NUL can't hide a text file.
+- **Blobs are read by id, never by path.** `git show :<path>` mis-resolves a path like `0:foo` to
+  stage 0 of `foo`; the staged and range scans take blob ids from `git diff --raw` /
+  `git log --raw` and read them with `git cat-file --batch`. Gitlinks (mode 160000) are skipped.
+- **The working-tree scan doesn't follow symlinks.** A symlink is scanned as its link text; a
+  tracked symlink to a directory or a file deleted from disk is not read as a file.
+- **The `*_PASSWORD` rule skips a bare identifier followed by `, } ) ] ;`** (`{ PGPASSWORD: password }`,
+  `DB_PASSWORD: string;`) and the literal `postgres` (the throwaway CI service container). A quoted
+  or YAML/shell literal is flagged — assemble a fake one at runtime.
+- **Commit messages can't carry `[skip ci]`-style tokens.** GitHub then skips the push workflows,
+  including this scan, so commitlint rejects them (`no-ci-skip`, see the `commitlint` skill).
+- **`git push <url>` (no remote name) scans the whole history** — `--remotes=<url>` matches no
+  remote-tracking ref, so nothing is excluded. Slow but fails closed.
+
+## Blind spots
+
+- Text that starts with a binary signature (a file opening `\x89PNG…`) is skipped; other binaries
+  (fonts, `.webm`) are scanned as text. UTF-16/32 without a BOM isn't decoded.
+- A Postgres URI whose password contains `/`, or `$` followed by a capital, reads as a template to
+  the connection-string rule; Cloudflare and R2 credentials have no rule.
+- Detection only: a commit made with `--no-verify`, without hooks installed, or through the web UI
+  is caught only by the push workflow, after it's public — and a `[skip ci]` message made there
+  silences even that.
