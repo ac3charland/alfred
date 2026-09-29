@@ -268,7 +268,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>298</span><span class="sep"> — </span><span class="ttl">Add “Research” as an inbox item type</span></h1>
   <p class="change" id="change">Classify a capture as Research and Dispatch it: a Claude Code Routine researches it on the web, and the report lands in your Reader like any post, wiki picks included.</p>
-  <p class="revised" id="revised">Revised 2026-09-29: D1 → alfred’s <code>routines/research/</code> (your review); D2 settled; research picks now reach the wiki (D18, Plate II).</p>
+  <p class="revised" id="revised">Revised 2026-09-29: D4 → research bodies sweep at 90 days like any post’s (your review).</p>
 </header>
 
 <section class="sec" id="decisions">
@@ -278,8 +278,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
       <p class="pick">The post appears at dispatch and steps through Plate II’s states.</p>
       <p class="why">A dispatched question never vanishes; a stuck run is visible and retryable.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>Are report bodies ever swept?</h3>
-      <p class="pick">Never — research posts are exempt from the 90-day text sweep.</p>
-      <p class="why">A newsletter has an original elsewhere; a report’s only copy is here.</p></li>
+      <p class="pick">Yes, at 90 days like any post; the summary and brief stay.</p>
+      <p class="why">Send keeps a copy in Instapaper; the brief can regenerate an unread one.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>Which glyph marks a Research row?</h3>
       <p class="pick">Telescope — Plate I compares Microscope and Flask.</p>
       <p class="why">Distinct from Knowledge’s lightbulb at 14 px.</p></li>
@@ -522,7 +522,7 @@ ratio [4][6] — the one number I couldn't pin down is your utility's …
 <section id="context">
   <h2>Context</h2>
   <p><b>The ticket.</b> “Somewhat analogous to the idea item type, this is a new category of item that requires an LLM to do some research and create a report that then gets sent to the reader for me to consume later.” The “idea” type is <code>knowledge</code> (lightbulb glyph, dispatched to the wiki as <code>source_type: idea</code>), and “the reader” is the Reader module (<code>reader_posts</code>, today fed by Gmail newsletters and Instapaper’s To Reader folder).</p>
-  <p><b>What the owner settled in this session.</b> The report lands in the Reader reading list; research is a web-search report, not a days-long deep-research agent; Dispatch is the trigger; the Inbox classifier may guess the type (D7). Mid-session the owner asked to run the research “as a skill and a routine, like we do wiki ingestion” — which replaced a first plan of one Anthropic API call from the Worker (D6). In review they chose where it lives: in alfred, not a new repo and not the knowledge repo, which is for what lasts rather than transient reports (D1). The report is PUT to Supabase to live in the Reader and is kept private, so it is never committed anywhere (D2). From the Reader its picks travel to the wiki by the normal channel (D18).</p>
+  <p><b>What the owner settled in this session.</b> The report lands in the Reader reading list; research is a web-search report, not a days-long deep-research agent; Dispatch is the trigger; the Inbox classifier may guess the type (D7). Mid-session the owner asked to run the research “as a skill and a routine, like we do wiki ingestion” — which replaced a first plan of one Anthropic API call from the Worker (D6). In review they chose where it lives: in alfred, not a new repo and not the knowledge repo, which is for what lasts rather than transient reports (D1). The report is PUT to Supabase to live in the Reader and is kept private, so it is never committed anywhere (D2). From the Reader its picks travel to the wiki by the normal channel (D18), and they didn’t want reports accumulating, so bodies sweep like any post’s (D4).</p>
   <p><b>What exists and is reused.</b></p>
   <ul>
     <li><b>Knowledge dispatch</b> — the whole shape to mirror: <code>TypeGlyph</code> (<code>components/tasks/type-glyph.tsx</code>), <code>isKnowledge</code> row flags (<code>lib/hooks/use-task-row-flags.ts</code>), Classify menus (<code>task-row/task-row-menu.tsx</code>, <code>inbox-bulk-bar.tsx</code>), readiness (<code>lib/tasks/dispatch.ts</code>), the store’s per-type dispatch branch (<code>lib/stores/tasks-store.tsx</code> <code>dispatchItems</code>), the route (<code>app/api/wiki/items/route.ts</code>), the stamp-then-delete RPC <code>send_items_to_wiki</code> (<code>0038_wiki.sql</code>) and the <code>items_dispatched_needs_folder</code> exemption, the items PATCH guard (<code>app/api/items/[id]/route.ts</code>), and config gating on <code>useWikiConfig().writable</code>.</li>
@@ -547,7 +547,7 @@ ratio [4][6] — the one number I couldn't pin down is your utility's …
   <section class="rec" id="d2">
     <h3><span class="tag">D2</span>How does the report get back? · settled</h3>
     <p>The session PUTs the markdown to <code>/api/reader/research/[id]</code> on alfred. The Routine’s environment holds an <b>API credential</b> for alfred’s host carrying <code>Authorization: Bearer ${RESEARCH_DELIVERY_KEY}</code>; Anthropic’s proxy adds it outside the VM, so the key is in no env var, file or transcript. The key is new and accepted by that one route only — never <code>INGEST_API_KEY</code>, which also creates items and weekly plans. The route writes the report to Supabase, where it lives in the Reader.</p>
-    <p>Why this matters: a research session reads arbitrary web pages, which is exactly the prompt-injection surface. With this design an injected session can at worst overwrite the report of a research post that is still undelivered, by id. Considered: committing reports as markdown in their own folder under <code>docs/</code>. Rejected because alfred is a public repo, so every report would be published. Also considered: git delivery into another repo with a webhook into the Worker — more moving parts, and D4 already makes the Reader the archive. Considered: an environment variable holding the key — readable by the session, so exfiltrable; the fallback only if API credentials are unavailable (they are Pro/Max-only).</p>
+    <p>Why this matters: a research session reads arbitrary web pages, which is exactly the prompt-injection surface. With this design an injected session can at worst overwrite the report of a research post that is still undelivered, by id. Considered: committing reports as markdown in their own folder under <code>docs/</code>. Rejected because alfred is a public repo, so every report would be published. Also considered: git delivery into another repo with a webhook into the Worker — more moving parts for a report that lives in the Reader and Instapaper anyway (D4). Considered: an environment variable holding the key — readable by the session, so exfiltrable; the fallback only if API credentials are unavailable (they are Pro/Max-only).</p>
   </section>
 
   <section class="rec" id="d3">
@@ -557,7 +557,8 @@ ratio [4][6] — the one number I couldn't pin down is your utility's …
 
   <section class="rec" id="d4">
     <h3><span class="tag">D4</span>Are report bodies ever swept? · proposed</h3>
-    <p><code>reader_sweep_text</code> nulls <code>text</code>/<code>html</code> past 90 days because a newsletter’s body is a copy (the mail, the web). A report’s body exists nowhere else once the session is gone; the summary alone cannot be re-sent to Instapaper or re-summarised. So the sweep skips <code>source = 'research'</code>. Cost: a few tens of KB per report. Considered: archiving reports in git instead (see D2) — more moving parts for the same guarantee.</p>
+    <p>Yes. A research post is swept by <code>reader_sweep_text</code> exactly like a newsletter: at 90 days its <code>text</code> and <code>html</code> go, and the headline, gist, overview, <code>research_brief</code> and session link stay. The owner doesn’t want reports to pile up. The first draft exempted them as “the only copy”, but that was weaker than it looked. Send stores the full report HTML in Instapaper, the owner’s read-later archive. Wiki picks keep the ideas. The brief, never swept, can re-run the question with fresher sources. What’s lost is a report neither sent nor picked from in 90 days, which by definition the owner didn’t value.</p>
+    <p>Considered: exempting research posts (the first draft), which accumulates roughly 50–80 KB per report forever. Also considered: a copy to Google Drive or email. The research session is the one session that reads untrusted web pages, so it must never hold the Drive or Gmail connectors — an injected page could have it read your Drive or send mail as you. An alfred-side “save to Drive” verb stays possible as a later story, if Instapaper ever proves not to be enough.</p>
   </section>
 
   <section class="rec" id="d5">
@@ -716,8 +717,8 @@ alter table reader_posts add constraint reader_posts_research_state_valid
   check (research_state in ('queued', 'researching', 'done', 'failed'));
 alter table reader_posts add constraint reader_posts_research_shape check (
   (source = 'research') = (research_state is not null and research_brief is not null)
-  and (research_state is distinct from 'done'
-       or (text is not null and research_delivered_at is not null)));
+  and (research_state is distinct from 'done' or research_delivered_at is not null));
+  -- not "done ⇒ text is not null": the 90-day sweep nulls a done report's text (D4)
 alter table reader_posts add constraint reader_posts_research_attempts_not_negative
   check (research_attempts &gt;= 0);
 -- reader_posts_source_identity is recreated with a third branch:
@@ -738,8 +739,7 @@ alter table reader_posts add constraint reader_posts_research_attempts_not_negat
 --        returning * … (collect, delete the items, return the rows)
 --    grant execute … to anon, authenticated, service_role;
 
--- 4. reader_sweep_text: same signature, guards and batching; the inner select adds
---    and source &lt;&gt; 'research'   (D4). Its comment says so.
+-- reader_sweep_text is unchanged: research posts sweep like any post (D4).
 
 notify pgrst, 'reload schema';</pre>
 
@@ -834,7 +834,7 @@ Never commit, push, open a pull request, or modify any file in the repository.</
     <li data-trace="D2">The delivery route answers 401/422/404/409/200 per the table; a 200 stores the report, its rendered HTML and word count, and resets the post to <code>summary_state = 'pending'</code>.</li>
     <li data-trace="D2 D14">Raw HTML inside a delivered report never reaches the stored <code>html</code>.</li>
     <li data-trace="D10 D11">The Worker summarises a delivered research post and never picks up a queued, researching or failed one; newsletters and articles are still picked up (the worklist URL carries the <code>or=</code> filter).</li>
-    <li data-trace="D4"><code>reader_sweep_text</code> never nulls a research post’s body.</li>
+    <li data-trace="D4"><code>reader_sweep_text</code> sweeps a 90-day-old research post’s body like any post’s; the row keeps its summary, brief and session link, and renders the existing swept state.</li>
     <li data-trace="D18 P2">A done research post offers the ordinary wiki-pick checklists; its send commits a picks-only folder (no <code>source.md</code>, picks <code>origin: model-derived</code>), and every other post’s send is unchanged.</li>
     <li data-trace="P2">Send on a done research post saves its HTML to Instapaper with no URL; before delivery Send is disabled with <code>The report hasn't arrived yet.</code></li>
     <li data-trace="D7 D16">The classifier may answer <code>research</code>; the verdict keeps only the type, a held research row gains nothing, and <code>PROMPT_VERSION</code> is 4.</li>
@@ -846,7 +846,7 @@ Never commit, push, open a pull request, or modify any file in the repository.</
 <section id="tests" data-kind="story">
   <h2>Tests</h2>
   <ul>
-    <li><b>Database integration</b> (<code>database/src/assertions.ts</code>): the enum value exists; <code>send_items_to_research</code> refuses a non-research row, a parent, a dispatched row and a mixed batch, and consumes a valid batch — posts inserted queued with the composed brief, items deleted, a correction row written when <code>classified_guess.item_type</code> differed; the research shape and identity CHECKs reject a research post without a brief, a done post without text, and a research post carrying mail identity; <code>reader_sweep_text</code> skips a 91-day-old research post and still sweeps a newsletter beside it; <code>authenticated</code> can execute the function.</li>
+    <li><b>Database integration</b> (<code>database/src/assertions.ts</code>): the enum value exists; <code>send_items_to_research</code> refuses a non-research row, a parent, a dispatched row and a mixed batch, and consumes a valid batch — posts inserted queued with the composed brief, items deleted, a correction row written when <code>classified_guess.item_type</code> differed; the research shape and identity CHECKs reject a research post without a brief, a done post without <code>research_delivered_at</code>, and a research post carrying mail identity; <code>reader_sweep_text</code> sweeps a 91-day-old done research post (the CHECK allows its null text) and leaves its brief; <code>authenticated</code> can execute the function.</li>
     <li><b>Frontend unit / RTL:</b> <code>dispatch.test.ts</code> (the three readiness rows + blocker summary order); <code>type-glyph</code>; <code>classifyPatch</code>; <code>routine.test.ts</code> (request shape, header constant, 2xx parse with and without URL, each error mapping, timeout); <code>research.test.ts</code> (<code>researchPhase</code> boundaries at 10 min / 3 h); <code>report-html.test.ts</code> (headings, a GFM table, links; a raw <code>&lt;script&gt;</code> never reaches the output); route tests for dispatch (409 naming the id, RPC then fire per post, failed fire → failed row, 501), delivery (every table row, the done-guarded UPDATE) and retry (409 unless failed/stale); items PATCH guard; <code>source.ts</code>/<code>open-link.ts</code>/<code>send.ts</code> research branches; <code>envelope.test.ts</code> (a research post’s envelope holds only the picks file, <code>origin: model-derived</code>, null URL and author; a newsletter’s is byte-identical to today’s); <code>post-row.test.tsx</code> per phase; <code>inbox-bulk-bar</code> toast wording and menu entry; <code>task-row-menu</code> entry.</li>
     <li><b>Storybook snapshots:</b> <code>TypeGlyph</code> research; <code>PostRow</code> research researching / no report / summarising / done-expanded — new baselines.</li>
     <li><b>Worker unit:</b> <code>verdict.test.ts</code> (research type-only, held research merge), <code>prompt.test.ts</code> (enum includes research, version 4, boundary text present), <code>worklist.test.ts</code> (the <code>or=</code> filter is in the URL), reader <code>prompt.test.ts</code> (research metadata lines).</li>
