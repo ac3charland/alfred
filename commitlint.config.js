@@ -1,7 +1,28 @@
+// GitHub skips every push/pull_request workflow run for a commit whose message carries one of
+// these tokens (or `skip-checks: true`, a trailer this config already forbids via footer-empty).
+// The repo is public and its secret-scan workflow runs on push, so such a message would silence it.
+const CI_SKIP_TOKEN = /\[\s*(?:skip ci|ci skip|no ci|skip actions|actions skip)\s*\]|\*\*\*NO_CI\*\*\*/i;
+
 /** @type {import('@commitlint/types').UserConfig} */
 const config = {
   extends: ['@commitlint/config-conventional'],
+  plugins: [
+    {
+      rules: {
+        // 'never' negates the condition: error when the message contains a CI-skip token.
+        'no-ci-skip': ({ raw }) => {
+          const found = CI_SKIP_TOKEN.exec(raw ?? '');
+          return [
+            found === null,
+            `message must not contain the CI-skip token ${found?.[0] ?? ''}: it silences the push workflows, including the secret scan`,
+          ];
+        },
+      },
+    },
+  ],
   rules: {
+    // Never let a message switch off the push workflows (see CI_SKIP_TOKEN)
+    'no-ci-skip': [2, 'always'],
     // Single-line commits only: no body or footer allowed
     'body-empty': [2, 'always'],
     'footer-empty': [2, 'always'],
