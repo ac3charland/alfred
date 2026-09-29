@@ -61,18 +61,21 @@ function written(overrides: Record<string, unknown> = {}) {
 }
 
 /**
- * A signed-in client whose first `reader_posts` read is the retry's look at the post and whose
- * second is the recorded fire's read-back.
+ * A signed-in client whose `reader_posts` answers are, in order: the retry's look at the post, the
+ * claim (the post as read, or `null` when another request claimed it first), and the recorded
+ * fire's read-back.
  */
 function signedIn(
   post: ReaderPostForResearch | null = stored(),
   saved?: { data: unknown; error?: { message: string; code?: string } },
   readError?: { message: string; code?: string },
+  claim?: { data: unknown; error?: { message: string; code?: string } },
 ) {
   const supabase = makeSupabaseDouble({});
   supabase
     .table('reader_posts')
     .maybeSingle.mockResolvedValueOnce({ data: post, error: readError })
+    .mockResolvedValueOnce(claim ?? { data: { id: POST_ID } })
     .mockResolvedValueOnce(saved ?? { data: written() });
   mockCreateClient.mockResolvedValue(supabase as never);
   return supabase;
@@ -241,21 +244,49 @@ describe('POST /api/reader/research/[id]/retry', () => {
   });
 
   describe('a retry', () => {
-    it('fires the Routine once with the post’s brief, and records it with one more attempt', async () => {
+    it('claims the post as read — one more attempt — then fires once with its brief and records it', async () => {
       const supabase = signedIn(stored({ research_attempts: 3 }));
 
       await retry();
 
+      const table = supabase.table('reader_posts');
+      expect(table.update).toHaveBeenNthCalledWith(1, { research_attempts: 4 });
+      expect(table.eq).toHaveBeenCalledWith('research_attempts', 3);
+      expect(table.eq).toHaveBeenCalledWith('research_state', 'failed');
       expect(mockFire).toHaveBeenCalledTimes(1);
       expect(mockFire).toHaveBeenCalledWith(CONFIG, { id: POST_ID, research_brief: BRIEF });
-      expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+      expect(table.update).toHaveBeenNthCalledWith(2, {
         research_state: 'researching',
         research_fired_at: '2026-09-29T12:00:00.000Z',
         research_session_url: SESSION,
         research_error: null,
-        research_attempts: 4,
       });
-      expect(supabase.table('reader_posts').eq).toHaveBeenLastCalledWith('id', POST_ID);
+      expect(table.eq).toHaveBeenLastCalledWith('id', POST_ID);
+    });
+
+    it('answers 409 and fires nothing when another request claimed the post first', async () => {
+      const supabase = signedIn(stored(), undefined, undefined, { data: null });
+
+      const response = await retry();
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: 'This research is already being retried',
+      });
+      expect(mockFire).not.toHaveBeenCalled();
+      expect(supabase.table('reader_posts').update).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers through the shared error mapping, firing nothing, when the claim cannot be written', async () => {
+      signedIn(stored(), undefined, undefined, {
+        data: null,
+        error: { message: 'connection reset', code: 'XX000' },
+      });
+
+      const response = await retry();
+
+      expect(response.status).toBe(500);
+      expect(mockFire).not.toHaveBeenCalled();
     });
 
     it('answers the list-shaped row the write read back — never the brief or a body', async () => {
@@ -277,7 +308,7 @@ describe('POST /api/reader/research/[id]/retry', () => {
     });
 
     it('records a refused fire as failed, and still answers 200 with that row', async () => {
-      const error = "the Routine's daily run cap or usage limit was reached";
+      const error = 'the Routine’s daily run cap or usage limit was reached';
       mockFire.mockResolvedValue({ ok: false, error });
       const row = written({ research_state: 'failed', research_error: error });
       const supabase = signedIn(stored(), { data: row });
@@ -286,10 +317,9 @@ describe('POST /api/reader/research/[id]/retry', () => {
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual(row);
-      expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+      expect(supabase.table('reader_posts').update).toHaveBeenLastCalledWith({
         research_state: 'failed',
         research_error: error,
-        research_attempts: 2,
       });
     });
 

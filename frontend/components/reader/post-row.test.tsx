@@ -1332,11 +1332,13 @@ function research(overrides: Parameters<typeof makeResearchPost>[0] = {}): Reade
 }
 
 /** A post whose Routine fire has not been accepted yet: two minutes old, so not yet presumed lost. */
+/** A post the RPC just created: queued, no fire claimed against it yet. */
 const JUST_QUEUED = {
   research_state: 'queued',
   created_at: minutesBeforeNow(2),
   received_at: minutesBeforeNow(2),
   research_fired_at: null,
+  research_attempts: 0,
 } as const;
 
 /** A report that has arrived and been summarised. */

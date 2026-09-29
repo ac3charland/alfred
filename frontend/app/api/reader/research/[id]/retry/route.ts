@@ -15,12 +15,14 @@ import { researchUnconfiguredResponse } from '@/lib/research/responses';
 // (failed), whose fire never happened (queued for over ten minutes) or whose session never
 // reported back (researching for over three hours). `researchPhase` is the one function that says
 // which — the row asks the same question to decide whether to offer the verb — and anything else
-// answers 409, so a double-click or a stale tab can't start a second session beside a live one.
+// answers 409, so a stale tab can't start a second session beside a live one.
 //
-// Then exactly what dispatch does for each post: fire, and record the outcome — researching with
-// the session link, or failed with the reason (a refused fire is a 200 with a failed row, not an
-// error). The answer is the list-shaped row. A retried run that later delivers anyway is refused
-// by the delivery route; the first report wins.
+// Then exactly what dispatch does for each post: claim, fire, and record the outcome — researching
+// with the session link, or failed with the reason (a refused fire is a 200 with a failed row, not
+// an error). The claim counts the attempt only while the post is as this request read it, so two
+// retries racing on one post (two tabs, two devices) start one session: the loser answers 409 and
+// fires nothing. The answer is the list-shaped row. A retried run that later delivers anyway is
+// refused by the delivery route; the first report wins.
 //
 // If the outcome can't be recorded, this answers the write's error and leaves the post as it was:
 // still failed or stalled, so it still offers Retry. (Dispatch can't do that — its items are
@@ -54,12 +56,16 @@ export const POST = withSession(
       return jsonError(409, 'Only a failed or stalled research post can be retried');
     }
 
-    const { data, error } = await fireAndRecord(session.supabase, config, {
+    const { claimed, data, error } = await fireAndRecord(session.supabase, config, {
       id,
       research_brief: post.research_brief,
       research_attempts: post.research_attempts,
+      research_state: post.research_state ?? 'failed',
     });
-    if (error) {
+    if (!claimed && error === null) {
+      return jsonError(409, 'This research is already being retried');
+    }
+    if (error !== null) {
       const { status, message } = mapSupabaseError(error);
       return jsonError(status, message);
     }

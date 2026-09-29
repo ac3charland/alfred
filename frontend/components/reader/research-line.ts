@@ -34,7 +34,7 @@ function reasonClause(post: Pick<ReaderPostListItem, 'research_error'>): string 
  * post stale, so no `research_error` exists for them.
  */
 export function researchLine(
-  post: Pick<ReaderPostListItem, 'research_error'>,
+  post: Pick<ReaderPostListItem, 'research_error' | 'research_attempts' | 'research_session_url'>,
   phase: ResearchPhase | undefined,
 ): string | undefined {
   switch (phase) {
@@ -46,10 +46,17 @@ export function researchLine(
       return `${NO_REPORT} — ${reasonClause(post)}. Retry to start a new session.`;
     }
     case 'stale-researching': {
-      return `${NO_REPORT} — the session hasn’t reported back in 3 hours. Open it, or retry to start a new one.`;
+      // "Open it" only when there is a Session link to open.
+      return post.research_session_url === null
+        ? `${NO_REPORT} — the session hasn’t reported back in 3 hours. Retry to start a new one.`
+        : `${NO_REPORT} — the session hasn’t reported back in 3 hours. Open it, or retry to start a new one.`;
     }
     case 'stale-queued': {
-      return `${NO_REPORT} — the research never started. Retry to start a session.`;
+      // An attempt on a queued post is a fire that was claimed but whose outcome was never
+      // recorded: a session may be running, so "never started" would be a guess.
+      return post.research_attempts > 0
+        ? `${NO_REPORT} — this run’s start was never confirmed. Retry to start a new session.`
+        : `${NO_REPORT} — the research never started. Retry to start a session.`;
     }
     case 'done':
     case undefined: {

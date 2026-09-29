@@ -52,9 +52,29 @@ describe('researchLine', () => {
     );
   });
 
-  it('says a fire that never happened means the research never started', () => {
-    expect(researchLine(makeResearchPost({ research_state: 'queued' }), 'stale-queued')).toBe(
+  it('offers only the retry for a silent session with no link to open', () => {
+    const post = makeResearchPost({ research_session_url: null });
+
+    expect(researchLine(post, 'stale-researching')).toBe(
+      'No report — the session hasn’t reported back in 3 hours. Retry to start a new one.',
+    );
+  });
+
+  it('says a post no fire ever reached means the research never started', () => {
+    const post = makeResearchPost({ research_state: 'queued', research_attempts: 0 });
+
+    expect(researchLine(post, 'stale-queued')).toBe(
       'No report — the research never started. Retry to start a session.',
+    );
+  });
+
+  it('does not claim "never started" when a fire was made but its outcome was never recorded', () => {
+    // An attempt on a queued post is a claim whose fire may have started a session that is still
+    // running — the line must not tell the owner it never happened.
+    const post = makeResearchPost({ research_state: 'queued', research_attempts: 1 });
+
+    expect(researchLine(post, 'stale-queued')).toBe(
+      'No report — this run’s start was never confirmed. Retry to start a new session.',
     );
   });
 

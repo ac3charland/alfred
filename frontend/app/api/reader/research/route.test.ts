@@ -85,8 +85,8 @@ const SESSION_B = 'https://claude.ai/code/session_01B';
 
 /**
  * A signed-in client whose two `items` reads answer in order (the rows by id, then their children),
- * whose `rpc` answers with the created posts, and whose `reader_posts` patches answer with
- * `patched`, one per post in order.
+ * whose `rpc` answers with the created posts, and whose `reader_posts` writes answer, per post in
+ * order, a successful claim and then that post's entry in `patched` — the recorded outcome.
  */
 function signedIn({
   rows = [stored(ID_A), stored(ID_B)],
@@ -107,10 +107,35 @@ function signedIn({
   const childrenChain = makeChain({ list: { data: children, error: childrenError } });
   const supabase = makeSupabaseDouble({}, rpc);
   supabase.from.mockReturnValueOnce(rowsChain).mockReturnValueOnce(childrenChain);
-  for (const result of patched)
-    supabase.table('reader_posts').maybeSingle.mockResolvedValueOnce(result);
+  for (const result of patched) {
+    supabase
+      .table('reader_posts')
+      .maybeSingle.mockResolvedValueOnce({ data: { id: 'claimed' }, error: undefined })
+      .mockResolvedValueOnce(result);
+  }
   mockCreateClient.mockResolvedValue(supabase as never);
   return { supabase, rowsChain, childrenChain };
+}
+
+/**
+ * The outcome writes, in order: every `reader_posts` update but the claim that precedes each fire
+ * (which only counts the attempt).
+ */
+function outcomeWrites(supabase: ReturnType<typeof signedIn>['supabase']): unknown[] {
+  return supabase
+    .table('reader_posts')
+    .update.mock.calls.map(([update]: unknown[]) => update)
+    .filter((update: unknown) => !isClaim(update));
+}
+
+/** Whether an update is a claim — the attempt count alone. */
+function isClaim(update: unknown): boolean {
+  return (
+    typeof update === 'object' &&
+    update !== null &&
+    Object.keys(update).length === 1 &&
+    'research_attempts' in update
+  );
 }
 
 /** What the patch write answers once the fire's outcome is recorded. */
@@ -248,8 +273,11 @@ describe('POST /api/reader/research', () => {
 
       const [rpcOrder = 0] = supabase.rpc.mock.invocationCallOrder;
       const [fireOne = 0, fireTwo = 0] = mockFire.mock.invocationCallOrder;
-      const [writeOne = 0, writeTwo = 0] =
-        supabase.table('reader_posts').update.mock.invocationCallOrder;
+      const updates = supabase.table('reader_posts').update.mock;
+      const calls = updates.calls as unknown[][];
+      const [writeOne = 0, writeTwo = 0] = updates.invocationCallOrder.filter(
+        (_order: number, index: number) => !isClaim(calls[index]?.[0]),
+      );
       expect(rpcOrder).toBeLessThan(fireOne);
       expect(fireOne).toBeLessThan(writeOne);
       expect(writeOne).toBeLessThan(fireTwo);
@@ -264,22 +292,28 @@ describe('POST /api/reader/research', () => {
       await POST(send({ ids: [ID_A, ID_B] }), STUB_CONTEXT);
 
       const table = supabase.table('reader_posts');
-      expect(table.update).toHaveBeenNthCalledWith(1, {
-        research_state: 'researching',
-        research_fired_at: '2026-09-29T12:00:00.000Z',
-        research_session_url: SESSION_A,
-        research_error: null,
-        research_attempts: 1,
-      });
-      expect(table.update).toHaveBeenNthCalledWith(2, {
-        research_state: 'researching',
-        research_fired_at: '2026-09-29T12:00:00.000Z',
-        research_session_url: SESSION_B,
-        research_error: null,
-        research_attempts: 1,
-      });
-      expect(table.eq).toHaveBeenNthCalledWith(1, 'id', POST_A);
-      expect(table.eq).toHaveBeenNthCalledWith(2, 'id', POST_B);
+      expect(outcomeWrites(supabase)).toEqual([
+        {
+          research_state: 'researching',
+          research_fired_at: '2026-09-29T12:00:00.000Z',
+          research_session_url: SESSION_A,
+          research_error: null,
+        },
+        {
+          research_state: 'researching',
+          research_fired_at: '2026-09-29T12:00:00.000Z',
+          research_session_url: SESSION_B,
+          research_error: null,
+        },
+      ]);
+      // Each post is claimed as the RPC created it — no attempts yet, queued — before its fire.
+      expect(table.update).toHaveBeenNthCalledWith(1, { research_attempts: 1 });
+      expect(table.eq).toHaveBeenCalledWith('research_attempts', 0);
+      expect(table.eq).toHaveBeenCalledWith('research_state', 'queued');
+      const ids = table.eq.mock.calls
+        .filter(([column]: unknown[]) => column === 'id')
+        .map(([, id]: unknown[]) => id);
+      expect(ids).toEqual([POST_A, POST_A, POST_B, POST_B]);
       expect(table.select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
     });
 
@@ -337,10 +371,10 @@ describe('POST /api/reader/research', () => {
 
   describe('a fire that fails is not a request failure', () => {
     it.each([
-      ["the research Routine refused alfred's token"],
-      ["the Routine's daily run cap or usage limit was reached"],
+      ['the research Routine refused alfred’s token'],
+      ['the Routine’s daily run cap or usage limit was reached'],
       ['the research Routine answered HTTP 500'],
-      ["the research Routine couldn't be reached"],
+      ['the research Routine couldn’t be reached'],
     ])('records "%s" on the post and answers 200 with it', async (error) => {
       mockFire.mockResolvedValue({ ok: false, error });
       const post = created(POST_A, BRIEF_A);
@@ -356,11 +390,9 @@ describe('POST /api/reader/research', () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ posts: [row.data] });
       // The fire's session link and time are left out: nothing was started.
-      expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
-        research_state: 'failed',
-        research_error: error,
-        research_attempts: 1,
-      });
+      expect(outcomeWrites(supabase)).toEqual([
+        { research_state: 'failed', research_error: error },
+      ]);
     });
 
     it('still fires the posts after it — one refusal takes out one question', async () => {
@@ -378,7 +410,7 @@ describe('POST /api/reader/research', () => {
 
       expect(response.status).toBe(200);
       expect(mockFire).toHaveBeenCalledTimes(2);
-      expect(supabase.table('reader_posts').update).toHaveBeenCalledTimes(2);
+      expect(outcomeWrites(supabase)).toHaveLength(2);
       const body = (await response.json()) as { posts: { research_state: string }[] };
       expect(body.posts.map((post) => post.research_state)).toEqual(['failed', 'researching']);
     });
@@ -402,6 +434,22 @@ describe('POST /api/reader/research', () => {
       await expect(response.json()).resolves.toEqual({ posts: [listRow(postA)] });
       expect(error).toHaveBeenCalledTimes(1);
       expect(everythingLogged([error])).toContain(POST_A);
+    });
+
+    it('fires nothing for a post it could not claim, and still answers it as created', async () => {
+      const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const postA = created(POST_A, BRIEF_A);
+      const { supabase } = signedIn({ rows: [stored(ID_A)], rpc: { data: [postA] } });
+      supabase
+        .table('reader_posts')
+        .maybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'connection reset' } });
+
+      const response = await POST(send({ ids: [ID_A] }), STUB_CONTEXT);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ posts: [listRow(postA)] });
+      expect(mockFire).not.toHaveBeenCalled();
+      expect(everythingLogged([error])).toContain('could not claim');
     });
 
     it('treats a patch that matched no row the same way', async () => {

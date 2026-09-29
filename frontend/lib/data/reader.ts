@@ -393,34 +393,55 @@ export async function getReaderPostForResearch(
 }
 
 /**
+ * Count a fire against a research post before making it — the claim that keeps two requests from
+ * starting two sessions. It adds one to `research_attempts` only while the post still holds the
+ * attempts and state the caller read; a second request that read the same row (another tab, a
+ * double press that beat the store's own dedupe) then matches nothing and must not fire. `null`
+ * data is that lost race; the claim itself never fires anything.
+ *
+ * A post whose claim landed but whose outcome never got recorded is left queued with an attempt on
+ * it, which is how the Reader tells "this run's start was never confirmed" from "never fired".
+ */
+export async function claimResearchFire(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  expected: { attempts: number; state: string },
+): Promise<{ data: { id: string } | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .update({ research_attempts: expected.attempts + 1 })
+    .eq('id', id)
+    .eq('research_attempts', expected.attempts)
+    .eq('research_state', expected.state)
+    .select('id')
+    .maybeSingle();
+}
+
+/**
  * Record what firing the research Routine came to. An accepted fire makes the post `researching`
  * from `now`, with the session link the answer carried (null when it carried none) and no error; a
  * refused or unanswered one makes it `failed` with the reason and leaves the rest as it was, so an
- * earlier session's link still opens. Either way the fire counts as an attempt: `previousAttempts`
- * is what the post had, and the write is one more.
+ * earlier session's link still opens. The attempt was already counted by {@link claimResearchFire}.
  *
- * Reads the row back through the shared list columns, like every other write here, so the brief
- * never rides along. `.maybeSingle()`, so a row deleted — or delivered — in between is `null` data.
+ * Guarded like delivery's own write: a report an earlier session delivered while this fire was in
+ * flight stays delivered, and the write matches nothing instead of flipping it back. Reads the row
+ * back through the shared list columns, like every other write here, so the brief never rides
+ * along. `.maybeSingle()`, so a row deleted — or delivered — in between is `null` data.
  */
 export async function recordResearchFire(
   supabase: SupabaseClient<Database>,
   id: string,
   outcome: ResearchFireOutcome,
-  previousAttempts: number,
   now: Date,
 ): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
-  const attempts = previousAttempts + 1;
   const update = outcome.ok
     ? {
         research_state: 'researching',
         research_fired_at: now.toISOString(),
         research_session_url: outcome.sessionUrl,
         research_error: null,
-        research_attempts: attempts,
       }
-    : { research_state: 'failed', research_error: outcome.error, research_attempts: attempts };
-  // Guarded like delivery's own write: a report an earlier session delivered while this fire was in
-  // flight stays delivered, and the write matches nothing instead of flipping it back.
+    : { research_state: 'failed', research_error: outcome.error };
   return supabase
     .from('reader_posts')
     .update(update)
