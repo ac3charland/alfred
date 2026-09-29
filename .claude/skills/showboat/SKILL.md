@@ -60,6 +60,12 @@ A demo must show the **new behavior actually happening**. Pick the evidence that
   migration, a CLI/tooling change → uses CLI/`exec` output** as its evidence: the
   request + response, the query result, the command's output.
 
+**Live-database evidence goes through `npm run psql -w database -- -c "<sql>"`, never an
+inlined connection URI.** The doc records the command verbatim and the repo is public; the
+wrapper reads the URL from `frontend/.env.local`, so the command holds no secret and still
+reproduces for anyone with that file. `exec` and `note` refuse (exit 1, nothing written)
+anything matching a secret pattern — see the `secret-scan` skill.
+
 **Never put test-suite output in a demo doc — not for visual changes, not ever.**
 The `check` suites run in the pre-commit and pre-push hooks; replaying their green
 output in a demo proves nothing the gates didn't, and shows the reviewer *nothing
@@ -139,8 +145,8 @@ demo under a feature-named folder and the branch tag comes along for free.
 | Command | What it does |
 | --- | --- |
 | `init <file> <title> [--branch <name>]` | Start a new doc (H1 title + ISO timestamp). Records the current branch in YAML front matter so `demo-lint` accepts a semantically-named folder; `--branch` overrides the detected branch. |
-| `note <file> [text]` | Append commentary. Reads stdin if `text` is omitted. |
-| `exec <file> <lang> [code]` | Run code, capture output, append both. Echoes the output and **exits with the command's exit code**. Reads stdin if `code` is omitted. |
+| `note <file> [text]` | Append commentary. Reads stdin if `text` is omitted. Refuses a secret. |
+| `exec <file> <lang> [code]` | Run code, capture output, append both. Echoes the output and **exits with the command's exit code**. Reads stdin if `code` is omitted. Refuses a secret in the code (without running it) or in the output. |
 | `image <file> <path \| '![alt](path)'>` | Copy an image next to the doc and embed it. |
 | `video <file> <webm> [alt]` | Convert a Playwright `.webm` recording to an animated **GIF** (in WASM — no system `ffmpeg`), save it next to the doc, embed it as an image, and **delete the `.webm`**. GitHub renders GIFs inline but not `.webm`. |
 | `pop <file>` | Remove the most recent entry (an exec drops its code *and* output). Use after a command errored and you don't want it in the doc. |

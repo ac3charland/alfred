@@ -27,13 +27,13 @@ A check's **scope** — the files it's responsible for — decides where it's wi
   A workspace `check:slow` may stand up an external service — the `database` package's
   `check:slow` runs the real-Postgres integration suite (it spins a throwaway cluster).
 
-- **Monorepo-wide:** a check whose scope is the *whole repo* — `skill-lint` over all of
-  `.claude/skills/`, `demo-lint` over all of `docs/demos/`. It goes **explicitly in the root**
-  `check:fast` / `check:slow`, composed around the fan-out with `&&`:
+- **Monorepo-wide:** a check whose scope is the *whole repo* — `secret-scan` over every tracked
+  file, `skill-lint` over all of `.claude/skills/`, `demo-lint` over all of `docs/demos/`. It goes
+  **explicitly in the root** `check:fast` / `check:slow`, composed around the fan-out with `&&`:
 
   ```jsonc
   // root package.json
-  "check:fast": "npm run lint:skills -w tools/skill-lint && npm run lint:migrations -w tools/migration-lint && npm run check:fast --workspaces --if-present",
+  "check:fast": "npm run lint:secrets -w tools/secret-scan && npm run lint:skills -w tools/skill-lint && npm run lint:migrations -w tools/migration-lint && npm run check:fast --workspaces --if-present",
   "check:slow": "npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
   ```
 

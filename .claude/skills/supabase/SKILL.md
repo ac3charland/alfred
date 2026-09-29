@@ -406,7 +406,9 @@ The pooler user is `postgres.<project-ref>` (not bare `postgres`), and the host 
 `Tenant or user not found`. If you don't know the region, map the project's IPv6 (from
 `nslookup -type=AAAA db.<ref>.supabase.co`) against AWS's published `ip-ranges.json`, or
 just read it off the dashboard's Session-pooler string. alfred stores the pooler URI in
-`frontend/.env.local` as `DATABASE_URL` (gitignored).
+`frontend/.env.local` as `DATABASE_URL` (gitignored). Query it with
+`npm run psql -w database -- <psql args>`, which resolves that URL and passes the password as
+`PGPASSWORD` — never paste the URI into a command.
 
 ### Raw `psql -f migration.sql` does NOT get Supabase's auto-grants
 
