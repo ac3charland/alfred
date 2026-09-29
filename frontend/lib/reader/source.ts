@@ -1,3 +1,4 @@
+import { isResearchPost } from '@/lib/reader/research';
 import type { ReaderPostListItem, ReaderPublication } from '@/lib/types';
 
 /**
@@ -18,6 +19,12 @@ export const VIA_INSTAPAPER = 'via Instapaper';
 /** An article's eyebrow when it has no linked publication and no site. */
 export const INSTAPAPER_EYEBROW = 'Instapaper';
 
+/**
+ * A research post's eyebrow. Not an author or a publication: the report is one the owner asked
+ * for, so the row names the kind of thing it is rather than a source to judge.
+ */
+export const RESEARCH_EYEBROW = 'Research';
+
 /** A newsletter's eyebrow when the extractor found no author. */
 const UNKNOWN_PUBLICATION = 'Unknown publication';
 
@@ -31,6 +38,7 @@ export function postEyebrow(
   post: Pick<ReaderPostListItem, 'source' | 'author' | 'publication_id' | 'site'>,
   publications: readonly Pick<ReaderPublication, 'id' | 'name'>[],
 ): string {
+  if (isResearchPost(post)) return RESEARCH_EYEBROW;
   if (!isInstapaperPost(post)) return post.author ?? UNKNOWN_PUBLICATION;
   const linked =
     post.publication_id === null

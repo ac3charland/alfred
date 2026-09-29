@@ -35,4 +35,39 @@ describe('PostMarkers', () => {
     expect(screen.getByText('summary failed')).toBeInTheDocument();
     expect(screen.getByText('in Instapaper')).toBeInTheDocument();
   });
+
+  describe('while a research post has no report', () => {
+    it.each(['queued', 'researching'] as const)(
+      'shows the muted researching badge while %s',
+      (phase) => {
+        render(<PostMarkers state="pending" phase={phase} sent={false} />);
+        expect(screen.getByText('researching…').className).toContain('text-muted-foreground');
+      },
+    );
+
+    it.each(['failed', 'stale-queued', 'stale-researching'] as const)(
+      'shows the alert no-report badge when %s',
+      (phase) => {
+        render(<PostMarkers state="pending" phase={phase} sent={false} />);
+        expect(screen.getByText('no report').className).toContain('text-amber-400');
+      },
+    );
+
+    it('says nothing of the summary — there is nothing yet to summarise', () => {
+      render(<PostMarkers state="pending" phase="researching" sent={false} />);
+      expect(screen.queryByText('summarising…')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('once a research report is delivered', () => {
+    it('shows the summary state as for any post', () => {
+      render(<PostMarkers state="pending" phase="done" sent={false} />);
+      expect(screen.getByText('summarising…')).toBeInTheDocument();
+    });
+
+    it('shows nothing for a summarised report', () => {
+      const { container } = render(<PostMarkers state="done" phase="done" sent={false} />);
+      expect(container).toBeEmptyDOMElement();
+    });
+  });
 });

@@ -8,12 +8,14 @@ import {
   makeReaderOverview,
   makeReaderPost,
   makeReaderPublicationListItem,
+  makeResearchPost,
   resetReaderFixtureClock,
 } from '@/lib/reader/fixtures';
 import { stableSorted } from '@/lib/sort';
 import { useArchivedPosts, useReaderPosts } from '@/lib/stores/reader-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
+import { PostList } from './post-list';
 import { PostRow } from './post-row';
 import { renderReader } from './test-helpers';
 
@@ -1295,5 +1297,481 @@ describe('PostRow — the archive variant', () => {
     endExit();
 
     expect(await screen.findByText("Couldn't unarchive that post")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A research post: the question while its report is being written, then the report
+// ---------------------------------------------------------------------------
+
+/** An ISO instant `minutes` before the pinned clock, so a post's age is stated, not implied. */
+function minutesBeforeNow(minutes: number): string {
+  return new Date(NOW.getTime() - minutes * 60_000).toISOString();
+}
+
+const SESSION_URL = 'https://claude.ai/code/session_01Abc';
+const QUESTION = 'Is a cold-climate heat pump worth it for our Chicago house?';
+
+/** A research post as the list carries it: no bodies, no brief. Defaults to a fresh, running one. */
+function research(overrides: Parameters<typeof makeResearchPost>[0] = {}): ReaderPostListItem {
+  const {
+    text: _text,
+    html: _html,
+    research_brief: _brief,
+    ...listItem
+  } = makeResearchPost({
+    id: 'p-r',
+    title: QUESTION,
+    received_at: minutesBeforeNow(20),
+    created_at: minutesBeforeNow(20),
+    research_fired_at: minutesBeforeNow(19),
+    research_session_url: SESSION_URL,
+    ...overrides,
+  });
+  return listItem;
+}
+
+/** A post whose Routine fire has not been accepted yet: two minutes old, so not yet presumed lost. */
+const JUST_QUEUED = {
+  research_state: 'queued',
+  created_at: minutesBeforeNow(2),
+  received_at: minutesBeforeNow(2),
+  research_fired_at: null,
+} as const;
+
+/** A report that has arrived and been summarised. */
+function report(overrides: Parameters<typeof makeResearchPost>[0] = {}): ReaderPostListItem {
+  return research({
+    research_state: 'done',
+    research_delivered_at: minutesBeforeNow(5),
+    received_at: minutesBeforeNow(5),
+    word_count: 2530,
+    summary_state: 'done',
+    gist: 'Probably yes if the furnace is near the end of its life.',
+    overview: makeReaderOverview(),
+    model: 'claude-sonnet-5',
+    prompt_version: 1,
+    summarized_at: minutesBeforeNow(4),
+    ...overrides,
+  });
+}
+
+/** The row drawn by what the store holds, so an action's effect on the row can be watched. */
+function StoreList() {
+  const posts = useReaderPosts();
+  return <PostList posts={posts} now={NOW} />;
+}
+
+describe('PostRow — a research post while the report is being written', () => {
+  it.each([
+    ['running', {}],
+    ['just queued', JUST_QUEUED],
+  ] as const)(
+    '%s: the eyebrow, the date alone, the badge, the title and the waiting line',
+    (_label, overrides) => {
+      renderReader(<PostRow post={research(overrides)} now={NOW} />);
+
+      expect(screen.getByText('Research')).toBeInTheDocument();
+      // No body yet, so no read time to promise.
+      expect(screen.getByText('Sep 18')).toBeInTheDocument();
+      expect(screen.queryByText(/min read/)).not.toBeInTheDocument();
+      expect(screen.getByText('researching…')).toBeInTheDocument();
+      expect(screen.queryByText('summarising…')).not.toBeInTheDocument();
+      expect(screen.getByText(QUESTION)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Researching on the web — the report lands here, usually within the hour.',
+        ),
+      ).toHaveClass('italic');
+      expect(screen.getByTestId('reader-row')).not.toHaveClass('opacity-70');
+    },
+  );
+
+  it('draws Send disabled with the reason, then Archive, then the Session link', () => {
+    renderReader(<PostRow post={research()} now={NOW} />);
+
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Session']);
+    expect(sendButton()).toBeDisabled();
+    expect(sendButton()).toHaveAttribute('title', "The report hasn't arrived yet.");
+    expect(screen.queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Overview' })).not.toBeInTheDocument();
+  });
+
+  it('opens the session in a new tab from the Session link, stamping the post opened', async () => {
+    const user = userEvent.setup();
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    const row = research();
+    renderReader(<PostRow post={row} now={NOW} />, [row]);
+
+    const link = screen.getByRole('link', { name: 'Session' });
+    expect(link).toHaveAttribute('href', SESSION_URL);
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(screen.queryByRole('link', { name: 'Original' })).not.toBeInTheDocument();
+
+    await user.click(link);
+
+    expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-r', { opened: true });
+  });
+
+  it('draws no Session link, and no disabled stand-in, before the fire has a session URL', () => {
+    renderReader(
+      <PostRow post={research({ ...JUST_QUEUED, research_session_url: null })} now={NOW} />,
+    );
+
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive']);
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('does not treat a session URL that is not a web address as a link', () => {
+    renderReader(
+      <PostRow post={research({ research_session_url: 'javascript:alert(1)' })} now={NOW} />,
+    );
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('archives like any post: the exit, then the write', async () => {
+    const user = userEvent.setup();
+    const row = research();
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, archived_at: '2026-09-18T09:00:00.000Z' });
+    renderReader(<PostRow post={row} now={NOW} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+    endExit();
+
+    await waitFor(() => {
+      expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-r', { archived: true });
+    });
+  });
+
+  it('answers i with nothing while Send is disabled, and shows no keycap on it', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = research();
+    renderReader(<PostRow post={row} now={NOW} selected onExit={onExit} />, [row]);
+
+    await user.keyboard('i');
+    endExit();
+
+    expect(onExit).not.toHaveBeenCalled();
+    expect(mockApi.sendReaderPostToInstapaper).not.toHaveBeenCalled();
+    expect(within(sendButton()).queryByText('i')).not.toBeInTheDocument();
+  });
+
+  it('answers o by opening the session and stamping the post, and hints it on Session', async () => {
+    const user = userEvent.setup();
+    const open = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    const row = research();
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    expect(
+      within(screen.getByRole('link', { name: 'Session' })).getByText('o'),
+    ).toBeInTheDocument();
+    await user.keyboard('o');
+
+    expect(open).toHaveBeenCalledWith(SESSION_URL, '_blank', 'noopener,noreferrer');
+    expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-r', { opened: true });
+  });
+
+  it('answers o with nothing before there is a session to open', async () => {
+    const user = userEvent.setup();
+    const open = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+    renderReader(
+      <PostRow
+        post={research({ ...JUST_QUEUED, research_session_url: null })}
+        now={NOW}
+        selected
+      />,
+    );
+
+    await user.keyboard('o');
+
+    expect(open).not.toHaveBeenCalled();
+    expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
+  });
+});
+
+describe('PostRow — a research post with no report', () => {
+  const FAILED = {
+    research_state: 'failed',
+    research_session_url: null,
+    research_error: 'the research Routine answered HTTP 502',
+  } as const;
+
+  it('wears the alert badge, dims the row, and says why in the refused fire’s own words', () => {
+    renderReader(<PostRow post={research(FAILED)} now={NOW} />);
+
+    expect(screen.getByText('no report')).toBeInTheDocument();
+    expect(screen.queryByText('researching…')).not.toBeInTheDocument();
+    expect(screen.getByText('Research')).toBeInTheDocument();
+    expect(screen.getByText('Sep 18')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'No report — the research Routine answered HTTP 502. Retry to start a new session.',
+      ),
+    ).toHaveClass('italic');
+    expect(screen.getByTestId('reader-row')).toHaveClass('opacity-70');
+  });
+
+  it('falls back to a generic clause when the fire stored no reason', () => {
+    renderReader(<PostRow post={research({ ...FAILED, research_error: null })} now={NOW} />);
+
+    expect(
+      screen.getByText(
+        'No report — the research couldn’t be started. Retry to start a new session.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('offers Retry research, Archive and — when a session exists — Session, and no Send', () => {
+    renderReader(
+      <PostRow post={research({ ...FAILED, research_session_url: SESSION_URL })} now={NOW} />,
+    );
+
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Session']);
+    expect(screen.queryByRole('button', { name: 'Send to Instapaper' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Session' })).toHaveAttribute('href', SESSION_URL);
+  });
+
+  it('draws no Session link when the fire never got a session', () => {
+    renderReader(<PostRow post={research(FAILED)} now={NOW} />);
+    expect(verbRow()).toEqual(['Retry research', 'Archive']);
+  });
+
+  it('reads a session silent for three hours as no report, and says so', () => {
+    renderReader(
+      <PostRow
+        post={research({ research_state: 'researching', research_fired_at: minutesBeforeNow(181) })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('no report')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'No report — the session hasn’t reported back in 3 hours. Open it, or retry to start a new one.',
+      ),
+    ).toBeInTheDocument();
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Session']);
+    expect(screen.getByTestId('reader-row')).toHaveClass('opacity-70');
+  });
+
+  it('keeps a session a minute inside its three hours researching', () => {
+    renderReader(
+      <PostRow
+        post={research({ research_state: 'researching', research_fired_at: minutesBeforeNow(179) })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('researching…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry research' })).not.toBeInTheDocument();
+  });
+
+  it('reads a post whose fire never happened as no report, and says the research never started', () => {
+    renderReader(
+      <PostRow
+        post={research({
+          ...JUST_QUEUED,
+          created_at: minutesBeforeNow(11),
+          research_session_url: null,
+        })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('no report')).toBeInTheDocument();
+    expect(
+      screen.getByText('No report — the research never started. Retry to start a session.'),
+    ).toBeInTheDocument();
+    expect(verbRow()).toEqual(['Retry research', 'Archive']);
+  });
+
+  it('starts a new session when Retry research is clicked, and the row reads as researching at once', async () => {
+    const user = userEvent.setup();
+    const row = research(FAILED);
+    mockApi.retryResearch.mockReturnValue(new Promise(() => {}));
+    renderReader(<StoreList />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Retry research' }));
+
+    expect(mockApi.retryResearch).toHaveBeenCalledWith('p-r');
+    expect(screen.getByText('researching…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry research' })).not.toBeInTheDocument();
+    expect(screen.queryByText('no report')).not.toBeInTheDocument();
+  });
+
+  it('shows the row the route answered with — a fire refused again is no report, with the new reason', async () => {
+    const user = userEvent.setup();
+    const row = research(FAILED);
+    mockApi.retryResearch.mockResolvedValue({
+      ...row,
+      research_attempts: 2,
+      research_error: 'the Routine’s daily run cap or usage limit was reached',
+    });
+    renderReader(<StoreList />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Retry research' }));
+
+    expect(
+      await screen.findByText(
+        'No report — the Routine’s daily run cap or usage limit was reached. Retry to start a new session.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry research' })).toBeInTheDocument();
+  });
+
+  it('puts the row back and toasts when the retry is refused', async () => {
+    const user = userEvent.setup();
+    const row = research(FAILED);
+    mockApi.retryResearch.mockRejectedValue(
+      new api.ApiError('API POST failed: 409', 409, 'That research is still running.'),
+    );
+    renderReader(<StoreList />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Retry research' }));
+
+    expect(await screen.findByText('That research is still running.')).toBeInTheDocument();
+    expect(screen.getByText('no report')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry research' })).toBeInTheDocument();
+  });
+
+  it('hides Retry research on a deployment with no research set up', () => {
+    const row = research({ ...FAILED, research_session_url: SESSION_URL });
+    renderReader(<PostRow post={row} now={NOW} />, [row], undefined, { researchConfigured: false });
+
+    expect(screen.queryByRole('button', { name: 'Retry research' })).not.toBeInTheDocument();
+    expect(verbRow()).toEqual(['Archive', 'Session']);
+  });
+
+  it('answers i with nothing: there is no Send to run', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    renderReader(<PostRow post={research(FAILED)} now={NOW} selected onExit={onExit} />);
+
+    await user.keyboard('i');
+    endExit();
+
+    expect(onExit).not.toHaveBeenCalled();
+    expect(mockApi.sendReaderPostToInstapaper).not.toHaveBeenCalled();
+  });
+
+  it('archives all the same', async () => {
+    const user = userEvent.setup();
+    const row = research(FAILED);
+    mockApi.patchReaderPost.mockResolvedValue({ ...row, archived_at: '2026-09-18T09:00:00.000Z' });
+    renderReader(<PostRow post={row} now={NOW} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+    endExit();
+
+    await waitFor(() => {
+      expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-r', { archived: true });
+    });
+  });
+});
+
+describe('PostRow — a delivered research report', () => {
+  it('reads as an ordinary summarised post, under the Research eyebrow with a read time', () => {
+    renderReader(<PostRow post={report()} now={NOW} />);
+
+    expect(screen.getByText('Research')).toBeInTheDocument();
+    expect(screen.getByText('Sep 18 · 11 min read')).toBeInTheDocument();
+    expect(screen.queryByText(/via Instapaper/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Probably yes if the furnace is near the end of its life.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('researching…')).not.toBeInTheDocument();
+    expect(screen.queryByText('no report')).not.toBeInTheDocument();
+    expect(screen.queryByText('summarising…')).not.toBeInTheDocument();
+    expect(screen.getByTestId('reader-row')).not.toHaveClass('opacity-70');
+  });
+
+  it('leaves Session for the overview’s footer once the row has a panel', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={report()} now={NOW} />);
+
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Archive']);
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    const footer = screen.getByRole('link', { name: 'Session' });
+    expect(footer).toHaveAttribute('href', SESSION_URL);
+    expect(screen.queryByRole('link', { name: 'Original' })).not.toBeInTheDocument();
+    expect(verbsIn(screen.getByTestId('reader-row-overview'))).toContain('Re-summarise');
+  });
+
+  it('sends its body — no link needed — the way any post is sent, on the button and on i', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = report();
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(new Promise(() => {}));
+    renderReader(<PostRow post={row} now={NOW} selected onExit={onExit} />, [row]);
+
+    expect(sendButton()).toBeEnabled();
+    await user.keyboard('i');
+    endExit();
+
+    expect(onExit).toHaveBeenCalledWith('p-r');
+    await waitFor(() => {
+      expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledWith('p-r');
+    });
+  });
+
+  it('reads a report whose body was swept as having nothing to send', () => {
+    renderReader(
+      <PostRow post={report({ text_swept_at: '2026-12-29T03:00:00.000Z' })} now={NOW} />,
+    );
+
+    expect(sendButton()).toBeDisabled();
+    expect(sendButton()).toHaveAttribute('title', 'No link and no stored text to send.');
+  });
+
+  it('is waiting on its summary, like any post, while the summariser has not reached it', () => {
+    renderReader(
+      <PostRow
+        post={report({ summary_state: 'pending', gist: null, overview: null, summarized_at: null })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('summarising…')).toBeInTheDocument();
+    expect(
+      screen.getByText('The summary is on its way — send it now, or check back in a few minutes.'),
+    ).toBeInTheDocument();
+    // Sendable at once — the body is here — and Session sits where Original would.
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Session']);
+    expect(sendButton()).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Retry research' })).not.toBeInTheDocument();
+  });
+
+  it('offers Retry summary when its summary failed, and never Retry research', () => {
+    renderReader(
+      <PostRow
+        post={report({ summary_state: 'failed', gist: null, overview: null, last_error: 'no fit' })}
+        now={NOW}
+      />,
+    );
+
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Retry summary', 'Archive', 'Session']);
+    expect(screen.getByText('summary failed')).toBeInTheDocument();
+  });
+
+  it('offers the ordinary wiki checklists for its Novel ideas and Evidence', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={report()} now={NOW} />, [], undefined, { wikiWritable: true });
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+    expect(screen.getByRole('button', { name: 'Select all Novel ideas' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Select all Evidence' })).toBeEnabled();
+  });
+
+  it('unarchives from the archive like any post', () => {
+    renderReader(
+      <PostRow post={report({ archived_at: minutesBeforeNow(1) })} now={NOW} variant="archive" />,
+    );
+
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Unarchive']);
   });
 });

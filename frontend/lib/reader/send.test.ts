@@ -1,6 +1,6 @@
-import { makeReaderArticle, makeReaderPost } from '@/lib/reader/fixtures';
+import { makeReaderArticle, makeReaderPost, makeResearchPost } from '@/lib/reader/fixtures';
 
-import { NOTHING_TO_SEND, NOT_CONFIGURED, sendUnavailable } from './send';
+import { NOTHING_TO_SEND, NOT_CONFIGURED, REPORT_NOT_ARRIVED, sendUnavailable } from './send';
 
 const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
 
@@ -52,5 +52,39 @@ describe('sendUnavailable', () => {
     const article = makeReaderArticle({ canonical_url: null, word_count: 0 });
     expect(sendUnavailable(article, true)).toBeUndefined();
     expect(sendUnavailable(article, false)).toBe(NOT_CONFIGURED);
+  });
+});
+
+describe('sendUnavailable for a research post', () => {
+  it.each(['queued', 'researching', 'failed'] as const)(
+    'waits for the report while the post is %s',
+    (research_state) => {
+      expect(sendUnavailable(makeResearchPost({ research_state }), true)).toBe(REPORT_NOT_ARRIVED);
+    },
+  );
+
+  it('says exactly that the report has not arrived', () => {
+    expect(REPORT_NOT_ARRIVED).toBe("The report hasn't arrived yet.");
+  });
+
+  it('still says the deployment has no Instapaper first', () => {
+    expect(sendUnavailable(makeResearchPost({ research_state: 'researching' }), false)).toBe(
+      NOT_CONFIGURED,
+    );
+  });
+
+  it('is available once the report is delivered — it has a body and needs no link', () => {
+    const delivered = makeResearchPost({ research_state: 'done', word_count: 2400 });
+    expect(delivered.canonical_url).toBeNull();
+    expect(sendUnavailable(delivered, true)).toBeUndefined();
+  });
+
+  it('reads a swept report as having nothing to send', () => {
+    const swept = makeResearchPost({
+      research_state: 'done',
+      word_count: 2400,
+      text_swept_at: '2026-12-29T03:00:00.000Z',
+    });
+    expect(sendUnavailable(swept, true)).toBe(NOTHING_TO_SEND);
   });
 });

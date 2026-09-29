@@ -1,6 +1,17 @@
-import { makeReaderArticle, makeReaderPost, makeReaderPublication } from '@/lib/reader/fixtures';
+import {
+  makeReaderArticle,
+  makeReaderPost,
+  makeReaderPublication,
+  makeResearchPost,
+} from '@/lib/reader/fixtures';
 
-import { INSTAPAPER_EYEBROW, VIA_INSTAPAPER, isInstapaperPost, postEyebrow } from './source';
+import {
+  INSTAPAPER_EYEBROW,
+  RESEARCH_EYEBROW,
+  VIA_INSTAPAPER,
+  isInstapaperPost,
+  postEyebrow,
+} from './source';
 
 const WORKS_IN_PROGRESS = makeReaderPublication('Works in Progress');
 const PUBLICATIONS = [makeReaderPublication('Second Thoughts'), WORKS_IN_PROGRESS];
@@ -31,6 +42,20 @@ describe('postEyebrow', () => {
   it('falls back to Instapaper for an article with neither', () => {
     expect(postEyebrow(makeReaderArticle({ site: null }), PUBLICATIONS)).toBe(INSTAPAPER_EYEBROW);
     expect(INSTAPAPER_EYEBROW).toBe('Instapaper');
+  });
+});
+
+describe('postEyebrow for a research post', () => {
+  it('reads Research whatever phase the post is in, and never an author or a publication', () => {
+    const publication = PUBLICATIONS[0];
+    for (const overrides of [
+      {},
+      { research_state: 'done' as const, author: 'Claude Code research routine' },
+      { research_state: 'failed' as const, publication_id: publication?.id ?? null },
+    ]) {
+      expect(postEyebrow(makeResearchPost(overrides), PUBLICATIONS)).toBe('Research');
+    }
+    expect(RESEARCH_EYEBROW).toBe('Research');
   });
 });
 
