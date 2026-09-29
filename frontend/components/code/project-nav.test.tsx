@@ -279,6 +279,87 @@ describe('ProjectNav', () => {
     );
   });
 
+  describe('projects with no active items', () => {
+    const epics = [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')];
+    const DIMMED = ['opacity-50', 'grayscale'];
+
+    it('grays out a project that has no stories', () => {
+      renderNav(PROJECTS);
+
+      expect(screen.getByRole('link', { name: /alfred/i })).toHaveClass(...DIMMED);
+      expect(screen.getByRole('link', { name: /relay/i })).toHaveClass(...DIMMED);
+    });
+
+    it('grays out a project whose stories are all done or abandoned', () => {
+      renderNav(PROJECTS, {
+        epics,
+        stories: [
+          makeStory('i1', 'e1', 'p1', { factory_state: 'done' }),
+          makeStory('i2', 'e1', 'p1', { factory_state: 'abandoned' }),
+          makeStory('i3', 'eX', 'p2', { factory_state: 'in_development' }),
+        ],
+      });
+
+      expect(screen.getByRole('link', { name: /alfred/i })).toHaveClass(...DIMMED);
+      expect(screen.getByRole('link', { name: /relay/i })).not.toHaveClass(...DIMMED);
+    });
+
+    it.each([
+      'in_refinement',
+      'ready_for_dev',
+      'in_development',
+      'ready_for_review',
+      'blocked',
+    ] as const)('leaves a project with a %s story at full strength', (factoryState) => {
+      renderNav(PROJECTS, {
+        epics,
+        stories: [makeStory('i1', 'e1', 'p1', { factory_state: factoryState })],
+      });
+
+      expect(screen.getByRole('link', { name: /alfred/i })).not.toHaveClass('opacity-50');
+      expect(screen.getByRole('link', { name: /alfred/i })).not.toHaveClass('grayscale');
+    });
+
+    it('restores full strength on hover and keyboard focus so it still reads as clickable', () => {
+      renderNav(PROJECTS);
+
+      expect(screen.getByRole('link', { name: /alfred/i })).toHaveClass(
+        'hover:opacity-100',
+        'hover:grayscale-0',
+        'focus-visible:opacity-100',
+        'focus-visible:grayscale-0',
+      );
+    });
+
+    it('keeps a grayed-out project a working link to its board', () => {
+      const onClose = jest.fn();
+      renderNav(PROJECTS, { onClose });
+
+      const link = screen.getByRole('link', { name: /alfred/i });
+      expect(link).toHaveAttribute('href', '/code/p1');
+      link.click();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not gray out the project on its own board, even with nothing active', () => {
+      mockPathname.mockReturnValue('/code/p1');
+      renderNav(PROJECTS);
+
+      expect(screen.getByRole('link', { name: /alfred/i })).toHaveClass('bg-secondary');
+      expect(screen.getByRole('link', { name: /alfred/i })).not.toHaveClass(...DIMMED);
+      // The other idle project is still grayed.
+      expect(screen.getByRole('link', { name: /relay/i })).toHaveClass(...DIMMED);
+    });
+
+    it('never grays out the Dashboard, Needs human action, or Backlog', () => {
+      renderNav(PROJECTS);
+
+      for (const name of [/^dashboard$/i, /needs human action/i, /^backlog$/i]) {
+        expect(screen.getByRole('link', { name })).not.toHaveClass('opacity-50');
+      }
+    });
+  });
+
   it('points each project link at /code/<id>', () => {
     renderNav(PROJECTS);
 

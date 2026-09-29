@@ -19,6 +19,7 @@ import {
   useCodeActions,
   useEpics,
   useProjectBoard,
+  useProjectIdsWithActiveWork,
   useProjects,
   useRankedProjects,
   useStoryRankFlags,
@@ -858,6 +859,61 @@ describe('code-store', () => {
         wrapper: makeWrapper({ projects: [PROJECT_B, PROJECT_A], epics }),
       });
       expect(result.current.map((p) => p.id)).toEqual(['p1', 'p2']);
+    });
+  });
+
+  describe('useProjectIdsWithActiveWork', () => {
+    const epics = [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')];
+
+    /** Which of the two seeded projects the hook reports as active, in seed order. */
+    function activeIds(stories: CodeStory[]): string[] {
+      const { result } = renderHook(() => useProjectIdsWithActiveWork(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }),
+      });
+      return [PROJECT_A, PROJECT_B].map((p) => p.id).filter((id) => result.current.has(id));
+    }
+
+    it('includes a project holding an outstanding story', () => {
+      expect(activeIds([makeStory('i1', 'e1', 'p1', { factory_state: 'in_development' })])).toEqual(
+        ['p1'],
+      );
+    });
+
+    it('excludes a project with no stories at all', () => {
+      expect(activeIds([])).toEqual([]);
+    });
+
+    it('excludes a project whose stories are all done or abandoned', () => {
+      expect(
+        activeIds([
+          makeStory('i1', 'e1', 'p1', { factory_state: 'done' }),
+          makeStory('i2', 'e1', 'p1', { factory_state: 'abandoned' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('lets one outstanding story keep a project active among finished ones', () => {
+      expect(
+        activeIds([
+          makeStory('i1', 'e1', 'p1', { factory_state: 'done' }),
+          makeStory('i2', 'e1', 'p1', { factory_state: 'in_refinement' }),
+        ]),
+      ).toEqual(['p1']);
+    });
+
+    it('counts a blocked story as active work — the Backlog lists it by default', () => {
+      expect(activeIds([makeStory('i1', 'eX', 'p2', { factory_state: 'blocked' })])).toEqual([
+        'p2',
+      ]);
+    });
+
+    it('attributes each story to its own project', () => {
+      expect(
+        activeIds([
+          makeStory('i1', 'e1', 'p1', { factory_state: 'done' }),
+          makeStory('i2', 'eX', 'p2', { factory_state: 'ready_for_dev' }),
+        ]),
+      ).toEqual(['p2']);
     });
   });
 
