@@ -27,9 +27,10 @@ R=$PWD; T=$(mktemp -d); cd "$T" && git init -q && printf "psql %s%s@db.example.c
 ```output
 
 env.md
-  2:7  error  [PATTERN] found matching *******************************: ***********************  @secretlint/secretlint-rule-pattern
+  2:7  error  [PATTERN] found matching *******************************: ***********************                                              @secretlint/secretlint-rule-pattern
+  2:7  error  [PATTERN] found matching ***************************************************************************: ***********************  @secretlint/secretlint-rule-pattern
 
-✖ 1 problem (1 error, 0 warnings, 0 infos)
+✖ 2 problems (2 errors, 0 warnings, 0 infos)
 
 
 leak.md
