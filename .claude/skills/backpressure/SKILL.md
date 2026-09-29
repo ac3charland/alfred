@@ -27,8 +27,8 @@ A check's **scope** — the files it's responsible for — decides where it's wi
   A workspace `check:slow` may stand up an external service — the `database` package's
   `check:slow` runs the real-Postgres integration suite (it spins a throwaway cluster).
 
-- **Monorepo-wide:** a check whose scope is the *whole repo* — `secret-scan` over every tracked
-  file, `skill-lint` over all of `.claude/skills/`, `demo-lint` over all of `docs/demos/`. It goes
+- **Monorepo-wide:** a check whose scope is the *whole repo* — `secret-scan` over every
+  committable file, `skill-lint` over all of `.claude/skills/`, `demo-lint` over all of `docs/demos/`. It goes
   **explicitly in the root** `check:fast` / `check:slow`, composed around the fan-out with `&&`:
 
   ```jsonc

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Scans every git-tracked file for committed secrets with secretlint; runs in the global check:fast.",
+  "description": "Scans every committable file for secrets with secretlint; runs in the global check:fast.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint --fix --cache --cache-location .eslintcache .",

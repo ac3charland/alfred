@@ -1,7 +1,7 @@
 ---
 name: secret-scan
 description: >
-  Covers secret-scan, the secretlint gate over every git-tracked file (first step of the global
+  Covers secret-scan, the secretlint gate over every committable file (first step of the global
   check:fast, so pre-commit and CI, plus a workflow on every push), and the shared
   /.secretlintrc.json that showboat's record-time guard also reads. Use when the scan fails, a
   placeholder or test fixture trips a rule, or adding a secret pattern. Trigger on:
@@ -16,10 +16,11 @@ description: >
 
 The repo is **public**: every pushed commit, on any branch, is published. `tools/secret-scan`
 runs secretlint (`preset-recommend` plus Supabase secret-key / access-token patterns) over every
-**tracked** text file — committed or staged. Untracked and gitignored files (`.env.local`) are
-never scanned, and binaries are skipped. It runs first in the root `check:fast` (pre-commit and
-CI's `check-fast`) and in `.github/workflows/secret-scan.yml` on every push, which covers
-web-UI/API commits that skip the hooks. Background:
+text file git could commit — tracked, or untracked and not ignored (the `batch-commits` script
+runs the gate *before* `git add`, so a tracked-only scan would miss every new file). Gitignored
+files (`.env.local`) are never scanned, and binaries are skipped. It runs first in the root
+`check:fast` (pre-commit and CI's `check-fast`) and in `.github/workflows/secret-scan.yml` on
+every push, which covers web-UI/API commits that skip the hooks. Background:
 [the 2026-09-27 postmortem](../../../docs/postmortems/2026-09-27-postgres-credential-leak.md).
 
 `/.secretlintrc.json` is the one config. `tools/showboat/src/secrets.ts` loads it too, so the
@@ -54,5 +55,5 @@ against the pooler **hangs** rather than fails. Use `echo`.
 
 - **Always pass `maskSecrets: true` to `createEngine`.** secretlint 13 documents it as the
   default, but the stylish formatter prints the raw secret unless it's set, and CI logs are public.
-- **`git ls-files` lists more than files.** Tracked symlinks to directories and files deleted
-  from the working tree both appear; `trackedFiles` keeps regular files only.
+- **`git ls-files` lists more than files.** Symlinks to directories and tracked files deleted
+  from the working tree both appear; `committableFiles` keeps regular files only.

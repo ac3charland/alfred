@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { isBinary, scanFiles, trackedFiles } from './scan.ts';
+import { committableFiles, isBinary, scanFiles } from './scan.ts';
 
 // Every fixture secret is assembled at runtime from innocuous parts, so this file itself stays
 // clean under the very scan it tests (the scanner reads source text, not evaluated values).
@@ -97,22 +97,28 @@ describe('scanFiles', () => {
   });
 });
 
-describe('trackedFiles', () => {
+describe('committableFiles', () => {
   it('lists tracked files, including ones staged but not yet committed', () => {
     write('committed.md', 'a\n');
     git('add', 'committed.md');
     git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'init');
     write('nested/staged.md', 'b\n');
     git('add', 'nested/staged.md');
-    expect(trackedFiles(repo)).toEqual(['committed.md', 'nested/staged.md']);
+    expect(committableFiles(repo)).toEqual(['committed.md', 'nested/staged.md']);
   });
 
-  it('never lists an untracked (e.g. gitignored .env.local) file, so local secrets cannot fail the gate', () => {
+  it('lists a new file not yet staged, since the gate can run before `git add` (batch-commits does)', () => {
+    write('committed.md', 'a\n');
+    git('add', 'committed.md');
+    write('nested/new.ts', 'b\n');
+    expect(new Set(committableFiles(repo))).toEqual(new Set(['committed.md', 'nested/new.ts']));
+  });
+
+  it('never lists a gitignored file (.env.local), so local secrets cannot fail the gate', () => {
     write('.gitignore', '.env*\n');
     write('.env.local', `DATABASE_URL=${LEAKED_URI}\n`);
-    write('untracked.md', 'x\n');
     git('add', '.gitignore');
-    expect(trackedFiles(repo)).toEqual(['.gitignore']);
+    expect(committableFiles(repo)).toEqual(['.gitignore']);
   });
 
   it('skips a tracked file deleted from the working tree and a tracked symlink to a directory', () => {
@@ -122,7 +128,7 @@ describe('trackedFiles', () => {
     execFileSync('ln', ['-s', 'dir', 'link'], { cwd: repo });
     git('add', '.');
     rmSync(path.join(repo, 'gone.md'));
-    expect(trackedFiles(repo)).toEqual(['dir/inner.md']);
+    expect(committableFiles(repo)).toEqual(['dir/inner.md']);
   });
 });
 

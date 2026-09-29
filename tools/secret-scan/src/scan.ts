@@ -22,13 +22,18 @@ export function isBinary(content: Buffer): boolean {
 }
 
 /**
- * Every tracked (committed or staged) regular file under `repoRoot`, repo-relative. Untracked and
- * gitignored files — a local `.env.local` full of real credentials — are never listed, so a secret
- * that is safely *not* committed can't fail the gate. A tracked path that's gone from disk or
- * isn't a regular file (a symlink to a directory) is skipped.
+ * Every file git could commit under `repoRoot`, repo-relative: tracked (committed or staged) plus
+ * untracked-but-not-ignored. The untracked half matters because the gate can run before `git add`
+ * (the batch-commits script does). Gitignored files — a local `.env.local` full of real
+ * credentials — are never listed, so a secret that is safely *not* committable can't fail the
+ * gate. A path that's gone from disk or isn't a regular file (a symlink to a directory) is skipped.
  */
-export function trackedFiles(repoRoot: string): string[] {
-  const listing = execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, encoding: 'utf8' });
+export function committableFiles(repoRoot: string): string[] {
+  const listing = execFileSync(
+    'git',
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
   return listing
     .split('\0')
     .filter((file) => file !== '')

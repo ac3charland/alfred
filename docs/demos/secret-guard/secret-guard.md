@@ -8,20 +8,20 @@ branch: claude/alf-301-back-pressure-secrets-pch7c7
 
 The [credential-leak postmortem](../../postmortems/2026-09-27-postgres-credential-leak.md) traced a production Postgres password to a demo doc: showboat recorded a `psql` command with the full connection URI inlined, and nothing scanned for secrets. This branch adds three layers: a **commit gate** (R3), a **record-time guard** in showboat (R4), and a **safe path** for live queries (R5).
 
-**Layer 1: the commit gate.** `secret-scan` runs secretlint over every tracked file as the first step of `check:fast` (pre-commit and CI). The real repo scans clean now that `phase-a.md` no longer carries the password:
+**Layer 1: the commit gate.** `secret-scan` runs secretlint over every committable file (tracked, or untracked and not gitignored) as the first step of `check:fast` (pre-commit and CI). The real repo scans clean now that `phase-a.md` no longer carries the password:
 
 ```bash
-npm run --silent lint:secrets -w tools/secret-scan | sed -E "s/[0-9]+ tracked/N tracked/"
+npm run --silent lint:secrets -w tools/secret-scan | sed -E "s/[0-9]+ committable/N committable/"
 ```
 
 ```output
-secret-scan: N tracked text file(s) clean.
+secret-scan: N committable text file(s) clean.
 ```
 
-The same gate on a scratch repo with the June leak reproduced in a staged file. It fails, and masks the secret in its report (CI logs are public too):
+The same gate on a scratch repo with the June leak reproduced in a new file. It fails, and masks the secret in its report (CI logs are public too):
 
 ```bash
-R=$PWD; T=$(mktemp -d); cd "$T" && git init -q && printf "psql %s%s@db.example.com:5432/postgres -c \"select 1\"\n" postgresql://postgres:Qz7vLk2 Rw9pT > leak.md && git add leak.md; node "$R/tools/secret-scan/src/cli.ts" > out 2>&1; code=$?; sed "s#$T/##" out; echo "exit=$code"; cd "$R"; rm -rf "$T"
+R=$PWD; T=$(mktemp -d); cd "$T" && git init -q && printf "psql %s%s@db.example.com:5432/postgres -c \"select 1\"\n" postgresql://postgres:Qz7vLk2 Rw9pT > leak.md; node "$R/tools/secret-scan/src/cli.ts" > out 2>&1; code=$?; sed "s#$T/##" out; echo "exit=$code"; cd "$R"; rm -rf "$T"
 ```
 
 ```output
@@ -31,7 +31,7 @@ leak.md
 
 ✖ 1 problem (1 error, 0 warnings, 0 infos)
 
-secret-scan: a secret is in a tracked file. This repo is PUBLIC — everything committed or pushed
+secret-scan: a secret is in a committable file. This repo is PUBLIC — everything committed or pushed
 is published. Remove it from the file (and `git rm --cached` it if the whole file is a secret);
 if it was ever pushed, treat it as leaked and rotate it. For live-database evidence use
 `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local.
