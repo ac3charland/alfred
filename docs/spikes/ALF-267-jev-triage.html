@@ -167,20 +167,20 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <span>alfred · Spike findings</span>
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>267</span><span class="sep"> — </span><span class="ttl">Explore Jev for communication/inbox triage</span></h1>
-  <p class="change" id="answer">Jev can’t replace alfred’s classifiers, but as a first-stage scorer or gate it fits the Inbox best and Comms second; a shadow run per surface would test it.</p>
-  <p class="revised" id="revised">Revised 2026-09-29: the Inbox is now the first candidate, since its override log already exists, and the two-stage Comms gate is weighed as its own design.</p>
+  <p class="change" id="answer">Jev can’t replace alfred’s classifiers, but as a scorer or gate it fits the Inbox and, plausibly, ranking best; each can be tested cheaply before anything is built.</p>
+  <p class="revised" id="revised">Revised 2026-09-29: adds ranking of the code backlog and folder tasks, and puts the Inbox and the two-stage Comms gate on firmer ground.</p>
 </header>
 
 <section class="sec" id="landed">
   <h2 class="side">Where we landed</h2>
-  <p>Don’t swap Haiku out for Jev; test Jev in front of it, Inbox first. The Inbox already has what a fair test needs — closed-set fields, a provider stamp, and a trigger that logs every override at dispatch — so a paired shadow run costs pennies and needs no fixtures. Jev’s probabilities turn abstention from a prompt request into a per-field threshold. For Comms, a gate (Jev shelves only the confident “nothing owed”, Haiku judges the rest) is a stronger idea than I first allowed, since ALF-7 D13 already accepts shelving before the model. But a gate can only lose recall, so score every message first and replay the gate offline. Begin by reading Haiku’s current override rates. Story to cut, if wanted: “Shadow-score Inbox items with Jev”. Caveat: TypeSafe’s docs were unreachable from this sandbox, so vendor claims rest on its SDK source and third-party reports.</p>
+  <p>Don’t swap Haiku out for Jev; test Jev beside it, cheapest test first. Ranking is where Jev’s shape fits best and its price edge first clears rounding error: one call can carry a whole list and hundreds of pairwise questions, each answered with a probability. The code backlog is already a curated total order, so a ranker can be scored against it offline in an afternoon (§6). The Inbox comes next: it already logs every override per provider, so a paired shadow run needs no fixtures. For Comms, a gate (Jev shelves only the confident “nothing owed”, Haiku judges the rest) is stronger than I first allowed, since ALF-7 D13 accepts shelving before the model; but it can only lose recall, so score first and replay offline. Begin by reading Haiku’s current override rates. Caveats: I have not seen the ranking tickets, and TypeSafe’s docs were unreachable from this sandbox.</p>
   <ol class="list">
     <li><h3>Typed answers only</h3>
       <p class="pick">Choice, yes/no and score questions; no free text, so no ask or date.</p>
       <p class="why">wire contract — <a href="#contract">§2</a></p></li>
-    <li><h3>Probabilities are the value</h3>
-      <p class="pick">They make abstention and recall bias thresholds, at about $0.15 a month.</p>
-      <p class="why">what it adds — <a href="#adds">§4</a></p></li>
+    <li><h3>Ranking suits Jev’s shape</h3>
+      <p class="pick">Many pairwise questions over one shared list, in one call, with probabilities.</p>
+      <p class="why">ranking — <a href="#rank">§6</a></p></li>
     <li><h3>The Inbox has the instrument</h3>
       <p class="pick">Overrides are already logged per provider; no fixtures needed.</p>
       <p class="why">code read — <a href="#fit">§3</a></p></li>
@@ -294,7 +294,7 @@ SystemOneResult {
     <li><b>Lower privacy stakes.</b> Inbox captures are the owner’s own words, which ALF-158 D14 already accepted sending to a third-party API. Comms holds other people’s messages.</li>
     <li><b>The objective matches.</b> ALF-158 D8 optimises for precision — a confident wrong label is the failure — and enforces it with a paragraph of prompt (<code>ABSTENTION_RULES</code>). Per-field thresholds on <code>probabilities</code> are that abstention made explicit, and the correction log is where they would be fitted.</li>
   </ul>
-  <p>What I have not checked: how often Haiku is overridden today. That number decides whether there is anything for Jev to improve (§8, Step 0). One cost to count first: the Inbox sweep shares the two-minute tick, and therefore the 50-fetch budget, with the Comms judge, and <code>SWEEP_LIMIT</code> is 10 items.</p>
+  <p>What I have not checked: how often Haiku is overridden today. That number decides whether there is anything for Jev to improve (§9, Step 0). One cost to count first: the Inbox sweep shares the two-minute tick, and therefore the 50-fetch budget, with the Comms judge, and <code>SWEEP_LIMIT</code> is 10 items.</p>
   <h3>Comms judge (ALF-7) — <code>workers/src/comms/verdict.ts</code>, <code>prompt.ts</code></h3>
   <div class="scroll"><table>
     <tr><th>Field</th><th>Today</th><th>Jev question</th><th>Fit</th></tr>
@@ -330,7 +330,7 @@ SystemOneResult {
   <div class="scroll"><table>
     <tr><th>Design</th><th>Jev decides</th><th>Haiku decides</th><th>Verdict</th></tr>
     <tr><td><b>Gate</b> (the proposal)</td><td>Shelve only when P(owes a response) &lt; ε; otherwise pass on</td><td>Everything passed on, in full: tier, ask, reason</td><td>Viable; see below</td></tr>
-    <tr><td><b>Tier by Jev, words by Haiku</b></td><td>The tier</td><td>Ask and reason for queued messages</td><td>Rejected (§9): the reason explains a decision Haiku did not make</td></tr>
+    <tr><td><b>Tier by Jev, words by Haiku</b></td><td>The tier</td><td>Ask and reason for queued messages</td><td>Rejected (§10): the reason explains a decision Haiku did not make</td></tr>
     <tr><td><b>OR-check</b> (shadow)</td><td>Nothing yet; scores in the background</td><td>Everything, as today</td><td>A high P(owes) on a shelved message is flagged for review</td></tr>
   </table></div>
   <p>My first draft dismissed the second design and called it “the cascade”. That is not what was proposed. In the gate, Haiku still makes and explains every decision it makes, so the audit-trail objection does not apply to it. And the gate has a precedent I should have weighed: ALF-7 D13 already files header-detected bulk mail on the shelf before any model call, because “a model call to decide that is pure waste”.</p>
@@ -344,11 +344,56 @@ SystemOneResult {
   <ul>
     <li><b>It can only lose recall.</b> A gate removes messages from Haiku’s consideration and can never add one to the queue. ALF-7 D7 says recall is the number that decides, and D13 calls a wrongly filtered real message “the expensive one” — it “never reaches the classifier”, “where no amount of tuning the rubric can reach it”. The OR-check goes the other way: it can only add. Neither is free, but they are not symmetric, and the spec sides with the second.</li>
     <li><b>The saving is small.</b> Comms is about $3.30 a month on Haiku. If a third to a half of messages are confidently “nothing owed” (28 of the 68 fixtures are fyi, but the header filter has already removed newsletters, so real traffic will differ — this is an assumption, not a measurement), the saving is roughly $1.10–1.65 a month. Subrequests are roughly neutral: a gated message skips Haiku and the verdict insert, so it is cheaper than today’s ~5, while a passed one costs one more. Count against the store calls before touching <code>COMMS_SWEEP_LIMIT</code>.</li>
-    <li><b>The boundary is where Jev is reported to be weakest.</b> “Silence would be a lapse” (rule 1(b), the ALF-244 fix) is an indirect ask, and “just landed, flight was brutal” is the kind of text a “does this need a response” question is most likely to score low. This is the specific case the Step 2 screen tests.</li>
+    <li><b>The boundary is where Jev is reported to be weakest.</b> “Silence would be a lapse” (rule 1(b), the ALF-244 fix) is an indirect ask, and “just landed, flight was brutal” is the kind of text a “does this need a response” question is most likely to score low. This is the specific case the Step 3 screen tests.</li>
   </ul>
   <h3>One dataset settles all three designs</h3>
   <p>A shadow run that stores Jev’s P(owes) for every message lets the gate, the OR-check and a future tier-by-Jev design be replayed offline at any ε: how many Haiku calls the gate would have saved, and how many messages Haiku queued — or the owner later corrected — that it would have shelved.</p>
   <p>It also offers a false-negative proxy the spec does not mention. Outbound messages are stored with their <code>thread_key</code>, and <code>comm_record_reply</code> drains only queued rows, so an owner reply after a shelved message leaves no mark today. But the rows are in <code>comm_messages</code> for 60 days, so a query can find shelved inbound messages followed by an owner reply in the same thread. That is my inference from <code>store.ts</code> and the schema, not something I ran, and a reply may answer something else in the thread: a lead, not a label. If it holds, it contradicts the spec’s claim that fixtures are the only false-negative instrument.</p>
+</section>
+
+<section id="rank">
+  <h2>Ranking the backlog and folder tasks</h2>
+  <p><b>What I could and couldn’t read.</b> The ranking spikes are unmerged tickets, so I have not seen their criteria, comparison method or list sizes. This section covers how Jev would apply to the designs a ranker could take, using what the repo shows about ordering today. It should be re-checked against the tickets’ choices when they land.</p>
+  <h3>What is ranked today</h3>
+  <ul>
+    <li><b>The code backlog is a curated total order.</b> <code>code_items.priority</code> is a <code>double precision</code> rank, “lower = higher priority”, unique. Project-scoped moves insert at the midpoint of two neighbours (0014), and a respace runs when the floats run out (0031, which fixed an outage where every code dispatch failed). A new story lands at the top by default (0012), and the owner moves stories with swap and jump-to-top/bottom (0009). The whole order is the owner’s own judgment, one number per story.</li>
+    <li><b>Folder tasks have three buckets, not an order.</b> <code>priority</code> is a nullable enum, high &lt; medium &lt; low (0010). A folder sorts by priority or by due date, each falling back on the other and then on <code>created_at</code>, oldest first (<code>frontend/lib/tasks/task-sort.ts</code>). <code>sort_order</code> (0018) orders subtasks only — its comment says roots ignore it — so within a bucket and a due date, top-level tasks are ordered by age alone.</li>
+  </ul>
+  <p>Those are two different jobs. On the backlog a ranker either slots a new story where it belongs instead of at the top, or re-ranks the list; a full re-rank would overwrite the owner’s curated order, so slotting is the natural job. For folders, the bucket is what the Inbox classifier already guesses per item (the <code>score</code> row in §3), so what is left is ordering <em>within</em> a (priority, due date) tie — usually a small group.</p>
+  <h3>Why Jev’s API shape suits ranking</h3>
+  <p>A chat model compares items either one pair per request, which costs a call each, or many in one prompt, where the answers contaminate one another — the objection ALF-158 D18 makes to batching classifications. Jev takes one shared <code>state</code> and any number of named questions and answers them together, a probability each. If that holds at scale, comparisons cost <em>rounds</em> rather than calls:</p>
+  <div class="scroll"><table>
+    <tr><th>Design</th><th>Jev questions</th><th>Calls</th><th>Watch for</th></tr>
+    <tr><td>Score in context</td><td>One <code>score</code> per item over a state holding the whole list; rank by expected score Σ s·P(s)</td><td>1 per list</td><td>Scores are absolute and may drift between calls; test stability</td></tr>
+    <tr><td>Pairwise in context</td><td>A <code>choice</code> between two ids per pair; aggregate client-side by expected wins or a Bradley–Terry fit</td><td>pairs × ~30 tokens ÷ the limit</td><td>Position bias, so ask both orders (double the questions). The aggregation is deterministic and therefore testable in ALF-158 D12’s sense</td></tr>
+    <tr><td>Insertion</td><td>A new item against ~8 evenly spaced anchors in one call; place by wins, then one refining call</td><td>1–2 per new item</td><td>Binary search is sequential for a chat model; here it takes two rounds</td></tr>
+  </table></div>
+  <p><b>Soft preferences are the other real gain.</b> Jev returns P(A over B). The Anthropic Messages API returns text, so a Haiku comparison arrives as a hard choice (I found no token-probability output in the repo’s <code>anthropic-api</code> skill; I did not check the API reference). With probabilities, an intransitive cycle is a weak preference to average out rather than a contradiction to break arbitrarily.</p>
+  <p><b>Untested, and it is the crux:</b> whether a pair’s answer changes with the number of other questions in the call. The most questions per call in any source read is six (J-Mail), and the 64k-token limit is a third-party figure. Test a pair asked alone against the same pair among 400 others, in both orders.</p>
+  <h3>The numbers</h3>
+  <p>All assumptions mine: a standalone pairwise call is ~400 input tokens (criterion ~300, two items ~80) and ~10 output; Haiku at $1 / $5 per MTok, Jev at $0.042 per MTok in; an item is ~40 tokens in a shared state and a pairwise question ~30; the 64k limit; “merge sort” is n·log₂n comparisons; a listwise prompt returns ~8 tokens per item.</p>
+  <div class="scroll"><table>
+    <tr><th>Items</th><th>Round-robin pairs</th><th>Haiku, a call per pair</th><th>Haiku, merge sort</th><th>Jev, round-robin in context (one order / both)</th><th>Haiku, one listwise prompt</th></tr>
+    <tr><td>20</td><td>190</td><td>$0.09</td><td>$0.04 (86 calls)</td><td>1 call · $0.0003 / $0.0005</td><td>$0.002</td></tr>
+    <tr><td>100</td><td>4,950</td><td>$2.23</td><td>$0.30 (664)</td><td>3 calls · $0.007 / $0.013</td><td>$0.008</td></tr>
+    <tr><td>500</td><td>124,750</td><td>$56.14</td><td>$2.02 (4,483)</td><td>86 calls · $0.23 / $0.46</td><td>$0.040</td></tr>
+  </table></div>
+  <ul>
+    <li><b>Volume is real under exactly one design:</b> refreshing a large list by pairwise comparison. Merge-sorting 500 items daily is about $60 a month on Haiku against $2.26 on Jev with a call per comparison — the first place in this document where Haiku’s cost is not a rounding error against the ~$4.50 the whole app spends now. The Workers Free plan’s 50-fetch cap would also need ~90 invocations for 4,483 standalone calls; in-context batching is what lets a full refresh fit in a few calls at all.</li>
+    <li><b>The cheaper way round volume is to compare less.</b> One listwise Haiku prompt ranks 100 items for under a cent, and inserting a new item takes ~10 comparisons: about half a cent on Haiku ($3.24 a month at 20 new items a day) against $0.12 on Jev. Whether listwise ranking stays reliable past ~100 items is commonly reported to degrade; I did not measure it. So Jev’s price case rests on the ranking spikes choosing a full-refresh pairwise design. If they choose slotting or listwise, the case is soft preferences and rounds, not price.</li>
+  </ul>
+  <h3>Where Jev is weaker for ranking</h3>
+  <ul>
+    <li><b>The criterion is the hard part, and it is the owner’s.</b> What comes next mixes deadline, dependency, effort, epic context and whatever the week’s plan says. Jev sees only what is put in its state, and “X must precede Y” is a multi-step inference where its reviewers say it decides in single steps.</li>
+    <li><b>Don’t ask Jev to compare dates.</b> Priority and due date are structured fields the app already sorts on, and date comparison is a reported weak spot. Let code order on the structured keys and use Jev only for the residual — the ties.</li>
+    <li><b>No reason for an order.</b> The backlog already has direct override (swap, jump to top), but a ranker gives the owner nothing to argue with.</li>
+    <li><b>Stability.</b> Reruns shift confidences, so a ranker that recomputes daily can reshuffle a backlog the owner curated. It needs hysteresis (move an item only past a margin) or pairwise probabilities cached per item version.</li>
+    <li><b>No move history to learn from.</b> Every manual swap is a preference a ranker could learn, but I found no history table and the swap and move RPCs (0007, 0009) contain no <code>insert</code>; only the resulting rank persists.</li>
+  </ul>
+  <h3>How to test it: the backlog is its own ground truth</h3>
+  <p>Because the backlog is a curated total order, any ranker can be scored against it offline — Kendall’s τ or plain pairwise agreement — with no shadow period, no live writes and no fixtures to hand-write, using only the owner’s own story titles. Baselines to beat: random, and creation order; new stories start at the top, so recency is already baked into the order and will be a stronger baseline than it looks. The score is capped by how stale and recency-shaped the order is, so the informative number is Jev against Haiku on the same items, not either against 1.0. Cost at 100 stories: about a cent on Jev, about $2 on Haiku with a call per pair. Folders have thinner ground truth — three buckets and a due date — so their test is agreement with the existing priority labels, which is the Inbox problem again.</p>
+  <h3>Verdict</h3>
+  <p>Ranking is the best structural fit for Jev in alfred: decisions under a rubric over given items, no text to write, probabilities that matter, and a call shape that turns comparisons into rounds. It is also the only place Jev’s price advantage clears rounding error, and only under a full-refresh pairwise design. But the designs are unwritten, and the two natural jobs in this codebase — slot a new story, break ties inside a folder bucket — need few comparisons, where Haiku is already cheap. The offline backlog replay is the cheapest experiment in this document, and it settles quality before any volume argument matters.</p>
 </section>
 
 <section id="cost-table">
@@ -359,7 +404,7 @@ SystemOneResult {
     <tr><td>Comms</td><td>~45 a day → 1,350 a month (ALF-7 D7, §6)</td><td>~2k tokens (1.5k prefix plus a body I estimated at ~500)</td><td>~$3.30, excluding the example set</td><td>2.7M tokens → $0.11</td></tr>
     <tr><td><b>Total</b></td><td></td><td></td><td><b>≈ $4.50</b></td><td><b>≈ $0.15</b></td></tr>
   </table></div>
-  <p>The ratio is dramatic and the delta — about $4.35 a month, $52 a year — is immaterial: the same conclusion ALF-158 D2 reached about GPT-5.6 Luna. Speed does not help either. Both classifiers run on a cron with nobody waiting, and the Comms tick is bounded by subrequests, not model latency. Running Jev as a Comms shadow adds about $0.11 a month; a Comms gate would save the share of Haiku calls it prevents, roughly $1.10–1.65 (§5).</p>
+  <p>The ratio is dramatic and the delta — about $4.35 a month, $52 a year — is immaterial: the same conclusion ALF-158 D2 reached about GPT-5.6 Luna. Speed does not help either. Both classifiers run on a cron with nobody waiting, and the Comms tick is bounded by subrequests, not model latency. Running Jev as a Comms shadow adds about $0.11 a month; a Comms gate would save the share of Haiku calls it prevents, roughly $1.10–1.65 (§5). Ranking prices separately (§6).</p>
 </section>
 
 <section id="weak">
@@ -377,16 +422,18 @@ SystemOneResult {
 
 <section id="plan">
   <h2>A test plan, if the owner wants one</h2>
-  <p>Not a spec — the shape of the cheapest experiments, in order, with stop conditions proposed rather than settled.</p>
+  <p>Not a spec — the shape of the cheapest experiments, in order of cost, with stop conditions proposed rather than settled.</p>
   <h3>Step 0 — read the incumbent’s baseline (free, no Jev)</h3>
   <p>Group <code>classification_corrections</code> by field, direction and provider, and <code>comm_corrections</code> by kind, over the weeks since each shipped. If Haiku’s override rate on a field is already low there is little for Jev to improve; if <code>folder_id</code> or <code>item_type</code> is overridden often, that is the opening. I could not query production from this sandbox, so this number is missing from the findings.</p>
-  <h3>Step 1 — the Inbox paired shadow (first live test)</h3>
+  <h3>Step 1 — replay a ranker against the backlog (offline, own data)</h3>
+  <p>Once the ranking spikes fix a criterion, score Jev and Haiku against the current backlog order for one project (§6): all pairs in both orders for Jev, a listwise prompt and a merge sort for Haiku, with random and creation order as baselines. About two cents of Jev and a couple of dollars of Haiku at 100 stories. Stop if Jev does not beat creation order, or if a pair’s answer changes with the number of other questions in the call.</p>
+  <h3>Step 2 — the Inbox paired shadow (first live test)</h3>
   <p>A Jev guess stored in a side column, never written to the fields; questions built from the live <code>ClosedWorld</code>, one <code>choice</code> per id field with the owner’s folder descriptions as criteria, a <code>score</code> for priority, no question for a held type. Two to four weeks; at 20 captures a day that is 280–560 paired items. Compare per field: agreement with the value the owner finally chose, and whether Jev’s probabilities separate right from wrong (precision at each threshold). <code>due_date</code> is excluded. Stop if Jev’s confident answers are overridden as often as Haiku’s, or if its probabilities do not separate right from wrong.</p>
-  <h3>Step 2 — a one-afternoon Comms screen, no personal data</h3>
+  <h3>Step 3 — a one-afternoon Comms screen, no personal data</h3>
   <p><code>workers/scripts/comms-eval.ts</code> already runs every fixture through <code>classifyJson</code> and scores it with <code>scoreRun</code> (queue recall, asap precision, Wilson intervals). Add a Jev path: <code>state</code> = account, sender with roster marker, received stamp, today’s date, thread and message; three questions — <code>noul</code> “does the owner owe this person a response”, <code>noul</code> “is someone blocked or is a deadline inside a few hours”, and <code>score</code> 0–3 for the tier. Run each fixture twice. Cost: pennies, on synthetic messages. Stop if queue recall falls below Haiku’s, or if it misses the priority-roster, deadline-hours and thread fixtures (<code>spouse-call-me</code>, the <code>text-*</code> family).</p>
   <h3>What that screen cannot tell you</h3>
   <p>I counted the fixtures with <code>node --experimental-strip-types</code> over <code>fixtures.ts</code>: 68 in all — asap 10, today 25, whenever 5, fyi 28 — of which 40 are queued, 4 carry a thread, and the longest body is 161 characters. No adversarial cases and nothing email-length. With five <code>whenever</code> cases it cannot rank two models; it can only catch a gross failure, which is what it is for. (ALF-7 §6 budgets roughly 200–400 tokens for a real email body.)</p>
-  <h3>Step 3 — the Comms shadow, only if Step 2 passes, and only with the owner’s privacy sign-off</h3>
+  <h3>Step 4 — the Comms shadow, only if Step 3 passes, and only with the owner’s privacy sign-off</h3>
   <p>Four weeks of real traffic, Jev scoring alongside Haiku with P(owes) and P(asap) stored, nothing user-visible except a short weekly list of disagreements. Then replay offline (§5): the gate at several ε, the OR-check, and the shelved-then-replied query. The owner adjudicates the disagreement list; that is labelled false-negative data nothing else produces.</p>
 </section>
 
@@ -394,14 +441,14 @@ SystemOneResult {
   <h2>Alternatives we’re not taking</h2>
   <aside><h3>Replace the Comms judge with Jev</h3><p>Ruled out by <code>ask</code> and <code>reason</code>, both of which the UI shows and the spec treats as load-bearing.</p></aside>
   <aside><h3>Tier by Jev, then Haiku writes ask and reason for the queued</h3><p>The <code>reason</code> would be written after the fact for a tier Haiku did not choose: a confabulated audit trail, which defeats the purpose ALF-7 D11 versions everything for. It puts two vendors in the hot path for a saving of about $1.40 a month. This is <em>not</em> the gate in §5, which stays open.</p></aside>
-  <aside><h3>Swap the Inbox classifier outright</h3><p>The best field fit, but <code>due_date</code> is a gap, Haiku’s baseline has not been read, and the saving is about $1.16 a month. The paired shadow in §8 comes first; a swap is what its result would justify, not a starting point.</p></aside>
+  <aside><h3>Swap the Inbox classifier outright</h3><p>The best field fit, but <code>due_date</code> is a gap, Haiku’s baseline has not been read, and the saving is about $1.16 a month. The paired shadow in §9 comes first; a swap is what its result would justify, not a starting point.</p></aside>
   <aside><h3>Reach Jev through a gateway (Vercel AI Gateway, Cloudflare, OpenRouter)</h3><p>Adds a hop and a second data policy that applies on top of TypeSafe’s. The jevmail README records a gateway free tier of 5 calls per 5 minutes, so real use needs the paid tier. Cloudflare’s catalogue listing was seen only as a search-result title. Worth a look only if one billing or logging surface matters more than one fewer hop.</p></aside>
   <aside><h3>Use Jev for the deterministic newsletter header filter</h3><p>ALF-7 D13’s filter is free, deterministic and explainable already.</p></aside>
 </section>
 
 <section id="open">
   <h2>Cost &amp; open questions</h2>
-  <p><b>Effort.</b> Step 0 is two queries. Step 2 is a script and an afternoon. Step 1 is a migration for the side column (with the <code>task_items</code> view recreation), one Jev request builder and adapter, a second secret and a tick-budget check. Step 3 adds a migration for the distribution, a UI list and, if a gate follows, a new <code>filtered_reason</code>. Each is a real story, and none should be cut before the step before it passes.</p>
+  <p><b>Effort.</b> Step 0 is two queries. Steps 1 and 3 are each a script and an afternoon. Step 2 is a migration for the side column (with the <code>task_items</code> view recreation), one Jev request builder and adapter, a second secret and a tick-budget check. Step 4 adds a migration for the distribution, a UI list and, if a gate follows, a new <code>filtered_reason</code>. Each is a real story, and none should be cut before the step before it passes.</p>
   <ol>
     <li><b>What is the two-stage design for?</b> If the goal is cost, the ceiling is about $1.40 a month. If it is fewer noisy rows, or keeping machine mail away from Haiku, the correction log should show that first; the motive sets ε.</li>
     <li><b>Does Jev use a long prose policy at all?</b> The owner’s rubric, the people roster and the corrections-as-examples loop (ALF-7 D11, ALF-158 D16) all assume in-context adaptation. Jev’s weights are reportedly identical for every customer, so putting text in <code>instructions</code> or <code>state</code> is the only personalization route, and whether it moves the answer is untested. This decides whether the learning loop can live on Jev.</li>
@@ -410,6 +457,9 @@ SystemOneResult {
     <li><b>Calibration on this owner’s traffic.</b> The 98.2%-above-0.6 figure is one person’s synthetic support inbox. Thresholds should be fitted on alfred’s own correction log and disagreement list, not borrowed.</li>
     <li><b>Where the shadow call runs.</b> Inside the existing judge tick at a lower per-tick limit, or on the last free cron slot. Both have costs (§4).</li>
     <li><b>Haiku’s current override rates.</b> Step 0 above; not read here.</li>
+    <li><b>Which comparison design will the ranking spikes pick, and at what list sizes?</b> Full refresh by pairwise comparison is the only design where Jev’s price matters; slotting and listwise make Haiku cheap enough (§6).</li>
+    <li><b>Does a pair’s answer depend on the other questions in the call?</b> The whole in-context idea rests on it, and no source read tried more than six questions.</li>
+    <li><b>Where would a within-bucket folder order live?</b> Top-level tasks have no order column beyond priority, due date and age (0010, 0018); a ranker that produces one needs a home for it.</li>
   </ol>
 </section>
 
@@ -429,8 +479,8 @@ SystemOneResult {
     <li><a href="https://www.developersdigest.tech/blog/typesafe-jev-system-one-models-release-guide-2026">Developers Digest</a> and <a href="https://www.winzheng.com/en/article/typesafe-ai-jev-system-one-model-launch">Winzheng</a> (launch, funding, pricing); <a href="https://www.npmjs.com/package/@typesafe-ai/sdk">@typesafe-ai/sdk on npm</a> (version); <a href="https://developers.cloudflare.com/ai/models/typesafe/jev/">Cloudflare model catalogue</a>; <a href="https://docs.typesafe.ai/models">docs.typesafe.ai/models</a>.</li>
   </ol>
   <p><b>Blocked by the sandbox’s egress policy:</b> <code>docs.typesafe.ai</code>, <code>typesafe.ai</code>, <code>www.jevtypesafeai.com</code>, <code>vercel.com</code>, <code>developers.cloudflare.com</code>, <code>opper.ai</code>, <code>www.datacamp.com</code>, <code>az9713.github.io</code>, <code>www.shipwithjev.com</code>, <code>www.ai.joaoqueiros.com</code>, <code>jev-ai-guide.com</code>.</p>
-  <p><b>Files read in this repo:</b> <code>docs/specs/epics/ALF-158.html</code> (D2, D3, D8, D14, D16, story F); <code>docs/specs/epics/ALF-7.html</code> (D7, D11, D13, D14, D15, §6, §8); <code>database/migrations/0029_llm_classifier.sql</code>; <code>workers/src/classifier.ts</code>, <code>prompt.ts</code>, <code>verdict.ts</code>, <code>sweep.ts</code>; <code>workers/src/comms/prompt.ts</code>, <code>verdict.ts</code>, <code>sweep.ts</code>, <code>types.ts</code>, <code>ingest.ts</code>, <code>store.ts</code>, <code>eval/fixtures.ts</code>, <code>eval/score.ts</code>; <code>workers/scripts/comms-eval.ts</code>; <code>workers/wrangler.toml</code>; <code>workers/package.json</code>; <code>frontend/components/comms/message-detail.tsx</code>, <code>frontend/lib/comms/markers.ts</code>.</p>
-  <p><b>Command run:</b> <code>node --experimental-strip-types</code> importing <code>FIXTURES</code> from <code>workers/src/comms/eval/fixtures.ts</code> and tallying <code>expected.tier</code>, <code>thread</code> and <code>message.body.length</code> → 68 fixtures; asap 10, today 25, whenever 5, fyi 28; 4 with threads; longest body 161 characters.</p>
+  <p><b>Files read in this repo:</b> <code>docs/specs/epics/ALF-158.html</code> (D2, D3, D8, D14, D16, story F); <code>docs/specs/epics/ALF-7.html</code> (D7, D11, D13, D14, D15, §6, §8); <code>database/migrations/0029_llm_classifier.sql</code>, <code>0005_story_priority.sql</code>, <code>0009_move_code_priority.sql</code>, <code>0010_task_priority.sql</code>, <code>0012_default_story_top_priority.sql</code>, <code>0014_project_scoped_priority.sql</code>, <code>0018_subtask_sort_order.sql</code>, <code>0031_respace_code_priority.sql</code>; <code>workers/src/classifier.ts</code>, <code>prompt.ts</code>, <code>verdict.ts</code>, <code>sweep.ts</code>; <code>workers/src/comms/prompt.ts</code>, <code>verdict.ts</code>, <code>sweep.ts</code>, <code>types.ts</code>, <code>ingest.ts</code>, <code>store.ts</code>, <code>eval/fixtures.ts</code>, <code>eval/score.ts</code>; <code>workers/scripts/comms-eval.ts</code>; <code>workers/wrangler.toml</code>; <code>workers/package.json</code>; <code>frontend/components/comms/message-detail.tsx</code>, <code>frontend/lib/comms/markers.ts</code>, <code>frontend/lib/tasks/task-sort.ts</code>.</p>
+  <p><b>Commands run:</b> a Python script for the §6 table (formulas and assumptions as stated there); grep across <code>database/migrations</code> for history tables and <code>insert into</code> in the swap and move RPCs (none found); and <code>node --experimental-strip-types</code> importing <code>FIXTURES</code> from <code>workers/src/comms/eval/fixtures.ts</code> and tallying <code>expected.tier</code>, <code>thread</code> and <code>message.body.length</code> → 68 fixtures; asap 10, today 25, whenever 5, fyi 28; 4 with threads; longest body 161 characters.</p>
 </section>
 
 </section>
