@@ -67,6 +67,9 @@ function cli(args: string[], options: { input?: string; env?: Record<string, str
 beforeEach(() => {
   repo = mkdtempSync(path.join(tmpdir(), 'secret-scan-cli-'));
   git('init', '--quiet', '-b', 'main');
+  // CI runners have no global git identity, and `git merge` wants one even with --no-commit.
+  git('config', 'user.name', 't');
+  git('config', 'user.email', 't@t');
 });
 
 afterEach(() => {
