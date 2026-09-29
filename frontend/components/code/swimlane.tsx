@@ -7,6 +7,7 @@ import { Button } from '@/components/atoms/button';
 import { useBoardDrag } from '@/components/code/board/board-dnd-provider';
 import { DraggableStoryCard } from '@/components/code/board/draggable-story-card';
 import type { LaunchPhase } from '@/lib/code/launch';
+import type { ProjectColor } from '@/lib/code/project-color';
 import { laneDropId, resolveLaneDrop } from '@/lib/dnd/move-story-lane';
 import type { BoardLane } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
@@ -27,6 +28,8 @@ export interface SwimlaneProperties {
   lane: BoardLane;
   /** The epic whose row this lane sits in — half of the lane's drop id (see `laneDropId`). */
   epicId: string;
+  /** Forwarded to each card, which tints its ref with it. */
+  projectColor: ProjectColor;
   /** Forwarded to each card's `onOpen` (the detail-modal seam). */
   onOpenStory?: (story: CodeStory) => void;
   /** Forwarded to each card's `onOpenSession` (the human-launch action). */
@@ -46,7 +49,13 @@ export interface SwimlaneProperties {
  * An empty lane shows a faint placeholder so the column reads as "nothing here yet" rather
  * than looking broken.
  */
-export function Swimlane({ lane, epicId, onOpenStory, onOpenSession }: SwimlaneProperties) {
+export function Swimlane({
+  lane,
+  epicId,
+  projectColor,
+  onOpenStory,
+  onOpenSession,
+}: SwimlaneProperties) {
   const dropId = laneDropId(epicId, lane.state);
   const { setNodeRef, isOver } = useDroppable({ id: dropId });
   const { activeStory } = useBoardDrag();
@@ -88,6 +97,7 @@ export function Swimlane({ lane, epicId, onOpenStory, onOpenSession }: SwimlaneP
               <DraggableStoryCard
                 key={story.item_id}
                 story={story}
+                projectColor={projectColor}
                 {...openProperty}
                 {...sessionProperty}
               />

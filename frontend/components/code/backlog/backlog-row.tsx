@@ -12,6 +12,7 @@ import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
 import { IconButton } from '@/components/atoms/icon-button';
+import { StoryRef } from '@/components/atoms/story-ref';
 import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
 import { storyBoardHref } from '@/lib/code/board-links';
@@ -132,9 +133,9 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
         aria-label={`Open ${storyRef ?? ''} ${story.title ?? ''}`}
         className="flex min-w-0 flex-1 flex-wrap items-start gap-x-3 gap-y-1 rounded-l-lg px-3 py-2 focus:outline-none md:items-center"
       >
-        <span className="shrink-0 font-mono text-sm font-medium text-accent-teal md:text-xs">
+        <StoryRef color={projectColor} className="shrink-0 text-sm md:text-xs">
           {storyRef}
-        </span>
+        </StoryRef>
         {/* On mobile the title takes the head line's full remaining width and *wraps* at
           text-base (no longer truncated to "Disabl…"); at md+ it truncates on a single line
           exactly as today. */}

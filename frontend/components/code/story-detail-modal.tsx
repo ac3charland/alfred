@@ -12,6 +12,7 @@ import {
 } from '@/components/atoms/dropdown-menu';
 import { EditableTextField } from '@/components/atoms/editable-text-field';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
+import { StoryRef } from '@/components/atoms/story-ref';
 import { TextareaField } from '@/components/atoms/textarea-field';
 import { StateChip } from '@/components/code/state-chip';
 import { ManualControls } from '@/components/code/story-detail/manual-controls';
@@ -22,6 +23,7 @@ import { RefinementMark } from '@/components/code/story-detail/refinement-mark';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
 import { StoryKindBadge } from '@/components/code/story-kind-badge';
 import type { LaunchPhase } from '@/lib/code/launch';
+import { type ProjectColor, projectColorFor } from '@/lib/code/project-color';
 import { type StoryKind, storyKindOf } from '@/lib/code/story-kind';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
 import type { CodeStory, Project } from '@/lib/types';
@@ -201,10 +203,12 @@ const IMPLEMENTATION_PR_LABELS: Record<StoryKind, string> = {
 function DetailBody({
   story,
   project,
+  projectColor,
   onOpenSession,
 }: {
   story: CodeStory;
   project: Project | undefined;
+  projectColor: ProjectColor;
   onOpenSession: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 }) {
   const projectName = project?.name ?? story.project_name ?? 'Project';
@@ -217,7 +221,9 @@ function DetailBody({
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-medium text-accent-teal">{story.ref}</span>
+            <StoryRef color={projectColor} className="text-sm">
+              {story.ref}
+            </StoryRef>
             <StateChip state={story.factory_state} />
             <StoryKindBadge story={story} />
           </div>
@@ -313,7 +319,12 @@ export function StoryDetailModal({
       {story === null ? (
         <DialogTitle className="sr-only">Story details</DialogTitle>
       ) : (
-        <DetailBody story={story} project={project} onOpenSession={onOpenSession} />
+        <DetailBody
+          story={story}
+          project={project}
+          projectColor={projectColorFor(projects, story.project_id)}
+          onOpenSession={onOpenSession}
+        />
       )}
     </FormDialog>
   );

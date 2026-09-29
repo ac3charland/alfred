@@ -100,6 +100,9 @@ const PROJECT: Project = {
   description: null,
 };
 
+/** A second-created project — so its creation-slot colour is amber, not blue. */
+const SECOND: Project = { ...PROJECT, id: 'p2', name: 'Sapling', key: 'SAP' };
+
 /** The project with a description — the "already has text" state of the board header line. */
 const DESCRIBED_PROJECT: Project = { ...PROJECT, description: 'My capture-first task system.' };
 
@@ -199,6 +202,22 @@ function renderBoard(seed: {
       </CodeProvider>
     </ToastProvider>,
   );
+}
+
+/** The second project's board (`p2`) holding one in-development story, `SAP-1`. */
+function renderSecondBoard(second: Project = SECOND) {
+  renderBoard({
+    projects: [PROJECT, second],
+    projectId: 'p2',
+    epics: [makeEpic('e1', { project_id: 'p2' })],
+    stories: [
+      makeStory('i1', 'e1', {
+        project_id: 'p2',
+        ref: 'SAP-1',
+        factory_state: 'in_development',
+      }),
+    ],
+  });
 }
 
 describe('Board', () => {
@@ -676,8 +695,6 @@ describe('Board', () => {
   });
 
   describe('the project colour', () => {
-    const SECOND: Project = { ...PROJECT, id: 'p2', name: 'Sapling', key: 'SAP' };
-
     it('glows the title in the creation-slot colour when there is no pick', () => {
       renderBoard({ projects: [PROJECT, SECOND], projectId: 'p2' });
 
@@ -732,6 +749,70 @@ describe('Board', () => {
         expect(screen.getByRole('heading', { name: 'Alfred' })).toHaveClass('text-accent-red');
       });
       expect(screen.getByRole('button', { name: 'Project color: Red' })).toBeInTheDocument();
+    });
+
+    describe('on the story cards', () => {
+      it("tints each card's ref in the project's creation-slot colour when there is no pick", () => {
+        renderSecondBoard();
+
+        const ref = within(screen.getByRole('region', { name: 'In Development' })).getByText(
+          'SAP-1',
+        );
+        expect(ref).toHaveClass('text-accent-amber');
+        expect(ref).not.toHaveClass('text-accent-teal');
+      });
+
+      it("tints each card's ref in the owner's pick", () => {
+        renderSecondBoard({ ...SECOND, color: 'green' });
+
+        expect(screen.getByText('SAP-1')).toHaveClass('text-accent-green');
+      });
+
+      it('tints the refs of abandoned cards too', async () => {
+        const user = userEvent.setup();
+        renderBoard({
+          projects: [PROJECT, SECOND],
+          projectId: 'p2',
+          epics: [makeEpic('e1', { project_id: 'p2' })],
+          stories: [
+            makeStory('i1', 'e1', {
+              project_id: 'p2',
+              ref: 'SAP-9',
+              factory_state: 'abandoned',
+            }),
+          ],
+        });
+
+        await user.click(screen.getByRole('button', { name: /show abandoned/i }));
+
+        expect(screen.getByText('SAP-9')).toHaveClass('text-accent-amber');
+      });
+
+      it('gives the modal it opens the same colour as the card it opened from', async () => {
+        const user = userEvent.setup();
+        renderSecondBoard();
+
+        await user.click(screen.getByRole('button', { name: /^open sap-1/i }));
+
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).getByText('SAP-1')).toHaveClass('text-accent-amber');
+      });
+
+      it('recolours the refs at once when a new colour is picked', async () => {
+        mockUpdateProject.mockReturnValue(new Promise<Project>(() => {}));
+        const user = userEvent.setup();
+        renderBoard({
+          epics: [makeEpic('e1')],
+          stories: [makeStory('i1', 'e1', { ref: 'ALF-7', factory_state: 'in_development' })],
+        });
+        expect(screen.getByText('ALF-7')).toHaveClass('text-accent-blue');
+
+        await user.click(screen.getByRole('button', { name: 'Project color: Blue (automatic)' }));
+        await user.click(await screen.findByRole('button', { name: 'Red' }));
+
+        expect(screen.getByText('ALF-7')).toHaveClass('text-accent-red');
+        expect(screen.getByText('ALF-7')).not.toHaveClass('text-accent-blue');
+      });
     });
 
     it('renders no title and no colour button for an unknown project', () => {

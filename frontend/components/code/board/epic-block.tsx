@@ -31,6 +31,7 @@ import { NewStoryDialog } from '@/components/code/new-story-dialog';
 import { StoryCard } from '@/components/code/story-card';
 import { Swimlane } from '@/components/code/swimlane';
 import type { EpicLaunchPhase, LaunchPhase } from '@/lib/code/launch';
+import type { ProjectColor } from '@/lib/code/project-color';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import type { BoardEpic } from '@/lib/stores/code-store';
 import { useCodeActions } from '@/lib/stores/code-store';
@@ -64,6 +65,8 @@ function EpicHeaderActions({ epic }: { epic: Epic }) {
 
 interface EpicBlockProperties {
   board: BoardEpic;
+  /** The board's project colour, handed to every card so its ref wears it. */
+  projectColor: ProjectColor;
   collapsed: boolean;
   onToggleCollapse: () => void;
   /** The happy-path states whose swimlanes are shown (the board's "Filter by status"). */
@@ -76,6 +79,7 @@ interface EpicBlockProperties {
 /** One epic block: a collapsible header + (when open) its row of swimlanes. */
 export function EpicBlock({
   board,
+  projectColor,
   collapsed,
   onToggleCollapse,
   visibleStates,
@@ -301,6 +305,7 @@ export function EpicBlock({
                 key={lane.state}
                 lane={lane}
                 epicId={epic.id}
+                projectColor={projectColor}
                 onOpenStory={onOpenStory}
                 onOpenSession={onOpenSession}
               />
@@ -317,7 +322,12 @@ export function EpicBlock({
               </h4>
               <div className="grid grid-cols-1 gap-2 px-2 sm:grid-cols-2 lg:grid-cols-3">
                 {abandonedStories.map((story) => (
-                  <StoryCard key={story.item_id} story={story} onOpen={onOpenStory} />
+                  <StoryCard
+                    key={story.item_id}
+                    story={story}
+                    projectColor={projectColor}
+                    onOpen={onOpenStory}
+                  />
                 ))}
               </div>
             </div>

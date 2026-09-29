@@ -56,6 +56,7 @@ const meta = {
   tags: ['autodocs'],
   decorators: [withVisualFrame],
   parameters: { visualTest: { target: VISUAL_TARGET } },
+  args: { projectColor: 'teal' },
 } satisfies Meta<typeof Swimlane>;
 
 export default meta;

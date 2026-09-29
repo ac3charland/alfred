@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import * as api from '@/lib/api-client';
+import type { ProjectColor } from '@/lib/code/project-color';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
@@ -100,7 +101,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
 function renderEpicBlock(
   epic: Epic,
   boardOverrides: { abandonedStories?: CodeStory[]; blockedCount?: number } = {},
-  properties: { showAbandoned?: boolean } = {},
+  properties: { showAbandoned?: boolean; projectColor?: ProjectColor } = {},
 ) {
   const board = {
     epic,
@@ -113,6 +114,7 @@ function renderEpicBlock(
       <CodeProvider initialProjects={[PROJECT]} initialEpics={[epic]} initialStories={[]}>
         <EpicBlock
           board={board}
+          projectColor={properties.projectColor ?? 'blue'}
           collapsed={false}
           onToggleCollapse={jest.fn()}
           visibleStates={[]}
@@ -161,6 +163,7 @@ describe('EpicBlock — the blocked badge (ALF-136)', () => {
         <CodeProvider initialProjects={[PROJECT]} initialEpics={[]} initialStories={[]}>
           <EpicBlock
             board={{ epic: makeEpic(), lanes: [], abandonedStories: [], blockedCount: 2 }}
+            projectColor="blue"
             collapsed
             onToggleCollapse={jest.fn()}
             visibleStates={[]}
@@ -188,6 +191,16 @@ describe('EpicBlock — the abandoned section (ALF-136)', () => {
 
     expect(screen.getByRole('heading', { name: /abandoned/i })).toBeInTheDocument();
     expect(screen.getByText('Retire the legacy importer')).toBeInTheDocument();
+  });
+
+  it('tints an abandoned card ref in the project colour', () => {
+    renderEpicBlock(
+      makeEpic(),
+      { abandonedStories: [makeStory({ ref: 'ALF-42' })] },
+      { showAbandoned: true, projectColor: 'green' },
+    );
+
+    expect(screen.getByText('ALF-42')).toHaveClass('text-accent-green');
   });
 
   it('renders no heading when the epic has no abandoned stories', () => {

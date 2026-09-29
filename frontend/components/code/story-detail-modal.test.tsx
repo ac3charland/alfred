@@ -154,12 +154,17 @@ function renderModal(
   story: CodeStory,
   options: {
     onOpenSession?: (s: CodeStory, p: LaunchPhase) => void | Promise<void>;
+    project?: Project;
   } = {},
 ) {
   const onOpenSession = options.onOpenSession ?? jest.fn(() => Promise.resolve());
   const utils = render(
     <ToastProvider>
-      <CodeProvider initialProjects={[PROJECT]} initialEpics={[EPIC]} initialStories={[story]}>
+      <CodeProvider
+        initialProjects={[options.project ?? PROJECT]}
+        initialEpics={[EPIC]}
+        initialStories={[story]}
+      >
         <ModalHarness itemId={story.item_id ?? ''} onOpenSession={onOpenSession} />
       </CodeProvider>
     </ToastProvider>,
@@ -241,6 +246,18 @@ describe('StoryDetailModal', () => {
     expect(
       dialog.getByText('Needs Refinement', { selector: '[data-factory-state]' }),
     ).toBeInTheDocument();
+  });
+
+  it("tints the ref in the project's colour, as its card on the board is", () => {
+    // No pick: the first-created project's slot colour.
+    const { dialog, unmount } = renderModal(makeStory());
+    expect(dialog.getByText('ALF-42')).toHaveClass('text-accent-blue');
+    unmount();
+
+    // A stored pick wins over the slot.
+    const picked = renderModal(makeStory(), { project: { ...PROJECT, color: 'green' } });
+    expect(picked.dialog.getByText('ALF-42')).toHaveClass('text-accent-green');
+    expect(picked.dialog.getByText('ALF-42')).not.toHaveClass('text-accent-teal');
   });
 
   it('gives the close button a ≥44px tap target on mobile, back to compact at md+', () => {

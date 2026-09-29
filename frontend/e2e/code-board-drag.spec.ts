@@ -106,6 +106,45 @@ test('moves a story to the lane it is dropped on, and the move survives a reload
   ).toBeVisible();
 });
 
+test("lifts a ghost that wears the project's colour, like the card it came from", async ({
+  page,
+  seed,
+}) => {
+  // The ref carries the project's colour on the card (a stored pick here, so the assertion can't
+  // pass on a default), and the floating ghost must match it — a teal ghost over a green card
+  // would flash the wrong project for the length of every drag.
+  const project = makeProject('Alfred', { id: 'p1', key: 'ALF', color: 'green' });
+  const epic = makeEpic('Communication Firewall', {
+    id: 'e1',
+    project_id: 'p1',
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const item = makeItem('Draft the inbound filter spec', { id: 'i1', item_type: 'code' });
+  const story = makeCodeStory({
+    item_id: 'i1',
+    project_id: 'p1',
+    epic_id: 'e1',
+    ref_number: 3,
+    ref: 'ALF-3',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+  await page.goto('/code/p1');
+
+  const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
+  await expect(needsRefinement.getByText('ALF-3')).toHaveClass(/text-accent-green/);
+  await expect(needsRefinement.getByText('ALF-3')).toHaveCSS('color', 'rgb(52, 211, 153)');
+
+  await pickUp(page, needsRefinement.getByText('Draft the inbound filter spec'));
+
+  const ghostRef = page.getByTestId('board-drag-ghost').getByText('ALF-3');
+  await expect(ghostRef).toHaveClass(/text-accent-green/);
+  await expect(ghostRef).toHaveCSS('color', 'rgb(52, 211, 153)');
+  await page.mouse.up();
+});
+
 test('refuses a drop on another epic lane, leaving the story where it was', async ({
   page,
   seed,

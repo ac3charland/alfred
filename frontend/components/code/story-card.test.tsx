@@ -55,17 +55,54 @@ function makeBug(overrides: Partial<CodeStory> = {}): CodeStory {
 
 describe('StoryCard', () => {
   it('shows the ref and title', () => {
-    render(<StoryCard story={makeStory()} />);
+    render(<StoryCard projectColor="blue" story={makeStory()} />);
 
     expect(screen.getByText('ALF-42')).toBeInTheDocument();
     expect(screen.getByText('Wire up the webhook')).toBeInTheDocument();
+  });
+
+  describe('the ref in the project colour', () => {
+    it.each([
+      ['blue', 'text-accent-blue'],
+      ['amber', 'text-accent-amber'],
+      ['green', 'text-accent-green'],
+      ['red', 'text-accent-red'],
+      ['teal', 'text-accent-teal'],
+    ] as const)('tints the ref for a %s project', (projectColor, textClass) => {
+      render(<StoryCard projectColor={projectColor} story={makeStory()} />);
+
+      expect(screen.getByText('ALF-42')).toHaveClass(textClass);
+    });
+
+    it('wears no other project colour than its own', () => {
+      render(<StoryCard projectColor="amber" story={makeStory()} />);
+
+      const ref = screen.getByText('ALF-42');
+      expect(ref).not.toHaveClass('text-accent-teal');
+      expect(ref).not.toHaveClass('text-accent-blue');
+    });
+
+    it('leaves the title in the neutral foreground colour', () => {
+      render(<StoryCard projectColor="green" story={makeStory()} />);
+
+      expect(screen.getByText('Wire up the webhook')).toHaveClass('text-foreground');
+    });
+
+    it.each(['blocked', 'abandoned'] as const)(
+      'still tints the ref of a %s card, whose edge and tag carry the state instead',
+      (factory_state) => {
+        render(<StoryCard projectColor="red" story={makeStory({ factory_state })} />);
+
+        expect(screen.getByText('ALF-42')).toHaveClass('text-accent-red');
+      },
+    );
   });
 
   it('is an activatable button and calls onOpen with the story when clicked', async () => {
     const onOpen = jest.fn();
     const story = makeStory();
     const user = userEvent.setup();
-    render(<StoryCard story={story} onOpen={onOpen} />);
+    render(<StoryCard projectColor="blue" story={story} onOpen={onOpen} />);
 
     // The card body opens the detail modal; query by its accessible name to disambiguate it
     // from the launch button that also renders in this state.
@@ -76,7 +113,7 @@ describe('StoryCard', () => {
 
   it('renders without an onOpen handler (the click is a no-op)', async () => {
     const user = userEvent.setup();
-    render(<StoryCard story={makeStory()} />);
+    render(<StoryCard projectColor="blue" story={makeStory()} />);
 
     // No throw on click when onOpen is absent.
     const body = screen.getByRole('button', { name: /open ALF-42/i });
@@ -85,26 +122,28 @@ describe('StoryCard', () => {
   });
 
   it('shows no escape tag for a happy-path story', () => {
-    render(<StoryCard story={makeStory({ factory_state: 'in_development' })} />);
+    render(
+      <StoryCard projectColor="blue" story={makeStory({ factory_state: 'in_development' })} />,
+    );
 
     expect(screen.queryByText(/blocked/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/abandoned/i)).not.toBeInTheDocument();
   });
 
   it('marks a blocked story with a Blocked tag', () => {
-    render(<StoryCard story={makeStory({ factory_state: 'blocked' })} />);
+    render(<StoryCard projectColor="blue" story={makeStory({ factory_state: 'blocked' })} />);
 
     expect(screen.getByText('Blocked')).toBeInTheDocument();
   });
 
   it('marks an abandoned story with an Abandoned tag', () => {
-    render(<StoryCard story={makeStory({ factory_state: 'abandoned' })} />);
+    render(<StoryCard projectColor="blue" story={makeStory({ factory_state: 'abandoned' })} />);
 
     expect(screen.getByText('Abandoned')).toBeInTheDocument();
   });
 
   it('exposes the factory state as a data attribute for the board', () => {
-    render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
+    render(<StoryCard projectColor="blue" story={makeStory({ factory_state: 'ready_for_dev' })} />);
 
     expect(screen.getAllByRole('button')[0]).toHaveAttribute('data-factory-state', 'ready_for_dev');
   });
@@ -113,7 +152,7 @@ describe('StoryCard', () => {
     // The sensors refuse to lift a drag from a control unless it carries this marker, so
     // without it on the body a card on the board has nowhere to be picked up (ALF-155) — and
     // with it on a launch chip, pressing that chip would start a drag instead of launching.
-    render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
+    render(<StoryCard projectColor="blue" story={makeStory({ factory_state: 'ready_for_dev' })} />);
 
     const body = screen.getByRole('button', { name: /^open alf-42/i });
     const launch = screen.getByRole('button', { name: /implement in claude code/i });
@@ -133,14 +172,18 @@ describe('StoryCard', () => {
     ] as const;
 
     it('shows a Refinement button when the story needs refinement', () => {
-      render(<StoryCard story={makeStory({ factory_state: 'needs_refinement' })} />);
+      render(
+        <StoryCard projectColor="blue" story={makeStory({ factory_state: 'needs_refinement' })} />,
+      );
 
       expect(screen.getByRole('button', { name: /refine/i })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /implement/i })).not.toBeInTheDocument();
     });
 
     it('shows both Refine and the subordinate Skip to Development in needs_refinement, in that order', () => {
-      render(<StoryCard story={makeStory({ factory_state: 'needs_refinement' })} />);
+      render(
+        <StoryCard projectColor="blue" story={makeStory({ factory_state: 'needs_refinement' })} />,
+      );
 
       const launches = screen.getAllByRole('button', { name: /claude code|skip to development/i });
       expect(launches.map((button) => button.textContent)).toEqual([
@@ -150,7 +193,9 @@ describe('StoryCard', () => {
     });
 
     it('offers no Skip to Development outside needs_refinement', () => {
-      render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
+      render(
+        <StoryCard projectColor="blue" story={makeStory({ factory_state: 'ready_for_dev' })} />,
+      );
 
       expect(
         screen.queryByRole('button', { name: /skip to development/i }),
@@ -161,7 +206,7 @@ describe('StoryCard', () => {
       const onOpenSession = jest.fn(() => Promise.resolve());
       const story = makeStory({ factory_state: 'needs_refinement' });
       const user = userEvent.setup();
-      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+      render(<StoryCard projectColor="blue" story={story} onOpenSession={onOpenSession} />);
 
       await user.click(screen.getByRole('button', { name: /skip to development/i }));
 
@@ -169,14 +214,16 @@ describe('StoryCard', () => {
     });
 
     it('shows an Implementation button when the story is ready for dev', () => {
-      render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
+      render(
+        <StoryCard projectColor="blue" story={makeStory({ factory_state: 'ready_for_dev' })} />,
+      );
 
       expect(screen.getByRole('button', { name: /implement/i })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /refine/i })).not.toBeInTheDocument();
     });
 
     it.each(noButtonStates)('shows no launch button in the %s state', (state) => {
-      render(<StoryCard story={makeStory({ factory_state: state })} />);
+      render(<StoryCard projectColor="blue" story={makeStory({ factory_state: state })} />);
 
       expect(screen.queryByRole('button', { name: /refine/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /implement/i })).not.toBeInTheDocument();
@@ -186,7 +233,7 @@ describe('StoryCard', () => {
       const onOpenSession = jest.fn(() => Promise.resolve());
       const story = makeStory({ factory_state: 'needs_refinement' });
       const user = userEvent.setup();
-      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+      render(<StoryCard projectColor="blue" story={story} onOpenSession={onOpenSession} />);
 
       await user.click(screen.getByRole('button', { name: /refine/i }));
 
@@ -197,7 +244,7 @@ describe('StoryCard', () => {
       const onOpenSession = jest.fn(() => Promise.resolve());
       const story = makeStory({ factory_state: 'ready_for_dev' });
       const user = userEvent.setup();
-      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+      render(<StoryCard projectColor="blue" story={story} onOpenSession={onOpenSession} />);
 
       await user.click(screen.getByRole('button', { name: /implement/i }));
 
@@ -210,6 +257,7 @@ describe('StoryCard', () => {
       const user = userEvent.setup();
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({ factory_state: 'needs_refinement' })}
           onOpen={onOpen}
           onOpenSession={onOpenSession}
@@ -228,6 +276,7 @@ describe('StoryCard', () => {
       const user = userEvent.setup();
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({ factory_state: 'needs_refinement' })}
           onOpenSession={onOpenSession}
         />,
@@ -247,6 +296,7 @@ describe('StoryCard', () => {
       const user = userEvent.setup();
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({ factory_state: 'needs_refinement' })}
           onOpenSession={onOpenSession}
         />,
@@ -265,29 +315,37 @@ describe('StoryCard', () => {
 
   describe('a spike story', () => {
     it('carries a muted Spike badge immediately after the ref, in every state', () => {
-      const { rerender } = render(<StoryCard story={makeSpike()} />);
+      const { rerender } = render(<StoryCard projectColor="blue" story={makeSpike()} />);
       const badge = screen.getByText('Spike');
-      // Position and tone are both requirements: the badge sits right after the teal ref, and
+      // Position and tone are both requirements: the badge sits right after the ref, and
       // it is the muted pill — it labels a category, so it must not take the accent.
       expect(badge.previousElementSibling).toHaveTextContent('ALF-42');
       expect(badge).toHaveClass('border-border/70', 'text-muted-foreground');
 
-      rerender(<StoryCard story={makeSpike({ factory_state: 'ready_for_review' })} />);
+      rerender(
+        <StoryCard projectColor="blue" story={makeSpike({ factory_state: 'ready_for_review' })} />,
+      );
       expect(screen.getByText('Spike')).toBeInTheDocument();
 
-      rerender(<StoryCard story={makeSpike({ factory_state: 'done' })} />);
+      rerender(<StoryCard projectColor="blue" story={makeSpike({ factory_state: 'done' })} />);
       expect(screen.getByText('Spike')).toBeInTheDocument();
     });
 
     it('renders no badge on an ordinary story', () => {
-      render(<StoryCard story={makeStory()} />);
+      render(<StoryCard projectColor="blue" story={makeStory()} />);
       expect(screen.queryByText('Spike')).not.toBeInTheDocument();
     });
 
     it.each(['needs_refinement', 'ready_for_dev'] as const)(
       'offers exactly one launch control in %s — Run spike in Claude Code',
       (factory_state) => {
-        render(<StoryCard story={makeSpike({ factory_state })} onOpenSession={jest.fn()} />);
+        render(
+          <StoryCard
+            projectColor="blue"
+            story={makeSpike({ factory_state })}
+            onOpenSession={jest.fn()}
+          />,
+        );
 
         const launches = screen.getAllByRole('button', {
           name: /claude code|skip to development/i,
@@ -297,7 +355,7 @@ describe('StoryCard', () => {
     );
 
     it('never offers Refine, Skip to Development or Implement', () => {
-      render(<StoryCard story={makeSpike()} onOpenSession={jest.fn()} />);
+      render(<StoryCard projectColor="blue" story={makeSpike()} onOpenSession={jest.fn()} />);
 
       expect(
         screen.queryByRole('button', { name: /refine in claude code/i }),
@@ -312,7 +370,7 @@ describe('StoryCard', () => {
       const onOpenSession = jest.fn();
       const story = makeSpike();
       const user = userEvent.setup();
-      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+      render(<StoryCard projectColor="blue" story={story} onOpenSession={onOpenSession} />);
 
       await user.click(screen.getByRole('button', { name: /run spike in claude code/i }));
 
@@ -323,7 +381,9 @@ describe('StoryCard', () => {
 
     it('offers nothing to launch once the spike is running or finished', () => {
       for (const factory_state of ['in_development', 'ready_for_review', 'done'] as const) {
-        const { unmount } = render(<StoryCard story={makeSpike({ factory_state })} />);
+        const { unmount } = render(
+          <StoryCard projectColor="blue" story={makeSpike({ factory_state })} />,
+        );
         expect(screen.queryByRole('button', { name: /claude code/i })).not.toBeInTheDocument();
         unmount();
       }
@@ -332,7 +392,7 @@ describe('StoryCard', () => {
 
   describe('a bug story', () => {
     it('carries a muted-red Bug badge immediately after the ref, in every state', () => {
-      const { rerender } = render(<StoryCard story={makeBug()} />);
+      const { rerender } = render(<StoryCard projectColor="blue" story={makeBug()} />);
       const badge = screen.getByText('Bug');
       // Same position and shape as the Spike badge — the two kinds are one family — and the
       // OUTLINE red, not the filled `destructive` the Abandoned tag wears.
@@ -340,25 +400,33 @@ describe('StoryCard', () => {
       expect(badge).toHaveClass('border-destructive/50', 'text-destructive');
       expect(badge).not.toHaveClass('bg-destructive/15');
 
-      rerender(<StoryCard story={makeBug({ factory_state: 'ready_for_review' })} />);
+      rerender(
+        <StoryCard projectColor="blue" story={makeBug({ factory_state: 'ready_for_review' })} />,
+      );
       expect(screen.getByText('Bug')).toBeInTheDocument();
 
-      rerender(<StoryCard story={makeBug({ factory_state: 'done' })} />);
+      rerender(<StoryCard projectColor="blue" story={makeBug({ factory_state: 'done' })} />);
       expect(screen.getByText('Bug')).toBeInTheDocument();
     });
 
     it('renders no badge on an ordinary story or a spike', () => {
-      const { rerender } = render(<StoryCard story={makeStory()} />);
+      const { rerender } = render(<StoryCard projectColor="blue" story={makeStory()} />);
       expect(screen.queryByText('Bug')).not.toBeInTheDocument();
 
-      rerender(<StoryCard story={makeSpike()} />);
+      rerender(<StoryCard projectColor="blue" story={makeSpike()} />);
       expect(screen.queryByText('Bug')).not.toBeInTheDocument();
     });
 
     it.each(['needs_refinement', 'ready_for_dev'] as const)(
       'offers exactly one launch control in %s — Fix bug in Claude Code',
       (factory_state) => {
-        render(<StoryCard story={makeBug({ factory_state })} onOpenSession={jest.fn()} />);
+        render(
+          <StoryCard
+            projectColor="blue"
+            story={makeBug({ factory_state })}
+            onOpenSession={jest.fn()}
+          />,
+        );
 
         const launches = screen.getAllByRole('button', {
           name: /claude code|skip to development/i,
@@ -368,7 +436,7 @@ describe('StoryCard', () => {
     );
 
     it('never offers Refine, Skip to Development or Implement', () => {
-      render(<StoryCard story={makeBug()} onOpenSession={jest.fn()} />);
+      render(<StoryCard projectColor="blue" story={makeBug()} onOpenSession={jest.fn()} />);
 
       expect(
         screen.queryByRole('button', { name: /refine in claude code/i }),
@@ -383,7 +451,7 @@ describe('StoryCard', () => {
       const onOpenSession = jest.fn();
       const story = makeBug();
       const user = userEvent.setup();
-      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+      render(<StoryCard projectColor="blue" story={story} onOpenSession={onOpenSession} />);
 
       await user.click(screen.getByRole('button', { name: /fix bug in claude code/i }));
 
@@ -394,7 +462,9 @@ describe('StoryCard', () => {
 
     it('offers nothing to launch once the fix is running or finished', () => {
       for (const factory_state of ['in_development', 'ready_for_review', 'done'] as const) {
-        const { unmount } = render(<StoryCard story={makeBug({ factory_state })} />);
+        const { unmount } = render(
+          <StoryCard projectColor="blue" story={makeBug({ factory_state })} />,
+        );
         expect(screen.queryByRole('button', { name: /claude code/i })).not.toBeInTheDocument();
         unmount();
       }
@@ -408,6 +478,7 @@ describe('StoryCard', () => {
     it('links to the refinement PR in the in_refinement state', () => {
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({ factory_state: 'in_refinement', refinement_pr_url: REFINEMENT_PR })}
         />,
       );
@@ -420,6 +491,7 @@ describe('StoryCard', () => {
     it('links to the implementation PR in the ready_for_review state', () => {
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({
             factory_state: 'ready_for_review',
             implementation_pr_url: IMPLEMENTATION_PR,
@@ -435,6 +507,7 @@ describe('StoryCard', () => {
     it('shows no chip in a review state whose PR url is not recorded yet', () => {
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({ factory_state: 'in_refinement', refinement_pr_url: null })}
         />,
       );
@@ -445,6 +518,7 @@ describe('StoryCard', () => {
     it('shows no chip outside the review states even when a PR url is populated', () => {
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({
             factory_state: 'in_development',
             refinement_pr_url: REFINEMENT_PR,
@@ -461,6 +535,7 @@ describe('StoryCard', () => {
       const user = userEvent.setup();
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({ factory_state: 'in_refinement', refinement_pr_url: REFINEMENT_PR })}
           onOpen={onOpen}
         />,
@@ -480,6 +555,7 @@ describe('StoryCard', () => {
     it('is keyboard-focusable and carries the accent focus ring', () => {
       render(
         <StoryCard
+          projectColor="blue"
           story={makeStory({ factory_state: 'in_refinement', refinement_pr_url: REFINEMENT_PR })}
         />,
       );
