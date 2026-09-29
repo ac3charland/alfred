@@ -161,6 +161,27 @@ update reader_publications set enabled = false where handle = 'news@example.com'
   collapsed, first-occurrence order). `append_wiki_sent_ideas` stays until a later contract-step
   migration drops it.
 
+### `0041_reader_instapaper_source.sql` — Instapaper articles as Reader posts (ALF-272)
+
+An article the owner moves into the Instapaper folder "To Reader" becomes a Reader post, taken in
+and summarised by the Worker's Reader tick.
+
+- **`reader_posts.source`** — `gmail` (a newsletter) or `instapaper` (an article), defaulting to
+  `gmail`, so every earlier row reads as the newsletter it is.
+- **`reader_posts.site`** — an article's normalised host (lower-cased, `www.` dropped, a Substack
+  app link as `<name>.substack.com`), written once at intake. The eyebrow and the model's
+  `Publication:` line fall back to it; a later story links articles to publications by it.
+- **`publication_id`, `account_key`, `gmail_message_id` lose `not null`**, and
+  **`reader_posts_source_identity`** states what each source needs instead: a newsletter its whole
+  mail identity, an article its `instapaper_bookmark_id` and none of the mail identity. An
+  article's `publication_id` is left free for that later story.
+- **`reader_posts_instapaper_source_key`** — unique on `instapaper_bookmark_id` among articles, so
+  the insert is the claim; partial, so a newsletter holding the id of the bookmark its Send created
+  never collides. **`reader_posts_instapaper_bookmark_idx`** backs the tick's "already a post?"
+  read across both sources.
+- **`reader_health.instapaper_last_success_at` / `_last_error` / `_last_error_at`** — the To Reader
+  leg's own health, apart from the summariser's, read by the Reader header's Instapaper dot.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it.** `.github/workflows/migrate.yml` runs

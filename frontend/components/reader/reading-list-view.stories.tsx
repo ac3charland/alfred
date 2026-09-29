@@ -4,6 +4,7 @@ import { userEvent, within } from 'storybook/test';
 
 import { makeCommAccount } from '@/lib/comms/fixtures';
 import { makeReaderHealth, readerFixtureSet } from '@/lib/reader/fixtures';
+import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { ReaderHealthSnapshot, ReaderPost, ReaderPostListItem } from '@/lib/types';
@@ -94,7 +95,9 @@ export const Populated: Story = {
           initialHealth={healthySnapshot()}
           instapaperConfigured
         >
-          <Story />
+          <ReaderSettingsProvider initialPublications={[]} initialCandidates={[]}>
+            <Story />
+          </ReaderSettingsProvider>
         </ReaderProvider>
       </ToastProvider>
     ),
@@ -120,7 +123,9 @@ export const SelectedCollapsed: Story = {
           initialHealth={healthySnapshot()}
           instapaperConfigured
         >
-          <Story />
+          <ReaderSettingsProvider initialPublications={[]} initialCandidates={[]}>
+            <Story />
+          </ReaderSettingsProvider>
         </ReaderProvider>
       </ToastProvider>
     ),
@@ -144,7 +149,9 @@ export const SelectedExpanded: Story = {
           initialHealth={healthySnapshot()}
           instapaperConfigured
         >
-          <Story />
+          <ReaderSettingsProvider initialPublications={[]} initialCandidates={[]}>
+            <Story />
+          </ReaderSettingsProvider>
         </ReaderProvider>
       </ToastProvider>
     ),
@@ -164,7 +171,9 @@ export const Empty: Story = {
     (Story) => (
       <ToastProvider>
         <ReaderProvider initialPosts={[]} initialHealth={healthySnapshot()} instapaperConfigured>
-          <Story />
+          <ReaderSettingsProvider initialPublications={[]} initialCandidates={[]}>
+            <Story />
+          </ReaderSettingsProvider>
         </ReaderProvider>
       </ToastProvider>
     ),

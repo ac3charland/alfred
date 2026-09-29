@@ -1,6 +1,6 @@
 import { type FetchInit, type FetchInput, spyOnFetch } from '../fetch-stub';
 import type { SupabaseEnv } from '../supabase';
-import { recordRunError, recordRunStart, recordRunSuccess } from './health';
+import { recordInstapaperHealth, recordRunError, recordRunStart, recordRunSuccess } from './health';
 
 const env: SupabaseEnv = {
   SUPABASE_URL: 'https://proj.supabase.co',
@@ -144,5 +144,75 @@ describe('the ceiling stamp', () => {
     await recordRunError(env, NOW, 'READER_MODEL is not set', { daily_cap: 30 });
 
     expect(Object.keys(calls[0]?.body ?? {})).toEqual(['last_error', 'last_error_at', 'daily_cap']);
+  });
+});
+
+describe('the To Reader leg’s health', () => {
+  const NOW_ISO = NOW.toISOString();
+
+  it('rides the closing success write: a clean leg stamps its own success beside the tick’s', async () => {
+    const calls = harness(() => Response.json([{ id: 1 }]));
+
+    await recordRunSuccess(env, NOW, { daily_cap: 30 }, { kind: 'success' });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.body).toEqual({
+      last_success_at: NOW_ISO,
+      daily_cap: 30,
+      instapaper_last_success_at: NOW_ISO,
+    });
+  });
+
+  it('rides the closing error write: an Instapaper failure never touches the summariser’s columns', async () => {
+    const calls = harness(() => Response.json([{ id: 1 }]));
+
+    await recordRunSuccess(env, NOW, undefined, {
+      kind: 'error',
+      error: "Instapaper rejected alfred's credentials",
+    });
+    await recordRunError(env, NOW, 'gmail: 401', undefined, { kind: 'success' });
+
+    expect(calls[0]?.body).toEqual({
+      last_success_at: NOW_ISO,
+      instapaper_last_error: "Instapaper rejected alfred's credentials",
+      instapaper_last_error_at: NOW_ISO,
+    });
+    expect(calls[1]?.body).toEqual({
+      last_error: 'gmail: 401',
+      last_error_at: NOW_ISO,
+      instapaper_last_success_at: NOW_ISO,
+    });
+  });
+
+  it('writes nothing of its own when the leg had no outcome', async () => {
+    const calls = harness(() => Response.json([{ id: 1 }]));
+
+    await recordRunSuccess(env, NOW);
+
+    expect(Object.keys(calls[0]?.body ?? {})).toEqual(['last_success_at']);
+  });
+
+  it('stands alone on a path with no closing write, carrying only the leg’s columns', async () => {
+    const calls = harness(() => Response.json([{ id: 1 }]));
+
+    await recordInstapaperHealth(env, NOW, {
+      kind: 'error',
+      error: 'there is no “To Reader” folder in Instapaper',
+    });
+
+    expect(calls[0]?.method).toBe('PATCH');
+    expect(calls[0]?.url).toContain('/reader_health?id=eq.1');
+    expect(calls[0]?.body).toEqual({
+      instapaper_last_error: 'there is no “To Reader” folder in Instapaper',
+      instapaper_last_error_at: NOW_ISO,
+    });
+  });
+
+  it('swallows a failed stand-alone write, like every health write', async () => {
+    harness(() => new Response('nope', { status: 500 }));
+    const logged = jest.spyOn(console, 'error').mockImplementation(NOTHING);
+
+    await expect(recordInstapaperHealth(env, NOW, { kind: 'success' })).resolves.toBeUndefined();
+    expect(logged).toHaveBeenCalled();
   });
 });

@@ -165,7 +165,7 @@ describe('worker.fetch', () => {
     });
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; wiki ac3charland/knowledge)',
+      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; wiki ac3charland/knowledge)',
     );
   });
 
@@ -175,7 +175,7 @@ describe('worker.fetch', () => {
     const { response } = await invoke(new Request('https://worker.dev/'));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; wiki ac3charland/knowledge)',
+      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; wiki ac3charland/knowledge)',
     );
   });
 
@@ -190,8 +190,29 @@ describe('worker.fetch', () => {
       CLASSIFIER_TIMEZONE: 'Europe/London',
     });
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30; wiki ac3charland/knowledge)',
+      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; wiki ac3charland/knowledge)',
     );
+  });
+
+  it('GET / says whether the To Reader leg has its four Instapaper secrets, never what they are', async () => {
+    const secrets = {
+      INSTAPAPER_CONSUMER_KEY: 'ck-secret',
+      INSTAPAPER_CONSUMER_SECRET: 'cs-secret',
+      INSTAPAPER_ACCESS_TOKEN: 'tk-secret',
+      INSTAPAPER_ACCESS_TOKEN_SECRET: 'ts-secret',
+    };
+    const configured = await invoke(new Request('https://worker.dev/'), { ...env, ...secrets });
+    const text = await configured.response.text();
+    expect(text).toContain('; instapaper configured; ');
+    for (const value of Object.values(secrets)) expect(text).not.toContain(value);
+
+    // A blank secret is a missing one — the leg is off, and says so.
+    const blank = await invoke(new Request('https://worker.dev/'), {
+      ...env,
+      ...secrets,
+      INSTAPAPER_ACCESS_TOKEN: '  ',
+    });
+    expect(await blank.response.text()).toContain('; instapaper unconfigured; ');
   });
 
   it('404s an unknown route', async () => {
@@ -1031,7 +1052,7 @@ describe('worker.scheduled', () => {
   });
 
   it('runs only the reader tick on the reader cron, with the tick instant and nothing else', async () => {
-    // The reader tick spends up to ~45 of an invocation's 50 subrequests, so it can share with
+    // The reader tick spends up to 48 of an invocation's 50 subrequests, so it can share with
     // nothing: not the classifier sweep, not the judge pass, not the poll.
     const fetchSpy = spyOnFetch().mockResolvedValue(Response.json([]));
     const reader = jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
@@ -1088,6 +1109,63 @@ describe('worker.scheduled', () => {
         '0 uncounted, 0 waiting on the cap, 0 left for the budget',
     ]);
     expect(errors).toEqual(['reader: gmail: 503 upstream']);
+  });
+
+  it('logs the To Reader leg as a second line of counts, and each Instapaper failure', async () => {
+    jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
+      discovered: 0,
+      intake: 0,
+      summarized: 2,
+      refused: 0,
+      countedFailures: 0,
+      uncountedFailures: 0,
+      skippedForCap: 0,
+      skippedForBudget: 0,
+      failures: [],
+      instapaper: {
+        listed: 3,
+        taken: 2,
+        archived: 2,
+        restored: 0,
+        failures: ['bookmarks/archive: unavailable (HTTP 500)'],
+      },
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(READER_CRON), env, ctx);
+
+    expect(logged[1]).toBe('reader instapaper: 3 listed, 2 taken in, 2 archived, 0 restored');
+    expect(errors).toEqual(['reader: instapaper: bookmarks/archive: unavailable (HTTP 500)']);
+  });
+
+  it('logs why the To Reader leg did not list, when it did not', async () => {
+    jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
+      discovered: 0,
+      intake: 0,
+      summarized: 0,
+      refused: 0,
+      countedFailures: 0,
+      uncountedFailures: 0,
+      skippedForCap: 0,
+      skippedForBudget: 0,
+      failures: [],
+      instapaper: { skipped: 'no free slot' },
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(READER_CRON), env, ctx);
+
+    expect(logged[1]).toBe('reader instapaper: skipped (no free slot)');
   });
 
   it('logs what each retention sweep did, comms then reader', async () => {

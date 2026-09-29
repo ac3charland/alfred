@@ -11,6 +11,16 @@
  *   npm run eval:reader -w workers -- --fixtures            # replay the committed set, still billed
  *   npm run eval:reader -w workers -- --fixtures --dry-run  # extraction only: no key, no bill, no file
  *   npm run eval:reader -w workers -- --query … --model claude-opus-5
+ *   npm run eval:reader -w workers -- --instapaper --limit 1   # the To Reader folder, oldest first
+ *   npm run eval:reader -w workers -- --instapaper --dry-run   # its text only: no key, no bill
+ *
+ * `--instapaper` reads the Instapaper folder the Reader's To Reader leg takes articles from, with
+ * the four `INSTAPAPER_*` values from `.dev.vars` or the environment, and prints what the tick
+ * would store and summarise for each bookmark. It is the leg without its writes: it never archives
+ * a bookmark, never inserts a post and writes no results file, so the articles are still in To
+ * Reader, untouched, when it finishes — which is what makes it safe to run against the owner's
+ * real folder before the Worker ever has the secrets. `INSTAPAPER_API_URL` points it at a
+ * stand-in instead of Instapaper, as the app's own var of that name does for the E2E suite.
  *
  * Two modes matter for different reasons. Against the MAILBOX it is the only way to see the
  * extractor meet templates nobody hand-built — the checkpoint asks the owner for five real posts,
@@ -26,9 +36,19 @@ import { fileURLToPath } from 'node:url';
 import { headerValue, parseAddress } from '../src/comms/email-text.ts';
 import { type GmailMessage, gmailClient } from '../src/comms/gmail-api.ts';
 import { fetchAccessToken } from '../src/comms/gmail-oauth.ts';
+import { instapaperClient, instapaperCredentials } from '../src/instapaper/client.ts';
 import { type ExtractedPost, extractPost } from '../src/reader/extract.ts';
 import { READER_FIXTURES } from '../src/reader/fixtures/index.ts';
 import { summarizePost } from '../src/reader/summarize.ts';
+import {
+  NO_FOLDER_ERROR,
+  articlePublication,
+  articleText,
+  articleTitle,
+  articleUrl,
+  listToReader,
+  siteOf,
+} from '../src/reader/to-reader.ts';
 import type { SummaryInput, SummaryOutcome } from '../src/reader/types.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -82,7 +102,15 @@ function credential(name: string): string {
 }
 
 /** Every flag this script knows, so a value can be told from the next flag by name. */
-const FLAGS = new Set(['--query', '--limit', '--ids', '--fixtures', '--dry-run', '--model']);
+const FLAGS = new Set([
+  '--query',
+  '--limit',
+  '--ids',
+  '--fixtures',
+  '--instapaper',
+  '--dry-run',
+  '--model',
+]);
 
 /**
  * The value after a flag, or undefined when the flag is absent, trailing, or followed by one of
@@ -121,6 +149,7 @@ function chosenModel(): string {
 /** What one run was asked to do. */
 interface Options {
   fixtures: boolean;
+  instapaper: boolean;
   dryRun: boolean;
   model: string;
   query?: string;
@@ -160,6 +189,7 @@ function readOptions(): Options | undefined {
   const query = flagValue('--query');
   return {
     fixtures: hasFlag('--fixtures'),
+    instapaper: hasFlag('--instapaper'),
     dryRun: hasFlag('--dry-run'),
     model: chosenModel(),
     ...(query === undefined ? {} : { query }),
@@ -321,6 +351,85 @@ async function mailboxCandidates(options: Options): Promise<Candidate[] | undefi
   return candidates;
 }
 
+/**
+ * The To Reader folder, as the tick would take it: oldest first, `--limit` of them, each read
+ * through get_text and stripped the way the tick strips it, then summarised under the same
+ * publication name the tick would give it. Read-only from end to end.
+ */
+async function runInstapaper(options: Options, apiKey: string): Promise<boolean> {
+  const credentials = instapaperCredentials({
+    INSTAPAPER_CONSUMER_KEY: credential('INSTAPAPER_CONSUMER_KEY'),
+    INSTAPAPER_CONSUMER_SECRET: credential('INSTAPAPER_CONSUMER_SECRET'),
+    INSTAPAPER_ACCESS_TOKEN: credential('INSTAPAPER_ACCESS_TOKEN'),
+    INSTAPAPER_ACCESS_TOKEN_SECRET: credential('INSTAPAPER_ACCESS_TOKEN_SECRET'),
+  });
+  if (credentials === undefined) {
+    console.error(
+      'Missing one of INSTAPAPER_CONSUMER_KEY, _CONSUMER_SECRET, _ACCESS_TOKEN, ' +
+        '_ACCESS_TOKEN_SECRET in workers/.dev.vars or the environment.',
+    );
+    return false;
+  }
+
+  const baseUrl = credential('INSTAPAPER_API_URL');
+  const api = instapaperClient(credentials, baseUrl === '' ? {} : { baseUrl });
+  let listing: Awaited<ReturnType<typeof listToReader>>;
+  try {
+    listing = await listToReader(api, options.limit);
+  } catch (error) {
+    console.error(
+      `Could not list To Reader: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return false;
+  }
+  if (listing.kind === 'no-folder') {
+    console.error(`Nothing to read: ${NO_FOLDER_ERROR}.`);
+    return false;
+  }
+  console.log(
+    `${String(listing.listed)} in To Reader; reading ${String(listing.marks.length)}, oldest first\n`,
+  );
+
+  const receivedAt = new Date().toISOString();
+  for (const bookmark of listing.marks) {
+    let html: string | undefined;
+    try {
+      html = await api.getText(bookmark.bookmarkId);
+    } catch (error) {
+      console.error(
+        `get_text ${String(bookmark.bookmarkId)} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      continue;
+    }
+
+    const site = siteOf(bookmark.url);
+    const title = articleTitle(bookmark.title, site);
+    const { text, word_count: wordCount } =
+      html === undefined ? { text: '', word_count: 0 } : articleText(html);
+    const publication = articlePublication(undefined, site, new Map());
+    console.log(`bookmark ${String(bookmark.bookmarkId)}`);
+    console.log(`  ${pad('publication')}${publication}`);
+    console.log(`  ${pad('title')}${title}`);
+    console.log(`  ${pad('site')}${site ?? '(none)'}`);
+    console.log(`  ${pad('URL')}${articleUrl(bookmark.url) ?? '(none)'}`);
+    console.log(`  ${pad('word count')}${String(wordCount)}`);
+
+    if (text === '') {
+      console.log(
+        `  ${pad('OUTCOME')}no readable body${html === undefined ? ' (error 1550)' : ''}`,
+      );
+    } else if (!options.dryRun) {
+      const outcome = await summarizePost(
+        { publication, title, receivedAt, wordCount, text },
+        { apiKey, model: options.model },
+      );
+      printSummary(options.model, outcome);
+    }
+    console.log('');
+  }
+  return true;
+}
+
 /** One post's row in the results file. */
 interface ResultRow {
   label: string;
@@ -344,8 +453,15 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!options.fixtures && options.ids.length === 0 && options.query === undefined) {
-    console.error('Nothing to read. Pass --fixtures, or --query "<gmail search>", or --ids a,b,c.');
+  if (
+    !options.fixtures &&
+    !options.instapaper &&
+    options.ids.length === 0 &&
+    options.query === undefined
+  ) {
+    console.error(
+      'Nothing to read. Pass --fixtures, --instapaper, --query "<gmail search>", or --ids a,b,c.',
+    );
     process.exitCode = 1;
     return;
   }
@@ -357,6 +473,14 @@ async function main(): Promise<void> {
     console.error('No ANTHROPIC_API_KEY in workers/.dev.vars or the environment.');
     console.error('Add one, or pass --dry-run to stop after extraction.');
     process.exitCode = 1;
+    return;
+  }
+
+  if (options.instapaper) {
+    console.log(
+      `reader eval — Instapaper To Reader${options.dryRun ? ', text only' : `, model ${options.model}`}`,
+    );
+    if (!(await runInstapaper(options, apiKey))) process.exitCode = 1;
     return;
   }
 

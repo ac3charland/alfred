@@ -7,13 +7,19 @@ import { textToHtml } from './content';
 import { signRequest } from './oauth';
 
 /**
- * Saving one Reader post to Instapaper through its Full API (`POST /api/1/bookmarks/add`).
+ * Saving one Reader post to Instapaper through its Full API.
  *
- * The request carries the post's own body as `content`, so Instapaper parses the article out of
- * the email the owner received — the same thing its email-in feature does with a forwarded
- * newsletter — instead of fetching the web page, which for a paid post is the paywall's teaser.
- * No tags and no folder: a sent post lands in Unread like anything else the owner saves, and a
- * tag is left for the owner to apply by hand as an act of choosing.
+ * A newsletter is saved with `POST /api/1/bookmarks/add`, carrying the post's own body as
+ * `content`, so Instapaper parses the article out of the email the owner received — the same
+ * thing its email-in feature does with a forwarded newsletter — instead of fetching the web page,
+ * which for a paid post is the paywall's teaser. No tags and no folder: a sent post lands in
+ * Unread like anything else the owner saves, and a tag is left for the owner to apply by hand as
+ * an act of choosing.
+ *
+ * An article that came in through the Instapaper folder "To Reader" is already the owner's
+ * bookmark — the Worker archived it when it took it in — so its send is `bookmarks/unarchive`:
+ * the owner's own bookmark back at the top of Unread, with its progress and highlights, and no
+ * body uploaded. Only when the owner has deleted that bookmark is it saved again, by URL.
  */
 
 /** What a send reads off the post: the route's own select, never the list payload. */
@@ -27,6 +33,9 @@ export interface BookmarkSource {
 
 /** How long a send waits on Instapaper before telling the owner it didn't answer. */
 const TIMEOUT_MS = 15_000;
+
+/** "Invalid or missing bookmark_id": the owner deleted the bookmark in Instapaper. */
+const NO_SUCH_BOOKMARK = 1241;
 
 /**
  * The body a send carries, down a ladder: the email's HTML, else the stored text as paragraphs
@@ -131,11 +140,59 @@ function readAnswer(status: number, raw: string): AddBookmarkOutcome {
  * Save one bookmark. Never throws: a timeout, a network failure and every answer Instapaper can
  * give come back as an outcome, so the route has exactly one thing to switch on.
  */
-export async function addBookmark(
+export function addBookmark(
   config: InstapaperConfig,
   params: Readonly<Record<string, string>>,
 ): Promise<AddBookmarkOutcome> {
-  const url = `${config.apiUrl}/api/1/bookmarks/add`;
+  return postForm(config, '/api/1/bookmarks/add', params);
+}
+
+/** What moving a bookmark back to Unread came to — a save's outcomes, or a bookmark that is gone. */
+export type UnarchiveOutcome = AddBookmarkOutcome | { kind: 'gone' };
+
+/**
+ * Move one of the owner's own bookmarks from Instapaper's Archive back to the top of Unread.
+ * Answers with the bookmark, like a save; `gone` when the owner has deleted it since.
+ */
+export async function unarchiveBookmark(
+  config: InstapaperConfig,
+  bookmarkId: number,
+): Promise<UnarchiveOutcome> {
+  const outcome = await postForm(config, '/api/1/bookmarks/unarchive', {
+    bookmark_id: String(bookmarkId),
+  });
+  return outcome.kind === 'unavailable' && outcome.code === NO_SUCH_BOOKMARK
+    ? { kind: 'gone' }
+    : outcome;
+}
+
+/**
+ * An article's send: its bookmark back to Unread, or — when the owner deleted that bookmark — a
+ * new one saved by URL with no content, so Instapaper fetches the page as it did the first time.
+ * The stored text is Instapaper's own text view, never a better body than the page; it is sent
+ * only for a bookmark that never had a URL. Null when the bookmark is gone and there is nothing
+ * to save in its place. The answer's bookmark id is the one the post holds from here on.
+ */
+export async function restoreOrResave(
+  config: InstapaperConfig,
+  post: BookmarkSource,
+  bookmarkId: number,
+): Promise<AddBookmarkOutcome | null> {
+  const restored = await unarchiveBookmark(config, bookmarkId);
+  if (restored.kind !== 'gone') return restored;
+
+  const byUrl = postWebUrl(post) !== undefined;
+  const params = buildBookmarkParams(byUrl ? { ...post, html: null, text: null } : post);
+  return params === null ? null : addBookmark(config, params);
+}
+
+/** One signed form POST to Instapaper, read into an outcome. Never throws. */
+async function postForm(
+  config: InstapaperConfig,
+  path: string,
+  params: Readonly<Record<string, string>>,
+): Promise<AddBookmarkOutcome> {
+  const url = `${config.apiUrl}${path}`;
   try {
     const response = await fetch(url, {
       method: 'POST',

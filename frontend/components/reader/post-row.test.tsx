@@ -3,7 +3,13 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { makeReaderOverview, makeReaderPost, resetReaderFixtureClock } from '@/lib/reader/fixtures';
+import {
+  makeReaderArticle,
+  makeReaderOverview,
+  makeReaderPost,
+  makeReaderPublicationListItem,
+  resetReaderFixtureClock,
+} from '@/lib/reader/fixtures';
 import { stableSorted } from '@/lib/sort';
 import { useArchivedPosts, useReaderPosts } from '@/lib/stores/reader-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
@@ -54,6 +60,94 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+/** An Instapaper article, as the list carries it. */
+function article(overrides: Parameters<typeof makeReaderArticle>[0] = {}): ReaderPostListItem {
+  const { text: _text, html: _html, ...listItem } = makeReaderArticle(overrides);
+  return listItem;
+}
+
+describe('PostRow — an article from To Reader', () => {
+  const SUMMARISED = {
+    received_at: '2026-09-18T08:30:00.000Z',
+    word_count: 2760,
+    summary_state: 'done',
+    gist: 'Street noise tracks foot traffic, not ordinances.',
+    overview: makeReaderOverview(),
+  } as const;
+
+  it('carries its site as the eyebrow and says how it got here at the end of the meta line', () => {
+    renderReader(
+      <PostRow post={article({ ...SUMMARISED, site: 'worksinprogress.co' })} now={NOW} />,
+    );
+
+    expect(screen.getByText('worksinprogress.co')).toBeInTheDocument();
+    expect(screen.getByText('Sep 18 · 12 min read · via Instapaper')).toBeInTheDocument();
+  });
+
+  it('names its publication instead, once the article is linked to one', () => {
+    const publication = makeReaderPublicationListItem('Works in Progress');
+    renderReader(
+      <PostRow
+        post={article({
+          ...SUMMARISED,
+          publication_id: publication.id,
+          site: 'worksinprogress.co',
+        })}
+        now={NOW}
+      />,
+      [],
+      undefined,
+      { publications: [publication] },
+    );
+
+    expect(screen.getByText('Works in Progress')).toBeInTheDocument();
+    expect(screen.queryByText('worksinprogress.co')).not.toBeInTheDocument();
+    // The summary is the one it already had: linking renames the row, it never re-summarises.
+    expect(
+      screen.getByText('Street noise tracks foot traffic, not ordinances.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the verb every row has — Send to Instapaper, on i — even with no link and no body', () => {
+    renderReader(
+      <PostRow
+        post={article({ ...SUMMARISED, canonical_url: null, word_count: 0 })}
+        now={NOW}
+        selected
+      />,
+    );
+
+    const send = screen.getByRole('button', { name: 'Send to Instapaper' });
+    expect(send).toBeEnabled();
+    expect(within(send).getByText('i')).toBeInTheDocument();
+  });
+
+  it('shows the newsletter floor states unchanged on an article with no text', () => {
+    renderReader(
+      <PostRow
+        post={article({
+          summary_state: 'failed',
+          last_error: 'no readable body',
+          word_count: 0,
+          canonical_url: 'https://example.org/a-page',
+          site: 'example.org',
+        })}
+        now={NOW}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'No summary — no readable body. The post is still here; send it or archive it.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Original/ })).toHaveAttribute(
+      'href',
+      'https://example.org/a-page',
+    );
+  });
+});
+
 describe('PostRow — the collapsed row', () => {
   it('shows the author eyebrow, the date · read-time meta line, the title and the gist', () => {
     renderReader(
@@ -72,7 +166,9 @@ describe('PostRow — the collapsed row', () => {
     );
 
     expect(screen.getByText('Second Thoughts')).toBeInTheDocument();
+    // A newsletter's meta line is unchanged: only an article says how it got here.
     expect(screen.getByText('Sep 16 · 14 min read')).toBeInTheDocument();
+    expect(screen.queryByText(/via Instapaper/)).not.toBeInTheDocument();
     expect(screen.getByText('How near is the intelligence explosion, really?')).toBeInTheDocument();
     expect(
       screen.getByText('Argues the debate conflates three different feedback loops.'),

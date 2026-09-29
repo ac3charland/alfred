@@ -23,6 +23,7 @@
  * lets them be built apart and meet at one signature.
  */
 import type { GmailEnv } from '../comms/gmail';
+import type { InstapaperEnv } from '../instapaper/types';
 import type { SupabaseEnv } from '../supabase';
 
 /**
@@ -53,13 +54,26 @@ export interface ReaderPublication {
   created_at: string;
 }
 
+/**
+ * Where a post came from: a newsletter in the Gmail mirror, or an article the owner moved into the
+ * "To Reader" folder in Instapaper. `reader_posts_source_identity` CHECKs what each one carries.
+ */
+export type ReaderPostSource = 'gmail' | 'instapaper';
+
 /** A stored post: every column of `reader_posts`, with its nulls already mapped to `undefined`. */
 export interface ReaderPost {
   id: string;
-  publication_id: string;
+  source: ReaderPostSource;
+  /** Required for a newsletter; for an article, set only once something links its site to one. */
+  publication_id?: string | undefined;
   comm_message_id?: string | undefined;
-  account_key: string;
-  gmail_message_id: string;
+  /** A newsletter's dedupe key, with `gmail_message_id`. Absent on an article. */
+  account_key?: string | undefined;
+  gmail_message_id?: string | undefined;
+  /** An article's normalised host, written once at intake. Absent on a newsletter. */
+  site?: string | undefined;
+  /** An article's identity; on a newsletter, the bookmark its Send created. */
+  instapaper_bookmark_id?: number | undefined;
   rfc822_message_id?: string | undefined;
   title: string;
   author?: string | undefined;
@@ -94,6 +108,11 @@ export interface ReaderHealth {
   last_success_at?: string | undefined;
   last_error?: string | undefined;
   last_error_at?: string | undefined;
+  /** The To Reader leg's last clean pass. Its own columns: newsletters flow while Instapaper fails. */
+  instapaper_last_success_at?: string | undefined;
+  /** The leg's last Instapaper failure, in the owner's words. */
+  instapaper_last_error?: string | undefined;
+  instapaper_last_error_at?: string | undefined;
   /** The cap this tick enforced — so nothing reading the row has to know the deploy var. */
   daily_cap?: number | undefined;
   /** Model calls made for `calls_day`, as the tick last counted them. */
@@ -140,8 +159,11 @@ export interface DiscoveryRow {
   message_count: number;
 }
 
-/** The Worker's env bindings for the Reader tick: Supabase, Gmail, and the model call. */
-export interface ReaderEnv extends SupabaseEnv, GmailEnv {
+/**
+ * The Worker's env bindings for the Reader tick: Supabase, Gmail, the model call, and the four
+ * Instapaper secrets the To Reader leg runs on (all four, or the leg is off).
+ */
+export interface ReaderEnv extends SupabaseEnv, GmailEnv, InstapaperEnv {
   ANTHROPIC_API_KEY?: string;
   READER_MODEL?: string;
   READER_DAILY_CAP?: string;

@@ -67,11 +67,12 @@ export function makeReaderPublication(
 }
 
 /**
- * A post. Defaults to a fresh, unsummarised row — every state the list renders (done, failed,
- * refused) is stated explicitly via `overrides`, exactly as `makeCommMessage` defaults to unjudged.
+ * A post. Defaults to a fresh, unsummarised newsletter — every state the list renders (done,
+ * failed, refused) is stated explicitly via `overrides`, exactly as `makeCommMessage` defaults to
+ * unjudged. An Instapaper article is {@link makeReaderArticle}'s.
  */
 export function makeReaderPost(
-  publicationId: string,
+  publicationId: string | null,
   // `overview` is typed as the concrete shape it holds rather than the generated `Json | null`,
   // so a caller (readerFixtureSet, a test, a story) can pass `makeReaderOverview(...)` straight
   // through instead of casting at every call site — this function does the one cast the column's
@@ -81,7 +82,9 @@ export function makeReaderPost(
   const receivedAt = overrides.received_at ?? nextRecentTimestamp();
   return {
     id: overrides.id ?? crypto.randomUUID(),
+    source: overrides.source ?? 'gmail',
     publication_id: publicationId,
+    site: overrides.site ?? null,
     comm_message_id: overrides.comm_message_id ?? null,
     account_key: overrides.account_key ?? 'gmail-personal',
     gmail_message_id: overrides.gmail_message_id ?? crypto.randomUUID(),
@@ -113,6 +116,38 @@ export function makeReaderPost(
     wiki_sent_ideas: overrides.wiki_sent_ideas ?? [],
     wiki_sent_evidence: overrides.wiki_sent_evidence ?? [],
     created_at: overrides.created_at ?? receivedAt,
+  };
+}
+
+let bookmarkSequence = 900_000;
+
+/**
+ * An Instapaper article, as the To Reader leg writes one: its bookmark id and its site, none of a
+ * newsletter's mail identity, no author, and — until something links its site to a publication —
+ * no publication either. Defaults to a fresh, unsummarised article from worksinprogress.co; every
+ * state is stated via `overrides`, as for {@link makeReaderPost}.
+ */
+export function makeReaderArticle(
+  overrides: Partial<Omit<ReaderPost, 'overview'>> & { overview?: ReaderOverview | null } = {},
+): ReaderPost {
+  bookmarkSequence += 1;
+  const site = overrides.site === undefined ? 'worksinprogress.co' : overrides.site;
+  return {
+    ...makeReaderPost(overrides.publication_id ?? null, {
+      title: 'Cities Are Getting Quieter, and It’s Costing Them',
+      canonical_url: 'https://worksinprogress.co/issue/quiet-cities',
+      word_count: 2760,
+      html_extracted: true,
+      ...overrides,
+    }),
+    source: 'instapaper',
+    site,
+    account_key: null,
+    gmail_message_id: null,
+    comm_message_id: null,
+    rfc822_message_id: null,
+    html: null,
+    instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? bookmarkSequence,
   };
 }
 
@@ -226,7 +261,63 @@ export function makeReaderHealth(
     daily_cap: stated(overrides.daily_cap, preset === 'never' ? null : 30),
     calls_today: stated(overrides.calls_today, seeded ? null : spent),
     calls_day: stated(overrides.calls_day, seeded ? null : today),
+    // The To Reader leg's own columns: null on every preset, as on a deployment without the
+    // Instapaper secrets. {@link makeInstapaperHealth} states them.
+    instapaper_last_success_at: stated(overrides.instapaper_last_success_at, null),
+    instapaper_last_error: stated(overrides.instapaper_last_error, null),
+    instapaper_last_error_at: stated(overrides.instapaper_last_error_at, null),
   };
+}
+
+/**
+ * The states the To Reader leg's columns can be in: `live` (its last pass was clean), `erroring`
+ * (it stopped after succeeding), and `refused` (it has failed since it first ran and never
+ * succeeded — here, a missing folder).
+ */
+export type InstapaperHealthPreset = 'live' | 'erroring' | 'refused';
+
+/** The failure the `erroring` preset stamps, in the words the Worker writes. */
+export const INSTAPAPER_CREDENTIALS_ERROR = "Instapaper rejected alfred's credentials";
+
+/** The failure the `refused` preset stamps. */
+export const INSTAPAPER_NO_FOLDER_ERROR = 'there is no “To Reader” folder in Instapaper';
+
+/**
+ * The leg's three columns in one of its states, relative to `now`, to spread into
+ * {@link makeReaderHealth}'s overrides. `erroring` last succeeded 35 minutes ago and has failed
+ * every tick since, so its error is newer than that success.
+ */
+export function makeInstapaperHealth(
+  preset: InstapaperHealthPreset,
+  now: Date = new Date(READER_HEALTH_FIXTURE_NOW),
+): Pick<
+  ReaderHealth,
+  'instapaper_last_success_at' | 'instapaper_last_error' | 'instapaper_last_error_at'
+> {
+  const ago = (minutes: number) => new Date(now.getTime() - minutes * MINUTE_MS).toISOString();
+  switch (preset) {
+    case 'live': {
+      return {
+        instapaper_last_success_at: ago(3),
+        instapaper_last_error: null,
+        instapaper_last_error_at: null,
+      };
+    }
+    case 'erroring': {
+      return {
+        instapaper_last_success_at: ago(35),
+        instapaper_last_error: INSTAPAPER_CREDENTIALS_ERROR,
+        instapaper_last_error_at: ago(2),
+      };
+    }
+    case 'refused': {
+      return {
+        instapaper_last_success_at: null,
+        instapaper_last_error: INSTAPAPER_NO_FOLDER_ERROR,
+        instapaper_last_error_at: ago(2),
+      };
+    }
+  }
 }
 
 /** A `done` post's structured take. Defaults to the Import AI mockup's four sections. */
@@ -388,4 +479,54 @@ export function readerFixtureSet(): { publication: ReaderPublication; posts: Rea
     publication,
     posts: [doneWithLink, doneMailboxFallback, pending, failed, refused, doneNoLink],
   };
+}
+
+/**
+ * The To Reader leg's rows, one per state its articles reach the list in: summarised, just taken
+ * in and waiting on its summary, and filed failed because Instapaper had no text for it (error
+ * 1550). Titles and gists are the spec's plates. Separate from {@link readerFixtureSet} so the
+ * newsletter-only stories and suites keep their six rows exactly.
+ */
+export function readerArticleFixtureSet(): {
+  summarised: ReaderPost;
+  arriving: ReaderPost;
+  noText: ReaderPost;
+} {
+  const summarised = makeReaderArticle({
+    summary_state: 'done',
+    headline: 'Quieter downtowns are emptier downtowns, not better-regulated ones.',
+    gist:
+      'Argues that falling street-level noise in six US downtowns tracks lost foot traffic rather ' +
+      'than new ordinances, using city sensor data from 2019–2026. The sensor analysis is new; the ' +
+      'policy prescription is the familiar one. Read the data section; skip the last third.',
+    overview: makeReaderOverview({
+      novel_ideas: [
+        'Uses municipal noise sensors as a proxy for foot traffic, and finds the two move together ' +
+          'more closely than noise and enforcement do.',
+      ],
+      evidence: ['Sensor readings from six downtowns, 2019–2026, against ordinance dates.'],
+      argument:
+        'The quiet is a symptom of fewer people, not better rules, and the policy that follows ' +
+        'is to bring people back rather than to relax the rules.',
+      who_should_read: 'Anyone who works on downtown recovery or reads urban data for a living.',
+    }),
+    model: 'claude-sonnet-5',
+    prompt_version: 1,
+    model_called_at: nextTimestamp(),
+    summarized_at: nextTimestamp(),
+  });
+
+  const arriving = makeReaderArticle({ summary_state: 'pending' });
+
+  const noText = makeReaderArticle({
+    title: 'A page Instapaper couldn’t parse',
+    site: 'example.org',
+    canonical_url: 'https://example.org/interactive/a-page',
+    word_count: 0,
+    html_extracted: false,
+    summary_state: 'failed',
+    last_error: 'no readable body',
+  });
+
+  return { summarised, arriving, noText };
 }

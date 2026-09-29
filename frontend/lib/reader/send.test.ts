@@ -1,4 +1,4 @@
-import { makeReaderPost } from '@/lib/reader/fixtures';
+import { makeReaderArticle, makeReaderPost } from '@/lib/reader/fixtures';
 
 import { NOTHING_TO_SEND, NOT_CONFIGURED, sendUnavailable } from './send';
 
@@ -44,5 +44,13 @@ describe('sendUnavailable', () => {
       sendUnavailable(post({ ...link, text_swept_at: '2026-09-08T03:00:00.000Z' }), true),
     ).toBe(NOTHING_TO_SEND);
     expect(NOTHING_TO_SEND).toBe('No link and no stored text to send.');
+  });
+
+  it('is available for an Instapaper article whenever the deployment is configured', () => {
+    // Its send moves the owner's own bookmark back to Unread, so neither a link nor a body has
+    // to be in hand.
+    const article = makeReaderArticle({ canonical_url: null, word_count: 0 });
+    expect(sendUnavailable(article, true)).toBeUndefined();
+    expect(sendUnavailable(article, false)).toBe(NOT_CONFIGURED);
   });
 });

@@ -3,6 +3,7 @@ import * as React from 'react';
 import { userEvent, within } from 'storybook/test';
 
 import { NO_READER_HEALTH, makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
+import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ARCHIVE_READ_LIMIT, ReaderProvider } from '@/lib/stores/reader-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
@@ -105,7 +106,9 @@ function withArchiveReadOf(answer: () => Promise<unknown>): Decorator {
     return (
       <ToastProvider>
         <ReaderProvider initialPosts={[]} initialHealth={NO_READER_HEALTH} instapaperConfigured>
-          <Story />
+          <ReaderSettingsProvider initialPublications={[]} initialCandidates={[]}>
+            <Story />
+          </ReaderSettingsProvider>
         </ReaderProvider>
       </ToastProvider>
     );

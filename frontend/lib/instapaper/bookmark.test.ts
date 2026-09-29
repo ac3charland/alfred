@@ -4,7 +4,9 @@ import {
   type BookmarkSource,
   addBookmark,
   buildBookmarkParams,
+  restoreOrResave,
   sendFailureResponse,
+  unarchiveBookmark,
 } from './bookmark';
 import type { InstapaperConfig } from './config';
 
@@ -255,5 +257,155 @@ describe('sendFailureResponse', () => {
     if (outcome.kind === 'saved') throw new Error('expected a refusal');
     expect(JSON.stringify(outcome)).not.toContain('Internal wording');
     expect(sendFailureResponse(outcome).detail).not.toContain('Internal wording');
+  });
+});
+
+/** A JSON answer from Instapaper. */
+function answer(body: unknown, status = 200): Response {
+  return Response.json(body, { status });
+}
+
+/** Where a recorded request went, whichever form `fetch` was handed it in. */
+function urlOf(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
+/** Each recorded request, as the URL it went to and the form it carried. */
+function forms(spy: jest.SpiedFunction<typeof fetch>): [string, Record<string, string>][] {
+  return spy.mock.calls.map(([input, init]) => [
+    urlOf(input),
+    Object.fromEntries(new URLSearchParams(init?.body as string)),
+  ]);
+}
+
+describe('unarchiveBookmark', () => {
+  it('POSTs the bookmark id to bookmarks/unarchive, signed, with a timeout', async () => {
+    const fetchSpy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(answer([{ type: 'bookmark', bookmark_id: 42 }]));
+
+    await expect(unarchiveBookmark(CONFIG, 42)).resolves.toEqual({
+      kind: 'saved',
+      bookmarkId: 42,
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe('https://www.instapaper.com/api/1/bookmarks/unarchive');
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('Authorization')).toMatch(/^OAuth /);
+    expect(Object.fromEntries(new URLSearchParams(init?.body as string))).toEqual({
+      bookmark_id: '42',
+    });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('is gone when Instapaper has no such bookmark any more', async () => {
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(answer([{ type: 'error', error_code: 1241 }], 400));
+    await expect(unarchiveBookmark(CONFIG, 42)).resolves.toEqual({ kind: 'gone' });
+  });
+
+  it('reads every other answer the way a save reads it', async () => {
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(answer([{ type: 'error', error_code: 1040 }], 400))
+      .mockResolvedValueOnce(new Response('Bad gateway', { status: 502 }));
+
+    await expect(unarchiveBookmark(CONFIG, 42)).resolves.toEqual({
+      kind: 'refused',
+      refusal: 'rate-limited',
+      code: 1040,
+    });
+    await expect(unarchiveBookmark(CONFIG, 42)).resolves.toEqual({
+      kind: 'unavailable',
+      code: undefined,
+    });
+  });
+});
+
+describe('restoreOrResave', () => {
+  const ARTICLE: BookmarkSource = {
+    title: 'Cities Are Getting Quieter',
+    canonical_url: 'https://worksinprogress.co/issue/quiet-cities',
+    gist: 'Street noise tracks foot traffic, not ordinances.',
+    html: null,
+    text: 'The article, as Instapaper had it.',
+  };
+
+  it('moves the article’s own bookmark back to Unread, and saves nothing new', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(Response.json([{ type: 'bookmark', bookmark_id: 42 }]));
+
+    await expect(restoreOrResave(CONFIG, ARTICLE, 42)).resolves.toEqual({
+      kind: 'saved',
+      bookmarkId: 42,
+    });
+    expect(forms(spy).map(([url]) => url)).toEqual([
+      'https://www.instapaper.com/api/1/bookmarks/unarchive',
+    ]);
+  });
+
+  it('resaves by URL, without content, when the owner deleted the bookmark', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }))
+      .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 77 }]));
+
+    await expect(restoreOrResave(CONFIG, ARTICLE, 42)).resolves.toEqual({
+      kind: 'saved',
+      bookmarkId: 77,
+    });
+    // Instapaper fetches the page itself: the stored text is its own text view, not the article.
+    expect(forms(spy)[1]).toEqual([
+      'https://www.instapaper.com/api/1/bookmarks/add',
+      {
+        url: 'https://worksinprogress.co/issue/quiet-cities',
+        title: 'Cities Are Getting Quieter',
+        description: 'Street noise tracks foot traffic, not ordinances.',
+      },
+    ]);
+  });
+
+  it('falls back to the stored text only for a bookmark that had no URL', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }))
+      .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 78 }]));
+
+    await restoreOrResave(CONFIG, { ...ARTICLE, canonical_url: null }, 42);
+
+    expect(forms(spy)[1]?.[1]).toEqual({
+      is_private_from_source: 'email',
+      title: 'Cities Are Getting Quieter',
+      description: 'Street noise tracks foot traffic, not ordinances.',
+      content: '<p>The article, as Instapaper had it.</p>',
+    });
+  });
+
+  it('is null when the bookmark is gone and there is nothing to save in its place', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }));
+
+    await expect(
+      restoreOrResave(CONFIG, { ...ARTICLE, canonical_url: null, text: null }, 42),
+    ).resolves.toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('never falls back to a save when the unarchive merely failed', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+
+    await expect(restoreOrResave(CONFIG, ARTICLE, 42)).resolves.toEqual<AddBookmarkOutcome>({
+      kind: 'refused',
+      refusal: 'credentials',
+      code: undefined,
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

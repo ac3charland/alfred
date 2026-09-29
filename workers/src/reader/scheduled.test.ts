@@ -85,7 +85,27 @@ interface Scenario {
   leased?: number;
   /** A status to answer every `reader_posts` PATCH with, instead of the matched rows. */
   postPatchStatus?: number;
+  /** What Instapaper holds, for a tick whose env carries the four Instapaper secrets. */
+  instapaper?: InstapaperWorld;
+  /** Rows the "already a post?" read answers with, by bookmark id. */
+  bookmarked?: Record<string, unknown>[];
 }
+
+/** Instapaper, as the To Reader leg sees it. */
+interface InstapaperWorld {
+  /** The owner's folders. Defaults to one To Reader folder, id 77. */
+  folders?: { folder_id: number; title: string }[];
+  /** The bookmarks in To Reader, in Instapaper's wire shape. */
+  bookmarks?: Record<string, unknown>[];
+  /** Each bookmark's text view, by id. A bookmark with none answers error 1550. */
+  texts?: Record<number, string>;
+  /** A status and body to answer one call with, by path (`folders/list`, `bookmarks/archive`, …). */
+  fail?: Record<string, { status: number; body: string }>;
+  /** A status and body to answer one bookmark's get_text with, by bookmark id. */
+  failTexts?: Record<number, { status: number; body: string }>;
+}
+
+const INSTAPAPER_PREFIX = 'https://www.instapaper.com/api/';
 
 /** One worklist row, in the view's shape. */
 function worklistRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -133,6 +153,44 @@ function harness(scenario: Scenario = {}): Call[] {
       return Promise.resolve(respond());
     }
 
+    if (url.startsWith(INSTAPAPER_PREFIX)) {
+      const world = scenario.instapaper ?? {};
+      const path = url.slice(INSTAPAPER_PREFIX.length).replace(/^1(\.1)?\//, '');
+      const failure = world.fail?.[path];
+      if (failure !== undefined) {
+        return Promise.resolve(new Response(failure.body, { status: failure.status }));
+      }
+      const form = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
+      const bookmarkId = Number(form.get('bookmark_id'));
+      switch (path) {
+        case 'folders/list': {
+          return Promise.resolve(
+            Response.json(world.folders ?? [{ type: 'folder', folder_id: 77, title: 'To Reader' }]),
+          );
+        }
+        case 'bookmarks/list': {
+          return Promise.resolve(
+            Response.json({ bookmarks: world.bookmarks ?? [], highlights: [] }),
+          );
+        }
+        case 'bookmarks/get_text': {
+          const broken = world.failTexts?.[bookmarkId];
+          if (broken !== undefined) {
+            return Promise.resolve(new Response(broken.body, { status: broken.status }));
+          }
+          const html = world.texts?.[bookmarkId];
+          return Promise.resolve(
+            html === undefined
+              ? Response.json([{ type: 'error', error_code: 1550 }], { status: 400 })
+              : new Response(html, { headers: { 'Content-Type': 'text/html' } }),
+          );
+        }
+        default: {
+          return Promise.resolve(Response.json([{ type: 'bookmark', bookmark_id: bookmarkId }]));
+        }
+      }
+    }
+
     if (url.startsWith(GMAIL_PREFIX)) {
       const id = new URL(url).pathname.slice('/gmail/v1/users/me/messages/'.length);
       const status = scenario.messageStatus?.[id];
@@ -172,6 +230,9 @@ function harness(scenario: Scenario = {}): Call[] {
         return Promise.resolve(
           Response.json(Array.from({ length: matched }, () => ({ id: 'row' }))),
         );
+      }
+      if (url.includes('instapaper_bookmark_id=in.')) {
+        return Promise.resolve(Response.json(scenario.bookmarked ?? []));
       }
       // The retry read and the ceiling count are both GETs on the same table; the filter is what
       // tells them apart, exactly as it does on the wire.
@@ -974,6 +1035,8 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
       skippedForCap: 0,
       skippedForBudget: 0,
       failures: [],
+      // No Instapaper secrets in this env, so the leg says it is off rather than going quiet.
+      instapaper: { skipped: 'unconfigured' },
     });
   });
 });
@@ -1080,6 +1143,799 @@ describe('runReaderRetention', () => {
     await expect(runReaderRetention(env, NOW)).resolves.toEqual({
       swept: undefined,
       failures: ['reader retention: permission denied'],
+    });
+  });
+});
+
+// ── The To Reader leg ────────────────────────────────────────────────────────
+
+/** `env` with the four Instapaper secrets set, which is what turns the leg on. */
+const instapaperEnv: ReaderEnv = {
+  ...env,
+  INSTAPAPER_CONSUMER_KEY: 'ck',
+  INSTAPAPER_CONSUMER_SECRET: 'cs',
+  INSTAPAPER_ACCESS_TOKEN: 'tk',
+  INSTAPAPER_ACCESS_TOKEN_SECRET: 'ts',
+};
+
+/** One bookmark in To Reader, in Instapaper's wire shape. */
+function bookmarkRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'bookmark',
+    bookmark_id: 11,
+    url: 'https://www.worksinprogress.co/issue/quiet-cities',
+    title: 'Cities Are Getting Quieter',
+    time: 1_788_000_000,
+    ...overrides,
+  };
+}
+
+const ARTICLE_HTML =
+  '<h1>Cities Are Getting Quieter</h1><p>Street noise fell in six downtowns.</p>';
+
+/** Every recorded call to one Instapaper endpoint, by its path after the API version. */
+function instapaperCalls(calls: Call[], path: string): Call[] {
+  return calls.filter(
+    (call) =>
+      call.url.startsWith(INSTAPAPER_PREFIX) &&
+      call.url.slice(INSTAPAPER_PREFIX.length).replace(/^1(\.1)?\//, '') === path,
+  );
+}
+
+/** The bookmark id a recorded Instapaper call carried in its form body. */
+function bookmarkIdOf(call: Call): number {
+  return Number(new URLSearchParams(call.body ?? '').get('bookmark_id'));
+}
+
+/** Every `reader_health` write's body, in order. */
+function healthWrites(calls: Call[]): Record<string, unknown>[] {
+  return restCalls(calls, 'reader_health', 'PATCH').map((call) => payload(call));
+}
+
+/** The one `reader_health` write that carries the To Reader leg's columns, if any does. */
+function legColumns(calls: Call[]): Record<string, unknown>[] {
+  return healthWrites(calls)
+    .map((body) =>
+      Object.fromEntries(Object.entries(body).filter(([key]) => key.startsWith('instapaper_'))),
+    )
+    .filter((columns) => Object.keys(columns).length > 0);
+}
+
+describe('runReaderTick — the To Reader leg, off', () => {
+  it('makes no Instapaper call, stamps nothing and says it is off without the secrets', async () => {
+    const calls = harness({ instapaper: { bookmarks: [bookmarkRow()] } });
+    mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(calls.filter((call) => call.url.startsWith(INSTAPAPER_PREFIX))).toEqual([]);
+    expect(legColumns(calls)).toEqual([]);
+    expect(summary.instapaper).toEqual({ skipped: 'unconfigured' });
+  });
+
+  it('is off when any one of the four secrets is blank', async () => {
+    const calls = harness({ instapaper: { bookmarks: [bookmarkRow()] } });
+    mockSummarize();
+
+    const summary = await runReaderTick({ ...instapaperEnv, INSTAPAPER_ACCESS_TOKEN: ' ' }, NOW);
+
+    expect(calls.filter((call) => call.url.startsWith(INSTAPAPER_PREFIX))).toEqual([]);
+    expect(summary.instapaper).toEqual({ skipped: 'unconfigured' });
+  });
+});
+
+describe('runReaderTick — the To Reader leg, listing', () => {
+  it('lists an empty folder, reads no posts for it, and stamps the leg’s success', async () => {
+    const calls = harness({ instapaper: { bookmarks: [] } });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(instapaperCalls(calls, 'folders/list')).toHaveLength(1);
+    expect(
+      new URLSearchParams(instapaperCalls(calls, 'bookmarks/list')[0]?.body ?? '').get('folder_id'),
+    ).toBe('77');
+    expect(calls.filter((call) => call.url.includes('instapaper_bookmark_id=in.'))).toEqual([]);
+    expect(summary.instapaper).toEqual({
+      listed: 0,
+      taken: 0,
+      archived: 0,
+      restored: 0,
+      failures: [],
+    });
+    // The leg's success rides the tick's own closing write — no extra fetch.
+    const closing = healthWrites(calls).at(-1);
+    expect(closing).toMatchObject({
+      last_success_at: NOW_ISO,
+      instapaper_last_success_at: NOW_ISO,
+    });
+    expect(restCalls(calls, 'reader_health', 'PATCH')).toHaveLength(2);
+  });
+
+  it('never lists on a capped day, so nothing leaves To Reader', async () => {
+    const calls = harness({ callsToday: 30, instapaper: { bookmarks: [bookmarkRow()] } });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(calls.filter((call) => call.url.startsWith(INSTAPAPER_PREFIX))).toEqual([]);
+    expect(summarized).not.toHaveBeenCalled();
+    expect(summary.instapaper).toEqual({ skipped: 'capped' });
+    expect(legColumns(calls)).toEqual([]);
+  });
+
+  it('never lists when newsletters and retries fill every slot', async () => {
+    const fresh = Array.from({ length: 6 }, (_, index) =>
+      worklistRow({
+        comm_message_id: `comm-${String(index)}`,
+        gmail_message_id: `gone-${String(index)}`,
+      }),
+    );
+    const calls = harness({ fresh, instapaper: { bookmarks: [bookmarkRow()] } });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(calls.filter((call) => call.url.startsWith(INSTAPAPER_PREFIX))).toEqual([]);
+    expect(summary.instapaper).toEqual({ skipped: 'no free slot' });
+  });
+
+  it('takes only the slots the newsletters left, oldest bookmark first', async () => {
+    const fresh = Array.from({ length: 4 }, (_, index) =>
+      worklistRow({
+        comm_message_id: `comm-${String(index)}`,
+        gmail_message_id: `gone-${String(index)}`,
+      }),
+    );
+    const calls = harness({
+      fresh,
+      instapaper: {
+        bookmarks: [
+          bookmarkRow({ bookmark_id: 13, time: 300 }),
+          bookmarkRow({ bookmark_id: 11, time: 100 }),
+          bookmarkRow({ bookmark_id: 12, time: 200 }),
+        ],
+        texts: { 11: ARTICLE_HTML, 12: ARTICLE_HTML, 13: ARTICLE_HTML },
+      },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    // Six slots, four newsletters: two bookmarks, and the two oldest.
+    expect(instapaperCalls(calls, 'bookmarks/get_text').map((call) => bookmarkIdOf(call))).toEqual([
+      11, 12,
+    ]);
+    const read = calls.find((call) => call.url.includes('instapaper_bookmark_id=in.'));
+    expect(decodeURIComponent(read?.url ?? '')).toContain('instapaper_bookmark_id=in.(11,12)');
+    expect(summary.instapaper).toMatchObject({ listed: 3, taken: 2, archived: 2 });
+  });
+
+  it('stamps a missing folder in the owner’s words and never creates one', async () => {
+    const calls = harness({ instapaper: { folders: [{ folder_id: 5, title: 'To Wiki' }] } });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(instapaperCalls(calls, 'bookmarks/list')).toEqual([]);
+    expect(calls.filter((call) => call.url.startsWith(INSTAPAPER_PREFIX))).toHaveLength(1);
+    expect(legColumns(calls)).toEqual([
+      {
+        instapaper_last_error: 'there is no “To Reader” folder in Instapaper',
+        instapaper_last_error_at: NOW_ISO,
+      },
+    ]);
+    expect(summary.failures).toEqual([]);
+    expect(summary.instapaper).toMatchObject({
+      failures: ['there is no “To Reader” folder in Instapaper'],
+    });
+  });
+
+  it('stops only the leg on a refused credential: the newsletter is still summarised', async () => {
+    const calls = harness({
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+      instapaper: { fail: { 'folders/list': { status: 401, body: 'Unauthorized' } } },
+    });
+    const summarized = mockSummarize(DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summarized).toHaveBeenCalledTimes(1);
+    expect(summary.summarized).toBe(1);
+    // Instapaper's failure is never the summariser's: last_success_at is still stamped, and
+    // last_error is not touched.
+    expect(summary.failures).toEqual([]);
+    const closing = healthWrites(calls).at(-1);
+    expect(closing).toEqual({
+      last_success_at: NOW_ISO,
+      daily_cap: 30,
+      calls_today: 1,
+      calls_day: '2026-09-18',
+      instapaper_last_error: "Instapaper rejected alfred's credentials",
+      instapaper_last_error_at: NOW_ISO,
+    });
+    expect(summary.instapaper).toEqual({
+      listed: 0,
+      taken: 0,
+      archived: 0,
+      restored: 0,
+      failures: ['folders/list: credentials'],
+    });
+  });
+});
+
+describe('runReaderTick — the To Reader leg, one bookmark', () => {
+  it('inserts the article, archives the bookmark, then summarises it with its site as publication', async () => {
+    const calls = harness({
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    const summarized = mockSummarize(DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    const inserts = restCalls(calls, 'reader_posts', 'POST');
+    expect(inserts).toHaveLength(1);
+    expect(payload(inserts[0])).toEqual({
+      source: 'instapaper',
+      instapaper_bookmark_id: 11,
+      title: 'Cities Are Getting Quieter',
+      canonical_url: 'https://www.worksinprogress.co/issue/quiet-cities',
+      site: 'worksinprogress.co',
+      // Dated when alfred took it, not when it was saved: the list sorts on this.
+      received_at: NOW_ISO,
+      text: 'Cities Are Getting Quieter\nStreet noise fell in six downtowns.',
+      word_count: 10,
+      html_extracted: true,
+      summary_state: 'pending',
+      summarizing_since: NOW_ISO,
+    });
+
+    // The order is the design: the post is the floor, the archive follows it, the model is last.
+    const insertAt = indexOfCall(
+      calls,
+      (call) => call.method === 'POST' && call.url.includes('reader_posts'),
+    );
+    const archiveAt = indexOfCall(calls, (call) => call.url.endsWith('/bookmarks/archive'));
+    const patchAt = indexOfCall(
+      calls,
+      (call) => call.method === 'PATCH' && call.url.includes('reader_posts'),
+    );
+    expect(insertAt).toBeGreaterThan(-1);
+    expect(archiveAt).toBeGreaterThan(insertAt);
+    expect(patchAt).toBeGreaterThan(archiveAt);
+    expect(bookmarkIdOf(instapaperCalls(calls, 'bookmarks/archive')[0] ?? ({} as Call))).toBe(11);
+
+    expect(summarizedInputs(summarized)).toEqual([
+      {
+        publication: 'worksinprogress.co',
+        title: 'Cities Are Getting Quieter',
+        receivedAt: NOW_ISO,
+        wordCount: 10,
+        text: 'Cities Are Getting Quieter\nStreet noise fell in six downtowns.',
+      },
+    ]);
+    // The same terminal patch a newsletter gets, `model_called_at` included — which is what makes
+    // an article count against the daily ceiling.
+    expect(payload(restCalls(calls, 'reader_posts', 'PATCH')[0])).toMatchObject({
+      summary_state: 'done',
+      prompt_version: 1,
+      model_called_at: NOW_ISO,
+    });
+    expect(summary).toMatchObject({ intake: 0, summarized: 1 });
+    expect(summary.instapaper).toEqual({
+      listed: 1,
+      taken: 1,
+      archived: 1,
+      restored: 0,
+      failures: [],
+    });
+    expect(healthWrites(calls).at(-1)).toMatchObject({ instapaper_last_success_at: NOW_ISO });
+  });
+
+  it('files a bookmark Instapaper has no text for (1550) as failed, with no model call, and archives it', async () => {
+    const calls = harness({ instapaper: { bookmarks: [bookmarkRow({ url: '', title: '' })] } });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(payload(restCalls(calls, 'reader_posts', 'POST')[0])).toEqual({
+      source: 'instapaper',
+      instapaper_bookmark_id: 11,
+      title: 'Untitled',
+      received_at: NOW_ISO,
+      text: '',
+      word_count: 0,
+      html_extracted: false,
+      summary_state: 'failed',
+      last_error: 'no readable body',
+    });
+    expect(instapaperCalls(calls, 'bookmarks/archive')).toHaveLength(1);
+    expect(summarized).not.toHaveBeenCalled();
+    expect(summary.instapaper).toMatchObject({ taken: 1, archived: 1, failures: [] });
+  });
+
+  it('moves on when another tick inserted the article first, leaving the archive to the winner', async () => {
+    const calls = harness({
+      inserted: [],
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(instapaperCalls(calls, 'bookmarks/archive')).toEqual([]);
+    expect(summarized).not.toHaveBeenCalled();
+    expect(summary.instapaper).toMatchObject({ taken: 0, archived: 0 });
+  });
+
+  it('writes nothing for an article get_text fails on, and carries on with the next one', async () => {
+    // Bookmarks are taken oldest first, so an article Instapaper can never read would otherwise
+    // be first in line every tick and hold the whole folder back behind it.
+    const calls = harness({
+      instapaper: {
+        bookmarks: [bookmarkRow(), bookmarkRow({ bookmark_id: 12, time: 1_789_000_000 })],
+        texts: { 12: ARTICLE_HTML },
+        failTexts: { 11: { status: 503, body: 'down' } },
+      },
+    });
+    const summarized = mockSummarize(DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(instapaperCalls(calls, 'bookmarks/get_text').map((call) => bookmarkIdOf(call))).toEqual([
+      11, 12,
+    ]);
+    // Only the readable article became a post and left To Reader; the bad one stays put.
+    expect(
+      restCalls(calls, 'reader_posts', 'POST').map(
+        (call) => payload(call)['instapaper_bookmark_id'],
+      ),
+    ).toEqual([12]);
+    expect(instapaperCalls(calls, 'bookmarks/archive').map((call) => bookmarkIdOf(call))).toEqual([
+      12,
+    ]);
+    expect(summarized).toHaveBeenCalledTimes(1);
+    expect(legColumns(calls)).toEqual([
+      { instapaper_last_error: "Instapaper didn't answer", instapaper_last_error_at: NOW_ISO },
+    ]);
+    expect(summary.instapaper).toMatchObject({
+      taken: 1,
+      failures: ['bookmark 11: bookmarks/get_text: unavailable (HTTP 503)'],
+    });
+  });
+
+  it('stops the leg when get_text’s refusal is Instapaper’s standing answer', async () => {
+    const calls = harness({
+      instapaper: {
+        bookmarks: [bookmarkRow(), bookmarkRow({ bookmark_id: 12, time: 1_789_000_000 })],
+        texts: { 12: ARTICLE_HTML },
+        failTexts: { 11: { status: 401, body: 'Unauthorized' } },
+      },
+    });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(instapaperCalls(calls, 'bookmarks/get_text').map((call) => bookmarkIdOf(call))).toEqual([
+      11,
+    ]);
+    expect(restCalls(calls, 'reader_posts', 'POST')).toEqual([]);
+    expect(summarized).not.toHaveBeenCalled();
+    expect(legColumns(calls)).toEqual([
+      {
+        instapaper_last_error: "Instapaper rejected alfred's credentials",
+        instapaper_last_error_at: NOW_ISO,
+      },
+    ]);
+    expect(summary.instapaper).toMatchObject({
+      failures: ['bookmark 11: bookmarks/get_text: credentials'],
+    });
+  });
+});
+
+describe('runReaderTick — the To Reader leg, a failed archive', () => {
+  it('keeps and summarises the post, stamps the error, and carries on with the next bookmark', async () => {
+    const calls = harness({
+      instapaper: {
+        bookmarks: [bookmarkRow(), bookmarkRow({ bookmark_id: 12, time: 1_789_000_000 })],
+        texts: { 11: ARTICLE_HTML, 12: ARTICLE_HTML },
+        fail: { 'bookmarks/archive': { status: 500, body: 'oops' } },
+      },
+    });
+    const summarized = mockSummarize(DONE, DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(restCalls(calls, 'reader_posts', 'POST')).toHaveLength(2);
+    expect(summarized).toHaveBeenCalledTimes(2);
+    expect(legColumns(calls)).toEqual([
+      { instapaper_last_error: "Instapaper didn't answer", instapaper_last_error_at: NOW_ISO },
+    ]);
+    expect(summary.instapaper).toMatchObject({ taken: 2, archived: 0 });
+  });
+
+  it('stops the later bookmarks when the archive’s refusal is Instapaper’s standing answer', async () => {
+    const calls = harness({
+      instapaper: {
+        bookmarks: [bookmarkRow(), bookmarkRow({ bookmark_id: 12, time: 1_789_000_000 })],
+        texts: { 11: ARTICLE_HTML, 12: ARTICLE_HTML },
+        fail: {
+          'bookmarks/archive': { status: 400, body: '[{"type":"error","error_code":1040}]' },
+        },
+      },
+    });
+    const summarized = mockSummarize(DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    // The first post is stored and still summarised; the second bookmark is never touched.
+    expect(summarized).toHaveBeenCalledTimes(1);
+    expect(instapaperCalls(calls, 'bookmarks/get_text').map((call) => bookmarkIdOf(call))).toEqual([
+      11,
+    ]);
+    expect(legColumns(calls)).toEqual([
+      {
+        instapaper_last_error: 'Instapaper is rate-limiting alfred',
+        instapaper_last_error_at: NOW_ISO,
+      },
+    ]);
+    expect(summary.instapaper).toMatchObject({
+      taken: 1,
+      failures: ['bookmark 11: bookmarks/archive: rate-limited (error 1040)'],
+    });
+  });
+
+  it('archives it next tick with no second post and no second model call', async () => {
+    const calls = harness({
+      bookmarked: [{ id: 'post-article', archived_at: WIRE_NULL, instapaper_bookmark_id: 11 }],
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(instapaperCalls(calls, 'bookmarks/get_text')).toEqual([]);
+    expect(restCalls(calls, 'reader_posts', 'POST')).toEqual([]);
+    expect(restCalls(calls, 'reader_posts', 'PATCH')).toEqual([]);
+    expect(instapaperCalls(calls, 'bookmarks/archive')).toHaveLength(1);
+    expect(summarized).not.toHaveBeenCalled();
+    expect(summary.instapaper).toEqual({
+      listed: 1,
+      taken: 0,
+      archived: 1,
+      restored: 0,
+      failures: [],
+    });
+  });
+
+  it('reads a bookmark deleted since the listing as archived, not as a failure', async () => {
+    const calls = harness({
+      bookmarked: [{ id: 'post-article', archived_at: WIRE_NULL, instapaper_bookmark_id: 11 }],
+      instapaper: {
+        bookmarks: [bookmarkRow()],
+        fail: {
+          'bookmarks/archive': { status: 400, body: '[{"type":"error","error_code":1241}]' },
+        },
+      },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.instapaper).toMatchObject({ archived: 1, failures: [] });
+    expect(legColumns(calls)).toEqual([{ instapaper_last_success_at: NOW_ISO }]);
+  });
+});
+
+describe('runReaderTick — the To Reader leg, a bookmark already a post', () => {
+  it('brings back a newsletter the owner sent to Instapaper and archived, with the summary it has', async () => {
+    const calls = harness({
+      bookmarked: [
+        {
+          id: 'post-newsletter',
+          archived_at: '2026-09-17T08:00:00.000Z',
+          instapaper_bookmark_id: 11,
+        },
+      ],
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    const patches = restCalls(calls, 'reader_posts', 'PATCH');
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.url).toContain('id=eq.post-newsletter');
+    expect(payload(patches[0])).toEqual({ archived_at: WIRE_NULL });
+    expect(instapaperCalls(calls, 'bookmarks/archive')).toHaveLength(1);
+    expect(instapaperCalls(calls, 'bookmarks/get_text')).toEqual([]);
+    expect(restCalls(calls, 'reader_posts', 'POST')).toEqual([]);
+    expect(summarized).not.toHaveBeenCalled();
+    expect(summary.instapaper).toEqual({
+      listed: 1,
+      taken: 0,
+      archived: 1,
+      restored: 1,
+      failures: [],
+    });
+  });
+});
+
+describe('runReaderTick — the To Reader leg and the ceiling', () => {
+  it('leaves a bookmark whose turn comes after the cap is reached mid-tick', async () => {
+    const calls = harness({
+      callsToday: 29,
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    const summarized = mockSummarize(DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    // The newsletter spent the last call; the bookmark was listed but never prepared.
+    expect(summarized).toHaveBeenCalledTimes(1);
+    expect(instapaperCalls(calls, 'bookmarks/list')).toHaveLength(1);
+    expect(instapaperCalls(calls, 'bookmarks/get_text')).toEqual([]);
+    expect(instapaperCalls(calls, 'bookmarks/archive')).toEqual([]);
+    expect(summary.skippedForCap).toBe(1);
+    expect(summary.instapaper).toMatchObject({ listed: 1, taken: 0 });
+  });
+});
+
+describe('runReaderTick — the To Reader leg when Gmail stops the tick', () => {
+  it('leaves listed bookmarks for the next tick and writes none of the leg’s columns', async () => {
+    const calls = harness({
+      oauth: () => new Response('try later', { status: 503 }),
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    mockSummarize();
+
+    await runReaderTick(instapaperEnv, NOW);
+
+    expect(instapaperCalls(calls, 'bookmarks/get_text')).toEqual([]);
+    expect(legColumns(calls)).toEqual([]);
+  });
+
+  it('records the leg’s outcome in one PATCH of its own when there is no closing write', async () => {
+    const calls = harness({
+      oauth: () => new Response('try later', { status: 503 }),
+      instapaper: { fail: { 'folders/list': { status: 403, body: 'Forbidden' } } },
+    });
+    mockSummarize();
+
+    await runReaderTick(instapaperEnv, NOW);
+
+    const writes = healthWrites(calls);
+    // The run start, then the leg's own write — and no summariser column in it.
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual({
+      instapaper_last_error: "Instapaper rejected alfred's credentials",
+      instapaper_last_error_at: NOW_ISO,
+    });
+  });
+
+  it('carries the leg’s outcome on the error write when the refresh token is finished', async () => {
+    const calls = harness({
+      oauth: () => Response.json({ error: 'invalid_grant' }, { status: 400 }),
+      instapaper: { bookmarks: [] },
+    });
+    mockSummarize();
+
+    await runReaderTick(instapaperEnv, NOW);
+
+    expect(healthWrites(calls).at(-1)).toMatchObject({
+      last_error: expect.any(String) as unknown,
+      instapaper_last_success_at: NOW_ISO,
+    });
+  });
+});
+
+/** A pending Instapaper article, in the retry read's shape. */
+function articleRetry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return retryRow({
+    id: 'post-article',
+    publication_id: WIRE_NULL,
+    author: WIRE_NULL,
+    source: 'instapaper',
+    site: 'worksinprogress.co',
+    title: 'Cities Are Getting Quieter',
+    ...overrides,
+  });
+}
+
+describe('runReaderTick — an Instapaper post retried', () => {
+  it('tells the model the site when no publication is linked', async () => {
+    harness({ retries: [articleRetry()] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]).toMatchObject({ publication: 'worksinprogress.co' });
+    expect(summarizedInputs(summarized)[0]).not.toHaveProperty('author');
+  });
+
+  it('tells the model the linked publication’s name once something links one', async () => {
+    harness({
+      roster: [{ id: 'pub-wip', name: 'Works in Progress' }],
+      retries: [articleRetry({ publication_id: 'pub-wip' })],
+    });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]).toMatchObject({ publication: 'Works in Progress' });
+  });
+
+  it('falls back to Instapaper for an article with neither', async () => {
+    harness({ retries: [articleRetry({ site: WIRE_NULL })] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]).toMatchObject({ publication: 'Instapaper' });
+  });
+});
+
+describe('runReaderTick — the To Reader leg’s subrequests', () => {
+  it('spends at most 48 of the 50 fetches on its worst tick: six new bookmarks', async () => {
+    const ids = [100, 101, 102, 103, 104, 105];
+    const bookmarks = ids.map((id) => bookmarkRow({ bookmark_id: id, time: 1_788_000_000 + id }));
+    const texts: Record<number, string> = Object.fromEntries(ids.map((id) => [id, ARTICLE_HTML]));
+    const calls = harness({
+      // A discovery upsert, so every one of the nine per-tick fetches is spent.
+      discovery: [
+        {
+          handle: 'harborline@substack.com',
+          name: 'Harborline',
+          first_seen_at: '2026-09-12T00:00:00.000Z',
+          message_count: 1,
+        },
+      ],
+      instapaper: { bookmarks, texts },
+    });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.instapaper).toMatchObject({ taken: 6, archived: 6 });
+    // `summarizePost` is mocked, so each model call's two possible Anthropic requests (the SDK
+    // retries once) are added back by hand: 9 per tick + 3 for the leg + 6 × 6 per bookmark.
+    const fetches = calls.length + 2 * summarized.mock.calls.length;
+    expect(fetches).toBe(48);
+    expect(fetches).toBeLessThanOrEqual(50);
+  });
+});
+
+describe('runReaderTick — the To Reader leg only succeeds when it finished', () => {
+  it('stamps no Instapaper success when the tick throws on the last bookmark', async () => {
+    const calls = harness({
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    // The article's insert is rejected outright: nothing was taken in, so nothing succeeded.
+    spyOnFetch().mockImplementation((input: FetchInput, init?: FetchInit) => {
+      const url = input as string;
+      calls.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      });
+      if (url.includes('reader_posts') && init?.method === 'POST') {
+        return Promise.resolve(new Response('boom', { status: 500 }));
+      }
+      if (url.startsWith(INSTAPAPER_PREFIX) && url.endsWith('/folders/list')) {
+        return Promise.resolve(
+          Response.json([{ type: 'folder', folder_id: 77, title: 'To Reader' }]),
+        );
+      }
+      if (url.startsWith(INSTAPAPER_PREFIX) && url.endsWith('/bookmarks/list')) {
+        return Promise.resolve(Response.json({ bookmarks: [bookmarkRow()] }));
+      }
+      if (url.startsWith(INSTAPAPER_PREFIX) && url.endsWith('/get_text')) {
+        return Promise.resolve(new Response(ARTICLE_HTML));
+      }
+      if (url.startsWith(OAUTH_ENDPOINT)) {
+        return Promise.resolve(Response.json({ access_token: 'ya29.access' }));
+      }
+      if (url.includes('reader_posts') && url.includes('select=id&')) {
+        return Promise.resolve(new Response('[]', { headers: { 'Content-Range': '0-0/0' } }));
+      }
+      return Promise.resolve(Response.json(url.includes('reader_health') ? [{ id: 1 }] : []));
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.failures).toEqual([expect.stringContaining('POST reader_posts')]);
+    expect(legColumns(calls)).toEqual([]);
+  });
+
+  it('stamps no Instapaper success when the time budget left a bookmark in To Reader', async () => {
+    const calls = harness({
+      instapaper: {
+        bookmarks: [bookmarkRow(), bookmarkRow({ bookmark_id: 12, time: 1_789_000_000 })],
+        texts: { 11: ARTICLE_HTML, 12: ARTICLE_HTML },
+      },
+    });
+    mockSummarize();
+    // The first bookmark takes the whole eight minutes; the second is never started.
+    let elapsed = 0;
+    const clock = () => {
+      const now = elapsed;
+      elapsed += READER_TICK_BUDGET_MS / 2;
+      return now;
+    };
+
+    const summary = await runReaderTick(instapaperEnv, NOW, clock);
+
+    expect(summary.skippedForBudget).toBe(1);
+    expect(instapaperCalls(calls, 'bookmarks/get_text').map((call) => bookmarkIdOf(call))).toEqual([
+      11,
+    ]);
+    expect(legColumns(calls)).toEqual([]);
+  });
+
+  it('names the bookmark in the log line when a call about one bookmark fails', async () => {
+    harness({
+      instapaper: {
+        bookmarks: [bookmarkRow()],
+        texts: { 11: ARTICLE_HTML },
+        fail: { 'bookmarks/archive': { status: 500, body: 'oops' } },
+      },
+    });
+    mockSummarize(DONE);
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.instapaper).toMatchObject({
+      failures: ['bookmark 11: bookmarks/archive: unavailable (HTTP 500)'],
+    });
+  });
+
+  it('restores the post and stamps the error when the archive after a restore fails', async () => {
+    const calls = harness({
+      bookmarked: [
+        {
+          id: 'post-newsletter',
+          archived_at: '2026-09-17T08:00:00.000Z',
+          instapaper_bookmark_id: 11,
+        },
+      ],
+      instapaper: {
+        bookmarks: [bookmarkRow()],
+        fail: { 'bookmarks/archive': { status: 503, body: 'down' } },
+      },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(payload(restCalls(calls, 'reader_posts', 'PATCH')[0])).toEqual({
+      archived_at: WIRE_NULL,
+    });
+    expect(summary.instapaper).toMatchObject({ restored: 1, archived: 0 });
+    expect(legColumns(calls)).toEqual([
+      { instapaper_last_error: "Instapaper didn't answer", instapaper_last_error_at: NOW_ISO },
+    ]);
+  });
+
+  it('sends the leg’s outcome on its own when a Gmail read stops the tick', async () => {
+    const calls = harness({
+      fresh: [worklistRow()],
+      messageStatus: { [ESSAY_MESSAGE.id]: 503 },
+      instapaper: { fail: { 'folders/list': { status: 401, body: 'Unauthorized' } } },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.failures).toEqual([expect.stringContaining('gmail')]);
+    const writes = healthWrites(calls);
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual({
+      instapaper_last_error: "Instapaper rejected alfred's credentials",
+      instapaper_last_error_at: NOW_ISO,
     });
   });
 });

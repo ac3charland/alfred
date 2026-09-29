@@ -59,7 +59,9 @@ describe('ReadingListView — empty state', () => {
 
     expect(screen.getByText('Nothing new to read.')).toBeInTheDocument();
     expect(
-      screen.getByText('Newsletters from your publications land here as they arrive, summarised.'),
+      screen.getByText(
+        'Newsletters from your publications, and articles you move to To Reader in Instapaper, land here summarised.',
+      ),
     ).toBeInTheDocument();
   });
 

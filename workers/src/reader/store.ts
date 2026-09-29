@@ -63,8 +63,42 @@ export interface ReaderPostInsert {
   summarizing_since: unknown;
 }
 
+/**
+ * The columns an Instapaper article is inserted with — the same floor as a newsletter's, keyed on
+ * the bookmark rather than on a message. It carries none of the mail identity (the
+ * `reader_posts_source_identity` CHECK forbids it) and no publication: nothing links an article to
+ * one yet. `received_at` is the tick's own instant, so an article saved months ago still lands at
+ * the top of a list sorted newest-first, just after the owner asked for it.
+ */
+export interface ReaderArticleInsert {
+  source: 'instapaper';
+  instapaper_bookmark_id: number;
+  title: string;
+  canonical_url?: string | undefined;
+  site?: string | undefined;
+  received_at: string;
+  text: string;
+  word_count: number;
+  html_extracted: boolean;
+  /**
+   * `pending` with the lease taken, for an article with text to summarise; `failed` with its
+   * reason, filed in the same insert, for one Instapaper could make no text of.
+   */
+  summary_state: 'pending' | 'failed';
+  last_error?: string | undefined;
+  summarizing_since?: string | undefined;
+}
+
 /** What an insert did. A conflict is a value rather than a throw — another tick owns the post. */
 export type InsertPostResult = { inserted: true; id: string } | { inserted: false; conflict: true };
+
+/** A post that already holds one of the bookmark ids in To Reader, from either source. */
+export interface BookmarkedPost {
+  id: string;
+  /** Whether the owner archived it in the Reader — then the tick puts it back on the list. */
+  archived: boolean;
+  bookmarkId: number;
+}
 
 /**
  * How many rows of `table` match `filters`, without reading any of them.
@@ -106,14 +140,15 @@ export async function countRows(
 /**
  * Insert one post, or report that it already exists.
  *
- * The unique key is `(account_key, gmail_message_id)` — the dedupe key, never a cursor — so a
- * 409 means exactly one thing: another tick, or a re-mirrored comms row, already wrote this post.
- * The caller still has a comms row to stamp, so a conflict is a result and not an error; every
- * other non-2xx throws, as every write in `supabase.ts` does.
+ * A newsletter's unique key is `(account_key, gmail_message_id)` and an article's is its bookmark
+ * id among articles — each a dedupe key, never a cursor — so a 409 means exactly one thing:
+ * another tick (or, for a newsletter, a re-mirrored comms row) already wrote this post. The caller
+ * may still have a comms row to stamp, so a conflict is a result and not an error; every other
+ * non-2xx throws, as every write in `supabase.ts` does.
  */
 export async function insertPost(
   env: SupabaseEnv,
-  row: ReaderPostInsert,
+  row: ReaderPostInsert | ReaderArticleInsert,
 ): Promise<InsertPostResult> {
   const response = await fetch(restQueryUrl(env, 'reader_posts', {}), {
     method: 'POST',
@@ -136,6 +171,38 @@ export async function insertPost(
   const [first] = rows;
   if (first === undefined) throw new Error('Supabase POST reader_posts returned no row');
   return { inserted: true, id: first.id };
+}
+
+/** A bookmarked post as PostgREST returns it — JSON nulls, not `undefined`. */
+interface WireBookmarkedPost {
+  id: string;
+  archived_at: string | null;
+  instapaper_bookmark_id: number;
+}
+
+/**
+ * Every post, of either source, that holds one of these bookmark ids — the To Reader leg's
+ * "already a post?" read, one fetch for the whole folder listing rather than one per bookmark.
+ *
+ * Across both sources on purpose: a newsletter the owner sent to Instapaper holds the id of the
+ * bookmark that send created, and moving that bookmark into To Reader must bring the newsletter
+ * back rather than summarise the same post a second time as an article.
+ */
+export async function fetchPostsForBookmarks(
+  env: SupabaseEnv,
+  bookmarkIds: readonly number[],
+): Promise<BookmarkedPost[]> {
+  if (bookmarkIds.length === 0) return [];
+  const url = restQueryUrl(env, 'reader_posts', {
+    select: 'id,archived_at,instapaper_bookmark_id',
+    instapaper_bookmark_id: `in.(${bookmarkIds.map(String).join(',')})`,
+  });
+  const rows = await fetchJson<WireBookmarkedPost[]>(env, url, {}, 'GET reader_posts');
+  return rows.map((row) => ({
+    id: row.id,
+    archived: row.archived_at !== null,
+    bookmarkId: row.instapaper_bookmark_id,
+  }));
 }
 
 /**

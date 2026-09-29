@@ -8,8 +8,10 @@ import { ViewHeading } from '@/components/atoms/view-heading';
 import { formatElapsed } from '@/components/comms/comms-format';
 import { accountHealth, heldNow } from '@/lib/comms';
 import {
+  type InstapaperHealthReading,
   type SummariserReading,
   type SummariserState,
+  instapaperHealth,
   summariserStalled,
 } from '@/lib/reader/health';
 import type {
@@ -27,7 +29,9 @@ import { cn } from '@/lib/utils';
  * Two dots, because the Reader has two ways of going quiet and they need different fixes: the
  * mailbox can stop delivering (nothing new arrives at all) and the summariser can stop working
  * (posts arrive and sit unsummarised). An empty list looks identical under either, which is
- * exactly why the module needs this line at all.
+ * exactly why the module needs this line at all. A third, on a deployment whose To Reader leg has
+ * run: Instapaper refusing alfred is a third fix again, and while it lasts newsletters still flow,
+ * so it must not read as the summariser stalling.
  *
  * Beneath the dots, a sentence per state that is not live — a coloured dot says that something
  * is wrong and never what or what to do about it. The module's own banner, which says more and
@@ -134,6 +138,42 @@ function summariserSentence(stall: SummariserReading, now: Date): string | null 
   );
 }
 
+/** The source's name beside its dot, and the start of every line about it. */
+export const INSTAPAPER_LABEL = 'Instapaper';
+
+/** How an Instapaper failure ends: where the articles are while it lasts. */
+const ARTICLES_WAIT = "Articles wait there until it's fixed.";
+
+/**
+ * The Instapaper dot's hover/focus title. A live leg says when it last read To Reader; a failing
+ * one quotes the failure and how long ago it was written, in the mailbox dot's form.
+ */
+function instapaperReason(
+  reading: Exclude<InstapaperHealthReading, { state: 'hidden' }>,
+  now: Date,
+): string {
+  if (reading.state === 'live') {
+    return `${INSTAPAPER_LABEL} — To Reader last checked ${formatElapsed(reading.checkedAt, now)}`;
+  }
+  return `${INSTAPAPER_LABEL} — ${reading.error} (${formatElapsed(reading.errorAt, now)})`;
+}
+
+/**
+ * The one line a failing leg owes the owner: since when, why, and where the articles are. Counted
+ * from the last success, because a failing leg re-stamps its error every tick; a leg that never
+ * succeeded has no "since", so its line says it can't take articles rather than that it stopped.
+ */
+function instapaperSentence(
+  reading: Extract<InstapaperHealthReading, { state: 'erroring' }>,
+  now: Date,
+): string {
+  const opening =
+    reading.since === null
+      ? `${INSTAPAPER_LABEL} can't take articles from To Reader`
+      : `${INSTAPAPER_LABEL} stopped taking articles from To Reader ${formatElapsed(reading.since, now)}`;
+  return `${opening} — ${reading.error}. ${ARTICLES_WAIT}`;
+}
+
 export interface ReaderHeaderProperties {
   snapshot: ReaderHealthSnapshot;
   /** The posts the stall rules read — a claimed post waiting is one of the three signals. */
@@ -164,6 +204,7 @@ export function ReaderHeader({
   // dot is untouched: its cron isn't governed by this tab's own reconnect at all.
   const gmailNow = heldNow(now, reconcileStartedAt);
   const gmail = account === undefined ? undefined : accountHealth(account, gmailNow);
+  const instapaper = instapaperHealth(health);
 
   const notes: { key: string; tone: 'amber' | 'red'; text: string }[] = [];
   const summariser = summariserSentence(stall, now);
@@ -177,6 +218,9 @@ export function ReaderHeader({
         text: sentence,
       });
     }
+  }
+  if (instapaper.state === 'erroring') {
+    notes.push({ key: 'instapaper', tone: 'red', text: instapaperSentence(instapaper, now) });
   }
 
   return (
@@ -202,6 +246,20 @@ export function ReaderHeader({
               elapsed={
                 gmail !== 'live' && account.last_seen_at !== null
                   ? formatElapsed(account.last_seen_at, gmailNow)
+                  : undefined
+              }
+            />
+          )}
+          {/* Hidden until the To Reader leg has stamped anything — never on a deployment
+              without the Instapaper secrets. */}
+          {instapaper.state !== 'hidden' && (
+            <StatusDot
+              state={instapaper.state}
+              label={INSTAPAPER_LABEL}
+              title={instapaperReason(instapaper, now)}
+              elapsed={
+                instapaper.state === 'erroring' && instapaper.since !== null
+                  ? formatElapsed(instapaper.since, now)
                   : undefined
               }
             />

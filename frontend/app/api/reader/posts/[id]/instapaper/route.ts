@@ -2,18 +2,31 @@ import { withSession } from '@/lib/api/auth';
 import { parseUUID } from '@/lib/api/params';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { mapSupabaseError } from '@/lib/api/supabase-errors';
-import { getReaderPostForSend, markReaderPostSent } from '@/lib/data/reader';
-import { addBookmark, buildBookmarkParams, sendFailureResponse } from '@/lib/instapaper/bookmark';
-import { getInstapaperConfig } from '@/lib/instapaper/config';
+import {
+  type ReaderPostForSend,
+  getReaderPostForSend,
+  markReaderPostSent,
+} from '@/lib/data/reader';
+import {
+  type AddBookmarkOutcome,
+  addBookmark,
+  buildBookmarkParams,
+  restoreOrResave,
+  sendFailureResponse,
+} from '@/lib/instapaper/bookmark';
+import { type InstapaperConfig, getInstapaperConfig } from '@/lib/instapaper/config';
 
 // ---------------------------------------------------------------------------
 // POST /api/reader/posts/[id]/instapaper — the row's Send verb
 //
 // Saves the post to the owner's Instapaper and, once Instapaper confirms, stamps it sent and
-// archives it: once a post is in Instapaper, that is where it lives. No request body — everything
-// the bookmark is built from is read here, server-side, because the body sent is the post's own
-// email HTML (or its stored text) and the credentials it is signed with must never reach the
-// browser. Node runtime, for `node:crypto`.
+// archives it: once a post is in Instapaper, that is where it lives. A newsletter is saved as a
+// new bookmark carrying its email body. An article that came in through the "To Reader" folder is
+// the owner's own bookmark already, archived by the Worker when it took it in, so its send moves
+// that bookmark back to Unread — and saves it again by URL only if the owner has deleted it.
+// No request body — everything the bookmark is built from is read here, server-side, because the
+// body sent is the post's own email HTML (or its stored text) and the credentials it is signed
+// with must never reach the browser. Node runtime, for `node:crypto`.
 //
 // The order is the design. Configuration first, so an unconfigured deployment (e.g. local dev)
 // answers 501 before touching the database or the network. Then the read, then Instapaper, and only on a confirmed save the write — a refused or failed send leaves the
@@ -43,12 +56,15 @@ export const POST = withSession(
     }
     if (post === null) return jsonError(404, 'Post not found');
 
-    const params = buildBookmarkParams(post);
-    if (params === null) {
-      return jsonError(409, 'Nothing to send — this post has no link and no stored text');
+    const outcome = await sendPost(config, post);
+    if (outcome === null) {
+      return jsonError(
+        409,
+        post.source === 'instapaper'
+          ? 'Its Instapaper bookmark was deleted, and there is no link or text to save again'
+          : 'Nothing to send — this post has no link and no stored text',
+      );
     }
-
-    const outcome = await addBookmark(config, params);
     if (outcome.kind !== 'saved') {
       console.warn('reader: instapaper send saved nothing', {
         postId: id,
@@ -59,13 +75,26 @@ export const POST = withSession(
       return jsonError(status, detail);
     }
 
-    const { data, error } = await markReaderPostSent(
+    const sentAt = new Date();
+    let { data, error } = await markReaderPostSent(
       session.supabase,
       id,
       outcome.bookmarkId,
-      new Date(),
+      sentAt,
       post.archived_at,
     );
+    if (error?.code === UNIQUE_VIOLATION && isResavedArticle(post, outcome.bookmarkId)) {
+      // An article resaved by URL can come back as a bookmark another article already holds — the
+      // owner saved the same page again and it came in through To Reader too. The send worked;
+      // the post keeps the id it had rather than taking one the bookmark key gives to the other.
+      ({ data, error } = await markReaderPostSent(
+        session.supabase,
+        id,
+        post.instapaper_bookmark_id,
+        sentAt,
+        post.archived_at,
+      ));
+    }
     if (error) {
       const { status, message } = mapSupabaseError(error);
       return jsonError(status, message);
@@ -75,3 +104,33 @@ export const POST = withSession(
     return jsonOk(data);
   },
 );
+
+/** Postgres's unique_violation — here, the article bookmark key. */
+const UNIQUE_VIOLATION = '23505';
+
+/** Whether this send resaved an article under a bookmark id other than the one it holds. */
+function isResavedArticle(
+  post: ReaderPostForSend,
+  bookmarkId: number,
+): post is ReaderPostForSend & { instapaper_bookmark_id: number } {
+  return (
+    post.source === 'instapaper' &&
+    post.instapaper_bookmark_id !== null &&
+    post.instapaper_bookmark_id !== bookmarkId
+  );
+}
+
+/**
+ * The one call a send makes to Instapaper — or two, for an article whose bookmark is gone. Null
+ * when there is nothing Instapaper could save.
+ */
+function sendPost(
+  config: InstapaperConfig,
+  post: ReaderPostForSend,
+): Promise<AddBookmarkOutcome | null> {
+  if (post.source === 'instapaper' && post.instapaper_bookmark_id !== null) {
+    return restoreOrResave(config, post, post.instapaper_bookmark_id);
+  }
+  const params = buildBookmarkParams(post);
+  return params === null ? Promise.resolve(null) : addBookmark(config, params);
+}

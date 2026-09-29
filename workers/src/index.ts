@@ -31,6 +31,7 @@ import {
 import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
+import { instapaperCredentials } from './instapaper/client';
 import { READER_DEFAULT_DAILY_CAP } from './reader/config';
 import {
   type ReaderRetentionSummary,
@@ -90,6 +91,14 @@ export interface Env {
   /** One refresh token per Gmail account. A client left in Testing issues 7-day tokens. */
   GMAIL_PERSONAL_REFRESH_TOKEN?: string;
   GMAIL_REALPLAY_REFRESH_TOKEN?: string;
+  /**
+   * The Reader's To Reader leg signs its Instapaper calls with these — the same four values, under
+   * the same names, as the Vercel env vars the app's Send route uses. All four, or the leg is off.
+   */
+  INSTAPAPER_CONSUMER_KEY?: string;
+  INSTAPAPER_CONSUMER_SECRET?: string;
+  INSTAPAPER_ACCESS_TOKEN?: string;
+  INSTAPAPER_ACCESS_TOKEN_SECRET?: string;
   /**
    * The knowledge wiki's repo as `owner/name` — a `[vars]` entry. The push webhook syncs the
    * page snapshot only for a push to this repo's main, and the sync reads its tree with the
@@ -152,9 +161,9 @@ export const POLL_CRON = '*/3 * * * *';
 export const RETENTION_CRON = '17 9 * * *';
 
 /**
- * The Reader tick — discovery, intake and the summariser, every five minutes on its own trigger.
- * Its own schedule for the reason the poll has one: a tick spends up to ~44 of the 50
- * subrequests an invocation gets, so it cannot share. Offset-free like the others, because a
+ * The Reader tick — discovery, intake, the To Reader leg and the summariser, every five minutes
+ * on its own trigger. Its own schedule for the reason the poll has one: a tick spends up to 48 of
+ * the 50 subrequests an invocation gets, so it cannot share. Offset-free like the others, because a
  * stepped range with a nonzero start collapses onto another schedule (see `POLL_CRON`).
  * Coinciding with the two- and three-minute schedules on some minutes is harmless — each trigger
  * is its own invocation with its own budget.
@@ -195,13 +204,16 @@ export default {
     // `[vars]`; if a CLI `--var` ever shadowed the file's vars rather than merging with them,
     // the classifier would silently fall back to its defaults in production with no symptom.
     // Naming them here makes that a one-curl check instead of a mystery. It deliberately says
-    // nothing about the API key: a health check must not probe a billed endpoint.
+    // nothing about the API key: a health check must not probe a billed endpoint. Instapaper gets
+    // the comms ingest treatment — whether its secrets are set, never what they are — because the
+    // To Reader leg is otherwise silently off on a deployment that was never given them.
     if (request.method === 'GET' && url.pathname === '/') {
       return new Response(
         `alfred workers ok (build ${env.WORKER_VERSION ?? UNSTAMPED}; ` +
           `classifier ${env.CLASSIFIER_MODEL} @ ${env.CLASSIFIER_TIMEZONE}; ` +
           `comms ingest ${env.COMMS_INGEST_HMAC_SECRET === undefined ? 'unconfigured' : 'configured'}; ` +
           `reader ${env.READER_MODEL} cap ${env.READER_DAILY_CAP ?? String(READER_DEFAULT_DAILY_CAP)}; ` +
+          `instapaper ${instapaperCredentials(env) === undefined ? 'unconfigured' : 'configured'}; ` +
           `wiki ${env.WIKI_REPO})`,
       );
     }
@@ -322,6 +334,7 @@ function logReaderRetention(summary: ReaderRetentionSummary): void {
 /**
  * The reader tick, as ONE line of counts, so `wrangler tail` can say how much of a tick ran. The
  * counts are the tick's own summary; each failure that ended a unit is an error line beneath them.
+ * The To Reader leg follows on a line of its own, with each Instapaper failure beneath it.
  */
 function logReaderTick(summary: ReaderTickSummary): void {
   console.log(
@@ -333,6 +346,19 @@ function logReaderTick(summary: ReaderTickSummary): void {
       `${String(summary.skippedForBudget)} left for the budget`,
   );
   for (const failure of summary.failures) console.error(`reader: ${failure}`);
+
+  // The To Reader leg's own line — nothing when the tick stopped before deciding on it.
+  const leg = summary.instapaper;
+  if (leg === undefined) return;
+  if ('skipped' in leg) {
+    console.log(`reader instapaper: skipped (${leg.skipped})`);
+    return;
+  }
+  console.log(
+    `reader instapaper: ${String(leg.listed)} listed, ${String(leg.taken)} taken in, ` +
+      `${String(leg.archived)} archived, ${String(leg.restored)} restored`,
+  );
+  for (const failure of leg.failures) console.error(`reader: instapaper: ${failure}`);
 }
 
 /**

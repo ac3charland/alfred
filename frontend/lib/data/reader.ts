@@ -49,6 +49,8 @@ export const READER_POST_LIST_COLUMNS = [
   'publication_id',
   'received_at',
   'rfc822_message_id',
+  'site',
+  'source',
   'summarize_attempts',
   'summarized_at',
   'summarizing_since',
@@ -97,8 +99,11 @@ export async function getReaderPosts(
   const scoped =
     query.scope === 'active' ? base.is('archived_at', null) : base.not('archived_at', 'is', null);
 
+  // The insert breaks a tie on the arrival instant: every article the tick takes in at once
+  // shares the tick's instant, and an order the query leaves open is one a refetch may reshuffle.
   return scoped
     .order('received_at', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(query.limit)
     .overrideTypes<ReaderPostListItem[]>();
 }
@@ -294,7 +299,11 @@ export async function getReaderHealthSeed(
   return data;
 }
 
-/** What a send reads: the bodies and the fields the bookmark is built from, plus the archive stamp. */
+/**
+ * What a send reads: the bodies and the fields the bookmark is built from, plus the archive stamp —
+ * and which kind of post it is, because an Instapaper article's send moves the bookmark it came
+ * from back to Unread instead of saving a new one.
+ */
 export interface ReaderPostForSend {
   title: string;
   canonical_url: string | null;
@@ -302,6 +311,8 @@ export interface ReaderPostForSend {
   html: string | null;
   text: string | null;
   archived_at: string | null;
+  source: string;
+  instapaper_bookmark_id: number | null;
 }
 
 /**
@@ -316,7 +327,7 @@ export async function getReaderPostForSend(
 ): Promise<{ data: ReaderPostForSend | null; error: PostgrestError | null }> {
   return supabase
     .from('reader_posts')
-    .select('title,canonical_url,gist,html,text,archived_at')
+    .select('title,canonical_url,gist,html,text,archived_at,source,instapaper_bookmark_id')
     .eq('id', id)
     .maybeSingle();
 }
