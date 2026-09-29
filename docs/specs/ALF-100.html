@@ -153,8 +153,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
 .switch legend{float:left;padding:0;color:var(--ink)}
 .switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
-#p1:has(input[value=a]:checked) [data-opt=b],
-#p1:has(input[value=b]:checked) [data-opt=a],
+#p1:has(input[value=a]:checked) [data-opt=b],#p1:has(input[value=a]:checked) [data-opt=c],
+#p1:has(input[value=b]:checked) [data-opt=a],#p1:has(input[value=b]:checked) [data-opt=c],
+#p1:has(input[value=c]:checked) [data-opt=a],#p1:has(input[value=c]:checked) [data-opt=b],#p1:has(input[value=c]:checked) [data-opt=ab],
 #p2:has(input[value=long]:checked) [data-opt]:not([data-opt=long]),
 #p2:has(input[value=short]:checked) [data-opt]:not([data-opt=short]),
 #p2:has(input[value=block]:checked) [data-opt]:not([data-opt=block]){display:none}
@@ -227,13 +228,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 /* The keyboard-up frame: the sheet is the visible viewport, the keyboard beneath it is device chrome. */
 .app.kbframe{max-width:390px;margin:0 auto;background:var(--surface)}
 .app .vv{position:relative;height:470px;overflow:hidden;display:flex;flex-direction:column}
-.app .vv .sh-body{position:relative;flex:1;overflow:hidden;padding-top:16px}
+.app .vv .sh-body{position:relative;flex:1;min-height:0;overflow:hidden;padding-top:16px}
+.app .vv .sh-body.end{display:flex;flex-direction:column;justify-content:flex-end;padding-top:0;padding-bottom:12px}
 .app .ta{border:1px solid var(--border);border-radius:4px;background:var(--input);padding:6px 8px;font-size:16px;line-height:24px;white-space:pre-wrap;outline:2px solid var(--teal);outline-offset:0}
 .app .ta .caret{display:inline-block;width:1.5px;height:19px;margin-bottom:-3px;background:var(--teal)}
-.app .ta.cut{border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}
 .app .ta.four{min-height:110px}
-.app .sticky{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:8px 16px;background:var(--surface);border-top:1px solid rgb(30 42 63/.6)}
-.app .sticky.end{justify-content:flex-end}
 .app .under{margin-top:8px;display:flex;gap:8px}
 .app .warn{border:1px solid rgb(245 158 11/.3);border-radius:6px;background:rgb(245 158 11/.05);padding:12px;display:flex;flex-direction:column;gap:8px}
 .app .warn .lab{font-size:12px;color:var(--muted-foreground)}
@@ -243,12 +242,45 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .app.strip{max-width:390px;margin:0 auto;padding:16px;display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:center}
 .app.strip>.btn,.app.strip>.row{justify-self:start}
 .app.strip .when{font-size:12px;color:var(--muted-foreground)}
+
+/* Review round 1: the editor footer (D2), the D8 headings, and the three D7 flavors. */
+.app .foot{flex:none;display:flex;gap:8px;padding:8px 16px;border-top:1px solid var(--border);background:var(--surface)}
+.app .foot.end{justify-content:flex-end}
+.app .h2s{font-size:14px;line-height:20px;font-weight:600;color:var(--foreground)}
+.app .ttl-b{font-size:20px;line-height:28px;font-weight:600}
+.app .edit{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:500;color:var(--teal)}
+.app .edit svg.ic{width:12px;height:12px}
+.app .hrow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.app .card{margin-top:12px;border:1px solid var(--border);border-radius:8px;background:var(--background);padding:12px}
+.app .card .hrow{margin-bottom:8px}
+.app .card .specbox{border:0;background:none;padding:0}
+.app .tabs{margin:16px -16px 0;display:flex;border-bottom:1px solid var(--border)}
+.app .tab{flex:1;text-align:center;padding:10px 0;font-size:14px;font-weight:500;color:var(--muted-foreground)}
+.app .tab.on{color:var(--foreground);box-shadow:inset 0 -2px 0 var(--teal)}
+.app .panel{padding-top:16px}
+.app .well{display:flex;gap:10px;align-items:flex-start;border-radius:6px;background:rgb(30 42 63/.35);padding:10px 12px}
+.app .well .pen{margin-left:auto;margin-top:3px;color:var(--muted-foreground)}
+.app .doc{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--background)}
+.app .doc svg.ic{width:18px;height:18px;color:var(--muted-foreground)}
+.app .doc .dt{font-weight:500}
+.app .doc .ds{font-size:12px;line-height:16px;color:var(--muted-foreground)}
+.app .doc .go{margin-left:auto}
+.app .links{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px}
+.app.phone.tall{height:760px}
+.app .tbar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid var(--border);background:var(--surface)}
+.app .tbar .grow{flex:1}
+.app .msep{height:1px;margin:4px -4px;background:var(--border)}
+.app .mi.chk{padding-left:32px;position:relative}
+.app .mi.chk svg.ic{position:absolute;left:8px;top:9px}
+.app .mini{width:100%;border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:0 16px 14px}
+.app .mini .tabs{margin-top:0}
 </style>
 </head>
 <body data-kind="story">
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-cu" viewBox="0 0 24 24"><path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></symbol>
@@ -258,6 +290,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
   <symbol id="i-updown" viewBox="0 0 24 24"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
 </svg>
 
 <main class="page">
@@ -272,24 +306,26 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <span class="stamp"></span>
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>100</span><span class="sep"> — </span><span class="ttl">Story detail on a phone</span></h1>
-  <p class="change" id="change">On a phone, a story opens as a full-screen sheet that stays above the keyboard. The notes editor grows with what you type, and the buttons get shorter and fewer.</p>
+  <p class="change" id="change">On a phone, a story opens as a full-screen sheet above the keyboard, with shorter buttons, a notes editor that grows and a clearer layout.</p>
+  <p class="revised" id="revised">Revised 2026-09-29: D1 → B, D3 settled; D2’s Save bar no longer covers the editor; new D7, D8; D4 folded into D7.</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
-    <li data-state="open"><h3><a class="tag" href="#d1">D1</a>How compact should the bottom controls get?</h3>
-      <p class="pick">A · four icon-only priority buttons in one row · B · one Priority menu, with Block/Abandon under ⋯ ★</p>
-      <p class="why">B keeps every label readable and folds two sections into one row.</p></li>
+    <li data-state="open"><h3><a class="tag" href="#d7">D7</a>Which layout direction for the sheet?</h3>
+      <p class="pick">A · cards · B · tabs · C · spec as a row, actions in a bottom bar ★</p>
+      <p class="why">C keeps every action within thumb reach and gives the spec the whole screen.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>How the notes editor behaves</h3>
-      <p class="pick">It grows to fit the text, and Save/Cancel stick just above the keyboard.</p>
-      <p class="why">You see the whole note, and Save is never hidden under the keyboard.</p></li>
-    <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>Launch button wording on phones</h3>
-      <p class="pick">Implement · Refine · Skip to dev · Run spike · Fix bug</p>
-      <p class="why">Every launch opens Claude Code, and that suffix is what makes them wrap.</p></li>
-    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>What stays pinned while scrolling</h3>
-      <p class="pick">Only the ref · state · × row. Everything else scrolls as one.</p>
-      <p class="why">Close is always one tap away, and the content gets the rest of the screen.</p></li>
+      <p class="pick">Grows to fit; Save/Cancel sit in a bar below it, never over it.</p>
+      <p class="why">Scrolling to the end always shows the note's last line above the bar.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d8">D8</a>How section headings read</h3>
+      <p class="pick">14px white semibold, in sentence case, instead of small grey capitals.</p>
+      <p class="why">Today they match the breadcrumb, so nothing outranks anything.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>How compact the controls get</h3>
+      <p class="pick">B · one Priority menu, with Block and Abandon under ⋯.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>Launch button wording on phones</h3>
+      <p class="pick">Implement · Refine · Skip to dev · Run spike · Fix bug</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>Which screens change</h3>
       <p class="pick">Phones only (narrower than 768px). The desktop modal stays pixel-identical.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>The phone shell</h3>
@@ -300,54 +336,76 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
 <section id="plates" aria-label="What you’ll see">
   <figure class="plate" id="p1">
-    <fieldset class="switch"><legend>D1</legend>
-      <label><input type="radio" name="p1" value="a">A · icon-only row</label>
-      <label><input type="radio" name="p1" value="b" checked>B · menus ★</label>
+    <fieldset class="switch"><legend>D7</legend>
+      <label><input type="radio" name="p1" value="a">A · cards</label>
+      <label><input type="radio" name="p1" value="b">B · tabs</label>
+      <label><input type="radio" name="p1" value="c" checked>C · spec row + bottom bar ★</label>
     </fieldset>
     <div class="mount">
-      <div class="app phone" role="img" aria-label="The story detail sheet on a 390px phone: a pinned header row with the ref, state chip and close; below it the title, breadcrumb, a short Implement button, the Refinement PR link, the Needs refinement checkbox, notes, the spec, and the compact controls for the selected option.">
+
+      <!-- A · cards -->
+      <div class="app phone" data-opt="a" role="img" aria-label="Flavor A, cards: under the pinned header, the title and breadcrumb, the Implement button with the Refinement PR link, and the Needs refinement checkbox. Then three bordered cards on a darker ground: Notes with an Edit link, Spec with a View in repo link and the rendered spec, and Move this story with the status menu, the Priority menu and the ⋯ button.">
         <div class="sh-head"><span class="sh-ref">ALF-42</span><span class="chip">Ready for dev</span><span class="x">×</span></div>
         <div class="sh-body">
-          <p class="ttl-a">Draft the inbound filter spec</p>
+          <p class="ttl-b">Draft the inbound filter spec</p>
           <p class="crumb">Alfred › Communication Firewall</p>
           <div class="acts">
             <span class="btn solid">Implement</span>
             <span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>Refinement PR</span>
             <span class="cbx-row"><span class="cbx"><svg class="ic"><use href="#i-check"/></svg></span>Needs refinement</span>
           </div>
-          <div class="sect"><h4 class="eyebrow">Notes</h4>
-            <p class="notes">The owner wants the firewall to default-deny and explain every rejection.</p></div>
-          <div class="sect">
-            <div class="spec-h"><h4 class="eyebrow">Spec</h4><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>View in repo</span></div>
+          <div class="card" style="margin-top:20px">
+            <div class="hrow"><h4 class="h2s">Notes</h4><span class="edit"><svg class="ic"><use href="#i-pen"/></svg>Edit</span></div>
+            <p class="notes">The owner wants the firewall to default-deny and explain every rejection.</p>
+          </div>
+          <div class="card">
+            <div class="hrow"><h4 class="h2s">Spec</h4><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>View in repo</span></div>
             <div class="specbox"><b>Inbound filter spec</b><p>The inbound filter classifies each captured item before it reaches the board.</p><p>Goals: parse the allow-list rules; reject anything not on the list, with a recorded reason…</p></div>
           </div>
-          <div class="rule"></div>
-          <div data-opt="a">
-            <div class="sect"><h4 class="eyebrow">Priority</h4>
-              <div class="row">
-                <span class="pgrp"><span class="cap">Project</span><span class="btn outline icon"><svg class="ic"><use href="#i-cu"/></svg></span><span class="btn outline icon"><svg class="ic"><use href="#i-cd"/></svg></span></span>
-                <span class="vsep"></span>
-                <span class="pgrp"><span class="cap">Backlog</span><span class="btn outline icon"><svg class="ic"><use href="#i-aut"/></svg></span><span class="btn outline icon dis"><svg class="ic"><use href="#i-adt"/></svg></span></span>
-              </div></div>
-            <div class="sect"><h4 class="eyebrow">Move this story</h4>
-              <div class="row">
-                <span class="btn outline">Ready for Dev <svg class="ic mu"><use href="#i-chev"/></svg></span>
-                <span class="vsep"></span>
-                <span class="btn outline amber"><svg class="ic"><use href="#i-ban"/></svg>Block</span>
-                <span class="btn outline danger">Abandon</span>
-              </div></div>
-          </div>
-          <div data-opt="b">
-            <div class="sect"><h4 class="eyebrow">Move this story</h4>
-              <div class="row">
-                <span class="btn outline">Ready for Dev <svg class="ic mu"><use href="#i-chev"/></svg></span>
-                <span class="btn outline"><svg class="ic"><use href="#i-updown"/></svg>Priority <svg class="ic mu"><use href="#i-chev"/></svg></span>
-                <span class="btn outline icon"><svg class="ic"><use href="#i-more"/></svg></span>
-              </div></div>
+          <div class="card">
+            <div class="hrow"><h4 class="h2s">Move this story</h4></div>
+            <div class="row">
+              <span class="btn outline">Ready for Dev <svg class="ic mu"><use href="#i-chev"/></svg></span>
+              <span class="btn outline"><svg class="ic"><use href="#i-updown"/></svg>Priority <svg class="ic mu"><use href="#i-chev"/></svg></span>
+              <span class="btn outline icon"><svg class="ic"><use href="#i-more"/></svg></span>
+            </div>
           </div>
         </div>
       </div>
-      <div class="app menus" data-opt="b" role="img" aria-label="Option B's two menus open: Priority lists Top of project, Bottom of project, Top of backlog, Bottom of backlog, each with its icon; the ⋯ menu lists Block… in amber and Abandon in red, and on a blocked story leads with Unblock to its previous lane.">
+
+      <!-- B · tabs -->
+      <div class="app phone" data-opt="b" role="img" aria-label="Flavor B, tabs: under the pinned header, the title, breadcrumb, Implement button, Refinement PR link and Needs refinement checkbox. Then a full-width tab bar reading Notes, Spec, Move, with Notes selected and underlined in teal. The Notes panel shows the note in a tinted editable well with a pencil, and empty space below.">
+        <div class="sh-head"><span class="sh-ref">ALF-42</span><span class="chip">Ready for dev</span><span class="x">×</span></div>
+        <div class="sh-body" style="min-height:560px">
+          <p class="ttl-b">Draft the inbound filter spec</p>
+          <p class="crumb">Alfred › Communication Firewall</p>
+          <div class="acts">
+            <span class="btn solid">Implement</span>
+            <span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>Refinement PR</span>
+            <span class="cbx-row"><span class="cbx"><svg class="ic"><use href="#i-check"/></svg></span>Needs refinement</span>
+          </div>
+          <div class="tabs"><span class="tab on">Notes</span><span class="tab">Spec</span><span class="tab">Move</span></div>
+          <div class="panel">
+            <div class="well"><p class="notes">The owner wants the firewall to default-deny and explain every rejection.</p><svg class="ic pen"><use href="#i-pen"/></svg></div>
+          </div>
+        </div>
+      </div>
+      <div class="app menus" data-opt="b" role="img" aria-label="Flavor B's other two tab panels. Spec: a View in repo link over the spec filling the panel's full height. Move: the status menu, the Priority menu and the ⋯ button in one row.">
+        <p class="mcap">Spec tab</p>
+        <div class="mini"><div class="tabs"><span class="tab">Notes</span><span class="tab on">Spec</span><span class="tab">Move</span></div>
+          <div class="panel"><div class="hrow" style="justify-content:flex-end;margin-bottom:8px"><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>View in repo</span></div>
+          <div class="specbox"><b>Inbound filter spec</b><p>The inbound filter classifies each captured item before it reaches the board. The spec fills the rest of the screen.</p></div></div></div>
+        <p class="mcap">Move tab</p>
+        <div class="mini"><div class="tabs"><span class="tab">Notes</span><span class="tab">Spec</span><span class="tab on">Move</span></div>
+          <div class="panel row">
+            <span class="btn outline">Ready for Dev <svg class="ic mu"><use href="#i-chev"/></svg></span>
+            <span class="btn outline"><svg class="ic"><use href="#i-updown"/></svg>Priority <svg class="ic mu"><use href="#i-chev"/></svg></span>
+            <span class="btn outline icon"><svg class="ic"><use href="#i-more"/></svg></span>
+          </div></div>
+      </div>
+
+      <!-- menus shared by A and B -->
+      <div class="app menus" data-opt="ab" role="img" aria-label="The D1 menus in flavors A and B: Priority lists Top of project, Bottom of project, Top of backlog and a greyed Bottom of backlog. The ⋯ menu lists Block… in amber and Abandon in red, and on a blocked story leads with Unblock to Ready for Dev.">
         <p class="mcap">Priority ▾ open</p>
         <div class="menu">
           <div class="mi"><svg class="ic"><use href="#i-cu"/></svg>Top of project</div>
@@ -365,58 +423,98 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
           <div class="mi red">Abandon</div>
         </div>
       </div>
+
+      <!-- C · spec row + bottom bar -->
+      <div class="app phone tall" data-opt="c" role="img" aria-label="Flavor C: under the pinned header, a larger title, the breadcrumb and the Refinement PR link. A Notes heading with the note in a tinted editable well with a pencil. A Spec heading over a bordered document row showing a file icon, Inbound filter spec, Tap to read full-screen, and a chevron. A View in repo link sits beside the Spec heading. A pinned bottom bar holds a wide Implement button, the status menu, an icon-only Priority menu and the ⋯ button.">
+        <div class="sh-head"><span class="sh-ref">ALF-42</span><span class="chip">Ready for dev</span><span class="x">×</span></div>
+        <div class="sh-body">
+          <p class="ttl-b">Draft the inbound filter spec</p>
+          <p class="crumb">Alfred › Communication Firewall</p>
+          <div class="links"><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>Refinement PR</span></div>
+          <div class="sect" style="margin-top:24px"><h4 class="h2s">Notes</h4>
+            <div class="well"><p class="notes">The owner wants the firewall to default-deny and explain every rejection.</p><svg class="ic pen"><use href="#i-pen"/></svg></div></div>
+          <div class="sect" style="margin-top:24px">
+            <div class="hrow"><h4 class="h2s">Spec</h4><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>View in repo</span></div>
+            <div class="doc"><svg class="ic"><use href="#i-doc"/></svg><div><p class="dt">Inbound filter spec</p><p class="ds">Tap to read full-screen</p></div><svg class="ic go mu"><use href="#i-right"/></svg></div>
+          </div>
+        </div>
+        <div class="tbar">
+          <span class="btn solid grow">Implement</span>
+          <span class="btn outline">Ready for Dev <svg class="ic mu"><use href="#i-chev"/></svg></span>
+          <span class="btn outline"><svg class="ic"><use href="#i-updown"/></svg><svg class="ic mu"><use href="#i-chev"/></svg></span>
+          <span class="btn outline icon"><svg class="ic"><use href="#i-more"/></svg></span>
+        </div>
+      </div>
+      <div class="app menus" data-opt="c" role="img" aria-label="Flavor C's menus. Priority lists the four jumps, with Bottom of backlog greyed. The ⋯ menu on a ready-for-dev story: a checked Needs refinement item, a divider, Block… in amber and Abandon in red. The ⋯ menu on a needs-refinement story adds Skip to dev at the top.">
+        <p class="mcap">Priority ▾ open</p>
+        <div class="menu">
+          <div class="mi"><svg class="ic"><use href="#i-cu"/></svg>Top of project</div>
+          <div class="mi"><svg class="ic"><use href="#i-cd"/></svg>Bottom of project</div>
+          <div class="mi"><svg class="ic"><use href="#i-aut"/></svg>Top of backlog</div>
+          <div class="mi dis"><svg class="ic"><use href="#i-adt"/></svg>Bottom of backlog</div>
+        </div>
+        <p class="mcap">⋯ on this story · ⋯ on a needs-refinement story</p>
+        <div class="menu">
+          <div class="mi chk"><svg class="ic"><use href="#i-check"/></svg>Needs refinement</div>
+          <div class="msep"></div>
+          <div class="mi amb"><svg class="ic"><use href="#i-ban"/></svg>Block…</div>
+          <div class="mi red">Abandon</div>
+        </div>
+        <div class="menu">
+          <div class="mi">Skip to dev</div>
+          <div class="mi chk"><svg class="ic"><use href="#i-check"/></svg>Needs refinement</div>
+          <div class="msep"></div>
+          <div class="mi amb"><svg class="ic"><use href="#i-ban"/></svg>Block…</div>
+          <div class="mi red">Abandon</div>
+        </div>
+      </div>
     </div>
-    <figcaption><b>Plate I.</b>The sheet at rest. The header row stays pinned and everything below it scrolls. A jump the story already satisfies (here, bottom of backlog) greys out, as it does today.</figcaption>
+    <figcaption><b>Plate I.</b>The sheet at rest in each direction. All three use D1's menus and D8's headings. On a blocked story, ⋯ leads with Unblock. In C, tapping the spec row opens the spec full-screen.</figcaption>
   </figure>
 
   <figure class="plate" id="p2">
     <fieldset class="switch"><legend>States</legend>
-      <label><input type="radio" name="p2" value="long" checked>Long note, keyboard up</label>
+      <label><input type="radio" name="p2" value="long" checked>Long note, scrolled to the end</label>
       <label><input type="radio" name="p2" value="short">Short note</label>
       <label><input type="radio" name="p2" value="block">Block reason</label>
     </fieldset>
     <div class="mount">
-      <div class="app kbframe" role="img" aria-label="Editing with the keyboard up: the sheet shrinks to the space above the keyboard, keeping the pinned header. In the long-note state the textarea has grown past the visible space, and the Save and Cancel bar sticks to the bottom edge just above the keyboard. In the short-note state the four-row editor has Save and Cancel directly beneath it. In the block-reason state the amber reason card's Cancel and Confirm block bar sticks above the keyboard the same way.">
+      <div class="app kbframe" role="img" aria-label="Editing with the keyboard up. The sheet ends at the keyboard. Between the scrolling body and the keyboard sits a fixed bar holding Save and Cancel, which never overlaps the editor. Long-note state: the body is scrolled to the end, so the grown editor's last lines, its caret and its bottom border all sit above the bar, with a gap. Short-note state: the Notes heading, a four-row editor, then the Spec heading. Block-reason state: the amber reason card, fully visible, with Cancel and Confirm block in the bar.">
         <div class="vv">
           <div class="sh-head"><span class="sh-ref">ALF-42</span><span class="chip">Ready for dev</span><span class="x">×</span></div>
-          <div class="sh-body" data-opt="long">
-            <div class="sect" style="margin-top:0"><h4 class="eyebrow">Notes</h4>
-              <div class="ta cut">The owner wants the firewall to default-deny and explain every rejection.
+          <div class="sh-body end" data-opt="long">
+            <div class="ta">The owner wants the firewall to default-deny and explain every rejection.
 
 Rejections land in the daily digest, grouped by sender, each with the rule that caught it and a one-tap "allow this sender" link.
 
 Open questions:
-- Should the allow-list live in the repo or in Supabase?<span class="caret"></span>
+- Should the allow-list live in the repo or in Supabase?
 - How long do we keep rejected items before purging?
 - Does a reply from an allowed sender re-open a thread?
 
-Also: the digest should skip empty days.</div></div>
-            <div class="sticky"><span class="btn ghostacc">Save</span><span class="btn ghost">Cancel</span></div>
+Also: the digest should skip empty days.<span class="caret"></span></div>
           </div>
+          <div class="foot" data-opt="long"><span class="btn ghostacc">Save</span><span class="btn ghost">Cancel</span></div>
           <div class="sh-body" data-opt="short">
-            <p class="ttl-a">Draft the inbound filter spec</p>
+            <p class="ttl-b">Draft the inbound filter spec</p>
             <p class="crumb">Alfred › Communication Firewall</p>
-            <div class="sect"><h4 class="eyebrow">Notes</h4>
-              <div class="ta four">The owner wants the firewall to default-deny and explain every rejection.<span class="caret"></span></div>
-              <div class="under" style="margin-top:0"><span class="btn ghostacc">Save</span><span class="btn ghost">Cancel</span></div></div>
-            <div class="sect"><div class="spec-h"><h4 class="eyebrow">Spec</h4><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>View in repo</span></div>
-              <div class="specbox"><b>Inbound filter spec</b><p>The inbound filter classifies each captured item…</p></div></div>
+            <div class="sect" style="margin-top:24px"><h4 class="h2s">Notes</h4>
+              <div class="ta four">The owner wants the firewall to default-deny and explain every rejection.<span class="caret"></span></div></div>
+            <div class="sect" style="margin-top:24px"><div class="hrow"><h4 class="h2s">Spec</h4><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>View in repo</span></div></div>
           </div>
-          <div class="sh-body" data-opt="block">
-            <h4 class="eyebrow">Move this story</h4>
-            <div class="warn" style="margin-top:12px"><span class="lab">Why is this blocked? (optional)</span>
+          <div class="foot" data-opt="short"><span class="btn ghostacc">Save</span><span class="btn ghost">Cancel</span></div>
+          <div class="sh-body end" data-opt="block">
+            <div class="warn"><span class="lab">Why is this blocked? (optional)</span>
               <div class="ta">Waiting on the upstream decision about where the allow-list lives — repo file or a Supabase table.
 
-Ping the owner once the rate-limit story lands. If the answer is Supabase, this story also needs the table and its RLS policy before the parser can read the rules.<span class="caret"></span>
-
-Revisit on Friday either way.</div></div>
-            <div class="sticky end"><span class="btn ghost">Cancel</span><span class="btn amberfill">Confirm block</span></div>
+Ping the owner once the rate-limit story lands. If the answer is Supabase, this story also needs the table and its RLS policy first.<span class="caret"></span></div></div>
           </div>
+          <div class="foot end" data-opt="block"><span class="btn ghost">Cancel</span><span class="btn amberfill">Confirm block</span></div>
         </div>
         <div class="kbd">keyboard</div>
       </div>
     </div>
-    <figcaption><b>Plate II.</b>Editing with the keyboard up. The sheet ends where the keyboard begins, the editor has no inner scrollbar, and its actions ride the keyboard's top edge whenever the editor runs past it.</figcaption>
+    <figcaption><b>Plate II.</b>Editing with the keyboard up, the same in every direction. Save/Cancel have their own bar between the body and the keyboard, so they never cover the text. In C, this bar replaces the action bar while you edit.</figcaption>
   </figure>
 
   <figure class="plate" id="p3">
@@ -428,13 +526,13 @@ Revisit on Friday either way.</div></div>
         <span class="btn solid">Fix bug</span><span class="when">bug</span>
       </div>
     </div>
-    <figcaption><b>Plate III.</b>The launch buttons on a phone (D3). The board's card chips and the desktop modal keep their full wording.</figcaption>
+    <figcaption><b>Plate III.</b>The launch buttons on a phone (D3). In C, Skip to dev moves into ⋯ (Plate I). Card chips and the desktop modal keep their full wording.</figcaption>
   </figure>
 </section>
 
 <section class="sec" id="not-doing">
   <h2 class="side">Not doing</h2>
-  <p>Desktop: its notes editor still opens at two rows. Other dialogs (epic spec, gate, new story) and the mobile search sheet keep today’s keyboard handling.</p>
+  <p>Desktop’s notes editor (still two rows). Other dialogs and mobile search keep today’s keyboard handling.</p>
 </section>
 
 <section class="sec" id="heads-up">
@@ -455,39 +553,50 @@ Revisit on Friday either way.</div></div>
 
 <section id="context">
   <h2>Context</h2>
-  <p>The ticket (dictated, so “code cards” means the Code board's story detail modal) lists three phone problems: the Notes box shrinks while you type, so long descriptions can't be read; the buttons are wordy and large; and nothing avoids the on-screen keyboard. It also asks for the mobile Storybook screenshots to be checked, and written and captured where they're missing. The human scoped it to phones only (D5) and chose a full-screen sheet (D6) when asked.</p>
+  <p>The ticket (dictated, so “code cards” means the Code board's story detail modal) lists three phone problems: the Notes box shrinks while you type, so long descriptions can't be read; the buttons are wordy and large; and nothing avoids the on-screen keyboard. It also asks for the mobile Storybook screenshots to be checked, and written and captured where they're missing. The human scoped it to phones only (D5) and chose a full-screen sheet (D6). In the first review they also found the layout crowded: the editable notes and the read-only spec look alike, and the headings don't stand out. D7 and D8 answer that.</p>
   <h3>What exists today</h3>
   <ul>
     <li><code>frontend/components/code/story-detail-modal.tsx</code> renders <code>FormDialog</code> (<code>atoms/dialog.tsx</code>) as a centred <code>max-w-2xl</code> card with <code>flex max-h-[85vh] flex-col</code>. The header, action row and the <em>Priority</em> + <em>Move this story</em> footer are fixed. Only the Notes/Spec middle (<code>overflow-y-auto</code>) scrolls. At 390×844 that footer takes about 220px, so the scrolling middle gets roughly a quarter of the screen, and nearly nothing once a keyboard is up.</li>
-    <li><code>EditableNotes</code> (same file) shows the full note while reading, then switches to <code>TextareaField</code> (<code>atoms/textarea-field.tsx</code>), which has a fixed <code>rows=2</code> and <code>resize-none</code>. That switch is the “box shrinks while typing” bug.</li>
+    <li><code>EditableNotes</code> (same file) shows the full note while reading, then switches to <code>TextareaField</code> (<code>atoms/textarea-field.tsx</code>), which has a fixed <code>rows=2</code> and <code>resize-none</code>. That switch is the “box shrinks while typing” bug. When reading, the note is plain text styled exactly like the markdown spec below it, which is why the two are hard to tell apart.</li>
+    <li>Refinement now writes HTML specs. <code>SpecView</code> renders those in a white, sandboxed <code>h-[28rem]</code> iframe, which is cramped inside a phone sheet. <code>FullScreenDialog</code> already exists “for handing a cramped embedded document (a week plan, a rendered spec) the whole screen on a phone”. Flavor C reuses it.</li>
+    <li>Section headings are 12px, uppercase, <code>text-muted-foreground</code> (<code>#8a96a8</code>) on <code>bg-surface</code> (<code>#0f1626</code>). That contrast is about 6:1, which passes WCAG AA. So the problem isn't legibility, it's hierarchy: headings use the same size, weight and colour as the breadcrumb and the checkbox hint. D8 fixes this with size, weight and case, not only colour.</li>
     <li>The dialog is positioned with <code>fixed top-1/2 -translate-y-1/2</code>. iOS Safari doesn't resize the layout viewport for the keyboard, and <code>dvh</code> ignores the keyboard too, so the card's lower half ends up under the keyboard. Nothing in the app reads <code>window.visualViewport</code> yet.</li>
     <li>iOS focus-zoom is already solved app-wide: <code>globals.css</code> sets inputs and textareas to 16px under <code>(pointer: coarse)</code> (ALF-115, <code>e2e/mobile-input-zoom.spec.ts</code>). The dialog × is already a 44px target on mobile (ALF-138, <code>e2e/mobile-modal-close.spec.ts</code>).</li>
-    <li>Buttons: <code>PriorityControls</code> draws four labelled outline buttons that wrap to two rows. <code>ManualControls</code> draws the status menu, Block and Abandon. <code>LaunchButton</code> <code>solid</code> uses <code>LAUNCH_LABELS</code> (<code>lib/code/launch.ts</code>), which all end in “in Claude Code”.</li>
+    <li>Buttons: <code>PriorityControls</code> draws four labelled outline buttons that wrap to two rows. <code>ManualControls</code> draws the status menu, Block and Abandon. <code>LaunchButton</code> <code>solid</code> uses <code>LAUNCH_LABELS</code> (<code>lib/code/launch.ts</code>), which all end in “in Claude Code”. <code>DropdownMenuCheckboxItem</code> already exists in <code>atoms/dropdown-menu.tsx</code> (flavor C's Needs refinement item).</li>
     <li>Screenshots: <code>code-storydetailmodal--mobile-ready-for-dev.png</code> is the only mobile baseline. No mobile baseline exists for editing notes, a needs-refinement story, a blocked story, the block-reason editor, or the keyboard-up case. Step 1 of the <a href="#plan">plan</a> captures those against today's code.</li>
-    <li>Precedent: <code>FullScreenDialog</code> (<code>atoms/dialog.tsx</code>, used by the mobile search and the week-plan viewer) is full-bleed at <code>h-[100dvh]</code> with a serif-title header. <code>useMediaQuery</code> (<code>lib/hooks/use-media-query.ts</code>) is the house media-query hook.</li>
   </ul>
 </section>
 
 <section id="decision-records">
   <h2>Decision records</h2>
-  <section class="rec" id="d1">
-    <h3><span class="tag">D1</span>How compact should the bottom controls get? · open</h3>
-    <p><strong>A: icon-only priority row.</strong> The four jumps become 32×32 outline icon buttons in one row, grouped under small “Project” and “Backlog” captions. Each keeps today's <code>title</code> and gets its label as <code>aria-label</code>. <em>Move this story</em> is unchanged (it already fits one row at 390px). Cost: the icons alone don't separate “this project” from “whole backlog” as well as words do, and it still takes two sections.</p>
-    <p><strong>B: menus (★).</strong> <em>Priority</em> and <em>Move this story</em> merge into one row under the <em>Move this story</em> heading: the status menu (unchanged), a <em>Priority ▾</em> outline button that opens the four labelled jumps as menu items (icons, disabled states and titles as today), and a ⋯ button (<code>aria-label="More story actions"</code>) holding the rarer actions. Block/Abandon become menu items. The ⋯ menu lists, in order: <em>Unblock to &lt;lane&gt;</em> (blocked only), <em>Block…</em> (not blocked), <em>Abandon</em> (not abandoned, <code>destructive</code> item variant). <em>Block…</em> opens the same inline reason editor under the row that the Block button opens today. Cost: Unblock and Abandon each take one more tap. Unblock can also go through the status menu, which moves a blocked story to any lane.</p>
-    <p>Button height stays at the <code>sm</code> 32px in both. The ticket's “large” is width and wrapping, not height: today's controls fill three rows.</p>
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>Which layout direction for the sheet? · open</h3>
+    <p>All three use D1's menus, D2's editor, D3's labels and D8's headings. They differ in how sections are grouped and where actions live.</p>
+    <p><strong>A: cards.</strong> Notes, Spec and <em>Move this story</em> each sit in a bordered <code>bg-background</code> card (<code>rounded-lg p-3</code>) on the <code>bg-surface</code> sheet. Notes gets a visible <em>✎ Edit</em> affordance. The spec renders inline as today. Only the header row is pinned. It's the smallest change, but the spec is still an inline 28rem iframe and the actions stay at the far end of a long scroll.</p>
+    <p><strong>B: tabs.</strong> The title, breadcrumb, launch/PR row and refinement mark stay above a full-width <code>Notes · Spec · Move</code> tab bar (teal underline on the active tab). Only one panel shows at a time, so the spec tab gets the full remaining height, and the status controls are one tap away in <em>Move</em>. Costs: a new tab state (reset to Notes on each open), a tap to reach the status controls, and the one-scroll document becomes three short views.</p>
+    <p><strong>C: spec row + bottom bar (★).</strong> The body holds only what you read: title, breadcrumb, PR links, Notes (in a tinted editable well with a pencil) and the spec as a document row (file icon, spec title, “Tap to read full-screen”, chevron). Tapping the row opens the spec in the existing <code>FullScreenDialog</code>, stacked over the sheet. <em>View in repo</em> stays beside the Spec heading. Every action moves into a pinned bottom bar: the primary launch (<code>flex-1</code>), the status menu, an icon-only Priority menu (<code>aria-label="Priority"</code>), and ⋯. To fit 390px, the refinement mark becomes a <code>DropdownMenuCheckboxItem</code> in ⋯, and the secondary launch (<em>Skip to dev</em>) moves into ⋯ as well. Costs: two controls that were one tap away are now two taps, and the sheet has two pinned regions (header and bar) instead of one.</p>
+    <p>Why C: it puts the actions you use on a phone within thumb reach. It separates “edit” (the well) from “read” (the document row) by shape, not just by heading. And the full-screen spec reader is exactly what <code>FullScreenDialog</code> was built for, so the white 28rem iframe no longer squeezes into the sheet. D2's editor footer lives where C's bar is, so while you edit, the bar swaps to Save/Cancel.</p>
   </section>
   <section class="rec" id="d2">
-    <h3><span class="tag">D2</span>How the notes editor behaves · proposed</h3>
-    <p>On a phone the notes <code>TextareaField</code> auto-grows to its content, with a four-row floor so an empty note still has room. There's no max height and no inner scrollbar: the sheet's body is the one scroller. Its Save/Cancel row is <code>position: sticky; bottom: 0</code> inside the sheet body. It sits right under a short editor (Plate II, short) and pins to the sheet's bottom edge, which is the keyboard's top edge per D6, once the editor runs past it (long). The block-reason editor gets the same two behaviours, so every text editor in the sheet acts the same.</p>
-    <p>Considered: capping the editor at the visible height with an inner scroll, which gives two nested scrollers on a touch screen. Also considered: Save/Cancel moving into the pinned header iOS-style, which means two different save locations across the app's editors.</p>
+    <h3><span class="tag">D2</span>How the notes editor behaves · proposed (revised in review 1)</h3>
+    <p>On a phone the notes <code>TextareaField</code> auto-grows to its content, with a four-row floor so an empty note still has room. There's no max height and no inner scrollbar: the sheet's body is the one scroller. Its Save/Cancel row moves out of the scroll content into the sheet's <strong>footer</strong>, a <code>shrink-0</code> bar between the scrolling body and the bottom of the visible viewport (the keyboard's top edge, per D6). The body's scroll region therefore ends at the bar's top edge, and scrolling to the end always shows the editor's last line and bottom border above the bar (Plate II). The block-reason editor uses the same footer.</p>
+    <p>Considered: a <code>position: sticky</code> action row inside the scroll content. That was the first draft, and the review rejected it because it floated over the editor and covered its last lines until you scrolled all the way down. Also considered: capping the editor at the visible height with an inner scroll (two nested scrollers on a touch screen), and moving Save/Cancel into the pinned header iOS-style (a different save location from every other editor in the app).</p>
+  </section>
+  <section class="rec" id="d8">
+    <h3><span class="tag">D8</span>How section headings read · proposed</h3>
+    <p>In the sheet, section headings (<em>Notes</em>, <em>Spec</em>/<em>Findings</em>, <em>Move this story</em>) become <code>text-sm font-semibold text-foreground</code>, in sentence case, with no tracking, and the title steps up to <code>text-xl</code>. That gives three clear levels (title, section, body) where today there are two. The breadcrumb and hints stay muted <code>text-xs</code>, so headings now outrank them. The desktop modal keeps its eyebrow headings (D5). Implement this as a class the heading takes from a <code>layout</code>-aware helper, not as edits to <code>SpecView</code>'s markup, which the epic spec modal shares.</p>
+  </section>
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>How compact the controls get · settled</h3>
+    <p>Menus. A <em>Priority ▾</em> outline button opens the four labelled jumps as menu items, with the icons, disabled states and titles they have today. A ⋯ button (<code>aria-label="More story actions"</code>) holds the rarer actions: <em>Unblock to &lt;lane&gt;</em> (blocked only, first), <em>Block…</em> (when not blocked; it opens the same reason editor today's Block button opens), and <em>Abandon</em> (when not abandoned, <code>destructive</code> item variant). The full ⋯ contents per flavor and state are in <a href="#behavior">Behaviour</a>. Button height stays at the <code>sm</code> 32px. Considered: four icon-only priority buttons in one row, rejected by the human.</p>
   </section>
   <section class="rec" id="d3">
-    <h3><span class="tag">D3</span>Launch button wording on phones · proposed</h3>
-    <p><code>LAUNCH_LABELS</code> gains a <code>short</code> per phase: refinement “Refine”, implementation “Implement”, bypass “Skip to dev”, spike “Run spike”, bug “Fix bug”. The <code>busy</code> labels are unchanged. Only the sheet uses the short form. Board card chips and the desktop modal keep <code>idle</code>. Considered: an icon-only launch button, rejected because it's the primary action and should say what it does.</p>
+    <h3><span class="tag">D3</span>Launch button wording on phones · settled</h3>
+    <p><code>LAUNCH_LABELS</code> gains a <code>short</code> per phase: refinement “Refine”, implementation “Implement”, bypass “Skip to dev”, spike “Run spike”, bug “Fix bug”. The <code>busy</code> labels are unchanged. Only the sheet uses the short form. Board card chips and the desktop modal keep <code>idle</code>.</p>
   </section>
   <section class="rec" id="d4">
-    <h3><span class="tag">D4</span>What stays pinned while scrolling · proposed</h3>
-    <p>The sheet header is one <code>h-11</code> row: ref, state chip, kind badge, and the 44px ×. It stays fixed (<code>shrink-0</code>), and everything else, including the title, breadcrumb and controls, sits in one <code>overflow-y-auto</code> body. On a phone the pinned footer is dropped: it was the main thing eating the visible height. Considered: pinning the title too, which costs about 50px of permanent chrome; the ref already names the story.</p>
+    <h3><span class="tag">D4</span>What stays pinned while scrolling · now part of D7</h3>
+    <p>In every flavor the header is one pinned <code>h-11</code> row: ref, state chip, kind badge, and the 44px ×. The title scrolls with the body. Flavors A and B pin nothing else. C also pins its bottom action bar. While an editor is open, every flavor pins the D2 footer.</p>
   </section>
   <section class="rec" id="d5">
     <h3><span class="tag">D5</span>Which screens change · settled</h3>
@@ -495,61 +604,76 @@ Revisit on Friday either way.</div></div>
   </section>
   <section class="rec" id="d6">
     <h3><span class="tag">D6</span>The phone shell · settled</h3>
-    <p>A full-bleed, radius-free sheet whose top and height track <code>window.visualViewport</code>, so it always fills exactly the visible screen above the keyboard. See D8 and D9 for the mechanics.</p>
+    <p>A full-bleed, radius-free sheet whose top and height track <code>window.visualViewport</code>, so it always fills exactly the visible screen above the keyboard. See D10 and D11 for the mechanics.</p>
   </section>
 
   <h3>Implementation decisions</h3>
-  <section class="rec" id="d7">
-    <h4>D7 · Detect “phone” in JS, with a query that is false under jsdom</h4>
+  <section class="rec" id="d9">
+    <h4>D9 · Detect “phone” in JS, with a query that is false under jsdom</h4>
     <p>Add <code>export const MOBILE_QUERY = '(width &lt; 48rem)'</code> beside <code>useMediaQuery</code> in <code>lib/hooks/use-media-query.ts</code>, matching Tailwind v4's <code>max-md</code>. The modal reads <code>useMediaQuery(MOBILE_QUERY)</code>. The query must be the <em>mobile</em> one, not <code>!useMediaQuery(DESKTOP_QUERY)</code>: <code>jest.setup.ts</code> stubs every <code>matchMedia</code> to <code>false</code>, so a mobile-positive query keeps the 1,200-line <code>story-detail-modal.test.tsx</code> on the desktop layout it asserts today. Mobile RTL tests override <code>globalThis.matchMedia</code> for that one query. The switch is JS rather than CSS <code>max-md:</code>/<code>md:hidden</code> because the two layouts have different DOM (menus vs buttons). CSS-hidden duplicates would double every <code>getByRole</code> in jsdom, which loads no Tailwind. The modal opens only on the client, so <code>useSyncExternalStore</code>'s server snapshot never flashes the wrong layout.</p>
   </section>
-  <section class="rec" id="d8">
-    <h4>D8 · <code>useVisualViewport()</code> hook, not viewport meta or <code>dvh</code></h4>
+  <section class="rec" id="d10">
+    <h4>D10 · <code>useVisualViewport()</code> hook, not viewport meta or <code>dvh</code></h4>
     <p>New <code>lib/hooks/use-visual-viewport.ts</code>: <code>useSyncExternalStore</code> subscribing to <code>visualViewport</code> <code>resize</code> + <code>scroll</code>. It returns <code>{ height, offsetTop } | null</code> (null when the API is absent or on the server). The snapshot must be referentially stable between identical readings, so cache the last object and return it unless a value changed. <code>interactive-widget=resizes-content</code> was rejected because iOS Safari ignores it and it would relayout every page on Android. <code>100dvh</code> was rejected because it doesn't shrink for the keyboard on iOS.</p>
   </section>
-  <section class="rec" id="d9">
-    <h4>D9 · A new <code>SheetDialog</code> atom; <code>FullScreenDialog</code> untouched</h4>
-    <p>Add <code>SheetDialog</code> to <code>atoms/dialog.tsx</code>: the same <code>Root → Portal → DialogOverlay → Content</code> scaffold and fade classes as <code>FormDialog</code>. Content is <code>fixed inset-x-0 z-50 flex w-screen flex-col bg-surface</code>, with <code>style={{ top: vv.offsetTop, height: vv.height }}</code> from D8, falling back to <code>top-0 h-[100dvh]</code> when the hook returns null. It has no header of its own (the modal supplies D4's row). <code>FullScreenDialog</code> keeps its <code>100dvh</code> body and serif header. Moving it and the mobile search onto <code>SheetDialog</code> is a follow-up (see <a href="#out">Out</a>).</p>
-  </section>
-  <section class="rec" id="d10">
-    <h4>D10 · Keep the focused field visible after a keyboard resize</h4>
-    <p>When D8's reading changes and <code>document.activeElement</code> is an <code>input</code> or <code>textarea</code> inside the sheet, <code>SheetDialog</code> calls <code>activeElement.scrollIntoView({ block: 'nearest' })</code> in the next animation frame. Feature-detect it, since jsdom lacks it (precedent: <code>lib/hooks/use-focus-item-highlight.ts</code>). The browser's own caret-following handles typing after that.</p>
-  </section>
   <section class="rec" id="d11">
-    <h4>D11 · <code>TextareaField</code> gains opt-in <code>autoGrow</code> and <code>stickyActions</code></h4>
-    <p>Both default to <code>false</code>, so every existing caller (epic notes, <code>InlineNoteField</code>, the desktop modal) renders byte-identically. <code>autoGrow</code>: a <code>useLayoutEffect</code> keyed on <code>value</code> sets <code>height = 'auto'</code>, then <code>height = scrollHeight + 'px'</code>, with <code>overflow-hidden</code>; <code>rows</code> is the floor. <code>stickyActions</code>: the action row gets <code>sticky bottom-0 z-10 bg-surface border-t border-border/60 py-2</code> (both variants), bled to the sheet's edges with negative margins so the bar spans the width as drawn. Not CSS <code>field-sizing: content</code>, because WebKit support can't be relied on for this user's iPhone.</p>
+    <h4>D11 · A new <code>SheetDialog</code> atom with a footer slot; <code>FullScreenDialog</code> untouched</h4>
+    <p>Add <code>SheetDialog</code> to <code>atoms/dialog.tsx</code>: the same <code>Root → Portal → DialogOverlay → Content</code> scaffold and fade classes as <code>FormDialog</code>. Content is <code>fixed inset-x-0 z-50 flex w-screen flex-col bg-surface</code>, with <code>style={{ top: vv.offsetTop, height: vv.height }}</code> from D10, falling back to <code>top-0 h-[100dvh]</code> when the hook returns null. Its children are the header and the <code>min-h-0 flex-1 overflow-y-auto</code> body. After them it renders an always-present, <code>shrink-0</code> footer element. It publishes that element through a <code>SheetFooterContext</code>, using a callback ref held in state so consumers re-render once it mounts. It also publishes a <code>claim()</code> function that returns a release callback; the footer's resting content (flavor C's bar) hides while any claim is held. <code>FullScreenDialog</code> keeps its <code>100dvh</code> body and serif header; moving it onto <code>SheetDialog</code> is a follow-up (see <a href="#out">Out</a>).</p>
   </section>
   <section class="rec" id="d12">
-    <h4>D12 · One jump list, two presentations</h4>
-    <p>Extract <code>usePriorityJumps(story)</code> from <code>story-detail/priority-controls.tsx</code>, returning today's <code>Jump[]</code>. The desktop <code>PriorityControls</code> keeps its markup. The D1 winner (A's icon row, or B's <code>PriorityMenu</code>) consumes the same list, so labels, icons, disabled flags and the <code>useMoveBurst</code> commits can't drift between layouts.</p>
+    <h4>D12 · Keep the focused field visible after a keyboard resize</h4>
+    <p>When D10's reading changes and <code>document.activeElement</code> is an <code>input</code> or <code>textarea</code> inside the sheet, <code>SheetDialog</code> calls <code>activeElement.scrollIntoView({ block: 'nearest' })</code> in the next animation frame. Feature-detect it, since jsdom lacks it (precedent: <code>lib/hooks/use-focus-item-highlight.ts</code>). The browser's own caret-following handles typing after that. Because the footer is outside the scroll region (D2), the caret can never be followed into a spot the bar covers.</p>
   </section>
   <section class="rec" id="d13">
-    <h4>D13 · Layout is a prop, not a second component tree</h4>
-    <p><code>DetailBody</code> takes <code>layout: 'dialog' | 'sheet'</code> and passes it down to <code>EditableNotes</code> (D2 props), <code>PrimaryAction</code> → <code>LaunchButton</code> (<code>compact</code> for D3), and <code>ManualControls</code>/<code>PriorityControls</code> (D1). <code>StoryDetailModal</code> picks <code>FormDialog</code> or <code>SheetDialog</code> from D7. The file is already 320 lines, so move <code>EditableNotes</code> to <code>story-detail/editable-notes.tsx</code> as part of this.</p>
+    <h4>D13 · <code>TextareaField</code> gains opt-in <code>autoGrow</code> and <code>actionsTarget</code></h4>
+    <p>Both are off by default, so every existing caller (epic notes, <code>InlineNoteField</code>, the desktop modal) renders byte-identically. <code>autoGrow</code>: a <code>useLayoutEffect</code> keyed on <code>value</code> sets <code>height = 'auto'</code>, then <code>height = scrollHeight + 'px'</code>, with <code>overflow-hidden</code>; <code>rows</code> is the floor. <code>actionsTarget?: Element | null</code>: when set, the action row renders through <code>createPortal</code> into that element (the D11 footer) as a full-width bar (<code>flex gap-2 border-t border-border bg-surface px-4 py-2</code>). The <code>warning</code> variant keeps its right-aligned amber confirm. The editor takes a D11 <code>claim()</code> while mounted. Not CSS <code>field-sizing: content</code>, because WebKit support can't be relied on for this user's iPhone.</p>
+  </section>
+  <section class="rec" id="d14">
+    <h4>D14 · One jump list behind two presentations</h4>
+    <p>Extract <code>usePriorityJumps(story)</code> from <code>story-detail/priority-controls.tsx</code>, returning today's <code>Jump[]</code>. The desktop <code>PriorityControls</code> keeps its markup. The new <code>PriorityMenu</code> (labelled trigger, or icon-only in flavor C) consumes the same list, so labels, icons, disabled flags and the <code>useMoveBurst</code> commits can't drift between layouts.</p>
+  </section>
+  <section class="rec" id="d15">
+    <h4>D15 · Layout is a prop, not a second component tree</h4>
+    <p><code>DetailBody</code> takes <code>layout: 'dialog' | 'sheet'</code> and passes it to <code>EditableNotes</code> (D2), <code>PrimaryAction</code> → <code>LaunchButton</code> (<code>compact</code> for D3), <code>ManualControls</code> (D1), and the heading helper (D8). <code>StoryDetailModal</code> picks <code>FormDialog</code> or <code>SheetDialog</code> from D9. The file is already 320 lines, so move <code>EditableNotes</code> to <code>story-detail/editable-notes.tsx</code> as part of this, plus a new <code>story-detail/more-actions-menu.tsx</code> for ⋯.</p>
   </section>
 </section>
 
 <section id="behavior" data-kind="story">
   <h2>Behaviour</h2>
-  <h3>The sheet (phone layout; P1)</h3>
+  <h3>Sheet regions (P1, P2)</h3>
   <table>
-    <thead><tr><th>Region</th><th>Contents</th><th>Scroll</th></tr></thead>
+    <thead><tr><th>Region</th><th>A · cards / B · tabs</th><th>C · spec row + bar</th></tr></thead>
     <tbody>
-      <tr><td>Header (D4)</td><td>ref · <code>StateChip</code> · <code>StoryKindBadge</code> · <code>DialogCloseButton</code></td><td>pinned</td></tr>
-      <tr><td>Body</td><td>title (<code>DialogTitle</code> stays inside <code>EditableTitle</code>), breadcrumb, launch/PR/refinement row, Notes, Spec/Findings, then the D1 controls after a <code>border-t border-border/60</code> rule</td><td>one <code>overflow-y-auto</code> region, bottom padding <code>max(1.5rem, env(safe-area-inset-bottom))</code></td></tr>
+      <tr><td>Header (pinned)</td><td colspan="2">ref · <code>StateChip</code> · <code>StoryKindBadge</code> · <code>DialogCloseButton</code></td></tr>
+      <tr><td>Body (scrolls)</td><td>title, breadcrumb, launch/PR/refinement row, then cards (A) or tab bar + panel (B)</td><td>title, breadcrumb, PR links, Notes well, spec document row</td></tr>
+      <tr><td>Footer (pinned)</td><td>empty at rest; Save/Cancel while an editor is open</td><td>launch · status · priority · ⋯ at rest; Save/Cancel while an editor is open</td></tr>
     </tbody>
   </table>
   <ul>
+    <li>The body has bottom padding <code>max(1.5rem, env(safe-area-inset-bottom))</code> when the footer is empty. When the footer shows, the footer takes the safe-area padding instead.</li>
     <li>Rotation or window resize across 768px swaps layouts live. An open notes draft survives the swap only if <code>EditableNotes</code> doesn't remount, so keep it at the same position in both trees, or accept the loss and say so in the PR.</li>
-    <li>Radix's scroll lock and focus trap apply unchanged. Open dropdowns portal above the sheet as they do above the card.</li>
-    <li>The spike-findings iframe keeps its <code>h-[28rem]</code>. It now scrolls with the body instead of inside a quarter-screen region.</li>
+    <li>Radix's scroll lock and focus trap apply unchanged. Open dropdowns portal above the sheet as they do above the card. In C, the full-screen spec opens as a nested Radix dialog, and closing it returns focus to the document row.</li>
+    <li>In C, the spec row's title is the HTML document's <code>&lt;title&gt;</code>, or a markdown spec's first <code>#</code> line, falling back to the file name. Its subtitle is “Tap to read full-screen”. With no snapshot, the row is replaced by today's empty-state copy. A spike reads <em>Findings</em>.</li>
     <li>Closing with the keyboard up (× or Escape) behaves as today: an unsaved notes draft is dropped, as it is on desktop.</li>
-    <li>With <code>visualViewport</code> absent, the sheet is <code>top-0 h-[100dvh]</code> and D10 is a no-op.</li>
+    <li>With <code>visualViewport</code> absent, the sheet is <code>top-0 h-[100dvh]</code> and D12 is a no-op.</li>
   </ul>
+  <h3>⋯ contents (D1; P1)</h3>
+  <table>
+    <thead><tr><th>Story</th><th>A / B</th><th>C (adds, in this order)</th></tr></thead>
+    <tbody>
+      <tr><td>needs_refinement (story kind)</td><td>Block…, Abandon</td><td>Skip to dev · Needs refinement ☑ · divider · Block…, Abandon</td></tr>
+      <tr><td>other states (story kind)</td><td>Block…, Abandon</td><td>Needs refinement ☑/☐ · divider · Block…, Abandon</td></tr>
+      <tr><td>blocked</td><td>Unblock to &lt;lane&gt;, Abandon</td><td>as above, with Unblock replacing Block…</td></tr>
+      <tr><td>abandoned</td><td>Block…</td><td>as above, without Abandon</td></tr>
+      <tr><td>spike / bug</td><td colspan="2">no Needs refinement item and no Skip to dev (never refined)</td></tr>
+    </tbody>
+  </table>
   <h3>Editors (D2; P2)</h3>
   <ul>
-    <li>Notes on the phone use <code>autoGrow</code>, <code>stickyActions</code> and <code>rows={4}</code>. Block reason uses <code>autoGrow</code> and <code>stickyActions</code> with the default rows. The desktop gets neither.</li>
-    <li>⌘↵ / Escape / blur semantics are unchanged.</li>
+    <li>Notes on the phone use <code>autoGrow</code>, <code>actionsTarget</code> (the footer) and <code>rows={4}</code>. Block reason uses <code>autoGrow</code> and <code>actionsTarget</code> with the default rows. The desktop gets neither.</li>
+    <li>Where the block-reason card appears: A, inside the <em>Move this story</em> card; B, in the <em>Move</em> tab; C, appended at the end of the body (C has no Move section there), scrolled into view and focused when <em>Block…</em> is picked.</li>
+    <li>If two editors could be open at once (notes plus block reason), the most recent claim owns the footer. Opening one closes the other, matching how the desktop modal has one active editor in practice.</li>
+    <li>⌘↵ / Escape / blur semantics are unchanged. Tapping Save in the footer must not blur-cancel first, so give the footer buttons <code>onMouseDown={e =&gt; e.preventDefault()}</code>, the same way the inline editors guard today.</li>
   </ul>
 </section>
 
@@ -557,11 +681,11 @@ Revisit on Friday either way.</div></div>
   <h2>Plan</h2>
   <ol>
     <li><strong>Capture today first (the ticket's “write tests and capture them”).</strong> In <code>story-detail-modal.stories.tsx</code>, add phone stories (390×844, <code>target: '[role="dialog"]'</code>): <code>MobileNeedsRefinement</code>, <code>MobileBlocked</code>, <code>MobileEditingLongNotes</code> (a ~15-line note; its <code>play</code> clicks the notes trigger via <code>within(document.body)</code> because the dialog is portalled), <code>MobileBlockReason</code> (<code>play</code> opens the reason editor), and <code>MobileKeyboardUp</code>. That last one is the long-notes play at <code>viewport: { width: 390, height: 470 }</code>: inside the Storybook iframe <code>visualViewport.height</code> equals the viewport, so a short viewport stands in for the keyboard deterministically. Baseline them on <strong>today's</strong> code with <code>npm run test:storybook:update -w frontend</code> and commit them on their own (<code>test(code): capture story detail phone baselines</code>). The rebaseline in step 7 then produces the before/after diffs.</li>
-    <li><code>lib/hooks/use-media-query.ts</code>: <code>MOBILE_QUERY</code> (D7).</li>
-    <li><code>lib/hooks/use-visual-viewport.ts</code> + test (D8).</li>
-    <li><code>atoms/dialog.tsx</code>: <code>SheetDialog</code> with D10's refocus effect, + tests in <code>dialog.test.tsx</code>.</li>
-    <li><code>atoms/textarea-field.tsx</code>: <code>autoGrow</code>, <code>stickyActions</code> (D11), + tests.</li>
-    <li>The modal: <code>layout</code> threading (D13), header/body split (D4), <code>LAUNCH_LABELS.short</code> + <code>LaunchButton</code> <code>compact</code> (D3), <code>usePriorityJumps</code> + the D1 winner (D12). Update each step-1 story's <code>play</code> only where D1 moved a control (for example, B opens ⋯ before <em>Block…</em>). If B wins, add <code>MobilePriorityMenuOpen</code> and <code>MobileMoreActionsOpen</code> with <code>target: 'body'</code>, per the storybook skill's portal rule.</li>
+    <li><code>lib/hooks/use-media-query.ts</code>: <code>MOBILE_QUERY</code> (D9).</li>
+    <li><code>lib/hooks/use-visual-viewport.ts</code> + test (D10).</li>
+    <li><code>atoms/dialog.tsx</code>: <code>SheetDialog</code> with the footer slot and claim (D11) and D12's refocus effect, + tests in <code>dialog.test.tsx</code>.</li>
+    <li><code>atoms/textarea-field.tsx</code>: <code>autoGrow</code>, <code>actionsTarget</code> (D13), + tests.</li>
+    <li>The modal: <code>layout</code> threading (D15), the pinned header (D4), D8 headings, <code>LAUNCH_LABELS.short</code> + <code>LaunchButton</code> <code>compact</code> (D3), <code>usePriorityJumps</code> + <code>PriorityMenu</code> + the ⋯ menu (D1, D14), then the D7 pick's layout. For C, the spec row opens <code>SpecView</code> inside a <code>FullScreenDialog</code>. Update each step-1 story's <code>play</code> only where a control moved (⋯ before <em>Block…</em>). Add <code>MobilePriorityMenuOpen</code> and <code>MobileMoreActionsOpen</code> with <code>target: 'body'</code>, per the storybook skill's portal rule. For C, also add <code>MobileSpecFullScreen</code>.</li>
     <li>Rebaseline: <code>npm run test:storybook:update -w frontend</code>. Only the <code>Mobile*</code> PNGs may move. Every other <code>code-storydetailmodal--*</code> baseline must pass unchanged (D5).</li>
     <li>Playwright: <code>e2e/code-detail-modal-mobile.spec.ts</code> (see <a href="#tests">Tests</a>).</li>
   </ol>
@@ -573,11 +697,13 @@ Revisit on Friday either way.</div></div>
     <li data-trace="impl">Phone baselines for editing notes, needs-refinement, blocked, block-reason and keyboard-up exist and were first captured against the pre-change code.</li>
     <li data-trace="D6 P1">At 390×844 the story opens as a sheet filling the viewport (box 0,0,390,844), with no radius or border.</li>
     <li data-trace="D6 P2">When the visible viewport shrinks (keyboard stand-in), the sheet's height follows it, and the focused editor stays in view.</li>
-    <li data-trace="D4 P1">Scrolling the sheet body to the end leaves the header row and the × in view.</li>
+    <li data-trace="D4 D7 P1">Scrolling the sheet body to the end leaves the header row and the × in view. In C, the action bar also stays in view.</li>
     <li data-trace="D2 P2">In the phone notes editor a long note shows in full with no inner scroll (<code>scrollHeight === clientHeight</code>), and an empty note opens at four rows.</li>
-    <li data-trace="D2 P2">With the editor taller than the visible sheet, Save and Cancel sit inside the visible viewport. The block-reason editor behaves the same.</li>
+    <li data-trace="D2 P2">While editing, Save/Cancel sit in the sheet footer, outside the scroll region. Scrolled to the end, the editor's bottom edge is above the footer's top edge, with no overlap at any scroll position. The block-reason editor behaves the same.</li>
+    <li data-trace="D8 P1">Sheet section headings render at 14px, semibold, in <code>text-foreground</code> and sentence case. Desktop headings are unchanged.</li>
     <li data-trace="D3 P3">Phone launch buttons read Implement / Refine + Skip to dev / Run spike / Fix bug. Card chips and the desktop modal keep the full labels.</li>
-    <li data-trace="D1 P1">The bottom controls match the D1 pick as drawn, and each of the four jumps plus Block, Unblock and Abandon still calls the same store action as today.</li>
+    <li data-trace="D1 P1">Priority ▾ lists the four jumps with today's disabled states. The ⋯ contents match the Behaviour table for each state. Each item calls the same store action as today's button.</li>
+    <li data-trace="D7 P1">The sheet matches the D7 pick as drawn in Plate I.</li>
     <li data-trace="D5">Every existing desktop <code>code-storydetailmodal--*</code> baseline and <code>story-detail-modal.test.tsx</code> assertion passes unchanged.</li>
   </ul>
 </section>
@@ -588,12 +714,12 @@ Revisit on Friday either way.</div></div>
     <thead><tr><th>Tier</th><th>File</th><th>Pins</th></tr></thead>
     <tbody>
       <tr><td>Jest</td><td><code>lib/hooks/use-visual-viewport.test.ts(x)</code></td><td>Reads a stubbed <code>visualViewport</code>, updates on <code>resize</code>/<code>scroll</code>, returns the same object for identical readings, and returns null without the API.</td></tr>
-      <tr><td>RTL</td><td><code>atoms/textarea-field.test.tsx</code></td><td><code>autoGrow</code> sets <code>style.height</code> from a stubbed <code>scrollHeight</code> on change; off by default. <code>stickyActions</code> classes are present only when set.</td></tr>
-      <tr><td>RTL</td><td><code>atoms/dialog.test.tsx</code></td><td><code>SheetDialog</code> applies top/height from the hook, falls back to <code>h-[100dvh]</code>, and calls <code>scrollIntoView</code> on the focused textarea after a viewport change.</td></tr>
-      <tr><td>RTL</td><td><code>code/story-detail-modal.test.tsx</code> (new <code>describe('on a phone')</code> with <code>matchMedia</code> matching <code>MOBILE_QUERY</code>)</td><td>Short launch labels; D1 controls call <code>applyMove*</code> / <code>updateCodeState</code> exactly as the desktop buttons do; Block opens the reason editor; the ⋯ menu contents per state (if B).</td></tr>
+      <tr><td>RTL</td><td><code>atoms/textarea-field.test.tsx</code></td><td><code>autoGrow</code> sets <code>style.height</code> from a stubbed <code>scrollHeight</code> on change; off by default. <code>actionsTarget</code> portals Save/Cancel into the given element; without it they render inline as today.</td></tr>
+      <tr><td>RTL</td><td><code>atoms/dialog.test.tsx</code></td><td><code>SheetDialog</code> applies top/height from the hook and falls back to <code>h-[100dvh]</code>. The footer's resting content hides while a claim is held and returns on release. It calls <code>scrollIntoView</code> on the focused textarea after a viewport change.</td></tr>
+      <tr><td>RTL</td><td><code>code/story-detail-modal.test.tsx</code> (new <code>describe('on a phone')</code> with <code>matchMedia</code> matching <code>MOBILE_QUERY</code>)</td><td>Short launch labels; Priority menu items call <code>applyMove*</code> exactly as the desktop buttons do; the ⋯ contents per state and kind (table-driven); Block… opens the reason editor; D8 heading classes; and the D7 flavor's specifics (C: the spec row opens the full-screen spec, and Needs refinement toggles from ⋯).</td></tr>
       <tr><td>RTL</td><td><code>atoms/launch-button.test.tsx</code></td><td><code>compact</code> renders <code>short</code>; the chip and non-compact solid are unchanged.</td></tr>
-      <tr><td>Storybook</td><td><code>story-detail-modal.stories.tsx</code></td><td>The step-1 phone baselines, rebaselined, plus the open-menu stories if B wins.</td></tr>
-      <tr><td>Playwright</td><td><code>e2e/code-detail-modal-mobile.spec.ts</code> (<code>hasTouch</code>, 390×844, seeded like <code>code-detail-modal.spec.ts</code>)</td><td>The sheet's bounding box; the header stays in view after scrolling to the end; notes auto-grow (fill 20 lines, then assert no inner overflow); keyboard stand-in via <code>page.setViewportSize({ width: 390, height: 470 })</code> mid-edit, then assert the sheet is 470 tall and Save's box ends at or above 470.</td></tr>
+      <tr><td>Storybook</td><td><code>story-detail-modal.stories.tsx</code></td><td>The step-1 phone baselines, rebaselined, plus the open-menu stories (and <code>MobileSpecFullScreen</code> for C).</td></tr>
+      <tr><td>Playwright</td><td><code>e2e/code-detail-modal-mobile.spec.ts</code> (<code>hasTouch</code>, 390×844, seeded like <code>code-detail-modal.spec.ts</code>)</td><td>The sheet's bounding box. The header (and C's bar) stay in view after scrolling to the end. Notes auto-grow: fill 20 lines, then assert no inner overflow. Keyboard stand-in: <code>page.setViewportSize({ width: 390, height: 470 })</code> mid-edit, then assert the sheet is 470 tall, Save's box lies within it, and, after scrolling the body to the end, the textarea's bottom ≤ the footer's top.</td></tr>
     </tbody>
   </table>
 </section>
@@ -606,9 +732,10 @@ Revisit on Friday either way.</div></div>
 <section id="out">
   <h2>Out of scope, risks &amp; unknowns</h2>
   <ul>
-    <li><strong>Desktop notes still open at two rows.</strong> Excluded by D5. The fix is one prop (<code>autoGrow</code>) once D11 lands, so it makes a good follow-up ticket.</li>
+    <li><strong>Desktop notes still open at two rows.</strong> Excluded by D5. The fix is one prop (<code>autoGrow</code>) once D13 lands, so it makes a good follow-up ticket.</li>
     <li><strong>Other dialogs and <code>FullScreenDialog</code></strong> keep <code>100dvh</code>. The mobile search's input has the same keyboard exposure, and moving it onto <code>SheetDialog</code> is the natural follow-up.</li>
     <li><strong>Risk: iOS pans the visual viewport when a fixed element's field is focused.</strong> The sheet re-positions to <code>offsetTop</code> on every <code>scroll</code> event, which can jitter for a frame. If it looks bad on device, throttle to <code>requestAnimationFrame</code>. Only a real iPhone shows this.</li>
+    <li><strong>Risk (C): the bar's width.</strong> The longest status label (“Needs Refinement”) plus <em>Implement</em>, the icon Priority trigger and ⋯ come to about 360px against the 358px usable at 390. The launch button is <code>flex-1</code> with <code>min-w-0 truncate</code>, so it gives up space first. Check at 375px (iPhone mini/SE) too.</li>
     <li><strong>Unknown:</strong> whether Radix's <code>onOpenAutoFocus</code> ring on the title (visible in today's mobile baseline) shows on a real touch open. If it does, focusing the sheet content instead is a one-line follow-up, not part of this spec.</li>
   </ul>
 </section>
@@ -616,7 +743,7 @@ Revisit on Friday either way.</div></div>
 <section id="after-merge">
   <h2>After it ships (for you)</h2>
   <ol>
-    <li>On your iPhone (Safari and the Home-Screen app), open a story with a long note, tap Notes, and type at the end. The editor should grow, Save should ride the keyboard's top edge, and the header × should stay put.</li>
+    <li>On your iPhone (Safari and the Home-Screen app), open a story with a long note, tap Notes, and type at the end. The editor should grow, Save should sit in its own bar on the keyboard's top edge without covering any text, and the header × should stay put.</li>
     <li>Tap Block and type a reason: it should behave the same way.</li>
   </ol>
 </section>
