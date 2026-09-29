@@ -16,9 +16,9 @@ import type { Project } from '@/lib/types';
  *   so a small backlog reads as a clean 1-blue / 2-amber / 3-green / 4-red sequence rather than a
  *   scatter of near-collisions.
  *
- * The single source of the project→colour rule: the board title, the backlog badge, the ProjectNav
- * icon, the Dashboard's PR-ratio bar and every other coloured project surface resolve their colour
- * through `projectColorFor` so a project wears the same colour everywhere.
+ * The single source of the project→colour rule: the board title and its story-card refs, the backlog
+ * badge, the ProjectNav icon, the Dashboard's PR-ratio bar and every other coloured project surface
+ * resolve their colour through `projectColorFor` so a project wears the same colour everywhere.
  */
 
 /** The glowing accent palette in assignment order — project #1 is blue, #2 amber, and so on. */

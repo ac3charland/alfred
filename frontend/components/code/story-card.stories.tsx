@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { VISUAL_TARGET, withVisualFrame } from '@/components/atoms/visual-test';
+import { PROJECT_COLORS } from '@/lib/code/project-color';
 import type { CodeStory } from '@/lib/types';
 
 import { StoryCard } from './story-card';
@@ -45,7 +46,7 @@ const meta = {
   decorators: [withVisualFrame],
   parameters: { visualTest: { target: VISUAL_TARGET } },
   // A no-op launch handler so the launch button renders and is clickable in the gallery.
-  args: { story: BASE_STORY, onOpenSession: () => {} },
+  args: { story: BASE_STORY, projectColor: 'teal', onOpenSession: () => {} },
 } satisfies Meta<typeof StoryCard>;
 
 export default meta;
@@ -57,6 +58,25 @@ type Story = StoryObj<typeof meta>;
  * launch button. This is the default board treatment for a freshly-gated story.
  */
 export const Default: Story = {};
+
+/**
+ * One card per palette colour: the ref takes its project's colour — blue, amber, green, red, teal
+ * — while the title stays neutral, so a card reads as belonging to its project at a glance.
+ */
+export const ProjectColors: Story = {
+  render: (args) => (
+    <div className="flex w-72 flex-col gap-2">
+      {PROJECT_COLORS.map((color, index) => (
+        <StoryCard
+          key={color}
+          {...args}
+          projectColor={color}
+          story={{ ...args.story, ref: `ALF-${String(50 + index)}` }}
+        />
+      ))}
+    </div>
+  ),
+};
 
 /**
  * A `ready_for_dev` story (its refinement PR merged): the launch button switches to

@@ -46,7 +46,8 @@ export interface BoardProperties {
  *   *Show abandoned* toggle.
  * - **The title glows in the project's colour** (ALF-188) — its stored pick, else its creation-slot
  *   colour, resolved against the creation-ordered `useProjects` list like every other coloured
- *   project surface. The toolbar's palette button changes it.
+ *   project surface — and every story card's ref (and its drag ghost's) wears it too. The
+ *   toolbar's palette button changes it.
  * - **The header controls** live in `BoardToolbar`, which owns their responsive shape (the
  *   view filters fold into a ⋯ menu below `md`); the board keeps the state they act on.
  *
@@ -158,14 +159,14 @@ export function Board({ projectId }: BoardProperties) {
   const openStory = openStoryId === null ? null : allStories.find((s) => s.item_id === openStoryId);
 
   const pickedColor = isProjectColor(project.color) ? project.color : null;
-  const titleColor = projectColorFor(projects, projectId);
+  const resolvedColor = projectColorFor(projects, projectId);
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
-            <h2 className={cn('font-serif text-2xl', projectTitleClasses(titleColor))}>
+            <h2 className={cn('font-serif text-2xl', projectTitleClasses(resolvedColor))}>
               {project.name}
             </h2>
             <span className="font-mono text-sm text-muted-foreground">{project.key}</span>
@@ -226,12 +227,13 @@ export function Board({ projectId }: BoardProperties) {
         // The board's own drag context: dragging a card between this epic's lanes moves the
         // story to that state (ALF-155). It nests inside the shell's task DndContext, which
         // keeps the two modules' drags from ever seeing each other.
-        <BoardDndProvider>
+        <BoardDndProvider projectColor={resolvedColor}>
           <div className="flex flex-col gap-3">
             {visibleEpics.map((board) => (
               <EpicBlock
                 key={board.epic.id}
                 board={board}
+                projectColor={resolvedColor}
                 collapsed={collapsed.has(board.epic.id)}
                 onToggleCollapse={() => {
                   toggleCollapse(board.epic.id);

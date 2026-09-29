@@ -11,9 +11,11 @@ import {
 } from '@dnd-kit/core';
 import * as React from 'react';
 
+import { type ProjectColor, projectTextClasses } from '@/lib/code/project-color';
 import { type DraggedStory, resolveLaneDrop } from '@/lib/dnd/move-story-lane';
 import { RowMouseSensor, RowTouchSensor } from '@/lib/dnd/pointer-sensor';
 import { useCodeActions, useCodeStories } from '@/lib/stores/code-store';
+import { cn } from '@/lib/utils';
 
 /** What the lanes need to know about the drag in flight so they can offer themselves as targets. */
 interface BoardDragState {
@@ -46,7 +48,14 @@ export function useBoardDrag(): BoardDragState {
  * what keeps the two apart: a story card registers with the NEAREST context, so board drags and
  * task drags never see each other's draggables or droppables.
  */
-export function BoardDndProvider({ children }: { children: React.ReactNode }) {
+export function BoardDndProvider({
+  projectColor,
+  children,
+}: {
+  /** The board's project colour, which tints the ghost's ref exactly as it does the card's. */
+  projectColor: ProjectColor;
+  children: React.ReactNode;
+}) {
   const stories = useCodeStories();
   const { updateCodeState } = useCodeActions();
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -105,8 +114,13 @@ export function BoardDndProvider({ children }: { children: React.ReactNode }) {
             // one draggable id). Mirrors the card's ref-over-title layout in the translucent,
             // neutral-outlined treatment the task ghost uses, so the teal lane highlight stays
             // the only drop signal.
-            <div className="w-60 rounded-lg bg-surface/70 px-3 py-2 ring-1 ring-inset ring-border backdrop-blur-sm shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]">
-              <span className="font-mono text-xs font-medium text-accent-teal">
+            <div
+              data-testid="board-drag-ghost"
+              className="w-60 rounded-lg bg-surface/70 px-3 py-2 ring-1 ring-inset ring-border backdrop-blur-sm shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]"
+            >
+              <span
+                className={cn('font-mono text-xs font-medium', projectTextClasses(projectColor))}
+              >
                 {activeStory.ref}
               </span>
               <span className="mt-1 line-clamp-2 block text-sm text-foreground">
