@@ -213,7 +213,7 @@ Owners: **You** = the repo owner; **Claude** = an agent session, delivered as a 
 
 | # | Priority | Action | Owner | Status |
 | --- | --- | --- | --- | --- |
-| R1 | P0 | Reset the database password, then work through Part A of the [Remediation guide](#remediation-guide): update the GitHub secret and `.env.local`, delete the cloud environment's `DATABASE_URL`. | You | Reset done; Part A open |
+| R1 | P0 | Reset the database password, then work through Part A of the [Remediation guide](#remediation-guide): update the GitHub secret and `.env.local`, delete the cloud environment's `DATABASE_URL`. | You | Reset done; A1–A3 done; A4 open |
 | R2 | P0 | Remediation guide Part B (drop old connections, legacy JWT check, your alfred login, integrity audit), then Part C. | You | Open |
 | R3 | P1 | **Add a secret-scanning gate:** secretlint with `@secretlint/secretlint-rule-preset-recommend`, as an `npm run` script inside `check:fast`, scanning every tracked file. Because CI also runs `check:fast`, commits made through the web UI or API are covered too. Remove the password from `phase-a.md` in the same PR so `main` stays green. Tested against this repo (Appendix B). | Claude | Done (ALF-301) |
 | R4 | P1 | **Stop the leak at record time:** make `showboat exec` refuse to record a command or output that matches a secret pattern, pointing the author to R5. This catches the problem before anything reaches disk, not just at commit. | Claude | Done (ALF-301) |
@@ -222,7 +222,7 @@ Owners: **You** = the repo owner; **Claude** = an agent session, delivered as a 
 | R7 | P2 | **Least privilege:** a read-only role for local or agent inspection. Create it in a migration **without** a password, set the password by hand in the dashboard, and point `.env.local` at it. Keep the `postgres` password only in GitHub secrets. | You + Claude | Open |
 | R8 | P3 | Turn on GitHub secret scanning and push protection (repo **Settings → Advanced Security**), plus non-provider patterns if the repo offers them. This is extra protection, not the main control; GitHub did not catch this leak. | You | Open |
 | R9 | P3 | For locally run sessions, name the model in the PR description, since commit trailers are forbidden and there is no session link. | Claude | Done (ALF-301) |
-| R10 | P2 | **Treat `SUPABASE_ACCESS_TOKEN` as the most sensitive value in the cloud environment** (factor 8). Keep it only if cloud sessions truly need Management API SQL. Otherwise delete it and add it to a single session when a task requires it. | You | Open |
+| R10 | P2 | **Treat `SUPABASE_ACCESS_TOKEN` as the most sensitive value in the cloud environment** (factor 8). Keep it only if cloud sessions truly need Management API SQL. Otherwise delete it and add it to a single session when a task requires it. | You | Done 2026-09-29: removed from the cloud environment |
 
 R3–R5 are the core: **R5 removes the incentive, R4 catches mistakes at the source, R3 is the
 safety net.** R6 alone would repeat the mistake that caused this: relying on an agent to
