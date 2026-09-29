@@ -13,8 +13,11 @@ export function psqlInvocation(
   args: readonly string[],
 ): { args: string[]; env: Record<string, string> } {
   const parsed = new URL(url);
-  const password = decodeURIComponent(parsed.password);
+  // libpq also accepts the password as a query parameter; lift that one off argv too.
+  const password =
+    decodeURIComponent(parsed.password) || (parsed.searchParams.get('password') ?? '');
   parsed.password = '';
+  parsed.searchParams.delete('password');
   const env: Record<string, string> = password === '' ? {} : { PGPASSWORD: password };
   return { args: ['--dbname', parsed.toString(), ...args], env };
 }

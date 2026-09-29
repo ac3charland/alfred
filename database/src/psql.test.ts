@@ -39,6 +39,15 @@ describe('psqlInvocation', () => {
     expect(args).toEqual(['--dbname', `postgres://u@${HOST}/db?sslmode=require`]);
   });
 
+  it('also lifts a ?password= query parameter off argv', () => {
+    const { args, env } = psqlInvocation(
+      `postgres://u@${HOST}/db?sslmode=require&password=${PASSWORD}`,
+      [],
+    );
+    expect(env).toEqual({ PGPASSWORD: PASSWORD });
+    expect(args).toEqual(['--dbname', `postgres://u@${HOST}/db?sslmode=require`]);
+  });
+
   it('sets no PGPASSWORD when the URL carries none', () => {
     const { args, env } = psqlInvocation('postgresql://postgres@localhost:5432/postgres', ['-At']);
     expect(env).toEqual({});
