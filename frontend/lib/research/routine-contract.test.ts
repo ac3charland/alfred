@@ -63,6 +63,10 @@ describe('the research Routine contract', () => {
     expect(SKILL).toContain('-X PUT');
     expect(SKILL).toContain("jq -Rs '{report: .}'");
     expect(SKILL).not.toMatch(/-H ['"]?Authorization/);
+    // An unattended session must never improvise on a status the table doesn't name — above all
+    // by following a redirect to a host the credential isn't attached for.
+    expect(SKILL).toContain('| Anything else');
+    expect(SKILL).toContain('Never follow a redirect');
     expect(existsSync(path.join(REPO_ROOT, 'frontend/app/api/reader/research/[id]/route.ts'))).toBe(
       true,
     );

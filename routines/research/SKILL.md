@@ -90,7 +90,8 @@ Findings with inline citations like [1] or [2][4].
 
 `N` in the dateline is the number of entries under Sources. Every `[n]` in the text must match an
 entry, and every entry must be cited at least once. Use plain markdown only — headings, lists,
-emphasis, links and tables. **No raw HTML**: alfred drops it when it renders the report.
+emphasis, links and tables. **No raw HTML and no images**: alfred drops raw HTML and shows an image
+only as its alt text.
 
 ## Delivery
 
@@ -117,6 +118,7 @@ Then act on the status code:
 | 401 | The credential isn't attached to the request. | Print the whole report in the session, then stop. |
 | 404 or 422 | Unknown post, or the body was refused. | Print the whole report and the response body, then stop. |
 | 5xx, or curl fails | alfred or the network is down. | Retry after 10 s, then after 30 s; if both fail, print the whole report and stop. |
+| Anything else (a redirect, 400, 403, 413, …) | Something this procedure doesn't expect. | Print the whole report and the response, then stop. Never follow a redirect, retry against another host, or go looking for a key. |
 
 Printing the report means the owner can still recover it from this session, which the Reader
 links to.
