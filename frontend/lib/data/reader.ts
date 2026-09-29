@@ -3,6 +3,7 @@ import 'server-only';
 
 import type { PatchReaderPostInput, ReaderPostsQuery } from '@/lib/api/reader-schemas';
 import type { Database, Json } from '@/lib/database.types';
+import type { ResearchFireOutcome } from '@/lib/research/routine';
 import { createClient } from '@/lib/supabase/server';
 import type { ReaderHealthSnapshot, ReaderPostListItem, ReaderPostUpdate } from '@/lib/types';
 import type { ReaderPicks, ReaderPostForWiki } from '@/lib/wiki/writer/envelope';
@@ -21,8 +22,9 @@ import type { ReaderPicks, ReaderPostForWiki } from '@/lib/wiki/writer/envelope'
  */
 
 /**
- * Every `reader_posts` column except `text` and `html`, as the explicit `.select()` list every read below
- * shares. Hand-maintained against the generated `Row` type — `reader.test.ts` pins it against a
+ * Every `reader_posts` column except `text`, `html` and `research_brief`, as the explicit
+ * `.select()` list every read below shares. The brief is the owner's question as the research
+ * Routine is fired with it — only the fire and retry routes read it, server-side. Hand-maintained against the generated `Row` type — `reader.test.ts` pins it against a
  * fixture's own keys, so a migration that adds or renames a column fails that test until this
  * list is updated to match.
  */
@@ -48,6 +50,12 @@ export const READER_POST_LIST_COLUMNS = [
   'prompt_version',
   'publication_id',
   'received_at',
+  'research_attempts',
+  'research_delivered_at',
+  'research_error',
+  'research_fired_at',
+  'research_session_url',
+  'research_state',
   'rfc822_message_id',
   'site',
   'source',
@@ -224,7 +232,7 @@ export async function getReaderPostForWiki(
   return supabase
     .from('reader_posts')
     .select(
-      'id,title,author,canonical_url,received_at,text,overview,wiki_sent_ideas,wiki_sent_evidence',
+      'id,title,author,canonical_url,source,received_at,text,overview,wiki_sent_ideas,wiki_sent_evidence',
     )
     .eq('id', id)
     .maybeSingle();
@@ -355,5 +363,138 @@ export async function markReaderPostSent(
     })
     .eq('id', id)
     .select(READER_POST_LIST_COLUMNS)
+    .maybeSingle();
+}
+
+/**
+ * What a research retry reads: the fields the phase is derived from, the brief the Routine is fired
+ * with, and how many fires the post has had. Never a body, and never anything the response carries
+ * — the brief is read here and sent to the Routine, and the route answers through the list columns.
+ */
+export interface ReaderPostForResearch {
+  source: string;
+  research_state: string | null;
+  created_at: string;
+  research_fired_at: string | null;
+  research_brief: string | null;
+  research_attempts: number;
+}
+
+/** The one read Retry research makes. `.maybeSingle()`, so a missing row is the route's 404. */
+export async function getReaderPostForResearch(
+  supabase: SupabaseClient<Database>,
+  id: string,
+): Promise<{ data: ReaderPostForResearch | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .select('source,research_state,created_at,research_fired_at,research_brief,research_attempts')
+    .eq('id', id)
+    .maybeSingle();
+}
+
+/**
+ * Record what firing the research Routine came to. An accepted fire makes the post `researching`
+ * from `now`, with the session link the answer carried (null when it carried none) and no error; a
+ * refused or unanswered one makes it `failed` with the reason and leaves the rest as it was, so an
+ * earlier session's link still opens. Either way the fire counts as an attempt: `previousAttempts`
+ * is what the post had, and the write is one more.
+ *
+ * Reads the row back through the shared list columns, like every other write here, so the brief
+ * never rides along. `.maybeSingle()`, so a row deleted — or delivered — in between is `null` data.
+ */
+export async function recordResearchFire(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  outcome: ResearchFireOutcome,
+  previousAttempts: number,
+  now: Date,
+): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
+  const attempts = previousAttempts + 1;
+  const update = outcome.ok
+    ? {
+        research_state: 'researching',
+        research_fired_at: now.toISOString(),
+        research_session_url: outcome.sessionUrl,
+        research_error: null,
+        research_attempts: attempts,
+      }
+    : { research_state: 'failed', research_error: outcome.error, research_attempts: attempts };
+  // Guarded like delivery's own write: a report an earlier session delivered while this fire was in
+  // flight stays delivered, and the write matches nothing instead of flipping it back.
+  return supabase
+    .from('reader_posts')
+    .update(update)
+    .eq('id', id)
+    .neq('research_state', 'done')
+    .select(READER_POST_LIST_COLUMNS)
+    .maybeSingle<ReaderPostListItem>();
+}
+
+/**
+ * What delivery reads before it writes: which kind of post this is and whether its report has
+ * already arrived. Called with the admin client — the delivering session has no user session.
+ * `.maybeSingle()`, so a missing row is the route's 404.
+ */
+export async function getResearchPostForDelivery(
+  supabase: SupabaseClient<Database>,
+  id: string,
+): Promise<{
+  data: { source: string; research_state: string | null } | null;
+  error: PostgrestError | null;
+}> {
+  return supabase.from('reader_posts').select('source,research_state').eq('id', id).maybeSingle();
+}
+
+/** The words of some text: its whitespace-separated tokens, as the Worker counts an article's. */
+function wordCount(text: string): number {
+  return text.split(/\s+/).filter((token) => token !== '').length;
+}
+
+/**
+ * Land a research report on its post: the markdown as `text`, the rendered `html`, the word count,
+ * the `done` state and both delivery stamps (`received_at` moves with it, so a delivered report
+ * surfaces as new), the failure reason cleared — and the summary reset, so the Worker's tick
+ * summarises it like any post. The old headline, gist and overview go with it: a re-delivered
+ * report (a retried run that finished after a stale one) must not wear the previous one's summary.
+ *
+ * One UPDATE, guarded in its WHERE clause: this post, a research post, not already `done`. The
+ * route's read can only say what the row was a moment ago; the filter is what makes two racing
+ * deliveries settle on one — the loser matches no row and gets `null` data. Answers only the id:
+ * the body is never read back.
+ */
+export async function deliverResearchReport(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  report: string,
+  html: string,
+  now: Date,
+): Promise<{ data: { id: string } | null; error: PostgrestError | null }> {
+  const delivered = now.toISOString();
+  return supabase
+    .from('reader_posts')
+    .update({
+      text: report,
+      html,
+      word_count: wordCount(report),
+      html_extracted: false,
+      research_state: 'done',
+      research_delivered_at: delivered,
+      received_at: delivered,
+      research_error: null,
+      summary_state: 'pending',
+      summarize_attempts: 0,
+      last_error: null,
+      summarizing_since: null,
+      headline: null,
+      gist: null,
+      overview: null,
+      model: null,
+      prompt_version: null,
+      summarized_at: null,
+    })
+    .eq('id', id)
+    .eq('source', 'research')
+    .neq('research_state', 'done')
+    .select('id')
     .maybeSingle();
 }

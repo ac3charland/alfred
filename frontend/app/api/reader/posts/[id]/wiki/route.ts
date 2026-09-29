@@ -21,11 +21,12 @@ import { wikiUnconfiguredResponse, wikiWriteErrorResponse } from '@/lib/wiki/wri
 //
 // One request is one commit, whatever mix of the two sections it carries: the post's text as
 // `source.md` plus the picked bullets as `picks-<today>.md`, headed per section, in a brand-new
-// `inbox/` folder. Each list must still be in its own section of the post's current overview (a
-// re-summarise can reword them underneath an open tab), and any already sent are dropped, each
-// list against its own sent column — a send with nothing left in either list answers the row
-// unchanged and commits nothing. A tab on an older bundle posts `{ ideas }` alone, which still
-// works.
+// `inbox/` folder. A research report is the exception: its text is the model's own words, so it is
+// never filed as a source, and its envelope holds the picks alone (see `readerEnvelope`). Each list
+// must still be in its own section of the post's current overview (a re-summarise can reword them
+// underneath an open tab), and any already sent are dropped, each list against its own sent
+// column — a send with nothing left in either list answers the row unchanged and commits nothing.
+// A tab on an older bundle posts `{ ideas }` alone, which still works.
 //
 // The commit lands BEFORE the sent marks are recorded, deliberately. Reserving the bullets first
 // and un-reserving them on a failed commit risks the worse outcome: a bullet marked sent that

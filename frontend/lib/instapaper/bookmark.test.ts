@@ -20,10 +20,55 @@ const CONFIG: InstapaperConfig = {
 const LINKED: BookmarkSource = {
   title: 'How near is the intelligence explosion, really?',
   canonical_url: 'https://open.substack.com/pub/second/p/how-near',
+  source: 'gmail',
   gist: 'Argues the debate conflates three feedback loops.',
   html: '<html><body><p>The post, whole.</p></body></html>',
   text: 'The post, whole.',
 };
+
+/** A delivered research report: its HTML rendered at delivery, and no address anywhere. */
+const REPORT: BookmarkSource = {
+  title: 'Is a cold-climate heat pump worth it for our Chicago house?',
+  canonical_url: null,
+  source: 'research',
+  gist: 'Probably yes if the furnace is near the end of its life.',
+  html: '<h1>Is a cold-climate heat pump worth it?</h1>\n<h2>Bottom line</h2>\n<p>Probably yes.</p>',
+  text: '# Is a cold-climate heat pump worth it?\n\n## Bottom line\n\nProbably yes.',
+};
+
+describe('buildBookmarkParams for a research report', () => {
+  it('sends the stored HTML with no url, as a private bookmark from “alfred research”', () => {
+    expect(buildBookmarkParams(REPORT)).toEqual({
+      is_private_from_source: 'alfred research',
+      title: 'Is a cold-climate heat pump worth it for our Chicago house?',
+      description: 'Probably yes if the furnace is near the end of its life.',
+      content: REPORT.html,
+    });
+  });
+
+  it('never sends a url, even for a row that carried one', () => {
+    const params = buildBookmarkParams({ ...REPORT, canonical_url: 'https://example.com/report' });
+
+    expect(params).not.toHaveProperty('url');
+    expect(params).toMatchObject({ is_private_from_source: 'alfred research' });
+  });
+
+  it('sends the title as the post’s own', () => {
+    expect(buildBookmarkParams({ ...REPORT, title: 'A different question' })).toMatchObject({
+      title: 'A different question',
+    });
+  });
+
+  it('is null for a report that has not arrived: no body, and nothing to fetch', () => {
+    expect(buildBookmarkParams({ ...REPORT, html: null, text: null })).toBeNull();
+  });
+
+  it('leaves a newsletter’s label alone', () => {
+    expect(buildBookmarkParams({ ...REPORT, source: 'gmail' })).toMatchObject({
+      is_private_from_source: 'email',
+    });
+  });
+});
 
 describe('buildBookmarkParams', () => {
   it('sends the link, the title, the gist as description and the email HTML as content', () => {
@@ -329,6 +374,7 @@ describe('restoreOrResave', () => {
   const ARTICLE: BookmarkSource = {
     title: 'Cities Are Getting Quieter',
     canonical_url: 'https://worksinprogress.co/issue/quiet-cities',
+    source: 'instapaper',
     gist: 'Street noise tracks foot traffic, not ordinances.',
     html: null,
     text: 'The article, as Instapaper had it.',

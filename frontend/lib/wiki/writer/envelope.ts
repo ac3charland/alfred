@@ -6,9 +6,10 @@ import { type CoreFrontmatter, renderWikiFile } from './frontmatter';
  * what `inbox/` already holds.
  *
  * Two producers build envelopes. A Reader send holds the post's text as `source.md` plus the
- * picked "Novel ideas" and "Evidence" bullets as `picks-<date>.md`; a knowledge dispatch holds one
- * `notes-<date>.md` in the owner's own words. Both are registry rows the wiki repo already
- * carries (`reader-post` and `idea`), so no wiki-side change is ever needed for a send.
+ * picked "Novel ideas" and "Evidence" bullets as `picks-<date>.md` — or, for a research report,
+ * the picks alone; a knowledge dispatch holds one `notes-<date>.md` in the owner's own words.
+ * Both are registry rows the wiki repo already carries (`reader-post` and `idea`), so no wiki-side
+ * change is ever needed for a send.
  */
 
 export interface EnvelopeFile {
@@ -33,6 +34,8 @@ export interface ReaderPostForWiki {
   title: string;
   author: string | null;
   canonical_url: string | null;
+  /** Where the post came from (`gmail`, `instapaper`, `research`); a research report is filed differently. */
+  source: string;
   /** The newsletter's arrival, the nearest thing the row has to a publish date. */
   received_at: string;
   /** The post body, or null / empty once the retention sweep has taken it. */
@@ -119,20 +122,27 @@ function picksSection(heading: string, bullets: readonly string[]): string {
  * guarantees at least one bullet, so the body is never empty.
  *
  * A bullet's internal newlines are folded to spaces, because a list item is one line.
+ *
+ * A research report is the exception to `source.md`. Every other post's body is somebody's own
+ * words, filed frozen as `origin: third-party`; a report is Claude's, so filing it that way would
+ * launder model output into the wiki as a primary source. Its envelope holds the picks alone —
+ * `origin: model-derived`, no URL, no author — which is the shape the wiki already takes for a
+ * swept post with nothing to fetch: the ingest session files the picks and marks them uncheckable.
  */
 export function readerEnvelope(
   post: ReaderPostForWiki,
   picks: ReaderPicks,
   captured: string,
 ): Envelope {
+  const isReport = post.source === 'research';
   const rawText = post.text ?? '';
   const text = rawText.trim() === '' ? '' : rawText;
-  const sourceUrl = parseableUrl(post.canonical_url);
+  const sourceUrl = isReport ? null : parseableUrl(post.canonical_url);
   const title = titleOf(post.title);
   const core = {
     source_type: 'reader-post',
     title,
-    author: authorOf(post.author),
+    author: isReport ? null : authorOf(post.author),
     source_url: sourceUrl,
     published: utcDate(post.received_at),
     captured,
@@ -141,7 +151,7 @@ export function readerEnvelope(
   } as const;
 
   const files: EnvelopeFile[] = [];
-  if (text !== '' || sourceUrl !== null) {
+  if (!isReport && (text !== '' || sourceUrl !== null)) {
     const source: CoreFrontmatter = {
       ...core,
       origin: 'third-party',
