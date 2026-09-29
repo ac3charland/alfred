@@ -12,7 +12,7 @@ Resting state on the Backlog. Alfred and Beacon keep their project colour; Relay
 
 ![](gray-idle-projects-image-1.png)
 
-Hovering a grayed-out project brings its colour back at full strength (keyboard focus does the same), so it still reads as clickable.
+Hovering a grayed-out project brings its colour back at full strength, so it still reads as clickable. (Keyboard focus restores it the same way; that is pinned in a real browser by `e2e/code-sidebar-idle-projects.spec.ts` rather than shown here.)
 
 ![](gray-idle-projects-image-2.png)
 
