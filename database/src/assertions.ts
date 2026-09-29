@@ -5243,6 +5243,395 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // ── Research: questions dispatched to a Claude Code Routine, answered in the Reader (ALF-298) ──
+
+  const researchEnumResult = await attempt(
+    "item_type has a 'research' value, and a research row dispatches with no folder while a " +
+      'task still cannot (ALF-298)',
+    async () => {
+      const { rows: enumRows } = await client.query<{ has: boolean }>(
+        `select 'research' = any(enum_range(null::item_type)::text[]) as has`,
+      );
+      if (enumRows[0]?.has !== true) throw new Error("item_type has no 'research' value");
+      const { rows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('A question', 'research') returning id`,
+      );
+      const research = rows[0]?.id;
+      if (research === undefined) throw new Error('insert returned no id');
+      try {
+        await client.query(`update items set dispatched_at = now() where id = $1`, [research]);
+        const { rows: taskRows } = await client.query<{ id: string }>(
+          `insert into items (title, item_type) values ('A chore', 'task') returning id`,
+        );
+        const task = taskRows[0]?.id;
+        if (task === undefined) throw new Error('insert returned no id');
+        let refused = false;
+        try {
+          await client.query(`update items set dispatched_at = now() where id = $1`, [task]);
+        } catch {
+          refused = true;
+        } finally {
+          await client.query(`delete from items where id = $1`, [task]);
+        }
+        if (!refused) throw new Error('a folderless task was dispatched');
+      } finally {
+        await client.query(`delete from items where id = $1`, [research]);
+      }
+      return 'research dispatched without a folder; the task was refused';
+    },
+  );
+
+  const researchSendItemsResult = await attempt(
+    'send_items_to_research refuses a non-research row, a research parent with subtasks, an ' +
+      'already-dispatched row and a mixed batch, and consumes a valid batch into queued posts ' +
+      'carrying the brief (ALF-298)',
+    async () => {
+      const insert = async (
+        title: string,
+        type: string,
+        extra: Record<string, string | null> = {},
+      ): Promise<string> => {
+        const columns = ['title', 'item_type', ...Object.keys(extra)];
+        const values = [title, type, ...Object.values(extra)];
+        const { rows } = await client.query<{ id: string }>(
+          `insert into items (${columns.join(', ')})
+             values (${columns.map((_, index) => `$${String(index + 1)}`).join(', ')})
+             returning id`,
+          values,
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error('insert returned no id');
+        return id;
+      };
+      const expectRefusal = async (label: string, ids: string[]): Promise<void> => {
+        let refused = false;
+        try {
+          await asRole(client, 'authenticated', () =>
+            client.query(`select * from send_items_to_research($1::uuid[])`, [ids]),
+          );
+        } catch {
+          refused = true;
+        }
+        if (!refused) throw new Error(`${label} was accepted`);
+      };
+
+      const task = await insert('A chore', 'task');
+      const knowledge = await insert('An idea', 'knowledge');
+      const parent = await insert('A research parent', 'research');
+      // Like knowledge, a research row can never itself be a child (items_task_only_fields), but
+      // a task can hang off one — the only way to give `parent` a subtask for the case below.
+      const child = await insert('A child chore', 'task', { parent_id: parent });
+      const withNotes = await insert('Is a heat pump worth it?', 'research', {
+        notes: '  Compare against the gas furnace.  ',
+      });
+      const bare = await insert('What is the evidence on creatine?', 'research', {
+        notes: ' '.repeat(3),
+      });
+      const dispatched = await insert('Already sent', 'research');
+      await client.query(`update items set dispatched_at = now() where id = $1`, [dispatched]);
+      const seeded = [task, knowledge, parent, child, withNotes, bare, dispatched];
+
+      try {
+        await expectRefusal('a task', [task]);
+        await expectRefusal('a knowledge row', [knowledge]);
+        await expectRefusal('a research parent with subtasks', [parent]);
+        await expectRefusal('an already-dispatched research row', [dispatched]);
+        await expectRefusal('a batch with one bad id', [withNotes, task]);
+        const { rows: stillThere } = await client.query<{ n: string }>(
+          `select count(*)::text as n from items where id = any($1::uuid[])`,
+          [seeded],
+        );
+        if (stillThere[0]?.n !== String(seeded.length)) {
+          throw new Error('a refused batch removed rows');
+        }
+        const { rows: noPosts } = await client.query<{ n: string }>(
+          `select count(*)::text as n from reader_posts where source = 'research'`,
+        );
+        if (noPosts[0]?.n !== '0') throw new Error('a refused batch inserted posts');
+
+        const { rows: posts } = await asRole(client, 'authenticated', () =>
+          client.query<{
+            title: string;
+            source: string;
+            research_brief: string | null;
+            research_state: string | null;
+            research_attempts: number;
+            summary_state: string;
+            word_count: number;
+            text: string | null;
+          }>(
+            `select title, source, research_brief, research_state, research_attempts,
+                    summary_state, word_count, text
+               from send_items_to_research($1::uuid[]) order by title`,
+            [[withNotes, bare]],
+          ),
+        );
+        if (posts.length !== 2) throw new Error(`expected 2 posts, got ${String(posts.length)}`);
+        const [heatPump, creatine] = posts;
+        if (
+          heatPump?.research_brief !==
+          'Is a heat pump worth it?\n\nCompare against the gas furnace.'
+        ) {
+          throw new Error(`unexpected brief ${JSON.stringify(heatPump?.research_brief)}`);
+        }
+        if (creatine?.research_brief !== 'What is the evidence on creatine?') {
+          throw new Error(`blank notes leaked into ${JSON.stringify(creatine?.research_brief)}`);
+        }
+        for (const post of posts) {
+          if (
+            post.source !== 'research' ||
+            post.research_state !== 'queued' ||
+            post.research_attempts !== 0 ||
+            post.summary_state !== 'pending' ||
+            post.word_count !== 0 ||
+            post.text !== null
+          ) {
+            throw new Error(`unexpected post ${JSON.stringify(post)}`);
+          }
+        }
+        const { rows: gone } = await client.query<{ n: string }>(
+          `select count(*)::text as n from items where id in ($1, $2)`,
+          [withNotes, bare],
+        );
+        if (gone[0]?.n !== '0') throw new Error('consumed rows were not deleted');
+
+        await expectRefusal('an already-consumed id', [withNotes]);
+        return 'five refusals changed nothing; one batch became two queued posts and was deleted';
+      } finally {
+        await client.query(`delete from reader_posts where source = 'research'`);
+        await client.query(`delete from items where id = any($1::uuid[])`, [seeded]);
+      }
+    },
+  );
+
+  const researchSendLogsCorrectionResult = await attempt(
+    'send_items_to_research stamps dispatched_at first, so a research override of the ' +
+      "classifier logs a correction that outlives the row's delete (ALF-298)",
+    async () => {
+      const captured = 'Should we refinance at 5.5 percent?';
+      const { rows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ($1, 'unclassified') returning id`,
+        [captured],
+      );
+      const id = rows[0]?.id;
+      if (id === undefined) throw new Error('insert returned no id');
+      try {
+        await client.query(
+          `update items set item_type = 'task', classified_at = now(),
+                            classified_provider = 'anthropic', classified_model = 'claude-haiku-4-5',
+                            classified_prompt_version = 4, classified_guess = '{"item_type":"task"}'
+             where id = $1`,
+          [id],
+        );
+        await client.query(`update items set item_type = 'research' where id = $1`, [id]);
+        await asRole(client, 'authenticated', () =>
+          client.query(`select * from send_items_to_research($1::uuid[])`, [[id]]),
+        );
+        const { rows: corrections } = await client.query<{
+          item_id: string | null;
+          field: string;
+          direction: string;
+          guessed_value: string | null;
+          chosen_value: string | null;
+        }>(
+          `select item_id, field, direction, guessed_value, chosen_value
+             from classification_corrections where captured_text = $1`,
+          [captured],
+        );
+        const correction = corrections[0];
+        if (correction === undefined) throw new Error('no correction was logged');
+        if (correction.item_id !== null) throw new Error('the correction still references the row');
+        if (
+          correction.field !== 'item_type' ||
+          correction.direction !== 'changed' ||
+          correction.guessed_value !== 'task' ||
+          correction.chosen_value !== 'research'
+        ) {
+          throw new Error(`unexpected correction ${JSON.stringify(correction)}`);
+        }
+        return 'task → research logged as changed, with item_id null after the delete';
+      } finally {
+        await client.query(`delete from classification_corrections where captured_text = $1`, [
+          captured,
+        ]);
+        await client.query(`delete from reader_posts where source = 'research'`);
+        await client.query(`delete from items where id = $1`, [id]);
+      }
+    },
+  );
+
+  const researchShapeResult = await attempt(
+    'reader_posts refuses a research post without its brief or state, a done one without its ' +
+      'delivery stamp, one carrying mail identity, research state on another source, an unknown ' +
+      'state and a negative attempt count — and takes the well-formed rows (ALF-298)',
+    async () => {
+      const shape = 'reader_posts_research_shape';
+      const refusals: [string, string, string, string[]][] = [
+        [
+          'a research post with no brief',
+          `source, research_state`,
+          `'research', 'queued'`,
+          [shape],
+        ],
+        ['a research post with no state', `source, research_brief`, `'research', 'Q'`, [shape]],
+        [
+          'a done research post with no delivery stamp',
+          `source, research_brief, research_state`,
+          `'research', 'Q', 'done'`,
+          [shape],
+        ],
+        [
+          'a research post carrying an account',
+          `source, research_brief, research_state, account_key`,
+          `'research', 'Q', 'queued', 'gmail-personal'`,
+          ['reader_posts_source_identity'],
+        ],
+        [
+          'a research post carrying a Gmail message id',
+          `source, research_brief, research_state, gmail_message_id`,
+          `'research', 'Q', 'queued', 'research-msg'`,
+          ['reader_posts_source_identity'],
+        ],
+        [
+          'an article carrying a research state',
+          `source, instapaper_bookmark_id, research_state, research_brief`,
+          `'instapaper', 930001, 'queued', 'Q'`,
+          [shape],
+        ],
+        [
+          'an unknown research state',
+          `source, research_brief, research_state`,
+          `'research', 'Q', 'lost'`,
+          // Both CHECKs refuse it; Postgres names whichever it evaluated first.
+          ['reader_posts_research_state_valid', shape],
+        ],
+        [
+          'a negative attempt count',
+          `source, research_brief, research_state, research_attempts`,
+          `'research', 'Q', 'queued', -1`,
+          ['reader_posts_research_attempts_not_negative'],
+        ],
+      ];
+      try {
+        for (const [label, columns, values, expected] of refusals) {
+          const refusal = await readerInsertRefusal(columns, values, []);
+          if (!expected.includes(refusal)) {
+            throw new Error(
+              `${label} was ${refusal === ACCEPTED ? 'accepted' : `refused by ${refusal}`}`,
+            );
+          }
+        }
+        const accepted: [string, string, string][] = [
+          [
+            'a queued research post',
+            `source, research_brief, research_state`,
+            `'research', 'Q', 'queued'`,
+          ],
+          [
+            // The ninety-day sweep leaves a done report exactly like this: no body, still done.
+            'a done research post whose body was swept',
+            `source, research_brief, research_state, research_delivered_at, text`,
+            `'research', 'Q', 'done', now(), null`,
+          ],
+        ];
+        for (const [label, columns, values] of accepted) {
+          const refusal = await readerInsertRefusal(columns, values, []);
+          if (refusal !== ACCEPTED) throw new Error(`${label} was refused by ${refusal}`);
+        }
+      } finally {
+        // The article row is refused above; the bookmark id only matters if it wasn't.
+        await client.query(
+          `delete from reader_posts where source = 'research' or instapaper_bookmark_id = 930001`,
+        );
+      }
+      return 'eight malformed rows refused by the named CHECK; two well-formed rows accepted';
+    },
+  );
+
+  const researchSweepResult = await attempt(
+    "reader_sweep_text sweeps a ninety-day-old research report's body like any post's and " +
+      'leaves its brief, state, session link and summary (ALF-298)',
+    async () => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into reader_posts (source, title, research_brief, research_state,
+                                    research_delivered_at, research_session_url, received_at,
+                                    text, html, word_count, summary_state, headline, gist,
+                                    overview, summarized_at)
+           values ('research', 'Old question', 'Old question', 'done',
+                   now() - interval '91 days', 'https://claude.ai/code/session_x',
+                   now() - interval '91 days', '# Report', '<h1>Report</h1>', 1, 'done',
+                   'A headline', 'A gist', '{}'::jsonb, now())
+           returning id`,
+      );
+      const id = rows[0]?.id;
+      if (id === undefined) throw new Error('insert returned no id');
+      try {
+        await client.query(`select reader_sweep_text(90, 5000)`);
+        const { rows: after } = await client.query<{
+          text: string | null;
+          html: string | null;
+          stamped: boolean;
+          research_brief: string | null;
+          research_state: string | null;
+          research_session_url: string | null;
+          gist: string | null;
+        }>(
+          `select text, html, text_swept_at is not null as stamped, research_brief,
+                  research_state, research_session_url, gist
+             from reader_posts where id = $1`,
+          [id],
+        );
+        const post = after[0];
+        if (post === undefined) throw new Error('the swept post is gone');
+        if (post.text !== null || post.html !== null || !post.stamped) {
+          throw new Error('the report body was not swept');
+        }
+        if (
+          post.research_brief !== 'Old question' ||
+          post.research_state !== 'done' ||
+          post.research_session_url !== 'https://claude.ai/code/session_x' ||
+          post.gist !== 'A gist'
+        ) {
+          throw new Error(`the sweep took more than the body: ${JSON.stringify(post)}`);
+        }
+      } finally {
+        await client.query(`delete from reader_posts where id = $1`, [id]);
+      }
+      return 'text and html swept; brief, state, session link and gist kept';
+    },
+  );
+
+  const researchGrantsResult = await attempt(
+    'send_items_to_research is executable by service_role and authenticated through its own ' +
+      'grant, not only PUBLIC (ALF-298)',
+    async () => {
+      const fn = 'send_items_to_research(uuid[])';
+      await client.query('begin');
+      try {
+        await client.query(`revoke execute on function ${fn} from public`);
+        await client.query('create role research_grant_control nologin');
+        const { rows } = await client.query<{
+          sr_exec: boolean;
+          auth_exec: boolean;
+          control_exec: boolean;
+        }>(
+          `select has_function_privilege('service_role', $1, 'EXECUTE') as sr_exec,
+                  has_function_privilege('authenticated', $1, 'EXECUTE') as auth_exec,
+                  has_function_privilege('research_grant_control', $1, 'EXECUTE') as control_exec`,
+          [fn],
+        );
+        const row = rows[0];
+        if (row?.sr_exec !== true || !row.auth_exec) {
+          throw new Error(`missing grant: ${JSON.stringify(row)}`);
+        }
+        if (row.control_exec) throw new Error('the control role could execute — check is vacuous');
+      } finally {
+        await client.query('rollback');
+      }
+      return 'service_role and authenticated granted; an ungranted role refused';
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -5338,5 +5727,11 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     wikiAppendIdeasResult,
     wikiAppendPicksResult,
     wikiSearchResult,
+    researchEnumResult,
+    researchSendItemsResult,
+    researchSendLogsCorrectionResult,
+    researchShapeResult,
+    researchSweepResult,
+    researchGrantsResult,
   ];
 }
