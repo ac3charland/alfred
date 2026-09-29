@@ -46,15 +46,18 @@ export type ResearchFireOutcome =
 
 /** The brief as the session receives it: whole up to the limit, else cut with a note. */
 function briefText(brief: string): string {
-  return brief.length > BRIEF_MAX_CHARS
-    ? `${brief.slice(0, BRIEF_MAX_CHARS)}${BRIEF_TRUNCATION_NOTE}`
-    : brief;
+  if (brief.length <= BRIEF_MAX_CHARS) return brief;
+  // Never end on the first half of a surrogate pair: that half alone is not a character, and the
+  // payload would carry a lone surrogate instead of the emoji or symbol it belonged to.
+  const lastUnit = brief.codePointAt(BRIEF_MAX_CHARS - 1) ?? 0;
+  const end = lastUnit > 0xff_ff ? BRIEF_MAX_CHARS - 1 : BRIEF_MAX_CHARS;
+  return `${brief.slice(0, end)}${BRIEF_TRUNCATION_NOTE}`;
 }
 
 /** Why a fire that was answered, but not accepted, failed — in the owner's terms. */
 function failureFor(status: number): string {
-  if (status === 401 || status === 403) return "the research Routine refused alfred's token";
-  if (status === 429) return "the Routine's daily run cap or usage limit was reached";
+  if (status === 401 || status === 403) return 'the research Routine refused alfred’s token';
+  if (status === 429) return 'the Routine’s daily run cap or usage limit was reached';
   return `the research Routine answered HTTP ${String(status)}`;
 }
 
@@ -100,7 +103,7 @@ export async function fireResearchRoutine(
       signal: AbortSignal.timeout(FIRE_TIMEOUT_MS),
     });
   } catch {
-    return { ok: false, error: "the research Routine couldn't be reached" };
+    return { ok: false, error: 'the research Routine couldn’t be reached' };
   }
   if (!response.ok) return { ok: false, error: failureFor(response.status) };
   return { ok: true, sessionUrl: await sessionUrlOf(response) };

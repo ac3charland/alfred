@@ -124,6 +124,18 @@ describe('the brief', () => {
     expect(BRIEF_TRUNCATION_NOTE).toBe('\n[brief truncated]');
     expect(text).toBe(`post_id=${POST.id}\n---\n${'b'.repeat(16_000)}\n[brief truncated]`);
   });
+
+  it('never cuts a character in half — an emoji straddling the limit is left out whole', async () => {
+    const spy = fetchAnswers(() => fireAnswer());
+    // 15 999 characters, then a two-unit emoji whose second half would be unit 16 001.
+    const brief = `${'b'.repeat(BRIEF_MAX_CHARS - 1)}🔬 and more`;
+
+    await fireResearchRoutine(CONFIG, { ...POST, research_brief: brief });
+
+    const { text } = recordedRequest(spy).body;
+    expect(text).toBe(`post_id=${POST.id}\n---\n${'b'.repeat(15_999)}\n[brief truncated]`);
+    expect(text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
 });
 
 describe('a 2xx answer', () => {
@@ -182,9 +194,9 @@ describe('a 2xx answer', () => {
 
 describe('a failed fire', () => {
   it.each([
-    [401, "the research Routine refused alfred's token"],
-    [403, "the research Routine refused alfred's token"],
-    [429, "the Routine's daily run cap or usage limit was reached"],
+    [401, 'the research Routine refused alfred’s token'],
+    [403, 'the research Routine refused alfred’s token'],
+    [429, 'the Routine’s daily run cap or usage limit was reached'],
     [400, 'the research Routine answered HTTP 400'],
     [404, 'the research Routine answered HTTP 404'],
     [500, 'the research Routine answered HTTP 500'],
@@ -201,7 +213,7 @@ describe('a failed fire', () => {
 
     await expect(fireResearchRoutine(CONFIG, POST)).resolves.toEqual({
       ok: false,
-      error: "the research Routine couldn't be reached",
+      error: 'the research Routine couldn’t be reached',
     });
   });
 
@@ -212,7 +224,7 @@ describe('a failed fire', () => {
 
     await expect(fireResearchRoutine(CONFIG, POST)).resolves.toEqual({
       ok: false,
-      error: "the research Routine couldn't be reached",
+      error: 'the research Routine couldn’t be reached',
     });
   });
 });
