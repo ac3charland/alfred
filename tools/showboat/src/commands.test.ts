@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
+  SecretError,
   exec,
   extract,
   formatDemoLink,
@@ -69,33 +70,33 @@ describe('init', () => {
     expect(readFileSync(file, 'utf8').startsWith('---')).toBe(false);
   });
 
-  it('keeps the branch front matter through a later note (load/save round-trip)', () => {
+  it('keeps the branch front matter through a later note (load/save round-trip)', async () => {
     const { file } = tempDoc();
     init(file, 'Tagged', { branch: 'feat/x', now: new Date('2026-01-01T00:00:00.000Z') });
-    note(file, 'a later edit');
+    await note(file, 'a later edit');
     expect(parseDocument(readFileSync(file, 'utf8')).frontMatter).toBe('branch: feat/x');
   });
 });
 
 describe('note', () => {
-  it('appends a commentary entry', () => {
+  it('appends a commentary entry', async () => {
     const { file } = tempDoc();
     init(file, 'D');
-    note(file, 'hello world');
+    await note(file, 'hello world');
     expect(entriesOf(file)).toEqual([{ kind: 'note', text: 'hello world' }]);
   });
 
-  it('strips a single trailing newline', () => {
+  it('strips a single trailing newline', async () => {
     const { file } = tempDoc();
     init(file, 'D');
-    note(file, 'trimmed\n');
+    await note(file, 'trimmed\n');
     expect(entriesOf(file)).toEqual([{ kind: 'note', text: 'trimmed' }]);
   });
 
-  it('strips multiple consecutive trailing newlines, not just one', () => {
+  it('strips multiple consecutive trailing newlines, not just one', async () => {
     const { file } = tempDoc();
     init(file, 'D');
-    note(file, 'trimmed\n\n\n');
+    await note(file, 'trimmed\n\n\n');
     // After stripping ALL trailing newlines, the serialized file ends with "trimmed\n" (one newline
     // from serializeDocument's trailing \n). With /\n$/ as the mutant (strips only one newline),
     // "trimmed\n\n" remains in the entry → file ends with "trimmed\n\n\n", not "trimmed\n".
@@ -103,10 +104,10 @@ describe('note', () => {
     expect(raw).toMatch(/trimmed\n$/);
   });
 
-  it('preserves a mid-string newline while stripping only the trailing ones', () => {
+  it('preserves a mid-string newline while stripping only the trailing ones', async () => {
     const { file } = tempDoc();
     init(file, 'D');
-    note(file, 'line one\nline two\n');
+    await note(file, 'line one\nline two\n');
     const entries = entriesOf(file);
     expect(entries).toHaveLength(1);
     // Mid-string newline must be preserved
@@ -117,40 +118,43 @@ describe('note', () => {
 });
 
 describe('exec', () => {
-  it('captures command output and returns exit code 0', () => {
+  it('captures command output and returns exit code 0', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    const result = exec(file, 'bash', 'echo hello', directory);
+    const result = await exec(file, 'bash', 'echo hello', directory);
     expect(result).toEqual({ output: 'hello', status: 0 });
     expect(entriesOf(file)).toEqual([
       { kind: 'exec', lang: 'bash', code: 'echo hello', output: 'hello' },
     ]);
   });
 
-  it('combines stderr and propagates a non-zero exit code', () => {
+  it('combines stderr and propagates a non-zero exit code', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    const result = exec(file, 'bash', 'echo boom >&2; exit 3', directory);
+    const result = await exec(file, 'bash', 'echo boom >&2; exit 3', directory);
     expect(result).toEqual({ output: 'boom', status: 3 });
   });
 
-  it('runs JavaScript when the language is node', () => {
+  it('runs JavaScript when the language is node', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    expect(exec(file, 'node', 'console.log(2 + 3)', directory)).toEqual({ output: '5', status: 0 });
+    expect(await exec(file, 'node', 'console.log(2 + 3)', directory)).toEqual({
+      output: '5',
+      status: 0,
+    });
   });
 
-  it('runs the command in the given workdir', () => {
+  it('runs the command in the given workdir', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    const result = exec(file, 'bash', 'pwd', directory);
+    const result = await exec(file, 'bash', 'pwd', directory);
     expect(result.output.endsWith(path.basename(directory))).toBe(true);
   });
 
-  it('strips a single trailing newline from code before serializing', () => {
+  it('strips a single trailing newline from code before serializing', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    exec(file, 'bash', 'echo hi\n', directory);
+    await exec(file, 'bash', 'echo hi\n', directory);
     expect(entriesOf(file)).toEqual([
       { kind: 'exec', lang: 'bash', code: 'echo hi', output: 'hi' },
     ]);
@@ -161,10 +165,10 @@ describe('exec', () => {
     // so for a single trailing newline both paths converge — verified via parse round-trip above.
   });
 
-  it('strips multiple consecutive trailing newlines from code, not just one', () => {
+  it('strips multiple consecutive trailing newlines from code, not just one', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    exec(file, 'bash', 'echo hi\n\n\n', directory);
+    await exec(file, 'bash', 'echo hi\n\n\n', directory);
     // The parsed entry must still have code='echo hi' (makeFence trims trailing newlines too,
     // so this is consistent with AT_CEILING for the /\n$/ mutant which only removes one \n)
     expect(entriesOf(file)).toEqual([
@@ -172,10 +176,10 @@ describe('exec', () => {
     ]);
   });
 
-  it('preserves a mid-code newline while stripping only the trailing ones', () => {
+  it('preserves a mid-code newline while stripping only the trailing ones', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    exec(file, 'bash', 'echo line1\necho line2\n', directory);
+    await exec(file, 'bash', 'echo line1\necho line2\n', directory);
     const entries = entriesOf(file);
     expect(entries).toHaveLength(1);
     const entry = entries[0] as { kind: string; code: string };
@@ -187,11 +191,11 @@ describe('exec', () => {
 });
 
 describe('pop', () => {
-  it('removes the most recent entry, including an exec block and its output', () => {
+  it('removes the most recent entry, including an exec block and its output', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    note(file, 'keep me');
-    exec(file, 'bash', 'echo gone', directory);
+    await note(file, 'keep me');
+    await exec(file, 'bash', 'echo gone', directory);
     const removed = pop(file);
     expect(removed).toEqual({ kind: 'exec', lang: 'bash', code: 'echo gone', output: 'gone' });
     expect(entriesOf(file)).toEqual([{ kind: 'note', text: 'keep me' }]);
@@ -292,11 +296,11 @@ describe('image', () => {
     expect(entries[1]).toMatchObject({ path: 'demo-image-2.png' });
   });
 
-  it('counts only existing image entries, not all entries', () => {
+  it('counts only existing image entries, not all entries', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
     // Add a note entry first — it must NOT count toward the image numbering
-    note(file, 'some note');
+    await note(file, 'some note');
     const src = path.join(directory, 'shot.png');
     writeFileSync(src, 'x');
     image(file, src);
@@ -376,7 +380,7 @@ describe('video', () => {
   it('numbers the gif by image entries only, ignoring notes', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    note(file, 'a note'); // a non-image entry must NOT bump the gif number
+    await note(file, 'a note'); // a non-image entry must NOT bump the gif number
     const webm = path.join(directory, 'clip.webm');
     writeFileSync(webm, 'x');
 
@@ -401,59 +405,117 @@ describe('video', () => {
 });
 
 describe('verify', () => {
-  it('passes when recorded output still matches', () => {
+  it('passes when recorded output still matches', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    exec(file, 'bash', 'echo stable', directory);
-    expect(verify(file, directory)).toEqual({ ok: true, diffs: [], checked: 1 });
+    await exec(file, 'bash', 'echo stable', directory);
+    expect(await verify(file, directory)).toEqual({ ok: true, diffs: [], checked: 1 });
   });
 
-  it('fails with a diff when the recorded output no longer matches', () => {
+  it('fails with a diff when the recorded output no longer matches', async () => {
     const { file, directory } = tempDoc();
     // A fixed timestamp with no 4/9 digits and a command whose code text contains
     // neither, so tampering the recorded "4" hits only the output block.
     init(file, 'D', { now: new Date('2026-01-01T00:00:00.000Z') });
-    exec(file, 'bash', 'echo $((6 - 2))', directory);
+    await exec(file, 'bash', 'echo $((6 - 2))', directory);
     writeFileSync(file, readFileSync(file, 'utf8').replace('4', '9'));
-    const result = verify(file, directory);
+    const result = await verify(file, directory);
     expect(result.ok).toBe(false);
     expect(result.diffs).toEqual([
       { index: 1, lang: 'bash', code: 'echo $((6 - 2))', expected: '9', actual: '4' },
     ]);
   });
 
-  it('--output writes a refreshed copy without touching the original', () => {
+  it('--output writes a refreshed copy without touching the original', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D', { now: new Date('2026-01-01T00:00:00.000Z') });
-    exec(file, 'bash', 'echo $((6 - 2))', directory);
+    await exec(file, 'bash', 'echo $((6 - 2))', directory);
     writeFileSync(file, readFileSync(file, 'utf8').replace('4', '9'));
     const out = path.join(directory, 'refreshed.md');
-    verify(file, directory, out);
+    await verify(file, directory, out);
     expect(readFileSync(file, 'utf8')).toContain('9'); // original left tampered
     expect(readFileSync(out, 'utf8')).toContain('4'); // refreshed has the real output
   });
 
-  it('skips note and image entries and only counts exec blocks', () => {
+  it('skips note and image entries and only counts exec blocks', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
-    note(file, 'some narration');
-    exec(file, 'bash', 'echo counted', directory);
+    await note(file, 'some narration');
+    await exec(file, 'bash', 'echo counted', directory);
     // Add an image entry manually by writing raw markdown into the file
     const raw = readFileSync(file, 'utf8');
     writeFileSync(file, raw + '\n![alt](demo-image-1.png)\n');
-    const result = verify(file, directory);
+    const result = await verify(file, directory);
     // Only the exec block is checked; note and image are skipped
     expect(result.checked).toBe(1);
     expect(result.ok).toBe(true);
   });
 });
 
+describe('secret guard', () => {
+  // Assembled at runtime so this file stays clean under the repo's own secret scan.
+  const PASSWORD = ['Qz7', 'vLk2', 'Rw9pT'].join('');
+  const LEAKED_URI = `postgresql://postgres.ref:${PASSWORD}@aws-1-us-east-2.pooler.supabase.com:5432/postgres`;
+  // Prints LEAKED_URI without the command text itself containing it.
+  const PRINT_LEAK = `node -e "console.log(['postgresql://postgres.ref:', '${['Qz7', 'vLk2'].join('')}' + 'Rw9pT', '@h.example.com:5432/postgres'].join(''))"`;
+
+  it('note refuses to record a secret, leaves the doc untouched, and never echoes the secret', async () => {
+    const { file } = tempDoc();
+    init(file, 'D');
+    const before = readFileSync(file, 'utf8');
+    const refusal = note(file, `connect with ${LEAKED_URI}`);
+    await expect(refusal).rejects.toThrow(SecretError);
+    await expect(refusal).rejects.toThrow(/npm run psql -w database/);
+    await expect(refusal).rejects.not.toThrow(PASSWORD);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('exec refuses a command that inlines a secret — without running it', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const before = readFileSync(file, 'utf8');
+    await expect(exec(file, 'bash', `touch ran; echo '${LEAKED_URI}'`, directory)).rejects.toThrow(
+      SecretError,
+    );
+    expect(existsSync(path.join(directory, 'ran'))).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('exec refuses when only the output carries a secret', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const before = readFileSync(file, 'utf8');
+    await expect(exec(file, 'bash', PRINT_LEAK, directory)).rejects.toThrow(/output/);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('shares the repo .secretlintrc.json, so its documented placeholder is recordable', async () => {
+    const { file } = tempDoc();
+    init(file, 'D');
+    const template =
+      'postgresql://postgres.<ref>:<password>@aws-1-<region>.pooler.supabase.com:5432/postgres';
+    await note(file, template);
+    expect(entriesOf(file)).toEqual([{ kind: 'note', text: template }]);
+  });
+
+  it('verify --output refuses to write a refreshed copy whose output now carries a secret', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    writeFileSync(path.join(directory, 'script.sh'), 'echo nothing yet\n');
+    await exec(file, 'bash', 'sh script.sh', directory);
+    writeFileSync(path.join(directory, 'script.sh'), `${PRINT_LEAK}\n`);
+    const out = path.join(directory, 'refreshed.md');
+    await expect(verify(file, directory, out)).rejects.toThrow(SecretError);
+    expect(existsSync(out)).toBe(false);
+  });
+});
+
 describe('extract', () => {
-  it('emits showboat commands that recreate the doc', () => {
+  it('emits showboat commands that recreate the doc', async () => {
     const { file, directory } = tempDoc();
     init(file, 'Title');
-    note(file, "it's fine");
-    exec(file, 'bash', 'echo hi', directory);
+    await note(file, "it's fine");
+    await exec(file, 'bash', 'echo hi', directory);
     expect(extract(file, 'copy.md').split('\n')).toEqual([
       "showboat init 'copy.md' 'Title'",
       String.raw`showboat note 'copy.md' 'it'\''s fine'`,
@@ -473,19 +535,19 @@ describe('extract', () => {
     expect(lines[1]).toBe("showboat image 'out.md' '![the caption](demo-image-1.png)'");
   });
 
-  it('falls back to bash when the exec lang is empty', () => {
+  it('falls back to bash when the exec lang is empty', async () => {
     const { file, directory } = tempDoc();
     init(file, 'Title');
-    exec(file, '', 'echo hi', directory);
+    await exec(file, '', 'echo hi', directory);
     const lines = extract(file, 'out.md').split('\n');
     // lang should be 'bash' not ''
     expect(lines[1]).toBe("showboat exec 'out.md' 'bash' 'echo hi'");
   });
 
-  it('preserves the actual lang when lang is not empty', () => {
+  it('preserves the actual lang when lang is not empty', async () => {
     const { file, directory } = tempDoc();
     init(file, 'Title');
-    exec(file, 'node', 'console.log(1)', directory);
+    await exec(file, 'node', 'console.log(1)', directory);
     const lines = extract(file, 'out.md').split('\n');
     expect(lines[1]).toBe("showboat exec 'out.md' 'node' 'console.log(1)'");
   });

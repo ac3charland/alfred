@@ -33,6 +33,9 @@
   },
   "dependencies": {
     "@ffmpeg/core": "^0.11.0",
-    "@ffmpeg/ffmpeg": "^0.11.6"
+    "@ffmpeg/ffmpeg": "^0.11.6",
+    "@secretlint/node": "^13.0.6",
+    "@secretlint/secretlint-rule-pattern": "^13.0.6",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.6"
   }
 }

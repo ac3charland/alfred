@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
 import {
+  SecretError,
   type VerifyResult,
   currentBranch,
   exec,
@@ -140,14 +141,14 @@ async function main(argv: readonly string[]): Promise<number> {
     case 'note': {
       const [file, ...textParts] = rest;
       if (!file) fail('usage: showboat note <file> [text]');
-      note(file, textParts.length > 0 ? textParts.join(' ') : readStdin());
+      await note(file, textParts.length > 0 ? textParts.join(' ') : readStdin());
       return 0;
     }
     case 'exec': {
       const [file, lang, ...codeParts] = rest;
       if (!file || !lang) fail('usage: showboat exec <file> <lang> [code]');
       const code = codeParts.length > 0 ? codeParts.join(' ') : readStdin();
-      const result = exec(file, lang, code, workdir);
+      const result = await exec(file, lang, code, workdir);
       if (result.output.length > 0) process.stdout.write(`${result.output}\n`);
       return result.status;
     }
@@ -174,7 +175,7 @@ async function main(argv: readonly string[]): Promise<number> {
       const { value: outputFile, rest: positional2 } = takeOption(rest, '--output');
       const [file] = positional2;
       if (!file) fail('usage: showboat verify <file> [--output <file>]');
-      const result = verify(file, workdir, outputFile);
+      const result = await verify(file, workdir, outputFile);
       reportVerify(file, result);
       return result.ok ? 0 : 1;
     }
@@ -203,6 +204,9 @@ try {
   if (error instanceof UsageError) {
     process.stderr.write(`showboat: ${error.message}\n`);
     process.exitCode = 2;
+  } else if (error instanceof SecretError) {
+    process.stderr.write(`showboat: ${error.message}\n`);
+    process.exitCode = 1;
   } else {
     throw error;
   }

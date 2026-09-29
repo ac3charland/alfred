@@ -5,6 +5,7 @@ import path from 'node:path';
 import { type Entry, type ShowboatDocument, parseDocument, serializeDocument } from './document.ts';
 import { convertWebmToGif } from './ffmpeg.ts';
 import { type RunResult, runCode } from './run.ts';
+import { findSecrets } from './secrets.ts';
 
 const IMAGE_MARKDOWN = /^!\[([^\]]*)\]\(([^)]*)\)$/;
 
@@ -40,8 +41,31 @@ export function init(file: string, title: string, options: InitOptions = {}): vo
   save(file, { frontMatter, title, timestamp: now.toISOString(), entries: [] });
 }
 
-/** Append a commentary paragraph. */
-export function note(file: string, text: string): void {
+/**
+ * Thrown instead of recording a secret. The repo is public, so a demo doc is published the moment
+ * it's pushed — and `exec` records the command *and* its output verbatim. Nothing is written.
+ */
+export class SecretError extends Error {
+  constructor(file: string, what: string, report: string) {
+    super(
+      `refused to record ${what} in ${file}: it looks like a secret, and this repo is public.\n` +
+        `${report.trim()}\n` +
+        'Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, ' +
+        'which reads the URL from frontend/.env.local; otherwise keep the value in an env var ' +
+        '(`"$NAME"`) or mask it (`:****@`).',
+    );
+    this.name = 'SecretError';
+  }
+}
+
+async function refuseSecrets(file: string, what: string, content: string): Promise<void> {
+  const report = await findSecrets(content, `<${what}>`);
+  if (report !== undefined) throw new SecretError(file, what, report);
+}
+
+/** Append a commentary paragraph. Refuses (see {@link SecretError}) text carrying a secret. */
+export async function note(file: string, text: string): Promise<void> {
+  await refuseSecrets(file, 'note', text);
   const document = load(file);
   document.entries.push({ kind: 'note', text: text.replace(/\n+$/, '') });
   save(file, document);
@@ -52,10 +76,20 @@ export function note(file: string, text: string): void {
  * captured output plus the child's exit code so the CLI can echo the output and
  * exit with the same status — surfacing failures the same way running the
  * command directly would.
+ *
+ * Refuses (see {@link SecretError}) a command carrying a secret before running it, and a run
+ * whose output carries one before recording it.
  */
-export function exec(file: string, lang: string, code: string, workdir: string): RunResult {
+export async function exec(
+  file: string,
+  lang: string,
+  code: string,
+  workdir: string,
+): Promise<RunResult> {
+  await refuseSecrets(file, 'command', code);
   const document = load(file);
   const result = runCode(lang, code, workdir);
+  await refuseSecrets(file, 'command output', result.output);
   document.entries.push({
     kind: 'exec',
     lang,
@@ -146,9 +180,14 @@ export interface VerifyResult {
 
 /**
  * Re-run every exec block and diff the fresh output against what was recorded.
- * `outputFile`, when given, writes a copy of the doc with refreshed outputs.
+ * `outputFile`, when given, writes a copy of the doc with refreshed outputs — unless a
+ * refreshed output now carries a secret (see {@link SecretError}).
  */
-export function verify(file: string, workdir: string, outputFile?: string): VerifyResult {
+export async function verify(
+  file: string,
+  workdir: string,
+  outputFile?: string,
+): Promise<VerifyResult> {
   const document = load(file);
   const diffs: VerifyDiff[] = [];
   let checked = 0;
@@ -169,7 +208,10 @@ export function verify(file: string, workdir: string, outputFile?: string): Veri
     return { ...entry, output: result.output };
   });
 
-  if (outputFile !== undefined) save(outputFile, { ...document, entries });
+  if (outputFile !== undefined) {
+    for (const diff of diffs) await refuseSecrets(outputFile, 'command output', diff.actual);
+    save(outputFile, { ...document, entries });
+  }
   return { ok: diffs.length === 0, diffs, checked };
 }
 
