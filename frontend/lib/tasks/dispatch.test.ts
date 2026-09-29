@@ -5,6 +5,7 @@ import {
   DISPATCH_READY_LABEL,
   type DispatchBlocker,
   dispatchReadiness,
+  researchSentToast,
   rowDispatchAction,
   summarizeBlockers,
 } from './dispatch';
@@ -28,9 +29,11 @@ function candidate(
 }
 
 /** The readiness context for an instance with no wiki writer — the default everywhere. */
-const WIKI_OFF = { wikiWritable: false };
+const WIKI_OFF = { wikiWritable: false, researchConfigured: false };
 /** The readiness context for a deployment whose wiki writer is configured. */
-const WIKI_ON = { wikiWritable: true };
+const WIKI_ON = { wikiWritable: true, researchConfigured: false };
+/** The readiness context for a deployment whose research Routine is configured. */
+const RESEARCH_ON = { wikiWritable: false, researchConfigured: true };
 
 describe('dispatchReadiness', () => {
   // The readiness table, row by row: what each shape needs before Dispatch will send it.
@@ -137,6 +140,51 @@ describe('dispatchReadiness', () => {
     ).toEqual({ ready: false, blocker: 'still saving' });
   });
 
+  // A research row goes to the Routine, so its one label is the Routine being there to fire.
+  it('a childless research row is ready when research is configured', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'research' }), false, RESEARCH_ON)).toEqual({
+      ready: true,
+    });
+  });
+
+  it('a research row with children has subtasks', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'research' }), true, RESEARCH_ON)).toEqual({
+      ready: false,
+      blocker: 'has subtasks',
+    });
+  });
+
+  it('a research row on an instance with no research Routine is blocked: research not connected', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'research' }), false, WIKI_OFF)).toEqual({
+      ready: false,
+      blocker: 'research not connected',
+    });
+  });
+
+  it('research not connected wins over has subtasks — the gap the row cannot fix', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'research' }), true, WIKI_OFF)).toEqual({
+      ready: false,
+      blocker: 'research not connected',
+    });
+  });
+
+  it('a research row still carrying a temp id is still saving', () => {
+    expect(
+      dispatchReadiness(candidate({ id: tempId(), item_type: 'research' }), false, RESEARCH_ON),
+    ).toEqual({ ready: false, blocker: 'still saving' });
+  });
+
+  it('the wiki being writable does not ready a research row, nor research a knowledge row', () => {
+    expect(dispatchReadiness(candidate({ item_type: 'research' }), false, WIKI_ON)).toEqual({
+      ready: false,
+      blocker: 'research not connected',
+    });
+    expect(dispatchReadiness(candidate({ item_type: 'knowledge' }), false, RESEARCH_ON)).toEqual({
+      ready: false,
+      blocker: 'wiki not connected',
+    });
+  });
+
   it('the wiki being writable readies no other type', () => {
     expect(dispatchReadiness(candidate(), false, WIKI_ON)).toEqual({
       ready: false,
@@ -164,6 +212,24 @@ describe('DISPATCH_READY_LABEL', () => {
   // so the wording can't fork between the two surfaces.
   it('is the wording a ready row and the bulk bar share', () => {
     expect(DISPATCH_READY_LABEL).toBe('Ready to dispatch');
+  });
+});
+
+describe('researchSentToast', () => {
+  // Both surfaces that send research off — the bulk bar and a row's own Dispatch — say the same
+  // thing and link to the same place, so the wording lives here once.
+  it('names one question in the singular, linked to the Reader', () => {
+    expect(researchSentToast(1)).toEqual({
+      message: 'Sent 1 question to research',
+      href: '/reader',
+    });
+  });
+
+  it('counts several questions in the plural, linked to the Reader', () => {
+    expect(researchSentToast(3)).toEqual({
+      message: 'Sent 3 questions to research',
+      href: '/reader',
+    });
   });
 });
 
@@ -202,6 +268,28 @@ describe('summarizeBlockers', () => {
     ).toBe('3 not ready — 3 wiki not connected');
   });
 
+  it('phrases research not connected the same for one and for many', () => {
+    expect(summarizeBlockers(['research not connected'])).toBe(
+      '1 not ready — 1 research not connected',
+    );
+    expect(summarizeBlockers(['research not connected', 'research not connected'])).toBe(
+      '2 not ready — 2 research not connected',
+    );
+  });
+
+  it('orders research not connected right after wiki not connected', () => {
+    const blockers: DispatchBlocker[] = [
+      'still saving',
+      'dispatch from its own row menu',
+      'research not connected',
+      'wiki not connected',
+      'has subtasks',
+    ];
+    expect(summarizeBlockers(blockers)).toBe(
+      '5 not ready — 1 has subtasks, 1 wiki not connected, 1 research not connected, 1 dispatch from its own row menu, 1 still saving',
+    );
+  });
+
   it('orders the knowledge blockers after the epic and before the row-menu reason', () => {
     const blockers: DispatchBlocker[] = [
       'still saving',
@@ -235,6 +323,7 @@ describe('rowDispatchAction', () => {
         hasChildren: false,
         groupHasTempIds: false,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'send' });
   });
@@ -243,7 +332,12 @@ describe('rowDispatchAction', () => {
     expect(
       rowDispatchAction(
         candidate({ item_type: 'code', intended_project_id: 'p1', intended_epic_id: 'e1' }),
-        { hasChildren: false, groupHasTempIds: false, wikiWritable: false },
+        {
+          hasChildren: false,
+          groupHasTempIds: false,
+          wikiWritable: false,
+          researchConfigured: false,
+        },
       ),
     ).toEqual({ kind: 'send' });
   });
@@ -254,6 +348,7 @@ describe('rowDispatchAction', () => {
         hasChildren: true,
         groupHasTempIds: false,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'epic', opensDialog: true });
   });
@@ -265,6 +360,7 @@ describe('rowDispatchAction', () => {
         hasChildren: true,
         groupHasTempIds: false,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'epic', opensDialog: false });
   });
@@ -276,6 +372,7 @@ describe('rowDispatchAction', () => {
         hasChildren: true,
         groupHasTempIds: true,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'still saving' });
   });
@@ -286,6 +383,7 @@ describe('rowDispatchAction', () => {
         hasChildren: false,
         groupHasTempIds: false,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'needs a folder' });
     expect(
@@ -293,6 +391,7 @@ describe('rowDispatchAction', () => {
         hasChildren: false,
         groupHasTempIds: false,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({
       kind: 'blocked',
@@ -306,6 +405,7 @@ describe('rowDispatchAction', () => {
         hasChildren: true,
         groupHasTempIds: false,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'still saving' });
   });
@@ -316,6 +416,7 @@ describe('rowDispatchAction', () => {
         hasChildren: false,
         groupHasTempIds: false,
         wikiWritable: true,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'send' });
   });
@@ -327,6 +428,7 @@ describe('rowDispatchAction', () => {
         hasChildren: true,
         groupHasTempIds: false,
         wikiWritable: true,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'has subtasks' });
     expect(
@@ -334,8 +436,39 @@ describe('rowDispatchAction', () => {
         hasChildren: false,
         groupHasTempIds: false,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'wiki not connected' });
+  });
+
+  it('sends a childless research row when research is configured', () => {
+    expect(
+      rowDispatchAction(candidate({ item_type: 'research' }), {
+        hasChildren: false,
+        groupHasTempIds: false,
+        wikiWritable: false,
+        researchConfigured: true,
+      }),
+    ).toEqual({ kind: 'send' });
+  });
+
+  it('blocks a research row with children, and one with no research Routine', () => {
+    expect(
+      rowDispatchAction(candidate({ item_type: 'research' }), {
+        hasChildren: true,
+        groupHasTempIds: false,
+        wikiWritable: false,
+        researchConfigured: true,
+      }),
+    ).toEqual({ kind: 'blocked', blocker: 'has subtasks' });
+    expect(
+      rowDispatchAction(candidate({ item_type: 'research' }), {
+        hasChildren: false,
+        groupHasTempIds: false,
+        wikiWritable: false,
+        researchConfigured: false,
+      }),
+    ).toEqual({ kind: 'blocked', blocker: 'research not connected' });
   });
 
   it('blocks a row still carrying its own temp id', () => {
@@ -344,6 +477,7 @@ describe('rowDispatchAction', () => {
         hasChildren: false,
         groupHasTempIds: false,
         wikiWritable: false,
+        researchConfigured: false,
       }),
     ).toEqual({ kind: 'blocked', blocker: 'still saving' });
   });

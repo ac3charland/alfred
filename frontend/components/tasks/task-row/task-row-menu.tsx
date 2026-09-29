@@ -30,6 +30,7 @@ import { activeEpicsForProject } from '@/lib/code/epics';
 import { addDays, todayISODate } from '@/lib/date-utils';
 import { PRIORITY_OPTIONS, isPriorityLevel } from '@/lib/priority';
 import { useEpics, useProjects } from '@/lib/stores/code-store';
+import { useResearchConfigured } from '@/lib/stores/research-config';
 import type { ClassifyTarget } from '@/lib/stores/tasks-store';
 import { useWikiConfig } from '@/lib/stores/wiki-store';
 import type { RowDispatchAction } from '@/lib/tasks/dispatch';
@@ -125,11 +126,11 @@ interface TaskRowMenuProperties {
  * blocker as its hint until the labels are complete (ALF-185).
  *
  * The label group is what a row's type has to say about it, so it is per-type — Due date / Priority
- * / Folder for a task, Project / Epic for a code story, nothing for an unclassified or knowledge
- * row. **Classify as…** sits ALONGSIDE it (ALF-253), not in its place: reclassifying a mis-triaged
+ * / Folder for a task, Project / Epic for a code story, nothing for an unclassified, knowledge or
+ * research row. **Classify as…** sits ALONGSIDE it (ALF-253), not in its place: reclassifying a mis-triaged
  * row is an ordinary Inbox correction, and `classifyItem`'s `classifyPatch` already drops exactly
  * the fields the new type forbids (a task's due date/recurrence, a code row's project/epic hints,
- * every label on an idea) in the same write — so nothing is silently stranded by the flip. It is
+ * every label on an idea or a research question) in the same write — so nothing is silently stranded by the flip. It is
  * gated to an **Inbox row** (`isInboxRow`) — once a row has left the Inbox (filed to a folder, sent
  * to the factory) or is Completed-view history, its type is settled along with the rest of it — AND
  * the SHAPE gate (`canChangeType`): a top-level row with no subtasks, since a parent's flip is the
@@ -170,6 +171,8 @@ export function TaskRowMenu({
   // Knowledge is a destination only where the wiki can take it: on an instance with no writer
   // an idea classified here could never be dispatched.
   const { writable: wikiWritable } = useWikiConfig();
+  // Research is a destination only where the Routine can be fired, for the same reason.
+  const researchConfigured = useResearchConfigured();
   const [calendarOpen, setCalendarOpen] = React.useState(false);
   // "Custom… was picked" — read by the menu's own close, which is when the calendar opens.
   const calendarPending = React.useRef(false);
@@ -231,11 +234,11 @@ export function TaskRowMenu({
   // the conversion creates its epic — and a code child becomes a story under it and inherits it.
   const showEpic = !isSaving && isCode && isRoot && isChildless;
   // Classify as… (ALF-253): live whatever the row's current type — reclassifying a mis-triaged
-  // row (e.g. the LLM classifier guessed wrong, knowledge included) is an ordinary correction,
-  // not a one-way door. Gated on BOTH halves: `isInboxRow` (once a row has left the Inbox its
-  // type is settled) and `canChangeType` (the shape guard a parent's flip needs, which the DB
-  // can't enforce — and which keeps Knowledge off anything but a childless root, the only shape
-  // the DB lets a knowledge row take).
+  // row (e.g. the LLM classifier guessed wrong, knowledge or research included) is an ordinary
+  // correction, not a one-way door. Gated on BOTH halves: `isInboxRow` (once a row has left the
+  // Inbox its type is settled) and `canChangeType` (the shape guard a parent's flip needs, which
+  // the DB can't enforce — and which keeps Knowledge and Research off anything but a childless
+  // root, the only shape the DB lets either take).
   const showClassify = !isSaving && isInboxRow && canChangeType;
 
   const epicsForProject = activeEpicsForProject(epics, node.intended_project_id);
@@ -390,9 +393,10 @@ export function TaskRowMenu({
 
           {/* Classify as ▸ — sets or corrects the row's type (the single coherent classifyItem
             write, which drops whatever the new type forbids in the same PATCH). Task, Code and —
-            where the wiki can take it — Knowledge: unclassified is a starting state, not a
-            destination. Live for the whole time the row sits in the Inbox, whatever its current
-            type — see showClassify above. */}
+            where the wiki can take it — Knowledge, then — where the research Routine can be
+            fired — Research: unclassified is a starting state, not a destination. Live for the
+            whole time the row sits in the Inbox, whatever its current type — see showClassify
+            above. */}
           {showClassify && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
@@ -423,13 +427,22 @@ export function TaskRowMenu({
                     Knowledge
                   </DropdownMenuItem>
                 )}
+                {researchConfigured && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      onClassify('research');
+                    }}
+                  >
+                    Research
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           )}
 
           {/* Dispatch — one entry for every destination: the row's labels name where it goes (a
             task to its folder, a code story through the factory gate, a code parent into a new
-            epic, an idea to the wiki). Always rendered on an Inbox row, disabled while the labels
+            epic, an idea to the wiki, a question to research). Always rendered on an Inbox row, disabled while the labels
             are incomplete with the blocker itself as the hint — the same words the bulk bar's
             readiness line uses. The "…" appears only when a dialog will open (a code parent with
             no project). */}

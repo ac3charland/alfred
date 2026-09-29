@@ -47,11 +47,12 @@ import { useDepartingItems, useDepartingItemsActions } from '@/lib/stores/depart
 import { useExpansion, useExpansionActions } from '@/lib/stores/expansion-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
+import { useResearchConfigured } from '@/lib/stores/research-config';
 import { type ClassifyTarget, useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { useWikiConfig } from '@/lib/stores/wiki-store';
 import { classificationOrigin } from '@/lib/tasks/classification';
-import { dispatchReadiness, rowDispatchAction } from '@/lib/tasks/dispatch';
+import { dispatchReadiness, researchSentToast, rowDispatchAction } from '@/lib/tasks/dispatch';
 import { isDispatched } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
 import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
@@ -151,6 +152,7 @@ export function TaskRow({
   } = useTaskActions();
   const { showToast } = useToastActions();
   const { writable: wikiWritable } = useWikiConfig();
+  const researchConfigured = useResearchConfigured();
   const activeEditor = useActiveEditor();
   const { openEditor, closeEditor } = useActiveEditorActions();
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -193,13 +195,21 @@ export function TaskRow({
   // The whole row is a drag source (the row sensors ignore presses on its buttons
   // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
   // be dragged to re-parent it; an active task can also be filed into a folder. Which rows may
-  // lift at all — not a completed or temp row, nor a code or knowledge ROOT, which have no
-  // legitimate drag target — is `canDrag`, derived with the other flags.
+  // lift at all — not a completed or temp row, nor a code, knowledge or research ROOT, which
+  // have no legitimate drag target — is `canDrag`, derived with the other flags.
   const { draggedSubtreeIds, activeDragItemType } = useTaskDrag();
   // Item-type flags + drop-target validity (completion/due-date/subtask gating, the drop
   // highlight, drag) all derive from the node — see useTaskRowFlags.
-  const { isTask, isCode, isKnowledge, canAddSubtask, isValidDropTarget, canChangeType, canDrag } =
-    useTaskRowFlags(node, isCompleted, draggedSubtreeIds, activeDragItemType);
+  const {
+    isTask,
+    isCode,
+    isKnowledge,
+    isResearch,
+    canAddSubtask,
+    isValidDropTarget,
+    canChangeType,
+    canDrag,
+  } = useTaskRowFlags(node, isCompleted, draggedSubtreeIds, activeDragItemType);
 
   // Recurrence is top-level-task-only: the parsed rule drives the row chip and the meta-panel
   // Repeat control. A subtask or non-task row never recurs (the control is hidden there).
@@ -238,7 +248,8 @@ export function TaskRow({
   // the provenance mark and this cue can never gate differently; `node.children.length > 0` is
   // the same hasChildren the bulk bar passes, so the row and the press agree by construction.
   const isDispatchReady =
-    isInboxRow && dispatchReadiness(node, node.children.length > 0, { wikiWritable }).ready;
+    isInboxRow &&
+    dispatchReadiness(node, node.children.length > 0, { wikiWritable, researchConfigured }).ready;
 
   // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
@@ -641,6 +652,7 @@ export function TaskRow({
         hasChildren: node.children.length > 0,
         groupHasTempIds,
         wikiWritable,
+        researchConfigured,
       })
     : null;
 
@@ -649,7 +661,7 @@ export function TaskRow({
   // bulk bar presses, on a set of one — the subtree residency cascade, the factory RPC, the
   // rollback and the failure toast are all its, so the two surfaces can't drift. The success
   // toast is the row's own, since here there IS a single destination to name (and link to,
-  // where it has a view in the app — the wiki's inbox doesn't).
+  // where it has a view in the app — the wiki's inbox doesn't, the Reader does).
   const handleDispatch = () => {
     if (dispatchAction === null || dispatchAction.kind === 'blocked') return;
     if (dispatchAction.kind === 'epic') {
@@ -673,6 +685,11 @@ export function TaskRow({
       if (staying.length > 0) return;
       if (isKnowledge) {
         showToast('Sent to the wiki');
+        return;
+      }
+      if (isResearch) {
+        const { message, href } = researchSentToast(1);
+        showToast(message, 'default', href);
         return;
       }
       if (story === undefined) {
@@ -892,9 +909,9 @@ export function TaskRow({
               </IconButton>
 
               {/* Completion is `task`-only: an unclassified row shows no checkbox, just a spacer
-                so its title stays aligned with task rows; a code or knowledge row shows its
-                ALF-224 type glyph in the same slot instead, so it still names itself without a
-                row badge. */}
+                so its title stays aligned with task rows; a code, knowledge or research row shows
+                its ALF-224 type glyph in the same slot instead, so it still names itself without
+                a row badge. */}
               {isTask ? (
                 isDropTarget ? (
                   <div aria-hidden="true" className={dropPlusClass}>
@@ -934,11 +951,11 @@ export function TaskRow({
                   </CheckboxButton>
                 ) /* Completion checkbox — or, while a task is dropped onto this row, a "+" that
                 signals it will become a child here (replaces the checkbox; no animation). */
-              ) : isCode || isKnowledge ? (
-                // The ALF-224 type glyph (`code`, or a knowledge row's lightbulb) fills the
-                // checkbox slot a row that can't be completed has none of — visible at every
-                // width, unlike the unclassified spacer below, since it carries real
-                // information rather than reserving blank alignment space.
+              ) : isCode || isKnowledge || isResearch ? (
+                // The ALF-224 type glyph (`code`, a knowledge row's lightbulb or a research row's
+                // binoculars) fills the checkbox slot a row that can't be completed has none of
+                // — visible at every width, unlike the unclassified spacer below, since it
+                // carries real information rather than reserving blank alignment space.
                 <div
                   className={cn(checkboxSizeClass, 'shrink-0 flex items-center justify-center')}
                   data-testid="type-glyph-slot"

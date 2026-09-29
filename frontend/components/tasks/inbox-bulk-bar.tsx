@@ -16,11 +16,17 @@ import { useCodeActions } from '@/lib/stores/code-store';
 import { useDepartingItemsActions } from '@/lib/stores/departing-items-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
+import { useResearchConfigured } from '@/lib/stores/research-config';
 import { type ClassifyTarget, useScopedTasks, useTaskActions } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { useWikiConfig } from '@/lib/stores/wiki-store';
 import type { DispatchBlocker } from '@/lib/tasks/dispatch';
-import { DISPATCH_READY_LABEL, dispatchReadiness, summarizeBlockers } from '@/lib/tasks/dispatch';
+import {
+  DISPATCH_READY_LABEL,
+  dispatchReadiness,
+  researchSentToast,
+  summarizeBlockers,
+} from '@/lib/tasks/dispatch';
 import type { CodeStory } from '@/lib/types';
 
 import {
@@ -63,8 +69,8 @@ export function InboxSelectToggle() {
  * The Inbox bulk action bar: shown only while select mode is on and ≥1 item is selected.
  * **Dispatch leads** — the primary action, the only one styled accent: it sends each READY selected
  * item to its own destination in one press (a task to its labelled folder, a code item through the
- * factory gate, an idea to the wiki), leaving unready items selected with the readiness line naming
- * what each is missing. The other actions are gated on the selection's composition: Classify needs
+ * factory gate, an idea to the wiki, a question to the Reader as a research post), leaving unready
+ * items selected with the readiness line naming what each is missing. The other actions are gated on the selection's composition: Classify needs
  * every row to be a childless root (the type-change shape gate, whatever the current type —
  * ALF-253), Move needs tasks/unclassified rows, Send-to-Code stays the "choose the project and epic
  * now" path. A full success clears the selection and exits mode — except after Dispatch, which
@@ -83,8 +89,9 @@ export function InboxBulkBar() {
   const { depart, clear: clearDeparting } = useDepartingItemsActions();
   const { showToast } = useToastActions();
   // Knowledge is a Classify destination, and a knowledge row dispatch-ready, only where the wiki
-  // can take it.
+  // can take it; research likewise only where the research Routine can be fired.
   const { writable: wikiWritable } = useWikiConfig();
+  const researchConfigured = useResearchConfigured();
   const folders = useFolders();
   const inboxNodes = useScopedTasks({ type: 'inbox' });
   const [showGate, setShowGate] = React.useState(false);
@@ -140,7 +147,10 @@ export function InboxBulkBar() {
   const blockers: DispatchBlocker[] = [];
   const readyIds: string[] = [];
   for (const item of selectedItems) {
-    const readiness = dispatchReadiness(item, item.children.length > 0, { wikiWritable });
+    const readiness = dispatchReadiness(item, item.children.length > 0, {
+      wikiWritable,
+      researchConfigured,
+    });
     if (readiness.ready) readyIds.push(item.id);
     else blockers.push(readiness.blocker);
   }
@@ -171,20 +181,26 @@ export function InboxBulkBar() {
     // motion), and `clearDeparting` afterwards releases any row a failure put back.
     await depart(readyIds);
     // One press, each ready item to its own destination; unready ∪ failed stay selected. The
-    // toast counts what actually went, with no deep link — a mixed dispatch has no single
-    // destination to link to. When everything that went was an idea, the one destination is
-    // the wiki, and the toast says so.
+    // toast counts what actually went, and a mixed dispatch has no single destination to link
+    // to. When everything that went was an idea, the one destination is the wiki, and the toast
+    // says so; when everything was a question, it is the Reader, and the toast links there — a
+    // refused start doesn't change that, since the question is in the Reader either way.
     const staying = new Set(await dispatchItems(ids, convertTaskToCode));
     clearDeparting();
     const sentItems = selectedItems.filter((item) => !staying.has(item.id));
     const sent = sentItems.length;
     if (sent > 0) {
       const plural = sent === 1 ? '' : 's';
-      showToast(
-        sentItems.every((item) => item.item_type === 'knowledge')
-          ? `Sent ${String(sent)} idea${plural} to the wiki`
-          : `Dispatched ${String(sent)} item${plural}`,
-      );
+      if (sentItems.every((item) => item.item_type === 'research')) {
+        const { message, href } = researchSentToast(sent);
+        showToast(message, 'default', href);
+      } else {
+        showToast(
+          sentItems.every((item) => item.item_type === 'knowledge')
+            ? `Sent ${String(sent)} idea${plural} to the wiki`
+            : `Dispatched ${String(sent)} item${plural}`,
+        );
+      }
     }
     // Dispatch alone never leaves select mode. It is the sweep you press again and again —
     // clear a batch, pick the next — so exiting on a clean sweep would charge a re-entry for
@@ -283,6 +299,15 @@ export function InboxBulkBar() {
                     }}
                   >
                     Knowledge
+                  </DropdownMenuItem>
+                )}
+                {researchConfigured && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void handleClassify('research');
+                    }}
+                  >
+                    Research
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
