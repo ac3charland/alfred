@@ -120,13 +120,28 @@ describe('renderReportHtml', () => {
     });
   });
 
-  describe('link and image targets', () => {
+  describe('images', () => {
+    it.each([
+      ['a remote image', '![A chart of running cost](https://tracker.example/pixel.png?u=1)'],
+      ['a javascript: image', '![A chart of running cost](javascript:alert(1))'],
+      ['a data: image', '![A chart of running cost](data:image/png;base64,AAAA)'],
+    ])('drops %s, keeping its alt text as plain text', (_label, markdown) => {
+      // An image in the report would load from wherever the session was told to point it the
+      // moment the owner opens the report — a tracking pixel an injected page can plant.
+      const html = renderReportHtml(markdown);
+
+      expect(html).not.toContain('<img');
+      expect(html).not.toMatch(/tracker\.example|javascript:|data:/);
+      expect(html).toContain('A chart of running cost');
+    });
+  });
+
+  describe('link targets', () => {
     it.each([
       ['a javascript: link', '[click](javascript:alert(1))'],
       ['a mixed-case javascript: link', '[click](JaVaScRiPt:alert(1))'],
       ['a data: link', '[click](data:text/html,<b>x</b>)'],
       ['a vbscript: link', '[click](vbscript:msgbox(1))'],
-      ['a javascript: image', '![pic](javascript:alert(1))'],
     ])('drops the target of %s and keeps its text', (_label, markdown) => {
       const html = renderReportHtml(markdown);
 
@@ -140,7 +155,6 @@ describe('renderReportHtml', () => {
       ['http', '[a](http://localhost:8080/a)', 'href="http://localhost:8080/a"'],
       ['mailto', '[a](mailto:owner@example.org)', 'href="mailto:owner@example.org"'],
       ['a fragment', '[a](#sources)', 'href="#sources"'],
-      ['an https image', '![a](https://example.org/a.png)', 'src="https://example.org/a.png"'],
     ])('keeps %s targets', (_label, markdown, attribute) => {
       expect(renderReportHtml(markdown)).toContain(attribute);
     });

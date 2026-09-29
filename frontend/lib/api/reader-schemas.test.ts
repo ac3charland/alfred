@@ -1,6 +1,7 @@
 import {
   createReaderPublicationSchema,
   patchReaderPostSchema,
+  researchReportSchema,
   updateReaderPublicationSchema,
 } from './reader-schemas';
 
@@ -83,5 +84,31 @@ describe('patchReaderPostSchema', () => {
 
   it('rejects an un-resummarise — there is no such verb', () => {
     expect(patchReaderPostSchema.safeParse({ resummarize: false }).success).toBe(false);
+  });
+});
+
+describe('researchReportSchema', () => {
+  it('accepts a report and keeps it exactly as sent', () => {
+    const report = '# Is it worth it?\n\n  Probably yes.  \n';
+    expect(researchReportSchema.parse({ report })).toEqual({ report });
+  });
+
+  it.each([
+    ['missing', {}],
+    ['blank', { report: ' \n\t ' }],
+    ['not a string', { report: 42 }],
+    ['over the ceiling', { report: 'x'.repeat(200_001) }],
+  ])('refuses a report that is %s', (_label, body) => {
+    expect(researchReportSchema.safeParse(body).success).toBe(false);
+  });
+
+  it('drops NUL characters, which a Postgres text column cannot store', () => {
+    // A NUL copied out of a fetched PDF would otherwise fail the write with 22P05 on every retry,
+    // and the report would never land.
+    expect(researchReportSchema.parse({ report: 'a\u0000b\u0000' })).toEqual({ report: 'ab' });
+  });
+
+  it('refuses a report that is nothing but NUL characters and whitespace', () => {
+    expect(researchReportSchema.safeParse({ report: '\u0000 \u0000' }).success).toBe(false);
   });
 });

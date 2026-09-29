@@ -106,14 +106,17 @@ export type SendItemsToResearchInput = z.infer<typeof sendItemsToResearchSchema>
 export const RESEARCH_REPORT_MAX_CHARS = 200_000;
 
 /**
- * Body for PUT /api/reader/research/[id] — the research session's markdown report. Blank after
- * trimming is refused (a delivery with nothing in it would land an empty post as done); the report
- * is stored as sent, untrimmed.
+ * Body for PUT /api/reader/research/[id] — the research session's markdown report. NUL characters
+ * are dropped: a Postgres text column cannot hold one, so a report carrying one (copied out of a
+ * fetched PDF, say) would fail the write on every retry and never land. Blank after that is refused
+ * (a delivery with nothing in it would land an empty post as done); otherwise the report is stored
+ * as sent, untrimmed.
  */
 export const researchReportSchema = z.object({
   report: z
     .string()
     .max(RESEARCH_REPORT_MAX_CHARS)
+    .transform((report) => report.replaceAll('\u0000', ''))
     .refine((report) => report.trim() !== '', 'The report must not be blank'),
 });
 

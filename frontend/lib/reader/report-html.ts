@@ -15,17 +15,18 @@ import { unified } from 'unified';
  * markdown — a `<script>`, an `<img onerror>`, an `<iframe>`, a comment. That is the point of the
  * choice: the research session reads arbitrary web pages, and markup an injected page talks it
  * into writing must not ride into Instapaper as live HTML. Markup written inside a code span or
- * fence is text, not a raw node, and comes out escaped. A link or image whose target is anything
- * but the web, mail or a fragment (`javascript:`, `data:`) keeps its text and loses its target.
+ * fence is text, not a raw node, and comes out escaped. An image becomes its alt text, and a link
+ * whose target is anything but the web, mail or a fragment (`javascript:`, `data:`) keeps its text
+ * and loses its target.
  *
  * Server-only, and delivery is its only caller: rendering once means a report is never re-rendered
  * per read, and keeps this dependency chain out of the browser bundle.
  */
 
 /**
- * The only link and image targets a report may carry: the web, mail, and a jump within the report
- * itself. Dropping raw HTML doesn't touch a markdown link's destination, so `[x](javascript:…)`
- * would otherwise reach the stored HTML as a live `href`.
+ * The only link targets a report may carry: the web, mail, and a jump within the report itself.
+ * Dropping raw HTML doesn't touch a markdown link's destination, so `[x](javascript:…)` would
+ * otherwise reach the stored HTML as a live `href`.
  */
 const SAFE_SCHEME = /^(?:https?|mailto):/i;
 
@@ -38,25 +39,33 @@ function isSafeTarget(value: string): boolean {
 /** The slice of a hast node this pass reads — structural, so it needs no `hast` types import. */
 interface HastNode {
   type: string;
+  tagName?: string;
+  value?: string;
   properties?: Record<string, unknown>;
   children?: HastNode[];
 }
 
 /**
- * A rehype step that removes every `href` / `src` whose target is not {@link isSafeTarget}. The
- * element stays, so a link's text and an image's alt still read; only the target goes.
+ * A rehype step that makes the report inert beyond its text and its links:
+ *
+ * - every image becomes its alt text — an image loads from wherever the session pointed it the
+ *   moment the owner opens the report, which is a tracking pixel an injected page can plant, and
+ *   the report's shape has no use for one;
+ * - every `href` whose target is not {@link isSafeTarget} is removed, keeping the link's text.
  */
-function rehypeDropUnsafeTargets() {
+function rehypeInertReport() {
   const visit = (node: HastNode): void => {
     if (node.type === 'element' && node.properties !== undefined) {
-      for (const attribute of ['href', 'src']) {
-        const value = node.properties[attribute];
-        if (typeof value === 'string' && !isSafeTarget(value)) {
-          node.properties[attribute] = undefined;
-        }
-      }
+      const { href } = node.properties;
+      if (typeof href === 'string' && !isSafeTarget(href)) node.properties['href'] = undefined;
     }
-    for (const child of node.children ?? []) visit(child);
+    if (node.children === undefined) return;
+    node.children = node.children.map((child) => {
+      if (child.type !== 'element' || child.tagName !== 'img') return child;
+      const alt = child.properties?.['alt'];
+      return { type: 'text', value: typeof alt === 'string' ? alt : '' };
+    });
+    for (const child of node.children) visit(child);
   };
   return visit;
 }
@@ -65,7 +74,7 @@ const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkRehype)
-  .use(rehypeDropUnsafeTargets)
+  .use(rehypeInertReport)
   .use(rehypeStringify);
 
 export function renderReportHtml(markdown: string): string {
