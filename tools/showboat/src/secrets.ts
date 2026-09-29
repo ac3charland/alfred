@@ -28,6 +28,8 @@ export async function findSecrets(content: string, label: string): Promise<strin
     maskSecrets: true,
   });
   const scanner = await engine;
-  const result = await scanner.executeOnContent({ content, filePath: label });
+  // Same defence as tools/secret-scan: a `secretlint-disable` comment anywhere would silence it.
+  const defused = content.replaceAll(/secretlint-(?=disable|enable)/g, 'secretlint_');
+  const result = await scanner.executeOnContent({ content: defused, filePath: label });
   return result.ok ? undefined : result.output;
 }

@@ -498,6 +498,25 @@ describe('secret guard', () => {
     expect(entriesOf(file)).toEqual([{ kind: 'note', text: template }]);
   });
 
+  it('note still refuses a secret behind a secretlint-disable comment', async () => {
+    const { file } = tempDoc();
+    init(file, 'D');
+    const directive = ['secretlint', 'disable'].join('-');
+    await expect(note(file, `<!-- ${directive} -->\n${LEAKED_URI}`)).rejects.toThrow(SecretError);
+  });
+
+  it('verify withholds a fresh output that carries a secret from its diff report', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    writeFileSync(path.join(directory, 'script.sh'), 'echo nothing yet\n');
+    await exec(file, 'bash', 'sh script.sh', directory);
+    writeFileSync(path.join(directory, 'script.sh'), `${PRINT_LEAK}\n`);
+    const result = await verify(file, directory);
+    expect(result.ok).toBe(false);
+    expect(result.diffs[0]?.actual).toMatch(/^\[withheld: looks like a secret\]/);
+    expect(result.diffs[0]?.actual).not.toContain(PASSWORD);
+  });
+
   it('verify --output refuses to write a refreshed copy whose output now carries a secret', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');

@@ -181,7 +181,8 @@ export interface VerifyResult {
 /**
  * Re-run every exec block and diff the fresh output against what was recorded.
  * `outputFile`, when given, writes a copy of the doc with refreshed outputs — unless a
- * refreshed output now carries a secret (see {@link SecretError}).
+ * refreshed output now carries a secret (see {@link SecretError}). A diff whose fresh output
+ * carries one reports the masked finding instead of the output.
  */
 export async function verify(
   file: string,
@@ -208,10 +209,14 @@ export async function verify(
     return { ...entry, output: result.output };
   });
 
-  if (outputFile !== undefined) {
-    for (const diff of diffs) await refuseSecrets(outputFile, 'command output', diff.actual);
-    save(outputFile, { ...document, entries });
+  // A fresh output can carry a secret the recorded one didn't: never write it, never echo it.
+  for (const diff of diffs) {
+    const report = await findSecrets(diff.actual, '<command output>');
+    if (report === undefined) continue;
+    if (outputFile !== undefined) throw new SecretError(outputFile, 'command output', report);
+    diff.actual = `[withheld: looks like a secret]\n${report.trim()}`;
   }
+  if (outputFile !== undefined) save(outputFile, { ...document, entries });
   return { ok: diffs.length === 0, diffs, checked };
 }
 
