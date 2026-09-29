@@ -135,12 +135,13 @@ test("lifts a ghost that wears the project's colour, like the card it came from"
 
   const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
   await expect(needsRefinement.getByText('ALF-3')).toHaveClass(/text-accent-green/);
+  await expect(needsRefinement.getByText('ALF-3')).toHaveCSS('color', 'rgb(52, 211, 153)');
 
   await pickUp(page, needsRefinement.getByText('Draft the inbound filter spec'));
 
-  await expect(page.getByTestId('board-drag-ghost').getByText('ALF-3')).toHaveClass(
-    /text-accent-green/,
-  );
+  const ghostRef = page.getByTestId('board-drag-ghost').getByText('ALF-3');
+  await expect(ghostRef).toHaveClass(/text-accent-green/);
+  await expect(ghostRef).toHaveCSS('color', 'rgb(52, 211, 153)');
   await page.mouse.up();
 });
 

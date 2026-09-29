@@ -199,6 +199,15 @@ describe('Backlog', () => {
     expect(container.querySelector('.text-accent-amber')).not.toBeInTheDocument();
   });
 
+  it("tints each row's ref in its own project's colour, resolved from the creation order", () => {
+    seedTwoProjects();
+
+    // p1 is the first-created project (blue slot), p2 the second (amber).
+    expect(screen.getByText('ALF-a')).toHaveClass('text-accent-blue');
+    expect(screen.getByText('ALF-c')).toHaveClass('text-accent-blue');
+    expect(screen.getByText('RLP-1')).toHaveClass('text-accent-amber');
+  });
+
   it('hands the module hero name to the Dashboard rather than showing it twice', () => {
     renderBacklog([makeStory('a', { priority: 1 })]);
     expect(screen.queryByText('The Software Factory')).not.toBeInTheDocument();

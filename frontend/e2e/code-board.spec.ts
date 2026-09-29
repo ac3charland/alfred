@@ -246,6 +246,9 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
   await expect(title).toHaveCSS('text-shadow', 'rgba(96, 165, 250, 0.5) 0px 0px 14px');
   await expect(navPill).toHaveClass(/\btext-accent-blue\b/);
   await expect(cardRef).toHaveClass(/\btext-accent-blue\b/);
+  // The rendered colour, not just the class: a utility that never made it into the build would
+  // leave the class in place and the ref uncoloured.
+  await expect(cardRef).toHaveCSS('color', 'rgb(96, 165, 250)');
 
   const saved = page.waitForResponse(
     (response) =>
@@ -257,6 +260,7 @@ test('picks a project colour from the board toolbar, keeps it across a reload, a
 
   // Every coloured surface follows the pick: the title, the sidebar's pill and the card's ref.
   await expect(cardRef).toHaveClass(/\btext-accent-green\b/);
+  await expect(cardRef).toHaveCSS('color', 'rgb(52, 211, 153)');
   await expect(title).toHaveClass(/\btitle-glow-green\b/);
   await expect(title).toHaveCSS('color', 'rgb(52, 211, 153)');
   await expect(title).toHaveCSS('text-shadow', 'rgba(52, 211, 153, 0.5) 0px 0px 14px');

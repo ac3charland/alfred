@@ -127,6 +127,25 @@ describe('BacklogRow', () => {
     expect(screen.getByText('Alfred')).toHaveClass('bg-accent-amber/15', 'text-accent-amber');
   });
 
+  it.each([
+    ['blue', 'text-accent-blue'],
+    ['amber', 'text-accent-amber'],
+    ['green', 'text-accent-green'],
+    ['red', 'text-accent-red'],
+    ['teal', 'text-accent-teal'],
+  ] as const)(
+    'tints the ref with the project colour for a %s project',
+    (projectColor, textClass) => {
+      renderRow({ projectColor });
+      expect(screen.getByText('ALF-1')).toHaveClass(textClass);
+    },
+  );
+
+  it("does not tint the ref in another project's colour", () => {
+    renderRow({ projectColor: 'amber' });
+    expect(screen.getByText('ALF-1')).not.toHaveClass('text-accent-teal');
+  });
+
   it('links the body to the story modal in its project board', () => {
     renderRow();
     expect(screen.getByRole('link', { name: /Open ALF-1/ })).toHaveAttribute(

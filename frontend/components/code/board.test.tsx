@@ -788,6 +788,16 @@ describe('Board', () => {
         expect(screen.getByText('SAP-9')).toHaveClass('text-accent-amber');
       });
 
+      it('gives the modal it opens the same colour as the card it opened from', async () => {
+        const user = userEvent.setup();
+        renderSecondBoard();
+
+        await user.click(screen.getByRole('button', { name: /^open sap-1/i }));
+
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).getByText('SAP-1')).toHaveClass('text-accent-amber');
+      });
+
       it('recolours the refs at once when a new colour is picked', async () => {
         mockUpdateProject.mockReturnValue(new Promise<Project>(() => {}));
         const user = userEvent.setup();
