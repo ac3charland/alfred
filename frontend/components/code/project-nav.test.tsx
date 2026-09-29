@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { CodeProvider } from '@/lib/stores/code-store';
+import { CodeProvider, DEFAULT_BACKLOG_STATUSES, useCodeActions } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
 
@@ -18,6 +18,8 @@ jest.mock('next/navigation', () => ({
 // api-client; mock it so the dialog's create flow never hits the network.
 jest.mock('@/lib/api-client');
 const mockCreateProject = jest.mocked(api.createProject);
+const mockUpdateCodeState = jest.mocked(api.updateCodeState);
+const mockCreateCodeStory = jest.mocked(api.createCodeStory);
 
 beforeEach(() => {
   pushStateSpy = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
@@ -128,6 +130,41 @@ function makeStory(
     priority: 1,
     ...overrides,
   };
+}
+
+// `.not.toHaveClass(a, b)` passes when EITHER class is missing, so each class is asserted alone.
+function expectGrayedOut(link: HTMLElement) {
+  expect(link).toHaveClass('opacity-50');
+  expect(link).toHaveClass('grayscale');
+}
+function expectFullStrength(link: HTMLElement) {
+  expect(link).not.toHaveClass('opacity-50');
+  expect(link).not.toHaveClass('grayscale');
+}
+
+/** Buttons that drive the store's optimistic story mutations from beside the nav under test. */
+function StoreDriver() {
+  const { updateCodeState, createStory } = useCodeActions();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          void updateCodeState('ALF-9', 'done');
+        }}
+      >
+        finish ALF-9
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void createStory('e1', 'A new story', null, true);
+        }}
+      >
+        add story to e1
+      </button>
+    </>
+  );
 }
 
 describe('ProjectNav', () => {
@@ -277,6 +314,124 @@ describe('ProjectNav', () => {
     expect(screen.getByRole('link', { name: /alfred/i }).querySelector('svg')).toHaveClass(
       'text-accent-blue',
     );
+  });
+
+  describe('projects with no active items', () => {
+    const epics = [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')];
+
+    it('grays out a project that has no stories', () => {
+      renderNav(PROJECTS);
+
+      expectGrayedOut(screen.getByRole('link', { name: /alfred/i }));
+      expectGrayedOut(screen.getByRole('link', { name: /relay/i }));
+    });
+
+    it.each(['done', 'abandoned'] as const)(
+      'grays out a project whose only story is %s',
+      (factoryState) => {
+        renderNav(PROJECTS, {
+          epics,
+          stories: [
+            makeStory('i1', 'e1', 'p1', { factory_state: factoryState }),
+            makeStory('i2', 'eX', 'p2', { factory_state: 'in_development' }),
+          ],
+        });
+
+        expectGrayedOut(screen.getByRole('link', { name: /alfred/i }));
+        expectFullStrength(screen.getByRole('link', { name: /relay/i }));
+      },
+    );
+
+    // Every state the Backlog lists by default — `needs_refinement` (where a new story starts)
+    // and `blocked` included — is active work.
+    it.each(DEFAULT_BACKLOG_STATUSES)(
+      'leaves a project with a %s story at full strength',
+      (factoryState) => {
+        renderNav(PROJECTS, {
+          epics,
+          stories: [makeStory('i1', 'e1', 'p1', { factory_state: factoryState })],
+        });
+
+        expectFullStrength(screen.getByRole('link', { name: /alfred/i }));
+      },
+    );
+
+    it('restores full strength on hover and keyboard focus so it still reads as clickable', () => {
+      renderNav(PROJECTS);
+
+      expect(screen.getByRole('link', { name: /alfred/i })).toHaveClass(
+        'hover:opacity-100',
+        'hover:grayscale-0',
+        'focus-visible:opacity-100',
+        'focus-visible:grayscale-0',
+      );
+    });
+
+    it('animates the opacity and colour changes together, not just the colours', () => {
+      renderNav(PROJECTS);
+
+      // The row's base `transition-colors` would fade the background and text while the dimming
+      // snapped, so the idle row carries a transition covering all four properties instead.
+      const link = screen.getByRole('link', { name: /alfred/i });
+      expect(link).toHaveClass('transition-[color,background-color,opacity,filter]');
+      expect(link).not.toHaveClass('transition-colors');
+    });
+
+    it('keeps a grayed-out project a working link to its board', () => {
+      const onClose = jest.fn();
+      renderNav(PROJECTS, { onClose });
+
+      const link = screen.getByRole('link', { name: /alfred/i });
+      expectGrayedOut(link);
+      link.click();
+
+      expect(pushStateSpy).toHaveBeenCalledWith(null, '', '/code/p1');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not gray out the project on its own board, even with nothing active', () => {
+      mockPathname.mockReturnValue('/code/p1');
+      renderNav(PROJECTS);
+
+      expect(screen.getByRole('link', { name: /alfred/i })).toHaveClass('bg-secondary');
+      expectFullStrength(screen.getByRole('link', { name: /alfred/i }));
+      // The other idle project is still grayed.
+      expectGrayedOut(screen.getByRole('link', { name: /relay/i }));
+    });
+
+    it('never grays out the Dashboard, Needs human action, or Backlog', () => {
+      renderNav(PROJECTS);
+
+      for (const name of [/^dashboard$/i, /needs human action/i, /^backlog$/i]) {
+        expectFullStrength(screen.getByRole('link', { name }));
+      }
+    });
+
+    it('follows the store: grays a project when its last story is done, restores it on a new one', async () => {
+      // Both writes hang, so the optimistic store state is what the sidebar reflects.
+      mockUpdateCodeState.mockImplementation(() => new Promise(() => {}));
+      mockCreateCodeStory.mockImplementation(() => new Promise(() => {}));
+      const user = userEvent.setup();
+      render(
+        <ToastProvider>
+          <CodeProvider
+            initialProjects={PROJECTS}
+            initialEpics={epics}
+            initialStories={[makeStory('i1', 'e1', 'p1', { ref: 'ALF-9' })]}
+          >
+            <ProjectNav />
+            <StoreDriver />
+          </CodeProvider>
+        </ToastProvider>,
+      );
+      expectFullStrength(screen.getByRole('link', { name: /alfred/i }));
+
+      await user.click(screen.getByRole('button', { name: 'finish ALF-9' }));
+      expectGrayedOut(screen.getByRole('link', { name: /alfred/i }));
+
+      await user.click(screen.getByRole('button', { name: 'add story to e1' }));
+      expectFullStrength(screen.getByRole('link', { name: /alfred/i }));
+    });
   });
 
   it('points each project link at /code/<id>', () => {

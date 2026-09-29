@@ -10,7 +10,12 @@ import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { ViewLink } from '@/components/tasks/view-link';
 import { projectBoardHref } from '@/lib/code/board-links';
 import { projectBadgeClasses, projectColorFor, projectTextClasses } from '@/lib/code/project-color';
-import { useCodeActions, useProjects, useRankedProjects } from '@/lib/stores/code-store';
+import {
+  useCodeActions,
+  useProjectIdsWithOutstandingWork,
+  useProjects,
+  useRankedProjects,
+} from '@/lib/stores/code-store';
 import type { Project } from '@/lib/types';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
@@ -19,6 +24,17 @@ interface ProjectNavProperties {
   /** Called after a nav link is clicked (e.g. to close the mobile drawer). */
   onClose?: () => void;
 }
+
+/**
+ * A project with no active items: dimmed and desaturated so the list reads as "where the work is".
+ * It stays a live link — hover or keyboard focus brings its colour back at full strength. The
+ * transition replaces the row's `transition-colors` so opacity and grayscale ease with the colours
+ * instead of snapping.
+ */
+const IDLE_PROJECT_CLASS = cn(
+  'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 focus-visible:opacity-100 focus-visible:grayscale-0',
+  'transition-[color,background-color,opacity,filter]',
+);
 
 /**
  * Code-module sidebar navigation: the project list. Mirrors FolderNav's folder list
@@ -30,7 +46,8 @@ interface ProjectNavProperties {
  * carries the highlight for the bare `/code` — then **Needs human action**, then the full ranked
  * **Backlog**.
  *
- * Each project shows its 3-char key as the ref-prefix hint, since refs everywhere read
+ * A project with no active items (no outstanding story) is grayed out, unless it's the board
+ * you're on. Each project shows its 3-char key as the ref-prefix hint, since refs everywhere read
  * `KEY-N`. The `+` opens the same New-project dialog as the gate,
  * persisting through the optimistic `createProject` action and then routing to the new
  * board.
@@ -43,6 +60,8 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
   // Colour is keyed to a project's STABLE creation order (ALF-50), not the priority ranking above —
   // so a project keeps the same colour even as its rank (and thus its row position) shifts.
   const projectsByCreation = useProjects();
+  // Projects holding no outstanding story (or none at all) are grayed out below (ALF-273).
+  const outstandingProjectIds = useProjectIdsWithOutstandingWork();
   const { createProject } = useCodeActions();
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 
@@ -119,11 +138,14 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
             // One colour per project (its pick, else its stable creation slot) shared by the icon and the
             // key pill, so the sidebar reads with the same tinted-badge treatment as the Backlog.
             const color = projectColorFor(projectsByCreation, project.id);
+            const selected = pathname === href;
+            // The board you're on keeps its full-strength highlight even with nothing active.
+            const idle = !selected && !outstandingProjectIds.has(project.id);
             return (
               <ViewLink
                 key={project.id}
                 href={href}
-                className={cn(navLinkClass(pathname === href), 'min-w-0')}
+                className={cn(navLinkClass(selected), 'min-w-0', idle && IDLE_PROJECT_CLASS)}
                 {...closeProperty}
               >
                 <GitBranch size={14} className={cn('shrink-0', projectTextClasses(color))} />

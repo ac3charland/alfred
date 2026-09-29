@@ -19,6 +19,7 @@ import {
   useCodeActions,
   useEpics,
   useProjectBoard,
+  useProjectIdsWithOutstandingWork,
   useProjects,
   useRankedProjects,
   useStoryRankFlags,
@@ -304,6 +305,11 @@ function makeWrapper(seed: { projects?: Project[]; epics?: Epic[]; stories?: Cod
 /** Read the actions + the derived board for one project in a single hook. */
 function useStore(projectId: string) {
   return { actions: useCodeActions(), board: useProjectBoard(projectId) };
+}
+
+/** Read the actions + the projects holding outstanding work in a single hook. */
+function useOutstandingAndActions() {
+  return { ids: useProjectIdsWithOutstandingWork(), actions: useCodeActions() };
 }
 
 /** Map each story's priority by item_id from a backlog list (for the reorder assertions). */
@@ -858,6 +864,93 @@ describe('code-store', () => {
         wrapper: makeWrapper({ projects: [PROJECT_B, PROJECT_A], epics }),
       });
       expect(result.current.map((p) => p.id)).toEqual(['p1', 'p2']);
+    });
+  });
+
+  describe('useProjectIdsWithOutstandingWork', () => {
+    const epics = [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')];
+
+    function outstandingIds(stories: CodeStory[]): ReadonlySet<string> {
+      const { result } = renderHook(() => useProjectIdsWithOutstandingWork(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }),
+      });
+      return result.current;
+    }
+
+    it.each(DEFAULT_BACKLOG_STATUSES)('includes a project holding a %s story', (factoryState) => {
+      expect(
+        outstandingIds([makeStory('i1', 'e1', 'p1', { factory_state: factoryState })]),
+      ).toEqual(new Set(['p1']));
+    });
+
+    it.each(['done', 'abandoned'] as const)(
+      'excludes a project whose only story is %s',
+      (state) => {
+        expect(outstandingIds([makeStory('i1', 'e1', 'p1', { factory_state: state })])).toEqual(
+          new Set(),
+        );
+      },
+    );
+
+    it('excludes a project with no stories at all', () => {
+      expect(outstandingIds([])).toEqual(new Set());
+    });
+
+    it('lets one outstanding story keep a project among finished ones', () => {
+      expect(
+        outstandingIds([
+          makeStory('i1', 'e1', 'p1', { factory_state: 'done' }),
+          makeStory('i2', 'e1', 'p1', { factory_state: 'abandoned' }),
+          makeStory('i3', 'e1', 'p1', { factory_state: 'in_refinement' }),
+        ]),
+      ).toEqual(new Set(['p1']));
+    });
+
+    it('attributes each story to its own project', () => {
+      expect(
+        outstandingIds([
+          makeStory('i1', 'e1', 'p1', { factory_state: 'done' }),
+          makeStory('i2', 'eX', 'p2', { factory_state: 'ready_for_dev' }),
+        ]),
+      ).toEqual(new Set(['p2']));
+    });
+
+    describe('as stories change', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+      const idleEpic = makeEpic('eX', 'p2', { ref: 'RLP-1', ref_number: 1 });
+
+      it('drops a project once its last outstanding story is done', () => {
+        mockUpdateCodeState.mockImplementation(() => new Promise(() => {}));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'in_development',
+        });
+        const { result } = renderHook(() => useOutstandingAndActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+        expect(result.current.ids).toEqual(new Set(['p1']));
+
+        act(() => {
+          void result.current.actions.updateCodeState('ALF-42', 'done');
+        });
+
+        expect(result.current.ids).toEqual(new Set());
+      });
+
+      it('brings an idle project back when a story is created in it', () => {
+        mockCreateCodeStory.mockImplementation(() => new Promise(() => {}));
+        const { result } = renderHook(() => useOutstandingAndActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_B], epics: [idleEpic], stories: [] }),
+        });
+        expect(result.current.ids).toEqual(new Set());
+
+        act(() => {
+          void result.current.actions.createStory('eX', 'A fresh story', null, true);
+        });
+
+        // A new story starts in needs_refinement — it must count as outstanding work.
+        expect(result.current.ids).toEqual(new Set(['p2']));
+      });
     });
   });
 
