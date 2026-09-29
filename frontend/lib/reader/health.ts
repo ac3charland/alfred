@@ -222,9 +222,12 @@ export function summariserStalled(
 
     let claimedSince: string | undefined;
     for (const post of waitingPosts(posts)) {
-      if (Date.parse(post.created_at) > cutoff) continue;
-      if (claimedSince === undefined || Date.parse(post.created_at) < Date.parse(claimedSince)) {
-        claimedSince = post.created_at;
+      // A research report joins the queue when it is delivered, not when its question was
+      // dispatched — until then it has no body and the summariser nothing to do.
+      const queuedAt = post.research_delivered_at ?? post.created_at;
+      if (Date.parse(queuedAt) > cutoff) continue;
+      if (claimedSince === undefined || Date.parse(queuedAt) < Date.parse(claimedSince)) {
+        claimedSince = queuedAt;
       }
     }
 
