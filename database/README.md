@@ -233,6 +233,14 @@ red workflow. To see what a live database is missing without writing anything:
 npm run deploy -w database -- --dry-run
 ```
 
+To query a live database ad hoc, run `psql` through the wrapper. It reads `DATABASE_URL` the
+same way and hands `psql` the password as `PGPASSWORD`, so the command never carries it and is
+safe to record in a demo doc:
+
+```bash
+npm run psql -w database -- -c "select count(*) from items"
+```
+
 ## Pre-merge iteration and generating types
 
 There is no sanctioned way to hand-apply a migration to the hosted project

@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "deploy": "node src/deploy.ts",
     "describe": "node src/describe.ts",
+    "psql": "node src/psql.ts",
     "gen-types": "node src/gen-types.ts",
     "backup": "node src/backup.ts",
     "lint": "eslint --fix --cache --cache-location .eslintcache .",
