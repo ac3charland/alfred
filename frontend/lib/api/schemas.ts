@@ -875,7 +875,7 @@ export const recordedRowSchema = z.strictObject({
   cache_write_tokens: recordedOptional(z.number().int().nonnegative()),
   subagent_count: recordedOptional(z.number().int().nonnegative()),
   usage_by_model: recordedOptional(recordedUsageByModelSchema),
-  warnings: z.array(z.enum(['start_unrecorded', 'subagents_unreadable'])),
+  warnings: z.array(z.enum(['start_unrecorded', 'subagent_usage_partial', 'subagents_unreadable'])),
 });
 
 export type RecordedRow = z.infer<typeof recordedRowSchema>;

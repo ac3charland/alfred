@@ -161,7 +161,7 @@ describe('POST /api/code/sessions/record', () => {
       keyed();
       const row = {
         ...contractFixture(),
-        warnings: ['start_unrecorded', 'subagents_unreadable'],
+        warnings: ['start_unrecorded', 'subagent_usage_partial', 'subagents_unreadable'],
       };
 
       const response = await POST(post(row, withKey));
