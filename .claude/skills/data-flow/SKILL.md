@@ -86,7 +86,8 @@ mid-switch and a failed fetch just toasts.
 
 `folder_id` says where an item *would* land; `dispatched_at` says whether it has actually left
 the Inbox — and only a human act writes the second (`lib/tasks/residency.ts` holds the predicate
-every view, badge and location label reads). So inside the Inbox the folder / project / epic chips
+every view, badge, location label and "already there?" drop guard reads — never compare a target
+against raw `folder_id`, or an Inbox row labelled for that folder can't be filed there). So inside the Inbox the folder / project / epic chips
 only **label** (`setFolder`, `setIntendedProject`, `setIntendedEpic`), and **Dispatch** — the row's
 ⋯ menu for one item, the bulk bar for a selection, both through `dispatchItems` and both gated by
 `lib/tasks/dispatch.ts` — is what acts on those labels. Once a row is dispatched its chips are
