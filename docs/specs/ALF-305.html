@@ -157,7 +157,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .plate:has(input[value=b]:checked) [data-opt]:not([data-opt~=b]),
 .plate:has(input[value=c]:checked) [data-opt]:not([data-opt~=c]),
 .plate:has(input[value=d]:checked) [data-opt]:not([data-opt~=d]),
-.plate:has(input[value=e]:checked) [data-opt]:not([data-opt~=e]){display:none}
+.plate:has(input[value=e]:checked) [data-opt]:not([data-opt~=e]),
+.plate:has(input[value=f]:checked) [data-opt]:not([data-opt~=f]){display:none}
 
 /* alfred's tokens: frontend/app/globals.css (colours, accent-violet, glow-violet; --radius is unmapped,
    so Tailwind's defaults: sm 4px, lg 8px). Serif: --font-serif falls back to Georgia (layout.tsx loads
@@ -208,6 +209,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .app .rs{margin-top:2px;font-size:14px;color:var(--muted-foreground)}
 .app mark{border-radius:2px;background:rgb(167 139 250/.22);padding:0 2px;color:var(--foreground)}
 
+/* EmptyState (atoms/empty-state.tsx) */
+.app .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 0;text-align:center}
+.app .empty-t{font:24px/1.3 Georgia,"Times New Roman",serif;color:rgb(138 150 168/.5)}
+.app .empty-d{margin-top:8px;font-size:14px;color:rgb(138 150 168/.4)}
+
 /* The web stage */
 .app .stage{position:relative;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden}
 .app .stage svg.wv{display:block;width:100%;height:auto}
@@ -253,7 +259,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <span class="stamp"></span>
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>305</span><span class="sep"> — </span><span class="ttl">Revamp the wiki landing page with a physics web and a concept of the day</span></h1>
-  <p class="change" id="change"><code>/wiki</code> opens on a concept of the day and a live physics web of your concepts and entities; sources and questions stay listed below it.</p>
+  <p class="change" id="change"><code>/wiki</code> opens on a concept of the day and a live physics web of your concepts and entities; sources and questions live in the side nav.</p>
+  <p class="revised" id="revised">Revised 2026-09-30: D6 drops the Sources and Questions lists from <code>/wiki</code>; the nav carries them (your review). Plate I redrawn, state F added.</p>
 </header>
 
 <section class="sec" id="decisions">
@@ -274,7 +281,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>A graph view, despite ALF-259</h3>
       <p class="pick">Yes. This ticket overrides the epic’s “no graph view”, and the epic doc stays as written.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>What <code>/wiki</code> shows</h3>
-      <p class="pick">Search, concept of the day, a web of concepts and entities, then the Sources and Questions lists.</p></li>
+      <p class="pick">Search, concept of the day, then a web of concepts and entities; nothing below.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>How the day’s concept is picked</h3>
       <p class="pick">Rotation by date: the same concept all day, every concept before any repeat, no storage.</p></li>
   </ol>
@@ -289,18 +296,19 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
       <label><input type="radio" name="p1" value="c">C · Zoomed in</label>
       <label><input type="radio" name="p1" value="d">D · Searching</label>
       <label><input type="radio" name="p1" value="e">E · Phone</label>
+      <label><input type="radio" name="p1" value="f">F · No concepts yet</label>
     </fieldset>
     <div class="mount">
-      <div class="app" role="img" aria-label="The wiki landing page: heading, search box, a concept-of-the-day card for Desirable difficulty, a physics web of concepts and entities with that concept lit violet, then the Sources and Questions lists">
+      <div class="app" role="img" aria-label="The wiki landing page: heading, search box, a concept-of-the-day card for Desirable difficulty, and a physics web of concepts and entities with that concept lit violet">
 
-        <div class="frame" data-opt="a b c d">
+        <div class="frame" data-opt="a b c d f">
           <div class="vh">
             <div class="vh-ic"><svg class="ic" width="20" height="20" viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></div>
-            <div><h2 class="vh-t">Wiki</h2><p class="vh-d">72 pages · synced 2h ago</p></div>
+            <div><h2 class="vh-t">Wiki</h2><p class="vh-d" data-opt="a b c d">72 pages · synced 2h ago</p><p class="vh-d" data-opt="f">20 pages · synced 2h ago</p></div>
           </div>
           <div class="srch">
             <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <div class="inp" data-opt="a b c">Search the wiki</div>
+            <div class="inp" data-opt="a b c f">Search the wiki</div>
             <div class="inp typed" data-opt="d">spaced<span class="caret"></span></div>
           </div>
 
@@ -723,20 +731,10 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
             <div class="foot"><p class="leg"><span><i class="lc"></i>Concept</span><span><i class="le"></i>Entity</span></p><p class="hint">Pinch or ⌘-scroll to zoom · drag to pan</p></div>
           </section>
 
-          <section class="grp" data-opt="a b c">
-            <h3 class="gh">Sources<span class="cnt">14</span></h3>
-            <ul>
-              <li class="row"><span class="rt">Brain Rules</span><span class="rs">Medina’s twelve rules for how the brain learns, and what school and work get wrong about them.</span></li>
-              <li class="row"><span class="rt">Atomic Habits</span><span class="rs">Clear on tiny changes that compound: cue, craving, response, reward.</span></li>
-              <li class="row"><span class="rt">Outlive</span><span class="rs">Attia’s case for Medicine 3.0: prevention over treatment, with fitness as the main lever.</span></li>
-            </ul>
-          </section>
-          <section class="grp" data-opt="a b c">
-            <h3 class="gh">Questions<span class="cnt">6</span></h3>
-            <ul>
-              <li class="row"><span class="rt">How long does a habit take to form?</span><span class="rs">66 days on average in Lally’s study, with a wide spread; a missed day doesn’t reset it.</span></li>
-            </ul>
-          </section>
+          <div class="empty" data-opt="f">
+            <p class="empty-t">No concepts or entities yet</p>
+            <p class="empty-d">Sources and questions are listed in the nav.</p>
+          </div>
 
           <section class="grp" data-opt="d">
             <h3 class="gh">Titles &amp; summaries</h3>
@@ -902,15 +900,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
             </div>
             <div class="foot"><p class="leg"><span><i class="lc"></i>Concept</span><span><i class="le"></i>Entity</span></p><p class="hint">Pinch to zoom</p></div>
           </section>
-          <section class="grp">
-            <h3 class="gh">Sources<span class="cnt">14</span></h3>
-            <ul><li class="row"><span class="rt">Brain Rules</span><span class="rs">Medina’s twelve rules for how the brain learns…</span></li></ul>
-          </section>
         </div>
 
       </div>
     </div>
-    <figcaption><b>Plate I.</b>The new <code>/wiki</code>, drawn from a real d3-force run over a 52-node sample (lists cut short for the plate). A: at rest on today’s concept, lit violet with its six neighbours named. B: hovering John Medina lights his neighbourhood and dims the rest. C: zoomed past 1:1 (still hovering), every name that fits shows, and the Fit button appears. D: typing swaps everything below the box for today’s search results. E: a 390 px phone. Filled dot = concept, ring = entity, size = link count.</figcaption>
+    <figcaption><b>Plate I.</b>The new <code>/wiki</code>, drawn from a real d3-force run over a 52-node sample. A: at rest on today’s concept, lit violet with its six neighbours named. B: hovering John Medina lights his neighbourhood and dims the rest. C: zoomed past 1:1 (still hovering), every name that fits shows, and the Fit button appears. D: typing swaps the card and web for today’s search results. E: a 390 px phone. F: a wiki with only sources and questions. Nothing sits under the web; the nav lists every section. Filled dot = concept, ring = entity, size = link count.</figcaption>
   </figure>
 </section>
 
@@ -942,12 +936,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <h2>Context</h2>
   <p><b>The ticket.</b> ALF-305, “Revamp the wiki landing page with a physics web and a concept of the day”, in epic ALF-259 (Wiki Module). The only note is “Borrow physics approach used in Motivic”. Alex answered four scoping questions in the refinement session:</p>
   <ul>
-    <li><b>Web nodes:</b> concepts and entities. That option said sources and questions stay as lists below the web.</li>
+    <li><b>Web nodes:</b> concepts and entities.</li>
     <li><b>Today’s index:</b> the web replaces the grouped lists; the search box stays on top, and typing swaps in today’s results. The full lists survive on the section views.</li>
     <li><b>Daily pick:</b> date-seeded rotation (D7).</li>
     <li><b>Scale:</b> 50–200 pages, today and in the coming months.</li>
   </ul>
-  <p>Read together, the first two answers give D6: the web takes the Concepts and Entities lists’ place on <code>/wiki</code>, and the Sources and Questions lists stay under it.</p>
+  <p>The first draft kept the Sources and Questions lists under the web, as the “concepts and entities” option described. In review, Alex cut them: the side nav already lists every section with its count (<code>WikiNav</code>, in both the desktop sidebar and the phone drawer), so the landing is just the card and the web (D6).</p>
 
   <p><b>What exists today.</b> The Wiki module is ALF-261’s read-only reading room (<code>docs/specs/archive/ALF-261.html</code>).</p>
   <ul>
@@ -1047,11 +1041,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
       <li>the header (unchanged);</li>
       <li>the search box (unchanged);</li>
       <li>the concept-of-the-day card (D7, D11);</li>
-      <li>a “Concepts &amp; entities” group, headed like the other groups with its node count, holding the web;</li>
-      <li>the Sources group;</li>
-      <li>the Questions group.</li>
+      <li>a “Concepts &amp; entities” group holding the web, headed like the wiki’s other groups (<code>WikiPageGroup</code>) with its node count.</li>
     </ol>
-    <p>The Sources and Questions groups are today’s <code>WikiPageGroup</code> + <code>WikiPageRow</code> lists, unchanged. Typing in the search box replaces items 3–6 with <code>WikiSearchResults</code>, as it replaces the groups today (P1 D). The section views <code>/wiki/concepts</code> etc. and the nav are unchanged, so every concept and entity is still one click away as a list.</p>
+    <p>Nothing follows the web. The Sources and Questions lists are reached from the nav (<code>WikiNav</code>: “Sources” and “Questions”, each with its count), as are the section views of concepts and entities. Typing in the search box replaces items 3–4 with <code>WikiSearchResults</code>, as it replaces the groups today (P1 D). The section views <code>/wiki/&lt;section&gt;</code> and the nav are unchanged.</p>
+    <p>With no concepts and no entities, <code>/wiki</code> shows the <code>EmptyState</code> atom under the search box: “No concepts or entities yet”, “Sources and questions are listed in the nav.” (P1 F).</p>
+    <p>Considered: keeping the Sources and Questions lists under the web (the first draft). Cut in review: they duplicate the nav and push the web’s purpose, an overview, down a long page.</p>
   </section>
 
   <section class="rec" id="d7">
@@ -1147,7 +1141,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
   <section class="rec" id="d12">
     <h4>D12 · Keyboard and screen readers</h4>
-    <p>The web is <b>one tab stop</b>, using a roving <code>tabindex</code>, so a 150-node web doesn’t put 150 stops before the Sources list.</p>
+    <p>The web is <b>one tab stop</b>, using a roving <code>tabindex</code>, so a 150-node web costs one Tab, not 150.</p>
     <ul>
       <li><b>Tabbing in</b> lands on the focus, or on the first node when there is no focus.</li>
       <li><b>Moving:</b> ←/↑ go to the previous node and →/↓ to the next, in index order. Home and End go to the first and last. Enter opens the page (native link activation).</li>
@@ -1174,16 +1168,15 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <h2>Behaviour</h2>
   <div class="scroll"><table>
     <tr><th>Situation</th><th>What <code>/wiki</code> shows</th></tr>
-    <tr><td>Nothing synced</td><td>The existing “Nothing synced yet” empty state. No card, web or lists.</td></tr>
+    <tr><td>Nothing synced</td><td>The existing “Nothing synced yet” empty state. No search box, card or web.</td></tr>
     <tr><td>Concepts exist</td><td>Card for the day’s concept (D7). The web’s focus is that concept (D1).</td></tr>
     <tr><td>Entities but no concepts</td><td>No card. The web is drawn with no focus and nothing lit at rest.</td></tr>
-    <tr><td>No concepts and no entities</td><td>No card and no “Concepts &amp; entities” group; the Sources and Questions lists only.</td></tr>
-    <tr><td>A section with no pages</td><td>The index already skips empty groups; so do Sources and Questions here. The web group follows the row above.</td></tr>
+    <tr><td>No concepts and no entities</td><td>Search box, then the <code>EmptyState</code> “No concepts or entities yet” (P1 F, D6).</td></tr>
     <tr><td>One node</td><td>Drawn at the stage’s middle at scale 1.</td></tr>
     <tr><td>A refresh brings new or changed pages</td><td>Warm restart (D13). The card and focus don’t change (D7: new concepts qualify tomorrow).</td></tr>
     <tr><td>Local midnight passes with the tab open</td><td>The card and the web’s focus move to the new day’s concept. The sim restarts warm with the new focus pull and bloom.</td></tr>
-    <tr><td>Typing a query</td><td>Card, web and lists are replaced by <code>WikiSearchResults</code> (P1 D). Clearing restores them (D13).</td></tr>
-    <tr><td><code>/wiki/&lt;section&gt;</code></td><td>Unchanged: search plus that section’s list. It is now the only list of concepts or entities.</td></tr>
+    <tr><td>Typing a query</td><td>Card and web are replaced by <code>WikiSearchResults</code> (P1 D). Clearing restores them (D13).</td></tr>
+    <tr><td><code>/wiki/&lt;section&gt;</code></td><td>Unchanged: search plus that section’s list. It is now the only list of any section’s pages.</td></tr>
     <tr><td>Page rows, section nav, ⌘K, ⌘P</td><td>Unchanged.</td></tr>
   </table></div>
 </section>
@@ -1241,10 +1234,10 @@ export function wikiWebFixtureSet(): { pages: WikiPageRow[]; sync: WikiSync };</
     <tr><td><code>components/wiki/web/wiki-web.tsx</code> (+ test, stories), <code>wiki-web.styles.ts</code></td><td>The stage element; an SVG of edges; one absolutely positioned <code>ViewLink</code> per node (dot and name); legend, hint and Fit button; roving keyboard (D12).</td></tr>
     <tr><td><code>components/wiki/concept-of-the-day-card.tsx</code> (+ test)</td><td>D11.</td></tr>
     <tr><td><code>components/wiki/wiki-searchable.tsx</code></td><td>Extracted from <code>wiki-index-view.tsx</code>: the search box, then either <code>WikiSearchResults</code> or its children. Shared by the landing and the section view, so the swap is written once.</td></tr>
-    <tr><td><code>components/wiki/wiki-landing-view.tsx</code> (+ test)</td><td>D6 composition. Computes the day from <code>now</code> (threaded from <code>WikiView</code>), then <code>conceptOfTheDay</code> and <code>buildWikiWeb</code>, memoised.</td></tr>
+    <tr><td><code>components/wiki/wiki-landing-view.tsx</code> (+ test)</td><td>D6 composition: card and web only, or the D6 empty state. Computes the day from <code>now</code> (threaded from <code>WikiView</code>), then <code>conceptOfTheDay</code> and <code>buildWikiWeb</code>, memoised.</td></tr>
     <tr><td><code>components/wiki/wiki-index-view.tsx</code></td><td>Becomes section-only (<code>section</code> required), wrapped in <code>WikiSearchable</code>. Rename it to <code>WikiSectionView</code>.</td></tr>
     <tr><td><code>components/wiki/wiki-view.tsx</code></td><td><code>index</code> → <code>WikiLandingView</code>. Thread <code>now</code> and <code>reducedMotion</code>.</td></tr>
-    <tr><td><code>lib/wiki/fixtures.ts</code></td><td><code>wikiWebFixtureSet()</code>: Plate I’s 52-node graph (list below) plus 3 sources and 2 questions. Give each concept a <code>created</code> date spread over the fortnight before the story <code>NOW</code>, and tune the dates so the pick at <code>NOW</code> is “Desirable difficulty”, as drawn.</td></tr>
+    <tr><td><code>lib/wiki/fixtures.ts</code></td><td><code>wikiWebFixtureSet()</code>: Plate I’s 52-node graph (list below) plus 3 sources and 2 questions, so search results span sections and the tests can show neither list appears on <code>/wiki</code>. Give each concept a <code>created</code> date spread over the fortnight before the story <code>NOW</code>, and tune the dates so the pick at <code>NOW</code> is “Desirable difficulty”, as drawn.</td></tr>
     <tr><td><code>components/wiki/wiki-view.stories.tsx</code>, <code>wiki-view.test.tsx</code>, <code>e2e/wiki-reading-room.spec.ts</code></td><td>Update the tests that click a concept row on <code>/wiki</code>: that row is now a web node (Tests). Add the new stories.</td></tr>
   </table></div>
 
@@ -1303,8 +1296,9 @@ links (67, undirected):
 <section id="ac" data-kind="story">
   <h2>Acceptance criteria</h2>
   <ul class="checks">
-    <li data-trace="D6 P1">On <code>/wiki</code>, top to bottom: header, search box, concept-of-the-day card, “Concepts &amp; entities” group with its count and the web, Sources list, Questions list. The Concepts and Entities lists are no longer on <code>/wiki</code>.</li>
-    <li data-trace="D6 P1">Typing a query replaces the card, web and lists with the existing search results. Clearing the query restores them.</li>
+    <li data-trace="D6 P1">On <code>/wiki</code>, top to bottom: header, search box, concept-of-the-day card, “Concepts &amp; entities” group with its count and the web, and nothing after it. No section’s list of pages appears on <code>/wiki</code>.</li>
+    <li data-trace="D6 P1">Typing a query replaces the card and web with the existing search results. Clearing the query restores them.</li>
+    <li data-trace="D6 P1">With no concepts and no entities, <code>/wiki</code> shows the search box and the “No concepts or entities yet” empty state.</li>
     <li data-trace="D6">The <code>/wiki/concepts</code>, <code>/wiki/entities</code>, <code>/wiki/sources</code> and <code>/wiki/questions</code> views, the nav, ⌘K and ⌘P behave as before.</li>
     <li data-trace="D7">For a given page index and local date, <code>conceptOfTheDay</code> always returns the same concept.</li>
     <li data-trace="D7">For a fixed set of <i>n</i> concepts, any <i>n</i> consecutive days feature each concept exactly once.</li>
@@ -1357,7 +1351,7 @@ links (67, undirected):
         <li>the Fit button appears after a ctrl + wheel and not after a plain wheel;</li>
         <li>a click after a drag doesn’t navigate.</li>
       </ul></li>
-    <li><code>wiki-landing-view.test.tsx</code> / <code>wiki-view.test.tsx</code>: section order; search swap and restore; no card without concepts; no web group without concepts or entities. The existing “opens a page from the index” tests now click the node link inside the “Concepts &amp; entities” region.</li>
+    <li><code>wiki-landing-view.test.tsx</code> / <code>wiki-view.test.tsx</code>: section order, with no Sources or Questions group on <code>/wiki</code>; search swap and restore; no card without concepts; the D6 empty state without concepts or entities. The existing “opens a page from the index” tests now click the node link inside the “Concepts &amp; entities” region.</li>
     <li><code>concept-of-the-day-card.test.tsx</code>: fields, omission of an empty summary or empty tags, and the link target.</li>
   </ul>
   <h3>Storybook (visual, reduced motion)</h3>
@@ -1375,6 +1369,7 @@ links (67, undirected):
         <li><code>Index</code> is re-baselined, since the landing changes;</li>
         <li>new <code>Landing</code>, using <code>wikiWebFixtureSet</code> (P1 A);</li>
         <li>new <code>LandingPhone</code>, a 390-wide frame (P1 E);</li>
+        <li>new <code>NoConceptsYet</code>, sources and questions only (P1 F);</li>
         <li>the existing search stories re-baseline if they’re on <code>/wiki</code> (P1 D).</li>
       </ul></li>
   </ul>
