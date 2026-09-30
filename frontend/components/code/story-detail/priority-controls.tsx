@@ -8,8 +8,8 @@ import { useMoveBurst } from '@/lib/hooks/use-move-burst';
 import { useCodeActions, useStoryRankFlags } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 
-/** One jump button — the Backlog's icon for that scope, its label, and its already-there state. */
-interface Jump {
+/** One jump — the Backlog's icon for that scope, its label, and its already-there state. */
+export interface Jump {
   label: string;
   title: string;
   icon: React.ReactNode;
@@ -18,20 +18,20 @@ interface Jump {
 }
 
 /**
- * The story detail modal's priority controls: the same four Backlog jumps a row exposes through
- * its chevron pairs — top/bottom of this story's own PROJECT (the midpoint re-rank that leaves
- * other projects undisturbed) and top/bottom of the WHOLE Backlog — so a story can be reprioritised
- * without leaving the board. The Backlog's neighbour swap has no counterpart here: it needs the
- * visible row above/below, which only a rendered list knows.
+ * The four Backlog jumps a story can make — top/bottom of this story's own PROJECT (the midpoint
+ * re-rank that leaves other projects undisturbed) and top/bottom of the WHOLE Backlog. The
+ * Backlog's neighbour swap has no counterpart here: it needs the visible row above/below, which
+ * only a rendered list knows.
  *
- * Reuses the row's icons and its instant-apply + debounced-commit `useMoveBurst`, so a click
- * re-ranks the story in the store immediately (the buttons re-derive from that new position) and
- * a rapid burst still costs one request. A jump the story already satisfies is disabled, read
- * from `useStoryRankFlags`.
+ * Reuses the row's icons and its instant-apply + debounced-commit `useMoveBurst`, so a jump
+ * re-ranks the story in the store immediately (the jumps re-derive from that new position) and a
+ * rapid burst still costs one request. A jump the story already satisfies is disabled, read from
+ * `useStoryRankFlags`. One list behind two presentations — the desktop buttons and the phone's
+ * menu — so labels, icons and commits can't drift between layouts.
  *
  * Must be mounted under a `CodeProvider`.
  */
-export function PriorityControls({ story }: { story: CodeStory }) {
+export function usePriorityJumps(story: CodeStory): Jump[] {
   const { applyMoveInProjectOptimistic, commitMoveInProject, applyMoveOptimistic, commitMove } =
     useCodeActions();
   const { isProjectTop, isProjectBottom, isBacklogTop, isBacklogBottom } = useStoryRankFlags(story);
@@ -39,7 +39,7 @@ export function PriorityControls({ story }: { story: CodeStory }) {
   const moveInProject = useMoveBurst(story.ref, applyMoveInProjectOptimistic, commitMoveInProject);
   const move = useMoveBurst(story.ref, applyMoveOptimistic, commitMove);
 
-  const jumps: Jump[] = [
+  return [
     {
       label: 'Top of project',
       title: "Move to the top of this story's project",
@@ -77,6 +77,11 @@ export function PriorityControls({ story }: { story: CodeStory }) {
       },
     },
   ];
+}
+
+/** The story detail modal's priority controls: one labelled button per jump (see above). */
+export function PriorityControls({ story }: { story: CodeStory }) {
+  const jumps = usePriorityJumps(story);
 
   return (
     <div className="flex flex-col gap-3">

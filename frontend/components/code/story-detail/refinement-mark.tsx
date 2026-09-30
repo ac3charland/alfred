@@ -20,6 +20,25 @@ import type { CodeStory } from '@/lib/types';
  * advance/revert stepper — this is a property of the story, not a hop.
  */
 export function RefinementMark({ story }: { story: CodeStory }) {
+  const { checked, disabled, toggle } = useRefinementMark(story);
+
+  return (
+    <CheckboxField
+      label="Needs refinement"
+      checked={checked}
+      disabled={disabled}
+      onCheckedChange={(next) => {
+        void toggle(next);
+      }}
+    />
+  );
+}
+
+/**
+ * The refinement mark's state and its toggle, shared by the desktop checkbox and the phone's ⋯
+ * menu item so both write the same way: the flag, its in-flight guard, and the store's rollback.
+ */
+export function useRefinementMark(story: CodeStory) {
   const { setRefinementRequired } = useCodeActions();
   const [pending, setPending] = React.useState(false);
   const ref = story.ref;
@@ -39,14 +58,5 @@ export function RefinementMark({ story }: { story: CodeStory }) {
     }
   };
 
-  return (
-    <CheckboxField
-      label="Needs refinement"
-      checked={checked}
-      disabled={pending || ref === null}
-      onCheckedChange={(next) => {
-        void toggle(next);
-      }}
-    />
-  );
+  return { checked, disabled: pending || ref === null, toggle };
 }

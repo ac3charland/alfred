@@ -3,7 +3,14 @@
 import { ChevronDown, Pencil } from 'lucide-react';
 import * as React from 'react';
 
-import { DialogCloseButton, DialogTitle, FormDialog } from '@/components/atoms/dialog';
+import {
+  DialogCloseButton,
+  DialogTitle,
+  FormDialog,
+  SheetDialog,
+  SheetFooter,
+  useSheetFooterElement,
+} from '@/components/atoms/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,28 +18,43 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { EditableTextField } from '@/components/atoms/editable-text-field';
-import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
 import { StoryRef } from '@/components/atoms/story-ref';
-import { TextareaField } from '@/components/atoms/textarea-field';
 import { StateChip } from '@/components/code/state-chip';
-import { ManualControls } from '@/components/code/story-detail/manual-controls';
+import { ActionBar } from '@/components/code/story-detail/action-bar';
+import { EditableNotes } from '@/components/code/story-detail/editable-notes';
+import { type DetailLayout, SECTION_HEADING_CLASS } from '@/components/code/story-detail/layout';
+import {
+  BlockReasonEditor,
+  ManualControls,
+  useStoryTransitions,
+} from '@/components/code/story-detail/manual-controls';
 import { PrLink } from '@/components/code/story-detail/pr-link';
 import { PrimaryAction } from '@/components/code/story-detail/primary-action';
 import { PriorityControls } from '@/components/code/story-detail/priority-controls';
 import { RefinementMark } from '@/components/code/story-detail/refinement-mark';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
+import { SpecRow } from '@/components/code/story-detail/spec-row';
 import { StoryKindBadge } from '@/components/code/story-kind-badge';
 import type { LaunchPhase } from '@/lib/code/launch';
 import { type ProjectColor, projectColorFor } from '@/lib/code/project-color';
 import { type StoryKind, storyKindOf } from '@/lib/code/story-kind';
+import { MOBILE_QUERY, useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
 import type { CodeStory, Project } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 /**
  * The inline-editable title (reusing task-row's edit pattern): a double-click / pencil
  * opens an input; Enter or the check commits via `updateStoryTitle`, Escape / blur reverts.
  */
-function EditableTitle({ story }: { story: CodeStory }) {
+function EditableTitle({
+  story,
+  className = 'text-lg',
+}: {
+  story: CodeStory;
+  /** The title's size: `text-lg` on the card, a step up on the phone sheet. */
+  className?: string;
+}) {
   const { updateStoryTitle } = useCodeActions();
   const currentTitle = story.title ?? '';
   const itemId = story.item_id;
@@ -46,10 +68,12 @@ function EditableTitle({ story }: { story: CodeStory }) {
         await updateStoryTitle(itemId, next);
       }}
       label="Edit title"
-      inputClassName="text-lg font-semibold"
+      inputClassName={cn(className, 'font-semibold')}
       selectAllOnEdit={false}
     >
-      <DialogTitle className="text-lg font-semibold text-foreground">{currentTitle}</DialogTitle>
+      <DialogTitle className={cn(className, 'font-semibold text-foreground')}>
+        {currentTitle}
+      </DialogTitle>
       <Pencil
         size={13}
         className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/editable:opacity-100 motion-reduce:transition-none"
@@ -125,69 +149,6 @@ function EpicBreadcrumb({ story }: { story: CodeStory }) {
   );
 }
 
-/**
- * The inline notes editor for the story detail modal, mirroring `EpicHeaderActions` in
- * `board/epic-block.tsx`: a click-to-edit affordance with a pencil icon on hover, a
- * `TextareaField` in edit mode, and optimistic save via `updateStoryNotes`.
- */
-function EditableNotes({ story }: { story: CodeStory }) {
-  const { updateStoryNotes } = useCodeActions();
-  const [editing, setEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState(story.notes ?? '');
-
-  const saveNotes = async () => {
-    const next = draft.trim();
-    setEditing(false);
-    if (next === (story.notes ?? '')) return;
-    // Guard on a null item_id exactly as EditableTitle does.
-    if (story.item_id === null) return;
-    try {
-      await updateStoryNotes(story.item_id, next === '' ? null : next);
-    } catch {
-      setDraft(story.notes ?? '');
-    }
-  };
-
-  const cancelEdit = () => {
-    setEditing(false);
-    setDraft(story.notes ?? '');
-  };
-
-  if (editing) {
-    return (
-      <TextareaField
-        aria-label="Edit notes"
-        value={draft}
-        onChange={setDraft}
-        onSave={saveNotes}
-        onCancel={cancelEdit}
-        onEscape={cancelEdit}
-        placeholder="Story notes…"
-      />
-    );
-  }
-
-  return (
-    <InlineEditTrigger
-      onClick={() => {
-        setDraft(story.notes ?? '');
-        setEditing(true);
-      }}
-      className="group/notes flex min-w-0 flex-1 flex-col items-start gap-1 text-sm"
-    >
-      {story.notes === null || story.notes.trim() === '' ? (
-        <span className="text-muted-foreground/70 hover:text-foreground">Add notes…</span>
-      ) : (
-        <span className="whitespace-pre-wrap text-foreground">{story.notes}</span>
-      )}
-      <Pencil
-        size={12}
-        className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notes:opacity-100 motion-reduce:transition-none"
-      />
-    </InlineEditTrigger>
-  );
-}
-
 /** The modal body — split out so it MOUNTS FRESH each open (Radix only renders while open). */
 /**
  * What the `implementation_pr_url` column holds for each kind — the same column, three different
@@ -205,16 +166,115 @@ function DetailBody({
   project,
   projectColor,
   onOpenSession,
+  layout,
 }: {
   story: CodeStory;
   project: Project | undefined;
   projectColor: ProjectColor;
   onOpenSession: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
+  layout: DetailLayout;
 }) {
   const projectName = project?.name ?? story.project_name ?? 'Project';
   // Neither a spike nor a bug is ever refined: each runs as one session, so a "Needs refinement"
   // toggle would promise a phase that never runs — the control is absent rather than disabled.
   const kind = storyKindOf(story);
+  // The block-reason editor's open state lives here, not in the manual controls: on a phone the
+  // ⋯ menu's Block… opens a card at the end of the body, nowhere near its button.
+  const [blockOpen, setBlockOpen] = React.useState(false);
+  const transitions = useStoryTransitions(story, () => {
+    setBlockOpen(false);
+  });
+  const footer = useSheetFooterElement();
+
+  const breadcrumb = (
+    <p className="text-xs text-muted-foreground">
+      {projectName} <span aria-hidden="true">›</span> <EpicBreadcrumb story={story} />
+    </p>
+  );
+  const prLinks = (
+    <>
+      {story.refinement_pr_url === null ? null : (
+        <PrLink label="Refinement PR" url={story.refinement_pr_url} />
+      )}
+      {story.implementation_pr_url === null ? null : (
+        <PrLink label={IMPLEMENTATION_PR_LABELS[kind]} url={story.implementation_pr_url} />
+      )}
+    </>
+  );
+
+  if (layout === 'sheet') {
+    return (
+      <>
+        {/* Pinned: the ref, state and × stay put while the body scrolls. The title scrolls. */}
+        <div
+          data-sheet-header=""
+          // The divider is an inset shadow, not `border-b`: a border would take a pixel from the
+          // row's 44px and leave the × (a 44px tap target) overflowing it.
+          className="flex h-11 shrink-0 items-center gap-2 pl-4 pr-1 shadow-[inset_0_-1px_0_var(--color-border)]"
+        >
+          <StoryRef color={projectColor} className="text-sm">
+            {story.ref}
+          </StoryRef>
+          <StateChip state={story.factory_state} />
+          <StoryKindBadge story={story} />
+          <div className="ml-auto">
+            <DialogCloseButton />
+          </div>
+        </div>
+
+        <div data-sheet-body="" className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3">
+          <div className="flex flex-col gap-1.5">
+            <EditableTitle story={story} className="text-xl" />
+            {breadcrumb}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">{prLinks}</div>
+
+          <div className="mt-6 flex flex-col gap-2">
+            <h3 className={SECTION_HEADING_CLASS.sheet}>Notes</h3>
+            <EditableNotes
+              story={story}
+              layout="sheet"
+              onStartEditing={() => {
+                // One editor at a time: the notes editor takes the footer from the block reason.
+                setBlockOpen(false);
+              }}
+            />
+          </div>
+
+          <div className="mt-6">
+            <SpecRow story={story} />
+          </div>
+
+          {blockOpen ? (
+            <div className="mt-6">
+              <BlockReasonEditor
+                story={story}
+                pending={transitions.pending}
+                onConfirm={transitions.confirmBlock}
+                onCancel={() => {
+                  setBlockOpen(false);
+                }}
+                autoGrow
+                actionsTarget={footer}
+                reveal
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <SheetFooter>
+          <ActionBar
+            story={story}
+            transitions={transitions}
+            onBlock={() => {
+              setBlockOpen(true);
+            }}
+            onOpenSession={onOpenSession}
+          />
+        </SheetFooter>
+      </>
+    );
+  }
 
   return (
     <>
@@ -228,9 +288,7 @@ function DetailBody({
             <StoryKindBadge story={story} />
           </div>
           <EditableTitle story={story} />
-          <p className="text-xs text-muted-foreground">
-            {projectName} <span aria-hidden="true">›</span> <EpicBreadcrumb story={story} />
-          </p>
+          {breadcrumb}
         </div>
         <DialogCloseButton />
       </div>
@@ -239,22 +297,15 @@ function DetailBody({
           refinement mark — the property that decides whether this story ever needs a spec. */}
       <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
         <PrimaryAction story={story} onOpenSession={onOpenSession} />
-        {story.refinement_pr_url === null ? null : (
-          <PrLink label="Refinement PR" url={story.refinement_pr_url} />
-        )}
-        {story.implementation_pr_url === null ? null : (
-          <PrLink label={IMPLEMENTATION_PR_LABELS[kind]} url={story.implementation_pr_url} />
-        )}
+        {prLinks}
         {kind === 'story' ? <RefinementMark story={story} /> : null}
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
         {/* Notes — generic on any item, inline-editable via updateStoryNotes. */}
         <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Notes
-          </h3>
-          <EditableNotes story={story} />
+          <h3 className={SECTION_HEADING_CLASS.dialog}>Notes</h3>
+          <EditableNotes story={story} layout="dialog" />
         </div>
 
         <SpecBody story={story} />
@@ -262,7 +313,12 @@ function DetailBody({
 
       <div className="mt-5 flex flex-col gap-5 border-t border-border/60 pt-4">
         <PriorityControls story={story} />
-        <ManualControls story={story} />
+        <ManualControls
+          story={story}
+          transitions={transitions}
+          blockOpen={blockOpen}
+          onBlockOpenChange={setBlockOpen}
+        />
       </div>
     </>
   );
@@ -305,9 +361,35 @@ export function StoryDetailModal({
   // used as the fallback). Read it here so the body stays a pure function of its props.
   const project = story === null ? undefined : projects.find((p) => p.id === story.project_id);
 
-  // Reuses FormDialog (the shared Root → Portal → DialogOverlay → Content scaffold), sized to
-  // `2xl` with the scrollable flex body — same shell as gate-dialog. `aria-describedby` is
-  // suppressed (no Description element); the Close button + Title live in DetailBody.
+  // A phone gets the full-screen sheet; anything wider, the centred card. Decided in JS rather
+  // than with `max-md:` classes because the two layouts are different DOM (menus vs buttons) —
+  // hidden duplicates would double every accessible control. The modal only ever opens on the
+  // client, so the server snapshot never flashes the wrong layout.
+  const isPhone = useMediaQuery(MOBILE_QUERY);
+  const layout: DetailLayout = isPhone ? 'sheet' : 'dialog';
+  const body =
+    story === null ? (
+      <DialogTitle className="sr-only">Story details</DialogTitle>
+    ) : (
+      <DetailBody
+        story={story}
+        project={project}
+        projectColor={projectColorFor(projects, story.project_id)}
+        onOpenSession={onOpenSession}
+        layout={layout}
+      />
+    );
+
+  // The card reuses FormDialog (the shared Root → Portal → DialogOverlay → Content scaffold),
+  // sized to `2xl` with the scrollable flex body — same shell as gate-dialog. `aria-describedby`
+  // is suppressed (no Description element); the Close button + Title live in DetailBody.
+  if (isPhone) {
+    return (
+      <SheetDialog open={open} onOpenChange={onOpenChange} aria-describedby={undefined}>
+        {body}
+      </SheetDialog>
+    );
+  }
   return (
     <FormDialog
       open={open}
@@ -316,16 +398,7 @@ export function StoryDetailModal({
       className="flex max-h-[85vh] flex-col"
       aria-describedby={undefined}
     >
-      {story === null ? (
-        <DialogTitle className="sr-only">Story details</DialogTitle>
-      ) : (
-        <DetailBody
-          story={story}
-          project={project}
-          projectColor={projectColorFor(projects, story.project_id)}
-          onOpenSession={onOpenSession}
-        />
-      )}
+      {body}
     </FormDialog>
   );
 }
