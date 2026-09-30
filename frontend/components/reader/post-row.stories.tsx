@@ -622,8 +622,8 @@ function roundupPost(sent: { reader?: string[]; instapaper?: string[] } = {}): R
 const FURTHER_PARAMETERS = { visualTest: { target: '[data-testid="row-frame"]' } };
 
 /**
- * The four links unticked, each with its open link: Select all on the heading row, and no bar
- * while nothing is ticked.
+ * Two of the four links ticked, each row with its open link beside it: Select all on the heading
+ * row, and the bar with its two sends.
  */
 export const FurtherReadingPicking: Story = {
   args: { post: roundupPost() },
@@ -665,6 +665,7 @@ function requestUrl(input: Parameters<typeof fetch>[0]): string {
 /** What the route answers to a send of two links that saved only the first. */
 const PARTIAL_SEND: FurtherReadingSendResult = {
   post: roundupPost({ reader: [SIM_TO_REAL.url] }),
+  sent: [SIM_TO_REAL.url],
   unsent: [EVALS_DONT_TRANSFER.url],
   failure: "Instapaper didn't answer",
 };

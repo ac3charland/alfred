@@ -191,7 +191,7 @@ describe('POST /api/reader/posts/[id]/further-reading — all saved', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ post: marked, unsent: [] });
+    expect(await response.json()).toEqual({ post: marked, sent: [PAPER, RELEASE], unsent: [] });
     // Folders first, then one save per link, in order: by URL, the model's title and note.
     expect(calls(fetchSpy)).toEqual([
       { path: '/api/1.1/folders/list', form: {} },
@@ -260,6 +260,7 @@ describe('POST /api/reader/posts/[id]/further-reading — some saved', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       post: marked,
+      sent: [PAPER],
       unsent: [ESSAY],
       failure: "Instapaper didn't answer",
     });
@@ -280,6 +281,7 @@ describe('POST /api/reader/posts/[id]/further-reading — some saved', () => {
     );
 
     expect(await response.json()).toMatchObject({
+      sent: [PAPER],
       unsent: [ESSAY, RELEASE],
       failure: 'Instapaper is rate-limiting',
     });
@@ -303,7 +305,39 @@ describe('POST /api/reader/posts/[id]/further-reading — some saved', () => {
     // Two started (at 0 s and 15 s); the third would start at 30 s, past the window.
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(await response.json()).toMatchObject({
+      sent: [PAPER, ESSAY],
       unsent: [RELEASE],
+      failure: 'Instapaper was too slow',
+    });
+  });
+  it('counts the window from the start of the request, so a slow folder listing leaves less of it', async () => {
+    signedIn(stored(), { data: listRow({ reader: [PAPER] }) });
+    let elapsed = 0;
+    jest.spyOn(performance, 'now').mockImplementation(() => elapsed);
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/1.1/folders/list')) {
+        // The listing takes its whole 15 s timeout's worth.
+        elapsed += 15_000;
+        return Promise.resolve(Response.json(FOLDERS));
+      }
+      elapsed += 6000;
+      return Promise.resolve(bookmark(11));
+    });
+
+    const response = await POST(
+      send(POST_ID, { destination: 'reader', urls: [PAPER, ESSAY, RELEASE] }),
+      context(POST_ID),
+    );
+
+    // The listing ends at 15 s; one save starts there and ends at 21 s, past the window.
+    expect(calls(fetchSpy).map((call) => call.path)).toEqual([
+      '/api/1.1/folders/list',
+      '/api/1/bookmarks/add',
+    ]);
+    expect(await response.json()).toMatchObject({
+      sent: [PAPER],
+      unsent: [ESSAY, RELEASE],
       failure: 'Instapaper was too slow',
     });
   });
@@ -388,7 +422,7 @@ describe('POST /api/reader/posts/[id]/further-reading — nothing left to send',
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ post: row, unsent: [] });
+    expect(await response.json()).toEqual({ post: row, sent: [], unsent: [] });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(supabase.rpc).not.toHaveBeenCalled();
   });
@@ -404,7 +438,7 @@ describe('POST /api/reader/posts/[id]/further-reading — nothing left to send',
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ post: row, unsent: [] });
+    expect(await response.json()).toEqual({ post: row, sent: [], unsent: [] });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

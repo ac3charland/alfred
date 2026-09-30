@@ -95,14 +95,13 @@ function furtherSendFailure(error: unknown): string {
  */
 export function partialSendToast(
   destination: FurtherReadingDestination,
-  requested: number,
   result: FurtherReadingSendResult,
 ): string {
+  const sent = result.sent.length;
   const unsent = result.unsent.length;
-  const sent = requested - unsent;
   const reason = result.failure ?? "Instapaper didn't answer";
   const rest = unsent === 1 ? 'the other' : 'the rest';
-  return `Sent ${String(sent)} of ${String(requested)} to ${DESTINATION_NAME[destination]} — ${reason} for ${rest}`;
+  return `Sent ${String(sent)} of ${String(sent + unsent)} to ${DESTINATION_NAME[destination]} — ${reason} for ${rest}`;
 }
 
 /**
@@ -762,7 +761,7 @@ export function ReaderProvider({
           const result = await api.sendFurtherReading(id, { destination, urls: [...urls] });
           dispatch({ type: 'posts', action: { type: 'replace', id, item: result.post } });
           if (result.unsent.length > 0) {
-            showToastRef.current(partialSendToast(destination, urls.length, result));
+            showToastRef.current(partialSendToast(destination, result));
           }
           return result;
         } catch (error) {

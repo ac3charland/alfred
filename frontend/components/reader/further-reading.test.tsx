@@ -54,9 +54,24 @@ function post({ reader = [], instapaper = [] }: Sent = {}): ReaderPostListItem {
   return row;
 }
 
-/** What the route answers: the row with the saved links marked, and the ones that did not go. */
-function answer(sent: Sent, unsent: string[] = [], failure?: string): FurtherReadingSendResult {
-  return { post: post(sent), unsent, ...(failure === undefined ? {} : { failure }) };
+/**
+ * What the route answers: the row with the saved links marked, the links this send saved (those
+ * marked now that `before` hadn't), and the ones that did not go.
+ */
+function answer(
+  sent: Sent,
+  unsent: string[] = [],
+  failure?: string,
+  before: Sent = {},
+): FurtherReadingSendResult {
+  const was = new Set([...(before.reader ?? []), ...(before.instapaper ?? [])]);
+  const saved = [...(sent.reader ?? []), ...(sent.instapaper ?? [])].filter((url) => !was.has(url));
+  return {
+    post: post(sent),
+    sent: saved,
+    unsent,
+    ...(failure === undefined ? {} : { failure }),
+  };
 }
 
 interface LiveOptions {

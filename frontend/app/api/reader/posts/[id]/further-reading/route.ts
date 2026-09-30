@@ -36,11 +36,12 @@ import type { FurtherReadingSendResult, ReaderFurtherReading } from '@/lib/types
 // re-summarise can reword it under an open tab) and any already sent, to either place, are
 // dropped; with nothing left, the row answers unchanged and Instapaper is never called. Otherwise
 // the order is: the folder listing (Reader only), then the saves one at a time, then one append of
-// the links Instapaper confirmed. Saves stop STARTING once SAVE_WINDOW_MS has gone by, so the
-// route answers inside the function's time limit even when Instapaper is slow.
+// the links Instapaper confirmed. Saves stop STARTING once SAVE_WINDOW_MS has gone by since the
+// request arrived, so the route answers inside the function's time limit even when Instapaper is
+// slow.
 //
-// Only confirmed saves are marked. Some saved: 200 with the row, the links that didn't go, and
-// what stopped them, so the toast can say "Sent 1 of 2 to Reader — Instapaper didn't answer for
+// Only confirmed saves are marked. Some saved: 200 with the row, the links that went and those
+// that didn't, and what stopped them, so the toast can say "Sent 1 of 2 to Reader — Instapaper didn't answer for
 // the other". None saved: the first failure's status and sentence, as the post's own Send answers.
 // A missing folder is the owner's to fix and alfred never creates one: 409, nothing saved.
 //
@@ -53,8 +54,9 @@ export const runtime = 'nodejs';
 const TO_READER_FOLDER = 'To Reader';
 
 /**
- * How long the route keeps STARTING saves. Each save may take up to its own 15 s timeout, so the
- * last one started ends by ~35 s — inside the function's limit, with room for the append.
+ * How long after the request arrives the route keeps STARTING saves. Each save may take up to its
+ * own 15 s timeout, so the last one started ends by ~35 s — inside the function's limit, with room
+ * for the append.
  */
 const SAVE_WINDOW_MS = 20_000;
 
@@ -89,6 +91,9 @@ function offeredItems(overview: Json | null): Map<string, ReaderFurtherReading> 
 
 export const POST = withSession(
   async (session, request, context: { params: Promise<{ id: string }> }) => {
+    // The window is the whole request's, folder listing included, so the answer stays inside the
+    // function's time limit however slow the listing was.
+    const started = performance.now();
     const { id: rawId } = await context.params;
     const id = parseUUID(rawId);
     if (id instanceof Response) return id;
@@ -124,7 +129,7 @@ export const POST = withSession(
         return jsonError(status, message);
       }
       if (row === null) return jsonError(404, 'Post not found');
-      return jsonOk({ post: row, unsent: [] } satisfies FurtherReadingSendResult);
+      return jsonOk({ post: row, sent: [], unsent: [] } satisfies FurtherReadingSendResult);
     }
 
     let folderId: number | undefined;
@@ -146,7 +151,6 @@ export const POST = withSession(
       folderId = folder.folderId;
     }
 
-    const started = performance.now();
     const saved: string[] = [];
     const unsent: string[] = [];
     let failure: SaveFailure | undefined;
@@ -197,8 +201,8 @@ export const POST = withSession(
 
     const result: FurtherReadingSendResult =
       failure === undefined
-        ? { post: row, unsent }
-        : { post: row, unsent, failure: partialWords(failure) };
+        ? { post: row, sent: saved, unsent }
+        : { post: row, sent: saved, unsent, failure: partialWords(failure) };
     return jsonOk(result);
   },
 );

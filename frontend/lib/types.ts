@@ -288,12 +288,14 @@ export interface ReaderFurtherReading {
 export type FurtherReadingDestination = 'reader' | 'instapaper';
 
 /**
- * What a Further reading send answers: the post's row with its sent marks extended, the links that
- * did not go, and — when some did not — what stopped them, in words that finish the owner's
- * toast ("Sent 1 of 2 to Reader — Instapaper didn't answer for the other").
+ * What a Further reading send answers: the post's row with its sent marks extended, the links
+ * Instapaper confirmed and those that did not go, and — when some did not — what stopped them, in
+ * words that finish the owner's toast ("Sent 1 of 2 to Reader — Instapaper didn't answer for the
+ * other"). A ticked link a re-summarise has since dropped is in neither list.
  */
 export interface FurtherReadingSendResult {
   post: ReaderPostListItem;
+  sent: string[];
   unsent: string[];
   failure?: string;
 }

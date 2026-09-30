@@ -1674,13 +1674,13 @@ describe('sendFurtherReading', () => {
   it('sends the destination and links, reconciles the marks from the server row, and toasts nothing', async () => {
     const row = done();
     const saved: ReaderPostListItem = { ...row, further_sent_reader: [PAPER, ESSAY] };
-    mockApi.sendFurtherReading.mockResolvedValue({ post: saved, unsent: [] });
+    mockApi.sendFurtherReading.mockResolvedValue({ post: saved, sent: [PAPER, ESSAY], unsent: [] });
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
 
     await act(async () => {
       await expect(
         result.current.actions.sendFurtherReading('p-1', 'reader', [PAPER, ESSAY]),
-      ).resolves.toEqual({ post: saved, unsent: [] });
+      ).resolves.toEqual({ post: saved, sent: [PAPER, ESSAY], unsent: [] });
     });
 
     expect(mockApi.sendFurtherReading).toHaveBeenCalledWith('p-1', {
@@ -1713,7 +1713,12 @@ describe('sendFurtherReading', () => {
         destination === 'reader'
           ? { ...row, further_sent_reader: [PAPER] }
           : { ...row, further_sent_instapaper: [PAPER] };
-      mockApi.sendFurtherReading.mockResolvedValue({ post: saved, unsent: urls.slice(1), failure });
+      mockApi.sendFurtherReading.mockResolvedValue({
+        post: saved,
+        sent: [PAPER],
+        unsent: urls.slice(1),
+        failure,
+      });
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
 
       await act(async () => {
@@ -1724,6 +1729,26 @@ describe('sendFurtherReading', () => {
       expect(mockShowToast).toHaveBeenCalledWith(toast);
     },
   );
+
+  it('counts only the links Instapaper confirmed, never a ticked link a re-summarise dropped', async () => {
+    const row = done();
+    const gone = 'https://example.com/re-summarised-away';
+    mockApi.sendFurtherReading.mockResolvedValue({
+      post: { ...row, further_sent_reader: [PAPER] },
+      sent: [PAPER],
+      unsent: [ESSAY],
+      failure: "Instapaper didn't answer",
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.sendFurtherReading('p-1', 'reader', [PAPER, gone, ESSAY]);
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith(
+      "Sent 1 of 2 to Reader — Instapaper didn't answer for the other",
+    );
+  });
 
   it.each([
     [409, 'There is no “To Reader” folder in Instapaper'],
@@ -1764,7 +1789,7 @@ describe('sendFurtherReading', () => {
 
   it('holds the in-flight mark for this post alone, refuses a second send, and clears it after', async () => {
     const row = done();
-    const sending = deferred<{ post: ReaderPostListItem; unsent: string[] }>();
+    const sending = deferred<{ post: ReaderPostListItem; sent: string[]; unsent: string[] }>();
     mockApi.sendFurtherReading.mockReturnValue(sending.promise);
     const { result } = renderHook(
       () => ({
@@ -1793,7 +1818,7 @@ describe('sendFurtherReading', () => {
     expect(mockApi.sendFurtherReading).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      sending.settle({ post: { ...row, further_sent_reader: [PAPER] }, unsent: [] });
+      sending.settle({ post: { ...row, further_sent_reader: [PAPER] }, sent: [PAPER], unsent: [] });
       await first;
     });
     expect(result.current.inFlight).toBe(false);
@@ -1801,7 +1826,7 @@ describe('sendFurtherReading', () => {
 
   it('is not undone by a focus refetch that left before the send landed', async () => {
     const row = done();
-    const sending = deferred<{ post: ReaderPostListItem; unsent: string[] }>();
+    const sending = deferred<{ post: ReaderPostListItem; sent: string[]; unsent: string[] }>();
     const reading = deferred<ReaderPostListItem[]>();
     mockApi.sendFurtherReading.mockReturnValue(sending.promise);
     mockApi.fetchReaderPosts.mockReturnValue(reading.promise);
@@ -1815,7 +1840,7 @@ describe('sendFurtherReading', () => {
       result.current.actions.refresh();
     });
     await act(async () => {
-      sending.settle({ post: { ...row, further_sent_reader: [PAPER] }, unsent: [] });
+      sending.settle({ post: { ...row, further_sent_reader: [PAPER] }, sent: [PAPER], unsent: [] });
       await send;
     });
     await act(async () => {
