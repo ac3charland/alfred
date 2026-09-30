@@ -72,6 +72,7 @@ const SUMMARY = {
     evidence: ['Six downtowns, 2019–2026.'],
     argument: 'The quiet is a symptom of fewer people.',
     who_should_read: 'Anyone who works on downtown recovery.',
+    further_reading: [],
   },
 };
 

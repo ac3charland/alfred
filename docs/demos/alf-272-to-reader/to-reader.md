@@ -288,6 +288,7 @@ bookmark 501
   site           worksinprogress.co
   URL            https://worksinprogress.co/issue/quiet-cities
   word count     14
+  links          none
   headline       Quieter downtowns are emptier downtowns.
   gist           Street noise tracks lost foot traffic, not new ordinances; the sensor data is the new part.
   novel ideas
@@ -296,6 +297,8 @@ bookmark 501
     - Six downtowns, 2019–2026.
   argument       The quiet is a symptom of fewer people.
   who should readAnyone who works on downtown recovery.
+  further reading
+    (none)
   usage          in 900 · out 300 · $0.0048
 
 every call the stand-ins received (4):
