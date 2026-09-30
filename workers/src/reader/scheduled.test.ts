@@ -5,7 +5,7 @@ import { ESSAY_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE, READ_IN_APP_MESSAGE } from './f
 import * as retention from './retention';
 import { READER_TICK_BUDGET_MS, runReaderRetention, runReaderTick } from './scheduled';
 import * as summarize from './summarize';
-import type { ReaderEnv, ReaderSummary, SummaryInput, SummaryOutcome } from './types';
+import type { ReaderEnv, StoredReaderSummary, SummaryInput, SummaryOutcome } from './types';
 
 const SUPABASE_URL = 'https://proj.supabase.co';
 const OAUTH_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -42,7 +42,7 @@ function without(
   return Object.fromEntries(entries) as unknown as ReaderEnv;
 }
 
-const SUMMARY: ReaderSummary = {
+const SUMMARY: StoredReaderSummary = {
   headline: 'Open port telemetry narrowed the routing spread',
   gist: 'Three ports published berth telemetry and the spread fell from $4.10 to $1.30 a tonne.',
   overview: {
@@ -50,6 +50,13 @@ const SUMMARY: ReaderSummary = {
     evidence: ['$4.10 → $1.30 a tonne over eighteen months'],
     argument: 'Publishing the feed destroyed an information rent and raised throughput.',
     who_should_read: 'Anyone running a queue with private state.',
+    further_reading: [
+      {
+        url: 'https://substack.com/redirect/8f2c0b7e-4d19-4a2b-9c51-6f0ab2e77d41',
+        title: 'Open berth-occupancy telemetry',
+        note: 'The feeds the argument turns on.',
+      },
+    ],
   },
 };
 
@@ -412,6 +419,36 @@ describe('runReaderTick — ordering', () => {
     ]);
   });
 
+  it('reads a retry’s stored HTML and hands it to the summariser with its canonical URL', async () => {
+    const calls = harness({
+      retries: [retryRow({ html: '<p>A <a href="https://example.com/x">link</a></p>' })],
+      roster: [{ id: 'pub-harborline', name: 'Harborline' }],
+    });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    const retryRead = restCalls(calls, 'reader_posts', 'GET').find((call) =>
+      call.url.includes('summary_state=eq.pending'),
+    );
+    expect(new URL(retryRead?.url ?? '').searchParams.get('select')?.split(',')).toEqual(
+      expect.arrayContaining(['html', 'canonical_url']),
+    );
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      html: '<p>A <a href="https://example.com/x">link</a></p>',
+      canonicalUrl: 'https://harborline.substack.com/p/earlier',
+    });
+  });
+
+  it('hands a retry with no stored HTML to the summariser without any', async () => {
+    harness({ retries: [retryRow({ html: WIRE_NULL })] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]?.html).toBeUndefined();
+  });
+
   it('falls back to a retry’s author, never to the post’s own title, for the publication', async () => {
     // A publication whose roster row has gone (renamed handle, deleted publication) must not be
     // announced to the model as the post's own title — the eval script calls that case 'unknown'.
@@ -731,7 +768,7 @@ describe('runReaderTick — the terminal patch', () => {
       gist: SUMMARY.gist,
       overview: SUMMARY.overview,
       model: 'claude-sonnet-5',
-      prompt_version: 1,
+      prompt_version: 2,
       summary_state: 'done',
       summarized_at: NOW_ISO,
       model_called_at: NOW_ISO,
@@ -1024,6 +1061,13 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
     expect(summarized).toHaveBeenCalledTimes(3);
     // The model sees the roster's name for the publication, not the view's sender handle.
     expect(summarizedInputs(summarized)[0]).toMatchObject({ publication: 'Harborline' });
+    // The HTML the extraction kept, and the post's own address, reach the summariser so it can
+    // number the links — from memory, which is why the call count above is unchanged.
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      html: inserts[0]?.['html'],
+      canonicalUrl: 'https://open.substack.com/pub/harborline/p/the-grain-ledger',
+    });
+    expect(summarizedInputs(summarized)[2]?.html).toBeUndefined();
 
     expect(summary).toEqual({
       discovered: 1,
@@ -1387,6 +1431,8 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
       text: 'Cities Are Getting Quieter\nStreet noise fell in six downtowns.',
       word_count: 10,
       html_extracted: true,
+      // Kept so the summariser — now and on a re-summarise — can number the article's links.
+      html: ARTICLE_HTML,
       summary_state: 'pending',
       summarizing_since: NOW_ISO,
     });
@@ -1413,13 +1459,15 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
         receivedAt: NOW_ISO,
         wordCount: 10,
         text: 'Cities Are Getting Quieter\nStreet noise fell in six downtowns.',
+        html: ARTICLE_HTML,
+        canonicalUrl: 'https://www.worksinprogress.co/issue/quiet-cities',
       },
     ]);
     // The same terminal patch a newsletter gets, `model_called_at` included — which is what makes
     // an article count against the daily ceiling.
     expect(payload(restCalls(calls, 'reader_posts', 'PATCH')[0])).toMatchObject({
       summary_state: 'done',
-      prompt_version: 1,
+      prompt_version: 2,
       model_called_at: NOW_ISO,
     });
     expect(summary).toMatchObject({ intake: 0, summarized: 1 });

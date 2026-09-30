@@ -178,6 +178,14 @@ cleanup (the returned function) always runs when navigating away — use this fo
   (more rows/whitespace) even while a tighter crop of the same fixture fails — grep sibling stories
   for the same near-term literal and fix them together.
 
+- **A story that sends and expects the row to redraw needs a store-fed `render`.** `PostRow` takes
+  its `post` as a prop, so a store write (`replace` of the row) never reaches it; wrap it in a
+  component that finds the row by id in `useReaderPosts()` (`LivePostRow` in
+  `post-row.stories.tsx`). To capture the resulting toast, add a story decorator that puts
+  `ToastViewport` in a `relative [transform:translateZ(0)] pb-28` wrapper: the transform makes
+  the viewport's `fixed` corner the wrapper's, so the toast lands under the row inside the crop
+  instead of at the iframe's bottom-right. Mock the send's `fetch` in `beforeEach`.
+
 - **A component that reads `new Date()` in its own render is unsnapshottable — give it an optional
   `now?: Date | undefined` prop** that defaults to the live clock and that stories and tests pin
   (`CommsQueueView`, `ReadingListView`). Same for a fixture builder that anchors its timestamps to

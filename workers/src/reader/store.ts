@@ -81,6 +81,11 @@ export interface ReaderArticleInsert {
   word_count: number;
   html_extracted: boolean;
   /**
+   * Instapaper's text-view HTML, kept for the summariser's link numbering (see `articleHtml`).
+   * Omitted rather than nulled when there is none, as a newsletter's is.
+   */
+  html?: string | undefined;
+  /**
    * `pending` with the lease taken, for an article with text to summarise; `failed` with its
    * reason, filed in the same insert, for one Instapaper could make no text of.
    */

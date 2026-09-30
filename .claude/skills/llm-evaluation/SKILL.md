@@ -40,7 +40,7 @@ randomised trial developers felt 20% faster and measured 19% slower.
 
 ## The data: `code_sessions`
 
-One row per Claude Code session that worked on this repo (migration `0048_code_sessions.sql`):
+One row per Claude Code session that worked on this repo (migration `0049_code_sessions.sql`):
 
 | Columns | What they are |
 | --- | --- |

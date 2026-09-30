@@ -112,7 +112,9 @@ import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
  * | Per retried pending post | lease CAS · Anthropic ×2 · terminal patch | 4 |
  * | Worst tick (six new bookmarks) | 9 + 3 + 6 × 6 | **48** |
  *
- * Six fresh newsletters cost 9 + 6 × 6 = 45 and leave the leg no slot, so it never lists. The
+ * Six fresh newsletters cost 9 + 6 × 6 = 45 and leave the leg no slot, so it never lists.
+ * Numbering a post's links for its Further reading list costs none of these: the HTML is already
+ * in memory at intake, and a retry reads it in the select it already makes. The
  * roster read is the ninth per-tick fetch: the worklist view carries `publication_id` but not the
  * publication's NAME, which the model's input needs, and reading the roster ONCE per tick is the
  * only way to get it that does not cost a fetch per post. On a tick where discovery found nothing
@@ -285,7 +287,12 @@ async function readRoster(env: ReaderEnv): Promise<Map<string, string>> {
   return new Map(rows.map((row) => [row.id, row.name]));
 }
 
-/** What the model is shown: the extracted post plus the publication it came from. */
+/**
+ * What the model is shown: the extracted post plus the publication it came from. The HTML and the
+ * post's own address ride along so the summariser can number the post's links; neither costs a
+ * fetch — a fresh post's HTML is already in memory from the extraction, and a retry reads both in
+ * the select it already makes.
+ */
 function toSummaryInput(
   post: {
     title: string;
@@ -293,6 +300,8 @@ function toSummaryInput(
     received_at: string;
     word_count: number;
     text: string;
+    html?: string | undefined;
+    canonical_url?: string | undefined;
   },
   publication: string,
 ): SummaryInput {
@@ -305,6 +314,8 @@ function toSummaryInput(
     receivedAt: post.received_at,
     wordCount: post.word_count,
     text: post.text,
+    html: post.html,
+    canonicalUrl: post.canonical_url,
   };
 }
 
@@ -500,6 +511,8 @@ async function prepareBookmark(
           receivedAt: context.now.toISOString(),
           wordCount: taken.wordCount,
           text: taken.text,
+          html: taken.html,
+          canonicalUrl: taken.canonicalUrl,
         },
         attempts: 0,
       };

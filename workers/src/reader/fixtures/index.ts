@@ -1,5 +1,5 @@
 /**
- * The committed Reader fixtures: five `messages.get?format=full` resources in Substack's shape.
+ * The committed Reader fixtures: six `messages.get?format=full` resources in Substack's shape.
  *
  * TypeScript modules rather than `.json` because the Worker's tsconfig has neither
  * `resolveJsonModule` nor Node types, and turning either on to make a test pass is the config
@@ -13,16 +13,19 @@
  * wrappers, a roundup with no post path at all that is reachable only by its button's text, a
  * plain-text post with no link, platform mail that must never reach the roster, and a reaction
  * notification — the one mail that still carries a bare `/p/<slug>`, pointing at a post it is not
- * about, from a sender the roster must refuse twice over.
+ * about, from a sender the roster must refuse twice over. The link roundup is the Further reading case:
+ * every body link a `redirect/<uuid>` wrapper, among a sponsor, a repeat and the chrome.
  */
 import type { GmailMessage } from '../../comms/gmail-api';
 import { ESSAY_MESSAGE } from './essay';
+import { LINK_ROUNDUP_MESSAGE } from './link-roundup';
 import { PLAIN_TEXT_ONLY_MESSAGE } from './plain-text-only';
 import { PLATFORM_MAIL_MESSAGE } from './platform-mail';
 import { REACTION_NOTIFICATION_MESSAGE } from './reaction-notification';
 import { READ_IN_APP_MESSAGE } from './read-in-app';
 
 export { ESSAY_MESSAGE } from './essay';
+export { LINK_ROUNDUP_MESSAGE } from './link-roundup';
 export { PLAIN_TEXT_ONLY_MESSAGE } from './plain-text-only';
 export { PLATFORM_MAIL_MESSAGE } from './platform-mail';
 export { READ_IN_APP_MESSAGE } from './read-in-app';
@@ -42,4 +45,5 @@ export const READER_FIXTURES: readonly ReaderFixture[] = [
   { name: 'plain-text-only', message: PLAIN_TEXT_ONLY_MESSAGE },
   { name: 'platform-mail', message: PLATFORM_MAIL_MESSAGE },
   { name: 'reaction-notification', message: REACTION_NOTIFICATION_MESSAGE },
+  { name: 'link-roundup', message: LINK_ROUNDUP_MESSAGE },
 ];

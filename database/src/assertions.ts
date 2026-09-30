@@ -4839,6 +4839,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       const wikiFunctions = [
         'append_wiki_sent_ideas(uuid, text[])',
         'append_wiki_sent_picks(uuid, text[], text[])',
+        'append_further_reading_sent(uuid, text, text[])',
         'send_items_to_wiki(uuid[])',
         'search_wiki_pages(text, int)',
       ];
@@ -5199,6 +5200,69 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       await client.query(`delete from reader_posts where id = $1`, [post]);
       await client.query(`delete from reader_publications where id = $1`, [publication]);
       return 'zeta|alpha / omega|beta → cross-section text kept apart → empty lists untouched';
+    },
+  );
+
+  const furtherReadingSentResult = await attempt(
+    'append_further_reading_sent appends to the chosen destination only, deduplicated, in ' +
+      'first-occurrence order, and refuses an unknown destination (ALF-289)',
+    async () => {
+      const { rows: pubRows } = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('append-further@example.com', 'Append Further', 'owner') returning id`,
+      );
+      const publication = pubRows[0]?.id;
+      if (publication === undefined) throw new Error('could not seed a publication');
+      const { rows: postRows } = await client.query<{ id: string }>(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+           values ($1, 'gmail-personal', 'append-further-msg', 'Append Further Post', now())
+           returning id`,
+        [publication],
+      );
+      const post = postRows[0]?.id;
+      if (post === undefined) throw new Error('could not seed a post');
+
+      // As `authenticated`, so a missing grant to the owner's role fails here too.
+      const sent = async (destination: string, urls: string[]): Promise<string> => {
+        const { rows } = await asRole(client, 'authenticated', () =>
+          client.query<{ further_sent_reader: string[]; further_sent_instapaper: string[] }>(
+            `select further_sent_reader, further_sent_instapaper
+               from append_further_reading_sent($1, $2, $3::text[])`,
+            [post, destination, urls],
+          ),
+        );
+        const row = rows[0];
+        if (row === undefined) throw new Error('the append returned no row');
+        return `${row.further_sent_reader.join('|')} / ${row.further_sent_instapaper.join('|')}`;
+      };
+
+      // NOT alphabetical, with a duplicate, so only first-occurrence order passes.
+      const first = await sent('reader', [
+        'https://z.example',
+        'https://a.example',
+        'https://z.example',
+      ]);
+      if (first !== 'https://z.example|https://a.example / ')
+        throw new Error(`first append gave ${first}`);
+      // The other destination is its own list: a URL sent to the Reader still lands there.
+      const second = await sent('instapaper', ['https://a.example', 'https://m.example']);
+      if (second !== 'https://z.example|https://a.example / https://a.example|https://m.example')
+        throw new Error(`second append gave ${second}`);
+      const third = await sent('reader', ['https://a.example']);
+      if (third !== second) throw new Error(`re-sending a URL changed the arrays: ${third}`);
+
+      // Autocommit: the refused call's statement fails alone and leaves nothing to roll back.
+      let refused = false;
+      try {
+        await sent('wiki', ['https://q.example']);
+      } catch {
+        refused = true;
+      }
+      if (!refused) throw new Error('an unknown destination was accepted');
+
+      await client.query(`delete from reader_posts where id = $1`, [post]);
+      await client.query(`delete from reader_publications where id = $1`, [publication]);
+      return 'reader z|a → instapaper a|m kept apart → re-send unchanged → "wiki" refused';
     },
   );
 
@@ -5893,6 +5957,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     wikiSendLogsCorrectionResult,
     wikiAppendIdeasResult,
     wikiAppendPicksResult,
+    furtherReadingSentResult,
     wikiSearchResult,
     researchEnumResult,
     researchSendItemsResult,

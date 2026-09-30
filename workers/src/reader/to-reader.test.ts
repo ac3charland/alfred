@@ -1,9 +1,11 @@
 import { spyOnFetch } from '../fetch-stub';
 import { InstapaperError } from '../instapaper/client';
 import type { InstapaperApi, InstapaperBookmark } from '../instapaper/types';
+import { READER_HTML_CHARS } from './extract';
 import {
   INSTAPAPER_PUBLICATION,
   NO_FOLDER_ERROR,
+  articleHtml,
   articlePublication,
   articleText,
   articleTitle,
@@ -103,6 +105,23 @@ describe('articleText', () => {
   it('cuts the stored text at the ceiling', () => {
     const { text } = articleText(`<p>${'word '.repeat(100_000)}</p>`);
     expect(text.length).toBeLessThanOrEqual(400_000);
+  });
+});
+
+describe('articleHtml', () => {
+  it('keeps the text view’s HTML when it produced text', () => {
+    expect(articleHtml('<p>Body</p>', 'Body')).toBe('<p>Body</p>');
+  });
+
+  it('keeps HTML exactly at the ceiling and drops it one character past, as a newsletter’s is', () => {
+    const atCeiling = 'a'.repeat(READER_HTML_CHARS);
+    expect(articleHtml(atCeiling, 'a')).toBe(atCeiling);
+    expect(articleHtml(`${atCeiling}a`, 'a')).toBeUndefined();
+  });
+
+  it('keeps none when the HTML produced no text, or there was none', () => {
+    expect(articleHtml('<img src="x.png">', '')).toBeUndefined();
+    expect(articleHtml(undefined, '')).toBeUndefined();
   });
 });
 

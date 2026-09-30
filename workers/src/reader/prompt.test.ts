@@ -1,3 +1,5 @@
+import { extractPost } from './extract';
+import { LINK_ROUNDUP_MESSAGE } from './fixtures';
 import {
   READER_MODEL_INPUT_CHARS,
   READER_PROMPT_VERSION,
@@ -7,6 +9,19 @@ import {
 } from './prompt';
 import { READER_SUMMARY_SCHEMA } from './schema';
 import type { SummaryInput } from './types';
+
+const TEXT_MARKER = '--- post text ---\n';
+const LINKS_MARKER = '\n\n--- links ---\n';
+
+/** The part of the user turn that is the post's text: after its marker, before the links block. */
+function sentText(user: string): string {
+  return user.slice(user.indexOf(TEXT_MARKER) + TEXT_MARKER.length, user.indexOf(LINKS_MARKER));
+}
+
+/** The links block's lines. */
+function sentLinks(user: string): string {
+  return user.slice(user.indexOf(LINKS_MARKER) + LINKS_MARKER.length);
+}
 
 function post(overrides: Partial<SummaryInput> = {}): SummaryInput {
   return {
@@ -21,8 +36,8 @@ function post(overrides: Partial<SummaryInput> = {}): SummaryInput {
 }
 
 describe('READER_PROMPT_VERSION', () => {
-  it('is 1 — the wording this module ships with', () => {
-    expect(READER_PROMPT_VERSION).toBe(1);
+  it('is 2 — the wording that asks for Further reading', () => {
+    expect(READER_PROMPT_VERSION).toBe(2);
   });
 });
 
@@ -77,6 +92,49 @@ describe('buildReaderRequest — the system prompt', () => {
     expect(lower).toContain('numbers');
   });
 
+  it('states both Further reading tests: the argument rests on it, or a roundup item worth reading in full', () => {
+    const lower = buildReaderRequest(post()).system.toLowerCase();
+
+    expect(lower).toContain('further_reading');
+    expect(lower).toContain('argument rests on it or engages it at length');
+    expect(lower).toContain('builds on, rebuts, or quotes substantially');
+    expect(lower).toContain('link roundup and that item looks genuinely worth reading in full');
+  });
+
+  it('names what Further reading leaves out', () => {
+    const lower = buildReaderRequest(post()).system.toLowerCase();
+
+    for (const excluded of [
+      'passing citations',
+      'support a single fact or number',
+      'definitions and reference pages',
+      'homepages and product pages',
+      'own earlier posts',
+      'chrome',
+      'sponsors and ads',
+    ]) {
+      expect(lower).toContain(excluded);
+    }
+  });
+
+  it('calls an empty Further reading the common answer, and never lets a roundup count wholesale', () => {
+    const lower = buildReaderRequest(post()).system.toLowerCase();
+
+    expect(lower).toContain('empty further_reading is the common, correct answer');
+    expect(lower).toContain('always when the links block says "none"');
+    expect(lower).toContain('pick the few items with real substance, not the list');
+    expect(lower).not.toMatch(/every (link|item) in (a|the) roundup/);
+    expect(lower).not.toMatch(/all (of )?the (links|items)/);
+  });
+
+  it('has the model name links by number and title the linked piece, not the anchor text', () => {
+    const lower = buildReaderRequest(post()).system.toLowerCase();
+
+    expect(lower).toContain('name links by their numbers only');
+    expect(lower).toContain('title names the linked piece itself');
+    expect(lower).toContain('at most about 20 words');
+  });
+
   it('never tells the model not to think — thinking is switched off on the call instead', () => {
     const lower = buildReaderRequest(post()).system.toLowerCase();
 
@@ -112,7 +170,7 @@ describe('buildReaderRequest — the user turn', () => {
   });
 
   // A research report has no publisher and no byline; the metadata block says what it is instead.
-  // The system prompt is untouched, which is why READER_PROMPT_VERSION stays 1.
+  // The system prompt is untouched by it, so it moves no READER_PROMPT_VERSION.
   it('names the source of a research report on its publication and author lines', () => {
     const { user } = buildReaderRequest(
       post({ publication: RESEARCH_PUBLICATION, author: RESEARCH_AUTHOR }),
@@ -134,9 +192,7 @@ describe('buildReaderRequest — the user turn', () => {
 
     const { user } = buildReaderRequest(post({ text: body }));
 
-    const marker = '--- post text ---\n';
-    const sent = user.slice(user.indexOf(marker) + marker.length);
-    expect(sent).toHaveLength(READER_MODEL_INPUT_CHARS);
+    expect(sentText(user)).toHaveLength(READER_MODEL_INPUT_CHARS);
   });
 
   it('truncates on a code-point boundary, never mid-surrogate-pair', () => {
@@ -145,11 +201,77 @@ describe('buildReaderRequest — the user turn', () => {
 
     const { user } = buildReaderRequest(post({ text: body }));
 
-    const marker = '--- post text ---\n';
-    const sent = user.slice(user.indexOf(marker) + marker.length);
+    const sent = sentText(user);
     expect(sent).toHaveLength(READER_MODEL_INPUT_CHARS - 1);
     expect(sent).not.toContain('\uD83D');
     expect(/^a+$/u.test(sent)).toBe(true);
+  });
+});
+
+describe('buildReaderRequest — the links', () => {
+  const roundup = extractPost(LINK_ROUNDUP_MESSAGE, { name: 'Gridwork' });
+
+  it('builds the text from the HTML, with a [n] marker after each linked phrase', () => {
+    const { user } = buildReaderRequest(
+      post({ text: roundup.text, html: roundup.html, canonicalUrl: roundup.canonical_url }),
+    );
+
+    expect(sentText(user)).toContain('The sim-to-real gap in dexterous manipulation [1]');
+    expect(sentText(user)).toContain('FoldBench v2 release notes [4]');
+  });
+
+  it('lists each number’s URL after the text, one per line, and returns the same links', () => {
+    const request = buildReaderRequest(
+      post({ text: roundup.text, html: roundup.html, canonicalUrl: roundup.canonical_url }),
+    );
+
+    const lines = sentLinks(request.user).split('\n');
+    expect(lines[0]).toBe('[1] https://substack.com/redirect/3d1f6a52-8b0e-4c7a-9e21-0a4f5c6d7e81');
+    expect(lines).toHaveLength(8);
+    expect(request.links.map((link) => `[${String(link.n)}] ${link.url}`)).toEqual(lines);
+  });
+
+  it('says "none" for a post with no HTML, and sends its stored text as it is', () => {
+    const request = buildReaderRequest(post());
+
+    expect(sentLinks(request.user)).toBe('none');
+    expect(sentText(request.user)).toBe('Prices fell twelve-fold. Latency barely moved.');
+    expect(request.links).toEqual([]);
+  });
+
+  it('says "none" for HTML with no candidate link', () => {
+    const request = buildReaderRequest(
+      post({ html: '<p>No links <a href="mailto:x@y.z">here</a>.</p>' }),
+    );
+
+    expect(sentLinks(request.user)).toBe('none');
+  });
+
+  it('bounds text and list together — the text first, then whole list lines while they fit', () => {
+    const links =
+      '<a href="https://example.com/one">one</a> <a href="https://example.com/two">two</a>';
+    // Room for the text and exactly one list line after it.
+    const firstLine = '[1] https://example.com/one';
+    const padding = 'a'.repeat(
+      READER_MODEL_INPUT_CHARS - 'one [1] two [2] '.length - firstLine.length - 1,
+    );
+    const request = buildReaderRequest(post({ html: `<p>${links} ${padding}</p>` }));
+
+    expect(sentText(request.user).length + firstLine.length + 1).toBe(READER_MODEL_INPUT_CHARS);
+    expect(sentLinks(request.user)).toBe(firstLine);
+    expect(request.links).toEqual([{ n: 1, url: 'https://example.com/one' }]);
+  });
+
+  it('gives the list "none" when the text alone fills the cap', () => {
+    const request = buildReaderRequest(
+      post({
+        html: `<p><a href="https://example.com/one">one</a> ${'a'.repeat(READER_MODEL_INPUT_CHARS)}</p>`,
+      }),
+    );
+
+    expect(sentText(request.user)).toHaveLength(READER_MODEL_INPUT_CHARS);
+    expect(sentLinks(request.user)).toBe('none');
+    expect(request.links).toEqual([]);
   });
 });
 

@@ -1,0 +1,36 @@
+{
+  "sendToReader": [
+    {
+      "path": "/api/1.1/folders/list",
+      "params": {}
+    },
+    {
+      "path": "/api/1/bookmarks/add",
+      "params": {
+        "url": "https://example.com/sim-to-real-gap",
+        "title": "The sim-to-real gap in dexterous manipulation",
+        "description": "The paper behind the lead item — per-task numbers for the folding benchmark.",
+        "folder_id": "7700001"
+      }
+    },
+    {
+      "path": "/api/1/bookmarks/add",
+      "params": {
+        "url": "https://example.com/foldbench-v2",
+        "title": "FoldBench v2 release notes",
+        "description": "The eval itself; skim it for the task list.",
+        "folder_id": "7700001"
+      }
+    }
+  ],
+  "sendToInstapaper": [
+    {
+      "path": "/api/1/bookmarks/add",
+      "params": {
+        "url": "https://example.com/evals-dont-transfer",
+        "title": "Why most robotics evals don’t transfer",
+        "description": "An essay arguing the suite measures the simulator, not the policy."
+      }
+    }
+  ]
+}

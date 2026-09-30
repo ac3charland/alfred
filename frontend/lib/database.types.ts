@@ -1082,6 +1082,8 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          further_sent_instapaper: string[]
+          further_sent_reader: string[]
           gist: string | null
           gmail_message_id: string | null
           headline: string | null
@@ -1126,6 +1128,8 @@ export type Database = {
           canonical_url?: string | null
           comm_message_id?: string | null
           created_at?: string
+          further_sent_instapaper?: string[]
+          further_sent_reader?: string[]
           gist?: string | null
           gmail_message_id?: string | null
           headline?: string | null
@@ -1170,6 +1174,8 @@ export type Database = {
           canonical_url?: string | null
           comm_message_id?: string | null
           created_at?: string
+          further_sent_instapaper?: string[]
+          further_sent_reader?: string[]
           gist?: string | null
           gmail_message_id?: string | null
           headline?: string | null
@@ -1630,6 +1636,61 @@ export type Database = {
       }
     }
     Functions: {
+      append_further_reading_sent: {
+        Args: { p_destination: string; p_post: string; p_urls: string[] }
+        Returns: {
+          account_key: string | null
+          archived_at: string | null
+          author: string | null
+          canonical_url: string | null
+          comm_message_id: string | null
+          created_at: string
+          further_sent_instapaper: string[]
+          further_sent_reader: string[]
+          gist: string | null
+          gmail_message_id: string | null
+          headline: string | null
+          html: string | null
+          html_extracted: boolean
+          id: string
+          instapaper_bookmark_id: number | null
+          instapaper_sent_at: string | null
+          last_error: string | null
+          model: string | null
+          model_called_at: string | null
+          opened_at: string | null
+          overview: Json | null
+          prompt_version: number | null
+          publication_id: string | null
+          received_at: string
+          research_attempts: number
+          research_brief: string | null
+          research_delivered_at: string | null
+          research_error: string | null
+          research_fired_at: string | null
+          research_session_url: string | null
+          research_state: string | null
+          rfc822_message_id: string | null
+          site: string | null
+          source: string
+          summarize_attempts: number
+          summarized_at: string | null
+          summarizing_since: string | null
+          summary_state: string
+          text: string | null
+          text_swept_at: string | null
+          title: string
+          wiki_sent_evidence: string[]
+          wiki_sent_ideas: string[]
+          word_count: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "reader_posts"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       append_wiki_sent_ideas: {
         Args: { p_ideas: string[]; p_post: string }
         Returns: {
@@ -1639,6 +1700,8 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          further_sent_instapaper: string[]
+          further_sent_reader: string[]
           gist: string | null
           gmail_message_id: string | null
           headline: string | null
@@ -1692,6 +1755,8 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          further_sent_instapaper: string[]
+          further_sent_reader: string[]
           gist: string | null
           gmail_message_id: string | null
           headline: string | null
@@ -2061,6 +2126,8 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          further_sent_instapaper: string[]
+          further_sent_reader: string[]
           gist: string | null
           gmail_message_id: string | null
           headline: string | null

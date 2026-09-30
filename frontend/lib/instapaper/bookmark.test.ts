@@ -4,6 +4,8 @@ import {
   type BookmarkSource,
   addBookmark,
   buildBookmarkParams,
+  buildLinkBookmarkParams,
+  listFolders,
   restoreOrResave,
   sendFailureResponse,
   unarchiveBookmark,
@@ -431,6 +433,25 @@ describe('restoreOrResave', () => {
     });
   });
 
+  it('never uploads the article’s stored HTML — the text view it keeps for its links — on a resave', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }))
+      .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 79 }]))
+      .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }))
+      .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 80 }]));
+    const withHtml = { ...ARTICLE, html: '<h1>Instapaper’s text view</h1><a href="x">link</a>' };
+
+    await restoreOrResave(CONFIG, withHtml, 42);
+    await restoreOrResave(CONFIG, { ...withHtml, canonical_url: null }, 43);
+
+    // By URL: no content at all. With no URL: the stored text as paragraphs, never the HTML.
+    expect(forms(spy)[1]?.[1]).not.toHaveProperty('content');
+    expect(forms(spy)[3]?.[1]).toMatchObject({
+      content: '<p>The article, as Instapaper had it.</p>',
+    });
+  });
+
   it('is null when the bookmark is gone and there is nothing to save in its place', async () => {
     const spy = jest
       .spyOn(globalThis, 'fetch')
@@ -453,5 +474,84 @@ describe('restoreOrResave', () => {
       code: undefined,
     });
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildLinkBookmarkParams', () => {
+  const ITEM = {
+    url: 'https://substack.com/redirect/3d1f6a52-8b0e-4c7a-9e21-0a4f5c6d7e81',
+    title: 'The sim-to-real gap in dexterous manipulation',
+    note: 'The paper behind the lead item.',
+  };
+
+  it('saves the link by URL, titled by the model and described by its note, with no content', () => {
+    expect(buildLinkBookmarkParams(ITEM)).toEqual({
+      url: ITEM.url,
+      title: 'The sim-to-real gap in dexterous manipulation',
+      description: 'The paper behind the lead item.',
+    });
+  });
+
+  it('files it in a folder when given one — To Reader, for a send to the Reader', () => {
+    expect(buildLinkBookmarkParams(ITEM, 5_550_001)).toMatchObject({ folder_id: '5550001' });
+  });
+
+  it('leaves the description out when the note is blank, and never sets tags or resolve_final_url', () => {
+    const params = buildLinkBookmarkParams({ ...ITEM, note: '  ' });
+    expect(params).not.toHaveProperty('description');
+    expect(params).not.toHaveProperty('tags');
+    expect(params).not.toHaveProperty('resolve_final_url');
+    expect(params).not.toHaveProperty('content');
+  });
+});
+
+describe('listFolders', () => {
+  it('POSTs to folders/list on the API version the Worker uses, signed, with a timeout', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(Response.json([{ type: 'folder', folder_id: 12, title: 'To Reader' }]));
+
+    await listFolders(CONFIG);
+
+    const [url, init] = spy.mock.calls[0] ?? [];
+    expect(url).toBe('https://www.instapaper.com/api/1.1/folders/list');
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('Authorization')).toMatch(/^OAuth /);
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('reads the owner’s folders, skipping anything that is not one', async () => {
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json([
+          { type: 'meta' },
+          { type: 'folder', folder_id: 12, title: 'To Reader' },
+          { type: 'folder', folder_id: '13', title: 'To Wiki' },
+          { type: 'folder', title: 'No id' },
+        ]),
+      );
+
+    await expect(listFolders(CONFIG)).resolves.toEqual({
+      kind: 'listed',
+      folders: [
+        { folderId: 12, title: 'To Reader' },
+        { folderId: 13, title: 'To Wiki' },
+      ],
+    });
+  });
+
+  it('reads a refusal and a failure the way a save does', async () => {
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
+      .mockRejectedValueOnce(new Error('network down'));
+
+    await expect(listFolders(CONFIG)).resolves.toEqual({
+      kind: 'refused',
+      refusal: 'credentials',
+      code: undefined,
+    });
+    await expect(listFolders(CONFIG)).resolves.toEqual({ kind: 'unavailable', code: undefined });
   });
 });
