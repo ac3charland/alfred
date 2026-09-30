@@ -74,7 +74,7 @@ by whichever merged first.
 - **A clash already on `main`** (it got past the checks; every PR's `check-fast` is now red): rename
   the newer file if `migrate.yml` has not applied it yet; once both are applied, add the pair to
   `LEGACY_SHARED_NUMBERS` in its own PR, by exact filename.
-- **Two legacy pairs are grandfathered** (`0031`, `0041`) the same way, so a third file at either
+- **Three legacy pairs are grandfathered** (`0031`, `0041`, `0042`) the same way, so a third file at either
   number still fails. A unit test keeps their files on disk.
 - **A `.sql` file with no numeric prefix fails too:** the applier still runs it, sorted by name, but
   it can never be checked for a clash.
