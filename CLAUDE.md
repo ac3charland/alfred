@@ -5,6 +5,9 @@ full design lives in [`docs/specs/product/SPEC.md`](docs/specs/product/SPEC.md);
 architectural decisions. This file holds the **non-negotiable operating rules**
 for every agent (lead and teammates) working in this repo.
 
+**This repo is public: everything committed or pushed is published.** No credential ever goes
+in a tracked file, including a command a demo doc records (see the `secret-scan` skill).
+
 ## Monorepo at a glance
 
 npm workspaces, one repo so agents have full context:
@@ -84,10 +87,11 @@ reviewed decision instead of an ad-hoc bypass.
 The hooks enforce the suites automatically, so you do **not** need to run
 `check` manually before committing:
 
-- **pre-commit** → root `check:fast` (type-check → lint+format → unit).
-- **pre-push** → root `check:slow` (frontend Storybook snapshots + Playwright E2E). A
-  branch whose every change lives under `docs/` skips the package suites — see the
-  `backpressure` skill.
+- **pre-commit** → root `check:fast` (secret scan → type-check → lint+format → unit).
+- **pre-push** → secret scan of the commits being pushed (`lint:secrets:push`, fed by git's
+  stdin), then root `check:slow` (branch secret scan → frontend Storybook snapshots +
+  Playwright E2E). A branch whose every change lives under `docs/` skips the package suites —
+  see the `backpressure` skill.
 - **commit-msg** → commitlint (one-line Conventional Commits: subject + scope
   **required**, body and footer **always empty**, subject **lowercase**, e.g.
   `feat(backpressure): lowercase conventional commit`).
@@ -182,7 +186,9 @@ When you finish a task, **unless the user tells you not to**, wrap it up like th
      feature is done. **Link the demo doc as a _live, clickable_ link** in the description
      — generate it with `npm run demo -- pr-link docs/demos/<name>.md` (emits a GitHub blob
      URL on the head branch, **not** a bare path, so reviewers can open it and see the
-     embedded screenshots/diffs rendered). See the `showboat` skill.
+     embedded screenshots/diffs rendered). See the `showboat` skill. A **local** session (no
+     `claude.ai` session link) names its model in the description, since commit trailers are
+     forbidden and nothing else records it.
    - **A PR already exists?** (Including one you opened earlier this session, or one the
      UI/another agent created.) **Every time you push a change that alters what the PR does
      — a new commit, a follow-up fix, a rename, an added file — update the description in the

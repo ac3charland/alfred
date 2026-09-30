@@ -213,16 +213,16 @@ Owners: **You** = the repo owner; **Claude** = an agent session, delivered as a 
 
 | # | Priority | Action | Owner | Status |
 | --- | --- | --- | --- | --- |
-| R1 | P0 | Reset the database password, then work through Part A of the [Remediation guide](#remediation-guide): update the GitHub secret and `.env.local`, delete the cloud environment's `DATABASE_URL`. | You | Reset done; Part A open |
+| R1 | P0 | Reset the database password, then work through Part A of the [Remediation guide](#remediation-guide): update the GitHub secret and `.env.local`, delete the cloud environment's `DATABASE_URL`. | You | Reset done; A1–A3 done; A4 open |
 | R2 | P0 | Remediation guide Part B (drop old connections, legacy JWT check, your alfred login, integrity audit), then Part C. | You | Open |
-| R3 | P1 | **Add a secret-scanning gate:** secretlint with `@secretlint/secretlint-rule-preset-recommend`, as an `npm run` script inside `check:fast`, scanning every tracked file. Because CI also runs `check:fast`, commits made through the web UI or API are covered too. Remove the password from `phase-a.md` in the same PR so `main` stays green. Tested against this repo (Appendix B). | Claude | Open |
-| R4 | P1 | **Stop the leak at record time:** make `showboat exec` refuse to record a command or output that matches a secret pattern, pointing the author to R5. This catches the problem before anything reaches disk, not just at commit. | Claude | Open |
-| R5 | P1 | **Make the safe path the easy path:** add `npm run psql -w database -- -c "<sql>"`, which resolves the URL with the existing `resolveDatabaseUrl`. Demo commands then contain no secret and still reproduce for anyone with `.env.local`. | Claude | Open |
-| R6 | P2 | **Two lines of guidance:** in the showboat skill, "live-DB evidence goes through `npm run psql`, never an inlined URI"; in `CLAUDE.md`, "This repo is public: everything committed is published." | Claude | Open |
+| R3 | P1 | **Add a secret-scanning gate:** secretlint with `@secretlint/secretlint-rule-preset-recommend`, as an `npm run` script inside `check:fast`, scanning every tracked file. Because CI also runs `check:fast`, commits made through the web UI or API are covered too. Remove the password from `phase-a.md` in the same PR so `main` stays green. Tested against this repo (Appendix B). | Claude | Done (ALF-301) |
+| R4 | P1 | **Stop the leak at record time:** make `showboat exec` refuse to record a command or output that matches a secret pattern, pointing the author to R5. This catches the problem before anything reaches disk, not just at commit. | Claude | Done (ALF-301) |
+| R5 | P1 | **Make the safe path the easy path:** add `npm run psql -w database -- -c "<sql>"`, which resolves the URL with the existing `resolveDatabaseUrl`. Demo commands then contain no secret and still reproduce for anyone with `.env.local`. | Claude | Done (ALF-301) |
+| R6 | P2 | **Two lines of guidance:** in the showboat skill, "live-DB evidence goes through `npm run psql`, never an inlined URI"; in `CLAUDE.md`, "This repo is public: everything committed is published." | Claude | Done (ALF-301) |
 | R7 | P2 | **Least privilege:** a read-only role for local or agent inspection. Create it in a migration **without** a password, set the password by hand in the dashboard, and point `.env.local` at it. Keep the `postgres` password only in GitHub secrets. | You + Claude | Open |
 | R8 | P3 | Turn on GitHub secret scanning and push protection (repo **Settings → Advanced Security**), plus non-provider patterns if the repo offers them. This is extra protection, not the main control; GitHub did not catch this leak. | You | Open |
-| R9 | P3 | For locally run sessions, name the model in the PR description, since commit trailers are forbidden and there is no session link. | Claude | Open |
-| R10 | P2 | **Treat `SUPABASE_ACCESS_TOKEN` as the most sensitive value in the cloud environment** (factor 8). Keep it only if cloud sessions truly need Management API SQL. Otherwise delete it and add it to a single session when a task requires it. | You | Open |
+| R9 | P3 | For locally run sessions, name the model in the PR description, since commit trailers are forbidden and there is no session link. | Claude | Done (ALF-301) |
+| R10 | P2 | **Treat `SUPABASE_ACCESS_TOKEN` as the most sensitive value in the cloud environment** (factor 8). Keep it only if cloud sessions truly need Management API SQL. Otherwise delete it and add it to a single session when a task requires it. | You | Done 2026-09-29: removed from the cloud environment |
 
 R3–R5 are the core: **R5 removes the incentive, R4 catches mistakes at the source, R3 is the
 safety net.** R6 alone would repeat the mistake that caused this: relying on an agent to
@@ -286,5 +286,5 @@ Run over every tracked file with secretlint 13.0.6 and `preset-recommend`:
 - **False positives:** two placeholder templates, `.claude/skills/supabase/SKILL.md:401` and
   `frontend/.env.example:30`. Both contain `:<password>@`, and both are cleared by one rule
   option: `"allows": ["/:<password>@/"]`.
-- **Passes:** `psql "$DATABASE_URL" -c "…"`, the form R5 and R6 steer toward.
+- **Passes:** `npm run psql -w database -- -c "…"`, the form R5 and R6 steer toward. Raw `psql "$DATABASE_URL" -c "…"` also passes the scan but is not equivalent: psql receives the full URI, password included, on its argv (visible in `ps`), and the URL has to be exported into the shell.
 - GitHub's own scanning API could not be tested: the repo has no Advanced Security.

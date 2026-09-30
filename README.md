@@ -50,7 +50,7 @@ Fill in `frontend/.env.local` (Supabase → Project Settings):
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | API → `sb_publishable_…` key | public, client-safe |
 | `SUPABASE_SERVICE_ROLE_KEY` | API → `sb_secret_…` key | **server-only**, bypasses RLS |
 | `INGEST_API_KEY` | generate: `openssl rand -hex 32` | server-only; the Siri ingress secret |
-| `DATABASE_URL` | Database → Connection string → **Direct connection** (URI) | migrations/types only |
+| `DATABASE_URL` | Database → Connection string → **Direct connection** (URI) | migrations and ad-hoc `psql` only |
 
 `.env.local` is gitignored — never commit real secrets.
 
@@ -68,14 +68,22 @@ unaffected. The ratio needs at least two projects, the chart one:
 
 ### 3. Apply the database schema
 
-From your machine (the **Direct connection** is IPv6 and works from a normal network):
+Migrations are applied by CI on every merge to `main`
+([`database/README.md`](database/README.md#applying-on-merge-the-default-path)). To set up a new
+(empty) project from your machine, run the same applier — it applies every migration in order
+(the **Direct connection** is IPv6 and works from a normal network):
 
 ```bash
-# Schema: enums, items/folders, recursive functions, RLS policies
-psql "$DATABASE_URL" -f database/migrations/0001_initial_schema.sql
+npm run deploy -w database
+```
 
-# Optional dev seed (two folders + a 3-level subtask tree)
-psql "$DATABASE_URL" -f database/seed.sql
+Optional dev seed (two folders + a 3-level subtask tree). `psql` goes through the wrapper, which
+reads `DATABASE_URL` from `frontend/.env.local` and passes the password as `PGPASSWORD`, so it
+never appears on the command line. `npm run … -w database` runs with `database/` as the working
+directory, hence the path is relative to it:
+
+```bash
+npm run psql -w database -- -f seed.sql
 ```
 
 No `psql`? Any Postgres client works, or paste each file into the Supabase **SQL Editor**.

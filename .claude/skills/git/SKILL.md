@@ -25,6 +25,12 @@ Set these before any commit session:
 git config user.email noreply@anthropic.com && git config user.name Claude
 ```
 
+**A test that commits in a temp repo sets that repo's own identity** (`git config user.name t`
+and `user.email` right after `git init`). The CI runner has no global identity, so anything
+relying on this machine's — including `git merge --no-commit`, which demands one even though it
+commits nothing — passes locally and fails in CI. Reproduce with `HOME=$(mktemp -d)
+GIT_CONFIG_NOSYSTEM=1 npm run test -w <pkg>`.
+
 ## First rule out the false alarm: an unpushed tip mid-`check:slow`
 
 The stop hook flags commits not yet on `origin`. A `git push` runs the **pre-push gate

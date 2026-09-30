@@ -1,4 +1,8 @@
 # Git exports GIT_DIR / GIT_INDEX_FILE into hooks. A test that `git init`s a temp repo would
 # inherit them and write to THIS repo instead — see the commitlint skill.
 unset $(git rev-parse --local-env-vars)
+# Scan the commits actually being pushed (git feeds "<local ref> <local sha> <remote ref> <remote
+# sha>" lines on stdin, "$1" is the remote), which need not be the checked-out branch. The branch scan
+# inside check:slow only sees HEAD.
+npm run --silent lint:secrets:push -w tools/secret-scan -- "$1"
 npm run check:slow

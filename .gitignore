@@ -22,10 +22,12 @@ stryker.log
 **/__diff_output__/
 **/__received_output__/
 
-# Local env files — real secrets, never commit. Tracked: *.example
-.env
-.env.local
-.env.*.local
+# Claude Code's per-machine settings: approved commands land here verbatim, credentials included.
+.claude/settings.local.json
+
+# Local env files — real secrets, never commit (any `.env*`, not just `.local`: a `.env.production`
+# holds the same credentials). Tracked: *.example
+.env*
 !.env.example
 !.env.*.example
 # The Worker's local secrets (dotenv format, read by `wrangler dev`). It holds the same values

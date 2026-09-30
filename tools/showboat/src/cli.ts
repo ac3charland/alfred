@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
 import {
+  SecretError,
+  UsageError,
   type VerifyResult,
   currentBranch,
   exec,
@@ -39,9 +41,6 @@ Global options:
 
 In this repo, run it through the root script: npm run demo -- <command> ...
 `;
-
-/** A usage problem the caller should fix; reported to stderr with exit code 2. */
-class UsageError extends Error {}
 
 function fail(message: string): never {
   throw new UsageError(message);
@@ -134,20 +133,20 @@ async function main(argv: readonly string[]): Promise<number> {
       if (!file || !title) fail('usage: showboat init <file> <title> [--branch <name>]');
       // Stamp the current branch into front matter so the folder name can be a
       // semantic feature name; --branch overrides the detected branch.
-      init(file, title, { branch: branchOption ?? currentBranch() });
+      await init(file, title, { branch: branchOption ?? currentBranch() });
       return 0;
     }
     case 'note': {
       const [file, ...textParts] = rest;
       if (!file) fail('usage: showboat note <file> [text]');
-      note(file, textParts.length > 0 ? textParts.join(' ') : readStdin());
+      await note(file, textParts.length > 0 ? textParts.join(' ') : readStdin());
       return 0;
     }
     case 'exec': {
       const [file, lang, ...codeParts] = rest;
       if (!file || !lang) fail('usage: showboat exec <file> <lang> [code]');
       const code = codeParts.length > 0 ? codeParts.join(' ') : readStdin();
-      const result = exec(file, lang, code, workdir);
+      const result = await exec(file, lang, code, workdir);
       if (result.output.length > 0) process.stdout.write(`${result.output}\n`);
       return result.status;
     }
@@ -155,7 +154,7 @@ async function main(argv: readonly string[]): Promise<number> {
       const [file, ...imageParts] = rest;
       const argument = imageParts.join(' ');
       if (!file || !argument) fail('usage: showboat image <file> <path|markdown>');
-      image(file, argument);
+      await image(file, argument);
       return 0;
     }
     case 'video': {
@@ -167,14 +166,14 @@ async function main(argv: readonly string[]): Promise<number> {
     case 'pop': {
       const [file] = rest;
       if (!file) fail('usage: showboat pop <file>');
-      pop(file);
+      await pop(file);
       return 0;
     }
     case 'verify': {
       const { value: outputFile, rest: positional2 } = takeOption(rest, '--output');
       const [file] = positional2;
       if (!file) fail('usage: showboat verify <file> [--output <file>]');
-      const result = verify(file, workdir, outputFile);
+      const result = await verify(file, workdir, outputFile);
       reportVerify(file, result);
       return result.ok ? 0 : 1;
     }
@@ -203,6 +202,9 @@ try {
   if (error instanceof UsageError) {
     process.stderr.write(`showboat: ${error.message}\n`);
     process.exitCode = 2;
+  } else if (error instanceof SecretError) {
+    process.stderr.write(`showboat: ${error.message}\n`);
+    process.exitCode = 1;
   } else {
     throw error;
   }

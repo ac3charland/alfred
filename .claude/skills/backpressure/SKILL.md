@@ -27,14 +27,14 @@ A check's **scope** — the files it's responsible for — decides where it's wi
   A workspace `check:slow` may stand up an external service — the `database` package's
   `check:slow` runs the real-Postgres integration suite (it spins a throwaway cluster).
 
-- **Monorepo-wide:** a check whose scope is the *whole repo* — `skill-lint` over all of
-  `.claude/skills/`, `demo-lint` over all of `docs/demos/`. It goes **explicitly in the root**
-  `check:fast` / `check:slow`, composed around the fan-out with `&&`:
+- **Monorepo-wide:** a check whose scope is the *whole repo* — `secret-scan` over every
+  committable file, `skill-lint` over all of `.claude/skills/`, `demo-lint` over all of `docs/demos/`. It goes
+  **explicitly in the root** `check:fast` / `check:slow`, composed around the fan-out with `&&`:
 
   ```jsonc
   // root package.json
-  "check:fast": "npm run lint:skills -w tools/skill-lint && npm run lint:migrations -w tools/migration-lint && npm run check:fast --workspaces --if-present",
-  "check:slow": "npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
+  "check:fast": "npm run lint:secrets -w tools/secret-scan && npm run lint:skills -w tools/skill-lint && npm run lint:migrations -w tools/migration-lint && npm run check:fast --workspaces --if-present",
+  "check:slow": "npm run lint:secrets:branch -w tools/secret-scan && npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
   ```
 
 The tool that *implements* a repo-wide check is usually itself a workspace (e.g.
@@ -77,6 +77,9 @@ The hooks (see the `commitlint` skill) map tiers to git events:
   needed until right before the PR, so gating it per-push instead of per-commit keeps it from
   **harassing an agent committing as it goes**. (It also can't run earlier than it does: it
   reads the git branch to check the branch owns a demo doc.)
+  The pre-push hook also runs `lint:secrets:push` ahead of the tier: it needs git's pre-push
+  stdin (the refs being pushed), which CI doesn't have, so it lives in the hook and
+  `lint:secrets:branch` stays in `check:slow`.
 
 Put a check in the **earliest tier where it's actually relevant** — fast feedback is the point,
 but a check that's only needed at push/PR time, or that costs seconds, belongs in slow so it
@@ -91,11 +94,11 @@ Playwright flow, or the database integration suite, so those minutes buy nothing
 
 ```jsonc
 // root package.json
-"check:slow": "npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
+"check:slow": "npm run lint:secrets:branch -w tools/secret-scan && npm run lint:demos -w tools/demo-lint && node tools/check-scope/src/cli.ts npm run check:slow --workspaces --if-present",
 ```
 
-Only the fan-out is wrapped — `demo-lint` stays ahead of it, because a docs-only push is exactly
-when it has something to say. One wiring serves both callers of the tier: the pre-push hook and
+Only the fan-out is wrapped — the branch secret scan and `demo-lint` stay ahead of it, because a
+docs-only push is exactly when they have something to say. One wiring serves both callers of the tier: the pre-push hook and
 CI's `check-slow` job.
 
 **Every uncertain case runs the full tier**: an unknown diff (no git, no usable trunk ref), an
