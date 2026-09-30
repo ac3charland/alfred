@@ -50,7 +50,7 @@ adds history and everything after the session (PR outcomes):
 | Columns | What they are |
 | --- | --- |
 | `configured_model`, `model`, `served_model`, `effort_level` | what was picked, and what actually served the last turn (a fallback shows as a mismatch) |
-| `cost_usd`, `*_tokens` | API-equivalent cost and tokens. Recorded rows: whole-session totals, subagents included, priced by alfred from `model_price_history`. Backfill-only rows (`recorded_at` null): the session record's, whose subagent coverage is unconfirmed |
+| `cost_usd`, `*_tokens` | API-equivalent cost and tokens. Recorded rows: whole-session totals, subagents included as far as their transcripts show (`subagent_usage_partial` when not; no cost then), priced by alfred from `model_price_history`. Backfill-only rows (`recorded_at` null): the session record's, whose subagent coverage is unconfirmed |
 | `usage_by_model`, `subagent_count`, `recorded_at` | recorded rows only: tokens per model split main thread vs subagents, and the last hook write |
 | `launch_lane`, `ref` | which launch prompt started it, inferred from the PR's `alfred` block |
 | `pr_state`, `pr_*_at`, `human_commits_after_open` | the outcome: merged or not, and owner rework after the PR opened |
