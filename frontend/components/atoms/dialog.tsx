@@ -3,8 +3,10 @@
 import { type VariantProps, cva } from 'class-variance-authority';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 import { CloseButton } from '@/components/atoms/close-button';
+import { useVisualViewport } from '@/lib/hooks/use-visual-viewport';
 import { cn } from '@/lib/utils';
 
 /**
@@ -179,6 +181,154 @@ export function FullScreenDialog({
             <DialogCloseButton label={closeLabel} />
           </div>
           <div className="min-h-0 flex-1">{children}</div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+interface SheetFooterContextValue {
+  /** The footer element once it has mounted, `null` on the very first render. */
+  element: HTMLElement | null;
+  /** True while at least one editor holds the footer. */
+  claimed: boolean;
+  /** Take the footer for an editor; returns the release. */
+  claim: () => () => void;
+}
+
+const SheetFooterContext = React.createContext<SheetFooterContextValue | null>(null);
+
+/**
+ * The sheet's footer element, for an editor that draws its own action bar there (a
+ * `TextareaField`'s `actionsTarget`). `null` outside a sheet, and for the render before the
+ * footer has mounted.
+ */
+export function useSheetFooterElement(): HTMLElement | null {
+  return React.useContext(SheetFooterContext)?.element ?? null;
+}
+
+/**
+ * Hold the sheet's footer while `active` and the calling component are mounted, which hides
+ * the resting {@link SheetFooter} content so the editor's own bar has the footer to itself. A
+ * no-op outside a sheet.
+ */
+export function useSheetFooterClaim(active: boolean): void {
+  const claim = React.useContext(SheetFooterContext)?.claim;
+  React.useEffect(() => {
+    if (!active || claim === undefined) return;
+    return claim();
+  }, [active, claim]);
+}
+
+/**
+ * The sheet's resting footer content (a story's action bar): portalled into the sheet's footer
+ * element and hidden while an editor holds it, so the sheet has one bottom bar whatever is
+ * going on. Renders nothing outside a {@link SheetDialog}.
+ */
+export function SheetFooter({ children }: { children: React.ReactNode }) {
+  const sheet = React.useContext(SheetFooterContext);
+  if (sheet?.element == null || sheet.claimed) return null;
+  return createPortal(children, sheet.element);
+}
+
+export interface SheetDialogProperties extends React.ComponentPropsWithoutRef<
+  typeof DialogPrimitive.Content
+> {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Extra classes for the overlay — pass `z-[55]` here to match a deeper stacking context. */
+  overlayClassName?: string | undefined;
+}
+
+/**
+ * A full-bleed sheet sized to the part of the screen the user can see: the same
+ * `Root → Portal → Overlay → Content` scaffold as `FormDialog`, but the content fills the
+ * screen (no radius, border or padding) and tracks `window.visualViewport`, so a phone's
+ * on-screen keyboard shortens it instead of covering its lower half. That is what
+ * {@link FullScreenDialog}'s `100dvh` cannot do: iOS Safari doesn't shrink `dvh` for the keyboard.
+ * Where the API is absent the sheet falls back to `top-0 h-[100dvh]`.
+ *
+ * `children` are the header and the scrolling body (`min-h-0 flex-1 overflow-y-auto`); after them
+ * the sheet renders an always-present, `shrink-0` footer. A story's resting action bar goes there
+ * through {@link SheetFooter}; an editor draws its own bar in it via {@link useSheetFooterElement}
+ * and {@link useSheetFooterClaim}. Because the footer sits outside the scrolling body, scrolling
+ * to the end always leaves the last line of the content above it.
+ *
+ * When the visible viewport changes and a text field inside has focus, the field is scrolled
+ * into view — the sheet just resized under it.
+ */
+export function SheetDialog({
+  open,
+  onOpenChange,
+  className,
+  overlayClassName,
+  style,
+  children,
+  ...contentProps
+}: SheetDialogProperties) {
+  const viewport = useVisualViewport();
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const [footer, setFooter] = React.useState<HTMLElement | null>(null);
+  const [claims, setClaims] = React.useState(0);
+
+  const claim = React.useCallback(() => {
+    setClaims((count) => count + 1);
+    return () => {
+      setClaims((count) => count - 1);
+    };
+  }, []);
+  const footerContext = React.useMemo(
+    () => ({ element: footer, claimed: claims > 0, claim }),
+    [footer, claims, claim],
+  );
+
+  // The keyboard just resized the sheet (or iOS panned the viewport to a focused field): bring
+  // the focused field back into view once the new height has laid out. `nearest` scrolls no
+  // further than needed, and the browser's own caret-following takes over as the user types.
+  // The first reading is not a change, so only a later one schedules the scroll.
+  const lastViewport = React.useRef(viewport);
+  React.useEffect(() => {
+    if (lastViewport.current === viewport) return;
+    lastViewport.current = viewport;
+    if (viewport === null) return;
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)) return;
+      if (contentRef.current?.contains(active) !== true) return;
+      // `scrollIntoView` is unimplemented under jsdom, so feature-detect it.
+      if (typeof active.scrollIntoView === 'function') active.scrollIntoView({ block: 'nearest' });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [viewport]);
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogOverlay className={overlayClassName} />
+        <DialogPrimitive.Content
+          ref={contentRef}
+          className={cn(
+            'fixed inset-x-0 z-50 flex w-screen flex-col bg-surface',
+            viewport === null && 'top-0 h-[100dvh]',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none',
+            className,
+          )}
+          style={
+            viewport === null
+              ? style
+              : { ...style, top: viewport.offsetTop, height: viewport.height }
+          }
+          // No description anywhere — silences the Radix warning without inventing prose.
+          aria-describedby={undefined}
+          {...contentProps}
+        >
+          <SheetFooterContext value={footerContext}>
+            {children}
+            <div ref={setFooter} data-sheet-footer="" className="shrink-0" />
+          </SheetFooterContext>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
