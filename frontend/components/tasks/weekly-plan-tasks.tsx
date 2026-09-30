@@ -11,8 +11,9 @@ import { planProgress } from '@/lib/tasks/weekly-plan-tasks';
 const PLANNED_TASKS = 'Planned tasks';
 
 /**
- * The work a week plan produced (ALF-235): every top-level item the weekly review created against
- * `planId`, in the order the review wrote them, under an "N of M tasks done" tally.
+ * The work a week plan produced (ALF-235): every task the weekly review created against `planId`,
+ * in the order the review wrote them, under an "N of M tasks done" tally. See `plannedRoots` for
+ * which rows count.
  *
  * Rows are {@link TriageRow}s, like the other cross-cutting lists: a checkbox to tick work off,
  * a chevron for subtasks, the folder the row lives in. Unlike Today and By Priority there is no
@@ -34,8 +35,8 @@ export function WeeklyPlanTasks({ planId }: { planId: string }) {
           {PLANNED_TASKS}
         </h3>
         {total > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {`${String(done)} of ${String(total)} tasks done`}
+          <p aria-live="polite" className="text-xs text-muted-foreground">
+            {`${String(done)} of ${String(total)} ${total === 1 ? 'task' : 'tasks'} done`}
           </p>
         )}
       </div>
@@ -54,7 +55,7 @@ export function WeeklyPlanTasks({ planId }: { planId: string }) {
         </ul>
       ) : (
         <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Nothing has been created from this plan yet. Items the weekly review creates against it
+          No tasks have been created from this plan yet. Tasks the weekly review creates against it
           show up here.
         </p>
       )}

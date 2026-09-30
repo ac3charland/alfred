@@ -139,7 +139,9 @@ export function WeeklyPlanView() {
                 html={selected.html}
                 className={cn(
                   'w-full rounded-md border border-border/60 transition-[height] duration-300 ease-out motion-reduce:transition-none',
-                  isExpanded ? 'h-[80vh]' : 'h-72',
+                  // The expanded height is md+ only, like its toggle: below md there is no control
+                  // to collapse it again, so the preview holds whatever the state says.
+                  isExpanded ? 'h-72 md:h-[80vh]' : 'h-72',
                 )}
               />
 

@@ -307,7 +307,7 @@ describe('WeeklyPlanView', () => {
 
       const frame = screen.getByTestId('weekly-plan-html');
       expect(frame).toHaveClass('h-72');
-      expect(frame).not.toHaveClass('h-[80vh]');
+      expect(frame).not.toHaveClass('md:h-[80vh]');
     });
 
     it('expands to full height and collapses back', async () => {
@@ -323,8 +323,9 @@ describe('WeeklyPlanView', () => {
         'aria-expanded',
         'true',
       );
-      expect(screen.getByTestId('weekly-plan-html')).toHaveClass('h-[80vh]');
-      expect(screen.getByTestId('weekly-plan-html')).not.toHaveClass('h-72');
+      // Gated to md+ like the toggle itself: shrink the window below md while expanded and the
+      // frame falls back to the preview rather than sticking at 80vh with no control to undo it.
+      expect(screen.getByTestId('weekly-plan-html')).toHaveClass('h-72', 'md:h-[80vh]');
 
       await user.click(screen.getByRole('button', { name: COLLAPSE }));
 
@@ -332,7 +333,7 @@ describe('WeeklyPlanView', () => {
         'aria-expanded',
         'false',
       );
-      expect(screen.getByTestId('weekly-plan-html')).toHaveClass('h-72');
+      expect(screen.getByTestId('weekly-plan-html')).not.toHaveClass('md:h-[80vh]');
     });
 
     it('names the frame as the region the toggle controls', () => {
@@ -405,6 +406,44 @@ describe('WeeklyPlanView', () => {
       expect(screen.getByText('1 of 2 tasks done')).toBeInTheDocument();
     });
 
+    it('lists tasks only — code, knowledge and untyped rows stay out of the list and tally', () => {
+      renderView([LATEST], {
+        tasks: [
+          makeItem('A task', { weekly_plan_id: LATEST.id }),
+          makeItem('A code story', { weekly_plan_id: LATEST.id, item_type: 'code' }),
+          makeItem('A note', { weekly_plan_id: LATEST.id, item_type: 'knowledge' }),
+          makeItem('Not typed yet', { weekly_plan_id: LATEST.id, item_type: 'unclassified' }),
+        ],
+      });
+
+      expect(plannedTitles()).toStrictEqual(['A task']);
+      expect(screen.getByText('0 of 1 task done')).toBeInTheDocument();
+    });
+
+    it('announces the tally as it moves', () => {
+      renderView([LATEST], { tasks: [makeItem('A task', { weekly_plan_id: LATEST.id })] });
+
+      expect(screen.getByText('0 of 1 task done')).toHaveAttribute('aria-live', 'polite');
+    });
+
+    it('keeps finished subtasks under their parent, struck through', async () => {
+      const user = userEvent.setup();
+      renderView([LATEST], {
+        tasks: [
+          makeItem('Launch', { id: 'root', weekly_plan_id: LATEST.id }),
+          makeItem('Booked the venue', {
+            parent_id: 'root',
+            weekly_plan_id: LATEST.id,
+            status: 'completed',
+          }),
+        ],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Expand subtasks' }));
+
+      expect(screen.getByRole('link', { name: 'Booked the venue' })).toHaveClass('line-through');
+    });
+
     it('ticks a task off in place and moves the progress', async () => {
       mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
       const user = userEvent.setup();
@@ -412,7 +451,7 @@ describe('WeeklyPlanView', () => {
         tasks: [makeItem('Pay the invoice', { id: 'inv', weekly_plan_id: LATEST.id })],
       });
 
-      expect(screen.getByText('0 of 1 tasks done')).toBeInTheDocument();
+      expect(screen.getByText('0 of 1 task done')).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'Mark "Pay the invoice" complete' }));
 
@@ -421,7 +460,7 @@ describe('WeeklyPlanView', () => {
       });
       // Still listed — the week plan is a record of the week, not a to-do queue.
       expect(screen.getByRole('link', { name: 'Pay the invoice' })).toHaveClass('line-through');
-      expect(screen.getByText('1 of 1 tasks done')).toBeInTheDocument();
+      expect(screen.getByText('1 of 1 task done')).toBeInTheDocument();
     });
 
     it('reveals a planned task’s subtasks on expand', async () => {
@@ -477,7 +516,9 @@ describe('WeeklyPlanView', () => {
       renderView([LATEST], { tasks: [makeItem('An ordinary capture')] });
 
       expect(screen.queryByRole('list', { name: LIST })).not.toBeInTheDocument();
-      expect(screen.getByText(/nothing has been created from this plan yet/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/no tasks have been created from this plan yet/i),
+      ).toBeInTheDocument();
     });
 
     it('has no task section in the empty state — there is no plan to hang it off', () => {

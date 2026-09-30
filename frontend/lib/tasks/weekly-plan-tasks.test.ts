@@ -1,6 +1,6 @@
 import type { Item } from '@/lib/types';
 
-import { buildTree } from '../tree';
+import { type ItemNode, buildTree } from '../tree';
 import { planProgress, plannedRoots } from './weekly-plan-tasks';
 
 const PLAN = 'plan-this-week';
@@ -65,13 +65,59 @@ describe('plannedRoots', () => {
     expect(titles(plannedRoots(roots, PLAN))).toStrictEqual(['First', 'Second', 'Third']);
   });
 
-  it('keeps completed items — a week plan shows what got done', () => {
+  it('keeps completed items in their plan position — a week plan shows what got done', () => {
     const roots = buildTree([
-      item('Done', { weekly_plan_id: PLAN, status: 'completed' }),
-      item('Open', { weekly_plan_id: PLAN }),
+      item('Third', { weekly_plan_id: PLAN, created_at: '2026-07-24T12:00:00.000Z' }),
+      item('Second, done', {
+        weekly_plan_id: PLAN,
+        status: 'completed',
+        created_at: '2026-07-24T12:00:00.001Z',
+      }),
+      item('First', { weekly_plan_id: PLAN, created_at: '2026-07-24T12:00:00.002Z' }),
     ]);
 
-    expect(titles(plannedRoots(roots, PLAN))).toStrictEqual(['Open', 'Done']);
+    expect(titles(plannedRoots(roots, PLAN))).toStrictEqual(['First', 'Second, done', 'Third']);
+  });
+
+  it('sorts into plan order itself rather than trusting its input order', () => {
+    const node = (title: string, createdAt: string): ItemNode => ({
+      ...item(title, { weekly_plan_id: PLAN, created_at: createdAt }),
+      children: [],
+    });
+
+    const roots = [
+      node('Last', '2026-07-24T12:00:00.000Z'),
+      node('First', '2026-07-24T12:00:00.002Z'),
+      node('Middle', '2026-07-24T12:00:00.001Z'),
+    ];
+
+    expect(titles(plannedRoots(roots, PLAN))).toStrictEqual(['First', 'Middle', 'Last']);
+  });
+
+  it('lists tasks only — code, knowledge and untyped rows stay out', () => {
+    const roots = buildTree([
+      item('Task', { weekly_plan_id: PLAN }),
+      item('Code story', { weekly_plan_id: PLAN, item_type: 'code' }),
+      item('Note', { weekly_plan_id: PLAN, item_type: 'knowledge' }),
+      item('Untyped', { weekly_plan_id: PLAN, item_type: 'unclassified' }),
+    ]);
+
+    expect(titles(plannedRoots(roots, PLAN))).toStrictEqual(['Task']);
+  });
+
+  it('still lists a planned task after it is re-nested under an unplanned one', () => {
+    // A drag can file a planned root under an ordinary task; it is still this week's work.
+    const roots = buildTree([
+      item('Ordinary parent'),
+      item('Planned, moved', {
+        weekly_plan_id: PLAN,
+        parent_id: 'Ordinary parent',
+        created_at: '2026-07-24T12:00:00.000Z',
+      }),
+      item('Planned root', { weekly_plan_id: PLAN, created_at: '2026-07-24T12:00:00.001Z' }),
+    ]);
+
+    expect(titles(plannedRoots(roots, PLAN))).toStrictEqual(['Planned root', 'Planned, moved']);
   });
 
   it('carries each root with its whole subtree, including subtasks added after planning', () => {
@@ -104,18 +150,6 @@ describe('planProgress', () => {
     ]);
 
     expect(planProgress(plannedRoots(roots, PLAN))).toStrictEqual({ done: 1, total: 3 });
-  });
-
-  it('leaves out rows that cannot be ticked off, so the week can reach total', () => {
-    // A knowledge row (or one the classifier hasn't typed yet) has no checkbox; counting it
-    // would pin the week below 100% no matter what got done.
-    const roots = buildTree([
-      item('Task', { weekly_plan_id: PLAN, status: 'completed' }),
-      item('Note', { weekly_plan_id: PLAN, item_type: 'knowledge' }),
-      item('Untyped', { weekly_plan_id: PLAN, item_type: 'unclassified' }),
-    ]);
-
-    expect(planProgress(plannedRoots(roots, PLAN))).toStrictEqual({ done: 1, total: 1 });
   });
 
   it('counts roots only — subtasks roll up into their parent', () => {

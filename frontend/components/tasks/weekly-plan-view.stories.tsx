@@ -115,8 +115,8 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * Several weeks archived: the picker lists them newest-first, labelled by upload date. Under the
- * document preview sit the items this week's review created — a finished one struck through, a
- * parent with subtasks, a knowledge row the tally leaves out.
+ * document preview sit the tasks this week's review created — a finished one struck through, a
+ * parent with subtasks. The knowledge row it also created stays out of the list.
  */
 export const Populated: Story = {
   parameters: {
@@ -128,12 +128,10 @@ export const Populated: Story = {
   },
 };
 
-/** A plan posted but nothing created against it yet: the list explains itself. */
-export const NothingCreated: Story = {
-  parameters: { store: { weeklyPlans: { index: [summary(LATEST)], latest: LATEST } } },
-};
-
-/** A single upload — nothing to pick between, so the picker is hidden. */
+/**
+ * A single upload with nothing created against it yet: no picker (nothing to pick between), and
+ * the task list's empty state explains itself.
+ */
 export const SinglePlan: Story = {
   parameters: { store: { weeklyPlans: { index: [summary(LATEST)], latest: LATEST } } },
 };
