@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { jest } from '@jest/globals';
@@ -26,7 +27,7 @@ function migrations(...names: string[]): void {
 }
 
 function lint(...options: string[]): { code: number | null; stdout: string; stderr: string } {
-  const result = spawnSync('node', [CLI, ...options, dir], { encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [CLI, ...options, dir], { encoding: 'utf8' });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
@@ -78,7 +79,7 @@ describe('migration-lint CLI', () => {
 
     it('rejects a missing rule name', () => {
       migrations('0001_a.sql');
-      const result = spawnSync('node', [CLI, dir, '--rule'], { encoding: 'utf8' });
+      const result = spawnSync(process.execPath, [CLI, dir, '--rule'], { encoding: 'utf8' });
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('--rule needs a rule name');
     });

@@ -261,22 +261,39 @@ describe('unique-number', () => {
     expect(finding?.message).toContain('0042_add_tags.sql');
   });
 
-  it('tells the author the next free number and not to rename what is already on main', () => {
+  it('tells the author to renumber everything their branch added, in order', () => {
+    // Renaming only the colliding file can move it past a later migration of the same branch that
+    // depends on it (0003_create -> 0005 would run after 0004_alter), so the advice is all of them.
+    const [finding] = findingsFor(
+      'unique-number',
+      migrationsNamed(
+        '0002_b.sql',
+        '0003_main_other.sql',
+        '0003_branch_create.sql',
+        '0004_branch_alter.sql',
+      ),
+    );
+    expect(finding?.message).toMatch(/renumber every migration your branch added/i);
+    expect(finding?.message).toContain('keeping their');
+    expect(finding?.message).toContain('origin/main');
+  });
+
+  it('says what to do when the clash is already on main, and never to rename an applied file', () => {
     const [finding] = findingsFor(
       'unique-number',
       migrationsNamed('0041_a.sql', '0042_add_color.sql', '0042_add_tags.sql'),
     );
-    expect(finding?.message).toContain('0043');
+    expect(finding?.message).toContain('added neither');
+    expect(finding?.message).toContain('migration-lint skill');
     // The ledger is keyed by filename: renaming an applied file re-runs it on the next deploy.
-    expect(finding?.message).toMatch(/never rename a migration that is already on main/i);
+    expect(finding?.message).toMatch(/never rename a migration that is applied/i);
   });
 
-  it('proposes a number above every migration, not just above the colliding pair', () => {
-    const [finding] = findingsFor(
-      'unique-number',
-      migrationsNamed('0001_a.sql', '0001_b.sql', '0007_c.sql'),
-    );
-    expect(finding?.message).toContain('0008');
+  it('describes the order hazard accurately: filename order for a fresh database, merge order for production', () => {
+    const [finding] = findingsFor('unique-number', migrationsNamed('0001_a.sql', '0001_b.sql'));
+    expect(finding?.message).toContain('production');
+    expect(finding?.message).toContain('merged first');
+    expect(finding?.message).not.toContain('alphabet');
   });
 
   it('compares numbers, not spellings — 42_x.sql and 0042_y.sql collide', () => {
@@ -292,10 +309,17 @@ describe('unique-number', () => {
     expect(findings[0]?.message).toContain('0005_c.sql');
   });
 
-  it('ignores a file with no numeric prefix', () => {
-    expect(
-      findingsFor('unique-number', migrationsNamed('0001_a.sql', 'notes.sql', 'extra.sql')),
-    ).toHaveLength(0);
+  it('errors on a .sql file with no numeric prefix — the applier still runs it', () => {
+    // migrationFiles() in the applier takes every *.sql, so a misnamed file is applied but can never
+    // be checked for a clash. A leading space even sorts it before 0001.
+    const findings = findingsFor(
+      'unique-number',
+      migrationsNamed('0001_a.sql', ' 0002_e.sql', 'V0002_c.sql', 'notes.sql'),
+    );
+    expect(findings).toHaveLength(3);
+    for (const finding of findings) expect(finding.severity).toBe('error');
+    expect(findings.map((finding) => finding.message).join('\n')).toContain('V0002_c.sql');
+    expect(findings[0]?.message).toContain('must start with its number');
   });
 
   it('tolerates the two legacy pairs already applied in production', () => {

@@ -26,8 +26,9 @@ Rules:
                      calling role, which needs USAGE on the sequence or the insert
                      500s with "permission denied for sequence".
   ✗ unique-number  — no two migrations may share a NNNN number (the two legacy pairs
-                     already applied in production are tolerated). Rename the file your
-                     branch added to the next free number; never rename one on main.
+                     already applied in production are tolerated), and every .sql name
+                     must start with one. Renumber what your branch added; never rename
+                     a migration that is applied.
 
 In this repo, run it through the package script: npm run lint:migrations -w tools/migration-lint
 `;

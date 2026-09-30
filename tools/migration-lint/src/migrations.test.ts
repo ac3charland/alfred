@@ -10,6 +10,7 @@ import {
   parseSql,
   stripNonCode,
 } from './migrations.ts';
+import { LEGACY_SHARED_NUMBERS } from './rules.ts';
 
 describe('stripNonCode', () => {
   it('removes a line comment so its text never counts as code', () => {
@@ -160,6 +161,16 @@ describe('gatherMigrations against the real migrations', () => {
       (finding) => finding.rule === 'unique-number',
     );
     expect(findings).toEqual([]);
+  });
+});
+
+describe('the grandfathered legacy pairs', () => {
+  it('are all still on disk — renaming an applied migration would make production re-run it', () => {
+    // A renamed legacy file would leave LEGACY_SHARED_NUMBERS naming a file that no longer exists,
+    // and the unique-number rule alone would stay green.
+    const { migrationFiles } = gatherMigrations(DEFAULT_MIGRATIONS_DIR);
+    const grandfathered = [...LEGACY_SHARED_NUMBERS.values()].flatMap((names) => [...names]);
+    expect(grandfathered.filter((name) => !migrationFiles.includes(name))).toEqual([]);
   });
 });
 

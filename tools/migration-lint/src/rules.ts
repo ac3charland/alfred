@@ -107,25 +107,32 @@ function formatNumber(number: number): string {
 }
 
 /**
- * No two migrations may share a number. Migrations apply in filename order and the ledger is keyed
- * by filename, so a shared number never crashes the applier — it silently leaves the pair's relative
- * order to the alphabet. It happens when two branches cut from the same `main` each take the next
- * number and both merge. Numbers are compared as integers, so `42_x.sql` and `0042_y.sql` clash.
- * The legacy pairs in {@link LEGACY_SHARED_NUMBERS} are tolerated exactly as committed.
+ * No two migrations may share a number, and every migration filename must start with one. A shared
+ * number never crashes the applier — its ledger is keyed by filename — but it leaves the pair's order
+ * to chance: a fresh database (and the integration suite) applies them by filename, production by
+ * whichever merged first. It happens when two branches cut from the same `main` each take the next
+ * number and both merge. Numbers are compared as integers, so `42_x.sql` and `0042_y.sql` clash. A
+ * `.sql` file with no numeric prefix is still applied (the applier takes every `*.sql`) but can never
+ * be checked for a clash, so it fails too. The legacy pairs in {@link LEGACY_SHARED_NUMBERS} are
+ * tolerated exactly as committed.
  */
 const uniqueNumber: Rule = {
   name: 'unique-number',
-  description: 'No two migrations may share a NNNN number (two applied legacy pairs excepted).',
+  description:
+    'No two migrations may share a NNNN number (two applied legacy pairs excepted), and every .sql name must start with one.',
   check(migrations) {
     const byNumber = new Map<number, string[]>();
+    const unnumbered: string[] = [];
     for (const file of migrations.migrationFiles) {
       const number = migrationNumber(file);
-      if (number === undefined) continue;
+      if (number === undefined) {
+        unnumbered.push(file);
+        continue;
+      }
       byNumber.set(number, [...(byNumber.get(number) ?? []), file]);
     }
-    const nextFree = formatNumber(Math.max(0, ...byNumber.keys()) + 1);
 
-    return [...byNumber].flatMap(([number, files]) => {
+    const clashes = [...byNumber].flatMap(([number, files]) => {
       if (files.length < 2) return [];
       const legacy = LEGACY_SHARED_NUMBERS.get(number);
       if (legacy !== undefined && files.every((file) => legacy.has(file))) return [];
@@ -133,10 +140,18 @@ const uniqueNumber: Rule = {
         {
           rule: 'unique-number',
           severity: 'error' as const,
-          message: `migration number ${formatNumber(number)} is used by ${String(files.length)} files: ${files.join(', ')}. Migrations apply in filename order, so a shared number leaves their relative order to the alphabet — usually two branches cut from the same main that each took the next number. Fix: rename the file your branch added (the one not on main — see git diff --name-status origin/main -- database/migrations) to the next free number, ${nextFree}_<name>.sql. Never rename a migration that is already on main: it is applied, and the ledger is keyed by filename, so the new name would run again.`,
+          message: `migration number ${formatNumber(number)} is used by ${String(files.length)} files: ${files.join(', ')}. Usually two branches cut from the same main each took the next number. Their order is then nobody's choice: a fresh database (and the integration suite) applies them by filename, production by whichever merged first. Fix: renumber every migration your branch added, keeping their relative order, so they follow main's highest number (git ls-tree --name-only origin/main database/migrations/ | tail -1) — renaming only the colliding one can move it past a later migration of yours that depends on it. If your branch added neither file, the clash is already on main: see "A clash already on main" in the migration-lint skill. Never rename a migration that is applied (everything on main is): the ledger is keyed by filename, so the new name would run again.`,
         },
       ];
     });
+
+    const strays = unnumbered.map((file) => ({
+      rule: 'unique-number',
+      severity: 'error' as const,
+      message: `migration file "${file}" must start with its number (NNNN_name.sql). The applier still runs every *.sql file, sorted by name, but a name with no numeric prefix can never be checked for a clash.`,
+    }));
+
+    return [...clashes, ...strays];
   },
 };
 
