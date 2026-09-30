@@ -177,6 +177,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>309</span><span class="sep"> — </span><span class="ttl">Backfill coding session ledger</span></h1>
   <p class="change" id="change">A new <code>code_sessions</code> table in alfred holds one row per alfred-repo coding session: model, effort, cost, PR outcome, and its launch prompt, spec and skills rebuilt from git history.</p>
+  <p class="revised" id="revised">Revised 2026-09-30: D2 → everything read from main at session start (your review); D9 becomes an ancestor check.</p>
 </header>
 
 <section class="sec" id="decisions">
@@ -185,15 +186,14 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d1">D1</a>Which key lets the backfill in?</h3>
       <p class="pick">A new <code>LEDGER_API_KEY</code>, accepted only by the two ledger routes and added by the proxy.</p>
       <p class="why">Departs from “ingest key”, which also creates items and plans; follows ALF-298.</p></li>
-    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>Which commit counts as “at the time”?</h3>
-      <p class="pick">Prompt: <code>links.ts</code> on main at session start. Spec and skills: the branch’s fork commit.</p>
-      <p class="why">The deployed app built the prompt. The session read its own checkout.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>What’s stored for prompt, spec and skills?</h3>
       <p class="pick">Prompt as full text; spec and skills as a path plus git blob sha.</p>
-      <p class="why">Git keeps every version. The stored fork commit answers any other file later.</p></li>
+      <p class="why">Git keeps every version. The stored base commit answers any other file later.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>How does the ledger grow later?</h3>
       <p class="pick">Rows keep the raw session record; recorded values always beat reconstructed ones.</p>
       <p class="why">New columns backfill without refetching. A re-run can’t clobber future launch recording.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Which commit counts as “at the time”?</h3>
+      <p class="pick">Main at session start, for the prompt, the spec and the skills alike.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>Where does the ledger live?</h3>
       <p class="pick">In a Supabase table, seeded now and extended later.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>Which sessions get a row?</h3>
@@ -266,7 +266,7 @@ prompt_source            | <span class="dim">∅</span>
 spec_path                | <span class="dim">∅</span>
 spec_blob_sha            | <span class="dim">∅</span>
 skills                   | []
-warnings                 | {<span class="hl">no_pr</span>,<span class="hl">ref_from_title</span>,<span class="hl">base_from_start_time</span>}
+warnings                 | {<span class="hl">no_pr</span>,<span class="hl">ref_from_title</span>}
 session_record           | {"id": "session_01…", "post_turn_summary": {"status_category": "failed", …}, …}
 refreshed_at             | 2026-10-02 14:05:11+00</pre>
       </div>
@@ -384,13 +384,10 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
   </section>
 
   <section class="rec" id="d2">
-    <h3><span class="tag">D2</span>Which commit counts as “at the time”? · proposed</h3>
-    <p>There are two anchors, because two different things happened at launch:</p>
-    <ul>
-      <li><strong><code>main_at_start</code>.</strong> The last first-parent commit on <code>origin/main</code> whose committer date is at or before the session’s <code>created_at</code>. Vercel deploys main, so the app that built the prompt ran that <code>links.ts</code>. <code>builder_sha</code> is the last commit that changed <code>links.ts</code> as of <code>main_at_start</code>. It groups rows by prompt version.</li>
-      <li><strong><code>base_sha</code>.</strong> The commit the session’s branch forked from, as D9 derives it. The session cloned that commit, so its spec and skills are what it read.</li>
-    </ul>
-    <p>The two usually coincide. They diverge when the owner picks another branch in the session UI, or when main moves between the click and the clone. Considered: time for both (wrong whenever the checkout wasn’t main); the branch for both (the app never runs the branch’s <code>links.ts</code>).</p>
+    <h3><span class="tag">D2</span>Which commit counts as “at the time”? · settled</h3>
+    <p>There is one anchor, <code>base_sha</code>: the last first-parent commit on <code>origin/main</code> whose committer date is at or before the session’s <code>created_at</code>. The prompt is rebuilt from the <code>links.ts</code> in that commit, because Vercel deploys main. The spec and skills are resolved there too, because a session launched from alfred’s link clones main as it starts. <code>builder_sha</code> is the last commit that changed <code>links.ts</code> as of <code>base_sha</code>. It isn’t a second anchor; it only groups rows by prompt version.</p>
+    <p>The owner can pick another branch in the session UI, for example to continue an existing PR branch. D9 flags those rows rather than tracing them. Neither choice sees skill edits a session makes during its own run (ALF-282 created <code>adversarial-review</code> in its own PR). The ledger records what the session <em>started</em> with.</p>
+    <p>Considered: the commit the session’s branch forked from, for the spec and skills (the first draft). It was exact in principle, but on PRs #386 and #415 it was the same commit as main at session start. It needed merge-commit matching, <code>refs/pull</code> fetches and a fallback, and it broke on squash merges and deleted branches, all to cover a case the ancestor check flags.</p>
   </section>
 
   <section class="rec" id="d3">
@@ -419,7 +416,7 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
     <ul>
       <li>A PR-linked session with an alfred block gets the full reconstruction.</li>
       <li>A PR-linked session without a block (pre-Code-module) gets the session and PR fields only.</li>
-      <li>A session no PR links gets session fields, <code>base_sha</code> from <code>main_at_start</code>, and a <code>ref</code> when its title names a known ref (D13).</li>
+      <li>A session no PR links gets session fields, <code>base_sha</code>, and a <code>ref</code> when its title names a known ref (D13).</li>
     </ul>
     <p>That third group is about 31% of sessions (spike §2.2). Without it the ledger has survivorship bias.</p>
   </section>
@@ -450,14 +447,12 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
   </section>
 
   <section class="rec" id="d9">
-    <h4>D9 · <code>base_sha</code> is found from git, with a time fallback</h4>
+    <h4>D9 · Git access, and flagging sessions that didn’t start from main</h4>
     <ol>
-      <li>Require full history. If the clone is shallow, run <code>git fetch --unshallow origin main</code>. For a PR that isn’t merged, run <code>git fetch origin refs/pull/&lt;n&gt;/head</code>.</li>
-      <li>Find the <em>stop</em> commit. For a merged PR, the merge commit <code>M</code> is the first-parent commit on main whose second parent is the PR’s <code>head.sha</code>, and the stop is <code>M^1</code>. For any other PR, the stop is <code>main_at_start</code>.</li>
-      <li><code>base_sha</code> is the first parent of the first line of <code>git rev-list --first-parent --reverse &lt;head&gt; ^&lt;stop&gt;</code>. First-parent skips main merges the session made later.</li>
-      <li>Sanity check: <code>base_sha</code> must be an ancestor of <code>origin/main</code>, with a committer date no later than <code>created_at + 10 min</code>. If not, or if any step fails (for example, a squash merge or a deleted ref), use <code>main_at_start</code> and warn <code>base_from_start_time</code>.</li>
+      <li>Require full history. If the clone is shallow, run <code>git fetch --unshallow origin main</code>. For each PR that isn’t merged, run <code>git fetch origin refs/pull/&lt;n&gt;/head</code>. That makes its <code>head.sha</code> available locally.</li>
+      <li>For a PR-linked row, run <code>git merge-base --is-ancestor &lt;base_sha&gt; &lt;head.sha&gt;</code>. If it fails, the branch didn’t grow from main as it stood at session start (another branch was picked in the session UI). Keep the row, add <code>not_from_main</code>, and leave <code>human_commits_after_open</code> null, because D13’s range would be meaningless.</li>
     </ol>
-    <p>For PR #415 this yields <code>9372104b</code>, the tip of main 40 minutes before the session started.</p>
+    <p>For PR #415, <code>base_sha</code> is <code>9372104b</code>, the tip of main 40 minutes before the session started.</p>
   </section>
 
   <section class="rec" id="d10">
@@ -500,7 +495,7 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
     <h4>D13 · Refs for sessions with no PR, and human rework</h4>
     <ul>
       <li><strong>Ref from title.</strong> For a session with no PR, <code>ref</code> is the first <code>\b[A-Z]+-\d+\b</code> in its title, but only if it matches a story or epic ref from the inputs. The row then carries the <code>ref_from_title</code> warning. <code>launch_lane</code>, prompt, spec and skills stay null: nothing records which lane was clicked.</li>
-      <li><strong><code>human_commits_after_open</code>.</strong> Count the non-merge commits in <code>base_sha..head</code> that are authored after the PR’s <code>created_at</code> by anyone other than <code>noreply@anthropic.com</code>. This is the spike’s “owner commits after open” signal, and git answers it for free.</li>
+      <li><strong><code>human_commits_after_open</code>.</strong> Count the commits in <code>git rev-list --first-parent --no-merges &lt;base_sha&gt;..&lt;head&gt;</code> that are authored after the PR’s <code>created_at</code> by anyone other than <code>noreply@anthropic.com</code>. This is the spike’s “owner commits after open” signal, and git answers it for free. First-parent keeps out the main commits a branch merged in later.</li>
     </ul>
   </section>
 
@@ -514,7 +509,7 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
   <h2>Behaviour</h2>
   <h3>A backfill run (the <code>session-ledger</code> skill)</h3>
   <ol>
-    <li>Make sure the clone has full history and a fresh <code>origin/main</code> (D9 step 1).</li>
+    <li>Make sure the clone has full history and a fresh <code>origin/main</code> (D9).</li>
     <li>Collect session records into <code>&lt;scratch&gt;/ledger/sessions/</code>, then run <code>sample</code> and <code>verify</code> (D7). Stop on a mismatch.</li>
     <li>Run <code>npm run ledger -w tools/session-ledger -- build --sessions &lt;scratch&gt;/ledger/sessions --out &lt;scratch&gt;/ledger/rows.ndjson</code>. It fetches the PRs (D8) and the inputs, then derives every row.</li>
     <li>Run <code>… -- push &lt;rows&gt;</code>, which upserts through D14.</li>
@@ -533,7 +528,7 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
     <tr><td><code>launch_lane</code></td><td>D11</td></tr>
     <tr><td><code>pr_number</code>, <code>pr_state</code> (<code>merged | closed | open</code>), <code>pr_opened_at</code>, <code>pr_merged_at</code>, <code>pr_closed_at</code></td><td>REST PR (D8)</td></tr>
     <tr><td><code>human_commits_after_open</code></td><td>D13</td></tr>
-    <tr><td><code>base_sha</code>, <code>builder_sha</code></td><td>D9, D2</td></tr>
+    <tr><td><code>base_sha</code>, <code>builder_sha</code></td><td>D2</td></tr>
     <tr><td><code>prompt</code>, <code>prompt_source</code></td><td>D10; <code>'reconstructed'</code> when the prompt is non-null</td></tr>
     <tr><td><code>spec_path</code>, <code>spec_blob_sha</code>, <code>skills</code></td><td>D12</td></tr>
     <tr><td><code>warnings</code></td><td>the codes below, sorted and deduplicated</td></tr>
@@ -551,7 +546,7 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
     <tr><td><code>story_missing</code></td><td>The ref isn’t in today’s stories or epics, so the prompt couldn’t be rebuilt.</td></tr>
     <tr><td><code>builder_missing</code>, <code>builder_threw</code></td><td>D10.</td></tr>
     <tr><td><code>builder_changed_near_start</code></td><td><code>links.ts</code> changed on main within 30 minutes before <code>created_at</code>. The deployed version may have lagged.</td></tr>
-    <tr><td><code>base_from_start_time</code></td><td>D9’s fallback was used.</td></tr>
+    <tr><td><code>not_from_main</code></td><td>The PR head doesn’t descend from <code>base_sha</code>, so the session didn’t start from main (D9).</td></tr>
     <tr><td><code>spec_missing_at_base</code>, <code>spec_changed_since_refinement</code></td><td>D12.</td></tr>
     <tr><td><code>session_record_unavailable</code>, <code>session_record_invalid</code></td><td>D7.</td></tr>
   </table></div>
@@ -649,7 +644,7 @@ LedgerRow = the table's columns minus refreshed_at (snake_case JSON).</pre>
       <ul>
         <li><code>src/records.ts</code>: session-record schema and field extraction.</li>
         <li><code>src/prs.ts</code>: REST paging, block and link parsing, session → PR map.</li>
-        <li><code>src/git.ts</code>: <code>main_at_start</code>, <code>builder_sha</code>, <code>base_sha</code>, blob lookup, human commits.</li>
+        <li><code>src/git.ts</code>: <code>base_sha</code>, <code>builder_sha</code>, the ancestor check, blob lookup, human commits.</li>
         <li><code>src/lane.ts</code>: the D11 table.</li>
         <li><code>src/replay.ts</code>: D10 and D12.</li>
         <li><code>src/row.ts</code>: assembly and warnings.</li>
@@ -671,7 +666,7 @@ LedgerRow = the table's columns minus refreshed_at (snake_case JSON).</pre>
     <li data-trace="D1">Both routes accept <code>LEDGER_API_KEY</code> and the owner session. They reject <code>INGEST_API_KEY</code>, a wrong key and no auth with 401. Existing ingest routes reject <code>LEDGER_API_KEY</code>. An unset key rejects everything keyed.</li>
     <li data-trace="D1">The inputs route returns the matching project’s stories (with notes) and epics, 404s for an unknown repo, and 400s for a malformed one.</li>
     <li data-trace="D14">The sessions route rejects 0 or more than 100 rows and unknown keys, and a valid batch lands through the RPC.</li>
-    <li data-trace="D2 D9">Given a fixture repo, <code>base_sha</code> is the fork point for a merged PR that later merged main, and for an open PR. It falls back to <code>main_at_start</code> with <code>base_from_start_time</code> when the branch can’t be traced. <code>builder_sha</code> is the last <code>links.ts</code> change at or before <code>created_at</code>.</li>
+    <li data-trace="D2 D9">Given a fixture repo, <code>base_sha</code> is the last first-parent main commit at or before <code>created_at</code>, and <code>builder_sha</code> is the last <code>links.ts</code> change as of <code>base_sha</code>. A PR head that doesn’t descend from <code>base_sha</code> gets <code>not_from_main</code> and a null <code>human_commits_after_open</code>.</li>
     <li data-trace="D10 D11">Replaying a fixture repo’s builder file at two shas yields each version’s prompt. Both the <code>q</code> and <code>prompt</code> URL forms are read. A builder absent at a sha gives <code>builder_missing</code> and a null prompt.</li>
     <li data-trace="D11">Every row of the D11 table maps to its lane and builder, including <code>bug</code> vs <code>bypass</code> depending on whether <code>buildBugUrl</code> exists at <code>builder_sha</code>.</li>
     <li data-trace="D12">Spec-path fields are nulled when the file is absent at <code>base_sha</code>. <code>spec_blob_sha</code> and the <code>skills</code> blobs resolve at <code>base_sha</code>, a not-yet-existing skill gets <code>blob_sha: null</code>, and a spec-sha mismatch adds <code>spec_changed_since_refinement</code>.</li>
@@ -714,7 +709,7 @@ LedgerRow = the table's columns minus refreshed_at (snake_case JSON).</pre>
         <li>Launch-time recording and arms: spike step 3, which D4 prepares for.</li>
         <li>Red-CI counts, review-finding parsing and escaped-bug tracing: later columns, derivable from <code>pr_number</code> and <code>session_record</code>.</li>
       </ul></li>
-    <li><strong>Fidelity.</strong> Rebuilt prompts use today’s title and notes, can’t see the owner’s edits before sending, and assume the launch came from alfred’s link. Every rebuilt row is therefore marked <code>reconstructed</code> and should be treated as “very likely”, not observed.</li>
+    <li><strong>Fidelity.</strong> Rebuilt prompts use today’s title and notes, can’t see the owner’s edits before sending, assume the launch came from alfred’s link, and read skills as they were at session start, before any edits the session made itself. Every rebuilt row is therefore marked <code>reconstructed</code> and should be treated as “very likely”, not observed.</li>
     <li><strong>Old sessions.</strong> Whether June sessions’ records are still readable is unconfirmed; the spike only fetched sessions from August onward. A missing record degrades to <code>session_record_unavailable</code> and doesn’t fail the run.</li>
     <li><strong>Subagent cost.</strong> Whether <code>usage</code> includes subagent tokens is still unconfirmed (spike §5). The ledger stores what the record says.</li>
     <li><strong>Transcription.</strong> Subagents copying JSON is the one non-deterministic step. D7’s sampled verification bounds the risk; it doesn’t eliminate it.</li>
