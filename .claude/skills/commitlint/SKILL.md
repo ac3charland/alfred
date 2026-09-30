@@ -170,6 +170,8 @@ env:
 
 **A message can't carry a CI-skip token.** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]` and `***NO_CI***` make GitHub skip the push workflows, including the secret scan, so `commitlint.config.js` rejects them with a local plugin rule (`no-ci-skip`, checked against the whole raw message).
 
+**The whole header caps at 100 characters** (`header-max-length`, inherited from `config-conventional`). Body and footer are forbidden here, so a commit that bundles several fixes can't spill detail below the subject: name the theme, not every item.
+
 **scope-empty is not in config-conventional.** The default `@commitlint/config-conventional` does not include `scope-empty`. If you extend it and forget to add `'scope-empty': [2, 'never']`, scope is optional even if you think the parent config handles it.
 
 **body-empty and footer-empty default to `'never'` in config-conventional** — meaning the base config REQUIRES a body and footer. Alfred's overrides flip this to `[2, 'always']` to forbid them. Any commit with a blank line followed by content will fail if these overrides are missing.
