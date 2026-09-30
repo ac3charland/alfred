@@ -301,3 +301,94 @@ describe('--push', () => {
     expect(run.stderr).toContain('pre-push');
   });
 });
+
+describe('known live secret values', () => {
+  // Bare values no pattern rule knows: `printenv PGPASSWORD`, a URI cut before `@host`, …
+  const LIVE = { PGPASSWORD: PASSWORD };
+
+  it('exits 1 on a committable file holding a live value, naming its source but not the value', () => {
+    write('notes.md', `the output was\n${PASSWORD}\n`);
+    const run = cli([], { env: LIVE });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain('notes.md');
+    expect(run.stdout).toContain('contains the value of $PGPASSWORD');
+    expect(run.stderr).toContain('This repo is PUBLIC');
+    expect(run.both).not.toContain(PASSWORD);
+  });
+
+  it('is a no-op when no live value is set', () => {
+    write('notes.md', `the output was\n${PASSWORD}\n`);
+    expect(cli([]).code).toBe(0);
+  });
+
+  it('is clean when the live value appears nowhere', () => {
+    write('notes.md', 'nothing secret\n');
+    const run = cli([], { env: LIVE });
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain('clean (1 text entries scanned)');
+  });
+
+  it('ignores a trivial live value', () => {
+    write('notes.md', 'postgres\n');
+    expect(cli([], { env: { PGPASSWORD: 'postgres' } }).code).toBe(0);
+  });
+
+  it('finds the URL-encoded and base64 forms', () => {
+    write('a.md', `${encodeURIComponent(PASSWORD)}\n`);
+    write('b.md', `${Buffer.from(PASSWORD).toString('base64')}\n`);
+    const run = cli([], { env: LIVE });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain('a.md');
+    expect(run.stdout).toContain('b.md');
+  });
+
+  it('finds a value in a UTF-16 file with a BOM', () => {
+    write('utf16.txt', '');
+    writeFileSync(
+      path.join(repo, 'utf16.txt'),
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`${PASSWORD}\n`, 'utf16le')]),
+    );
+    expect(cli([], { env: LIVE }).code).toBe(1);
+  });
+
+  it('finds a value in UTF-16 text without a BOM', () => {
+    writeFileSync(path.join(repo, 'utf16.txt'), Buffer.from(`${PASSWORD}\n`, 'utf16le'));
+    expect(cli([], { env: LIVE }).code).toBe(1);
+  });
+
+  it('finds a value that is only in the staged content', () => {
+    write('a.md', `${PASSWORD}\n`);
+    git('add', 'a.md');
+    write('a.md', 'scrubbed\n');
+    const run = cli([], { env: LIVE });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain('a.md (staged)');
+  });
+
+  it('reads the password from a gitignored frontend/.env.local without scanning that file', () => {
+    write('.gitignore', 'frontend/.env.local\n');
+    write(
+      'frontend/.env.local',
+      `DATABASE_URL=postgresql://u:${PASSWORD}@host.example.com:5432/postgres\n`,
+    );
+    expect(cli([]).code).toBe(0);
+    write('notes.md', `psql failed for ${PASSWORD}\n`);
+    const run = cli([]);
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain('contains the password from DATABASE_URL in frontend/.env.local');
+    expect(run.both).not.toContain(PASSWORD);
+  });
+
+  it('applies to --range too', () => {
+    write('a.md', 'base\n');
+    commit('base');
+    write('a.md', `${PASSWORD}\n`);
+    commit('leak');
+    write('a.md', 'scrubbed\n');
+    commit('scrub');
+    expect(cli(['--range', 'HEAD~2..HEAD']).code).toBe(0);
+    const run = cli(['--range', 'HEAD~2..HEAD'], { env: LIVE });
+    expect(run.code).toBe(1);
+    expect(run.both).not.toContain(PASSWORD);
+  });
+});

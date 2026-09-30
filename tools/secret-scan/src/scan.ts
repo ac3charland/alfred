@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import type { createEngine } from '@secretlint/node';
 
+import { type KnownSecret, knownSecretsReport } from './known-secrets.ts';
+
 /**
  * The repo's single secretlint config (`/.secretlintrc.json`). `tools/showboat` loads the same
  * file, so the commit gate and the record-time guard can never disagree about what a secret is.
@@ -388,17 +390,36 @@ export async function scanEntries(
   return { ok: reports.length === 0, output: reports.join('\n'), scanned: entries.length };
 }
 
+/** The text of `files` (relative to `repoRoot`) as they are on disk; a symlink reads as its link text. */
+export function fileEntries(repoRoot: string, files: readonly string[]): Entry[] {
+  return files
+    .map((file) => {
+      const content = readWorkingFile(repoRoot, file);
+      return content === undefined ? undefined : textEntry(file, content);
+    })
+    .filter(isEntry);
+}
+
 /** Scan `files` (relative to `repoRoot`) as they are on disk; a symlink is scanned as its link text. */
 export async function scanFiles(
   repoRoot: string,
   files: readonly string[],
   configFilePath: string = CONFIG_FILE,
 ): Promise<ScanResult> {
-  const entries = files
-    .map((file) => {
-      const content = readWorkingFile(repoRoot, file);
-      return content === undefined ? undefined : textEntry(file, content);
-    })
-    .filter(isEntry);
-  return scanEntries(entries, configFilePath);
+  return scanEntries(fileEntries(repoRoot, files), configFilePath);
+}
+
+/**
+ * Refuse any entry that contains one of the live secret `secrets` this process holds (see
+ * `known-secrets.ts`) — the check patterns can't do. The report names each entry and where the value
+ * came from, never the value. `scanned` is 0: these entries are counted by the pattern scan.
+ */
+export function scanKnownSecrets(
+  entries: readonly Entry[],
+  secrets: readonly KnownSecret[],
+): ScanResult {
+  const reports = entries
+    .map(({ label, content }) => knownSecretsReport(content, label, secrets))
+    .filter((report): report is string => report !== undefined);
+  return { ok: reports.length === 0, output: reports.join('\n'), scanned: 0 };
 }

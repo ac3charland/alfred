@@ -1,14 +1,18 @@
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import process from 'node:process';
 
+import { ENV_LOCAL_RELATIVE, knownSecrets } from './known-secrets.ts';
 import {
+  type Entry,
   type ScanResult,
   branchRange,
   committableFiles,
+  fileEntries,
   pushRevs,
   rangeEntries,
   scanEntries,
-  scanFiles,
+  scanKnownSecrets,
   stagedEntries,
 } from './scan.ts';
 
@@ -31,7 +35,9 @@ Usage:
 Options:
   --help, -h        Show this help.
 
-All modes use the repo-root .secretlintrc.json. In this repo, run it through the package scripts:
+All modes use the repo-root .secretlintrc.json, and also refuse content that contains a live secret
+value this process holds (credential-named env vars, frontend/.env.local); a finding names where the
+value came from, never the value. In this repo, run it through the package scripts:
   npm run lint:secrets -w tools/secret-scan
   npm run lint:secrets:branch -w tools/secret-scan
   npm run lint:secrets:push -w tools/secret-scan -- <remote>   (stdin from git's pre-push hook)
@@ -50,11 +56,28 @@ from frontend/.env.local. A placeholder that trips a rule: write it as <password
 /** A usage problem the caller should fix; reported to stderr with exit code 2. */
 class UsageError extends Error {}
 
+/**
+ * Scan `entries` for patterns and for the live secret values this process holds: credential-named
+ * environment variables and those in the gitignored `frontend/.env.local` (see `known-secrets.ts`).
+ * Every mode runs both, so a bare password no rule recognises still stops the commit or push.
+ */
+async function scanContent(
+  repoRoot: string,
+  ...groups: (readonly Entry[])[]
+): Promise<ScanResult[]> {
+  const secrets = knownSecrets({ envFile: path.join(repoRoot, ENV_LOCAL_RELATIVE) });
+  const results: ScanResult[] = [];
+  for (const entries of groups) results.push(await scanEntries(entries));
+  results.push(scanKnownSecrets(groups.flat(), secrets));
+  return results;
+}
+
 async function scanTree(repoRoot: string): Promise<ScanResult[]> {
-  return [
-    await scanFiles(repoRoot, committableFiles(repoRoot)),
-    await scanEntries(stagedEntries(repoRoot)),
-  ];
+  return scanContent(
+    repoRoot,
+    fileEntries(repoRoot, committableFiles(repoRoot)),
+    stagedEntries(repoRoot),
+  );
 }
 
 async function readStdin(): Promise<string> {
@@ -77,17 +100,17 @@ async function scan(repoRoot: string, argv: readonly string[]): Promise<ScanResu
     }
     case '--range': {
       if (value === undefined) throw new UsageError('--range needs a revision range, e.g. A..B');
-      return [await scanEntries(rangeEntries(repoRoot, value))];
+      return scanContent(repoRoot, rangeEntries(repoRoot, value));
     }
     case '--branch': {
       if (value !== undefined) throw new UsageError(`unexpected argument "${value}"`);
-      return [await scanEntries(rangeEntries(repoRoot, branchRange(repoRoot)))];
+      return scanContent(repoRoot, rangeEntries(repoRoot, branchRange(repoRoot)));
     }
     case '--push': {
       if (value === undefined)
         throw new UsageError('--push needs the remote name git passes the hook');
       const revs = pushRevs(repoRoot, value, await readStdin());
-      return [await scanEntries(revs.length === 0 ? [] : rangeEntries(repoRoot, revs))];
+      return scanContent(repoRoot, revs.length === 0 ? [] : rangeEntries(repoRoot, revs));
     }
     default: {
       throw new UsageError(`unknown option "${flag}"`);
