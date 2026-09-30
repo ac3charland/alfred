@@ -10,8 +10,8 @@ import { mapSupabaseError } from '@/lib/api/supabase-errors';
 //
 // One atomic `move_code_priority_in_project(ref, to_top)` RPC re-ranks the story to the midpoint
 // between its project's current best/worst story and whichever OTHER project's story sits just
-// past it — a single-row UPDATE, so no other story's priority ever changes. Keyed by `ref` (KEY-N),
-// the code module's convention. Returns the updated row.
+// past it. Keyed by `ref` (KEY-N), the code module's convention. Returns the updated row — or, when
+// the ranks ran out of float room and the RPC respaced them, every row it renumbered (ALF-250).
 // ---------------------------------------------------------------------------
 
 export const POST = withSession(async (session, request) => {

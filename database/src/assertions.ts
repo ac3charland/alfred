@@ -961,6 +961,112 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const jumpRepliesWithRespaceResult = await attempt(
+    'a respacing project-scoped bump replies with EVERY row it renumbered; a plain one replies with just the moved row (ALF-250)',
+    async () => {
+      // The reply is the only ordered channel an open tab has: Realtime echoes trail it, so a
+      // reply carrying just the moved story leaves the tab showing that story on the new rank
+      // scale and every other one on the old scale until the echoes arrive. A respace must
+      // therefore answer with every row it rewrote, current rank and revision included.
+      const projectA = 'f9999999-9999-4999-8999-999999999999';
+      const epicA = 'fa999999-9999-4999-8999-999999999999';
+      const projectB = 'fb999999-9999-4999-8999-999999999999';
+      const epicB = 'fc999999-9999-4999-8999-999999999999';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'JMA', 'Jump A', 'ac3charland', 'jump-a'),
+                  ($2, 'JMB', 'Jump B', 'ac3charland', 'jump-b')`,
+        [projectA, projectB],
+      );
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref)
+           values ($1, $2, 'Jump A Epic', 1, 'JMA-1'), ($3, $4, 'Jump B Epic', 1, 'JMB-1')`,
+        [epicA, projectA, epicB, projectB],
+      );
+
+      // 60000 is in [2^15, 2^16), so its ULP is 2^-37 — the adjacency the sibling check builds,
+      // repeated well above every rank the earlier checks (or their respaces) left behind.
+      const above = await createStory(client, 'the jump rank above', projectB, epicB);
+      const top = await createStory(client, 'the jump project top', projectA, epicA);
+      const low = await createStory(client, 'the jumped story', projectA, epicA);
+      await client.query(`update code_items set priority = 60000 where ref = $1`, [above.ref]);
+      await client.query(
+        `update code_items set priority = 60000 + power(2::float8, -37) where ref = $1`,
+        [top.ref],
+      );
+      await client.query(`update code_items set priority = 61000 where ref = $1`, [low.ref]);
+
+      interface RankRow {
+        readonly item_id: string;
+        readonly ref: string;
+        readonly priority: number;
+        readonly priority_rev: string;
+      }
+      const ranks = async (): Promise<Map<string, RankRow>> => {
+        const { rows } = await client.query<RankRow>(
+          `select item_id, ref, priority, priority_rev from code_items`,
+        );
+        return new Map(rows.map((row): [string, RankRow] => [row.item_id, row]));
+      };
+      const jump = async (ref: string, toTop: boolean): Promise<readonly RankRow[]> => {
+        const { rows } = await asRole(client, 'authenticated', () =>
+          client.query<RankRow>(`select * from move_code_priority_in_project($1, $2)`, [
+            ref,
+            toTop,
+          ]),
+        );
+        return rows;
+      };
+
+      // A jump above `top` midpoints 60000 against 60000 + 2^-37: no rank between them, so the
+      // RPC respaces every story in the Backlog before it can place the jumped one.
+      const respaced = await jump(low.ref, true);
+      const current = await ranks();
+      const stale = [...current.values()].filter((row) => {
+        const replied = respaced.find((reply) => reply.item_id === row.item_id);
+        return replied?.priority !== row.priority || replied.priority_rev !== row.priority_rev;
+      });
+      if (respaced.length !== current.size || stale.length > 0)
+        throw new Error(
+          `a respacing jump replied with ${String(respaced.length)} of the ${String(current.size)} ` +
+            `code_items rows; ${String(stale.length)} missing or stale ` +
+            `(e.g. ${stale
+              .slice(0, 3)
+              .map((row) => row.ref)
+              .join(', ')})`,
+        );
+      const seededAbove = [...current.values()].find((row) => row.ref === above.ref);
+      if (seededAbove?.priority === 60_000)
+        throw new Error('the seeded ranks were not respaced — the fixture proves nothing');
+
+      // The ranks are consecutive integers again, so a second jump takes a clean midpoint and
+      // must reply with exactly the moved row, leaving every other story's revision alone.
+      const before = await ranks();
+      const plain = await jump(low.ref, false);
+      const after = await ranks();
+      const untouched = [...after.values()].filter(
+        (row) => row.ref !== low.ref && row.priority_rev !== before.get(row.item_id)?.priority_rev,
+      );
+      const moved = after.get(plain[0]?.item_id ?? '');
+      if (
+        plain.length !== 1 ||
+        moved?.ref !== low.ref ||
+        plain[0]?.priority !== moved.priority ||
+        plain[0].priority_rev !== moved.priority_rev
+      )
+        throw new Error(
+          `a plain jump replied with ${String(plain.length)} row(s) (${plain.map((row) => row.ref).join(', ')}), ` +
+            `expected exactly ${low.ref} at its stored rank`,
+        );
+      if (untouched.length > 0)
+        throw new Error(
+          `a plain jump re-stamped ${untouched.map((row) => row.ref).join(', ')}, not just ${low.ref}`,
+        );
+
+      return `a respacing jump replied with all ${String(respaced.length)} rows; a plain jump replied with only ${low.ref}`;
+    },
+  );
+
   const taskItemsColumnsResult = await attempt(
     'task_items view surfaces late-added items columns (priority, recurrence) (0011)',
     async () => {
@@ -5152,6 +5258,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     outstandingProjectMoveResult,
     respaceOnCreateResult,
     respaceOnMoveResult,
+    jumpRepliesWithRespaceResult,
     taskItemsColumnsResult,
     intendedProjectResult,
     intendedEpicResult,
