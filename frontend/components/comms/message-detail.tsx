@@ -77,7 +77,10 @@ export function MessageDetail({
         </p>
       )}
 
-      {message.reclassify_failed_at !== null && (
+      {/* Tested as a string, not against null: for a beat after a deploy the row can lack the field
+      altogether (the migration that adds it applies on merge, beside the deploy), and `undefined`
+      is not a failure. */}
+      {typeof message.reclassify_failed_at === 'string' && (
         <p className="text-[12.5px] leading-relaxed text-muted-foreground">
           <span className="font-medium text-amber-400">Re-run failed</span>{' '}
           {formatMessageTime(message.reclassify_failed_at, now)}. The classifier couldn&apos;t

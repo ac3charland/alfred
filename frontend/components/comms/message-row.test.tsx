@@ -366,6 +366,19 @@ describe('MessageRow — a re-run that failed', () => {
     expect(screen.queryByText('Re-run pending')).not.toBeInTheDocument();
   });
 
+  it('says nothing when the column has not reached the database yet', () => {
+    // The frontend can go live a beat before the migration that adds the column: a row then
+    // comes back without the field at all, which is not a failed re-run.
+    const beforeTheMigration = {
+      ...makeRow(),
+      reclassify_failed_at: undefined,
+    } as unknown as CommMessage;
+
+    renderRow({ selected: true, message: beforeTheMigration });
+
+    expect(screen.queryByText(/Re-run failed/)).not.toBeInTheDocument();
+  });
+
   it('says nothing about a failure on a row that has had none', () => {
     renderRow({ selected: true });
 

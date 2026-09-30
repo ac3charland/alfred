@@ -310,7 +310,7 @@ export function CommsProvider({
       if (rerun === undefined) continue;
       const row = watched.find((message) => message.id === id);
       if (row === undefined) {
-        // Purged, or aged out of the 60-day window: there is nothing left to say it about.
+        // Purged, or deleted by the retention sweep: there is nothing left to say it about.
         reruns.delete(id);
         continue;
       }
