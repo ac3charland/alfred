@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import type { LaunchPhase } from '@/lib/code/launch';
 import { MOBILE_QUERY } from '@/lib/hooks/use-media-query';
-import { CodeProvider, useProjectBoard } from '@/lib/stores/code-store';
+import { CodeProvider, PRIORITY_SYNC_DEBOUNCE_MS, useProjectBoard } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
@@ -135,19 +135,26 @@ function makeSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
 function ModalHarness({
   itemId,
   onOpenSession,
+  closable = false,
 }: {
   itemId: string;
   onOpenSession: (s: CodeStory, p: LaunchPhase) => void | Promise<void>;
+  /** Let a dismiss really close the modal (the provider stays mounted), as on the board. */
+  closable?: boolean;
 }) {
   const board = useProjectBoard('p1');
+  const [dismissed, setDismissed] = React.useState(false);
   const live = board.activeEpics
     .flatMap((b) => [...b.lanes.flatMap((l) => l.stories), ...b.abandonedStories])
     .find((s) => s.item_id === itemId);
   return (
     <StoryDetailModal
       story={live ?? null}
-      open={live !== undefined}
-      onOpenChange={jest.fn()}
+      open={live !== undefined && !dismissed}
+      onOpenChange={(next) => {
+        // Opt-in: Escape in an inner editor also reports a dismiss, which most tests ignore.
+        if (closable) setDismissed(!next);
+      }}
       onOpenSession={onOpenSession}
     />
   );
@@ -178,7 +185,7 @@ function renderModal(
 }
 
 /** Render the modal with other stories seeded alongside it (for the priority rank flags). */
-function renderModalWithPeers(story: CodeStory, peers: CodeStory[]) {
+function renderModalWithPeers(story: CodeStory, peers: CodeStory[], closable = false) {
   render(
     <ToastProvider>
       <CodeProvider
@@ -189,6 +196,7 @@ function renderModalWithPeers(story: CodeStory, peers: CodeStory[]) {
         <ModalHarness
           itemId={story.item_id ?? ''}
           onOpenSession={jest.fn(() => Promise.resolve())}
+          closable={closable}
         />
       </CodeProvider>
     </ToastProvider>,
@@ -1046,6 +1054,33 @@ describe('StoryDetailModal', () => {
         expect(mockMoveCode).toHaveBeenCalledWith('ALF-42', false);
       });
       expect(mockMoveCode).toHaveBeenCalledTimes(1);
+    });
+
+    it('still syncs a jump when the modal closes inside the sync pause', async () => {
+      // The queue's timer lives in the CodeProvider, not the controls: unmounting them must not
+      // cancel the write (the older, component-owned debounce did).
+      jest.useFakeTimers();
+      try {
+        const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+        const dialog = renderModalWithPeers(
+          makeStory({ priority: 2 }),
+          [makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 1 })],
+          true,
+        );
+
+        await user.click(dialog.getByRole('button', { name: TOP_OF_PROJECT }));
+        await user.click(dialog.getByRole('button', { name: 'Close' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mockMoveCodeInProject).not.toHaveBeenCalled();
+
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(PRIORITY_SYNC_DEBOUNCE_MS);
+        });
+
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-42', true);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
