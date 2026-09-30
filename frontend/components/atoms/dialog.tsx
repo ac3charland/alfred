@@ -222,13 +222,15 @@ export function useSheetFooterClaim(active: boolean): void {
 
 /**
  * The sheet's resting footer content (a story's action bar): portalled into the sheet's footer
- * element and hidden while an editor holds it, so the sheet has one bottom bar whatever is
- * going on. Renders nothing outside a {@link SheetDialog}.
+ * element and, while an editor holds the footer, hidden — not unmounted. What lives in the bar
+ * (a pending debounced write, a launch in flight, a menu's state) survives an editor opening and
+ * closing, and the sheet has one bottom bar whatever is going on. Renders nothing outside a
+ * {@link SheetDialog}.
  */
 export function SheetFooter({ children }: { children: React.ReactNode }) {
   const sheet = React.useContext(SheetFooterContext);
-  if (sheet?.element == null || sheet.claimed) return null;
-  return createPortal(children, sheet.element);
+  if (sheet?.element == null) return null;
+  return createPortal(<div hidden={sheet.claimed}>{children}</div>, sheet.element);
 }
 
 export interface SheetDialogProperties extends React.ComponentPropsWithoutRef<

@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Dialog as DialogPrimitive } from 'radix-ui';
-import type * as React from 'react';
+import * as React from 'react';
 import { createPortal } from 'react-dom';
 
 import {
@@ -274,6 +274,11 @@ function installVisualViewport(viewport: FakeVisualViewport | undefined) {
   Object.defineProperty(globalThis, 'visualViewport', { configurable: true, value: viewport });
 }
 
+/** The sheet's resting bar, found even while it is hidden. */
+function restingBar() {
+  return screen.getByRole('navigation', { name: 'Actions', hidden: true });
+}
+
 /** Holds the sheet's footer while mounted, the way an open editor does. */
 function Claimant() {
   useSheetFooterClaim(true);
@@ -408,6 +413,34 @@ describe('SheetDialog', () => {
       expect(screen.getByRole('navigation', { name: 'Actions' })).toBeInTheDocument();
     });
 
+    it('keeps the resting content mounted while an editor holds the footer, only hidden', () => {
+      // A pending debounced write, a launch in flight or a menu's state lives in the resting
+      // content; unmounting it every time an editor opens would drop them.
+      const unmounted = jest.fn();
+      function Resting() {
+        React.useEffect(() => unmounted, []);
+        return <nav aria-label="Actions">bar</nav>;
+      }
+      const tree = (claimed: boolean) => (
+        <SheetDialog open onOpenChange={jest.fn()}>
+          <DialogPrimitive.Title>Story</DialogPrimitive.Title>
+          <SheetFooter>
+            <Resting />
+          </SheetFooter>
+          {claimed ? <Claimant /> : null}
+        </SheetDialog>
+      );
+      const view = render(tree(false));
+      expect(restingBar()).toBeVisible();
+
+      view.rerender(tree(true));
+      expect(restingBar()).not.toBeVisible();
+
+      view.rerender(tree(false));
+      expect(restingBar()).toBeVisible();
+      expect(unmounted).not.toHaveBeenCalled();
+    });
+
     it('lets an editor portal its own bar into the footer element', () => {
       renderSheet(<EditorBar />);
 
@@ -438,8 +471,8 @@ describe('SheetDialog', () => {
 
     afterEach(() => {
       jest.useRealTimers();
-      // @ts-expect-error -- restoring jsdom's own (absent) implementation.
-      delete Element.prototype.scrollIntoView;
+      // Back to jsdom's own (absent) implementation.
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
     });
 
     function renderWithField(viewport: FakeVisualViewport) {
