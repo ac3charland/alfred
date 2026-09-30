@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -1507,6 +1507,24 @@ describe('StoryDetailModal on a phone', () => {
     });
   });
 
+  describe('a Priority jump when an editor opens straight after', () => {
+    it('still reaches the server: the action bar steps aside but is not torn down', async () => {
+      const user = userEvent.setup();
+      renderModalWithPeers(makeStory({ priority: 2, notes: 'A note' }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 1 }),
+      ]);
+
+      await openMenu(user, 'Priority');
+      await user.click(screen.getByRole('menuitem', { name: 'Top of project' }));
+      // Well inside the sync debounce: the bar disappears while the commit is still pending.
+      await user.click(region('body').getByText('A note'));
+
+      await waitFor(() => {
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-42', true);
+      });
+    });
+  });
+
   describe('the ⋯ menu', () => {
     const blockedIn = { factory_state: 'blocked', blocked_from: 'in_development' } as const;
 
@@ -1546,6 +1564,23 @@ describe('StoryDetailModal on a phone', () => {
       // Items, checkbox items and dividers together, in DOM order: the menu's text is its items'.
       expect(screen.getByRole('menu')).toHaveTextContent(new RegExp(`^${items.join('')}$`));
       expect(screen.queryAllByRole('separator')).toHaveLength(dividers);
+    });
+
+    it('puts the divider between the story properties and the moves', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'needs_refinement' }));
+
+      await openMenu(user, 'More story actions');
+
+      const separator = screen.getByRole('separator');
+      const mark = screen.getByRole('menuitemcheckbox', { name: 'Needs refinement' });
+      const block = screen.getByRole('menuitem', { name: 'Block…' });
+      expect(
+        mark.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        separator.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
     });
 
     it('reflects the refinement mark on the Needs refinement item', async () => {
@@ -1822,6 +1857,22 @@ describe('StoryDetailModal on a phone', () => {
         ).not.toBeInTheDocument();
       });
       expect(row).toHaveFocus();
+    });
+
+    it('returns focus to the row even when the tap never focused it, as in Safari', async () => {
+      const user = userEvent.setup();
+      renderModal(withSpec(MARKDOWN));
+      const row = region('body').getByRole('button', { name: /inbound filter spec/i });
+
+      // `fireEvent.click` does not focus the button, so the reader opens with nothing to go back to.
+      fireEvent.click(row);
+      const reader = await screen.findByRole('dialog', { name: 'Inbound filter spec' });
+      expect(row).not.toHaveFocus();
+      await user.click(within(reader).getByRole('button', { name: 'Close' }));
+
+      await waitFor(() => {
+        expect(row).toHaveFocus();
+      });
     });
 
     it('opens an HTML spec in its isolated frame, filling the screen', async () => {
