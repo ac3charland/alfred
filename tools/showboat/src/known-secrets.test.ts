@@ -1,13 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
-  ENV_LOCAL_RELATIVE,
   findKnownSecrets,
   isTrivialValue,
   knownSecrets,
   knownSecretsReport,
+  repoEnvRoots,
 } from './known-secrets.ts';
 
 // Assembled at runtime so this file stays clean under the very scan it tests.
@@ -16,8 +17,36 @@ const OTHER = ['Hm4', 'nB8s', 'Yc3dK'].join('');
 const THIRD = ['Ur5', 'eW1q', 'Ld6oV'].join('');
 const SPECIAL = ['p@ss/w', 'ord#', '9Zq!x'].join('');
 
-function sources(content: string, env: Record<string, string>, envFile?: string): string[] {
-  return findKnownSecrets(content, knownSecrets({ env, ...(envFile ? { envFile } : {}) }));
+function sources(
+  content: string,
+  env: Record<string, string>,
+  envRoots?: readonly string[],
+): string[] {
+  return findKnownSecrets(content, knownSecrets({ env, ...(envRoots ? { envRoots } : {}) }));
+}
+
+/** git with the repo-locating variables a hook exports removed, so it acts on `cwd`. */
+function git(cwd: string, ...args: string[]): string {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')),
+  );
+  return execFileSync('git', args, { cwd, encoding: 'utf8', env }).trim();
+}
+
+function write(root: string, relative: string, content: string): void {
+  const file = path.join(root, relative);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, content);
+}
+
+const GITIGNORE = ['.env', '.env.*', '.dev.vars', '.dev.vars.*', '!*.example', ''].join('\n');
+
+/** A git repo whose dotenv files are ignored, like alfred's. */
+function initRepo(root: string): void {
+  git(root, 'init', '--quiet', '-b', 'main');
+  write(root, '.gitignore', GITIGNORE);
+  git(root, 'add', '.gitignore');
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'init');
 }
 
 describe('isTrivialValue', () => {
@@ -132,32 +161,117 @@ describe('knownSecrets sources', () => {
   });
 });
 
-describe('knownSecrets from frontend/.env.local', () => {
-  let dir: string;
-  let envFile: string;
+describe('knownSecrets URL values', () => {
+  const at = `host.example.com:5432/postgres`;
+
+  it('takes the password query parameter of a URL', () => {
+    const env = { DATABASE_URL: `postgresql://user@${at}?sslmode=require&password=${PASSWORD}` };
+    expect(sources(PASSWORD, env)).toEqual(['the password from $DATABASE_URL']);
+  });
+
+  it('takes a percent-encoded password query key and decodes its value', () => {
+    const env = {
+      DATABASE_URL: `postgresql://user@${at}?pass%77ord=${encodeURIComponent(SPECIAL)}`,
+    };
+    expect(sources(SPECIAL, env)).toEqual(['the password from $DATABASE_URL']);
+  });
+
+  it('takes both the userinfo password and the query password', () => {
+    const env = { DATABASE_URL: `postgresql://user:${PASSWORD}@${at}?password=${OTHER}` };
+    expect(sources(PASSWORD, env)).toEqual(['the password from $DATABASE_URL']);
+    expect(sources(OTHER, env)).toEqual(['the password from $DATABASE_URL']);
+  });
+
+  it('ignores a trivial query password', () => {
+    const trivial = ['post', 'gres'].join('');
+    const env = { DATABASE_URL: `postgresql://user@${at}?password=${trivial}` };
+    expect(sources(`${trivial} ${env.DATABASE_URL}`, env)).toEqual([]);
+  });
+
+  it.each([
+    'POSTGRES_URL_NON_POOLING',
+    'DATABASE_URL_UNPOOLED',
+    'PG_CONNECTION',
+    'PGURI',
+    'CONNECTION_STRING',
+  ])('takes the password of a URL held by %s, whatever the name', (name) => {
+    const env = { [name]: `postgresql://user:${PASSWORD}@${at}` };
+    expect(sources(PASSWORD, env)).toEqual([`the password from $${name}`]);
+  });
+
+  it('still ignores a non-credential variable holding a URL without a password', () => {
+    const env = { PG_CONNECTION: `postgresql://user@${at}` };
+    expect(sources(`postgresql://user@${at}`, env)).toEqual([]);
+  });
+});
+
+describe('knownSecrets names and values', () => {
+  it.each(['SUPABASE_SERVICE_ROLE_JWT', 'GOOGLE_CREDENTIALS', 'AWS_CREDENTIAL'])(
+    'reads %s',
+    (name) => {
+      expect(sources(PASSWORD, { [name]: PASSWORD })).toEqual([`the value of $${name}`]);
+    },
+  );
+
+  it('does not read a variable that merely contains AUTH', () => {
+    expect(sources(PASSWORD, { PR_RATIO_AUTHORS: PASSWORD })).toEqual([]);
+  });
+
+  it.each([
+    'SSH_ASKPASS',
+    'GIT_ASKPASS',
+    'SUDO_ASKPASS',
+    'PGPASSFILE',
+    'PGSSLKEY',
+    'PGSSLROOTCERT',
+    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    'NEXT_PUBLIC_API_TOKEN',
+    'SOME_SECRET_HOME',
+    'MY_KEY_DIR',
+  ])('ignores %s, which holds a location or public value', (name) => {
+    expect(sources(PASSWORD, { [name]: PASSWORD })).toEqual([]);
+  });
+
+  it('still reads PGSSLPASSWORD, a real passphrase', () => {
+    expect(sources(PASSWORD, { PGSSLPASSWORD: PASSWORD })).toEqual(['the value of $PGSSLPASSWORD']);
+  });
+
+  it.each([
+    ['an absolute path', '/usr/lib/openssh/gnome-ssh-askpass'],
+    ['a nested absolute path', '/home/user/.config/secret-tool/token'],
+    ['a flag', '--password-stdin-value'],
+  ])('ignores a credential-named variable holding %s', (_case, value) => {
+    expect(sources(value, { SOME_TOKEN: value })).toEqual([]);
+  });
+});
+
+describe('knownSecrets from gitignored dotenv files', () => {
+  let root: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(path.join(tmpdir(), 'known-secrets-'));
-    envFile = path.join(dir, '.env.local');
+    root = mkdtempSync(path.join(tmpdir(), 'known-secrets-'));
+    initRepo(root);
   });
 
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   });
 
-  it('reads the password from a DATABASE_URL line', () => {
-    writeFileSync(
-      envFile,
+  const fromFile = (content: string): string[] => sources(content, {}, [root]);
+
+  it('reads the password from a DATABASE_URL line and names the file', () => {
+    write(
+      root,
+      'frontend/.env.local',
       `DATABASE_URL=postgresql://u:${PASSWORD}@host.example.com:5432/postgres\n`,
     );
-    expect(sources(PASSWORD, {}, envFile)).toEqual([
-      `the password from DATABASE_URL in ${ENV_LOCAL_RELATIVE}`,
-    ]);
+    expect(fromFile(PASSWORD)).toEqual(['the password from DATABASE_URL in frontend/.env.local']);
   });
 
-  it('parses dotenv lines: export, quotes, comments, blanks', () => {
-    writeFileSync(
-      envFile,
+  it('parses dotenv lines: export, quotes, comments, blanks, CRLF', () => {
+    write(
+      root,
+      'frontend/.env.local',
       [
         '# a comment',
         '',
@@ -166,17 +280,180 @@ describe('knownSecrets from frontend/.env.local', () => {
         `SOME_TOKEN = ${THIRD}`,
         'NOT_A_LINE',
         `PLAIN_NAME=${SPECIAL}`,
-      ].join('\n'),
+      ].join('\r\n'),
     );
-    const found = (content: string): string[] => sources(content, {}, envFile);
-    expect(found(PASSWORD)).toEqual([`the value of PGPASSWORD in ${ENV_LOCAL_RELATIVE}`]);
-    expect(found(OTHER)).toEqual([`the value of MY_API_SECRET in ${ENV_LOCAL_RELATIVE}`]);
-    expect(found(THIRD)).toEqual([`the value of SOME_TOKEN in ${ENV_LOCAL_RELATIVE}`]);
-    expect(found(SPECIAL)).toEqual([]);
+    expect(fromFile(PASSWORD)).toEqual(['the value of PGPASSWORD in frontend/.env.local']);
+    expect(fromFile(OTHER)).toEqual(['the value of MY_API_SECRET in frontend/.env.local']);
+    expect(fromFile(THIRD)).toEqual(['the value of SOME_TOKEN in frontend/.env.local']);
+    expect(fromFile(SPECIAL)).toEqual([]);
   });
 
-  it('is a no-op when the file does not exist', () => {
-    expect(sources(PASSWORD, {}, path.join(dir, 'missing'))).toEqual([]);
+  it('drops an inline comment after whitespace, or after a closing quote', () => {
+    write(
+      root,
+      'frontend/.env.local',
+      [
+        `MY_API_SECRET=${PASSWORD} # the production key`,
+        `SOME_TOKEN="${OTHER}" # quoted`,
+        `PGPASSWORD='${THIRD}'   # single`,
+        `X_SECRET=${SPECIAL}`,
+      ].join('\n'),
+    );
+    expect(fromFile(PASSWORD)).toEqual(['the value of MY_API_SECRET in frontend/.env.local']);
+    expect(fromFile(OTHER)).toEqual(['the value of SOME_TOKEN in frontend/.env.local']);
+    expect(fromFile(THIRD)).toEqual(['the value of PGPASSWORD in frontend/.env.local']);
+    expect(fromFile('# the production key')).toEqual([]);
+  });
+
+  it('keeps a # that is not preceded by whitespace', () => {
+    write(root, 'frontend/.env.local', `MY_API_SECRET=${PASSWORD}#frag\n`);
+    expect(fromFile(`${PASSWORD}#frag`)).toEqual([
+      'the value of MY_API_SECRET in frontend/.env.local',
+    ]);
+  });
+
+  it('lets the last duplicate key win', () => {
+    write(root, 'frontend/.env.local', `MY_API_SECRET=${PASSWORD}\nMY_API_SECRET=${OTHER}\n`);
+    expect(fromFile(PASSWORD)).toEqual([]);
+    expect(fromFile(OTHER)).toEqual(['the value of MY_API_SECRET in frontend/.env.local']);
+  });
+
+  it('collects a double-quoted multi-line value whole, not its first line', () => {
+    const value = `-----BEGIN PRIVATE KEY-----\n${PASSWORD}\n-----END PRIVATE KEY-----`;
+    write(
+      root,
+      'frontend/.env.local',
+      `GITHUB_APP_PRIVATE_KEY="${value}"\nOTHER_SECRET=${OTHER}\n`,
+    );
+    expect(fromFile(`key:\n${value}\n`)).toEqual([
+      'the value of GITHUB_APP_PRIVATE_KEY in frontend/.env.local',
+    ]);
+    expect(fromFile('-----BEGIN PRIVATE KEY-----')).toEqual([]);
+    expect(fromFile(OTHER)).toEqual(['the value of OTHER_SECRET in frontend/.env.local']);
+  });
+
+  it('reads workers/.dev.vars, database/.env and a root .env, naming each file', () => {
+    write(root, 'workers/.dev.vars', `GMAIL_ALFRED_REFRESH_TOKEN=${PASSWORD}\n`);
+    write(root, 'database/.env', `DB_SECRET=${OTHER}\n`);
+    write(root, '.env', `ROOT_SECRET=${THIRD}\n`);
+    write(root, 'frontend/.env.production', `SITE_API_KEY=${SPECIAL}\n`);
+    expect(fromFile(PASSWORD)).toEqual([
+      'the value of GMAIL_ALFRED_REFRESH_TOKEN in workers/.dev.vars',
+    ]);
+    expect(fromFile(OTHER)).toEqual(['the value of DB_SECRET in database/.env']);
+    expect(fromFile(THIRD)).toEqual(['the value of ROOT_SECRET in .env']);
+    expect(fromFile(SPECIAL)).toEqual(['the value of SITE_API_KEY in frontend/.env.production']);
+  });
+
+  it.each(['frontend/.env.example', 'frontend/.env.sample', 'workers/.dev.vars.template'])(
+    'skips the template file %s',
+    (file) => {
+      write(root, file, `MY_API_SECRET=${PASSWORD}\n`);
+      expect(fromFile(PASSWORD)).toEqual([]);
+    },
+  );
+
+  it("never reads a dependency's env file under node_modules", () => {
+    write(root, 'node_modules/some-pkg/.env', `FIXTURE_SECRET=${PASSWORD}\n`);
+    write(root, 'frontend/node_modules/other/.dev.vars', `FIXTURE_TOKEN=${OTHER}\n`);
+    expect(fromFile(PASSWORD)).toEqual([]);
+    expect(fromFile(OTHER)).toEqual([]);
+  });
+
+  it('ignores a file that is not a dotenv file', () => {
+    write(root, 'frontend/config.local', `MY_API_SECRET=${PASSWORD}\n`);
+    expect(fromFile(PASSWORD)).toEqual([]);
+  });
+
+  it('is a no-op when there is no env file', () => {
+    expect(fromFile(PASSWORD)).toEqual([]);
+  });
+
+  it('is a no-op for a root that does not exist', () => {
+    expect(sources(PASSWORD, {}, [path.join(root, 'missing')])).toEqual([]);
+  });
+
+  it('reads the same files without git, from the root and its package directories', () => {
+    const plain = mkdtempSync(path.join(tmpdir(), 'known-secrets-plain-'));
+    try {
+      write(plain, 'frontend/.env.local', `MY_API_SECRET=${PASSWORD}\n`);
+      write(plain, 'workers/.dev.vars', `GMAIL_X_TOKEN=${OTHER}\n`);
+      write(plain, '.env', `ROOT_SECRET=${THIRD}\n`);
+      write(plain, 'frontend/.env.example', `EX_SECRET=${SPECIAL}\n`);
+      expect(sources(PASSWORD, {}, [plain])).toEqual([
+        'the value of MY_API_SECRET in frontend/.env.local',
+      ]);
+      expect(sources(OTHER, {}, [plain])).toEqual([
+        'the value of GMAIL_X_TOKEN in workers/.dev.vars',
+      ]);
+      expect(sources(THIRD, {}, [plain])).toEqual(['the value of ROOT_SECRET in .env']);
+      expect(sources(SPECIAL, {}, [plain])).toEqual([]);
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
+  it('fails with the file and errno only when a file cannot be read', () => {
+    // A symlink to a directory is listed by git as a file but reads as EISDIR.
+    mkdirSync(path.join(root, 'frontend'));
+    symlinkSync(root, path.join(root, 'frontend/.env.local'));
+    let message = '';
+    try {
+      knownSecrets({ env: {}, envRoots: [root] });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toBe('cannot read frontend/.env.local: EISDIR');
+  });
+});
+
+describe('repoEnvRoots and linked worktrees', () => {
+  let base: string;
+  let main: string;
+  let linked: string;
+
+  beforeEach(() => {
+    base = realpathSync(mkdtempSync(path.join(tmpdir(), 'known-secrets-wt-')));
+    main = path.join(base, 'main');
+    linked = path.join(base, 'linked');
+    mkdirSync(main);
+    initRepo(main);
+    git(main, 'worktree', 'add', '--quiet', linked, '-b', 'feature');
+  });
+
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  it('names the checkout and the main worktree, once each', () => {
+    expect(repoEnvRoots(linked)).toEqual([linked, main]);
+    expect(repoEnvRoots(main)).toEqual([main]);
+  });
+
+  it('resolves the roots from a subdirectory', () => {
+    mkdirSync(path.join(linked, 'sub'));
+    expect(repoEnvRoots(path.join(linked, 'sub'))).toEqual([linked, main]);
+  });
+
+  it('falls back to the directory itself outside a repo', () => {
+    const plain = mkdtempSync(path.join(tmpdir(), 'known-secrets-plain-'));
+    try {
+      expect(repoEnvRoots(plain)).toEqual([plain]);
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
+  it('reads the main checkout env files from inside a linked worktree', () => {
+    write(main, 'frontend/.env.local', `MY_API_SECRET=${PASSWORD}\n`);
+    write(linked, 'workers/.dev.vars', `GMAIL_X_TOKEN=${OTHER}\n`);
+    const roots = repoEnvRoots(linked);
+    expect(sources(PASSWORD, {}, roots)).toEqual([
+      'the value of MY_API_SECRET in frontend/.env.local',
+    ]);
+    expect(sources(OTHER, {}, roots)).toEqual(['the value of GMAIL_X_TOKEN in workers/.dev.vars']);
+    // Without the main root the value is invisible — the fail-open this guards against.
+    expect(sources(PASSWORD, {}, [linked])).toEqual([]);
   });
 });
 
@@ -193,6 +470,21 @@ describe('findKnownSecrets variants', () => {
     ['JSON-escaped', JSON.stringify(`"${SPECIAL}\\`).slice(1, -1)],
   ])('finds the %s form', (_case, form) => {
     expect(findKnownSecrets(`before ${form} after`, secrets)).toEqual(expected);
+  });
+
+  it.each([0, 1, 2, 3, 4, 5, 8])(
+    'finds base64 of user:value for a %i-character user, whatever its alignment',
+    (length) => {
+      const basic = Buffer.from(`${'u'.repeat(length)}:${SPECIAL}`).toString('base64');
+      expect(findKnownSecrets(`Authorization: Basic ${basic}\n`, secrets)).toEqual(expected);
+    },
+  );
+
+  it.each([0, 1, 2])('finds base64 of the value inside a longer blob (offset %i)', (offset) => {
+    const blob = Buffer.from(`${'x'.repeat(offset)}${SPECIAL}:trailing-bytes`).toString('base64');
+    expect(findKnownSecrets(`token=${blob}`, secrets)).toEqual(expected);
+    const url = Buffer.from(`${'x'.repeat(offset)}${SPECIAL}:trailing-bytes`).toString('base64url');
+    expect(findKnownSecrets(`token=${url}`, secrets)).toEqual(expected);
   });
 
   it('finds the value in NUL-interleaved UTF-16 output', () => {

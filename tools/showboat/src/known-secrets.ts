@@ -11,11 +11,10 @@
  *
  * A report NEVER contains a value — only where it came from (`$PGPASSWORD`, `DATABASE_URL in …`).
  */
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import path from 'node:path';
 import process from 'node:process';
-
-/** The gitignored file that holds the developer's live credentials, relative to the repo root. */
-export const ENV_LOCAL_RELATIVE = 'frontend/.env.local';
 
 /** A live secret value and how to name where it came from (never the value itself). */
 export interface KnownSecret {
@@ -27,19 +26,32 @@ export interface KnownSecret {
 export interface KnownSecretsOptions {
   /** Environment to read; defaults to this process's. */
   env?: Readonly<Record<string, string | undefined>>;
-  /** Absolute path of a dotenv file to read too (normally `<repo>/frontend/.env.local`). */
-  envFile?: string;
+  /**
+   * Absolute repo roots whose gitignored dotenv files (`frontend/.env.local`, `workers/.dev.vars`,
+   * …) are read too — normally {@link repoEnvRoots}: this checkout and the main one.
+   */
+  envRoots?: readonly string[];
 }
 
 /** Names that hold a credential. */
-const SECRET_NAME = /PASS|SECRET|TOKEN|KEY|PWD/i;
+const SECRET_NAME = /PASS|SECRET|TOKEN|KEY|PWD|JWT|CREDENTIAL/i;
 /** Connection-string variables: their password (and the whole URL) is the secret. */
 const URL_NAME = /^(DATABASE_URL|SUPABASE_DB_URL)$|(_URL|_URI|_DSN)$/i;
-/** Names that match {@link SECRET_NAME} but hold a location or a config name, never a secret. */
-const NOT_A_SECRET_NAME = /^(PWD|OLDPWD)$|_(FILE|PATH|DIR|HOME)$|^GIT_CONFIG_/i;
+/**
+ * Names that match {@link SECRET_NAME} but hold a location, a config name or a public value, never a
+ * secret: `PWD`, `*_FILE|_PATH|_DIR|_HOME`, `GIT_CONFIG_*`, `*ASKPASS` (a helper program),
+ * `PGPASSFILE`, `PGSSL*` (cert/key paths — but `PGSSLPASSWORD` is a passphrase), and `NEXT_PUBLIC_*`
+ * (shipped to the browser by definition).
+ */
+const NOT_A_SECRET_NAME =
+  /^(PWD|OLDPWD|PGPASSFILE)$|_(FILE|PATH|DIR|HOME)$|^GIT_CONFIG_|ASKPASS|^PGSSL(?!PASSWORD$)\w+$|^NEXT_PUBLIC_/i;
+/** Never a password whatever the name: an absolute path or a command-line flag. */
+const PATH_OR_FLAG_VALUE = /^\/[\w.-]+(\/[\w.-]*)*$|^--\w/;
 /** `scheme://user:password@host…` — the password is everything up to the last `@`. */
 const URL_WITH_PASSWORD = /^[a-z][a-z0-9+.-]*:\/\/[^:/@\s]*:(.+)@[^@]*$/is;
 const URL_SHAPED = /^[a-z][a-z0-9+.-]*:\/\//i;
+/** Query parameters that carry a URL's password (`?password=…`), compared decoded and lowercased. */
+const PASSWORD_PARAM = /^(ssl)?(password|passwd|pass|pwd)$/;
 
 const MIN_LENGTH = 8;
 /** A lowercase word (letters and `._-`) shorter than this is a word, not a generated secret. */
@@ -62,32 +74,158 @@ export function isTrivialValue(value: string): boolean {
   );
 }
 
-/** Parse dotenv lines the way `database/src/migrate.ts` does: `export`, `#` comments, one layer of quotes. */
+/** Where the closing `quote` of a value that opened at `from` is, or -1. `"` honours `\` escapes. */
+function closingQuote(text: string, from: number, quote: string): number {
+  for (let i = from; i < text.length; i++) {
+    if (quote === '"' && text[i] === '\\') i++;
+    else if (text[i] === quote) return i;
+  }
+  return -1;
+}
+
+/**
+ * Parse a dotenv file the way `dotenv` does: `export`, `#` comments (a whole line, or ` #…` after an
+ * unquoted value or a closing quote), one layer of quotes — a quoted value may span lines — CRLF, and
+ * the last of a duplicated key wins. A quote that never closes is read as an ordinary value.
+ */
 function parseEnvFile(content: string): Map<string, string> {
   const values = new Map<string, string>();
-  for (const raw of content.split('\n')) {
-    const line = raw.trim().replace(/^export\s+/, '');
-    if (line === '' || line.startsWith('#')) continue;
+  const text = content.replaceAll('\r\n', '\n');
+  let pos = 0;
+  while (pos < text.length) {
+    const lineStart = pos;
+    const lineEnd = text.includes('\n', pos) ? text.indexOf('\n', pos) : text.length;
+    const raw = text.slice(lineStart, lineEnd);
+    const lead = /^\s*(export\s+)?/.exec(raw)?.[0].length ?? 0;
+    const line = raw.slice(lead);
+    pos = lineEnd + 1;
     const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    const value = line
-      .slice(eq + 1)
-      .trim()
-      .replace(/^(['"])(.*)\1$/, '$2');
-    if (!values.has(line.slice(0, eq).trim())) values.set(line.slice(0, eq).trim(), value);
+    if (line.startsWith('#') || eq === -1) continue;
+    const name = line.slice(0, eq).trim();
+    const rest = line.slice(eq + 1).trimStart();
+    const quote = rest[0];
+    if (quote !== undefined && '"\'`'.includes(quote)) {
+      // Search from just after the opening quote, across lines, for the closing one.
+      const skipped = line.length - eq - 1 - rest.length;
+      const valueStart = lineStart + lead + eq + 1 + skipped + 1;
+      const close = closingQuote(text, valueStart, quote);
+      if (close !== -1) {
+        values.set(name, text.slice(valueStart, close));
+        const after = text.indexOf('\n', close);
+        pos = after === -1 ? text.length : after + 1;
+        continue;
+      }
+    }
+    values.set(name, rest.replace(/\s+#.*$/s, '').trimEnd());
   }
   return values;
 }
 
-function readEnvFile(file: string): Map<string, string> {
+/** Variables a git hook exports that would point `git` at the hook's repo instead of `cwd`. */
+const REPO_LOCATING_GIT_VARS = new Set([
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_COMMON_DIR',
+  'GIT_PREFIX',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_NAMESPACE',
+]);
+
+/** `git` run in `cwd`, with {@link REPO_LOCATING_GIT_VARS} removed. */
+function gitOutput(cwd: string, args: readonly string[]): string {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !REPO_LOCATING_GIT_VARS.has(name)),
+  );
+  return execFileSync('git', [...args], {
+    cwd,
+    env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    maxBuffer: 256 * 1024 * 1024,
+  }).trim();
+}
+
+const realPath = (dir: string): string => {
   try {
-    return parseEnvFile(readFileSync(file, 'utf8'));
+    return realpathSync(dir);
+  } catch {
+    return path.resolve(dir);
+  }
+};
+
+/**
+ * The roots whose gitignored dotenv files hold this checkout's live credentials: the checkout that
+ * contains `startDir` and the main worktree. Gitignored files exist only in the main checkout, so a
+ * linked worktree (`.claude/worktrees/<name>`) that read only itself would see no secret at all.
+ * Outside a git repo (or without git) it is `startDir` alone.
+ */
+export function repoEnvRoots(startDir: string): string[] {
+  try {
+    const top = gitOutput(startDir, ['rev-parse', '--show-toplevel']);
+    const common = gitOutput(startDir, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    const roots = [realPath(top)];
+    if (path.basename(common) === '.git') roots.push(realPath(path.dirname(common)));
+    return [...new Set(roots)];
+  } catch {
+    return [path.resolve(startDir)];
+  }
+}
+
+/** Dotenv-style files: `.env`, `.env.local`, `.dev.vars`, … but not the committed templates. */
+function isEnvFileName(file: string): boolean {
+  const name = path.posix.basename(file);
+  return (
+    (name.startsWith('.env') || name.startsWith('.dev.vars')) &&
+    !/\.(example|sample|template)$/i.test(name)
+  );
+}
+
+/** Where the dotenv files live when git cannot say: the root and the package directories. */
+const PACKAGE_DIRS = ['', 'frontend', 'workers', 'database'];
+
+/**
+ * The gitignored dotenv-style files (repo-relative, `/`-separated) under `root`: everything git
+ * ignores and does not track whose name is `.env*` or `.dev.vars*`, outside `node_modules`. Without
+ * git, the same names in the root and its package directories.
+ */
+function envFilesIn(root: string): string[] {
+  try {
+    return gitOutput(root, [
+      'ls-files',
+      '-z',
+      '-o',
+      '-i',
+      '--exclude-standard',
+      '--',
+      ':(glob)**/.env*',
+      ':(glob)**/.dev.vars*',
+      // A dependency's own .env holds its fixtures, not our credentials.
+      ':(exclude,glob)**/node_modules/**',
+    ])
+      .split('\0')
+      .filter((file) => file !== '' && isEnvFileName(file));
+  } catch {
+    return PACKAGE_DIRS.flatMap((dir) => {
+      try {
+        return readdirSync(path.join(root, dir))
+          .filter((name) => isEnvFileName(name) && statSync(path.join(root, dir, name)).isFile())
+          .map((name) => (dir === '' ? name : `${dir}/${name}`));
+      } catch {
+        return [];
+      }
+    });
+  }
+}
+
+function readEnvFile(root: string, relative: string): Map<string, string> {
+  try {
+    return parseEnvFile(readFileSync(path.join(root, relative), 'utf8'));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map();
-    // The message only names the path and the errno — never file content.
-    throw new Error(
-      `cannot read ${ENV_LOCAL_RELATIVE}: ${(error as NodeJS.ErrnoException).code ?? 'error'}`,
-    );
+    // The message only names the file and the errno — never file content.
+    throw new Error(`cannot read ${relative}: ${(error as NodeJS.ErrnoException).code ?? 'error'}`);
   }
 }
 
@@ -99,58 +237,104 @@ function decodeQuietly(text: string): string {
   }
 }
 
+/**
+ * The passwords a URL-shaped value carries, raw and percent-decoded: the userinfo password (read
+ * both as the WHATWG URL parser splits it and greedily up to the last `@`, so an unencoded `@` or `/`
+ * in it is still caught) and any `password`-like query parameter. Empty for anything else.
+ */
+function urlPasswords(value: string): string[] {
+  if (!URL_SHAPED.test(value)) return [];
+  const found: string[] = [];
+  const greedy = URL_WITH_PASSWORD.exec(value)?.[1];
+  if (greedy !== undefined) found.push(greedy);
+  try {
+    const url = new URL(value);
+    if (url.password !== '') found.push(url.password);
+    for (const [key, param] of url.searchParams) {
+      if (PASSWORD_PARAM.test(key.toLowerCase()) && param !== '') found.push(param);
+    }
+  } catch {
+    // Not parseable as a URL; the greedy match above is all there is.
+  }
+  return [...new Set(found.flatMap((password) => [password, decodeQuietly(password)]))];
+}
+
 /** Add the secret(s) one variable holds; `where` is `$NAME` for the environment, else `NAME in <file>`. */
 function collect(found: Map<string, string>, name: string, value: string, where: string): void {
-  const urlName = URL_NAME.test(name);
-  if (!urlName && !SECRET_NAME.test(name)) return;
-  if (NOT_A_SECRET_NAME.test(name)) return;
+  if (/^NEXT_PUBLIC_/i.test(name)) return;
   const add = (secret: string, source: string): void => {
     if (!isTrivialValue(secret) && !found.has(secret)) found.set(secret, source);
   };
-  const password = URL_WITH_PASSWORD.exec(value)?.[1];
-  if (password !== undefined) {
-    // A URL is only secret if its password is; `postgres://postgres:postgres@localhost` is a fixture.
-    if (isTrivialValue(decodeQuietly(password)) && isTrivialValue(password)) return;
+  if (URL_SHAPED.test(value)) {
+    // Whatever the variable is called, a URL is only secret if its password is;
+    // `postgres://postgres:postgres@localhost` is a fixture.
+    const passwords = urlPasswords(value).filter((password) => !isTrivialValue(password));
+    if (passwords.length === 0) return;
     add(value, `the value of ${where}`);
-    add(password, `the password from ${where}`);
-    add(decodeQuietly(password), `the password from ${where}`);
-  } else if (!urlName && !URL_SHAPED.test(value)) {
-    add(value, `the value of ${where}`);
+    for (const password of passwords) add(password, `the password from ${where}`);
+    return;
   }
+  if (URL_NAME.test(name) || !SECRET_NAME.test(name) || NOT_A_SECRET_NAME.test(name)) return;
+  if (PATH_OR_FLAG_VALUE.test(value)) return;
+  add(value, `the value of ${where}`);
 }
 
 /**
  * The live secrets this process can see: credential-named variables in the environment and in the
- * dotenv file (if any), and the password of every connection-string URL among them. Trivial values
- * are dropped (see {@link isTrivialValue}). Each distinct value appears once.
+ * gitignored dotenv files of `envRoots` (if any), and the password of every connection-string URL
+ * among them. Trivial values are dropped (see {@link isTrivialValue}). Each distinct value appears once.
  */
 export function knownSecrets(options: KnownSecretsOptions = {}): KnownSecret[] {
   const found = new Map<string, string>();
   for (const [name, value] of Object.entries(options.env ?? process.env)) {
     if (value !== undefined) collect(found, name, value.trim(), `$${name}`);
   }
-  if (options.envFile !== undefined) {
-    for (const [name, value] of readEnvFile(options.envFile)) {
-      collect(found, name, value, `${name} in ${ENV_LOCAL_RELATIVE}`);
+  for (const root of options.envRoots ?? []) {
+    for (const file of envFilesIn(root)) {
+      for (const [name, value] of readEnvFile(root, file)) {
+        collect(found, name, value, `${name} in ${file}`);
+      }
     }
   }
   return [...found].map(([value, source]) => ({ value, source }));
 }
 
 /**
+ * The base64 / base64url spellings of `value` that survive being embedded at any offset in a larger
+ * blob (`Authorization: Basic base64(user:value)`). Base64 encodes 3 bytes at a time, so the value
+ * lands on one of three alignments; for the two shifted ones, encode a filler prefix and drop the
+ * leading characters it influences. The ragged tail (the last, partial character, and any `=`
+ * padding) depends on whatever follows the value, so it is dropped too.
+ */
+function base64Forms(value: string): string[] {
+  const forms: string[] = [];
+  // [prefix bytes, leading characters that depend on the prefix]
+  for (const [prefix, lead] of [
+    [0, 0],
+    [1, 2],
+    [2, 3],
+  ] as const) {
+    const bytes = Buffer.concat([Buffer.alloc(prefix, 'x'), Buffer.from(value, 'utf8')]);
+    const end = Math.floor((bytes.length * 8) / 6);
+    forms.push(
+      bytes.toString('base64').slice(lead, end),
+      bytes.toString('base64url').slice(lead, end),
+    );
+  }
+  return forms;
+}
+
+/**
  * The spellings a value takes in output: raw, percent-encoded (a URL), JSON-escaped, and base64 /
- * base64url (unpadded, so padded and unpadded forms both match). Base64 inside a larger blob only
- * matches when the value starts on a 3-byte boundary — a known blind spot.
+ * base64url at every alignment (see {@link base64Forms}), padded or not.
  */
 function variants(value: string): string[] {
-  const bytes = Buffer.from(value, 'utf8');
   return [
     ...new Set([
       value,
       encodeURIComponent(value),
       JSON.stringify(value).slice(1, -1),
-      bytes.toString('base64').replace(/=+$/, ''),
-      bytes.toString('base64url'),
+      ...base64Forms(value),
     ]),
   ];
 }

@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,7 @@ const CLI = fileURLToPath(new URL('cli.ts', import.meta.url));
 
 // Assembled at runtime so this file stays clean under the very scan it tests.
 const PASSWORD = ['Qz7', 'vLk2', 'Rw9pT'].join('');
+const OTHER = ['Hm4', 'nB8s', 'Yc3dK'].join('');
 const LEAKED_URI = `postgresql://postgres.abcdefghijklmnop:${PASSWORD}@aws-1-us-east-2.pooler.supabase.com:5432/postgres`;
 const LEAKED_ENV = `PGPASSWORD=${PASSWORD}`;
 const ZEROS = '0'.repeat(40);
@@ -42,7 +43,10 @@ interface Run {
   both: string;
 }
 
-function cli(args: string[], options: { input?: string; env?: Record<string, string> } = {}): Run {
+function cli(
+  args: string[],
+  options: { input?: string; env?: Record<string, string>; cwd?: string } = {},
+): Run {
   // A hook exports GIT_DIR / GIT_INDEX_FILE, which would point the CLI at the wrong repo.
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -51,7 +55,7 @@ function cli(args: string[], options: { input?: string; env?: Record<string, str
     ),
   );
   const result = spawnSync('node', [CLI, ...args], {
-    cwd: repo,
+    cwd: options.cwd ?? repo,
     encoding: 'utf8',
     input: options.input ?? '',
     env: { ...env, ...options.env },
@@ -377,6 +381,73 @@ describe('known live secret values', () => {
     expect(run.code).toBe(1);
     expect(run.stdout).toContain('contains the password from DATABASE_URL in frontend/.env.local');
     expect(run.both).not.toContain(PASSWORD);
+  });
+
+  it('reads every gitignored dotenv file, naming the one a value came from', () => {
+    write('.gitignore', '.env*\n.dev.vars*\n!*.example\n');
+    write('workers/.dev.vars', `GMAIL_ALFRED_REFRESH_TOKEN=${PASSWORD}\n`);
+    write('workers/.dev.vars.example', 'GMAIL_ALFRED_REFRESH_TOKEN=<token>\n');
+    write('database/.env', `MIGRATE_SECRET=${OTHER}\n`);
+    expect(cli([]).code).toBe(0);
+    write('a.md', `${PASSWORD}\n`);
+    write('b.md', `${OTHER}\n`);
+    const run = cli([]);
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(
+      'contains the value of GMAIL_ALFRED_REFRESH_TOKEN in workers/.dev.vars',
+    );
+    expect(run.stdout).toContain('contains the value of MIGRATE_SECRET in database/.env');
+    expect(run.both).not.toContain(PASSWORD);
+    expect(run.both).not.toContain(OTHER);
+  });
+
+  it('fails closed, naming the file and errno only, when a dotenv file cannot be read', () => {
+    write('.gitignore', '.env*\n');
+    // A symlink to a directory is listed by git as a file but cannot be read as one.
+    symlinkSync(repo, path.join(repo, '.env.local'));
+    const run = cli([]);
+    expect(run.code).toBe(1);
+    expect(run.stderr).toContain('secret-scan: error: cannot read .env.local: EISDIR');
+    expect(run.both).not.toContain(repo);
+  });
+
+  describe('from a linked git worktree', () => {
+    let worktree: string;
+
+    beforeEach(() => {
+      write('.gitignore', '.env*\n.dev.vars*\n');
+      write('a.md', 'base\n');
+      commit('base');
+      // The gitignored env files exist only in the main checkout.
+      write('frontend/.env.local', `MY_API_SECRET=${PASSWORD}\n`);
+      worktree = `${repo}-worktree`;
+      git('worktree', 'add', '--quiet', worktree, '-b', 'feature');
+    });
+
+    afterEach(() => {
+      rmSync(worktree, { recursive: true, force: true });
+    });
+
+    it('still refuses a live value that only the main checkout env file holds', () => {
+      writeFileSync(path.join(worktree, 'notes.md'), `leaked ${PASSWORD}\n`);
+      const run = cli([], { cwd: worktree });
+      expect(run.code).toBe(1);
+      expect(run.stdout).toContain('contains the value of MY_API_SECRET in frontend/.env.local');
+      expect(run.both).not.toContain(PASSWORD);
+    });
+
+    it('is clean when the worktree holds no live value', () => {
+      writeFileSync(path.join(worktree, 'notes.md'), 'fine\n');
+      expect(cli([], { cwd: worktree }).code).toBe(0);
+    });
+
+    it('also reads the worktree own env files', () => {
+      writeFileSync(path.join(worktree, '.dev.vars'), `GMAIL_X_TOKEN=${OTHER}\n`);
+      writeFileSync(path.join(worktree, 'notes.md'), `leaked ${OTHER}\n`);
+      const run = cli([], { cwd: worktree });
+      expect(run.code).toBe(1);
+      expect(run.stdout).toContain('contains the value of GMAIL_X_TOKEN in .dev.vars');
+    });
   });
 
   it('applies to --range too', () => {

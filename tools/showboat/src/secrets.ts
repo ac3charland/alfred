@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { createEngine } from '@secretlint/node';
 
-import { ENV_LOCAL_RELATIVE, knownSecrets, knownSecretsReport } from './known-secrets.ts';
+import { knownSecrets, knownSecretsReport, repoEnvRoots } from './known-secrets.ts';
 
 const CONFIG_NAME = '.secretlintrc.json';
 
@@ -28,6 +28,7 @@ export function findConfigFile(startDir: string): string {
 type Engine = Awaited<ReturnType<typeof createEngine>>;
 
 let config: string | undefined;
+let envRoots: string[] | undefined;
 let engine: Promise<Engine> | undefined;
 
 /**
@@ -54,24 +55,41 @@ async function loadEngine(configFile: string): Promise<Engine> {
   }
 }
 
+function configFileOfThisModule(): string {
+  return (config ??= findConfigFile(path.dirname(fileURLToPath(import.meta.url))));
+}
+
+/**
+ * The roots whose gitignored dotenv files hold the live credentials: the checkout the config lives in
+ * and the main worktree (a linked worktree has none of its own). Without git, the config directory.
+ */
+export function envRootsFor(configFile: string): string[] {
+  return repoEnvRoots(path.dirname(configFile));
+}
+
 /**
  * Scan text headed for a demo doc. Returns a masked report headed by `label` when it holds a secret,
  * else `undefined`. Two checks: secretlint's patterns, and the live secret values this process holds
- * (credential-named env vars, the gitignored `frontend/.env.local`) in any encoding — which catches
- * output no pattern recognises, like a bare `printenv PGPASSWORD`. Neither report prints a value.
+ * (credential-named env vars, the gitignored dotenv files of this checkout and the main one) in any
+ * encoding — which catches output no pattern recognises, like a bare `printenv PGPASSWORD`. Neither
+ * report prints a value.
  */
 export async function findSecrets(content: string, label: string): Promise<string | undefined> {
-  const configFile = (config ??= findConfigFile(path.dirname(fileURLToPath(import.meta.url))));
-  engine ??= loadEngine(configFile);
+  return findSecretsIn(content, label, (envRoots ??= envRootsFor(configFileOfThisModule())));
+}
+
+/** {@link findSecrets} reading dotenv files from `roots` instead of the repo's own. */
+export async function findSecretsIn(
+  content: string,
+  label: string,
+  roots: readonly string[],
+): Promise<string | undefined> {
+  engine ??= loadEngine(configFileOfThisModule());
   const scanner = await engine;
   // Same defence as tools/secret-scan: a `secretlint-disable` comment anywhere would silence it.
   const defused = content.replaceAll(/secretlint-(?=disable|enable)/g, 'secretlint_');
   const result = await scanner.executeOnContent({ content: defused, filePath: label });
-  const live = knownSecretsReport(
-    content,
-    label,
-    knownSecrets({ envFile: path.join(path.dirname(configFile), ENV_LOCAL_RELATIVE) }),
-  );
+  const live = knownSecretsReport(content, label, knownSecrets({ envRoots: roots }));
   const reports = [result.ok ? undefined : result.output, live].filter(
     (report): report is string => report !== undefined,
   );

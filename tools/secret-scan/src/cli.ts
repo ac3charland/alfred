@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import path from 'node:path';
 import process from 'node:process';
 
-import { ENV_LOCAL_RELATIVE, knownSecrets } from './known-secrets.ts';
+import { knownSecrets, repoEnvRoots } from './known-secrets.ts';
 import {
   type Entry,
   type ScanResult,
@@ -36,8 +35,10 @@ Options:
   --help, -h        Show this help.
 
 All modes use the repo-root .secretlintrc.json, and also refuse content that contains a live secret
-value this process holds (credential-named env vars, frontend/.env.local); a finding names where the
-value came from, never the value. In this repo, run it through the package scripts:
+value this process holds (credential-named env vars, and the gitignored dotenv files — frontend/.env*,
+workers/.dev.vars*, database/.env*, .env* — of this checkout and the main one, so a linked worktree
+sees them too); a finding names where the value came from, never the value. In this repo, run it
+through the package scripts:
   npm run lint:secrets -w tools/secret-scan
   npm run lint:secrets:branch -w tools/secret-scan
   npm run lint:secrets:push -w tools/secret-scan -- <remote>   (stdin from git's pre-push hook)
@@ -58,14 +59,15 @@ class UsageError extends Error {}
 
 /**
  * Scan `entries` for patterns and for the live secret values this process holds: credential-named
- * environment variables and those in the gitignored `frontend/.env.local` (see `known-secrets.ts`).
- * Every mode runs both, so a bare password no rule recognises still stops the commit or push.
+ * environment variables and those in the gitignored dotenv files of this checkout and the main
+ * worktree (see `known-secrets.ts`). Every mode runs both, so a bare password no rule recognises
+ * still stops the commit or push.
  */
 async function scanContent(
   repoRoot: string,
   ...groups: (readonly Entry[])[]
 ): Promise<ScanResult[]> {
-  const secrets = knownSecrets({ envFile: path.join(repoRoot, ENV_LOCAL_RELATIVE) });
+  const secrets = knownSecrets({ envRoots: repoEnvRoots(repoRoot) });
   const results: ScanResult[] = [];
   for (const entries of groups) results.push(await scanEntries(entries));
   results.push(scanKnownSecrets(groups.flat(), secrets));
