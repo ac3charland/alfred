@@ -102,12 +102,34 @@ export function TextareaField({
   // Measure from `auto` so the box can shrink as well as grow. `scrollHeight` leaves the border
   // out and the box is `border-box`, so add it back (`offsetHeight − clientHeight`) or a sliver
   // of the last line would be left to scroll.
-  React.useLayoutEffect(() => {
+  const fit = React.useCallback(() => {
     const node = textareaRef.current;
-    if (!autoGrow || node === null) return;
+    if (node === null) return;
     node.style.height = 'auto';
     node.style.height = `${String(node.scrollHeight + node.offsetHeight - node.clientHeight)}px`;
-  }, [autoGrow, value]);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (autoGrow) fit();
+  }, [autoGrow, value, fit]);
+
+  // A narrower field wraps the same text onto more lines, which `value` doesn't announce: a phone
+  // turned from landscape to portrait mid-edit would leave the last lines hidden under
+  // `overflow-hidden`. Watch the width only — the observer also fires for the height `fit` sets.
+  React.useEffect(() => {
+    const node = textareaRef.current;
+    if (!autoGrow || node === null || typeof ResizeObserver === 'undefined') return;
+    let width = node.offsetWidth;
+    const observer = new ResizeObserver(() => {
+      if (node.offsetWidth === width) return;
+      width = node.offsetWidth;
+      fit();
+    });
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [autoGrow, fit]);
 
   React.useEffect(() => {
     const node = textareaRef.current;

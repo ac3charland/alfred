@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import * as React from 'react';
@@ -217,7 +217,87 @@ describe('TextareaField autoGrow', () => {
     expect(textarea.style.height).toBe('22px');
   });
 
-  it('keeps `rows` as the floor for an empty note', () => {
+  describe('when the width changes', () => {
+    const callbacks: ResizeObserverCallback[] = [];
+    const disconnect = jest.fn();
+    const originalObserver = globalThis.ResizeObserver;
+    const originalWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    let width = 300;
+    let wrappedLines = 0;
+
+    class FakeResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        callbacks.push(callback);
+      }
+      observe = jest.fn();
+      unobserve = jest.fn();
+      disconnect = disconnect;
+    }
+
+    beforeEach(() => {
+      callbacks.length = 0;
+      disconnect.mockClear();
+      width = 300;
+      wrappedLines = 0;
+      globalThis.ResizeObserver = FakeResizeObserver;
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+        configurable: true,
+        get: () => width,
+      });
+      // The outer describe's scrollHeight stub counts newlines; a narrower field wraps more.
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () =>
+          ((document.querySelector('textarea')?.value.split('\n').length ?? 1) + wrappedLines) * 20,
+      });
+    });
+
+    afterEach(() => {
+      globalThis.ResizeObserver = originalObserver;
+      if (originalWidth === undefined) Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
+      else Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalWidth);
+    });
+
+    function resize(next: number) {
+      width = next;
+      act(() => {
+        for (const callback of callbacks) callback([], {} as ResizeObserver);
+      });
+    }
+
+    it('re-measures, because a rotation re-wraps the text without changing it', () => {
+      render(<Controlled autoGrow />);
+      const textarea = screen.getByLabelText('Edit notes');
+      expect(textarea.style.height).toBe('22px');
+
+      wrappedLines = 2;
+      resize(200);
+
+      expect(textarea.style.height).toBe('62px');
+    });
+
+    it('leaves the height alone when only the height changed (its own resize does not loop)', () => {
+      render(<Controlled autoGrow />);
+      const textarea = screen.getByLabelText('Edit notes');
+
+      wrappedLines = 2;
+      resize(300);
+
+      expect(textarea.style.height).toBe('22px');
+    });
+
+    it('stops watching on unmount, and never watches when autoGrow is off', () => {
+      const view = render(<Controlled autoGrow />);
+      view.unmount();
+      expect(disconnect).toHaveBeenCalled();
+
+      callbacks.length = 0;
+      render(<Controlled autoGrow={false} />);
+      expect(callbacks).toHaveLength(0);
+    });
+  });
+
+  it('keeps the `rows` attribute, which sizes an empty field before there is text to measure', () => {
     render(<Controlled autoGrow rows={4} />);
 
     expect(screen.getByLabelText('Edit notes')).toHaveAttribute('rows', '4');
