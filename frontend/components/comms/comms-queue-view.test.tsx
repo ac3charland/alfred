@@ -164,7 +164,7 @@ describe('CommsQueueView — the three counted tiers', () => {
       );
     await user.click(screen.getByRole('button', { name: 'Show more (10 older)' }));
 
-    expect(jest.mocked(api).fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2);
+    expect(jest.mocked(api).fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2, []);
     expect(await screen.findAllByTestId('comms-row')).toHaveLength(shelf.length);
     expect(screen.queryByRole('button', { name: /Show more/ })).not.toBeInTheDocument();
   });
@@ -596,5 +596,110 @@ describe('CommsQueueView — a tab that has been away', () => {
     await act(() => jest.advanceTimersByTimeAsync(1000));
 
     expect(screen.getByRole('alert')).toHaveTextContent(/^Not live — this is what was here 8h ago/);
+  });
+});
+
+/** What a browser coming back online fires: the simplest of the triggers that re-read. */
+async function poll(): Promise<void> {
+  await act(async () => {
+    globalThis.dispatchEvent(new Event('online'));
+    await Promise.resolve();
+  });
+}
+
+/**
+ * A re-run is answered a minute or three later by a Worker this tab never hears from, so the row
+ * has to say the request went somewhere — and the tab has to say what became of it. The journey
+ * runs through the real store: the click, the wait, and the poll that finds the request cleared.
+ */
+describe('CommsQueueView — asking for a re-run', () => {
+  const ASK = 'Asking whether you are coming Sunday.';
+  const STAMP = '2026-09-09T11:59:30.123456+00:00';
+
+  /** Dana's row, on Today, with the sender's own name to read as. */
+  function danaRow(overrides: Partial<CommMessage> = {}): CommMessage {
+    return row({ tier: 'today', sender_name: 'Dana Whitfield', ask: ASK, ...overrides });
+  }
+
+  async function openAndAskForRerun(): Promise<void> {
+    const user = userEvent.setup();
+    await user.click(screen.getByText(ASK));
+    await user.click(screen.getByRole('button', { name: 'Re-run classifier' }));
+  }
+
+  it('says at once that the request was made, on the button and on the collapsed row', async () => {
+    const dana = danaRow();
+    jest
+      .mocked(api)
+      .requestReclassify.mockResolvedValue({ ...dana, reclassify_requested_at: STAMP });
+    renderView([dana]);
+
+    await openAndAskForRerun();
+
+    const button = screen.getByRole('button', { name: /Re-run requested/ });
+    expect(button).toBeDisabled();
+    expect(within(button).getByRole('status', { name: 'Re-run pending' })).toBeInTheDocument();
+    expect(screen.getByText('Re-run pending')).toBeInTheDocument();
+  });
+
+  it('says how the verdict changed, once, when the poll finds the request cleared', async () => {
+    const dana = danaRow();
+    jest
+      .mocked(api)
+      .requestReclassify.mockResolvedValue({ ...dana, reclassify_requested_at: STAMP });
+    renderView([dana]);
+    await openAndAskForRerun();
+
+    const answered = { ...dana, tier: 'asap' as const, reclassify_requested_at: null };
+    jest
+      .mocked(api)
+      .fetchCommsSnapshot.mockResolvedValue(
+        makeCommsSeed({ accounts: [GMAIL], messages: [answered], watched: [answered] }),
+      );
+    await poll();
+
+    expect(await screen.findByText('Re-run · Dana Whitfield: Today → ASAP')).toBeInTheDocument();
+    expect(screen.queryByText('Re-run pending')).not.toBeInTheDocument();
+    // Nothing more to say on the next poll: the re-run is over.
+    await poll();
+    expect(screen.getAllByText(/^Re-run · /)).toHaveLength(1);
+  });
+
+  it('says so when nothing changed, rather than leaving the owner to wonder', async () => {
+    const dana = danaRow();
+    jest
+      .mocked(api)
+      .requestReclassify.mockResolvedValue({ ...dana, reclassify_requested_at: STAMP });
+    renderView([dana]);
+    await openAndAskForRerun();
+
+    const answered = { ...dana, reclassify_requested_at: null };
+    jest
+      .mocked(api)
+      .fetchCommsSnapshot.mockResolvedValue(
+        makeCommsSeed({ accounts: [GMAIL], messages: [answered], watched: [answered] }),
+      );
+    await poll();
+
+    expect(await screen.findByText('Re-run · Dana Whitfield: still Today')).toBeInTheDocument();
+  });
+
+  it('puts the row back and says why when the request never got through', async () => {
+    jest.mocked(api).requestReclassify.mockRejectedValue(new Error('offline'));
+    renderView([danaRow()]);
+
+    await openAndAskForRerun();
+
+    expect(await screen.findByText("Couldn't ask for a re-run")).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Re-run classifier' })).toBeEnabled();
+    expect(screen.queryByText('Re-run pending')).not.toBeInTheDocument();
+  });
+
+  it('gives the collapsed row no chip when its re-run was given up on', () => {
+    renderView([danaRow({ reclassify_failed_at: new Date(2026, 8, 9, 11, 58).toISOString() })]);
+
+    // Collapsed: no chip — the verdict stands, so the module is not wrong about the row.
+    expect(screen.queryByText('Re-run pending')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('row-markers')).not.toBeInTheDocument();
   });
 });

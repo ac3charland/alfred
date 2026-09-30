@@ -256,6 +256,123 @@ describe('MessageRow — the expanded detail', () => {
   });
 });
 
+/** A request the owner made a minute ago, still waiting on the Worker. */
+const PENDING = { reclassify_requested_at: new Date(2026, 8, 9, 11, 59).toISOString() };
+
+describe('MessageRow — a re-run that is pending', () => {
+  it('marks the collapsed row, so the wait is visible without opening it', () => {
+    renderRow({ message: makeRow(PENDING) });
+
+    expect(screen.getByText('Re-run pending')).toBeInTheDocument();
+  });
+
+  it('marks a shelf row too', () => {
+    renderRow({
+      message: makeRow({ ...PENDING, tier: 'fyi' }),
+      people: [],
+      shelved: true,
+    });
+
+    expect(screen.getByText('Re-run pending')).toBeInTheDocument();
+  });
+
+  it('lists the chip before every other one, since it describes the verdict as a whole', () => {
+    // Dana is on the roster (priority chip) and the row is unjudged (its own chip) as well.
+    renderRow({ message: makeRow({ ...PENDING, judged_by: 'unjudged' }) });
+
+    const chips = within(screen.getByTestId('row-markers'))
+      .getAllByText(/./)
+      .map((chip) => chip.textContent);
+    expect(chips).toEqual(['Re-run pending', 'Priority person', 'Unjudged']);
+  });
+
+  it('says nothing about a re-run on a row that has none', () => {
+    renderRow({ selected: true });
+
+    expect(screen.queryByText('Re-run pending')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('turns the button into a disabled "Re-run requested" with a spinner', () => {
+    renderRow({ selected: true, message: makeRow(PENDING) });
+
+    const button = screen.getByRole('button', { name: /Re-run requested/ });
+    expect(button).toBeDisabled();
+    expect(within(button).getByRole('status', { name: 'Re-run pending' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Re-run classifier/ })).not.toBeInTheDocument();
+  });
+
+  it('does not ask again while one is pending: a second request would only reset the attempts', async () => {
+    const user = userEvent.setup();
+    renderRow({ selected: true, message: makeRow(PENDING) });
+
+    await user.click(screen.getByRole('button', { name: /Re-run requested/ }));
+
+    expect(mockApi.requestReclassify).not.toHaveBeenCalled();
+  });
+
+  it('keeps the button a plain "Re-run classifier" when nothing is pending', () => {
+    renderRow({ selected: true });
+
+    expect(screen.getByRole('button', { name: 'Re-run classifier' })).toBeEnabled();
+  });
+});
+
+describe('MessageRow — a re-run that failed', () => {
+  const FAILED = { reclassify_failed_at: new Date(2026, 8, 9, 11, 58).toISOString() };
+
+  it('says so in the detail, with when and why the old verdict stands', () => {
+    renderRow({ selected: true, message: makeRow(FAILED) });
+
+    const line = screen.getByText(/The classifier couldn't produce a verdict/, { exact: false });
+    expect(line).toHaveTextContent(
+      "Re-run failed 11:58. The classifier couldn't produce a verdict, so this one stands.",
+    );
+  });
+
+  it('puts the line right after the reason it stands on', () => {
+    renderRow({
+      selected: true,
+      message: makeRow(FAILED),
+      verdict: makeCommVerdict('m1', { reason: 'Dana named a deadline.' }),
+    });
+
+    const why = screen.getByText(/Dana named a deadline\./);
+    const failed = screen.getByText(/Re-run failed/).closest('p');
+    expect(
+      why.compareDocumentPosition(failed as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(why.nextElementSibling).toBe(failed);
+  });
+
+  it('says so even when there is no verdict to give a reason', () => {
+    renderRow({ selected: true, message: makeRow(FAILED) });
+
+    expect(screen.getByText(/Re-run failed/)).toBeInTheDocument();
+  });
+
+  it('gives the collapsed row no chip: the verdict stands, so the module is not wrong about it', () => {
+    renderRow({ message: makeRow(FAILED), people: [] });
+
+    expect(screen.queryByTestId('row-markers')).not.toBeInTheDocument();
+    // The line lives in the detail, which is out of the accessibility tree until the row opens.
+    expect(screen.getByText(/Re-run failed/).closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('lets the owner ask again', () => {
+    renderRow({ selected: true, message: makeRow(FAILED) });
+
+    expect(screen.getByRole('button', { name: 'Re-run classifier' })).toBeEnabled();
+    expect(screen.queryByText('Re-run pending')).not.toBeInTheDocument();
+  });
+
+  it('says nothing about a failure on a row that has had none', () => {
+    renderRow({ selected: true });
+
+    expect(screen.queryByText(/Re-run failed/)).not.toBeInTheDocument();
+  });
+});
+
 describe('MessageRow — the verbs', () => {
   it('records nothing when the owner is simply not replying', async () => {
     const user = userEvent.setup();
