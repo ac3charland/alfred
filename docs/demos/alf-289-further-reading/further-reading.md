@@ -4,9 +4,86 @@ branch: claude/reader-further-reading-section-tav8t0
 
 # Reader: a Further reading section for the articles a post links to
 
-*2026-09-30T16:45:36.762Z*
+*2026-09-30T17:24:14.816Z*
 
 A summarised post's overview gains a **Further reading** checklist: the linked sources worth reading in full, as the model judges them. Tick some, then send them to the Reader (saved into Instapaper's "To Reader" folder, which the Worker already summarises from) or straight to Instapaper's Unread.
+
+## Tick, send, marked — in the running app
+
+Driven through the Playwright harness against the whole app: the real send route on the Next server, a stand-in Instapaper in the mock process (answering `folders/list` with a "To Reader" folder, id 7700001), and the atomic append that records the marks. **1 — the overview open.** Further reading is the last section, after "Who should read it": each link a checkbox row (title over note) with its own ↗ open link beside it.
+
+![](further-reading-image-1.png)
+
+**2 — two links ticked.** The bar folds in with the count and the two sends.
+
+![](further-reading-image-2.png)
+
+**3 — Send to Reader.** Both read "In Reader" in the module green, can't be ticked again, and the bar folds away.
+
+![](further-reading-image-3.png)
+
+**4 — then one more, Send to Instapaper.** It reads "In Instapaper", muted.
+
+![](further-reading-image-4.png)
+
+What the stand-in Instapaper received across those two presses, recorded by the capture run. The send to the Reader lists the folders first, then saves each link by URL — titled with the model's name for the piece, described with its note — into the To Reader folder. The send to Instapaper saves to Unread: no `folder_id`, and no folder listing.
+
+```bash
+cat docs/demos/alf-289-further-reading/send-recorded.json
+```
+
+```output
+{
+  "sendToReader": [
+    {
+      "path": "/api/1.1/folders/list",
+      "params": {}
+    },
+    {
+      "path": "/api/1/bookmarks/add",
+      "params": {
+        "url": "https://example.com/sim-to-real-gap",
+        "title": "The sim-to-real gap in dexterous manipulation",
+        "description": "The paper behind the lead item — per-task numbers for the folding benchmark.",
+        "folder_id": "7700001"
+      }
+    },
+    {
+      "path": "/api/1/bookmarks/add",
+      "params": {
+        "url": "https://example.com/foldbench-v2",
+        "title": "FoldBench v2 release notes",
+        "description": "The eval itself; skim it for the task list.",
+        "folder_id": "7700001"
+      }
+    }
+  ],
+  "sendToInstapaper": [
+    {
+      "path": "/api/1/bookmarks/add",
+      "params": {
+        "url": "https://example.com/evals-dont-transfer",
+        "title": "Why most robotics evals don’t transfer",
+        "description": "An essay arguing the suite measures the simulator, not the policy."
+      }
+    }
+  ]
+}
+```
+
+**5 — an account with no "To Reader" folder.** The route answers 409 in the owner's words, saves nothing, and the tick stays for a retry once the folder exists.
+
+![](further-reading-image-5.png)
+
+## The other states, as committed Storybook baselines
+
+Secondary evidence — the snapshot gate diffs these on every push. **One send failed:** a partial send marks what Instapaper confirmed, keeps the rest ticked for a one-press retry, and toasts how many went and what stopped the rest.
+
+![](further-reading-image-6.png)
+
+**No Instapaper:** a deployment without Instapaper credentials gets a plain list of links — no ticks, no bar.
+
+![](further-reading-image-7.png)
 
 ## The summariser: links by number, stored as the post's own URLs
 
@@ -85,46 +162,4 @@ link-roundup
     [6] https://substack.com/redirect/5a0c8d2e-7b41-4f93-8e6a-1d9b3c5f2e70
     [7] https://substack.com/redirect/0b6e4d1c-9a37-4f25-8c80-5e2a7d9f1b36
     [8] https://substack.com/redirect/8e3a5f2d-4c19-4b70-9d68-7f1e0c2b5a93
-```
-
-The prompt's rules (both inclusion tests, the exclusions, empty as the common answer, no wholesale roundups) and the normalisation (unknown numbers dropped, deduped, sorted, capped at ten, blank titles dropped) are pinned by the Worker suites:
-
-```bash
-npm test -w workers -- src/reader/links.test.ts src/reader/schema.test.ts src/reader/prompt.test.ts 2>&1 | grep -E '^(Tests|Test Suites):'
-```
-
-```output
-Test Suites: 3 passed, 3 total
-Tests:       70 passed, 70 total
-```
-
-## The overview: a checklist that sends to the Reader or to Instapaper
-
-The section renders last, after "Who should read it", and only when the post has items — a post with none (or summarised under prompt v1) shows no heading at all. These are the committed Storybook baselines for the four states, which the snapshot gate diffs on every push. **Picking:** each item is a checkbox row (title over note) with its own ↗ open link beside it, not inside it; the bar offers Send to Reader and Send to Instapaper.
-
-![](further-reading-image-1.png)
-
-**After sends:** a link sent to the Reader reads "In Reader" in the module green, one sent to Instapaper "In Instapaper", muted; neither can be ticked again.
-
-![](further-reading-image-2.png)
-
-**One send failed:** a partial send marks what Instapaper confirmed, keeps the rest ticked for a one-press retry, and toasts how many went and what stopped the rest.
-
-![](further-reading-image-3.png)
-
-**No Instapaper:** a deployment without Instapaper credentials gets a plain list of links — no ticks, no bar.
-
-![](further-reading-image-4.png)
-
-## The send route
-
-`POST /api/reader/posts/[id]/further-reading` intersects the ticked URLs with the post's current list, drops any already sent, lists Instapaper's folders (Reader only), saves each link by URL (into "To Reader" or Unread), and appends only the confirmed saves. Its suite covers every row of the send table — all saved, some saved, none saved, no To Reader folder (409), unconfigured (501), nothing left to send — plus the 20-second save window; the store and checklist suites cover the toasts, in-flight locking and marks:
-
-```bash
-npm test -w frontend -- 'app/api/reader/posts/\[id\]/further-reading' components/reader/further-reading.test.tsx lib/stores/reader-store.test.tsx 2>&1 | grep -E '^(Tests|Test Suites):'
-```
-
-```output
-Test Suites: 3 passed, 3 total
-Tests:       159 passed, 159 total
 ```
