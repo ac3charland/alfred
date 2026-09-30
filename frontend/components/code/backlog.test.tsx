@@ -988,6 +988,67 @@ describe('Backlog', () => {
       });
       expect(rowOrder()).toEqual(['ALF-c', 'RLP-1', 'ALF-a']);
     });
+
+    it("takes only the rank from a respacing jump's reply for a story the jump didn't move, keeping a status the Worker moved meanwhile", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const reply = deferred<CodeItem[]>();
+      mockMoveCodeInProject.mockReturnValueOnce(reply.promise);
+      renderBacklog(
+        [
+          makeStory('other', { priority: 5, project_id: 'p2', epic_id: 'e2', ref: 'RLP-1' }),
+          makeStory('a', { priority: 10 }),
+          makeStory('c', { priority: 30 }),
+        ],
+        { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
+      );
+      const relay = (priority: number, rev: number, factoryState: CodeItem['factory_state']) => ({
+        ...makeSidecar('other', priority, rev),
+        project_id: 'p2',
+        epic_id: 'e2',
+        ref: 'RLP-1',
+        factory_state: factoryState,
+      });
+      /** The status chip RLP-1's row shows. */
+      const relayStatus = () =>
+        within(screen.getByRole('link', { name: /^Open RLP-1/ }).closest('li') as HTMLElement)
+          .getAllByText(/^(In Development|Ready for Review)$/)
+          .map((chip) => chip.textContent);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-c to top of project' }));
+      await settle();
+      expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-c', true);
+      expect(relayStatus()).toEqual(['In Development']);
+
+      // The jump respaced every story (RLP-1 is now rank 1), and right after it committed the
+      // Worker moved RLP-1 to review. That row change streams back before the jump's reply does.
+      act(() => {
+        mockCodeItemsHandler?.({ new: relay(1, 1, 'ready_for_review') });
+      });
+      expect(relayStatus()).toEqual(['Ready for Review']);
+
+      // The reply lists EVERY story, RLP-1 as the jump's transaction saw it — before the Worker's
+      // write. RLP-1 is there for its rank, not its status, so the older status must not land.
+      await act(async () => {
+        reply.resolve([
+          relay(1, 1, 'in_development'),
+          makeSidecar('a', 2, 2),
+          makeSidecar('c', 1.5, 4),
+        ]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(relayStatus()).toEqual(['Ready for Review']);
+      expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+
+      // The ranks the reply gave ALF-c (1.5) and ALF-a (2) are the ones that landed: a story
+      // another tab ranks between them falls between them, where it would sit above both had the
+      // old scale stayed.
+      act(() => {
+        mockCodeItemsHandler?.({ new: relay(1.75, 5, 'ready_for_review') });
+      });
+      expect(rowOrder()).toEqual(['ALF-c', 'RLP-1', 'ALF-a']);
+      expect(relayStatus()).toEqual(['Ready for Review']);
+    });
   });
 
   it('shows the empty state when there are no stories', () => {

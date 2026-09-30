@@ -2159,6 +2159,52 @@ describe('code-store', () => {
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1 });
       });
 
+      it("lands the whole row of a story the swap re-ranked, but only the rank of a story it didn't", async () => {
+        const untouched = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+        mockReorderCode.mockResolvedValue([
+          makeSavedSidecar({
+            item_id: 'i1',
+            ref: 'ALF-1',
+            priority: 2,
+            priority_rev: 1,
+            factory_state: 'ready_for_dev',
+          }),
+          makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1, priority_rev: 2 }),
+          // Listed for its rank alone (a respacing write replies with every row), as it stood when
+          // the write committed.
+          makeSavedSidecar({
+            item_id: 'i3',
+            ref: 'ALF-3',
+            priority: 0.5,
+            priority_rev: 3,
+            factory_state: 'ready_for_dev',
+          }),
+        ]);
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A],
+              epics: [epic],
+              stories: [high, low, untouched],
+            }),
+          },
+        );
+
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+        await syncPriorityWrites();
+
+        const byId = new Map(result.current.backlog.map((story) => [story.item_id, story]));
+        expect(byId.get('i1')?.factory_state).toBe('ready_for_dev');
+        expect(byId.get('i3')?.priority).toBe(0.5);
+        expect(byId.get('i3')?.factory_state).toBe('needs_refinement');
+      });
+
       it('swaps nothing, and sends nothing, when a ref is unknown', async () => {
         const { result } = renderHook(
           () => ({
