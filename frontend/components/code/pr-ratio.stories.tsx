@@ -14,6 +14,7 @@ const PROJECTS: Project[] = [
   {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     id: 'p-realplay',
     name: 'RealPlay',
     key: 'RPL',
@@ -26,6 +27,7 @@ const PROJECTS: Project[] = [
   {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     id: 'p-alfred',
     name: 'Alfred',
     key: 'ALF',

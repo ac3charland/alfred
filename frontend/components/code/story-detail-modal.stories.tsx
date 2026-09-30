@@ -9,6 +9,7 @@ import { StoryDetailModal } from './story-detail-modal';
 const PROJECT: Project = {
   color: null,
   description: null,
+  exclude_from_pr_ratio: false,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',

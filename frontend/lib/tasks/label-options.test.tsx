@@ -15,6 +15,7 @@ const HOME: Folder = { ...WORK, id: 'folder-2', name: 'Home', sort_order: 2 };
 const ALFRED: Project = {
   color: null,
   description: null,
+  exclude_from_pr_ratio: false,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',

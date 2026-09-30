@@ -833,6 +833,8 @@ function newProject(input) {
     description: input.description ?? null,
     // The owner's palette pick; null = Automatic, the creation-slot colour (migration 0041).
     color: input.color ?? null,
+    // Dropped from the Dashboard PR ratio when true (migration 0042).
+    exclude_from_pr_ratio: input.exclude_from_pr_ratio ?? false,
   };
 }
 

@@ -28,6 +28,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     repo_owner: 'owner',
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     ...overrides,
   };
 }
