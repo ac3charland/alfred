@@ -67,6 +67,16 @@ describe('formatReport', () => {
     expect(report).toContain('  (no PR)           3      2.00       —        —        —');
   });
 
+  it('splits rows with no lane into sessions with no PR and PRs with no block', () => {
+    const report = formatReport([
+      ...lane(null, 2, { pr_number: null, pr_state: null, human_commits_after_open: null }),
+      ...lane(null, 1, { pr_state: 'merged', human_commits_after_open: 1 }),
+    ]);
+
+    expect(report).toContain('  (no PR)           2      1.50       —        —        —');
+    expect(report).toContain('  (PR, no block)    1      1.00       —        1        1');
+  });
+
   it('counts a lane’s human-reworked sessions', () => {
     const report = formatReport([
       row({ human_commits_after_open: 2 }),

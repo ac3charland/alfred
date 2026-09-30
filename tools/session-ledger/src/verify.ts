@@ -7,6 +7,19 @@ import type { JsonObject } from './types.ts';
  * lead re-fetches a random sample itself and every field the ledger derives from must match.
  */
 
+/** A session still running: its usage grows between a subagent's copy and the lead's re-fetch. */
+const WORKING = 'SESSION_STATUS_BUCKET_WORKING';
+
+/**
+ * The ids `sample` may draw from: every record except sessions still working — the backfill's own
+ * session among them — whose verified fields can't match a later re-fetch by construction.
+ */
+export function sampleable(records: readonly JsonObject[]): string[] {
+  return records
+    .filter((record) => record['status_bucket'] !== WORKING)
+    .map((record) => String(record['id']));
+}
+
 /** max(`min`, `pct`% of the ids), capped at how many there are, drawn without replacement. */
 export function sampleIds(
   ids: readonly string[],

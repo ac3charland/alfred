@@ -1,11 +1,11 @@
-code_sessions · ac3charland/alfred · 19 sessions · 2026-07-01 → 2026-07-12
+code_sessions · ac3charland/alfred · 20 sessions · 2026-07-01 → 2026-07-12
 
 coverage          rows   pct
-  linked to a PR    15   79%
-  ref known         15   79%
-  prompt rebuilt     9   47%
-  spec resolved      4   of 5 spec-reading sessions
-  cost recorded     16   84%
+  linked to a PR    16   80%
+  ref known         16   80%
+  prompt rebuilt     9   45%
+  spec resolved      4   of 6 spec-reading sessions
+  cost recorded     17   85%
 
 lane                n  median $   p90 $   merged  human-reworked
   implementation    4     18.05       —        3        1
@@ -15,7 +15,8 @@ lane                n  median $   p90 $   merged  human-reworked
   spike             1     41.22       —        1        —
   epic-refinement   1     58.70       —        1        —
   epic-implementation
-                    1    176.53       —        0        0
-  (no PR)           5      3.00       —        —        —
+                    2     90.02       —        0        0
+  (no PR)           4      4.46       —        —        —
+  (PR, no block)    1      3.00       —        1        1
 
-warnings: 19 · top: no_pr 4 · builder_changed_near_start 2 · builder_missing 2
+warnings: 21 · top: no_pr 4 · builder_missing 3 · builder_changed_near_start 2

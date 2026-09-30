@@ -13,7 +13,7 @@ import { BuilderLoader } from './replay.ts';
 import { formatReport } from './report.ts';
 import { buildRows } from './row.ts';
 import type { LedgerInputs, LedgerRow } from './types.ts';
-import { sampleIds, verifyRecords } from './verify.ts';
+import { sampleIds, sampleable, verifyRecords } from './verify.ts';
 
 const HELP = `session-ledger — backfill the code_sessions ledger (one row per coding session).
 
@@ -189,10 +189,7 @@ function sample(parsed: Parsed): number {
   const pct = Number(parsed.options.get('--pct') ?? '5');
   const min = Number(parsed.options.get('--min') ?? '5');
   if (!(pct > 0) || !(min >= 0)) throw new UsageError('--pct and --min must be positive numbers.');
-  const ids = sampleIds(
-    records.map((record) => String(record['id'])),
-    { pct, min },
-  );
+  const ids = sampleIds(sampleable(records), { pct, min });
   process.stdout.write(ids.map((id) => `${id}\n`).join(''));
   return 0;
 }

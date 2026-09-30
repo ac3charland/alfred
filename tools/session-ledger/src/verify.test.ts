@@ -1,4 +1,4 @@
-import { sampleIds, verifyRecords } from './verify.ts';
+import { sampleIds, sampleable, verifyRecords } from './verify.ts';
 
 const record = (id: string, cost = 1.5) => ({
   id,
@@ -25,6 +25,17 @@ describe('sampleIds', () => {
     const picked = sampleIds(ids, { pct: 10, min: 5 });
     expect(picked.every((id) => ids.includes(id))).toBe(true);
     expect(picked).toHaveLength(40);
+  });
+});
+
+describe('sampleable', () => {
+  it('leaves out sessions still working — their usage moves between the copy and the re-fetch', () => {
+    const records = [
+      { id: 'session_done', status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED' },
+      { id: 'session_live', status_bucket: 'SESSION_STATUS_BUCKET_WORKING' },
+      { id: 'session_waiting', status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED' },
+    ];
+    expect(sampleable(records)).toEqual(['session_done', 'session_waiting']);
   });
 });
 

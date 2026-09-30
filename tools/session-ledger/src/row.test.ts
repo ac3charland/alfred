@@ -134,6 +134,16 @@ describe('specs at base', () => {
     expect(r.skills.map((s) => s.path)).toEqual(['.claude/skills/implement-epic/SKILL.md']);
   });
 
+  it('warns when an epic implementation’s spec was not yet at base, keeping the path it names', () => {
+    expect(row('session_21EpicEarly')).toMatchObject({
+      launch_lane: 'epic-implementation',
+      base_sha: repo.m1,
+      spec_path: 'docs/specs/epics/ALF-4.html',
+      spec_blob_sha: null,
+      warnings: ['builder_missing', 'spec_missing_at_base'],
+    });
+  });
+
   it('shows a refinement its epic spec (present at base) but not its own (not yet written)', () => {
     const r = row('session_09Refine');
     expect(r.prompt).toContain('Epic spec: docs/specs/epics/ALF-4.html');

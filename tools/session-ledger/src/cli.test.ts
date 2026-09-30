@@ -97,8 +97,8 @@ describe('build', () => {
     const run = ledger(buildArgs(out));
 
     expect(run.code).toBe(0);
-    expect(run.stderr).toContain('built 19 rows');
-    expect(run.stderr).toContain('invalid record: batch-2.ndjson:9 (session_17Invalid)');
+    expect(run.stderr).toContain('built 20 rows');
+    expect(run.stderr).toContain('invalid record: batch-2.ndjson:10 (session_17Invalid)');
     expect(lines(out)).toEqual(lines(fixture('golden-rows.ndjson')));
   });
 
@@ -176,7 +176,7 @@ describe('push', () => {
         bodies.push(JSON.parse(body) as { rows: unknown[] });
         headers.push(request.headers.authorization);
         response.setHeader('content-type', 'application/json');
-        response.end(JSON.stringify({ upserted: 19, kept_recorded: 1 }));
+        response.end(JSON.stringify({ upserted: 20, kept_recorded: 1 }));
       });
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -189,11 +189,11 @@ describe('push', () => {
       });
 
       expect(run.code).toBe(0);
-      expect(bodies.map((body) => body.rows.length)).toEqual([19]);
+      expect(bodies.map((body) => body.rows.length)).toEqual([20]);
       expect(headers).toEqual(['Bearer test-ledger-key']);
       expect(run.stdout).toContain('coverage          rows   pct');
       expect(run.stdout.trim().split('\n').at(-1)).toBe(
-        'pushed 19 rows (19 upserted, 1 kept recorded prompts)',
+        'pushed 20 rows (20 upserted, 1 kept recorded prompts)',
       );
     } finally {
       server.close();

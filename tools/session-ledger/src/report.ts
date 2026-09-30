@@ -23,7 +23,10 @@ const LANE_ORDER: LaunchLane[] = [
 ];
 
 /** Lanes whose deliverable is a document: human rework of a spec isn't the rework measured. */
-const DOCUMENT_LANES = new Set<LaunchLane | null>(['refinement', 'spike', 'epic-refinement']);
+/** A lane row's group: a launch lane, or one of the two kinds of row with none. */
+type LaneGroup = LaunchLane | 'no-pr' | 'no-block';
+
+const DOCUMENT_LANES = new Set<LaneGroup>(['refinement', 'spike', 'epic-refinement']);
 
 /** p90 needs at least this many sessions to mean anything. */
 const P90_MIN_N = 10;
@@ -49,14 +52,14 @@ function coverageLine(label: string, count: number, tail: string): string {
   return `  ${label}`.padEnd(NAME_WIDTH) + String(count).padStart(6) + tail;
 }
 
-function laneLines(name: string, rows: readonly LedgerRow[], lane: LaunchLane | null): string[] {
+function laneLines(name: string, rows: readonly LedgerRow[], lane: LaneGroup): string[] {
   const costs = sortedBy(
     rows.flatMap((row) => (row.cost_usd === null ? [] : [row.cost_usd])),
     (a, b) => a - b,
   );
   const median = costs.length === 0 ? DASH : quantile(costs, 0.5).toFixed(2);
   const p90 = rows.length >= P90_MIN_N && costs.length > 0 ? quantile(costs, 0.9).toFixed(2) : DASH;
-  const noPr = lane === null;
+  const noPr = lane === 'no-pr';
   const merged = noPr ? DASH : String(rows.filter((row) => row.pr_state === 'merged').length);
   const reworked =
     noPr || DOCUMENT_LANES.has(lane)
@@ -166,8 +169,12 @@ export function formatReport(rows: readonly LedgerRow[], push?: PushResult): str
     const laneRows = rows.filter((row) => row.launch_lane === lane);
     if (laneRows.length > 0) lines.push(...laneLines(lane, laneRows, lane));
   }
-  const noLane = rows.filter((row) => row.launch_lane === null);
-  if (noLane.length > 0) lines.push(...laneLines('(no PR)', noLane, null));
+  // Rows with no lane are two different things: sessions no PR links, and PRs without an
+  // `alfred` block (pre-Code-module work), whose merge and rework are still real outcomes.
+  const noPr = rows.filter((row) => row.launch_lane === null && row.pr_number === null);
+  const noBlock = rows.filter((row) => row.launch_lane === null && row.pr_number !== null);
+  if (noPr.length > 0) lines.push(...laneLines('(no PR)', noPr, 'no-pr'));
+  if (noBlock.length > 0) lines.push(...laneLines('(PR, no block)', noBlock, 'no-block'));
 
   lines.push('', warningLine(rows));
   if (push !== undefined) {

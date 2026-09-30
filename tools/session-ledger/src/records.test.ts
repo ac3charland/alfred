@@ -161,6 +161,12 @@ describe('sessionFields', () => {
     });
   });
 
+  it('normalises created_at to strict ISO 8601, the form the sessions route accepts', () => {
+    expect(
+      sessionFields(record({ created_at: '2026-09-30 02:42:53+0000' })).session_created_at,
+    ).toBe('2026-09-30T02:42:53.000Z');
+  });
+
   it('leaves absent values null rather than inventing them', () => {
     const fields = sessionFields(record({ external_metadata: {}, configured_model: undefined }));
     expect(fields.cost_usd).toBeNull();

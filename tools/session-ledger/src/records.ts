@@ -158,7 +158,9 @@ export function sessionFields(record: JsonObject): SessionFields {
   const usage = objectAt(metadata, 'usage');
   return {
     title: stringOrNull(record['title']),
-    session_created_at: stringOrNull(record['created_at']),
+    // Strict ISO 8601 — what POST /api/code/sessions accepts. parseRecordLine already
+    // rejected a created_at that doesn't parse.
+    session_created_at: new Date(String(record['created_at'])).toISOString(),
     status: stringOrNull(record['status_bucket']),
     configured_model: stringOrNull(record['configured_model']),
     model: stringOrNull(context['model']),

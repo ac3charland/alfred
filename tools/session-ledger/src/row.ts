@@ -162,9 +162,10 @@ async function reconstruct(
 
   if (lane.lane === 'implementation') {
     result.spec_path = block.specPath ?? null;
-  } else if (lane.lane === 'epic-implementation' && launched !== undefined) {
-    const epicSpec = launched.spec_path;
-    result.spec_path = typeof epicSpec === 'string' ? epicSpec : null;
+  } else if (lane.lane === 'epic-implementation') {
+    // The path the epic names today, not the launch-time copy (nulled when the file wasn't at
+    // base yet): kept, the missing blob below says why the spec couldn't be resolved.
+    result.spec_path = subject?.spec_path ?? null;
   }
   if (result.spec_path !== null) {
     result.spec_blob_sha = history.blobAt(base, result.spec_path);
