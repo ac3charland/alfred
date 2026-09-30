@@ -119,13 +119,14 @@ export function addDays(date: string, delta: number): string {
   return fromUtcMillis(toUtcMillis(date) + delta * MS_PER_DAY);
 }
 
+/** An instant's local calendar date as a `YYYY-MM-DD` string. */
+export function localISODate(instant: Date): string {
+  return toISODate(instant.getFullYear(), instant.getMonth(), instant.getDate());
+}
+
 /** Today's local calendar date as a `YYYY-MM-DD` string (the default recurrence anchor). */
 export function todayISODate(): string {
-  const now = new Date();
-  const y = String(now.getFullYear()).padStart(4, '0');
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return localISODate(new Date());
 }
 
 /**
