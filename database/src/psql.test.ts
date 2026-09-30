@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
@@ -185,7 +185,7 @@ describe('npm run psql (script)', () => {
   });
 
   describe('frontend/.env.local fallback', () => {
-    // `ENV_LOCAL_PATH` is resolved relative to migrate.ts, so mirror the repo layout in a temp
+    // The env-file candidates are resolved relative to migrate.ts, so mirror the repo layout in a temp
     // dir (with a space in it) and run copies of the real sources: the true fallback path, end
     // to end, without touching the developer's actual gitignored frontend/.env.local.
     const SRC = path.dirname(SCRIPT);
@@ -216,6 +216,39 @@ describe('npm run psql (script)', () => {
         path.join(root, 'frontend', '.env.local'),
         `# comment\nOTHER=1\nDATABASE_URL="postgresql://postgres.ref:${PASSWORD}@${HOST}/postgres"\n`,
       );
+      const result = runCopy();
+      expect(result.stdout).toBe(
+        `argv: --dbname postgresql://postgres.ref@${HOST}/postgres -c select 1\nPGPASSWORD set: yes\n`,
+      );
+      expect(result.status).toBe(3);
+    });
+
+    it('falls back to the main checkout frontend/.env.local from a linked git worktree', () => {
+      // The gitignored file exists only in the main checkout, so a worktree must look there too.
+      // Hook-exported GIT_* vars would point git at the outer repo; strip them.
+      const { GIT_DIR: _d, GIT_INDEX_FILE: _i, GIT_WORK_TREE: _w, ...gitEnv } = process.env;
+      const git = (cwd: string, ...args: string[]): string =>
+        execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t.test', ...args], {
+          cwd,
+          env: gitEnv,
+          encoding: 'utf8',
+        });
+      git(root, 'init', '-q');
+      git(root, 'commit', '-q', '--allow-empty', '-m', 'init');
+      writeFileSync(
+        path.join(root, 'frontend', '.env.local'),
+        `DATABASE_URL="postgresql://postgres.ref:${PASSWORD}@${HOST}/postgres"\n`,
+      );
+      const worktree = path.join(bin, 'linked worktree');
+      git(root, 'worktree', 'add', '-q', '-b', 'wt', worktree);
+      // The worktree carries no tracked files here, so give it a copy of the sources.
+      const wtSrc = path.join(worktree, 'database', 'src');
+      mkdirSync(wtSrc, { recursive: true });
+      mkdirSync(path.join(worktree, 'frontend'), { recursive: true });
+      writeFileSync(path.join(worktree, 'database', 'package.json'), '{"type":"module"}\n');
+      copyFileSync(SCRIPT, path.join(wtSrc, 'psql.ts'));
+      copyFileSync(path.join(SRC, 'migrate.ts'), path.join(wtSrc, 'migrate.ts'));
+      script = path.join(wtSrc, 'psql.ts');
       const result = runCopy();
       expect(result.stdout).toBe(
         `argv: --dbname postgresql://postgres.ref@${HOST}/postgres -c select 1\nPGPASSWORD set: yes\n`,
