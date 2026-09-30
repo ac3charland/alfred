@@ -1,41 +1,36 @@
 /**
- * What a newsletter whose web-version link says "Read on web" becomes, before and after ALF-292.
+ * What a newsletter whose web-version link says "Read on web" (or any of its cousins) becomes.
  *
  * The extractor is the Worker's, and headless: its only surface is the `canonical_url` it stores,
  * which the app then reads twice — as the row's "Original" link and as the `url` a Send hands
- * Instapaper. So the evidence runs the REAL modules end to end: the Worker's `extractPost` at the
- * commit this branch was cut from and in the working tree, then the frontend's `postOpenLink` and
- * `buildBookmarkParams` over what each one stored. Nothing is restated here.
+ * Instapaper. So the evidence runs the REAL modules end to end: the Worker's `extractPost`, then
+ * the frontend's `postOpenLink` and `buildBookmarkParams` over what it stored. Nothing is restated.
  *
- * `workers/src` imports are extensionless and the frontend's use the `@/` alias, so each entry is
- * bundled with esbuild (already a dependency) into a throwaway ESM module first; the base
- * commit's extractor is read out of git and bundled from its own directory, so its relative
- * imports resolve against the same email-text module the branch uses. `server-only` is stubbed:
- * it exists to throw in a client bundle, and this is not one.
+ * `workers/src` imports are extensionless and the frontend's use the `@/` alias, so both are
+ * bundled with esbuild (already a dependency) into a throwaway ESM module first. `server-only` is
+ * stubbed: it exists to throw in a client bundle, and this is not one.
  *
  * Run from the repo root: `node docs/demos/reader-web-version-link/evidence.mjs`
  */
 import { build } from 'esbuild';
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-/** The commit this branch was cut from: the extractor as it shipped before the fix. */
-const BASE = '9372104';
-
 const ROOT = process.cwd();
-const EXTRACT = 'workers/src/reader/extract.ts';
 
-/** The anchor texts a newsletter's web-version link carries, and one that is not that link. */
+/** Web-version wordings, the one that always worked, and two links to some other site. */
 const WORDINGS = [
   'Read on web',
   'Read on the web',
-  'View on web',
   'View this email in your browser',
-  'View email in browser',
+  'View it in your browser',
+  'View this issue online',
+  'View as a web page',
+  'Web version',
   'View in browser',
   'Read on the website',
+  'Read on web.dev',
 ];
 
 /** `server-only` throws on import outside a React server bundle; here it has nothing to guard. */
@@ -47,11 +42,17 @@ const serverOnlyStub = {
   },
 };
 
-/** Bundle one entry's source into an importable ESM file. */
-async function bundle(outDir, name, contents, resolveDir) {
-  const outfile = path.join(outDir, `${name}.mjs`);
+/** Bundle the three production entry points into one importable ESM file. */
+async function bundle(outDir) {
+  const outfile = path.join(outDir, 'modules.mjs');
   await build({
-    stdin: { contents, resolveDir, loader: 'ts', sourcefile: `${name}.ts` },
+    stdin: {
+      contents: `export { extractPost } from '${ROOT}/workers/src/reader/extract.ts';
+                 export { postOpenLink } from '${ROOT}/frontend/lib/reader/open-link.ts';
+                 export { buildBookmarkParams } from '${ROOT}/frontend/lib/instapaper/bookmark.ts';`,
+      resolveDir: path.join(ROOT, 'frontend'),
+      loader: 'ts',
+    },
     bundle: true,
     format: 'esm',
     platform: 'node',
@@ -60,11 +61,6 @@ async function bundle(outDir, name, contents, resolveDir) {
     plugins: [serverOnlyStub],
   });
   return import(outfile);
-}
-
-/** Gmail's wire encoding for a part body: unpadded base64url. */
-function encodeBody(text) {
-  return Buffer.from(text, 'utf8').toString('base64url');
 }
 
 /** A small non-Substack newsletter: the web-version link up top, a cited link in the body. */
@@ -85,14 +81,15 @@ function newsletter(wording) {
         { name: 'From', value: 'Tidewrack Weekly <hello@news.example.com>' },
         { name: 'Message-ID', value: '<issue-42@news.example.com>' },
       ],
-      body: { size: html.length, data: encodeBody(html) },
+      // Gmail's wire encoding for a part body: unpadded base64url.
+      body: { size: html.length, data: Buffer.from(html, 'utf8').toString('base64url') },
     },
   };
 }
 
 /** Where the row's Original link goes, in a few words. */
-function original(frontend, post) {
-  const link = frontend.postOpenLink({
+function original(modules, post) {
+  const link = modules.postOpenLink({
     canonical_url: post.canonical_url ?? null,
     rfc822_message_id: post.rfc822_message_id ?? null,
   });
@@ -100,8 +97,8 @@ function original(frontend, post) {
 }
 
 /** What a Send hands Instapaper for this post: its `url`, or the private-email mechanism. */
-function send(frontend, post) {
-  const params = frontend.buildBookmarkParams({
+function send(modules, post) {
+  const params = modules.buildBookmarkParams({
     title: post.title,
     canonical_url: post.canonical_url ?? null,
     gist: null,
@@ -119,35 +116,13 @@ function send(frontend, post) {
 async function main() {
   const outDir = mkdtempSync(path.join(tmpdir(), 'alfred-alf-292-demo-'));
   try {
-    const baseSource = execFileSync('git', ['show', `${BASE}:${EXTRACT}`], { encoding: 'utf8' });
-    const before = await bundle(outDir, 'extract-before', baseSource, path.dirname(EXTRACT));
-    const after = await bundle(
-      outDir,
-      'extract-after',
-      `export { extractPost } from '${ROOT}/${EXTRACT}';`,
-      ROOT,
-    );
-    const frontend = await bundle(
-      outDir,
-      'frontend',
-      `export { postOpenLink } from '${ROOT}/frontend/lib/reader/open-link.ts';
-       export { buildBookmarkParams } from '${ROOT}/frontend/lib/instapaper/bookmark.ts';`,
-      path.join(ROOT, 'frontend'),
-    );
-
-    const publication = { name: 'Tidewrack Weekly' };
+    const modules = await bundle(outDir);
     for (const wording of WORDINGS) {
-      const message = newsletter(wording);
+      const post = modules.extractPost(newsletter(wording), { name: 'Tidewrack Weekly' });
       console.log(`"${wording}"`);
-      for (const [label, extractor] of [
-        [`before (${BASE})`, before],
-        ['after (branch) ', after],
-      ]) {
-        const post = extractor.extractPost(message, publication);
-        console.log(`  ${label}  canonical_url: ${post.canonical_url ?? 'none'}`);
-        console.log(`                    Original → ${original(frontend, post)}`);
-        console.log(`                    Send     → ${send(frontend, post)}`);
-      }
+      console.log(`  canonical_url: ${post.canonical_url ?? 'none'}`);
+      console.log(`  Original → ${original(modules, post)}`);
+      console.log(`  Send     → ${send(modules, post)}`);
     }
   } finally {
     rmSync(outDir, { recursive: true, force: true });
