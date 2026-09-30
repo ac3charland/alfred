@@ -1,6 +1,6 @@
 import { spyOnFetch } from '../fetch-stub';
 import type { SupabaseEnv } from '../supabase';
-import { clearReclassifyRequest } from './sweep-store';
+import { abandonReclassifyRequest, clearReclassifyRequest } from './sweep-store';
 
 const env: SupabaseEnv = {
   SUPABASE_URL: 'https://proj.supabase.co',
@@ -51,6 +51,52 @@ describe('clearReclassifyRequest', () => {
     mockSupabase(() => new Response('permission denied', { status: 403 }));
 
     await expect(clearReclassifyRequest(env, 'message-1')).rejects.toThrow(
+      'Supabase PATCH comm_messages (message-1) failed: 403 permission denied',
+    );
+  });
+});
+
+describe('abandonReclassifyRequest', () => {
+  const request = {
+    requestedAt: '2026-09-09T14:50:00.123456+00:00',
+    failedAt: '2026-09-09T15:00:00.000Z',
+  };
+
+  it('empties the request and stamps the failure in one write, touching nothing else', async () => {
+    const calls = mockSupabase(() => Response.json([{ id: 'message-1' }]));
+
+    await abandonReclassifyRequest(env, 'message-1', request);
+
+    expect(calls[0]?.method).toBe('PATCH');
+    expect(calls[0]?.url).toContain('/rest/v1/comm_messages?');
+    // Exactly these two columns: the tier, verdict and ask the row already had must stand.
+    expect(calls[0]?.body).toEqual({
+      reclassify_requested_at: WIRE_NULL,
+      reclassify_failed_at: '2026-09-09T15:00:00.000Z',
+    });
+  });
+
+  it('only matches the request it read, so a newer request is never wiped out', async () => {
+    const calls = mockSupabase(() => Response.json([{ id: 'message-1' }]));
+
+    await abandonReclassifyRequest(env, 'message-1', request);
+
+    const query = new URL(calls[0]?.url ?? '').searchParams;
+    expect(query.get('id')).toBe('eq.message-1');
+    // Decoded, because the `+` of a UTC offset is escaped on the wire and must survive it.
+    expect(query.get('reclassify_requested_at')).toBe('eq.2026-09-09T14:50:00.123456+00:00');
+  });
+
+  it('reports how many rows matched, so a request that moved on is not a silent success', async () => {
+    mockSupabase(() => Response.json([]));
+
+    await expect(abandonReclassifyRequest(env, 'message-1', request)).resolves.toBe(0);
+  });
+
+  it('throws with the shared message shape when the database refuses', async () => {
+    mockSupabase(() => new Response('permission denied', { status: 403 }));
+
+    await expect(abandonReclassifyRequest(env, 'message-1', request)).rejects.toThrow(
       'Supabase PATCH comm_messages (message-1) failed: 403 permission denied',
     );
   });

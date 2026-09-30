@@ -8,6 +8,7 @@ import {
   fetchExamples,
   fetchPeople,
   fetchReclassifyRequests,
+  fetchStalledReruns,
   fetchThreadContext,
   fetchUnjudgedAtCeiling,
   fetchUnjudgedMessages,
@@ -595,13 +596,22 @@ describe('fetchReclassifyRequests', () => {
   it('reads the rows the owner asked to re-run, oldest request first', async () => {
     const calls = mockSupabase(() => Response.json([]));
 
-    await fetchReclassifyRequests(env, { limit: 4 });
+    await fetchReclassifyRequests(env, { limit: 4, attemptCeiling: 5 });
 
     const [call] = calls as [Call];
     expect(query(call).get('reclassify_requested_at')).toBe('not.is.null');
     expect(query(call).get('direction')).toBe('eq.inbound');
     expect(query(call).get('order')).toBe('reclassify_requested_at.asc');
     expect(query(call).get('limit')).toBe('4');
+  });
+
+  it('excludes a row that has spent every attempt, so a stalled re-run is never billed again', async () => {
+    const calls = mockSupabase(() => Response.json([]));
+
+    await fetchReclassifyRequests(env, { limit: 4, attemptCeiling: 5 });
+
+    const [call] = calls as [Call];
+    expect(query(call).get('classify_attempts')).toBe('lt.5');
   });
 
   it('does NOT exclude an already-cleared row — an explicit, owner-named re-run still runs', async () => {
@@ -611,10 +621,97 @@ describe('fetchReclassifyRequests', () => {
     // own comment on this function for the reasoning.
     const calls = mockSupabase(() => Response.json([]));
 
-    await fetchReclassifyRequests(env, { limit: 4 });
+    await fetchReclassifyRequests(env, { limit: 4, attemptCeiling: 5 });
 
     const [call] = calls as [Call];
     expect(query(call).has('cleared_at')).toBe(false);
+  });
+});
+
+describe('fetchStalledReruns', () => {
+  it('reads the re-run requests that have spent every attempt, oldest request first', async () => {
+    const calls = mockSupabase(() => Response.json([]));
+
+    await fetchStalledReruns(env, { attemptCeiling: 5, limit: 3 });
+
+    const [call] = calls as [Call];
+    expect(query(call).get('reclassify_requested_at')).toBe('not.is.null');
+    expect(query(call).get('direction')).toBe('eq.inbound');
+    expect(query(call).get('classify_attempts')).toBe('gte.5');
+    expect(query(call).get('order')).toBe('reclassify_requested_at.asc');
+    expect(query(call).get('limit')).toBe('3');
+  });
+
+  it('does not filter on the tier: a row with no tier is a stalled re-run too', async () => {
+    const calls = mockSupabase(() => Response.json([]));
+
+    await fetchStalledReruns(env, { attemptCeiling: 5, limit: 3 });
+
+    const [call] = calls as [Call];
+    expect(query(call).has('tier')).toBe(false);
+  });
+
+  it('carries the request timestamp back exactly as the database wrote it', async () => {
+    // The abandoning write matches on this value, so a re-formatted copy would never match.
+    mockSupabase(() =>
+      Response.json([
+        {
+          id: 'message-1',
+          account_id: 'account-1',
+          source_id: 'guid-1',
+          thread_key: 'chat-7',
+          direction: 'inbound',
+          sender_handle: 'dana@example.com',
+          participants: [],
+          body: 'hello',
+          received_at: '2026-09-09T11:00:00.000Z',
+          body_extracted: true,
+          has_attachments: false,
+          has_list_header: false,
+          references_ids: [],
+          classify_attempts: 5,
+          tier: 'today',
+          reclassify_requested_at: '2026-09-09T11:30:00.123456+00:00',
+          reclassify_failed_at: '2026-09-08T09:00:00+00:00',
+          created_at: '2026-09-09T11:00:01.000Z',
+        },
+      ]),
+    );
+
+    const [found] = await fetchStalledReruns(env, { attemptCeiling: 5, limit: 3 });
+
+    expect(found?.reclassify_requested_at).toBe('2026-09-09T11:30:00.123456+00:00');
+    expect(found?.reclassify_failed_at).toBe('2026-09-08T09:00:00+00:00');
+  });
+
+  it('maps an absent failure stamp to undefined, like every other nullable column', async () => {
+    mockSupabase(() =>
+      Response.json([
+        {
+          id: 'message-1',
+          account_id: 'account-1',
+          source_id: 'guid-1',
+          thread_key: 'chat-7',
+          direction: 'inbound',
+          sender_handle: 'dana@example.com',
+          participants: [],
+          body: 'hello',
+          received_at: '2026-09-09T11:00:00.000Z',
+          body_extracted: true,
+          has_attachments: false,
+          has_list_header: false,
+          references_ids: [],
+          classify_attempts: 5,
+          reclassify_requested_at: '2026-09-09T11:30:00+00:00',
+          reclassify_failed_at: WIRE_NULL,
+          created_at: '2026-09-09T11:00:01.000Z',
+        },
+      ]),
+    );
+
+    const [found] = await fetchStalledReruns(env, { attemptCeiling: 5, limit: 3 });
+
+    expect(found?.reclassify_failed_at).toBeUndefined();
   });
 });
 

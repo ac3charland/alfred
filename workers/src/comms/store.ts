@@ -291,6 +291,7 @@ interface WireMessage {
   verdict_id: string | null;
   classified_at: string | null;
   reclassify_requested_at: string | null;
+  reclassify_failed_at: string | null;
   cleared_at: string | null;
   cleared_by: ClearedBy | null;
   inbox_item_id: string | null;
@@ -325,6 +326,7 @@ function toMessage(row: WireMessage): CommMessage {
     verdict_id: row.verdict_id ?? undefined,
     classified_at: row.classified_at ?? undefined,
     reclassify_requested_at: row.reclassify_requested_at ?? undefined,
+    reclassify_failed_at: row.reclassify_failed_at ?? undefined,
     cleared_at: row.cleared_at ?? undefined,
     cleared_by: row.cleared_by ?? undefined,
     inbox_item_id: row.inbox_item_id ?? undefined,
@@ -487,15 +489,43 @@ export async function fetchUnjudgedMessages(
  * exactly this reason (the row is re-judged without being un-cleared). The waste this guards
  * against elsewhere is a standing backlog silently re-billing every tick; a single named row is a
  * bounded, deliberate cost the owner asked for.
+ *
+ * It IS filtered on `classify_attempts`, for the reverse reason: a re-run that keeps failing with
+ * a bad model response counts an attempt each time, and past the ceiling it would otherwise be
+ * re-sent — and billed — on every tick forever, since nothing else looks at a row that has a
+ * tier. A request at the ceiling is `fetchStalledReruns`'s to give up on instead.
  */
 export async function fetchReclassifyRequests(
   env: SupabaseEnv,
-  options: { limit: number },
+  options: { limit: number; attemptCeiling: number },
 ): Promise<CommMessage[]> {
   const url = restQueryUrl(env, 'comm_messages', {
     select: '*',
     reclassify_requested_at: 'not.is.null',
     direction: 'eq.inbound',
+    classify_attempts: `lt.${String(options.attemptCeiling)}`,
+    order: 'reclassify_requested_at.asc',
+    limit: String(options.limit),
+  });
+  const rows = await fetchJson<WireMessage[]>(env, url, {}, 'GET comm_messages');
+  return rows.map((row) => toMessage(row));
+}
+
+/**
+ * The re-run requests that have spent every attempt — the complement of
+ * `fetchReclassifyRequests`, so between them every pending request is either judged or given up
+ * on. Not filtered on the tier: a row that never had one is a stalled re-run as much as a judged
+ * row is, and is parked afterwards as it would be without the request.
+ */
+export async function fetchStalledReruns(
+  env: SupabaseEnv,
+  options: { attemptCeiling: number; limit: number },
+): Promise<CommMessage[]> {
+  const url = restQueryUrl(env, 'comm_messages', {
+    select: '*',
+    reclassify_requested_at: 'not.is.null',
+    direction: 'eq.inbound',
+    classify_attempts: `gte.${String(options.attemptCeiling)}`,
     order: 'reclassify_requested_at.asc',
     limit: String(options.limit),
   });
@@ -589,9 +619,9 @@ export const THREAD_CONTEXT_MAX_AGE = '30 days';
  * The messages that came before each of these, grouped by the message they belong to.
  *
  * ONE request for the whole tick, not one per message, and the budget is why: a sweep already
- * spends roughly 41 of the Workers free plan's 50 subrequests, so a per-message query would take
- * a full tick to ~47 against a hard ceiling — and over it the tick throws part-way, having billed
- * model calls for verdicts it never stored. A single RPC with a window function keeps it at ~42
+ * spends roughly 42 of the Workers free plan's 50 subrequests, so a per-message query would take
+ * a full tick to ~48 against a hard ceiling — and over it the tick throws part-way, having billed
+ * model calls for verdicts it never stored. A single RPC with a window function keeps it at ~43
  * and leaves `COMMS_SWEEP_LIMIT` where it is.
  *
  * The rows come back newest-first per message (that is what the window function ranks on), so
