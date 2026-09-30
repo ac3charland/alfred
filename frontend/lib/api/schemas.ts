@@ -828,6 +828,58 @@ export const ledgerRowsSchema = z
     message: 'a batch may name each session_id once',
   });
 
+/** Token and request counts one model used, as the hook tallies them from the transcripts. */
+const recordedUsageSchema = z.strictObject({
+  requests: z.number().int().nonnegative(),
+  input: z.number().int().nonnegative(),
+  output: z.number().int().nonnegative(),
+  cache_read: z.number().int().nonnegative(),
+  cache_write_5m: z.number().int().nonnegative(),
+  cache_write_1h: z.number().int().nonnegative(),
+  web_search: z.number().int().nonnegative(),
+});
+
+const recordedUsageByModelSchema = z.strictObject({
+  main: z.record(z.string(), recordedUsageSchema),
+  subagents: z.record(z.string(), recordedUsageSchema),
+});
+
+/** An optional field the hook may leave out or send as `null` (a value it could not resolve). */
+const recordedOptional = <T extends z.ZodType>(schema: T) => schema.nullish();
+
+/**
+ * POST /api/code/sessions/record — one hook write. The hook sends the picture so far on a
+ * session start (identity, start commit) and on every stop (prompt, skills, usage), so the
+ * optional groups belong to one event or the other but the route does not police which: the
+ * SQL function ignores what an event does not own. Strict, so a cost (which alfred prices
+ * itself) or any other drift is a 400 rather than a column quietly written.
+ */
+export const recordedRowSchema = z.strictObject({
+  event: z.enum(['session-start', 'stop']),
+  session_id: z.string().regex(/^session_[A-Za-z0-9]+$/),
+  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
+  session_created_at: recordedOptional(z.iso.datetime({ offset: true })),
+  base_sha: recordedOptional(z.string()),
+  builder_sha: recordedOptional(z.string()),
+  prompt: recordedOptional(z.string()),
+  skills: recordedOptional(
+    z.array(z.strictObject({ path: z.string().min(1), blob_sha: z.string().nullable() })),
+  ),
+  ref: recordedOptional(z.string()),
+  model: recordedOptional(z.string()),
+  served_model: recordedOptional(z.string()),
+  effort_level: recordedOptional(z.string()),
+  input_tokens: recordedOptional(z.number().int().nonnegative()),
+  output_tokens: recordedOptional(z.number().int().nonnegative()),
+  cache_read_tokens: recordedOptional(z.number().int().nonnegative()),
+  cache_write_tokens: recordedOptional(z.number().int().nonnegative()),
+  subagent_count: recordedOptional(z.number().int().nonnegative()),
+  usage_by_model: recordedOptional(recordedUsageByModelSchema),
+  warnings: z.array(z.enum(['start_unrecorded', 'subagents_unreadable'])),
+});
+
+export type RecordedRow = z.infer<typeof recordedRowSchema>;
+
 // ---------------------------------------------------------------------------
 // Comms (the communication firewall)
 //
