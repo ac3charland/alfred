@@ -177,7 +177,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>309</span><span class="sep"> — </span><span class="ttl">Backfill coding session ledger</span></h1>
   <p class="change" id="change">A new <code>code_sessions</code> table in alfred holds one row per alfred-repo coding session: model, effort, cost, PR outcome, and its launch prompt, spec and skills rebuilt from git history.</p>
-  <p class="revised" id="revised">Revised 2026-09-30: D2 → everything read from main at session start (your review); D9 becomes an ancestor check.</p>
+  <p class="revised" id="revised">Revised 2026-09-30: D2 → everything read from main at session start; D9 becomes an ancestor check; forward recording split out to a hook story (your review).</p>
 </header>
 
 <section class="sec" id="decisions">
@@ -191,7 +191,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
       <p class="why">Git keeps every version. The stored base commit answers any other file later.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>How does the ledger grow later?</h3>
       <p class="pick">Rows keep the raw session record; recorded values always beat reconstructed ones.</p>
-      <p class="why">New columns backfill without refetching. A re-run can’t clobber future launch recording.</p></li>
+      <p class="why">New columns backfill without refetching. A re-run can’t clobber the future recording hook.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Which commit counts as “at the time”?</h3>
       <p class="pick">Main at session start, for the prompt, the spec and the skills alike.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>Where does the ledger live?</h3>
@@ -331,7 +331,7 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
 
 <section class="sec" id="not-doing">
   <h2 class="side">Not doing</h2>
-  <p>No ledger screen in alfred yet, no launch-time recording (the spike’s step 3), and no CI-failure, review-finding or escaped-bug metrics.</p>
+  <p>No ledger screen in alfred yet, no per-session recording hook (its own story), and no CI-failure, review-finding or escaped-bug metrics.</p>
 </section>
 
 <section class="sec" id="heads-up">
@@ -399,7 +399,7 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
     <h3><span class="tag">D4</span>How does the ledger grow later? · proposed</h3>
     <ul>
       <li><strong>Raw record.</strong> <code>session_record jsonb</code> keeps the whole <code>get_session</code> JSON verbatim. A later column (for example <code>context_usage</code> or <code>rate_limit_info</code>) can be backfilled in SQL without another MCP sweep.</li>
-      <li><strong>Provenance.</strong> <code>prompt_source</code> is <code>'reconstructed' | 'recorded'</code>. Every row this story writes says <code>reconstructed</code>. The upsert RPC keeps an existing <code>recorded</code> prompt, and its builder and base fields, when a reconstructed row arrives for the same session. Launch recording can later write <code>recorded</code> rows, and a backfill re-run can’t overwrite them.</li>
+      <li><strong>Provenance.</strong> <code>prompt_source</code> is <code>'reconstructed' | 'recorded'</code>. Every row this story writes says <code>reconstructed</code>. The upsert RPC keeps an existing <code>recorded</code> prompt, and its builder and base fields, when a reconstructed row arrives for the same session. The follow-up recording hook (see Out of scope) will write <code>recorded</code> rows, and a backfill re-run can’t overwrite them.</li>
       <li><strong>Refresh.</strong> Every other column is refreshed on each run (the cost of a still-running session, PR state, warnings).</li>
     </ul>
     <p>Considered: append-only snapshots per run (nothing needs refresh history yet); no raw record (every new metric would need another sweep over hundreds of sessions).</p>
@@ -407,7 +407,7 @@ pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
 
   <section class="rec" id="d5">
     <h3><span class="tag">D5</span>Where does the ledger live? · settled</h3>
-    <p>A <code>code_sessions</code> table in Supabase, one row per session, keyed by <code>session_id</code>. The owner wants to seed it now and keep building on it. Keying by session rather than by launch click keeps this story honest: history has sessions, not clicks. The spike’s later <code>code_launches</code> table can reference <code>code_sessions.session_id</code> once the Worker attaches sessions from PR links. Considered: committed JSON (public repo; static); a launch-keyed table now (no click data exists to fill it).</p>
+    <p>A <code>code_sessions</code> table in Supabase, one row per session, keyed by <code>session_id</code>. The owner wants to seed it now and keep building on it. Keying by session rather than by launch click keeps this story honest: history has sessions, not clicks. The follow-up recording hook upserts into this same table by <code>session_id</code>, so no second table is needed for sessions. Considered: committed JSON (public repo; static); a launch-keyed table now (no click data exists to fill it).</p>
   </section>
 
   <section class="rec" id="d6">
@@ -706,7 +706,21 @@ LedgerRow = the table's columns minus refreshed_at (snake_case JSON).</pre>
     <li><strong>Out.</strong> The following are left out:
       <ul>
         <li>A ledger view in the UI: nothing reads the table yet, and the report covers the first question.</li>
-        <li>Launch-time recording and arms: spike step 3, which D4 prepares for.</li>
+        <li><strong>Forward recording: a follow-up story, a Claude Code hook.</strong> A <code>Stop</code> hook in <code>.claude/settings.json</code> upserts the running session’s own row every turn, with <code>prompt_source: 'recorded'</code>. <code>SessionEnd</code> isn’t used because cloud containers get reclaimed rather than ended. What the hook can read was confirmed in this refinement session:
+          <ul>
+            <li><code>CLAUDE_CODE_REMOTE_SESSION_ID</code> (<code>cse_01…</code>, the same suffix as <code>session_01…</code>).</li>
+            <li>The transcript’s first user message: the exact prompt as sent.</li>
+            <li>Its <code>cost-state</code> entries: <code>totalCostUSD</code> and per-model tokens.</li>
+            <li>The effort level.</li>
+            <li>A <code>SessionStart</code> <code>git rev-parse HEAD</code> for the real <code>base_sha</code>.</li>
+          </ul>
+          That story must settle three things:
+          <ul>
+            <li>Whether <code>cost-state</code> cost matches <code>get_session</code>’s <code>cost_usd</code> (subagents included or not).</li>
+            <li>No-op and never block a turn when the key is absent: locally, and in sessions not launched from alfred.</li>
+            <li>Every coding session gains write access to ledger rows through the proxy credential.</li>
+          </ul>
+          Arms and prompt versions (spike step 3) can ride on it. Once it ships, this backfill is needed only for history.</li>
         <li>Red-CI counts, review-finding parsing and escaped-bug tracing: later columns, derivable from <code>pr_number</code> and <code>session_record</code>.</li>
       </ul></li>
     <li><strong>Fidelity.</strong> Rebuilt prompts use today’s title and notes, can’t see the owner’s edits before sending, assume the launch came from alfred’s link, and read skills as they were at session start, before any edits the session made itself. Every rebuilt row is therefore marked <code>reconstructed</code> and should be treated as “very likely”, not observed.</li>
@@ -722,7 +736,7 @@ LedgerRow = the table's columns minus refreshed_at (snake_case JSON).</pre>
   <ol>
     <li>Generate a random key and set it as <code>LEDGER_API_KEY</code> in Vercel’s production env, then redeploy.</li>
     <li>In the <code>alfred</code> cloud environment’s settings, add an API credential for alfred’s host that sends <code>Authorization: Bearer &lt;key&gt;</code>. If that section isn’t offered, add a <code>LEDGER_API_KEY</code> env var instead. Also set <code>ALFRED_BASE_URL</code> to the app’s URL. Never paste the key into a chat.</li>
-    <li>Start a new session on alfred and ask it to “run the session-ledger backfill”. Re-run it whenever you want fresh numbers; it’s idempotent.</li>
+    <li>Start a new session on alfred and ask it to “run the session-ledger backfill”. It is a one-time seed: once the recording hook ships, new sessions record themselves. Until then, re-running refreshes rows safely.</li>
   </ol>
 </section>
 
