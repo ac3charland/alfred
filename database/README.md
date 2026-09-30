@@ -4,7 +4,9 @@ Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 fo
 
 ## Layout
 
-- `migrations/` — ordered SQL migrations (`NNNN_name.sql`). Applied in filename order.
+- `migrations/` — ordered SQL migrations (`NNNN_name.sql`). Applied in filename order. Numbers are
+  unique (`migration-lint`'s `unique-number` rule and the `Migration numbers` CI check fail a
+  duplicate): take the next one from a freshly fetched `origin/main`.
 - `seed.sql` — tiny development dataset (folders + a nested subtask tree).
 - `src/deploy.ts` — the applier the merge pipeline runs (see
   [Applying on merge](#applying-on-merge-the-default-path)); also usable locally.
