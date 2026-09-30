@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-310 — Record session metrics from hooks</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+/* Non-UI output: a terminal in alfred's dark tokens (frontend/app/globals.css) and Geist Mono. */
+.app{--bg:#0a0e17;--fg:#e8edf5;--muted-fg:#8a96a8;--border:#1e2a3f;--primary:#4fd1e0;
+  background:var(--bg);color:var(--fg);overflow:hidden;border:1px solid var(--border);
+  font:12px/1.5 "Geist Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.app .term{margin:0;padding:14px 16px;overflow-x:auto;white-space:pre;font:inherit;color:inherit;background:none;border:0}
+.app .dim{color:var(--muted-fg)}
+.app .hl{color:var(--primary)}
+
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Code module · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>310</span><span class="sep"> — </span><span class="ttl">Record session metrics from hooks</span></h1>
+  <p class="change" id="change">Every alfred cloud session writes its own <code>code_sessions</code> row as it runs: the prompt exactly as sent, the commit it started on, tokens, subagents and cost.</p>
+  <p class="revised" id="revised">Revised 2026-09-30: D1 → priced from Anthropic’s pricing page, folded in with a subagent plan; D5 → split out (your review).</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>Which sessions record themselves?</h3>
+      <p class="pick">Cloud sessions on alfred only. Local sessions silently skip.</p>
+      <p class="why">The ledger keys on <code>session_…</code> ids, and local sessions have none.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>When does the hook write?</h3>
+      <p class="pick">Once at session start (the starting commit), then at the end of every turn.</p>
+      <p class="why">Cloud containers are reclaimed, never ended; there’s no final moment.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>Who wins when hook and backfill disagree?</h3>
+      <p class="pick">The hook, for what it records; the backfill fills only what the hook can’t see.</p>
+      <p class="why">Extends ALF-309 D4’s recorded-wins rule from the prompt to the whole row.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>Where does a recorded row’s cost come from?</h3>
+      <p class="pick">alfred prices tokens from Anthropic’s pricing page, re-read on the Comms sweep’s daily tick.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>What fills PR outcome for new sessions?</h3>
+      <p class="pick">Not this story: a separate ticket tracks what happens after the session.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>Which prompt is stored?</h3>
+      <p class="pick">The first message exactly as sent. It permanently beats a rebuilt one.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>Which new metrics?</h3>
+      <p class="pick">Subagent count, plus tokens per model for the main thread and for subagents.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <div class="mount">
+      <div class="app" role="img" aria-label="One code_sessions row written by the hook alone, before any backfill run">
+<pre class="term"><span class="dim">alfred=&gt; select * from code_sessions where session_id = 'session_01…';</span>
+<span class="dim">-[ RECORD 1 ]------------+----------------------------------------------</span>
+session_id               | session_01…
+repo                     | ac3charland/alfred
+ref                      | <span class="hl">ALF-310</span>
+launch_lane              | ∅
+session_created_at       | <span class="hl">2026-10-03 09:12:40+00</span>
+model                    | <span class="hl">claude-opus-5-5</span>
+served_model             | <span class="hl">claude-opus-5-5</span>
+effort_level             | <span class="hl">high</span>
+cost_usd                 | <span class="hl">18.402117</span>
+input_tokens             | <span class="hl">4118</span>
+output_tokens            | <span class="hl">212406</span>
+cache_read_tokens        | <span class="hl">41877310</span>
+cache_write_tokens       | <span class="hl">903114</span>
+subagent_count           | <span class="hl">3</span>
+usage_by_model           | <span class="hl">{"main": {"claude-opus-5-5": {"requests": 164, "output": 198311, …}},</span>
+                         | <span class="hl"> "subagents": {"claude-haiku-4-5-20251001": {"requests": 22, "output": 14095, …}}}</span>
+pr_number                | ∅
+pr_state                 | ∅
+human_commits_after_open | ∅
+base_sha                 | <span class="hl">e0faf7429610065da810d28206fb68cf93f93ae8</span>
+builder_sha              | <span class="hl">918e56097e4f25ed7167ce57a239f1298e10f520</span>
+prompt                   | <span class="hl">ALF-310: Create hooks to log session metrics↵</span>
+                         | <span class="hl">↵</span>
+                         | <span class="hl">You are implementing the ticket ALF-310. Implement the merged…</span>
+prompt_source            | <span class="hl">recorded</span>
+skills                   | <span class="hl">[{"path": ".claude/skills/implement-spec/SKILL.md",</span>
+                         | <span class="hl">  "blob_sha": "b7b05e8d4ba723d6a78e58166b07640e82abf12b"}, …]</span>
+warnings                 | <span class="hl">{}</span>
+session_record           | ∅
+recorded_at              | <span class="hl">2026-10-03 11:47:05+00</span>
+refreshed_at             | 2026-10-03 11:47:05+00</pre>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The row for this story’s own implementation session after a few turns, before any backfill run. Teal is what recording wrote: the hook’s values, plus the cost alfred prices from them. ∅ is null; the PR fields, lane and <code>session_record</code> arrive with the next backfill run (D5). Values are illustrative. The shas are main’s real values today.</figcaption>
+  </figure>
+  <figure class="plate" id="p2">
+    <div class="mount">
+      <div class="app" role="img" aria-label="The Worker log line the daily price refresh prints, once per outcome">
+<pre class="term"><span class="dim">$ npx wrangler tail   # the 09:17 UTC tick, on three different days</span>
+comms retention: …
+reader retention: …
+<span class="hl">model prices: appended · 18 models, 1 changed (claude-opus-5-5) · repriced 212 sessions</span>
+wiki sync: …
+
+<span class="hl">model prices: unchanged · 18 models · repriced 0 sessions</span>
+
+<span class="hl">model prices: rejected (ordering violated: Claude Opus 6) · kept 2026-10-02 table</span></pre>
+      </div>
+    </div>
+    <figcaption><b>Plate II.</b>The one line the price refresh adds to the Worker’s daily retention tick, shown for each outcome. Values are illustrative.</figcaption>
+  </figure>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 630 250" role="img" aria-label="The session's hooks post tokens to a record RPC that prices them from a dated price history the Worker refreshes daily from Anthropic's pricing page; the ALF-309 backfill still upserts the same table">
+      <g><rect x="10" y="20" width="170" height="46" rx="3"/><text x="22" y="40">Cloud session</text><text class="s" x="22" y="56">SessionStart · Stop</text></g>
+      <g class="new"><rect x="10" y="110" width="170" height="46" rx="3"/><text x="22" y="130">session-ledger hook</text><text class="s" x="22" y="146">transcript + git → tokens</text></g>
+      <g class="new"><rect x="220" y="20" width="185" height="46" rx="3"/><text x="232" y="40">Worker · daily tick</text><text class="s" x="232" y="56">pricing.md → parse</text></g>
+      <g class="new"><rect x="220" y="110" width="185" height="46" rx="3"/><text x="232" y="130">model_price_history</text><text class="s" x="232" y="146">dated rates per model</text></g>
+      <g class="new"><rect x="220" y="190" width="185" height="46" rx="3"/><text x="232" y="210">record_code_session</text><text class="s" x="232" y="226">POST …/record · prices usage</text></g>
+      <g><rect x="445" y="190" width="175" height="46" rx="3"/><text x="457" y="210">code_sessions</text><text class="s" x="457" y="226">+ 3 columns</text></g>
+      <g><rect x="445" y="20" width="175" height="46" rx="3"/><text x="457" y="40">backfill (ALF-309)</text><text class="s" x="457" y="56">upsert amended</text></g>
+      <path class="hot" d="M95 66 V110"/>
+      <path class="hot" d="M95 156 V213 H220"/>
+      <path class="hot" d="M312 66 V110"/>
+      <path class="hot" d="M312 156 V190"/>
+      <path class="hot" d="M405 213 H445"/>
+      <path d="M532 66 V190"/>
+      <text class="lb" x="102" y="92">every turn</text>
+      <text class="lb" x="319" y="178">rates at t</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b>The hook sends tokens; alfred prices them from a history the Worker refreshes daily and re-prices when it changes. The backfill’s RPC learns to leave recorded columns alone.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>No ledger screen, no local sessions, and nothing after the session idles: PR outcomes and bug tracing are a separate ticket.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul>
+    <li>Ships after ALF-309 is live and reuses its <code>LEDGER_API_KEY</code> credential; <a href="#after-merge">nothing new to mint</a>.</li>
+    <li>Each turn’s end waits up to 5 s for one write; failures are only logged locally.</li>
+    <li>Costs appear at the first daily price fetch after deploy; earlier sessions are priced then.</li>
+  </ul>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p><strong>The ask.</strong> ALF-309 (<a href="ALF-309.html"><code>docs/specs/ALF-309.html</code></a>, implementation in flight) seeds <code>code_sessions</code> from history and leaves forward recording to “a follow-up story, a Claude Code hook”. This is that story. Build on ALF-309 as merged. If its migration, routes or CLI landed under different names, follow what landed; the rules here still apply.</p>
+  <p><strong>The owner’s answers in refinement:</strong></p>
+  <ul>
+    <li>Record the actual prompt sent, not a rebuilt one (D6).</li>
+    <li>Also record subagent count and tokens (D7).</li>
+    <li>On cost, the owner expected the transcript to carry it, as ALF-309’s hand-off said. It doesn’t (see below), so alfred prices the recorded tokens itself (D1).</li>
+  </ul>
+  <p><strong>Verified in this refinement session</strong> (a cloud session, CLI <code>2.1.x</code>, Node 24.21):</p>
+  <ul>
+    <li><strong>Session id.</strong> <code>CLAUDE_CODE_REMOTE_SESSION_ID=cse_01Sfqpa…</code> and the session link <code>session_01Sfqpa…</code> share their suffix. The ledger id is <code>"session_" + id.slice("cse_".length)</code>. <code>CLAUDE_CODE_REMOTE=true</code> is also set.</li>
+    <li><strong>Transcript.</strong> The file is <code>~/.claude/projects/&lt;cwd-slug&gt;/&lt;uuid&gt;.jsonl</code>, and the hook’s stdin carries its path as <code>transcript_path</code>. Each <code>type:"assistant"</code> entry carries <code>message.model</code>, <code>message.id</code>, <code>requestId</code>, <code>effort</code>, <code>isSidechain:false</code> and <code>message.usage</code>: <code>input_tokens</code>, <code>output_tokens</code>, <code>cache_read_input_tokens</code>, <code>cache_creation_input_tokens</code>, and <code>cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}</code>. <strong>One API response is written as several entries (one per content block), each repeating the same usage</strong>, so a naive sum overcounts.</li>
+    <li><strong>No cost field.</strong> Across 27 assistant entries and one completed turn there was no <code>totalCostUSD</code>, <code>costUSD</code> or <code>cost_usd</code>. The only entry written at turn end was <code>system/stop_hook_summary</code>. ALF-309’s “cost-state entries” claim does not hold for this CLI. Hence D1.</li>
+    <li><strong>Subagents.</strong> A subagent writes its own transcript at <code>&lt;transcript_path minus .jsonl&gt;/subagents/agent-&lt;id&gt;.jsonl</code>, with a <code>.meta.json</code> beside it. Its entries are <code>isSidechain:true</code> and carry their own model (<code>claude-haiku-4-5-20251001</code> in the probe). The main transcript carries none of their usage.</li>
+    <li><strong>Prompt.</strong> The first <code>type:"user"</code> entry is the launch prompt verbatim, starting with <code>ALF-310: …</code>.</li>
+    <li><strong>Stop hooks fire in cloud sessions.</strong> The environment already runs a user-level <code>~/.claude/stop-hook-git-check.sh</code>, and the project hook runs alongside it.</li>
+    <li><strong>Proxy.</strong> Outbound HTTPS goes through <code>HTTPS_PROXY</code>, which Node’s built-in <code>fetch</code> ignores unless <code>NODE_USE_ENV_PROXY=1</code> is set (Node ≥ 22.21). Without it, the proxy-injected credential never gets attached.</li>
+    <li><strong>Clone.</strong> The clone is shallow (about 730 commits here). That’s enough to find the last <code>links.ts</code> change, but no hook may unshallow it.</li>
+  </ul>
+  <p><strong>Pricing, verified in refinement:</strong></p>
+  <ul>
+    <li><strong>Precedent.</strong> The owner’s menu-bar usage widget (<code>ac3charland/claude-usage-menu-bar</code>, <code>Sources/ClaudeUsageCore/PricingFetcher.swift</code> and <code>PriceHistory.swift</code>, with <code>Tests/…/PricingPageParserTests.swift</code>) prices transcript tokens from Anthropic’s public pricing page. D1 and D14–D16 port it.</li>
+    <li><strong>The page.</strong> <code>https://platform.claude.com/docs/en/about-claude/pricing.md</code> is served as markdown, and it’s reachable from a cloud session (200, 48 KB, 0.7 s). Its model table has six columns: base input, 5m and 1h cache writes, cache hits, and output, all in <code>$n / MTok</code>.</li>
+    <li><strong>The cron.</strong> <code>workers/wrangler.toml</code> uses four of the account’s five cron triggers. The daily <code>17 9 * * *</code> (<code>RETENTION_CRON</code>) already runs three isolated units in <code>workers/src/index.ts</code>, each awaited and logged on one line.</li>
+    <li><strong>Hard-coded prices go stale.</strong> The <code>anthropic-api</code> skill lists Sonnet 5 at $3/$15 against the page’s $2/$10. <code>workers/scripts/reader-eval.ts</code> matches prices by prefix, so it bills Opus 5.5 at Opus 5’s rates.</li>
+  </ul>
+  <p><strong>What exists after ALF-309:</strong> <code>code_sessions</code> and <code>upsert_code_sessions</code> (recorded-wins for prompt, prompt_source, builder_sha and base_sha); <code>POST /api/code/sessions</code>; <code>validateLedgerKey</code>/<code>resolveLedgerClient</code> in <code>frontend/lib/api/auth.ts</code>; and the <code>tools/session-ledger</code> workspace with <code>git.ts</code> (blob lookup) and <code>replay.ts</code> (the skills regex). <code>.claude/settings.json</code> holds only <code>enabledPlugins</code> today.</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>Where does a recorded row’s cost come from? · settled</h3>
+    <p>Cost is computed in alfred: never in the hook, never from a committed table. The owner’s menu-bar widget is the model. It fetches Anthropic’s pricing page as markdown, parses its model table, keeps a dated history, and prices usage at the rates in effect when it happened. alfred ports that as D14 (the history), D15 (the parser) and D16 (the refresh and re-pricing). The hook sends tokens only, and <code>record_code_session</code> prices <code>usage_by_model</code> at <code>session_created_at</code> on every write.</p>
+    <p>Where this departs from the widget:</p>
+    <ul>
+      <li><strong>No built-in fallback table</strong> (the owner’s call). The history starts empty, and the first fetch’s rates apply back to every earlier session (D14’s launch-price rule), so nothing stays unpriced past the first tick.</li>
+      <li><strong>Refresh on the Worker’s daily retention tick</strong> instead of a poll-driven <code>isDue</code> check. alfred has no poller, and the owner chose to share the tick rather than spend the last cron slot.</li>
+      <li><strong>Only a <code>-YYYYMMDD</code> suffix is normalised away.</strong> Any other suffix, such as <code>/fast</code>, stays unpriced. The widget prices it at standard rates, but fast mode costs double.</li>
+    </ul>
+    <p>Considered: a committed per-model table (it goes stale silently; see Context); fetching inside each session’s hook (it puts the fragile parser into silent code in every session); fetching from the record route when stale (no cron, but the owner preferred the shared tick).</p>
+  </section>
+
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>Which sessions record themselves? · proposed</h3>
+    <p>The hook runs only when <code>CLAUDE_CODE_REMOTE_SESSION_ID</code> starts with <code>cse_</code> and <code>ALFRED_BASE_URL</code> is non-empty. <code>ALFRED_BASE_URL</code> is set only in the alfred cloud environment (ALF-309’s after-ship step), so it is the switch. Otherwise the hook exits 0 before reading anything. That covers local sessions, other environments, and forks that clone the public repo. The hook can’t tell whether the proxy credential exists, since it’s invisible by design; a 401 is logged like any other failure (D12). Considered: recording local sessions under a synthetic id. <code>get_session</code> can’t see them, the backfill could never join them, and they are not what the ledger evaluates.</p>
+  </section>
+
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>When does the hook write? · proposed</h3>
+    <p><code>SessionStart</code> with matcher <code>startup</code> captures <code>git rev-parse HEAD</code> as <code>base_sha</code> before the session changes anything; that’s the real start commit, where ALF-309 D2 can only approximate it. It then writes the row’s first version. <code>Stop</code> fires at the end of every main-thread turn and rewrites the usage columns from the transcripts. Every write is the whole picture so far, so a missed write is healed by the next one. <code>SessionEnd</code> isn’t used because containers are reclaimed without ending. <code>SubagentStop</code> isn’t needed, because the next <code>Stop</code> re-reads every subagent transcript. The only thing that goes unrecorded is a background subagent that finishes after the last turn. Considered: <code>UserPromptSubmit</code> for the prompt. Its input carries <code>prompt</code> directly, but whether it fires for a cloud session’s launch prompt is unverified, while the transcript path is verified.</p>
+  </section>
+
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>Who wins when hook and backfill disagree? · proposed</h3>
+    <p>Columns fall into four ownership classes, listed in <a href="#behavior">Behaviour</a>. What the session observed first-hand beats what the backfill reconstructs: the prompt, the start commit, skills, usage, subagents and cost. The platform wins on what it owns: <code>session_created_at</code>, <code>model</code>, <code>effort_level</code> and <code>ref</code> (from the PR block). The hook fills those only while they’re null. Two RPCs enforce the split, so no client can bypass it: the new <code>record_code_session</code>, and an amended <code>upsert_code_sessions</code>. Without the amendment, ALF-309’s <code>&lt;every column&gt; = excluded.&lt;col&gt;</code> would null the hook’s new columns on every backfill run, because a backfill row doesn’t carry them. Considered: last-writer-wins (the two sources flip the row back and forth); a separate <code>recorded_sessions</code> table (every reader would join two tables and pick per column).</p>
+  </section>
+
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>What fills PR outcome for new sessions? · settled</h3>
+    <p>The owner’s scope rule: this story captures what’s hard to reconstruct later, meaning what only the running session can see. Everything that happens after the session goes idle is a separate ticket: PR merges, human rework, bugs traced back to the session that shipped them. The hook writes nothing about PRs. <code>pr_*</code>, <code>launch_lane</code>, <code>spec_path</code>/<code>spec_blob_sha</code>, <code>human_commits_after_open</code>, <code>title</code>, <code>status</code> and <code>session_record</code> stay class 4, filled by ALF-309’s backfill whenever it runs until that ticket ships. D4 makes that re-run safe against recorded data.</p>
+    <p>This corrects ALF-309’s “once it ships, this backfill is needed only for history”: that becomes true when the follow-up ticket lands, not with this story. A lead for that ticket: alfred’s webhook Worker (<code>workers/src/index.ts</code>, <code>transitions.ts</code>) already receives every <code>pull_request</code> event, including <code>closed</code> with <code>merged</code>, and parses the PR body. So it could write outcomes at merge time, through its own RPC following the same ownership table.</p>
+  </section>
+
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>Which prompt is stored? · settled</h3>
+    <p>The owner asked for the prompt as actually sent. It is the text of the first main-thread <code>type:"user"</code> entry that isn’t <code>isMeta</code> and isn’t a <code>tool_result</code>. That’s a string <code>message.content</code>, or its <code>text</code> blocks joined with <code>\n</code>. It is stored verbatim with <code>prompt_source = 'recorded'</code>, and it includes any edits the owner made before sending. <code>skills</code> are derived from it with ALF-309 D12’s regex, with blobs at the recorded <code>base_sha</code>. <code>ref</code> is the prompt’s leading <code>^[A-Z]+-\d+</code>, when the row has none. The first recorded write freezes prompt, prompt_source and skills; later user messages are never recorded.</p>
+  </section>
+
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>Which new metrics? · settled</h3>
+    <p>This story adds three columns. <code>subagent_count</code> is the number of <code>subagents/agent-*.jsonl</code> files. <code>usage_by_model</code> (jsonb) breaks usage down as <code>{main: {&lt;model&gt;: U}, subagents: {&lt;model&gt;: U}}</code>, where <code>U = {requests, input, output, cache_read, cache_write_5m, cache_write_1h, web_search}</code>. <code>recorded_at</code> holds the last hook write. The existing token columns hold <strong>whole-session totals, main thread plus subagents</strong>, and the subagent share is read from <code>usage_by_model</code>. Whether <code>get_session</code>’s totals include subagents (ALF-309’s open question) is settled for free after it ships: the two sit side by side in the same row.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+
+  <section class="rec" id="d8">
+    <h4>D8 · The hook lives in <code>tools/session-ledger/src/hook/</code> and imports only Node builtins</h4>
+    <p>It shares ALF-309’s workspace, and with it the <code>LedgerRow</code> types, the skills regex and the blob lookup, so check:fast covers it without a new package. The hook runs from a session’s shell, where a missing <code>node_modules</code> must degrade to a silent no-op rather than a crash, so every module it reaches imports only <code>node:*</code> or relative paths. An ALF-309 module that imports an npm package gets its builtin-only half split into its own file. A unit test walks the import graph from <code>hook/cli.ts</code> and fails on any bare specifier. Node runs the <code>.ts</code> directly, as <code>tools/showboat</code> does.</p>
+  </section>
+
+  <section class="rec" id="d9">
+    <h4>D9 · Transcript reading</h4>
+    <ul>
+      <li>Parse the file line by line and skip unparseable lines; the file may be mid-write.</li>
+      <li>Usage: keep one usage per <code>message.id</code> (the last seen) among <code>type:"assistant"</code> entries. Do this separately for the main file and for each subagent file.</li>
+      <li><code>cache_write_tokens</code> = <code>cache_creation_input_tokens</code>. Split it into 5m/1h from <code>cache_creation</code> when present, otherwise count it all as 5m.</li>
+      <li><code>web_search</code> counts <code>message.usage.server_tool_use.web_search_requests</code>. It’s recorded but not priced, because the page’s model table has no search rate.</li>
+      <li><code>served_model</code> is the last main-thread assistant <code>message.model</code>. <code>model</code> (filled only while null) is the first one.</li>
+      <li><code>effort_level</code> (filled only while null) is the last main-thread entry’s <code>effort</code>, falling back to the <code>CLAUDE_EFFORT</code> env var.</li>
+      <li><code>session_created_at</code> (filled only while null) is the first transcript entry’s <code>timestamp</code>.</li>
+      <li>A subagent file that can’t be read adds <code>subagents_unreadable</code>, and the rest still count.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d10">
+    <h4>D10 · Start capture and the state file</h4>
+    <p>At <code>SessionStart</code> the hook resolves <code>base_sha = git rev-parse HEAD</code>, <code>builder_sha = git log -1 --format=%H HEAD -- frontend/lib/code/links.ts</code> (null if not in the shallow history), and <code>repo</code> from <code>git remote get-url origin</code>, normalised to <code>owner/name</code>. It writes them to <code>os.tmpdir()/alfred-session-ledger/&lt;session_id&gt;.json</code>, then posts <code>{event: 'session-start', …}</code>. <code>Stop</code> reads the state file to resolve skill blobs at <code>base_sha</code>. If the file is gone (a container re-provisioned mid-session), <code>Stop</code> sends no skills or base and adds <code>start_unrecorded</code>, and the backfill’s reconstruction fills them (D4, class 2).</p>
+  </section>
+
+  <section class="rec" id="d11">
+    <h4>D11 · The write path</h4>
+    <p><code>POST /api/code/sessions/record</code> takes one <code>RecordedRow</code>, zod-validated with unknown keys rejected. Auth is <code>LEDGER_API_KEY</code> or the owner’s session, via ALF-309’s <code>resolveLedgerClient</code>; <code>INGEST_API_KEY</code> is rejected. The route calls <code>record_code_session(p_row jsonb)</code>. The hook reuses ALF-309’s key through the same proxy credential. Every alfred cloud session already carries that credential once ALF-309’s after-ship step is done, so this story widens no access; it only exercises it. The hook sends <code>Authorization</code> itself only when a <code>LEDGER_API_KEY</code> env var is set (ALF-309 D1’s fallback).</p>
+  </section>
+
+  <section class="rec" id="d12">
+    <h4>D12 · The hook never blocks, never talks</h4>
+    <ul>
+      <li>It always exits 0, including on a thrown error, and never exits 2, which would block a <code>Stop</code>.</li>
+      <li><strong>It writes nothing to stdout or stderr.</strong> <code>SessionStart</code> stdout is injected into the session’s context.</li>
+      <li>The <code>fetch</code> gets <code>AbortSignal.timeout(5000)</code>, and the settings timeout is 10 s for start and 15 s for stop.</li>
+      <li>A failure appends one line to <code>os.tmpdir()/alfred-session-ledger/hook.log</code>: <code>ISO time · event · session_id · HTTP status or error name</code>. Never headers, never bodies.</li>
+      <li>There are no retries; the next <code>Stop</code> is the retry.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d13">
+    <h4>D13 · Monotonic usage</h4>
+    <p>If a resumed container ever restores a shorter transcript, the recount would go backwards. <code>record_code_session</code> updates the usage group (token columns, <code>subagent_count</code>, <code>usage_by_model</code>, <code>served_model</code>) only when the incoming <code>output_tokens</code> ≥ the stored one. Otherwise it keeps the stored group and adds <code>transcript_regressed</code>. <code>cost_usd</code> is then recomputed from whatever usage is stored.</p>
+  </section>
+
+  <section class="rec" id="d14">
+    <h4>D14 · The price history</h4>
+    <p><code>model_price_history</code> holds one row per distinct price table: <code>effective_from</code> (the fetch time, primary key), <code>fetched_at</code>, <code>source</code> (the page URL), and <code>rates</code> jsonb shaped <code>{&lt;model id&gt;: {name, in, cw5m, cw1h, read, out}}</code> in USD per MTok, the widget’s keys. Each row is the whole table: a fetch is merged over the latest entry, so a model missing from one fetch keeps its last rates and models are never dropped. A new row is written only when some rate changed.</p>
+    <p><strong>Lookup.</strong> <code>model_rates(model, t)</code> first normalises the id by stripping a trailing <code>-\d{8}</code>. It then reads the entry in effect at <code>t</code>, meaning the last one with <code>effective_from ≤ t</code>. If that entry lacks the model, it takes the earliest later entry that has it, so a model’s launch price applies back to its first use. If no entry prices the model, the result is null, never a guess. <code>code_session_cost(usage_by_model, t)</code> sums <code>in·input + cw5m·cache_write_5m + cw1h·cache_write_1h + read·cache_read + out·output</code> ÷ 10<sup>6</sup> over every model in <code>main</code> and <code>subagents</code>, and is null if any model is unpriced.</p>
+  </section>
+
+  <section class="rec" id="d15">
+    <h4>D15 · The page parser</h4>
+    <p><code>workers/src/pricing/page.ts</code> ports <code>PricingPageParser</code> as a pure function of the markdown and the set of known ids:</p>
+    <ul>
+      <li>Find the table whose header is exactly <code>Model | Base input tokens | 5m cache writes | 1h cache writes | Cache hits and refreshes | Output tokens</code>.</li>
+      <li>Clean each model cell: strip <code>&lt;sup&gt;</code> markers, reduce links to their text, and drop parentheticals such as “(retired, …)”. Derive the id by lowercasing and turning spaces and dots into hyphens, so “Claude Opus 5.5” becomes <code>claude-opus-5-5</code>.</li>
+      <li>Every price cell must match <code>^\$n(.n)? / MTok$</code> once footnotes are stripped.</li>
+      <li>Every row must satisfy cache read &lt; input &lt; 5m write &lt; 1h write, and input &lt; output.</li>
+    </ul>
+    <p>A fetch is rejected on a missing header, a malformed cell, an ordering violation, fewer than 5 rows, or more than half the known models missing. A rejected fetch changes nothing. Port the widget’s fixture (the live table of 2026-09-24) verbatim as <code>workers/src/pricing/__fixtures__/pricing-2026-09-24.md</code>. It’s public data.</p>
+  </section>
+
+  <section class="rec" id="d16">
+    <h4>D16 · Refresh and re-pricing</h4>
+    <p><code>runPriceRefresh(env, now)</code> is a fourth isolated unit on <code>RETENTION_CRON</code>. It goes after the two retention units and before the wiki sync, with its own try/catch, awaited like the others. It works in four steps:</p>
+    <ol>
+      <li>Fetch the page with a plain GET: no Authorization header, no cookies, <code>Accept: text/markdown</code>, 10 s timeout.</li>
+      <li>Read the latest entry’s model ids over Supabase REST as the known set.</li>
+      <li>Parse (D15).</li>
+      <li>Call <code>append_model_prices(p_rates, p_source)</code>. It merges, appends if anything changed, then re-prices every recorded row (<code>recorded_at is not null</code>), setting <code>cost_usd</code> and adding or dropping <code>price_unknown</code>.</li>
+    </ol>
+    <p>Re-pricing everything is deliberate: the cost is a pure function of stored usage and the history, so it’s idempotent and cheap at hundreds of rows. The unit logs exactly one line per run (Plate II). A failed day is not retried; the next tick is the retry.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <h3>Per event</h3>
+  <ol>
+    <li><strong>Gate</strong> (D2). No <code>cse_</code> id, or no <code>ALFRED_BASE_URL</code>: exit 0.</li>
+    <li><strong><code>session-start</code></strong> (D10): capture the start state, write the state file, and post <code>{event, session_id, repo, base_sha, builder_sha, session_created_at: now}</code>.</li>
+    <li><strong><code>stop</code></strong> (D9): read stdin’s <code>transcript_path</code>, count the main and subagent transcripts, and post the usage group. Also post the prompt, skills and ref, frozen server-side after their first write. Never post a cost; alfred prices the usage (D1).</li>
+    <li><strong>Daily tick</strong> (D16): refresh the price history and re-price every recorded row.</li>
+  </ol>
+  <h3>Column ownership (D4)</h3>
+  <div class="scroll"><table>
+    <tr><th>Class</th><th>Columns</th><th><code>record_code_session</code> (hook)</th><th><code>upsert_code_sessions</code> (backfill)</th></tr>
+    <tr><td>1 · hook-owned</td><td>input/output/cache_read/cache_write tokens, <code>cost_usd</code> (priced server-side, never sent), <code>served_model</code>, <code>subagent_count</code>, <code>usage_by_model</code>, <code>recorded_at</code></td><td>every write, under D13’s guard</td><td>keeps the stored value when <code>recorded_at</code> is not null</td></tr>
+    <tr><td>2 · recorded-wins</td><td><code>prompt</code>, <code>prompt_source</code>, <code>skills</code>, <code>base_sha</code>, <code>builder_sha</code></td><td>prompt, source and skills while the stored <code>prompt_source</code> isn’t <code>recorded</code>; base and builder on the session-start write only</td><td>keeps them when the stored <code>prompt_source = 'recorded'</code> (ALF-309’s rule, plus <code>skills</code>)</td></tr>
+    <tr><td>3 · platform-owned, hook fills</td><td><code>session_created_at</code>, <code>model</code>, <code>effort_level</code>, <code>ref</code></td><td>only while null</td><td>overwrites</td></tr>
+    <tr><td>4 · backfill-only</td><td>everything else</td><td>never</td><td>overwrites</td></tr>
+  </table></div>
+  <p><strong>Warnings.</strong> The recording codes are <code>start_unrecorded</code> and <code>subagents_unreadable</code> (sent by the hook), plus <code>transcript_regressed</code> and <code>price_unknown</code> (set by the RPCs). They are listed once in a SQL function <code>code_session_hook_warnings()</code>. Each RPC replaces only its own codes: <code>record_code_session</code> sets <code>(stored − hook codes) ∪ incoming</code>, and <code>upsert_code_sessions</code> sets <code>incoming ∪ (stored ∩ hook codes)</code>, both sorted and deduplicated. <code>transcript_regressed</code> sticks once set.</p>
+  <p><strong>Order independence.</strong> The final row is the same whether the backfill runs before, between or after hook writes. The SQL tests pin all three orders.</p>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <h3>Migration — <code>database/migrations/&lt;next&gt;_record_code_sessions.sql</code></h3>
+<pre>alter table code_sessions
+  add column subagent_count int,
+  add column usage_by_model jsonb,
+  add column recorded_at    timestamptz;
+
+create function code_session_hook_warnings() returns text[] immutable language sql
+  as $$ select array['price_unknown','start_unrecorded',
+                     'subagents_unreadable','transcript_regressed'] $$;
+
+create table model_price_history (
+  effective_from timestamptz primary key,       -- no sequence, so no sequence grant
+  fetched_at     timestamptz not null,
+  source         text not null,
+  rates          jsonb not null                 -- {id: {name, in, cw5m, cw1h, read, out}}, USD/MTok
+);
+-- RLS + grants: the latest migrations' single-user pattern; the Worker writes as service_role
+
+create function model_rates(p_model text, p_at timestamptz) returns jsonb stable …      -- D14
+create function code_session_cost(p_usage jsonb, p_at timestamptz) returns numeric stable … -- D14
+create function append_model_prices(p_rates jsonb, p_source text)
+  returns table (appended boolean, changed text[], repriced int) …                     -- D16
+
+create function record_code_session(p_row jsonb) returns table (inserted boolean) …
+  -- security invoker; insert … select from jsonb_populate_record(null::code_sessions, p_row)
+  -- on conflict (session_id) do update per the ownership table; recorded_at = refreshed_at = now()
+  -- then cost_usd = code_session_cost(usage_by_model, session_created_at), ± price_unknown
+
+create or replace function upsert_code_sessions(p_rows jsonb) …   -- same signature as ALF-309
+  -- add class 1 (when recorded_at is not null), skills (class 2) and the warnings merge;
+  -- never writes subagent_count, usage_by_model, recorded_at
+-- grants: execute on every new function to authenticated and service_role, as ALF-309's RPC</pre>
+  <p>Same signature, so <code>create or replace</code> is safe (see the supabase skill’s overload gotcha). Run the migration-lint and supabase skills’ checks, and regenerate <code>frontend/lib/database.types.ts</code> with its generator. Never pin the number.</p>
+  <h3>Route</h3>
+<pre>POST /api/code/sessions/record
+     auth: Bearer LEDGER_API_KEY | owner session     → 401 otherwise (INGEST_API_KEY included)
+     body RecordedRow                                  // zod, strict
+     200 { inserted: boolean } · 400 invalid
+
+RecordedRow = {
+  event: 'session-start' | 'stop',
+  session_id: /^session_[A-Za-z0-9]+$/, repo: /^[\w.-]+\/[\w.-]+$/,
+  session_created_at?, base_sha?, builder_sha?,          // session-start only
+  prompt?, skills?, ref?, model?, served_model?, effort_level?,
+  input_tokens?, output_tokens?, cache_read_tokens?, cache_write_tokens?,   // no cost_usd
+  subagent_count?, usage_by_model?,                       // stop only
+  warnings: ('start_unrecorded' | 'subagents_unreadable')[]
+}
+U (each usage_by_model entry) = { requests, input, output, cache_read,
+  cache_write_5m, cache_write_1h, web_search }</pre>
+  <h3>Worker</h3>
+<pre>workers/src/pricing/page.ts       parsePricingPage(markdown, known: Set&lt;string&gt;) → Rates | ParseError   // D15
+workers/src/pricing/refresh.ts    runPriceRefresh(env, now) → PriceRefreshSummary                     // D16
+workers/src/index.ts              RETENTION_CRON: … logPriceRefresh(await runPriceRefresh(env, now)) …</pre>
+  <h3><code>.claude/settings.json</code> (merged beside <code>enabledPlugins</code>)</h3>
+<pre>"hooks": {
+  "SessionStart": [{ "matcher": "startup", "hooks": [{ "type": "command", "timeout": 10,
+    "command": "NODE_USE_ENV_PROXY=1 node \"$CLAUDE_PROJECT_DIR/tools/session-ledger/src/hook/cli.ts\" session-start" }] }],
+  "Stop": [{ "hooks": [{ "type": "command", "timeout": 15,
+    "command": "NODE_USE_ENV_PROXY=1 node \"$CLAUDE_PROJECT_DIR/tools/session-ledger/src/hook/cli.ts\" stop" }] }]
+}</pre>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <p><strong>Precondition:</strong> ALF-309 is merged to main. If it isn’t, stop and say so; this story amends its RPC.</p>
+  <p>The lead session orchestrates three implementer subagents, following the <code>implement-epic</code> skill’s slicing and briefing rules (read it first). It puts the shared contract down alone, fans out on disjoint files, then integrates.</p>
+
+  <h3>Phase 0 · the lead, alone: the contract</h3>
+  <ol>
+    <li><strong>The migration</strong> from Contracts, all of it: the <code>code_sessions</code> columns, <code>model_price_history</code>, the pricing functions, <code>record_code_session</code> and the amended <code>upsert_code_sessions</code>. Add its cases to the <code>database</code> integration suite (Tests) and regenerate <code>frontend/lib/database.types.ts</code>. Read the supabase and migration-lint skills first. Nothing fans out until <code>npm run check:slow -w database</code> is green, because every slice builds against these signatures.</li>
+    <li><strong>The contract fixture</strong> <code>tools/session-ledger/src/hook/__fixtures__/recorded-row.json</code>: one <code>stop</code> body in the Contracts shape. Slice A must produce it and slice B must accept it, so the two sides of the route can’t drift and neither has to wait for the other.</li>
+  </ol>
+
+  <h3>Phase 1 · three subagents in parallel</h3>
+  <p>Use the mid-tier model (CLAUDE.md’s model-assignment rules). Brief each one as the <code>implement-epic</code> skill says: the spec path, its decisions and acceptance criteria, the files it owns, the files it must not touch, red/green TDD, and no commits or pushes.</p>
+  <div class="scroll"><table>
+    <tr><th>Slice</th><th>Owns</th><th>Realises</th></tr>
+    <tr><td>A · hook</td><td><code>tools/session-ledger/src/hook/**</code>, <code>.claude/settings.json</code> and its test. Its <code>--dry-run</code> output must equal the contract fixture.</td><td>D2, D3, D6–D10, D12; the hook’s ACs</td></tr>
+    <tr><td>B · route</td><td><code>frontend/app/api/code/sessions/record/**</code>, <code>recordedRowSchema</code> in <code>frontend/lib/api/schemas.ts</code>, the helper in <code>frontend/lib/data/code.ts</code>. Its happy-path test posts the contract fixture.</td><td>D11; the route’s ACs</td></tr>
+    <tr><td>C · prices</td><td><code>workers/src/pricing/**</code> and its fixture, plus the one <code>RETENTION_CRON</code> line and its <code>log…</code> function in <code>workers/src/index.ts</code>. Read the <code>cloudflare-workers</code> skill first.</td><td>D15, D16; the refresh ACs, Plate II</td></tr>
+  </table></div>
+  <p>The slices share no file. The only shared files are the fixture and the migration, and those are Phase 0’s, read-only in Phase 1.</p>
+
+  <h3>Phase 2 · the lead: integrate and wrap up</h3>
+  <ol>
+    <li>Read every diff yourself, reconcile the seams, and run the full <code>npm run check</code>. A green subagent report is not a green repo.</li>
+    <li><strong>Skills.</strong> These stay with the lead, not a subagent (CLAUDE.md: skill edits are high-leverage). Read <code>compounding-learning</code> first and run <code>npm run lint:skills -w tools/skill-lint</code> while drafting.
+      <ul>
+        <li>In the <code>session-ledger</code> skill, add a “Recording hook” section: what the hook writes, where it logs, how to disable it (unset <code>ALFRED_BASE_URL</code>), that PR outcomes arrive via the backfill until D5’s ticket ships, and the transcript facts from Context.</li>
+        <li>In the <code>anthropic-api</code> skill, replace the hard-coded prices in “Version Gotchas” with a pointer: prices live in <code>model_price_history</code> and are read with <code>model_rates</code>/<code>code_session_cost</code>. That also removes the stale Sonnet 5 line.</li>
+      </ul></li>
+    <li>The demo doc, then the adversarial review round, both per the <code>implement-spec</code> skill.</li>
+  </ol>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D2">Without a <code>cse_</code> id or <code>ALFRED_BASE_URL</code>, the hook makes no fetch, reads no transcript, prints nothing and exits 0.</li>
+    <li data-trace="D12">A thrown error, a network error, a timeout or a 401 each exit 0 with empty stdout/stderr and append one log line that holds no header or body.</li>
+    <li data-trace="D8">The import-graph test passes: <code>hook/cli.ts</code> reaches only <code>node:*</code> and relative modules.</li>
+    <li data-trace="D3 D10">session-start posts HEAD as <code>base_sha</code>, the last <code>links.ts</code> commit as <code>builder_sha</code> (null when absent from the history), and <code>repo</code> as <code>owner/name</code>, and writes the state file.</li>
+    <li data-trace="D6">The prompt is the first non-meta, non-tool-result main-thread user entry, verbatim, for both string and text-block content. <code>skills</code> and <code>ref</code> derive from it.</li>
+    <li data-trace="D7 D9">Usage dedupes by <code>message.id</code>. Totals include subagents; <code>usage_by_model</code> splits main from subagents by model; <code>subagent_count</code> counts agent files; an unreadable agent file adds <code>subagents_unreadable</code>.</li>
+    <li data-trace="D1">The hook never sends a cost, and <code>RecordedRow</code> rejects <code>cost_usd</code>. <code>record_code_session</code> sets <code>cost_usd = code_session_cost(usage_by_model, session_created_at)</code>; any unpriced model gives null plus <code>price_unknown</code>, with tokens intact.</li>
+    <li data-trace="D15">The ported fixture parses to 18 models whose rates match the page. A missing header, a malformed price cell, an ordering violation, fewer than 5 rows, or more than half the known models missing each reject the fetch and leave the history unchanged.</li>
+    <li data-trace="D14">Identical rates append nothing. One changed price appends one entry. A model absent from a fetch keeps its last rates.</li>
+    <li data-trace="D14">A lookup uses the entry in effect at <code>t</code>. A model first priced later gets its launch price. <code>claude-haiku-4-5-20251001</code> prices as <code>claude-haiku-4-5</code>, while <code>claude-opus-5-9</code> (not <code>claude-opus-5</code>) and <code>claude-opus-5-5/fast</code> are unpriced. Cost matches a hand-computed fixture to 6 decimals across all five token classes.</li>
+    <li data-trace="D16">After an append that adds a model, every recorded row using it is priced and loses <code>price_unknown</code>. Rows with <code>recorded_at</code> null (backfill-only) are never re-priced.</li>
+    <li data-trace="D16 P2">On <code>RETENTION_CRON</code>, a price unit that throws logs its line and the other three units still run, and vice versa. Each run prints exactly one <code>model prices:</code> line in Plate II’s form for appended, unchanged and rejected.</li>
+    <li data-trace="D16">The page fetch is a GET with no Authorization header, no cookies and a 10 s timeout.</li>
+    <li data-trace="D10">A missing state file at stop sends no base or skills and adds <code>start_unrecorded</code>.</li>
+    <li data-trace="D11">The route accepts <code>LEDGER_API_KEY</code> and the owner session; it rejects <code>INGEST_API_KEY</code>, a wrong key and no auth with 401; it rejects unknown keys, a malformed id and a non-hook warning code with 400.</li>
+    <li data-trace="D4">The final row is identical for backfill-before, -between and -after hook writes. The backfill never changes class 1 on a recorded row, nor class 2 once recorded; the hook never changes class 4 and fills class 3 only while null.</li>
+    <li data-trace="D6">A second stop with a different first message leaves the stored prompt and skills unchanged.</li>
+    <li data-trace="D13">A stop with fewer <code>output_tokens</code> than stored keeps the stored usage group and adds <code>transcript_regressed</code>.</li>
+    <li data-trace="D4">Warnings merge per the rule. Neither RPC drops the other’s codes.</li>
+    <li data-trace="D3 D12">A settings test asserts both hooks point at an existing file, set <code>NODE_USE_ENV_PROXY=1</code> and carry the timeouts, and that <code>SessionStart</code> matches <code>startup</code> only.</li>
+    <li data-trace="impl">No transcript content, ledger data or key is committed. Fixtures are invented but shaped like the verified entries in Context.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><strong>Unit (jest, <code>tools/session-ledger</code>, slice A)</strong>, red first. JSONL fixtures under <code>src/hook/__fixtures__/</code> cover: a main transcript with repeated-usage blocks, a meta user entry before the prompt, and two subagent files, one of them unreadable. Git cases build a temp repo in the test, as ALF-309’s do; unset the git env vars (see the commitlint skill). The fetch, clock and env are injected. <code>cli.ts</code> gets a spawned-process test asserting empty stdout/stderr and exit 0 across the error matrix, plus the settings test.</li>
+    <li><strong>Route (frontend jest, slice B)</strong>, in the style of <code>pr-ratio/route.test.ts</code>: the auth matrix, validation (including a rejected <code>cost_usd</code>), and the RPC call with the contract fixture.</li>
+    <li><strong>Worker (jest, slice C).</strong> <code>page.test.ts</code> runs over the ported fixture and one mutated copy per rejection rule. <code>refresh.test.ts</code> uses <code>workers/src/fetch-stub.ts</code> for the page and REST, and covers the three outcomes plus the no-auth GET. <code>index.test.ts</code> covers dispatch isolation on <code>RETENTION_CRON</code>.</li>
+    <li><strong>SQL (<code>database</code> integration suite, check:slow, Phase 0).</strong> The ownership table, the three orderings, D13, the warnings merge, and D14’s lookup and cost cases, plus the append and re-price semantics, all run as <code>authenticated</code> and <code>service_role</code>. This is where D4 and D14 actually live.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the showboat skill. Every <code>exec</code> is deterministic, over fixtures or the local stack, and none runs a test file (demo-lint’s <code>no-test-in-demo</code>):</p>
+  <ul>
+    <li>Pipe a fixture <code>Stop</code> payload into <code>hook/cli.ts stop --dry-run</code> and show the assembled row: the recorded prompt, the deduplicated totals, <code>usage_by_model</code> and <code>subagent_count</code>, and no cost.</li>
+    <li>Run the gate with <code>ALFRED_BASE_URL</code> unset and show empty output and exit 0.</li>
+    <li>Against the local stack:
+      <ul>
+        <li>Record a row whose model the history lacks, and show <code>price_unknown</code>.</li>
+        <li><code>select * from append_model_prices(…)</code> with the parsed fixture, then show the row priced.</li>
+        <li>Post a backfill row for the same session and show classes 1–2 kept and the PR fields filled.</li>
+      </ul></li>
+  </ul>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><strong>Out:</strong>
+      <ul>
+        <li>A ledger screen.</li>
+        <li>Post-session tracking of PR outcomes, rework and escaped bugs (D5’s separate ticket).</li>
+        <li>Recording later user messages or steering counts.</li>
+        <li>Local sessions (D2).</li>
+        <li>Pricing web searches, which are counted in <code>U.web_search</code> but have no rate in the page’s model table.</li>
+        <li>Moving <code>workers/scripts/reader-eval.ts</code> onto the price history; it runs outside the database.</li>
+      </ul></li>
+    <li><strong>Page format</strong> can change without notice. D15’s guards reject a malformed table and keep the last good one, and Plate II’s line makes that visible in <code>wrangler tail</code>. A long-lived rejection shows up as <code>price_unknown</code> on sessions using new models only.</li>
+    <li><strong>Price lag.</strong> A price change is picked up at the next tick, so up to a day of sessions is priced at the old rate. That’s accepted.</li>
+    <li><strong>Transcript format</strong> is a CLI internal and can change. Tests pin today’s shape, and an unrecognised shape degrades to nulls, not a crash. If the prompt goes missing on some future CLI, the backfill’s reconstruction fills it (class 2).</li>
+    <li><strong>Latency.</strong> Parsing a long transcript every turn costs time. If a real session’s stop hook exceeds about 1 s, the follow-up is an offset cache in the state file, not a weaker hook.</li>
+    <li><strong>Resume behaviour.</strong> Whether a re-provisioned container restores the transcript and fires <code>startup</code> or <code>resume</code> is unverified. D10 and D13 cover both answers.</li>
+    <li><strong>Injected sessions</strong> can write ledger rows. That is ALF-309 D1’s accepted blast radius: a session can only corrupt metrics, and a re-run doesn’t repair class 1–2 columns, so a suspect row is deleted and re-backfilled.</li>
+  </ul>
+</section>
+
+<section id="after-merge">
+  <h2>After it ships (for you)</h2>
+  <ol>
+    <li>Check that ALF-309’s after-ship steps are done: the ledger credential for alfred’s host and <code>ALFRED_BASE_URL</code> in the alfred cloud environment. Nothing new to add; the Worker already holds its Supabase key.</li>
+    <li>Start any alfred session, send one message, and check that <code>code_sessions</code> has its row with <code>prompt_source = recorded</code>. Its <code>cost_usd</code> stays empty, with <code>price_unknown</code>, until the first 09:17 UTC tick. Then <code>wrangler tail</code> should show <code>model prices: appended · …</code> and the row should be priced.</li>
+    <li>After a few sessions, re-run the backfill, then compare <code>cost_usd</code> and the token totals against <code>session_record→external_metadata→usage</code>. That answers ALF-309’s open questions about cost matching and whether subagents are included.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
