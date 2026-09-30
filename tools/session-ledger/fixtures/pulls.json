@@ -1,0 +1,194 @@
+[
+  {
+    "number": 1,
+    "title": "feat(a): implement alf-9",
+    "state": "closed",
+    "created_at": "2026-07-03T11:00:00Z",
+    "merged_at": "2026-07-03T13:00:00Z",
+    "closed_at": "2026-07-03T13:00:00Z",
+    "body": "Summary.\n\n```alfred\nalfred-ticket: ALF-9\nphase: implementation\nspec-path: docs/specs/ALF-9.html\n```\n\nhttps://claude.ai/code/session_02ImplOld",
+    "head": {
+      "sha": "16bda30ebbd5f147e638b4cfa71ce38d9a6a8e5c"
+    }
+  },
+  {
+    "number": 2,
+    "title": "feat(b): implement alf-9 again",
+    "state": "closed",
+    "created_at": "2026-07-10T02:30:00Z",
+    "merged_at": "2026-07-10T03:00:00Z",
+    "closed_at": "2026-07-10T03:00:00Z",
+    "body": "```alfred\nalfred-ticket: ALF-9\nphase: implementation\nspec-path: docs/specs/ALF-9.html\n```\n\nhttps://claude.ai/code/session_01ImplSpec\nhttps://claude.ai/code/session_19Second",
+    "head": {
+      "sha": "b5795c6d332e74c3068487b78d0ee595339f40d9"
+    }
+  },
+  {
+    "number": 3,
+    "title": "chore: follow-up",
+    "state": "closed",
+    "created_at": "2026-07-04T00:00:00Z",
+    "merged_at": null,
+    "closed_at": "2026-07-04T01:00:00Z",
+    "body": "Follow-up to #1.\nhttps://claude.ai/code/session_02ImplOld",
+    "head": {
+      "sha": "9aa7cc97f70ae03b8258689a7f885fb30b2d888e"
+    }
+  },
+  {
+    "number": 4,
+    "title": "feat: small tweak",
+    "state": "open",
+    "created_at": "2026-07-12T07:00:00Z",
+    "merged_at": null,
+    "closed_at": null,
+    "body": "```alfred\nalfred-ticket: ALF-10\nphase: implementation\n```\nhttps://claude.ai/code/session_03Stale",
+    "head": {
+      "sha": "77665917815245e7b257ebdfce97d561eba8a2a7"
+    }
+  },
+  {
+    "number": 5,
+    "title": "fix: tasks vanish",
+    "state": "open",
+    "created_at": "2026-07-11T06:00:00Z",
+    "merged_at": null,
+    "closed_at": null,
+    "body": "```alfred\nalfred-ticket: ALF-11\nphase: implementation\n```\nhttps://claude.ai/code/session_04Bug",
+    "head": {
+      "sha": "7714f29bbcc440bca4da2171b81dfe5802eea920"
+    }
+  },
+  {
+    "number": 6,
+    "title": "fix: early bug",
+    "state": "closed",
+    "created_at": "2026-07-03T10:30:00Z",
+    "merged_at": null,
+    "closed_at": "2026-07-03T10:45:00Z",
+    "body": "```alfred\nalfred-ticket: ALF-13\nphase: implementation\n```\nhttps://claude.ai/code/session_05BugOld",
+    "head": {
+      "sha": "b5b0d89be579249066eda9a42966752733070e4f"
+    }
+  },
+  {
+    "number": 7,
+    "title": "chore: scaffolding",
+    "state": "closed",
+    "created_at": "2026-07-03T11:00:00Z",
+    "merged_at": "2026-07-03T11:20:00Z",
+    "closed_at": "2026-07-03T11:20:00Z",
+    "body": "No block here.\nhttps://claude.ai/code/session_06NoBlock",
+    "head": {
+      "sha": "9aa7cc97f70ae03b8258689a7f885fb30b2d888e"
+    }
+  },
+  {
+    "number": 8,
+    "title": "feat: the epic",
+    "state": "open",
+    "created_at": "2026-07-11T06:30:00Z",
+    "merged_at": null,
+    "closed_at": null,
+    "body": "```alfred\nalfred-ticket: ALF-4\nphase: epic-implementation\n```\nhttps://claude.ai/code/session_07EpicImpl",
+    "head": {
+      "sha": "7714f29bbcc440bca4da2171b81dfe5802eea920"
+    }
+  },
+  {
+    "number": 9,
+    "title": "docs(epics): alf-4",
+    "state": "closed",
+    "created_at": "2026-07-09T00:00:00Z",
+    "merged_at": "2026-07-10T00:00:00Z",
+    "closed_at": "2026-07-10T00:00:00Z",
+    "body": "```alfred\nalfred-ticket: ALF-4\nphase: epic-refinement\nspec-path: docs/specs/epics/ALF-4.html\n```\nhttps://claude.ai/code/session_08EpicRefine",
+    "head": {
+      "sha": "9c9c7d233ab7ccd047b1857649d2abe1c3eb52f7"
+    }
+  },
+  {
+    "number": 10,
+    "title": "docs(specs): alf-14",
+    "state": "open",
+    "created_at": "2026-07-11T02:00:00Z",
+    "merged_at": null,
+    "closed_at": null,
+    "body": "```alfred\nalfred-ticket: ALF-14\nphase: refinement\nspec-path: docs/specs/ALF-14.html\n```\nhttps://claude.ai/code/session_09Refine",
+    "head": {
+      "sha": "7714f29bbcc440bca4da2171b81dfe5802eea920"
+    }
+  },
+  {
+    "number": 11,
+    "title": "feat: deleted story",
+    "state": "closed",
+    "created_at": "2026-07-11T03:00:00Z",
+    "merged_at": null,
+    "closed_at": "2026-07-11T04:00:00Z",
+    "body": "```alfred\nalfred-ticket: ALF-404\nphase: implementation\nspec-path: docs/specs/ALF-404.html\n```\nhttps://claude.ai/code/session_10Missing",
+    "head": {
+      "sha": "7714f29bbcc440bca4da2171b81dfe5802eea920"
+    }
+  },
+  {
+    "number": 12,
+    "title": "docs(spikes): alf-15",
+    "state": "closed",
+    "created_at": "2026-07-10T00:20:00Z",
+    "merged_at": "2026-07-10T00:30:00Z",
+    "closed_at": "2026-07-10T00:30:00Z",
+    "body": "```alfred\nalfred-ticket: ALF-15\nphase: spike\nspec-path: docs/spikes/ALF-15.html\n```\nhttps://claude.ai/code/session_11NearStart",
+    "head": {
+      "sha": "b2e6e0a158cacc03d20e96332220972da43b88a4"
+    }
+  },
+  {
+    "number": 13,
+    "title": "fix: exploding bug",
+    "state": "open",
+    "created_at": "2026-07-11T04:00:00Z",
+    "merged_at": null,
+    "closed_at": null,
+    "body": "```alfred\nalfred-ticket: ALF-16\nphase: implementation\n```\nhttps://claude.ai/code/session_12Throws",
+    "head": {
+      "sha": "7714f29bbcc440bca4da2171b81dfe5802eea920"
+    }
+  },
+  {
+    "number": 14,
+    "title": "feat: another tweak",
+    "state": "open",
+    "created_at": "2026-07-11T08:00:00Z",
+    "merged_at": null,
+    "closed_at": null,
+    "body": "```alfred\nalfred-ticket: ALF-10\nphase: implementation\n```\nhttps://claude.ai/code/session_16Unavailable",
+    "head": {
+      "sha": "7714f29bbcc440bca4da2171b81dfe5802eea920"
+    }
+  },
+  {
+    "number": 15,
+    "title": "feat: tweak",
+    "state": "closed",
+    "created_at": "2026-07-10T00:15:00Z",
+    "merged_at": "2026-07-10T00:20:00Z",
+    "closed_at": "2026-07-10T00:20:00Z",
+    "body": "```alfred\nalfred-ticket: ALF-10\nphase: implementation\n```\nhttps://claude.ai/code/session_20SkillLater",
+    "head": {
+      "sha": "b2e6e0a158cacc03d20e96332220972da43b88a4"
+    }
+  },
+  {
+    "number": 16,
+    "title": "feat: the epic, early",
+    "state": "closed",
+    "created_at": "2026-07-05T08:00:00Z",
+    "merged_at": null,
+    "closed_at": "2026-07-05T09:00:00Z",
+    "body": "```alfred\nalfred-ticket: ALF-4\nphase: epic-implementation\n```\nhttps://claude.ai/code/session_21EpicEarly",
+    "head": {
+      "sha": "9c9c7d233ab7ccd047b1857649d2abe1c3eb52f7"
+    }
+  }
+]

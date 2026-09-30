@@ -173,6 +173,111 @@ export type Database = {
           },
         ]
       }
+      code_sessions: {
+        Row: {
+          base_sha: string | null
+          builder_sha: string | null
+          cache_read_tokens: number | null
+          cache_write_tokens: number | null
+          configured_model: string | null
+          cost_usd: number | null
+          effort_level: string | null
+          human_commits_after_open: number | null
+          input_tokens: number | null
+          launch_lane: string | null
+          model: string | null
+          output_tokens: number | null
+          pr_closed_at: string | null
+          pr_merged_at: string | null
+          pr_number: number | null
+          pr_opened_at: string | null
+          pr_state: string | null
+          prompt: string | null
+          prompt_source: string | null
+          ref: string | null
+          refreshed_at: string
+          repo: string
+          served_model: string | null
+          session_created_at: string | null
+          session_id: string
+          session_record: Json | null
+          skills: Json
+          spec_blob_sha: string | null
+          spec_path: string | null
+          status: string | null
+          title: string | null
+          warnings: string[]
+        }
+        Insert: {
+          base_sha?: string | null
+          builder_sha?: string | null
+          cache_read_tokens?: number | null
+          cache_write_tokens?: number | null
+          configured_model?: string | null
+          cost_usd?: number | null
+          effort_level?: string | null
+          human_commits_after_open?: number | null
+          input_tokens?: number | null
+          launch_lane?: string | null
+          model?: string | null
+          output_tokens?: number | null
+          pr_closed_at?: string | null
+          pr_merged_at?: string | null
+          pr_number?: number | null
+          pr_opened_at?: string | null
+          pr_state?: string | null
+          prompt?: string | null
+          prompt_source?: string | null
+          ref?: string | null
+          refreshed_at?: string
+          repo: string
+          served_model?: string | null
+          session_created_at?: string | null
+          session_id: string
+          session_record?: Json | null
+          skills?: Json
+          spec_blob_sha?: string | null
+          spec_path?: string | null
+          status?: string | null
+          title?: string | null
+          warnings?: string[]
+        }
+        Update: {
+          base_sha?: string | null
+          builder_sha?: string | null
+          cache_read_tokens?: number | null
+          cache_write_tokens?: number | null
+          configured_model?: string | null
+          cost_usd?: number | null
+          effort_level?: string | null
+          human_commits_after_open?: number | null
+          input_tokens?: number | null
+          launch_lane?: string | null
+          model?: string | null
+          output_tokens?: number | null
+          pr_closed_at?: string | null
+          pr_merged_at?: string | null
+          pr_number?: number | null
+          pr_opened_at?: string | null
+          pr_state?: string | null
+          prompt?: string | null
+          prompt_source?: string | null
+          ref?: string | null
+          refreshed_at?: string
+          repo?: string
+          served_model?: string | null
+          session_created_at?: string | null
+          session_id?: string
+          session_record?: Json | null
+          skills?: Json
+          spec_blob_sha?: string | null
+          spec_path?: string | null
+          status?: string | null
+          title?: string | null
+          warnings?: string[]
+        }
+        Relationships: []
+      }
       comm_accounts: {
         Row: {
           created_at: string
@@ -2100,6 +2205,13 @@ export type Database = {
         }
       }
       top_of_project_priority: { Args: { p_project: string }; Returns: number }
+      upsert_code_sessions: {
+        Args: { p_rows: Json }
+        Returns: {
+          kept_recorded: number
+          upserted: number
+        }[]
+      }
     }
     Enums: {
       code_factory_state:

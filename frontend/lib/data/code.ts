@@ -119,3 +119,104 @@ export async function getCodeStoryList(): Promise<{
     .order('ref_number', { ascending: true })
     .overrideTypes<CodeStory[]>();
 }
+
+// ---------------------------------------------------------------------------
+// Session-ledger inputs — what the backfill replays historical launch prompts against. Takes the
+// client like `listProjectRepos`: the route also answers the ledger key, served by the admin
+// client.
+//
+// The spec snapshots (`spec_markdown`) are left out of both reads. No launch prompt reads them,
+// git holds every spec byte-for-byte, and a whole project's snapshots would push the response
+// past what a serverless function may return.
+// ---------------------------------------------------------------------------
+
+/** A code story as the ledger reads it: the view row without its spec snapshot. */
+export type LedgerStory = Omit<CodeStory, 'spec_markdown'>;
+/** An epic as the ledger reads it: the row without its spec snapshot. */
+export type LedgerEpic = Omit<Epic, 'spec_markdown'>;
+
+const LEDGER_STORY_COLUMNS = [
+  'item_id',
+  'item_created_at',
+  'title',
+  'notes',
+  'source_url',
+  'project_id',
+  'project_key',
+  'project_name',
+  'repo_owner',
+  'repo_name',
+  'epic_id',
+  'epic_name',
+  'epic_ref',
+  'epic_spec_path',
+  'epic_archived_at',
+  'ref',
+  'ref_number',
+  'factory_state',
+  'lane',
+  'priority',
+  'requires_refinement',
+  'blocked_from',
+  'blocked_reason',
+  'spec_path',
+  'spec_sha',
+  'refinement_pr_url',
+  'implementation_pr_url',
+  'code_created_at',
+  'code_updated_at',
+].join(', ');
+
+const LEDGER_EPIC_COLUMNS = [
+  'id',
+  'project_id',
+  'name',
+  'notes',
+  'ref',
+  'ref_number',
+  'archived_at',
+  'created_at',
+  'refinement_pr_url',
+  'spec_path',
+  'spec_sha',
+].join(', ');
+
+/** The project whose repo is `owner/name`, or `null` data when none is. */
+export async function findProjectByRepo(
+  supabase: SupabaseClient<Database>,
+  repoOwner: string,
+  repoName: string,
+): Promise<{ data: Project | null; error: PostgrestError | null }> {
+  return supabase
+    .from('projects')
+    .select('*')
+    .eq('repo_owner', repoOwner)
+    .eq('repo_name', repoName)
+    .maybeSingle();
+}
+
+/** Every story in one project, deleted-or-done included, by ref number. */
+export async function listLedgerStories(
+  supabase: SupabaseClient<Database>,
+  projectId: string,
+): Promise<{ data: LedgerStory[] | null; error: PostgrestError | null }> {
+  return supabase
+    .from('v_code_stories')
+    .select(LEDGER_STORY_COLUMNS)
+    .eq('project_id', projectId)
+    .order('ref_number', { ascending: true })
+    .overrideTypes<LedgerStory[], { merge: false }>();
+}
+
+/** Every epic in one project, archived included, by ref number. */
+export async function listLedgerEpics(
+  supabase: SupabaseClient<Database>,
+  projectId: string,
+): Promise<{ data: LedgerEpic[] | null; error: PostgrestError | null }> {
+  return supabase
+    .from('epics')
+    .select(LEDGER_EPIC_COLUMNS)
+    .eq('project_id', projectId)
+    .order('ref_number', { ascending: true })
+    .overrideTypes<LedgerEpic[], { merge: false }>();
+}

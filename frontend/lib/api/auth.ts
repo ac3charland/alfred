@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
+
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '@/lib/database.types';
@@ -92,4 +94,42 @@ export async function resolveIngestClient(
   }
 
   return { supabase: session.supabase, isAdmin: false };
+}
+
+/** SHA-256 of a string — fixed-length, so `timingSafeEqual` never sees unequal lengths. */
+function digest(value: string): Buffer {
+  return createHash('sha256').update(value).digest();
+}
+
+/**
+ * Validates the session-ledger key: `Authorization: Bearer <LEDGER_API_KEY>`, compared in
+ * constant time (both sides hashed first, so a length mismatch leaks nothing either).
+ *
+ * A credential of its own rather than the ingest key: the ledger backfill runs in a Claude
+ * session that reads untrusted text (PR descriptions, other sessions' titles), so the key it
+ * holds must reach nothing but the two ledger routes. Only those routes call this, and no other
+ * route accepts it. An empty/unset `LEDGER_API_KEY` rejects every keyed call.
+ */
+export function validateLedgerKey(request: Request): boolean {
+  const configuredKey = process.env.LEDGER_API_KEY;
+  if (!configuredKey) return false;
+
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return false;
+  return timingSafeEqual(digest(authHeader.slice('Bearer '.length)), digest(configuredKey));
+}
+
+/**
+ * Resolves the Supabase client for the two session-ledger routes: the admin client for a valid
+ * ledger key (a keyed caller carries no cookie), else the signed-in owner's session client, else
+ * a 401 Response. The ingest key is deliberately not accepted here.
+ */
+export async function resolveLedgerClient(
+  request: Request,
+): Promise<SupabaseClient<Database> | Response> {
+  if (validateLedgerKey(request)) return createAdminClient();
+
+  const session = await requireSession();
+  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  return session.supabase;
 }
