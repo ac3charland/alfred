@@ -1,4 +1,5 @@
 import {
+  hasPartialUsage,
   mainFacts,
   mergeUsage,
   parseJsonl,
@@ -38,6 +39,30 @@ function user(content: unknown, extra: object = {}) {
   return { type: 'user', message: { role: 'user', content }, ...extra };
 }
 
+/** An assistant entry for `id` carrying `stop`, the way the CLI marks a response final or not. */
+function final(id: string, stop: string | null) {
+  return { type: 'assistant', message: { id, model: 'haiku', usage: usage(), stop_reason: stop } };
+}
+
+describe('hasPartialUsage', () => {
+  it('is true when a message never reached a final entry, as a subagent transcript leaves it', () => {
+    const streaming = [
+      assistant('m1', 'haiku', usage({ output_tokens: 5 }), {}),
+      assistant('m2', 'haiku', usage(), {}),
+    ].map((entry) => ({ ...entry, message: { ...entry.message, stop_reason: null } }));
+    expect(hasPartialUsage(streaming)).toBe(true);
+    // A message with no stop_reason at all is an unrecognised shape: not known to be complete.
+    expect(hasPartialUsage([assistant('m1', 'haiku', usage())])).toBe(true);
+  });
+
+  it('is false when every message has an entry with a stop reason', () => {
+    expect(
+      hasPartialUsage([final('m1', null), final('m1', 'tool_use'), final('m2', 'end_turn')]),
+    ).toBe(false);
+    expect(hasPartialUsage([])).toBe(false);
+  });
+});
+
 describe('usageByModel', () => {
   it('keeps one usage per message id, the last seen, and counts the id once', () => {
     const entries = [
@@ -47,6 +72,14 @@ describe('usageByModel', () => {
       assistant('m2', 'opus', usage()),
     ];
     expect(usageByModel(entries)['opus']).toMatchObject({ requests: 2, input: 20, output: 40 });
+  });
+
+  it('keeps fast-mode usage apart under <model>/fast, which the price table does not price', () => {
+    const entries = [
+      assistant('m1', 'claude-opus-5-5', usage({ speed: 'fast' })),
+      assistant('m2', 'claude-opus-5-5', usage({ speed: 'standard' })),
+    ];
+    expect(Object.keys(usageByModel(entries))).toEqual(['claude-opus-5-5/fast', 'claude-opus-5-5']);
   });
 
   it('splits cache writes by lifetime when the transcript does, else counts them all as 5-minute', () => {

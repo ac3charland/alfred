@@ -404,6 +404,22 @@ describe('stop', () => {
     });
   });
 
+  it('flags subagent usage a transcript recorded only partly', async () => {
+    const file = transcript([prompt, reply]);
+    stdinFor(file);
+    const subagents = path.join(tmp, 'transcript', 'subagents');
+    mkdirSync(subagents, { recursive: true });
+    writeFileSync(
+      path.join(subagents, 'agent-x.jsonl'),
+      `${JSON.stringify({ ...reply, isSidechain: true, message: { ...reply.message, stop_reason: null } })}\n`,
+    );
+    await runHook(['stop'], deps());
+    expect(postedBody()).toMatchObject({
+      subagent_count: 1,
+      warnings: ['start_unrecorded', 'subagent_usage_partial'],
+    });
+  });
+
   it('prints the body under --dry-run, without a host or a request', async () => {
     stdinFor(transcript([prompt, reply]));
     const env = { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01Test' };

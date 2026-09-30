@@ -79,7 +79,9 @@ function webSearches(usage: JsonObject): number {
 
 /**
  * Usage per model. One API response is written as several entries (one per content block), each
- * repeating the response's usage, so only the last entry seen for each message id counts.
+ * repeating the response's usage, so only the last entry seen for each message id counts. Fast-mode
+ * usage (`usage.speed: "fast"`) is kept apart as `<model>/fast`: it is billed at other rates than
+ * the price table's, so it must stay unpriced rather than be priced as standard.
  */
 export function usageByModel(entries: readonly JsonObject[]): UsageByModel {
   const latest = new Map<string, { model: string; usage: JsonObject }>();
@@ -94,7 +96,7 @@ export function usageByModel(entries: readonly JsonObject[]): UsageByModel {
     let key = `line:${String(index)}`;
     if (typeof id === 'string') key = id;
     else if (typeof requestId === 'string') key = requestId;
-    latest.set(key, { model, usage });
+    latest.set(key, { model: usage['speed'] === 'fast' ? `${model}/fast` : model, usage });
   }
   const byModel: UsageByModel = {};
   for (const { model, usage } of latest.values()) {
@@ -109,6 +111,24 @@ export function usageByModel(entries: readonly JsonObject[]): UsageByModel {
     total.web_search += webSearches(usage);
   }
   return byModel;
+}
+
+/**
+ * Whether some response in the transcript never reached a final entry (one with a `stop_reason`).
+ * Subagent transcripts often keep only a response's streaming-start entry, whose usage holds a
+ * placeholder output count, so their tokens are a fraction of what was billed and can't be priced.
+ */
+export function hasPartialUsage(entries: readonly JsonObject[]): boolean {
+  const complete = new Map<string, boolean>();
+  for (const entry of entries) {
+    const message = entry['type'] === 'assistant' ? entry['message'] : undefined;
+    if (!isObject(message) || message['model'] === SYNTHETIC_MODEL) continue;
+    const id = message['id'];
+    if (typeof id !== 'string') continue;
+    const final = typeof message['stop_reason'] === 'string';
+    complete.set(id, (complete.get(id) ?? false) || final);
+  }
+  return [...complete.values()].some((done) => !done);
 }
 
 /** Two per-model tallies added together, model by model. */

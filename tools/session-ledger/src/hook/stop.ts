@@ -9,7 +9,14 @@ import type { JsonObject } from '../types.ts';
 import { named } from './failure.ts';
 import { repoFromRemote } from './repo.ts';
 import { readState } from './state.ts';
-import { mainFacts, mergeUsage, parseJsonl, tokenTotals, usageByModel } from './transcript.ts';
+import {
+  hasPartialUsage,
+  mainFacts,
+  mergeUsage,
+  parseJsonl,
+  tokenTotals,
+  usageByModel,
+} from './transcript.ts';
 import type { UsageByModel } from './transcript.ts';
 
 const AGENT_FILE = /^agent-.+\.jsonl$/;
@@ -23,6 +30,8 @@ interface Subagents {
   usage: UsageByModel;
   count: number;
   unreadable: boolean;
+  /** Some subagent response was recorded only by its streaming-start placeholder. */
+  partial: boolean;
 }
 
 /** Every subagent's own transcript, `<transcript minus .jsonl>/subagents/agent-*.jsonl`. */
@@ -34,21 +43,21 @@ function readSubagents(transcriptPath: string): Subagents {
   } catch (error) {
     // No directory means no subagents ran; any other failure means some did and can't be counted.
     const missing = (error as { code?: unknown }).code === 'ENOENT';
-    return { usage: {}, count: 0, unreadable: !missing };
+    return { usage: {}, count: 0, unreadable: !missing, partial: false };
   }
   let usage: UsageByModel = {};
   let unreadable = false;
+  let partial = false;
   for (const name of sortedBy(names, byString)) {
     try {
-      usage = mergeUsage(
-        usage,
-        usageByModel(parseJsonl(readFileSync(path.join(dir, name), 'utf8'))),
-      );
+      const entries = parseJsonl(readFileSync(path.join(dir, name), 'utf8'));
+      usage = mergeUsage(usage, usageByModel(entries));
+      partial ||= hasPartialUsage(entries);
     } catch {
       unreadable = true;
     }
   }
-  return { usage, count: names.length, unreadable };
+  return { usage, count: names.length, unreadable, partial };
 }
 
 /**
@@ -76,6 +85,7 @@ export function stopBody(args: {
   const warnings = new Set<string>();
   if (state === null) warnings.add('start_unrecorded');
   if (subagents.unreadable) warnings.add('subagents_unreadable');
+  if (subagents.partial) warnings.add('subagent_usage_partial');
 
   // Skills resolve to blobs at the commit the session started on; without it there is no answer.
   const history = new GitHistory(args.git);
