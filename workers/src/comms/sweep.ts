@@ -18,7 +18,9 @@
  *   - systemic (no key, a rejected credential, a 400 on a request shape identical for every
  *     message) — the tick aborts, having written nothing, and stamps the classifier's health;
  *   - content-shaped (unparseable, a tier outside the enum, max_tokens) — one attempt counted,
- *     and at five the message is parked on Today, marked, with no further model call;
+ *     and at five the message is parked on Today, marked, with no further model call. A re-run
+ *     of a row that already has a verdict counts them too, and at five the request is given up
+ *     on instead: the old verdict stands, and the row is stamped so the owner can be told;
  *   - a refusal — terminal, filed on the shelf with a flag, and never retried.
  *
  * Nothing is ever silently shelved: the two can't-judge paths (a body that never decoded, and a
@@ -36,6 +38,7 @@ import {
   fetchExamples,
   fetchPeople,
   fetchReclassifyRequests,
+  fetchStalledReruns,
   fetchThreadContext,
   fetchUnjudgedAtCeiling,
   fetchUnjudgedMessages,
@@ -43,7 +46,7 @@ import {
   patchMessage,
   recordClassifierRun,
 } from './store';
-import { clearReclassifyRequest } from './sweep-store';
+import { abandonReclassifyRequest, clearReclassifyRequest } from './sweep-store';
 import type {
   ClassifierHealthPatch,
   CommAccount,
@@ -72,16 +75,29 @@ import {
  * a schedule that does not serialize its invocations.
  *
  * It also keeps the tick inside the Workers **subrequest budget** — 50 outbound fetches per
- * invocation on the Free plan. A sweep spends ~12 before it judges anything (the Inbox
- * classifier that shares this tick, the at-ceiling park, the two eligibility queries, the five
- * context reads, the ONE thread-context read, the closing health stamp) and ~5 per message (the
- * model call, the verdict insert, the message patches, a rerun's clear). Six lands at ~42. Raise
- * it only alongside that arithmetic: over the budget the tick throws part-way, and a half-swept
- * tick bills model calls for verdicts it never managed to store. The thread read is deliberately
- * ONE call for the whole tick rather than one per message — per-message it would be ~47, too
- * close to the ceiling to ship.
+ * invocation on the Free plan. A sweep spends 12 before it judges anything (the Inbox
+ * classifier that shares this tick, the stalled-re-run read, the at-ceiling park, the two
+ * eligibility queries, the five context reads, the ONE thread-context read, the closing health
+ * stamp) and ~5 per message (the model call and the retry the SDK may add, the verdict insert,
+ * the message patches, a rerun's clear). Six lands at 42. What is left, 8, is where the writes
+ * that judge nothing ride: at most `COMMS_ABANDON_LIMIT` abandoned re-run and one park per stuck
+ * row, each a single write (a row with a re-run request standing is never parked, since parking
+ * it would cost two). So a tick that judges six, abandons one and parks six spends 49 at the very
+ * most, and the sweep test pins that worst case. Raise any of it only alongside that arithmetic:
+ * over the budget the tick throws part-way, and a half-swept tick bills model calls for verdicts
+ * it never managed to store. The thread read is deliberately ONE call for the whole tick rather
+ * than one per message — per-message it would be ~47, too close to the ceiling to ship.
  */
 export const COMMS_SWEEP_LIMIT = 6;
+
+/**
+ * How many stalled re-runs one tick gives up on. One, because each is a write the subrequest
+ * budget above has to find room for, and giving up is housekeeping that must never crowd out a
+ * judgment. A request is at the ceiling only after five failed ticks of its own, so they are
+ * rare and one per tick drains any backlog; until then a stalled request costs nothing, since
+ * the worklist no longer reads it.
+ */
+export const COMMS_ABANDON_LIMIT = 1;
 
 /**
  * How many content-shaped failures a message gets before it is parked rather than retried. Five
@@ -188,7 +204,10 @@ async function stampHealth(env: CommsSweepEnv, patch: ClassifierHealthPatch): Pr
  */
 async function readEligible(env: CommsSweepEnv): Promise<CommMessage[]> {
   const [reruns, unjudged] = await Promise.all([
-    fetchReclassifyRequests(env, { limit: COMMS_SWEEP_LIMIT }),
+    fetchReclassifyRequests(env, {
+      limit: COMMS_SWEEP_LIMIT,
+      attemptCeiling: COMMS_ATTEMPT_CEILING,
+    }),
     fetchUnjudgedMessages(env, {
       limit: COMMS_SWEEP_LIMIT,
       attemptCeiling: COMMS_ATTEMPT_CEILING,
@@ -283,6 +302,51 @@ async function file(
   );
   if (rows > 0 && isRerun(message)) await clearReclassifyRequest(env, message.id);
   return rows > 0;
+}
+
+/**
+ * Give up on every re-run request that has spent all five attempts, without a model call.
+ *
+ * A re-run of a row that already has a verdict has no other way to end when the model keeps
+ * answering badly: the worklist no longer reads it, and the park below only looks at rows with no
+ * tier. So the request is cleared and the failure stamped, and the row keeps the tier, verdict and
+ * ask it had — the owner was never told the old verdict was wrong, only that they asked again.
+ * A row that never had a tier is left to `parkAtCeiling`, which runs straight after and files it
+ * exactly as it would have without the request.
+ *
+ * Never throws, on the read or the write: this is housekeeping, and a hiccup here must not starve
+ * the judgments behind it. The request simply stays put and the next tick tries again.
+ */
+async function abandonStalledReruns(env: CommsSweepEnv, now: Date): Promise<void> {
+  let stalled: CommMessage[];
+  try {
+    stalled = await fetchStalledReruns(env, {
+      attemptCeiling: COMMS_ATTEMPT_CEILING,
+      limit: COMMS_ABANDON_LIMIT,
+    });
+  } catch (error) {
+    console.error('comms classifier: could not read the stalled re-runs', error);
+    return;
+  }
+
+  for (const message of stalled) {
+    const requestedAt = message.reclassify_requested_at;
+    if (requestedAt === undefined) continue;
+    try {
+      const rows = await abandonReclassifyRequest(env, message.id, {
+        requestedAt,
+        failedAt: now.toISOString(),
+      });
+      if (rows > 0) {
+        console.error(
+          `comms classifier: abandoned the re-run of message ${message.id} after ` +
+            `${String(COMMS_ATTEMPT_CEILING)} failed attempts`,
+        );
+      }
+    } catch (error) {
+      console.error(`comms classifier: could not abandon the re-run of ${message.id}`, error);
+    }
+  }
 }
 
 /**
@@ -501,6 +565,8 @@ export async function runCommsSweep(env: CommsSweepEnv, now: Date): Promise<Comm
   }
 
   const summary = emptySummary(false);
+  // Before the park, so a row that never had a tier is parked in this same tick.
+  await abandonStalledReruns(env, now);
   summary.parked += await parkAtCeiling(env, now);
 
   const eligible = await readEligible(env);

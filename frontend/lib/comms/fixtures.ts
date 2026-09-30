@@ -106,6 +106,7 @@ export function makeCommMessage(
     verdict_id: overrides.verdict_id ?? null,
     classified_at: overrides.classified_at ?? null,
     reclassify_requested_at: overrides.reclassify_requested_at ?? null,
+    reclassify_failed_at: overrides.reclassify_failed_at ?? null,
     cleared_at: overrides.cleared_at ?? null,
     cleared_by: overrides.cleared_by ?? null,
     inbox_item_id: overrides.inbox_item_id ?? null,
@@ -219,6 +220,8 @@ export function makeCommsSeed(
     verdicts?: CommVerdict[];
     health?: CommClassifierHealth;
     shelfLimit?: number;
+    /** The rows a `watch` list asked for, wherever they sit — held apart from `messages`. */
+    watched?: CommMessage[];
   } = {},
 ): CommsSeed {
   const all = (input.messages ?? []).filter((message) => message.direction === 'inbound');
@@ -237,5 +240,6 @@ export function makeCommsSeed(
     shelfCount: shelf.length,
     readerClaimedCount: readerClaimedCount(all),
     lastClassifiedAt,
+    watched: input.watched ?? [],
   };
 }

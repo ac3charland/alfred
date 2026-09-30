@@ -123,10 +123,11 @@ export function MessageRow({
       },
       reclassify: () => {
         // No exit: asking for a re-run does not move the row, and pretending it did would show
-        // a judgment that has not happened yet.
+        // a judgment that has not happened yet. The row says it is waiting instead, and the
+        // sender goes with the request so the toast that ends the wait can name who it is about.
         void (async () => {
           try {
-            await actions.requestReclassify(messageId);
+            await actions.requestReclassify(messageId, senderLabel(message, people));
           } catch {
             // The store has already rolled the row back and toasted; nothing to add here.
           }
@@ -136,7 +137,7 @@ export function MessageRow({
         onAddSender(message);
       },
     }),
-    [actions, message, messageId, onAddSender, runExit],
+    [actions, message, messageId, onAddSender, people, runExit],
   );
 
   // The verb hotkeys, live only while this row is the selected one — so exactly one listener is

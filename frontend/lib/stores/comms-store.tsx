@@ -9,8 +9,11 @@ import {
   type QueueByTier,
   SHELF_LIMIT_MAX,
   SHELF_PAGE_SIZE,
+  WATCH_LIMIT_MAX,
   groupByTier,
+  isReclassifyPending,
   queueCount,
+  rerunOutcomeMessage,
   shelved,
 } from '@/lib/comms';
 import { assertNever } from '@/lib/stores/assert-never';
@@ -22,6 +25,7 @@ import type {
   CommAccount,
   CommClassifierHealth,
   CommMessage,
+  CommTier,
   CommVerdict,
   CommsSeed,
   Item,
@@ -113,8 +117,15 @@ export interface CommsActions {
    * third exit. Returns both rows; the Inbox item is the durable tracker from here.
    */
   makeInboxItem: (id: string) => Promise<{ message: CommMessage; item: Item }>;
-  /** Ask for one row to be judged again. Nothing is ever re-judged without being asked. */
-  requestReclassify: (id: string) => Promise<CommMessage>;
+  /**
+   * Ask for one row to be judged again. Nothing is ever re-judged without being asked.
+   *
+   * `senderName` is how the row reads (`senderLabel`), kept so the toast that says how the re-run
+   * ended can name it: the answer arrives minutes later, when two re-runs may end on the same poll
+   * and only the sender tells them apart. It is passed in because the roster lives in the
+   * settings store, which this one cannot see.
+   */
+  requestReclassify: (id: string, senderName: string) => Promise<CommMessage>;
   /**
    * The deliberate "I want this gone" — one message, one account, or everything before a date.
    * Destructive and irreversible, so it is NOT optimistic: the rows leave the client only once
@@ -210,6 +221,24 @@ export function commsReducer(state: CommsState, action: CommsAction): CommsState
   }
 }
 
+/** A re-run this tab asked for and has not yet been told the end of. */
+interface TrackedRerun {
+  /** The tier the row was on when asked, which the outcome is compared against. */
+  tier: CommTier | null;
+  /**
+   * When the request was made: this tab's clock until the server acknowledges it, then the
+   * server's own stamp — the failure is dated by the Worker, and a tab whose clock ran ahead
+   * would otherwise date a genuine failure before its own request.
+   */
+  requestedAt: string;
+  senderName: string;
+  /**
+   * Whether the server has the request. Until it does, a read can only find the row as it was —
+   * with no request on it, which reads exactly like one that has been answered.
+   */
+  acknowledged: boolean;
+}
+
 const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
   CommsState,
   CommsActions
@@ -263,8 +292,39 @@ export function CommsProvider({
   }, []);
 
   const writesInFlightRef = React.useRef(new Map<string, number>());
+  // A ref rather than state: nothing renders from it. The pending state on a row is DERIVED from
+  // the row's own request stamp (`isReclassifyPending`), so this holds only what the toast needs.
+  const rerunsRef = React.useRef(new Map<string, TrackedRerun>());
   const shelfLimitRef = React.useRef(SHELF_PAGE_SIZE);
   const syncRef = React.useRef({ running: false, again: false });
+
+  /**
+   * Say how each re-run in `watch` ended, once the request has cleared off its row. The snapshot's
+   * `watched` rows are the only place to look: a demotion or a refusal files the row on the shelf,
+   * which is paged, so an older row can leave every page this tab holds.
+   */
+  const resolveReruns = React.useCallback((watch: string[], watched: CommMessage[]) => {
+    const reruns = rerunsRef.current;
+    for (const id of watch) {
+      const rerun = reruns.get(id);
+      if (rerun === undefined) continue;
+      const row = watched.find((message) => message.id === id);
+      if (row === undefined) {
+        // Purged, or deleted by the retention sweep: there is nothing left to say it about.
+        reruns.delete(id);
+        continue;
+      }
+      if (isReclassifyPending(row)) continue;
+      reruns.delete(id);
+      showToastRef.current(
+        rerunOutcomeMessage(
+          { tier: rerun.tier, requestedAt: rerun.requestedAt },
+          row,
+          rerun.senderName,
+        ),
+      );
+    }
+  }, []);
 
   const reconcile = React.useCallback(() => {
     const sync = syncRef.current;
@@ -282,12 +342,20 @@ export function CommsProvider({
         // What the read can vouch for is decided as it starts, on this tab's clock.
         const startedAt = new Date().toISOString();
         dispatch({ type: 'reconcileAttempt', startedAt });
+        // The re-runs it is asked to find, decided as it starts for the same reason: only the
+        // ones the server already had, oldest first, up to what one read may carry.
+        const watch = [...rerunsRef.current]
+          .filter(([, rerun]) => rerun.acknowledged)
+          .map(([id]) => id)
+          .slice(0, WATCH_LIMIT_MAX);
         try {
-          const seed = await api.fetchCommsSnapshot(shelfLimitRef.current);
+          const seed = await api.fetchCommsSnapshot(shelfLimitRef.current, watch);
           for (const id of writesInFlightRef.current.keys()) keep.add(id);
           dispatch({ type: 'snapshot', seed, keep });
           for (const action of recordingRef.current) dispatch(action);
           dispatch({ type: 'read', startedAt });
+          // After the snapshot lands, so a row that moved sections does so as the toast says why.
+          resolveReruns(watch, seed.watched);
         } catch {
           // Nothing to toast or record — there is nothing for the owner to do. The header's
           // "Not live" line is driven by `lastReadAt`'s own age, so a failed read simply lets
@@ -298,7 +366,7 @@ export function CommsProvider({
       } while (syncRef.current.again && !document.hidden);
       sync.running = false;
     })();
-  }, []);
+  }, [resolveReruns]);
 
   // A shell whose read failed doesn't wait for the next poll.
   React.useEffect(() => {
@@ -446,14 +514,44 @@ export function CommsProvider({
         showToastRef.current('Added to Inbox');
         return result;
       },
-      async requestReclassify(id) {
-        return writeAndReconcile(
-          id,
-          { reclassify_requested_at: new Date().toISOString(), classify_attempts: 0 },
-          () => api.requestReclassify(id),
-          identity,
-          "Couldn't ask for a re-run",
-        );
+      async requestReclassify(id, senderName) {
+        const reruns = rerunsRef.current;
+        const requestedAt = new Date().toISOString();
+        const tracked: TrackedRerun = {
+          tier: stateRef.current.messages.find((message) => message.id === id)?.tier ?? null,
+          requestedAt,
+          senderName,
+          acknowledged: false,
+        };
+        reruns.set(id, tracked);
+        try {
+          const saved = await writeAndReconcile(
+            id,
+            // The old failure goes with the new request, so a stamp that is set always describes
+            // the latest one — and so the pending row never shows a failure from before it.
+            {
+              reclassify_requested_at: requestedAt,
+              classify_attempts: 0,
+              reclassify_failed_at: null,
+            },
+            () => api.requestReclassify(id),
+            identity,
+            "Couldn't ask for a re-run",
+          );
+          // A later click on the same row replaced this entry; it is that one's to update.
+          if (reruns.get(id) === tracked) {
+            reruns.set(id, {
+              ...tracked,
+              requestedAt: saved.reclassify_requested_at ?? requestedAt,
+              acknowledged: true,
+            });
+          }
+          return saved;
+        } catch (error) {
+          // The server never had the request, so there is no outcome to wait for.
+          if (reruns.get(id) === tracked) reruns.delete(id);
+          throw error;
+        }
       },
       async purge(input) {
         // No toast here: purge's only caller (`PurgePanel`) shows a failure inline, in the

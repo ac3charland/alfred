@@ -4,6 +4,7 @@ import { spyOnFetch } from '../fetch-stub';
 import { SWEEP_LIMIT } from '../sweep';
 import { IMAGE_PLACEHOLDER } from './prompt';
 import {
+  COMMS_ABANDON_LIMIT,
   COMMS_ATTEMPT_CEILING,
   COMMS_SWEEP_LIMIT,
   CONFIG_FAILURE,
@@ -68,6 +69,7 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     verdict_id: WIRE_NULL,
     classified_at: WIRE_NULL,
     reclassify_requested_at: WIRE_NULL,
+    reclassify_failed_at: WIRE_NULL,
     cleared_at: WIRE_NULL,
     cleared_by: WIRE_NULL,
     inbox_item_id: WIRE_NULL,
@@ -142,6 +144,8 @@ interface Call {
 interface MockOptions {
   unjudged?: Record<string, unknown>[];
   reruns?: Record<string, unknown>[];
+  /** Re-run requests that have spent every attempt — the rows the sweep gives up on. */
+  stalled?: Record<string, unknown>[];
   ceiling?: Record<string, unknown>[];
   people?: Record<string, unknown>[];
   rubric?: Record<string, unknown>[];
@@ -150,6 +154,10 @@ interface MockOptions {
   threadRows?: Record<string, unknown>[];
   threadFails?: boolean;
   patchRows?: () => unknown[];
+  /** Refuse the write that abandons a re-run — and only that one — with a 403. */
+  abandonFails?: boolean;
+  /** Fail the read that finds the stalled re-runs, as a database that hiccups would. */
+  stalledFails?: boolean;
   verdictFails?: boolean;
 }
 
@@ -172,13 +180,40 @@ function mockSupabase(options: MockOptions = {}): { calls: Call[] } {
 
     if (url.includes('/rest/v1/comm_messages?')) {
       if (method === 'PATCH') {
-        return Promise.resolve(Response.json(options.patchRows?.() ?? [{ id: 'message-1' }]));
+        // A write that STAMPS a failure — the clear on a finished re-run carries the column too, as null.
+        const abandoning =
+          typeof rawBody === 'string' && rawBody.includes('"reclassify_failed_at":"');
+        return options.abandonFails === true && abandoning
+          ? Promise.resolve(new Response('permission denied', { status: 403 }))
+          : Promise.resolve(Response.json(options.patchRows?.() ?? [{ id: 'message-1' }]));
+      }
+      // The stalled-re-run read carries both filters, so it has to be told apart before either.
+      if (
+        url.includes('reclassify_requested_at=not.is.null') &&
+        url.includes('classify_attempts=gte.')
+      ) {
+        if (options.stalledFails === true) {
+          return Promise.resolve(new Response('function timed out', { status: 500 }));
+        }
+        // Honoured like the database would, so a test can see what the cap lets through.
+        const limit = Number(new URL(url).searchParams.get('limit'));
+        return Promise.resolve(Response.json((options.stalled ?? []).slice(0, limit)));
       }
       if (url.includes('reclassify_requested_at=not.is.null')) {
         return Promise.resolve(Response.json(options.reruns ?? []));
       }
       if (url.includes('classify_attempts=gte.')) {
-        return Promise.resolve(Response.json(options.ceiling ?? []));
+        // The park's read, filtered and capped the way the database would: what it never returns
+        // (a row with a re-run request standing) is what a test can prove it never parks.
+        const { searchParams } = new URL(url);
+        const rows = (options.ceiling ?? [])
+          .filter(
+            (candidate) =>
+              searchParams.get('reclassify_requested_at') !== 'is.null' ||
+              candidate['reclassify_requested_at'] === WIRE_NULL,
+          )
+          .slice(0, Number(searchParams.get('limit')));
+        return Promise.resolve(Response.json(rows));
       }
       return Promise.resolve(Response.json(options.unjudged ?? []));
     }
@@ -314,11 +349,26 @@ describe('the worklist', () => {
 
     await runCommsSweep(env, NOW);
 
-    const query = calls.find((call) => call.url.includes('classify_attempts=lt.'));
+    const query = calls.find(
+      (call) => call.url.includes('classify_attempts=lt.') && call.url.includes('tier=is.null'),
+    );
     expect(query?.url).toContain('tier=is.null');
     expect(query?.url).toContain('direction=eq.inbound');
     expect(query?.url).toContain(`classify_attempts=lt.${String(COMMS_ATTEMPT_CEILING)}`);
     expect(query?.url).toContain(`limit=${String(COMMS_SWEEP_LIMIT)}`);
+  });
+
+  it('keeps a re-run that has spent every attempt out of the worklist', async () => {
+    const { calls } = mockSupabase({});
+
+    await runCommsSweep(env, NOW);
+
+    const rerunRead = calls.find(
+      (call) =>
+        call.url.includes('reclassify_requested_at=not.is.null') &&
+        call.url.includes('classify_attempts=lt.'),
+    );
+    expect(rerunRead?.url).toContain(`classify_attempts=lt.${String(COMMS_ATTEMPT_CEILING)}`);
   });
 
   it('judges an explicit re-run before it judges new mail, and never twice', async () => {
@@ -638,7 +688,10 @@ describe('a re-run', () => {
     expect(written[0]?.body).toMatchObject({ tier: 'asap', judged_by: 'model' });
     // The request is answered, so it goes back to empty — otherwise the row is re-judged every
     // two minutes forever.
-    expect(written[1]?.body).toEqual({ reclassify_requested_at: WIRE_NULL });
+    expect(written[1]?.body).toEqual({
+      reclassify_requested_at: WIRE_NULL,
+      reclassify_failed_at: WIRE_NULL,
+    });
     expect(summary.classified).toBe(1);
   });
 
@@ -672,7 +725,256 @@ describe('a re-run', () => {
 
     expect(classify).not.toHaveBeenCalled();
     expect(patches(calls)[0]?.body).toMatchObject({ judged_by: 'unjudged' });
-    expect(patches(calls)[1]?.body).toEqual({ reclassify_requested_at: WIRE_NULL });
+    expect(patches(calls)[1]?.body).toEqual({
+      reclassify_requested_at: WIRE_NULL,
+      reclassify_failed_at: WIRE_NULL,
+    });
+  });
+});
+
+/** A judged row whose re-run has spent every attempt: the request the sweep gives up on. */
+const stalled = (overrides: Record<string, unknown> = {}): Record<string, unknown> =>
+  row({
+    id: 'message-1',
+    tier: 'today',
+    judged_by: 'model',
+    ask: 'Approve the Q3 invoice.',
+    verdict_id: 'verdict-old',
+    classified_at: '2026-09-08T10:00:00.000Z',
+    classify_attempts: COMMS_ATTEMPT_CEILING,
+    reclassify_requested_at: '2026-09-09T14:50:00.123456+00:00',
+    ...overrides,
+  });
+
+/** Whether a call is the write that gives up on a re-run: it stamps a failure, where a clear empties one. */
+const isAbandon = (call: Call): boolean =>
+  call.method === 'PATCH' && typeof call.body?.['reclassify_failed_at'] === 'string';
+
+/** The read that finds the re-runs to give up on: the one filtered on both request and ceiling. */
+const stalledRead = (calls: Call[]): Call | undefined =>
+  calls.find(
+    (call) =>
+      call.url.includes('reclassify_requested_at=not.is.null') &&
+      call.url.includes('classify_attempts=gte.'),
+  );
+
+describe('a re-run that can never succeed', () => {
+  it('is abandoned at the attempt ceiling with no model call', async () => {
+    const { calls } = mockSupabase({ stalled: [stalled()] });
+    const classify = mockClassify();
+
+    await runCommsSweep(env, NOW);
+
+    expect(classify).not.toHaveBeenCalled();
+    expect(verdicts(calls)).toHaveLength(0);
+    expect(patches(calls)).toHaveLength(1);
+  });
+
+  it('clears the request and stamps the failure, and nothing else', async () => {
+    const { calls } = mockSupabase({ stalled: [stalled()] });
+    mockClassify();
+
+    await runCommsSweep(env, NOW);
+
+    // Exactly these two columns: the tier, verdict and ask the row had are the ones that stand.
+    expect(patchOf(calls, 'message-1')?.body).toEqual({
+      reclassify_requested_at: WIRE_NULL,
+      reclassify_failed_at: NOW.toISOString(),
+    });
+  });
+
+  it('only matches the request it read, so a newer request is never wiped out', async () => {
+    const { calls } = mockSupabase({ stalled: [stalled()] });
+    mockClassify();
+
+    await runCommsSweep(env, NOW);
+
+    const query = new URL(patchOf(calls, 'message-1')?.url ?? '').searchParams;
+    expect(query.get('reclassify_requested_at')).toBe('eq.2026-09-09T14:50:00.123456+00:00');
+  });
+
+  it('is read before the at-ceiling park, and reads no more rows than its own cap', async () => {
+    const { calls } = mockSupabase({});
+    mockClassify();
+
+    await runCommsSweep(env, NOW);
+
+    const parkRead = calls.findIndex(
+      (call) => call.url.includes('classify_attempts=gte.') && call.url.includes('tier=is.null'),
+    );
+    const read = stalledRead(calls);
+    const abandonRead = read === undefined ? -1 : calls.indexOf(read);
+    expect(abandonRead).toBeGreaterThanOrEqual(0);
+    expect(abandonRead).toBeLessThan(parkRead);
+    expect(stalledRead(calls)?.url).toContain(`limit=${String(COMMS_ABANDON_LIMIT)}`);
+    expect(stalledRead(calls)?.url).toContain(
+      `classify_attempts=gte.${String(COMMS_ATTEMPT_CEILING)}`,
+    );
+  });
+
+  it('is then parked in the same tick when the row never had a tier', async () => {
+    // Abandoning takes the request off the row; a row with no tier is still unjudged, and the
+    // park that follows is what puts it on a counted tier, exactly as it would without a re-run.
+    const noTier = stalled({ tier: WIRE_NULL, judged_by: WIRE_NULL, ask: WIRE_NULL });
+    // What the park's own read returns once the abandon has landed: the request is gone.
+    const afterAbandon = {
+      ...noTier,
+      reclassify_requested_at: WIRE_NULL,
+      reclassify_failed_at: NOW.toISOString(),
+    };
+    const { calls } = mockSupabase({ stalled: [noTier], ceiling: [afterAbandon] });
+    mockClassify();
+
+    const summary = await runCommsSweep(env, NOW);
+
+    const written = patches(calls).map((call) => call.body);
+    expect(written).toHaveLength(2);
+    expect(written[0]).toHaveProperty('reclassify_failed_at', NOW.toISOString());
+    expect(written[1]).toMatchObject({ tier: 'today', judged_by: 'unjudged' });
+    expect(summary.parked).toBe(1);
+  });
+
+  it('is not parked when the row already had a tier: the old verdict stands', async () => {
+    const { calls } = mockSupabase({ stalled: [stalled()] });
+    mockClassify();
+
+    const summary = await runCommsSweep(env, NOW);
+
+    expect(patches(calls)).toHaveLength(1);
+    expect(summary.parked).toBe(0);
+  });
+
+  it('leaves a request that changed since it was read alone', async () => {
+    // A new request landed between the read and the write: the conditional PATCH matches nothing,
+    // and that is a no-op rather than an error — the newer request is exactly what must survive.
+    const { calls } = mockSupabase({ stalled: [stalled()], patchRows: () => [] });
+    const logged = captureErrors();
+    mockClassify();
+
+    const summary = await runCommsSweep(env, NOW);
+
+    expect(summary.aborted).toBe(false);
+    expect(patches(calls)).toHaveLength(1);
+    expect(logged.join(' ')).not.toContain('abandon');
+  });
+
+  it('says which re-run it gave up on', async () => {
+    mockSupabase({ stalled: [stalled({ id: 'message-9' })] });
+    const logged = captureErrors();
+    mockClassify();
+
+    await runCommsSweep(env, NOW);
+
+    expect(logged.join(' ')).toContain('message-9');
+    expect(logged.join(' ')).toContain('abandon');
+  });
+
+  it('never stops the tick judging, even when the abandoning write is refused', async () => {
+    // Housekeeping must not starve the judgments behind it: the request simply stays put and the
+    // next tick tries again, while everything else still gets its verdict.
+    const { calls } = mockSupabase({
+      stalled: [stalled()],
+      unjudged: [row({ id: 'fresh' })],
+      abandonFails: true,
+    });
+    const logged = captureErrors();
+    const classify = mockClassify({ ok: verdict() });
+
+    const summary = await runCommsSweep(env, NOW);
+
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(verdicts(calls)).toHaveLength(1);
+    expect(logged.join(' ')).toContain('message-1');
+    expect(summary.aborted).toBe(false);
+  });
+
+  it('leaves a second stalled re-run to be abandoned on its own turn, not parked without the stamp', async () => {
+    // Only one is abandoned a tick. The other has no tier either and is at the ceiling too, but
+    // the park's read skips a row with a request standing: parked here it would lose its request
+    // with no failure stamp — the owner told "still couldn't judge", the detail line missing —
+    // and cost a second write. So it waits, untouched, for the tick that abandons it.
+    const second = stalled({ id: 'message-2', tier: WIRE_NULL, judged_by: WIRE_NULL });
+    const { calls } = mockSupabase({
+      stalled: [stalled({ id: 'message-1' })],
+      ceiling: [second],
+    });
+    mockClassify();
+
+    await runCommsSweep(env, NOW);
+
+    expect(patchOf(calls, 'message-2')).toBeUndefined();
+    expect(patchOf(calls, 'message-1')?.body).toHaveProperty(
+      'reclassify_failed_at',
+      NOW.toISOString(),
+    );
+  });
+
+  it('still judges when the read of stalled re-runs fails', async () => {
+    // A hiccup on the housekeeping read must not take the tick's judgments down with it.
+    const { calls } = mockSupabase({ unjudged: [row({ id: 'fresh' })], stalledFails: true });
+    const logged = captureErrors();
+    const classify = mockClassify({ ok: verdict() });
+
+    const summary = await runCommsSweep(env, NOW);
+
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(verdicts(calls)).toHaveLength(1);
+    expect(summary.aborted).toBe(false);
+    expect(logged.join(' ')).toContain('stalled re-runs');
+  });
+
+  it('is never abandoned while the request still has attempts left', async () => {
+    // The read is what decides; a row it does not return is a live re-run, judged as usual.
+    const { calls } = mockSupabase({
+      reruns: [stalled({ classify_attempts: COMMS_ATTEMPT_CEILING - 1 })],
+    });
+    mockClassify({ ok: verdict() });
+
+    await runCommsSweep(env, NOW);
+
+    expect(calls.some((call) => isAbandon(call))).toBe(false);
+  });
+});
+
+describe('the subrequest budget', () => {
+  it('holds when a full sweep also abandons re-runs and parks stuck rows', async () => {
+    // The worst tick: six re-runs judged, every stalled re-run the cap allows abandoned, and six
+    // stuck rows parked. The Workers free plan allows 50 subrequests per invocation and the
+    // Inbox classifier shares it, so this pins the arithmetic in COMMS_SWEEP_LIMIT's comment — a
+    // further read or write per tick, or a higher abandon cap, trips it, and the comment is what
+    // has to be redone. Each model call counts `MAX_RETRIES + 1`: an SDK retry is a subrequest of
+    // its own.
+    const range = Array.from({ length: COMMS_SWEEP_LIMIT }, (_unused, index) => index);
+    const reruns = range.map((index) =>
+      row({ id: `rerun-${String(index)}`, reclassify_requested_at: '2026-09-09T14:50:00.000Z' }),
+    );
+    const abandoned = range.map((index) => stalled({ id: `stalled-${String(index)}` }));
+    // Rows with a re-run request standing come FIRST, so if the park's read ever stopped skipping
+    // them they would take its slots — and cost a second write each.
+    const withRequest = range.map((index) =>
+      row({
+        id: `stuck-rerun-${String(index)}`,
+        classify_attempts: COMMS_ATTEMPT_CEILING,
+        reclassify_requested_at: '2026-09-09T14:50:00.000Z',
+      }),
+    );
+    const stuck = [
+      ...withRequest,
+      ...range.map((index) =>
+        row({ id: `stuck-${String(index)}`, classify_attempts: COMMS_ATTEMPT_CEILING }),
+      ),
+    ];
+    const { calls } = mockSupabase({ reruns, stalled: abandoned, ceiling: stuck });
+    const classify = mockClassify({ ok: verdict() });
+
+    await runCommsSweep(env, NOW);
+
+    const spent = calls.length + classify.mock.calls.length * (MAX_RETRIES + 1);
+    // The Inbox classifier's idle query, and the one thread read a tick with iMessage rows makes.
+    const SHARED_WITH_THE_TICK = 2;
+    expect(classify).toHaveBeenCalledTimes(COMMS_SWEEP_LIMIT);
+    expect(calls.filter((call) => isAbandon(call))).toHaveLength(COMMS_ABANDON_LIMIT);
+    expect(spent + SHARED_WITH_THE_TICK).toBeLessThan(50);
   });
 });
 
@@ -839,10 +1141,11 @@ function fakeMessageTable(initial: Record<string, unknown>): {
     if (url.includes('/rest/v1/comm_verdicts') && method === 'POST') {
       return Promise.resolve(Response.json([{ id: 'verdict-fake' }]));
     }
-    if (url.includes('classify_attempts=lt.')) return Promise.resolve(Response.json([state]));
+    // The re-run reads carry `classify_attempts` filters too, so they are matched first.
     if (url.includes('reclassify_requested_at=not.is.null')) {
       return Promise.resolve(Response.json([]));
     }
+    if (url.includes('classify_attempts=lt.')) return Promise.resolve(Response.json([state]));
     if (url.includes('classify_attempts=gte.')) return Promise.resolve(Response.json([]));
     if (url.includes('/rest/v1/comm_accounts')) {
       return Promise.resolve(Response.json([accountRow()]));

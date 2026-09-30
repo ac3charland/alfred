@@ -143,6 +143,13 @@ re-read itself honest: local dispatches made while it is in flight are recorded 
 the snapshot; rows with a write in flight keep their optimistic value. A trigger mid-read runs one
 more read after it (a loop — recursion trips `react-hooks/immutability`).
 
+**An outcome the browser can't watch happen** — a re-run the Worker answers minutes later — is
+tracked in a ref (nothing renders from it), with the *pending* state derived from the row itself
+(`isReclassifyPending`) so a reload and a second tab agree. The poll finds the outcome by asking the
+snapshot to `watch` the ids (`seed.watched`): a re-run can move a row onto a shelf page the tab never
+loaded. It asks only about writes the server has **acknowledged** — a read that began earlier finds
+the row with no request on it, which reads exactly like one already answered.
+
 **Liveness is recency, not an event log.** The store holds only `loaded` (false until the first
 successful read, forever if the shell's own seed read failed) and `lastReadAt` (the client's own
 clock, captured when a successful read *started*; a failed read moves neither). The view is live

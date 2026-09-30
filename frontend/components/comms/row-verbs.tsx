@@ -4,6 +4,7 @@ import { ExternalLink, RefreshCw, UserPlus } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
+import { Spinner } from '@/components/atoms/spinner';
 import type { DeepLink } from '@/lib/comms/deep-link';
 import type { CommTier } from '@/lib/types';
 
@@ -18,7 +19,8 @@ import { TierMenu } from './tier-menu';
  * which demotes it and records the correction in the same motion.
  *
  * Two smaller affordances sit apart from the four: asking for a re-run, and adding the sender to
- * the roster. The second is here because a roster drifts silently, and the moment the owner
+ * the roster. While a re-run is waiting on the Worker the first says so, and can't be pressed
+ * again — a second request would only reset the attempts the first has spent. The second is here because a roster drifts silently, and the moment the owner
  * notices the gap is the moment a message was mistiered — so the fix has to be reachable from
  * that message and not only from a settings page.
  */
@@ -46,6 +48,8 @@ interface RowVerbsProperties {
    * clear, and spinning off an obligation nobody thinks exists is not a thing to offer.
    */
   shelved?: boolean;
+  /** A re-run has been asked for and not yet answered: the button says so and is inert. */
+  reclassifyPending?: boolean;
 }
 
 export function RowVerbs({
@@ -56,6 +60,7 @@ export function RowVerbs({
   tierMenuOpen,
   onTierMenuOpenChange,
   shelved = false,
+  reclassifyPending = false,
 }: RowVerbsProperties) {
   return (
     <div className="flex flex-col gap-2">
@@ -96,9 +101,18 @@ export function RowVerbs({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={handlers.reclassify}>
-          <RefreshCw size={12} aria-hidden="true" />
-          Re-run classifier
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handlers.reclassify}
+          disabled={reclassifyPending}
+        >
+          {reclassifyPending ? (
+            <Spinner size={12} label="Re-run pending" />
+          ) : (
+            <RefreshCw size={12} aria-hidden="true" />
+          )}
+          {reclassifyPending ? 'Re-run requested' : 'Re-run classifier'}
         </Button>
         <Button variant="ghost" size="sm" onClick={handlers.addSender}>
           <UserPlus size={12} aria-hidden="true" />

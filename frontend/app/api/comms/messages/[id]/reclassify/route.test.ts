@@ -44,7 +44,19 @@ describe('POST /api/comms/messages/[id]/reclassify', () => {
     expect(supabase.table('comm_messages').update).toHaveBeenCalledWith({
       reclassify_requested_at: '2026-09-09T17:30:00.000Z',
       classify_attempts: 0,
+      reclassify_failed_at: null,
     });
+  });
+
+  it('clears the failure an earlier re-run left, so a set stamp always describes the latest request', async () => {
+    const supabase = signedIn();
+
+    await POST(reclassify(), context);
+
+    const [updates] = supabase.table('comm_messages').update.mock.calls[0] as [
+      Record<string, unknown>,
+    ];
+    expect(updates).toHaveProperty('reclassify_failed_at', null);
   });
 
   it('does not touch the tier — the sweep re-judges, the request only asks', async () => {

@@ -7,6 +7,7 @@ import {
   COMMS_POLL_MS,
   SHELF_LIMIT_MAX,
   SHELF_PAGE_SIZE,
+  WATCH_LIMIT_MAX,
   isCommsLive,
 } from '@/lib/comms';
 import {
@@ -463,7 +464,7 @@ describe('requestReclassify', () => {
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
 
     act(() => {
-      void result.current.actions.requestReclassify(QUEUED.id);
+      void result.current.actions.requestReclassify(QUEUED.id, 'Dana Whitfield');
     });
 
     const row = result.current.messages.find((m) => m.id === QUEUED.id);
@@ -473,18 +474,330 @@ describe('requestReclassify', () => {
     expect(result.current.count).toBe(1);
   });
 
+  it('clears the failure an earlier re-run left, at once', () => {
+    mockApi.requestReclassify.mockReturnValue(new Promise(() => {}));
+    const failed = makeCommMessage(ACCOUNT, {
+      id: QUEUED.id,
+      tier: 'today',
+      judged_by: 'model',
+      reclassify_failed_at: '2026-09-09T15:00:00.000Z',
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([failed]) });
+
+    act(() => {
+      void result.current.actions.requestReclassify(QUEUED.id, 'Dana Whitfield');
+    });
+
+    expect(result.current.messages.find((m) => m.id === QUEUED.id)?.reclassify_failed_at).toBe(
+      null,
+    );
+  });
+
   it('rolls back and toasts on failure', async () => {
     mockApi.requestReclassify.mockRejectedValue(new Error('boom'));
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
 
     await act(async () => {
-      await expect(result.current.actions.requestReclassify(QUEUED.id)).rejects.toThrow('boom');
+      await expect(
+        result.current.actions.requestReclassify(QUEUED.id, 'Dana Whitfield'),
+      ).rejects.toThrow('boom');
     });
 
     expect(result.current.messages.find((m) => m.id === QUEUED.id)?.reclassify_requested_at).toBe(
       null,
     );
     expect(mockShowToast).toHaveBeenCalledWith("Couldn't ask for a re-run");
+  });
+
+  it('puts the earlier failure back when the request never reached the server', async () => {
+    mockApi.requestReclassify.mockRejectedValue(new Error('boom'));
+    const failed = makeCommMessage(ACCOUNT, {
+      id: QUEUED.id,
+      tier: 'today',
+      judged_by: 'model',
+      reclassify_failed_at: '2026-09-09T15:00:00.000Z',
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([failed]) });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.requestReclassify(QUEUED.id, 'Dana Whitfield'),
+      ).rejects.toThrow('boom');
+    });
+
+    // The request failed, so the last re-run's outcome is still the true one.
+    expect(result.current.messages.find((m) => m.id === QUEUED.id)?.reclassify_failed_at).toBe(
+      '2026-09-09T15:00:00.000Z',
+    );
+  });
+});
+
+/**
+ * A re-run is answered a minute or three later by a Worker this tab never hears from directly, so
+ * the store remembers each one it asked for and says how it ended — once the poll finds the
+ * request cleared.
+ */
+describe('CommsProvider — how a re-run ended', () => {
+  const SERVER_STAMP = '2026-09-09T17:30:00.123456+00:00';
+  const REQUESTED = { ...QUEUED, reclassify_requested_at: SERVER_STAMP, classify_attempts: 0 };
+
+  /** The row as the sweep leaves it once the request clears. */
+  const cleared = (overrides: Partial<CommMessage> = {}): CommMessage => ({
+    ...QUEUED,
+    reclassify_requested_at: null,
+    ...overrides,
+  });
+
+  /** Ask for a re-run and let the server acknowledge it. */
+  async function askForRerun(
+    result: { current: ReturnType<typeof useStore> },
+    id = QUEUED.id,
+    sender = 'Dana Whitfield',
+  ): Promise<void> {
+    await act(async () => {
+      await result.current.actions.requestReclassify(id, sender);
+    });
+  }
+
+  beforeEach(() => {
+    mockApi.requestReclassify.mockResolvedValue(REQUESTED);
+  });
+
+  it('asks the read for the row by id, so it is found wherever the re-run left it', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+
+    await fireOnline();
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE, [QUEUED.id]);
+  });
+
+  it('asks for nothing while no re-run is being waited on', async () => {
+    renderHook(() => useStore(), { wrapper: makeWrapper() });
+
+    await fireOnline();
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE, []);
+  });
+
+  it('says how the verdict changed once the request clears', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    mockApi.fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({ watched: [cleared({ tier: 'asap' })] }),
+    );
+
+    await fireOnline();
+
+    expect(mockShowToast).toHaveBeenCalledTimes(1);
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run · Dana Whitfield: Today → ASAP');
+  });
+
+  it('says the tier stayed the same', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    mockApi.fetchCommsSnapshot.mockResolvedValue(makeCommsSeed({ watched: [cleared()] }));
+
+    await fireOnline();
+
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run · Dana Whitfield: still Today');
+  });
+
+  it('says the re-run failed when the Worker gave up, and which tier the row kept', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    mockApi.fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({ watched: [cleared({ reclassify_failed_at: '2026-09-09T17:45:00.000Z' })] }),
+    );
+
+    await fireOnline();
+
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run failed · Dana Whitfield: kept Today');
+  });
+
+  it('says nothing while the request still stands, and reports it once it clears', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    mockApi.fetchCommsSnapshot.mockResolvedValue(makeCommsSeed({ watched: [REQUESTED] }));
+
+    await fireOnline();
+
+    expect(mockShowToast).not.toHaveBeenCalled();
+    // Still waited on: the next read asks for it again.
+    mockApi.fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({ watched: [cleared({ tier: 'whenever' })] }),
+    );
+    await fireOnline();
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE, [QUEUED.id]);
+    expect(mockShowToast).toHaveBeenCalledTimes(1);
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run · Dana Whitfield: Today → Whenever');
+  });
+
+  it('reports each re-run exactly once, and stops asking for it', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    mockApi.fetchCommsSnapshot.mockResolvedValue(makeCommsSeed({ watched: [cleared()] }));
+
+    await fireOnline();
+    await fireOnline();
+
+    expect(mockShowToast).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE, []);
+  });
+
+  it('drops a row that is gone without a toast: it was purged or aged out', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    mockApi.fetchCommsSnapshot.mockResolvedValue(makeCommsSeed({ watched: [] }));
+
+    await fireOnline();
+    await fireOnline();
+
+    expect(mockShowToast).not.toHaveBeenCalled();
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE, []);
+  });
+
+  it('reports a row that moved onto a shelf page the tab has not loaded', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    // The snapshot's own rows no longer include it — only `watched` does.
+    mockApi.fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({ messages: [], watched: [cleared({ tier: 'fyi' })] }),
+    );
+
+    await fireOnline();
+
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run · Dana Whitfield: Today → FYI');
+    // Watched rows are only ever read, never rendered: they must not appear in the store.
+    expect(result.current.messages.find((m) => m.id === QUEUED.id)).toBeUndefined();
+  });
+
+  it('tells two re-runs landing on one poll apart by sender', async () => {
+    const other = makeCommMessage(ACCOUNT, {
+      id: '00000000-0000-4000-8000-000000000009',
+      tier: 'whenever',
+      judged_by: 'model',
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([QUEUED, other]) });
+    await askForRerun(result, QUEUED.id, 'Dana Whitfield');
+    mockApi.requestReclassify.mockResolvedValue({
+      ...other,
+      reclassify_requested_at: SERVER_STAMP,
+    });
+    await askForRerun(result, other.id, 'Sam Ortiz');
+    mockApi.fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({
+        watched: [cleared({ tier: 'asap' }), { ...other, reclassify_requested_at: null }],
+      }),
+    );
+
+    await fireOnline();
+
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run · Dana Whitfield: Today → ASAP');
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run · Sam Ortiz: still Whenever');
+    expect(mockShowToast).toHaveBeenCalledTimes(2);
+  });
+
+  it('compares against the tier the row had when it was asked, not the one it has now', async () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    // The owner moves it while the re-run is pending; the re-run still overwrites, as it always has.
+    act(() => {
+      result.current.actions.patchMessageLocally(QUEUED.id, { tier: 'whenever' });
+    });
+    mockApi.fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({ watched: [cleared({ tier: 'asap' })] }),
+    );
+
+    await fireOnline();
+
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run · Dana Whitfield: Today → ASAP');
+  });
+
+  it('reads a failure against the server’s stamp of the request, not this tab’s clock', async () => {
+    // A tab whose clock runs ahead would date its own request after a genuine failure and report
+    // the row as merely unchanged; the failure is dated by the Worker, so it is compared with the
+    // stamp the server gave the request.
+    const serverStamp = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    mockApi.requestReclassify.mockResolvedValue({
+      ...QUEUED,
+      reclassify_requested_at: serverStamp,
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await askForRerun(result);
+    const failedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(
+      makeCommsSeed({ watched: [cleared({ reclassify_failed_at: failedAt })] }),
+    );
+
+    await fireOnline();
+
+    expect(mockShowToast).toHaveBeenCalledWith('Re-run failed · Dana Whitfield: kept Today');
+  });
+
+  it('does not wait on a re-run the server never received', async () => {
+    mockApi.requestReclassify.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await expect(
+        result.current.actions.requestReclassify(QUEUED.id, 'Dana Whitfield'),
+      ).rejects.toThrow('boom');
+    });
+    mockShowToast.mockClear();
+    mockApi.fetchCommsSnapshot.mockResolvedValue(makeCommsSeed({ watched: [] }));
+
+    await fireOnline();
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE, []);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('does not call a re-run over on a read that began before the server had the request', async () => {
+    // Until the write lands, a read can only find the row as it was — request-free — which would
+    // read as "cleared". So a re-run is asked about only once the server has acknowledged it.
+    let acknowledge: ((row: CommMessage) => void) | undefined;
+    mockApi.requestReclassify.mockReturnValue(
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+    );
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    act(() => {
+      void result.current.actions.requestReclassify(QUEUED.id, 'Dana Whitfield');
+    });
+    mockApi.fetchCommsSnapshot.mockResolvedValue(makeCommsSeed({ watched: [cleared()] }));
+
+    await fireOnline();
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE, []);
+    expect(mockShowToast).not.toHaveBeenCalled();
+    await act(async () => {
+      acknowledge?.(REQUESTED);
+      await Promise.resolve();
+    });
+    await fireOnline();
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE, [QUEUED.id]);
+  });
+
+  it('asks about no more re-runs than one read may carry, oldest first', async () => {
+    const rows = Array.from({ length: WATCH_LIMIT_MAX + 1 }, () =>
+      makeCommMessage(ACCOUNT, { tier: 'today', judged_by: 'model' }),
+    );
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper(rows) });
+    for (const row of rows) {
+      mockApi.requestReclassify.mockResolvedValue({
+        ...row,
+        reclassify_requested_at: SERVER_STAMP,
+      });
+      await askForRerun(result, row.id, 'Dana Whitfield');
+    }
+
+    await fireOnline();
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(
+      SHELF_PAGE_SIZE,
+      rows.slice(0, WATCH_LIMIT_MAX).map((row) => row.id),
+    );
   });
 });
 
@@ -931,7 +1244,7 @@ describe('CommsProvider — shelf paging', () => {
       result.current.actions.showMoreShelf();
     });
 
-    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2);
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2, []);
   });
 
   it('asks for no more of the shelf than there is', async () => {
@@ -977,7 +1290,7 @@ describe('CommsProvider — shelf paging', () => {
     });
 
     await waitFor(() => {
-      expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_LIMIT_MAX);
+      expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_LIMIT_MAX, []);
     });
   });
 });

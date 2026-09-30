@@ -12,6 +12,10 @@ import { MessageRow } from './message-row';
  * a sender the roster made important, a message nothing judged, an attachment nothing could
  * read, a row about to be swept, and the two states only the shelf can hold. None of them can
  * be produced on demand from real data, which is exactly why they are drawn here.
+ *
+ * The last three are a re-run's own states: waiting on the Worker (expanded and collapsed) and
+ * given up on. They are just as hard to catch live — the wait lasts a minute or three, and a
+ * failure takes five failed ticks to reach.
  */
 
 const NOW = new Date(2026, 8, 9, 12, 0);
@@ -167,5 +171,34 @@ export const RefusedAndFiltered: Story = {
 /** Selected: the message, the reason it landed here, and the four verbs. */
 export const Selected: Story = {
   args: { selected: true },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** A re-run asked for a minute ago: the button says it was sent, and is inert until it is answered. */
+export const RerunPendingExpanded: Story = {
+  name: 'Re-run pending (expanded)',
+  args: {
+    selected: true,
+    message: row({ reclassify_requested_at: new Date(2026, 8, 9, 11, 59).toISOString() }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** The same wait from the collapsed row: the chip is what says the verdict on show is about to change. */
+export const RerunPendingCollapsed: Story = {
+  name: 'Re-run pending (collapsed)',
+  args: {
+    message: row({ reclassify_requested_at: new Date(2026, 8, 9, 11, 59).toISOString() }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** The Worker gave up after five failed attempts: the old verdict stands, and the detail says so. */
+export const RerunFailed: Story = {
+  name: 'Re-run failed',
+  args: {
+    selected: true,
+    message: row({ reclassify_failed_at: new Date(2026, 8, 9, 11, 58).toISOString() }),
+  },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };

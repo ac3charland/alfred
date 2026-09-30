@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 
+import { isReclassifyPending } from '@/lib/comms';
 import type { DeepLink } from '@/lib/comms/deep-link';
 import type { CommMessage, CommTier, CommVerdict } from '@/lib/types';
 
@@ -17,6 +18,10 @@ import { type RowVerbHandlers, RowVerbs } from './row-verbs';
  * only asks when they disagree — and when they do, it is the difference between correcting the
  * rubric and correcting one row. A verdict with no reason is a verdict that can't be audited,
  * which defeats the point of writing a rubric at all.
+ *
+ * A re-run that ended in failure is said here and only here: the verdict still stands, so the
+ * collapsed row is not wrong about anything and gets no chip — but the owner who asked has to be
+ * able to find out, after a reload or from another tab, why nothing changed.
  */
 
 interface MessageDetailProperties {
@@ -72,6 +77,17 @@ export function MessageDetail({
         </p>
       )}
 
+      {/* Tested as a string, not against null: for a beat after a deploy the row can lack the field
+      altogether (the migration that adds it applies on merge, beside the deploy), and `undefined`
+      is not a failure. */}
+      {typeof message.reclassify_failed_at === 'string' && (
+        <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+          <span className="font-medium text-amber-400">Re-run failed</span>{' '}
+          {formatMessageTime(message.reclassify_failed_at, now)}. The classifier couldn&apos;t
+          produce a verdict, so this one stands.
+        </p>
+      )}
+
       <RowVerbs
         link={link}
         linkRef={linkRef}
@@ -80,6 +96,7 @@ export function MessageDetail({
         tierMenuOpen={tierMenuOpen}
         onTierMenuOpenChange={onTierMenuOpenChange}
         shelved={shelved}
+        reclassifyPending={isReclassifyPending(message)}
       />
     </div>
   );

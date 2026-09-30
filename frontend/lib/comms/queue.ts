@@ -19,6 +19,13 @@ export const SHELF_PAGE_SIZE = 50;
  */
 export const SHELF_LIMIT_MAX = 20_000;
 
+/**
+ * The most rows one snapshot read may be asked to `watch` — the re-runs a tab is waiting on. Each
+ * is an owner's deliberate click, so a tab holds a handful; the cap only keeps the request line
+ * and the one extra read bounded.
+ */
+export const WATCH_LIMIT_MAX = 20;
+
 /** The three counted tiers, in the order the queue shows them. `fyi` is the shelf, not a tier. */
 export const QUEUED_TIERS = ['asap', 'today', 'whenever'] as const;
 

@@ -11,6 +11,7 @@ export {
   SHELF_ELIGIBLE_FILTER,
   SHELF_LIMIT_MAX,
   SHELF_PAGE_SIZE,
+  WATCH_LIMIT_MAX,
   type QueueByTier,
   type QueuedTier,
   groupByTier,
@@ -45,5 +46,7 @@ export {
 } from './health';
 
 export { normalizeHandle, resolvePerson } from './people';
+
+export { type RerunBefore, isReclassifyPending, rerunOutcomeMessage } from './rerun';
 
 export { COMMS_LIVE_WINDOW_MS, COMMS_POLL_MS, isCommsLive } from './live';
