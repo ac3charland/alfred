@@ -87,9 +87,36 @@ async function returnToTab(page: Page): Promise<void> {
   }).toPass({ timeout: 10_000 });
 }
 
-async function askForRerun(page: Page): Promise<void> {
+/**
+ * Open Dana's row and wait until its detail is really open: out of the accessibility tree's
+ * `aria-hidden`, and finished growing. `getByText` alone proves neither — it matches text inside a
+ * collapsed, clipped region — and a click that lands mid-transition can be swallowed.
+ */
+async function openRow(page: Page): Promise<void> {
   await page.getByText(DANA_ASK).click();
-  await page.getByRole('button', { name: 'Re-run classifier' }).click();
+  const detail = page.getByTestId('comms-row-detail');
+  await expect(detail).toHaveAttribute('aria-hidden', 'false');
+  await detail.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+}
+
+/**
+ * Ask for the re-run and wait for the button to say it was sent. The click is retried until it
+ * has that effect: a second one is harmless, since the button disables itself after the first.
+ */
+async function pressRerun(page: Page): Promise<void> {
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Re-run classifier' }).click({ timeout: 2000 });
+    await expect(page.getByRole('button', { name: /Re-run requested/ })).toBeVisible({
+      timeout: 1000,
+    });
+  }).toPass({ timeout: 10_000 });
+}
+
+async function askForRerun(page: Page): Promise<void> {
+  await openRow(page);
+  await pressRerun(page);
 }
 
 test.describe('asking for a re-run', () => {
@@ -188,7 +215,7 @@ test.describe('asking for a re-run', () => {
 
     // Reloaded: the toast is gone, but the row still says why nothing changed.
     await page.reload();
-    await page.getByText(DANA_ASK).click();
+    await openRow(page);
     await expect(page.getByText(/Re-run failed/)).toBeVisible();
     await expect(page.getByText(/so this one stands/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Re-run classifier' })).toBeEnabled();
@@ -204,10 +231,10 @@ test.describe('asking for a re-run', () => {
       commMessages: [{ ...DANA_ROW, reclassify_failed_at: new Date().toISOString() }],
     });
     await page.goto('/comms');
-    await page.getByText(DANA_ASK).click();
+    await openRow(page);
     await expect(page.getByText(/Re-run failed/)).toBeVisible();
 
-    await page.getByRole('button', { name: 'Re-run classifier' }).click();
+    await pressRerun(page);
 
     await expect(page.getByText(/Re-run failed/)).toBeHidden();
     await expect.poll(async () => storedColumn(request, 'reclassify_failed_at')).toBeNull();
