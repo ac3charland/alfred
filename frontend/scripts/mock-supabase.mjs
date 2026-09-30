@@ -175,12 +175,12 @@ const LEDGER_USAGE = [
 ];
 const LEDGER_HOOK_OWNED = [...LEDGER_USAGE, 'cost_usd', 'recorded_at'];
 const LEDGER_PLATFORM_OWNED = ['session_created_at', 'model', 'effort_level', 'ref'];
-const LEDGER_HOOK_CODES = new Set([
-  'price_unknown',
+const LEDGER_STOP_CODES = new Set([
   'start_unrecorded',
+  'subagent_usage_partial',
   'subagents_unreadable',
-  'transcript_regressed',
 ]);
+const LEDGER_HOOK_CODES = new Set([...LEDGER_STOP_CODES, 'price_unknown', 'transcript_regressed']);
 // The wiki repo itself, as the Git Data API shows it: see `freshGithub` below. `githubSequence`
 // backs `nextSha` (defined near `freshGithub`, much later in the file) and must be initialized
 // before this call — `let` is not hoisted, so declaring it down there would throw a
@@ -1654,8 +1654,11 @@ function handleRpc(req, res, fn, body) {
         ...backfillColumns,
         refreshed_at: new Date().toISOString(),
       };
-      if (existing?.recorded_at) {
+      if (existing?.usage_by_model != null) {
         for (const column of LEDGER_HOOK_OWNED) next[column] = existing[column];
+      }
+      if (existing?.recorded_at) {
+        next.recorded_at = existing.recorded_at;
         for (const column of LEDGER_PLATFORM_OWNED) next[column] = row[column] ?? existing[column];
       }
       const keepsPrompt =
@@ -1665,7 +1668,7 @@ function handleRpc(req, res, fn, body) {
         keptRecorded += 1;
         next.prompt = existing.prompt;
         next.prompt_source = existing.prompt_source;
-        if (!startUnrecorded) next.skills = existing.skills;
+        if (!startUnrecorded || existing.skills?.length > 0) next.skills = existing.skills;
       }
       if ((keepsPrompt && !startUnrecorded) || (existing?.recorded_at && existing.base_sha)) {
         next.base_sha = existing.base_sha;
@@ -1711,10 +1714,11 @@ function handleRpc(req, res, fn, body) {
     for (const column of LEDGER_PLATFORM_OWNED)
       existing[column] = before[column] ?? row[column] ?? null;
     existing.recorded_at = existing.refreshed_at = new Date().toISOString();
-    existing.cost_usd = null;
-    const sent = (row.warnings ?? []).filter((w) =>
-      ['start_unrecorded', 'subagents_unreadable'].includes(w),
-    );
+    // No price history here, so recorded usage is never priced; a row without it keeps its cost.
+    if (existing.usage_by_model != null) existing.cost_usd = null;
+    // A stop replaces the stop codes; a start keeps the ones the last stop reported.
+    const stopCodes = row.event === 'stop' ? (row.warnings ?? []) : (before.warnings ?? []);
+    const sent = stopCodes.filter((w) => LEDGER_STOP_CODES.has(w));
     const kept = (before.warnings ?? []).filter((w) => !LEDGER_HOOK_CODES.has(w));
     const set = [
       ...(regressed || before.warnings?.includes('transcript_regressed')
