@@ -300,7 +300,7 @@ describe('placeLabels: where a name sits', () => {
       expect(box.left).toBe(STAGE.width - 80);
     });
 
-    it('nudges an outward name that would cross a side back inside, its height unmoved', () => {
+    it('flips an outward name that would cross a side to its dot’s other side, never over the dot', () => {
       const lit = node('lit', 100, 200);
       const neighbour = node('n', 30, 200, { width: 90 });
 
@@ -309,7 +309,21 @@ describe('placeLabels: where a name sits', () => {
         place([lit, neighbour], { litId: 'lit', neighbours: ['n'] }).get('n'),
       );
 
-      // Anchored to end 9 px left of its dot, it would run from -69: pulled in to the side.
+      // Anchored to end 9 px left of its dot it would run from -69, so it starts 9 px right of it.
+      expect(box.left).toBeCloseTo(39, 9);
+      expect(box.right).toBeCloseTo(129, 9);
+      expect(box.top).toBeCloseTo(200 - LINE / 2, 9);
+    });
+
+    it('nudges an outward name back inside, its height unmoved, when neither side of its dot fits', () => {
+      const lit = node('lit', 100, 200);
+      const neighbour = node('n', 30, 200, { width: 780 });
+
+      const box = boxOf(
+        neighbour,
+        place([lit, neighbour], { litId: 'lit', neighbours: ['n'] }).get('n'),
+      );
+
       expect(box.left).toBe(0);
       expect(box.top).toBeCloseTo(200 - LINE / 2, 9);
     });

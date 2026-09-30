@@ -97,13 +97,20 @@ function outward(node: LabelNode, lit: LabelNode): LabelPlacement {
 }
 
 /**
- * `placement` moved sideways the least that brings the name's box inside a stage `room` wide,
- * so a dot near a side keeps a readable name. A name wider than the stage keeps its start.
+ * `placement` kept inside a stage `room` wide, so a dot near a side keeps a readable name. A name
+ * that fits stays put. One that doesn't is first mirrored to the other side of its dot — an
+ * outward name that would run off the stage starts beside its dot instead of ending there, rather
+ * than being slid back over the dot — and a centred name mirrors onto itself. Failing that, it is
+ * moved sideways the least that brings it inside; a name wider than the stage keeps its start.
  */
-function nudged(node: LabelNode, placement: LabelPlacement, room: number): LabelPlacement {
+function kept(node: LabelNode, placement: LabelPlacement, room: number): LabelPlacement {
+  const fits = (dx: number) => node.x + dx >= 0 && node.x + dx + node.width <= room;
+  if (fits(placement.dx)) return placement;
+  const mirrored = -placement.dx - node.width;
+  if (fits(mirrored)) return { dx: mirrored, dy: placement.dy };
   const left = node.x + placement.dx;
-  const kept = Math.max(0, Math.min(left, room - node.width));
-  return { dx: placement.dx + (kept - left), dy: placement.dy };
+  const inside = Math.max(0, Math.min(left, room - node.width));
+  return { dx: placement.dx + (inside - left), dy: placement.dy };
 }
 
 /** How names are ordered for placing: role first, then degree (most links first), then id. */
@@ -124,7 +131,7 @@ function byImportance(a: { node: LabelNode; role: Role }, b: { node: LabelNode; 
  * the focus, the lit dot, the lit dot's neighbours and, once `scale` reaches `allNamesScale`,
  * every dot whose centre is on the stage. A neighbour's name is set outward from the lit dot
  * ({@link outward}); every other name centres under its dot. A name that would cross the
- * stage's left or right side is nudged back inside.
+ * stage's left or right side is kept inside ({@link kept}).
  *
  * Names are placed greedily, most important first — by role, then most links, then id, so the
  * outcome never depends on the order the dots come in — and a name whose box overlaps one already
@@ -160,7 +167,7 @@ export function placeLabels(input: {
   const taken: Box[] = [];
   for (const { node, role } of stableSorted(candidates, byImportance)) {
     const wanted = role === ROLE.neighbour && lit ? outward(node, lit) : under(node);
-    const placement = nudged(node, wanted, stage.width);
+    const placement = kept(node, wanted, stage.width);
     const left = node.x + placement.dx;
     const top = node.y + placement.dy;
     const box = { left, top, right: left + node.width, bottom: top + WIKI_WEB_LABELS.lineHeight };
