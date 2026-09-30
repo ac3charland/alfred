@@ -20,7 +20,7 @@
 --
 --   hook-owned       tokens, cost_usd (priced here, never sent), served_model, subagent_count,
 --                    usage_by_model, recorded_at — the hook writes them on every stop; the backfill
---                    keeps them once the row is recorded.
+--                    keeps them once the hook has recorded usage.
 --   recorded-wins    prompt, prompt_source, skills, base_sha, builder_sha — the hook's first write
 --                    of each freezes it; the backfill fills them only where the hook couldn't.
 --   platform-owned   session_created_at, model, effort_level, ref — the hook fills them while null,
@@ -40,7 +40,8 @@ alter table code_sessions
 comment on column code_sessions.usage_by_model is
   'Token usage per model, `{main: {<model>: U}, subagents: {<model>: U}}` with U = {requests, '
   'input, output, cache_read, cache_write_5m, cache_write_1h, web_search}. Written only by the '
-  'recording hook; the token columns hold the whole-session totals, subagents included.';
+  'recording hook; the token columns hold the whole-session totals, subagents included as far as '
+  'their transcripts record them (see the subagent_usage_partial warning).';
 comment on column code_sessions.recorded_at is
   'The last write by the session''s own recording hook; null for a row only the backfill wrote.';
 
@@ -48,7 +49,14 @@ comment on column code_sessions.recorded_at is
 -- the other's: record_code_session rewrites these, upsert_code_sessions rewrites everything else.
 create function code_session_hook_warnings() returns text[]
 language sql immutable as $$
-  select array['price_unknown', 'start_unrecorded', 'subagents_unreadable', 'transcript_regressed']
+  select array['price_unknown', 'start_unrecorded', 'subagent_usage_partial',
+               'subagents_unreadable', 'transcript_regressed']
+$$;
+
+-- The codes a stop reports about the transcripts it read; only a stop replaces them.
+create function code_session_stop_warnings() returns text[]
+language sql immutable as $$
+  select array['start_unrecorded', 'subagent_usage_partial', 'subagents_unreadable']
 $$;
 
 -- `p_warnings` without `price_unknown`, plus it when `p_unknown`, sorted and deduplicated.
@@ -68,13 +76,16 @@ create table model_price_history (
   effective_from timestamptz primary key,
   fetched_at     timestamptz not null,
   source         text not null,
-  rates          jsonb not null          -- {<model id>: {name, in, cw5m, cw1h, read, out}}, USD/MTok
+  rates          jsonb not null,         -- {<model id>: {name, in, cw5m, cw1h, read, out}}, USD/MTok
+  fetched        text[] not null default '{}'   -- the ids the latest confirming fetch listed
 );
 
 comment on table model_price_history is
   'Anthropic''s published per-model rates, one row per distinct table. Each row is the whole table '
   'as of effective_from: a fetch is merged over the latest row, so a model a fetch omits keeps its '
-  'last rates. Written only by append_model_prices.';
+  'last rates. `fetched` and `fetched_at` are the latest fetch that confirmed the table, so the '
+  'Worker compares a new fetch against what the page last listed, not against every model ever '
+  'seen. Written only by append_model_prices.';
 
 -- RLS + GRANTs, the 0049 pattern: the authenticated owner has full access, anon is denied (no
 -- policy), and the Worker writes as the service role, which bypasses RLS.
@@ -134,11 +145,21 @@ language sql stable security invoker as $$
   from entries
 $$;
 
+-- A recorded row's cost: its usage priced, except that usage a subagent transcript only partly
+-- recorded (`subagent_usage_partial`) is never priced — a cost known to be low would read as real.
+create function code_session_recorded_cost(p_usage jsonb, p_at timestamptz, p_warnings text[])
+returns numeric
+language sql stable security invoker as $$
+  select case when 'subagent_usage_partial' = any (coalesce(p_warnings, '{}')) then null
+              else code_session_cost(p_usage, p_at) end
+$$;
+
 -- The Worker's daily write: merge `p_rates` over the latest table, append a row only when some
--- model's rates changed, then re-price every recorded session (the cost is a pure function of its
--- stored usage and this history, so re-pricing is idempotent). `changed` names the models whose
+-- model's rates changed, then re-price every session whose usage the hook recorded (the cost is a
+-- pure function of its stored usage and this history, so re-pricing is idempotent). An unchanged
+-- fetch only restamps the latest row's `fetched_at` and `fetched`. `changed` names the models whose
 -- rates differ from the latest row; `repriced` counts sessions whose cost or `price_unknown` moved.
--- Rows only the backfill wrote (recorded_at null) keep the cost their session record carried.
+-- Rows with no recorded usage keep the cost their session record carried.
 create function append_model_prices(p_rates jsonb, p_source text)
 returns table (appended boolean, changed text[], repriced int)
 language plpgsql security invoker as $$
@@ -170,27 +191,32 @@ begin
      order by e.key
   );
   if cardinality(v_changed) = 0 then
+    update model_price_history h
+       set fetched_at = clock_timestamp(),
+           fetched = array(select k from jsonb_object_keys(p_rates) k order by k)
+     where h.effective_from = (select max(effective_from) from model_price_history);
     return query select false, '{}'::text[], 0;
     return;
   end if;
 
-  insert into model_price_history (effective_from, fetched_at, source, rates)
-  values (clock_timestamp(), clock_timestamp(), p_source, v_latest || p_rates);
+  insert into model_price_history (effective_from, fetched_at, source, rates, fetched)
+  values (clock_timestamp(), clock_timestamp(), p_source, v_latest || p_rates,
+          array(select k from jsonb_object_keys(p_rates) k order by k));
 
   with priced as (
-    select s.session_id, code_session_cost(s.usage_by_model, s.session_created_at) as cost
+    select s.session_id,
+           code_session_recorded_cost(s.usage_by_model, s.session_created_at, s.warnings) as cost,
+           code_session_cost(s.usage_by_model, s.session_created_at) is null as unknown
       from code_sessions s
-     where s.recorded_at is not null
+     where s.usage_by_model is not null
   )
   update code_sessions s
      set cost_usd = p.cost,
-         warnings = code_session_priced_warnings(
-           s.warnings, s.usage_by_model is not null and p.cost is null)
+         warnings = code_session_priced_warnings(s.warnings, p.unknown)
     from priced p
    where s.session_id = p.session_id
      and (s.cost_usd is distinct from p.cost
-          or s.warnings is distinct from code_session_priced_warnings(
-               s.warnings, s.usage_by_model is not null and p.cost is null));
+          or s.warnings is distinct from code_session_priced_warnings(s.warnings, p.unknown));
   get diagnostics v_repriced = row_count;
 
   return query select true, v_changed, v_repriced;
@@ -210,8 +236,11 @@ $$;
 -- - The first recorded prompt freezes prompt, prompt_source and the skills sent with it.
 -- - base_sha and builder_sha come from a session-start write, until the hook has recorded them.
 -- - The platform-owned columns are filled only while null.
--- - cost_usd is re-priced from whatever usage is stored, with `price_unknown` when it can't be.
--- - Warnings: the stored codes minus the hook's, plus the ones this write sent or set.
+-- - cost_usd is re-priced from the usage the hook stored, with `price_unknown` when a model has no
+--   rate and no cost when a subagent's usage was only partly recorded; a row the hook has stored no
+--   usage for keeps the cost it has.
+-- - Warnings: the backfill's codes are kept; a stop replaces the stop codes, and the RPC sets
+--   `transcript_regressed` (which sticks) and `price_unknown`.
 create function record_code_session(p_row jsonb)
 returns table (inserted boolean)
 language plpgsql security invoker as $$
@@ -225,7 +254,10 @@ declare
   v_take_prompt boolean;
   v_take_start  boolean;
   v_cost        numeric;
-  v_warnings  text[];
+  v_unknown     boolean;
+  v_usage       jsonb;
+  v_created     timestamptz;
+  v_warnings    text[];
 begin
   if v_event is null or v_event not in ('session-start', 'stop') then
     raise exception 'event must be session-start or stop' using errcode = '22023';
@@ -273,25 +305,35 @@ begin
     recorded_at        = now(),
     refreshed_at       = now()
   where s.session_id = v_in.session_id
-  returning code_session_cost(s.usage_by_model, s.session_created_at),
-            s.usage_by_model is not null
-       into v_cost, v_take_usage;   -- reused: whether the stored row now has usage to price
+  returning s.usage_by_model, s.session_created_at into v_usage, v_created;
 
   v_warnings := array(
     select w from unnest(coalesce(v_old.warnings, '{}')) w
      where w <> all (code_session_hook_warnings())
     union
+    -- The stop codes describe the transcripts a stop read: a stop replaces them, a start keeps them.
+    select w from unnest(coalesce(v_old.warnings, '{}')) w
+     where v_event = 'session-start' and w = any (code_session_stop_warnings())
+    union
     select w from unnest(coalesce(v_in.warnings, '{}')) w
-     where w in ('start_unrecorded', 'subagents_unreadable')
+     where v_event = 'stop' and w = any (code_session_stop_warnings())
     union
     select 'transcript_regressed'
      where v_regressed or 'transcript_regressed' = any (v_old.warnings)
   );
 
-  update code_sessions s set
-    cost_usd = v_cost,
-    warnings = code_session_priced_warnings(v_warnings, v_take_usage and v_cost is null)
-  where s.session_id = v_in.session_id;
+  if v_usage is not null then
+    v_cost := code_session_recorded_cost(v_usage, v_created, v_warnings);
+    v_unknown := code_session_cost(v_usage, v_created) is null;
+    update code_sessions s set
+      cost_usd = v_cost,
+      warnings = code_session_priced_warnings(v_warnings, v_unknown)
+    where s.session_id = v_in.session_id;
+  else
+    update code_sessions s set
+      warnings = code_session_priced_warnings(v_warnings, false)
+    where s.session_id = v_in.session_id;
+  end if;
 
   return query select v_inserted;
 end;
@@ -300,11 +342,13 @@ $$;
 -- ── 4. The backfill's write, amended ─────────────────────────────────────────
 -- 0049's upsert, with the recorded path's columns left alone:
 --
--- - On a recorded row (recorded_at not null) the hook-owned columns keep their stored values, and
---   the platform-owned ones take the backfill's value only when it has one.
+-- - Once the hook has recorded usage (usage_by_model not null) the hook-owned columns keep their
+--   stored values; on any recorded row (recorded_at not null) the platform-owned ones take the
+--   backfill's value only when it has one.
 -- - A recorded prompt keeps its skills as well as its builder and base (0049's rule). The start
 --   commit the hook captured is kept even before a prompt is recorded. When the hook's session
---   start went unrecorded (`start_unrecorded`), the backfill still fills base, builder and skills.
+--   start went unrecorded (`start_unrecorded`), the backfill still fills base and builder, and the
+--   skills while none are stored.
 -- - subagent_count, usage_by_model and recorded_at are never written here.
 -- - Warnings: the incoming codes plus the stored recording codes, so neither path drops the other's.
 --
@@ -370,19 +414,19 @@ language sql security invoker as $$
                           else coalesce(excluded.effort_level, code_sessions.effort_level) end,
       ref = case when code_sessions.recorded_at is null then excluded.ref
                  else coalesce(excluded.ref, code_sessions.ref) end,
-      -- Hook-owned: a recorded row's usage and cost are the session's own.
-      served_model = case when code_sessions.recorded_at is null then excluded.served_model
+      -- Hook-owned: once the hook has recorded usage, the usage and its cost are the session's own.
+      served_model = case when code_sessions.usage_by_model is null then excluded.served_model
                           else code_sessions.served_model end,
-      cost_usd = case when code_sessions.recorded_at is null then excluded.cost_usd
+      cost_usd = case when code_sessions.usage_by_model is null then excluded.cost_usd
                       else code_sessions.cost_usd end,
-      input_tokens = case when code_sessions.recorded_at is null then excluded.input_tokens
+      input_tokens = case when code_sessions.usage_by_model is null then excluded.input_tokens
                           else code_sessions.input_tokens end,
-      output_tokens = case when code_sessions.recorded_at is null then excluded.output_tokens
+      output_tokens = case when code_sessions.usage_by_model is null then excluded.output_tokens
                            else code_sessions.output_tokens end,
-      cache_read_tokens = case when code_sessions.recorded_at is null
+      cache_read_tokens = case when code_sessions.usage_by_model is null
                                then excluded.cache_read_tokens
                                else code_sessions.cache_read_tokens end,
-      cache_write_tokens = case when code_sessions.recorded_at is null
+      cache_write_tokens = case when code_sessions.usage_by_model is null
                                 then excluded.cache_write_tokens
                                 else code_sessions.cache_write_tokens end,
       -- Recorded wins: a reconstructed row never replaces the prompt a session recorded itself.
@@ -394,7 +438,8 @@ language sql security invoker as $$
                            then code_sessions.prompt_source else excluded.prompt_source end,
       skills = case when code_sessions.prompt_source = 'recorded'
                      and excluded.prompt_source is distinct from 'recorded'
-                     and not ('start_unrecorded' = any (code_sessions.warnings))
+                     and (not ('start_unrecorded' = any (code_sessions.warnings))
+                          or jsonb_array_length(code_sessions.skills) > 0)
                     then code_sessions.skills else excluded.skills end,
       builder_sha = case when (code_sessions.prompt_source = 'recorded'
                                and excluded.prompt_source is distinct from 'recorded'
@@ -423,6 +468,8 @@ $$;
 
 grant execute on function
   code_session_hook_warnings(),
+  code_session_stop_warnings(),
+  code_session_recorded_cost(jsonb, timestamptz, text[]),
   code_session_priced_warnings(text[], boolean),
   model_rates(text, timestamptz),
   code_session_cost(jsonb, timestamptz),

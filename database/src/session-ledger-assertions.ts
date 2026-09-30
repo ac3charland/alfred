@@ -244,6 +244,8 @@ export async function runSessionLedgerAssertions(client: Client): Promise<Assert
         'code_session_cost',
         'code_session_hook_warnings',
         'code_session_priced_warnings',
+        'code_session_stop_warnings',
+        'code_session_recorded_cost',
         'upsert_code_sessions',
       ];
       const { rows } = await client.query<{
@@ -661,6 +663,117 @@ export async function runSessionLedgerAssertions(client: Client): Promise<Assert
     },
   );
 
+  const partialResult = await attempt(
+    'partly recorded subagent usage is never priced, and a start write keeps the codes a stop ' +
+      'reported (ALF-310)',
+    async () => {
+      const id = 'session_hook_partial';
+      try {
+        await seedHistory(client, [
+          {
+            at: '2026-01-01T00:00:00Z',
+            rates: { 'claude-opus-5-5': OPUS, 'claude-haiku-4-5': HAIKU },
+          },
+        ]);
+        await record(client, {
+          ...hookStop(id, 'ALF-310: as sent', 1000),
+          warnings: ['subagent_usage_partial', 'subagents_unreadable'],
+        });
+        const stopped = await read(client, id);
+        expectNull('no cost for a partial count', stopped['cost_usd']);
+        expectEqual('flagged, not price_unknown', stopped['warnings'], [
+          'subagent_usage_partial',
+          'subagents_unreadable',
+        ]);
+
+        await record(client, hookStart(id));
+        const restarted = await read(client, id);
+        expectEqual('a start keeps the stop codes', restarted['warnings'], stopped['warnings']);
+
+        await appendPrices(client, { 'claude-opus-5-5': OPUS_RAISED });
+        const repriced = await read(client, id);
+        expectNull('re-pricing keeps it unpriced', repriced['cost_usd']);
+
+        await record(client, hookStop(id, 'ALF-310: as sent', 2000));
+        const complete = await read(client, id);
+        expectEqual('a complete count is priced again', complete['warnings'], []);
+        if (complete['cost_usd'] === null) throw new Error('a complete count stayed unpriced');
+      } finally {
+        await cleanUp(client);
+      }
+      return 'partial → no cost and its own code; a start write keeps stop codes';
+    },
+  );
+
+  const startOnlyResult = await attempt(
+    "a session whose only hook write was its start keeps the backfill's usage and cost, in " +
+      'either order (ALF-310)',
+    async () => {
+      try {
+        await upsert(client, [backfillRow('session_hook_bf_first')]);
+        await record(client, hookStart('session_hook_bf_first'));
+        await record(client, hookStart('session_hook_bf_last'));
+        await upsert(client, [backfillRow('session_hook_bf_last')]);
+        for (const id of ['session_hook_bf_first', 'session_hook_bf_last']) {
+          const row = await read(client, id);
+          expectEqual(
+            `${id} keeps the session record's usage`,
+            [row['output_tokens'], row['cost_usd'], row['served_model'], row['base_sha']],
+            [999_999_999, 99.5, 'claude-sonnet-5-5', 'base-recorded'],
+          );
+        }
+      } finally {
+        await cleanUp(client);
+      }
+      return 'backfill usage and cost kept before or after a lone session start';
+    },
+  );
+
+  const skillsKeptResult = await attempt(
+    'recorded skills survive a later unrecorded start and a backfill (ALF-310)',
+    async () => {
+      const id = 'session_hook_skills';
+      try {
+        await record(client, hookStart(id));
+        await record(client, hookStop(id, 'ALF-310: as sent', 1000));
+        const later = hookStop(id, 'ALF-310: as sent', 2000);
+        delete later['skills'];
+        await record(client, { ...later, warnings: ['start_unrecorded'] });
+        await upsert(client, [backfillRow(id)]);
+        const row = await read(client, id);
+        expectEqual('skills kept', row['skills'], hookStop(id, '', 0)['skills']);
+        expectEqual('base kept', row['base_sha'], 'base-recorded');
+      } finally {
+        await cleanUp(client);
+      }
+      return 'skills and base stay the ones recorded at the real start';
+    },
+  );
+
+  const fetchedResult = await attempt(
+    'an unchanged fetch restamps the ids the page last listed (ALF-310)',
+    async () => {
+      try {
+        await appendPrices(client, { 'claude-opus-5-5': OPUS, 'claude-haiku-4-5': HAIKU });
+        const same = await appendPrices(client, { 'claude-opus-5-5': OPUS });
+        expectEqual('nothing appended', same.appended, false);
+        const { rows } = await client.query<{ n: number; fetched: string[]; ids: string[] }>(
+          `select (select count(*)::int from model_price_history) as n, fetched,
+                  array(select k from jsonb_object_keys(rates) k order by k) as ids
+             from model_price_history order by effective_from desc limit 1`,
+        );
+        expectEqual('one row, both models priced, one listed', rows[0], {
+          n: 1,
+          fetched: ['claude-opus-5-5'],
+          ids: ['claude-haiku-4-5', 'claude-opus-5-5'],
+        });
+      } finally {
+        await cleanUp(client);
+      }
+      return 'fetched follows the page; rates keep every model';
+    },
+  );
+
   return [
     grantsResult,
     ratesResult,
@@ -669,5 +782,9 @@ export async function runSessionLedgerAssertions(client: Client): Promise<Assert
     ownershipResult,
     orderResult,
     unrecordedStartResult,
+    partialResult,
+    startOnlyResult,
+    skillsKeptResult,
+    fetchedResult,
   ];
 }

@@ -1002,18 +1002,21 @@ export type Database = {
       model_price_history: {
         Row: {
           effective_from: string
+          fetched: string[]
           fetched_at: string
           rates: Json
           source: string
         }
         Insert: {
           effective_from: string
+          fetched?: string[]
           fetched_at: string
           rates: Json
           source: string
         }
         Update: {
           effective_from?: string
+          fetched?: string[]
           fetched_at?: string
           rates?: Json
           source?: string
@@ -1848,6 +1851,11 @@ export type Database = {
         Args: { p_unknown: boolean; p_warnings: string[] }
         Returns: string[]
       }
+      code_session_recorded_cost: {
+        Args: { p_at: string; p_usage: Json; p_warnings: string[] }
+        Returns: number
+      }
+      code_session_stop_warnings: { Args: never; Returns: string[] }
       comm_canonical_handle: { Args: { p_handle: string }; Returns: string }
       comm_canonicalise_handles: { Args: never; Returns: number }
       comm_create_inbox_item: {
