@@ -826,14 +826,14 @@ export function CodeProvider({
             return;
           }
           releasePriorityWrites([write]);
+          const touched = new Set(write.touched.map(({ itemId }) => itemId));
           for (const row of rows) {
-            landServerPatch(
-              dispatch,
-              book,
-              row.item_id,
-              codeItemToStoryPatch(row),
-              row.priority_rev,
-            );
+            // A row the write didn't touch is in the reply only for its rank — its other columns
+            // may be older than an echo already landed.
+            const patch = touched.has(row.item_id)
+              ? codeItemToStoryPatch(row)
+              : { priority: row.priority };
+            landServerPatch(dispatch, book, row.item_id, patch, row.priority_rev);
           }
           landHeldPriorities();
         }
