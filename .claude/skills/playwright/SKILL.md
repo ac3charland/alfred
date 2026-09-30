@@ -230,6 +230,8 @@ test.beforeEach(async ({ page }) => {
 
 **In an `expect(async () => …).toPass()` that fires a GLOBAL keystroke, guard the PRESS on its own precondition and assert the specific target once outside the loop.** The retry exists because a client listener may not be mounted yet — but an unconditional press plus a short assertion retries the *press* as well, so a press that LANDED while the assertion merely timed out is followed by another one, walking a keyboard selection past the row the test steers from. Press only while nothing is selected (`if ((await anySelected.count()) === 0) await page.keyboard.press('j')`), let the loop settle on "something is selected", then assert the exact row once — a different row is then the real failure it is, and says so (`e2e/reader-archive.spec.ts`'s `selectWithJ`).
 
+**Bind a geometry read before using it: `(await locator.boundingBox())?.y` fails lint** (`unicorn/no-await-expression-member`). Read into a const first — a small `box(locator)` helper that throws on `null` also drops the `?? 0` fallbacks that would let a missing element pass a `>=` check.
+
 **Never use `expect` inside an `if` block.** The `no-conditional-expect` rule flags this. If you need to branch on DOM state, use `locator.count()` in a setup step, not inside an assertion branch.
 
 **Always `await` every Playwright action and assertion.** Missing `await` on `page.click()` or `expect(locator).toBeVisible()` runs them fire-and-forget. The TypeScript compiler won't catch this; eslint-plugin-playwright's `await-thenable` rule does.
