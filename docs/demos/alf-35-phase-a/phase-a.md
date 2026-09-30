@@ -9,7 +9,7 @@ branch: alf-35-phase-a
 Migration 0005_story_priority.sql applied to the live Supabase project. Adds a global `priority` column to `code_items` (driven by a dedicated sequence), backfills 41 existing rows, enforces uniqueness, creates the `swap_code_priority` RPC, and appends `priority` to the `v_code_stories` view.
 
 ```bash
-psql "$DATABASE_URL" -c "select column_name, data_type, column_default, is_nullable from information_schema.columns where table_name='code_items' and column_name='priority'" 2>&1
+npm run --silent psql -w database -- -c "select column_name, data_type, column_default, is_nullable from information_schema.columns where table_name='code_items' and column_name='priority'" 2>&1
 ```
 
 ```output
@@ -20,7 +20,7 @@ psql "$DATABASE_URL" -c "select column_name, data_type, column_default, is_nulla
 ```
 
 ```bash
-psql "$DATABASE_URL" -c "select min(priority), max(priority), count(*) from code_items" 2>&1
+npm run --silent psql -w database -- -c "select min(priority), max(priority), count(*) from code_items" 2>&1
 ```
 
 ```output
@@ -31,7 +31,7 @@ psql "$DATABASE_URL" -c "select min(priority), max(priority), count(*) from code
 ```
 
 ```bash
-psql "$DATABASE_URL" -c "select column_name from information_schema.columns where table_name='v_code_stories' order by ordinal_position desc limit 1" 2>&1
+npm run --silent psql -w database -- -c "select column_name from information_schema.columns where table_name='v_code_stories' order by ordinal_position desc limit 1" 2>&1
 ```
 
 ```output

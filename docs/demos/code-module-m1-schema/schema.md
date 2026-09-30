@@ -11,11 +11,10 @@ Migration `0002_software_factory.sql` adds the Project / Epic / Story model behi
 **New enums and tables exist.** The factory states, the lane enum, and the three sidecar tables are present after the migration.
 
 ```bash
-DATABASE_URL=$(grep -E '^DATABASE_URL=' frontend/.env.local | head -1 | cut -d= -f2- | sed 's/^"//; s/"$//')
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA -c "select 'factory_state: ' || string_agg(e.enumlabel, ', ' order by e.enumsortorder) from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='code_factory_state';"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA -c "select 'lane: ' || string_agg(e.enumlabel, ', ' order by e.enumsortorder) from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='code_lane';"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA -c "select 'tables: ' || string_agg(table_name, ', ' order by table_name) from information_schema.tables where table_schema='public' and table_name in ('projects','epics','code_items');"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA -c "select 'views: ' || string_agg(table_name, ', ' order by table_name) from information_schema.views where table_schema='public' and table_name in ('task_items','v_code_stories');"
+npm run --silent psql -w database -- -v ON_ERROR_STOP=1 -tA -c "select 'factory_state: ' || string_agg(e.enumlabel, ', ' order by e.enumsortorder) from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='code_factory_state';"
+npm run --silent psql -w database -- -v ON_ERROR_STOP=1 -tA -c "select 'lane: ' || string_agg(e.enumlabel, ', ' order by e.enumsortorder) from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='code_lane';"
+npm run --silent psql -w database -- -v ON_ERROR_STOP=1 -tA -c "select 'tables: ' || string_agg(table_name, ', ' order by table_name) from information_schema.tables where table_schema='public' and table_name in ('projects','epics','code_items');"
+npm run --silent psql -w database -- -v ON_ERROR_STOP=1 -tA -c "select 'views: ' || string_agg(table_name, ', ' order by table_name) from information_schema.views where table_schema='public' and table_name in ('task_items','v_code_stories');"
 ```
 
 ```output
@@ -28,8 +27,7 @@ views: task_items, v_code_stories
 **Refs are server-allocated from one shared per-project counter** (epics AND stories). `create_epic` then two `enter_code_module` calls draw `DMO-1`, `DMO-2`, `DMO-3` with no collision; `enter_code_module` also flips `item_type` to `code` and clears task-only fields. All inside a rolled-back transaction.
 
 ```bash
-DATABASE_URL=$(grep -E '^DATABASE_URL=' frontend/.env.local | head -1 | cut -d= -f2- | sed 's/^"//; s/"$//')
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA <<'SQL'
+npm run --silent psql -w database -- -v ON_ERROR_STOP=1 -tA <<'SQL'
 begin;
 insert into projects (id, name, key, repo_owner, repo_name)
   values ('cccccccc-0000-0000-0000-0000000000d0', 'Demo', 'DMO', 'ac3charland', 'demo-repo');
@@ -64,9 +62,8 @@ ROLLBACK
 **Task-gating is enforced in the schema.** A factory item is excluded from the `task_items` read path (so it leaves Tasks/Inbox), and the `items_task_only_fields` CHECK rejects a due date / parent / completed status on any non-`task` item.
 
 ```bash
-DATABASE_URL=$(grep -E '^DATABASE_URL=' frontend/.env.local | head -1 | cut -d= -f2- | sed 's/^"//; s/"$//')
 # task_items excludes a factory item (transaction rolled back)
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA <<'SQL'
+npm run --silent psql -w database -- -v ON_ERROR_STOP=1 -tA <<'SQL'
 begin;
 insert into projects (id, name, key, repo_owner, repo_name)
   values ('cccccccc-0000-0000-0000-0000000000e0', 'Demo2', 'DM2', 'ac3charland', 'demo-repo-2');
@@ -78,7 +75,7 @@ select 'still visible in task_items? ' || exists(select 1 from task_items where 
 rollback;
 SQL
 # CHECK constraint rejects task fields on a non-task item (single statement self-rolls-back on error)
-psql "$DATABASE_URL" -c "insert into items (title, item_type, due_date) values ('illegal', 'code', now());" 2>&1 \
+npm run --silent psql -w database -- -c "insert into items (title, item_type, due_date) values ('illegal', 'code', now());" 2>&1 \
   | grep -oE 'violates check constraint "items_task_only_fields"'
 ```
 

@@ -286,5 +286,5 @@ Run over every tracked file with secretlint 13.0.6 and `preset-recommend`:
 - **False positives:** two placeholder templates, `.claude/skills/supabase/SKILL.md:401` and
   `frontend/.env.example:30`. Both contain `:<password>@`, and both are cleared by one rule
   option: `"allows": ["/:<password>@/"]`.
-- **Passes:** `psql "$DATABASE_URL" -c "…"`, the form R5 and R6 steer toward.
+- **Passes:** `npm run psql -w database -- -c "…"`, the form R5 and R6 steer toward. Raw `psql "$DATABASE_URL" -c "…"` also passes the scan but is not equivalent: psql receives the full URI, password included, on its argv (visible in `ps`), and the URL has to be exported into the shell.
 - GitHub's own scanning API could not be tested: the repo has no Advanced Security.
