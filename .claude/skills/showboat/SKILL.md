@@ -66,7 +66,7 @@ wrapper reads the URL from `frontend/.env.local`, so the command holds no secret
 reproduces for anyone with that file. `psql "$DATABASE_URL"` is no substitute (psql gets the full
 URI, password included, on its argv), and never assign a credential inline (`NAME=value cmd`).
 Every write refuses (exit 1, nothing written) a doc that would hold a secret pattern or the value
-of a credential this shell can see; `exec` also refuses before running — see the `secret-scan` skill.
+of a credential from the environment or the repo's gitignored env files; `exec` also refuses before running — see the `secret-scan` skill.
 
 **Never put test-suite output in a demo doc — not for visual changes, not ever.**
 The `check` suites run in the pre-commit and pre-push hooks; replaying their green

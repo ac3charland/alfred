@@ -37,12 +37,15 @@ Gitignored files (`.env.local`) are never scanned. Background:
 commit gate and showboat's record-time refusal always agree.
 
 **Live values, not just patterns.** Every scope (and showboat) also refuses content holding the
-*actual value* of a credential it can see: env vars named like `PASS|SECRET|TOKEN|KEY|PWD`, the
-password of any `*_URL`/`*_URI`/`*_DSN`, and the same keys in `frontend/.env.local` — raw,
-URL-encoded, JSON-escaped, base64 and UTF-16. That catches the shapes no pattern can (a bare
-`printenv`, a truncated URI). Trivial values (`postgres`, placeholders, <8 chars) are ignored, and a
-report names only the variable. `known-secrets.ts` is duplicated in `tools/secret-scan` and
-`tools/showboat` (the tools can't import each other's source); change both copies together.
+*actual value* of a credential: env vars named like `PASS|SECRET|TOKEN|KEY|PWD|JWT|CREDENTIAL`,
+the password of any URL-with-password (userinfo or `?password=`) whatever the name, and the same
+from every gitignored `.env*` / `.dev.vars*` file (not `node_modules`, not `*.example`) in the
+current worktree **and** the main checkout — raw, URL-encoded, JSON-escaped, base64/base64url at
+any alignment, and NUL-stripped (UTF-16). That catches the shapes no pattern can (a bare `printenv`,
+a truncated URI). Trivial values (`postgres`, placeholders, <8 chars), paths and `NEXT_PUBLIC_*`
+are ignored, and a report names only the variable and file. `known-secrets.ts` (and its test) is
+duplicated in `tools/secret-scan` and `tools/showboat` (the tools can't import each other's
+source); a drift test fails unless both copies change together.
 
 ## When it fires
 
