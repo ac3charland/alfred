@@ -32,7 +32,11 @@ interface AppendResult {
   repriced: number;
 }
 
-/** The latest history entry: the date it took effect, and the ids it prices. */
+/**
+ * The latest history entry: the date it took effect, and the ids the page listed at the last fetch
+ * that confirmed it. Not every id the table prices: the history keeps retired models' rates for
+ * old sessions, so comparing against those would reject every fetch once enough had retired.
+ */
 interface LatestPrices {
   /** `YYYY-MM-DD` of its `effective_from`. */
   date: string;
@@ -74,17 +78,18 @@ async function fetchPage(): Promise<string> {
 async function readLatest(env: SupabaseEnv): Promise<LatestPrices | undefined> {
   const url =
     `${env.SUPABASE_URL}/rest/v1/model_price_history` +
-    '?select=effective_from,rates&order=effective_from.desc&limit=1';
+    '?select=effective_from,fetched&order=effective_from.desc&limit=1';
   const response = await call('history read', url, { headers: headers(env) });
   const body: unknown = await response.json();
 
   if (!Array.isArray(body)) throw new Error('history read: unexpected response');
-  const [row] = body as (Partial<{ effective_from: string; rates: Rates }> | undefined)[];
+  const [row] = body as (Partial<{ effective_from: string; fetched: unknown }> | undefined)[];
   if (row === undefined) return undefined;
-  if (typeof row.effective_from !== 'string' || typeof row.rates !== 'object') {
+  if (typeof row.effective_from !== 'string' || !Array.isArray(row.fetched)) {
     throw new TypeError('history read: unexpected response');
   }
-  return { date: row.effective_from.slice(0, 10), ids: new Set(Object.keys(row.rates)) };
+  const ids = row.fetched.filter((id): id is string => typeof id === 'string');
+  return { date: row.effective_from.slice(0, 10), ids: new Set(ids) };
 }
 
 /** Ask the database to merge, append if anything changed, and re-price recorded sessions. */

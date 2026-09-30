@@ -14,16 +14,15 @@ const now = new Date('2026-10-03T09:17:00.000Z');
 
 const page = readFileSync(path.join(__dirname, '__fixtures__', 'pricing-2026-09-30.txt'), 'utf8');
 
-/** A history row holding the given ids, each with the same plausible rates. */
+/**
+ * The latest history row as the refresh reads it: when its table took effect, and the ids the
+ * page listed at the last fetch that confirmed it (not every model the table has ever priced).
+ */
 function historyRow(
   effectiveFrom: string,
   ids: string[],
-): { effective_from: string; rates: object } {
-  const rate = { name: 'x', in: 1, cw5m: 1.25, cw1h: 2, read: 0.1, out: 5 };
-  return {
-    effective_from: effectiveFrom,
-    rates: Object.fromEntries(ids.map((id) => [id, rate])),
-  };
+): { effective_from: string; fetched: string[] } {
+  return { effective_from: effectiveFrom, fetched: ids };
 }
 
 /** The URL a fetch stub was asked for, whichever form the caller handed it. */
@@ -118,7 +117,7 @@ describe('runPriceRefresh', () => {
     const [url, init] = read as [string, RequestInit];
     expect(url).toBe(
       'https://proj.supabase.co/rest/v1/model_price_history' +
-        '?select=effective_from,rates&order=effective_from.desc&limit=1',
+        '?select=effective_from,fetched&order=effective_from.desc&limit=1',
     );
     expect(init.headers).toMatchObject({
       apikey: 'service-role-key',
