@@ -13,14 +13,27 @@
 export const shellRootClass = 'flex min-h-dvh bg-background';
 
 /**
- * The desktop sidebar's "Press ⌘K to go anywhere" affordance (ALF-207). Because the document
- * itself is what grows and scrolls (see `shellRootClass`), the `<aside>` stretches to match
- * whatever height the main content column reaches — on a long task list that's far taller than
- * one screen, so this hint, as the sidebar's last child, would otherwise render below the fold
- * of the *page* rather than the bottom of the *viewport*. `sticky bottom-0` keeps it pinned to
- * the visible viewport's bottom edge as the page scrolls, instead of drifting down with the
- * sidebar's stretched height; `bg-surface` repaints it opaque so nav content doesn't show
- * through once it's floating over whatever now sits behind it.
+ * The desktop sidebar (ALF-304): it stays put while the module's content scrolls. The document is
+ * the scroller (see `shellRootClass`), so `sticky top-0` pins it and `h-dvh` holds it to one
+ * visible viewport — its nav then scrolls inside its own `overflow-y-auto` pane. `self-start`
+ * stops the flex row stretching it back to the page's full height, which would unpin it. 224px
+ * (`md:w-56`) matches the mobile drawer's width.
+ */
+export const sidebarClass =
+  'hidden md:sticky md:top-0 md:flex md:h-dvh md:w-56 md:shrink-0 md:flex-col md:self-start border-r border-border bg-surface';
+
+/**
+ * The top bar (ALF-304): pinned to the viewport top while the document scrolls beneath it.
+ * `z-20` lifts it over in-list layers (the `z-10` drop gaps) but keeps it under the bulk bar
+ * (`z-40`) and dialogs (`z-50`); `bg-surface` is opaque so content doesn't show through.
+ */
+export const shellHeaderClass =
+  'sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-surface px-4';
+
+/**
+ * The desktop sidebar's "Press ⌘K to go anywhere" affordance (ALF-207). It must sit at the bottom
+ * of the *viewport*, never the bottom of a long page; the sidebar being pinned at one viewport tall
+ * (`sidebarClass`) with the nav pane taking the slack (`flex-1`) is what puts it there.
  */
 export const sidebarShortcutHintClass =
-  'sticky bottom-0 border-t border-border bg-surface px-4 py-2 text-xs text-muted-foreground/70';
+  'border-t border-border bg-surface px-4 py-2 text-xs text-muted-foreground/70';

@@ -35,6 +35,10 @@
     --ring: #4fd1e0;
 
     --radius: 0.5rem;
+
+    /* The shell's top bar is sticky (h-14, ALF-304): a scroll-into-view or hash jump lands its
+       target below the bar instead of under it. */
+    scroll-padding-top: 3.5rem;
   }
 }
 

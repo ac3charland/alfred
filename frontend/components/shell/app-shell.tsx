@@ -11,7 +11,12 @@ import { ToastViewport } from '@/components/shell/toast-viewport';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
 
-import { shellRootClass, sidebarShortcutHintClass } from './app-shell.styles';
+import {
+  shellHeaderClass,
+  shellRootClass,
+  sidebarClass,
+  sidebarShortcutHintClass,
+} from './app-shell.styles';
 
 /**
  * Shared application shell (Server Component) mounted once by the `(shell)` layout that
@@ -42,11 +47,10 @@ export function AppShell({
     <>
       <div className={shellRootClass}>
         {/* Desktop sidebar */}
-        {/* 224px (`md:w-56`), matching the mobile drawer's width. The switcher is icon-only
-            (ALF-270) so it carries no label budget; the module navs are what actually set this
-            floor (they fit at 224px before ALF-233 widened the sidebar for the switcher's own
-            labels, since removed). */}
-        <aside className="hidden md:flex md:w-56 md:shrink-0 md:flex-col border-r border-border bg-surface">
+        {/* 224px wide. The switcher is icon-only (ALF-270) so it carries no label budget; the
+            module navs are what actually set this floor (they fit at 224px before ALF-233 widened
+            the sidebar for the switcher's own labels, since removed). */}
+        <aside className={sidebarClass}>
           <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
             <div className="flex items-baseline justify-between gap-2 min-w-0">
               <AlfredLink
@@ -62,9 +66,7 @@ export function AppShell({
           <div className="flex-1 overflow-y-auto px-2">
             <ShellNav />
           </div>
-          {/* A quiet ⌘K affordance so the navigation palette is discoverable without a mouse.
-              Sticky (see app-shell.styles.ts) so it stays pinned to the viewport bottom rather
-              than drifting off past the bottom of a long, scrolled page (ALF-207). */}
+          {/* A quiet ⌘K affordance so the navigation palette is discoverable without a mouse. */}
           <div data-testid="sidebar-shortcut-hint" className={sidebarShortcutHintClass}>
             <span className="inline-flex items-center gap-1.5">
               Press
@@ -79,7 +81,7 @@ export function AppShell({
         {/* Main content area */}
         <div className="flex flex-1 flex-col min-w-0">
           {/* Header */}
-          <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
+          <header className={shellHeaderClass}>
             {/* Mobile: hamburger + wordmark (the switcher lives inside the hamburger) */}
             <div className="flex items-center gap-3 md:hidden">
               <ShellMobileNav />
