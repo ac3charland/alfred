@@ -173,9 +173,10 @@ export const PriorityAtBothExtremes: Story = {
 };
 
 /**
- * The `ready_for_dev` story in the modal at a phone viewport (390×844): the dialog spans the
- * full phone width and its header actions, breadcrumb, notes, and rendered spec reflow for
- * mobile — the mobile counterpart of {@link ReadyForDev}.
+ * The `ready_for_dev` story at a phone viewport (390×844): the full-screen sheet — a pinned header,
+ * the title and breadcrumb, the note in a tinted well, the spec as a tap-to-open row, and the
+ * action bar (Implement, status, Priority, ⋯) pinned at the bottom. The mobile counterpart of
+ * {@link ReadyForDev}.
  */
 export const MobileReadyForDev: Story = {
   args: { story: STORY },
@@ -315,13 +316,13 @@ async function openBarMenu(trigger: string) {
   await body.findByRole('menu');
 }
 
-/** {@link NeedsRefinement} at 390×844: the two launch buttons and the mark under a phone header. */
+/** {@link NeedsRefinement} at 390×844: one short **Refine** in the action bar, with Skip to dev and the Needs refinement mark in ⋯. */
 export const MobileNeedsRefinement: Story = {
   args: NeedsRefinement.args,
   parameters: PHONE,
 };
 
-/** A blocked story at 390×844: the state chip and the Unblock control, with its reason recorded. */
+/** A blocked story at 390×844: the Blocked chip and a bar with no launch button (status, Priority, ⋯); Unblock is in ⋯. */
 export const MobileBlocked: Story = {
   args: {
     story: {
