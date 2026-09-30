@@ -1,9 +1,12 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/atoms/button';
+import { useSheetFooterClaim } from '@/components/atoms/dialog';
 import { isSaveShortcut } from '@/lib/ui/save-shortcut';
+import { cn } from '@/lib/utils';
 
 interface TextareaFieldProperties {
   value: string;
@@ -42,6 +45,26 @@ interface TextareaFieldProperties {
   variant?: 'default' | 'warning';
   /** Accessible label for the textarea when no visible label is rendered. */
   'aria-label'?: string;
+  /**
+   * Grow the textarea to fit its content instead of scrolling inside it, with `rows` as the
+   * floor. The surrounding container becomes the one scroller, so a long note is always readable
+   * in full. Off by default (a fixed-`rows` box).
+   */
+  autoGrow?: boolean;
+  /**
+   * Draw Save / Cancel as a full-width bar in this element rather than under the textarea — a
+   * `SheetDialog`'s footer (`useSheetFooterElement`), so the actions sit below the scrolling
+   * body instead of over the text. `null` means the element isn't there yet: the actions wait
+   * rather than flashing inline. Omitted, they render inline as always. While set, the field
+   * also holds the sheet's footer, hiding the sheet's resting bar.
+   */
+  actionsTarget?: Element | null | undefined;
+  /**
+   * Focus the textarea when it mounts, with the caret at the end of its text — for an editor the
+   * user just asked to open, where a second tap to reach the field (and raise a phone's keyboard)
+   * would be a dead end. Off by default.
+   */
+  focusOnMount?: boolean;
 }
 
 /**
@@ -65,12 +88,59 @@ export function TextareaField({
   cancelLabel = 'Cancel',
   variant = 'default',
   'aria-label': ariaLabel,
+  autoGrow = false,
+  actionsTarget,
+  focusOnMount = false,
 }: TextareaFieldProperties) {
   const isWarning = variant === 'warning';
   const textareaId = React.useId();
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const inBar = actionsTarget !== undefined;
+
+  useSheetFooterClaim(inBar);
+
+  // Measure from `auto` so the box can shrink as well as grow. `scrollHeight` leaves the border
+  // out and the box is `border-box`, so add it back (`offsetHeight − clientHeight`) or a sliver
+  // of the last line would be left to scroll.
+  const fit = React.useCallback(() => {
+    const node = textareaRef.current;
+    if (node === null) return;
+    node.style.height = 'auto';
+    node.style.height = `${String(node.scrollHeight + node.offsetHeight - node.clientHeight)}px`;
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (autoGrow) fit();
+  }, [autoGrow, value, fit]);
+
+  // A narrower field wraps the same text onto more lines, which `value` doesn't announce: a phone
+  // turned from landscape to portrait mid-edit would leave the last lines hidden under
+  // `overflow-hidden`. Watch the width only — the observer also fires for the height `fit` sets.
+  React.useEffect(() => {
+    const node = textareaRef.current;
+    if (!autoGrow || node === null || typeof ResizeObserver === 'undefined') return;
+    let width = node.offsetWidth;
+    const observer = new ResizeObserver(() => {
+      if (node.offsetWidth === width) return;
+      width = node.offsetWidth;
+      fit();
+    });
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [autoGrow, fit]);
+
+  React.useEffect(() => {
+    const node = textareaRef.current;
+    if (!focusOnMount || node === null) return;
+    node.focus();
+    node.setSelectionRange(node.value.length, node.value.length);
+  }, [focusOnMount]);
 
   const textarea = (
     <textarea
+      ref={textareaRef}
       id={label === undefined ? undefined : textareaId}
       aria-label={ariaLabel}
       value={value}
@@ -90,9 +160,23 @@ export function TextareaField({
       rows={rows}
       maxLength={maxLength}
       placeholder={placeholder}
-      className="w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+      className={cn(
+        'w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal',
+        autoGrow && 'overflow-hidden',
+      )}
     />
   );
+
+  // In the bar, pressing a button must not pull focus off the textarea: on a phone that would
+  // drop the keyboard, resize the sheet, and move the button out from under the finger before
+  // the click lands.
+  const keepFocus = inBar
+    ? {
+        onMouseDown: (event_: React.MouseEvent) => {
+          event_.preventDefault();
+        },
+      }
+    : {};
 
   const cancelButton = (
     <Button
@@ -101,10 +185,28 @@ export function TextareaField({
       disabled={isPending}
       onClick={onCancel}
       className="text-muted-foreground"
+      {...keepFocus}
     >
       {cancelLabel}
     </Button>
   );
+
+  /** The action row: inline under the textarea, or a bar portalled into `actionsTarget`. */
+  const renderActions = (buttons: React.ReactNode, inlineClassName: string) => {
+    if (actionsTarget === undefined) return <div className={inlineClassName}>{buttons}</div>;
+    if (actionsTarget === null) return null;
+    return createPortal(
+      <div
+        className={cn(
+          'flex gap-2 border-t border-border bg-surface px-4 py-2',
+          isWarning && 'justify-end',
+        )}
+      >
+        {buttons}
+      </div>,
+      actionsTarget,
+    );
+  };
 
   if (isWarning) {
     return (
@@ -115,19 +217,23 @@ export function TextareaField({
           </label>
         )}
         {textarea}
-        <div className="flex justify-end gap-2">
-          {cancelButton}
-          <Button
-            size="sm"
-            disabled={isPending || !canSave}
-            onClick={() => {
-              void onSave();
-            }}
-            className="bg-amber-500 text-background hover:bg-amber-500/90"
-          >
-            {saveLabel}
-          </Button>
-        </div>
+        {renderActions(
+          <>
+            {cancelButton}
+            <Button
+              size="sm"
+              disabled={isPending || !canSave}
+              onClick={() => {
+                void onSave();
+              }}
+              className="bg-amber-500 text-background hover:bg-amber-500/90"
+              {...keepFocus}
+            >
+              {saveLabel}
+            </Button>
+          </>,
+          'flex justify-end gap-2',
+        )}
       </div>
     );
   }
@@ -140,19 +246,23 @@ export function TextareaField({
         </label>
       )}
       {textarea}
-      <div className="flex gap-2">
-        <Button
-          variant="ghostAccent"
-          size="sm"
-          disabled={isPending || !canSave}
-          onClick={() => {
-            void onSave();
-          }}
-        >
-          {saveLabel}
-        </Button>
-        {cancelButton}
-      </div>
+      {renderActions(
+        <>
+          <Button
+            variant="ghostAccent"
+            size="sm"
+            disabled={isPending || !canSave}
+            onClick={() => {
+              void onSave();
+            }}
+            {...keepFocus}
+          >
+            {saveLabel}
+          </Button>
+          {cancelButton}
+        </>,
+        'flex gap-2',
+      )}
     </div>
   );
 }

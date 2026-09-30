@@ -58,25 +58,30 @@ describe('launchPhasesFor', () => {
 });
 
 describe('LAUNCH_LABELS', () => {
-  it('has an idle + busy label for each launch phase', () => {
+  it('has an idle, short + busy label for each launch phase', () => {
     expect(LAUNCH_LABELS.refinement).toEqual({
       idle: 'Refine in Claude Code',
+      short: 'Refine',
       busy: 'Opening refinement',
     });
     expect(LAUNCH_LABELS.implementation).toEqual({
       idle: 'Implement in Claude Code',
+      short: 'Implement',
       busy: 'Opening implementation',
     });
     expect(LAUNCH_LABELS.bypass).toEqual({
       idle: 'Skip to Development',
+      short: 'Skip to dev',
       busy: 'Opening development',
     });
     expect(LAUNCH_LABELS.spike).toEqual({
       idle: 'Run spike in Claude Code',
+      short: 'Run spike',
       busy: 'Opening spike',
     });
     expect(LAUNCH_LABELS.bug).toEqual({
       idle: 'Fix bug in Claude Code',
+      short: 'Fix bug',
       busy: 'Opening bug fix',
     });
   });

@@ -132,4 +132,65 @@ describe('LaunchButton', () => {
     expect(button).toHaveClass('border', 'border-border', 'bg-transparent');
     expect(button).not.toHaveClass('bg-accent-teal');
   });
+
+  describe('compact', () => {
+    it('renders the short label on the solid button, still naming the phase', () => {
+      render(
+        <LaunchButton
+          story={makeStory({ factory_state: 'ready_for_dev' })}
+          phase="implementation"
+          variant="solid"
+          compact
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: 'Implement' })).toBeInTheDocument();
+      expect(screen.queryByText(/in claude code/i)).not.toBeInTheDocument();
+    });
+
+    it('is off by default: the solid button keeps its full label', () => {
+      render(<LaunchButton story={makeStory()} phase="refinement" variant="solid" />);
+
+      expect(screen.getByRole('button', { name: 'Refine in Claude Code' })).toBeInTheDocument();
+    });
+
+    it('leaves the chip alone: a card chip keeps its full label', () => {
+      render(<LaunchButton story={makeStory()} phase="refinement" compact />);
+
+      expect(screen.getByRole('button', { name: 'Refine in Claude Code' })).toBeInTheDocument();
+    });
+
+    it('still launches the phase when the short button is clicked', async () => {
+      const onOpenSession = jest.fn(() => Promise.resolve());
+      const story = makeStory();
+      const user = userEvent.setup();
+      render(
+        <LaunchButton
+          story={story}
+          phase="refinement"
+          variant="solid"
+          compact
+          onOpenSession={onOpenSession}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Refine' }));
+
+      expect(onOpenSession).toHaveBeenCalledWith(story, 'refinement');
+    });
+
+    it('takes a className for the button, so a bar can let it flex and truncate', () => {
+      render(
+        <LaunchButton
+          story={makeStory()}
+          phase="refinement"
+          variant="solid"
+          compact
+          className="min-w-0 flex-1"
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: 'Refine' })).toHaveClass('min-w-0', 'flex-1');
+    });
+  });
 });

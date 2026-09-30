@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import type { LaunchPhase } from '@/lib/code/launch';
+import { MOBILE_QUERY } from '@/lib/hooks/use-media-query';
 import { CodeProvider, useProjectBoard } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
@@ -233,6 +234,24 @@ describe('StoryDetailModal', () => {
       </ToastProvider>,
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it("opens as the centred card on a wide screen, with today's eyebrow headings and controls", () => {
+    const { dialog } = renderModal(makeStory({ notes: 'A note', factory_state: 'ready_for_dev' }));
+
+    expect(screen.getByRole('dialog')).toHaveClass('rounded-2xl', 'max-w-2xl');
+    // The eyebrow headings (small grey capitals) stay a desktop thing.
+    expect(dialog.getByRole('heading', { name: 'Notes' })).toHaveClass(
+      'text-xs',
+      'uppercase',
+      'text-muted-foreground',
+    );
+    // The four labelled priority buttons and the manual controls are still in the body.
+    expect(dialog.getByRole('button', { name: /top of project/i })).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: /^block$/i })).toBeInTheDocument();
+    expect(dialog.queryByRole('button', { name: /more story actions/i })).not.toBeInTheDocument();
+    // The full launch wording, in the header.
+    expect(dialog.getByRole('button', { name: 'Implement in Claude Code' })).toBeInTheDocument();
   });
 
   it('shows the ref, title, breadcrumb, and the state chip', () => {
@@ -1239,6 +1258,649 @@ describe('StoryDetailModal', () => {
         const gone = renderModal(makeStory({ factory_state: 'abandoned' }));
         expect(gone.dialog.queryByRole('button', { name: /unblock/i })).not.toBeInTheDocument();
       });
+    });
+  });
+});
+
+/** The sheet's scrolling body / pinned footer, which the tests reach by their data hooks. */
+function region(name: 'body' | 'footer') {
+  const found = screen
+    .getByRole('dialog')
+    .querySelector(name === 'body' ? '[data-sheet-body]' : '[data-sheet-footer]');
+  if (found === null) throw new Error(`the sheet has no ${name}`);
+  return within(found as HTMLElement);
+}
+
+const openMenu = async (user: ReturnType<typeof userEvent.setup>, name: string | RegExp) => {
+  await user.click(screen.getByRole('button', { name }));
+  await screen.findByRole('menu');
+};
+
+async function pickBlock(user: ReturnType<typeof userEvent.setup>) {
+  await openMenu(user, 'More story actions');
+  await user.click(screen.getByRole('menuitem', { name: 'Block…' }));
+  return screen.findByRole('textbox', { name: /why is this blocked/i });
+}
+
+const withSpec = (spec: string) =>
+  makeStory({
+    factory_state: 'ready_for_dev',
+    spec_markdown: spec,
+    spec_path: 'docs/specs/ALF-42.md',
+    spec_sha: 'abc123',
+  });
+
+describe('StoryDetailModal on a phone', () => {
+  const originalMatchMedia = globalThis.matchMedia;
+
+  beforeEach(() => {
+    // Only the phone query matches; jest.setup stubs every other query to `false`.
+    globalThis.matchMedia = (query: string) =>
+      Object.assign(originalMatchMedia(query), { matches: query === MOBILE_QUERY });
+    mockMoveCode.mockResolvedValue([]);
+    mockMoveCodeInProject.mockResolvedValue([]);
+    mockUpdateCodeState.mockResolvedValue({
+      factory_state: 'in_refinement',
+      blocked_reason: null,
+      blocked_from: null,
+      updated_at: '2025-02-02T00:00:00Z',
+    } as never);
+  });
+
+  afterEach(() => {
+    globalThis.matchMedia = originalMatchMedia;
+  });
+
+  describe('the sheet', () => {
+    it('fills the screen instead of floating as a card', () => {
+      renderModal(makeStory());
+
+      const sheet = screen.getByRole('dialog');
+      expect(sheet).toHaveClass('fixed', 'inset-x-0', 'flex', 'flex-col');
+      expect(sheet).not.toHaveClass('rounded-2xl', 'max-w-2xl');
+    });
+
+    it('pins the ref, state chip, kind badge and × in a header above the scrolling body', () => {
+      renderModal(makeSpike({ factory_state: 'ready_for_dev' }));
+
+      const header = screen.getByRole('dialog').querySelector('[data-sheet-header]');
+      if (header === null) throw new Error('the sheet has no header');
+      const inHeader = within(header as HTMLElement);
+      expect(inHeader.getByText('ALF-42')).toBeInTheDocument();
+      expect(inHeader.getByText('Ready for Dev')).toBeInTheDocument();
+      expect(inHeader.getByText('Spike')).toBeInTheDocument();
+      expect(inHeader.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+      // Not inside the scroller: it stays put while the body scrolls.
+      expect(region('body').queryByText('ALF-42')).not.toBeInTheDocument();
+    });
+
+    it('scrolls the title, breadcrumb, PR link, notes and spec together', () => {
+      renderModal(
+        makeStory({
+          notes: 'A note',
+          refinement_pr_url: 'https://github.com/o/r/pull/1',
+          factory_state: 'ready_for_dev',
+        }),
+      );
+
+      const body = region('body');
+      expect(body.getByRole('heading', { name: 'Wire up the webhook' })).toBeInTheDocument();
+      expect(body.getByText(/Communication Firewall/)).toBeInTheDocument();
+      expect(body.getByRole('link', { name: 'Refinement PR' })).toBeInTheDocument();
+      expect(body.getByText('A note')).toBeInTheDocument();
+      expect(body.getByRole('heading', { name: 'Spec' })).toBeInTheDocument();
+    });
+
+    it('carries no priority or "Move this story" section: those live in the bar', () => {
+      const { dialog } = renderModal(makeStory());
+
+      expect(dialog.queryByRole('heading', { name: /priority/i })).not.toBeInTheDocument();
+      expect(dialog.queryByRole('heading', { name: /move this story/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('section headings', () => {
+    it('reads as 14px semibold foreground in sentence case, not small grey capitals', () => {
+      renderModal(makeStory({ notes: 'A note' }));
+
+      for (const name of ['Notes', 'Spec']) {
+        const heading = screen.getByRole('heading', { name });
+        expect(heading).toHaveClass('text-sm', 'font-semibold', 'text-foreground');
+        expect(heading).not.toHaveClass('uppercase', 'text-xs', 'text-muted-foreground');
+      }
+    });
+
+    it('steps the title up to text-xl', () => {
+      renderModal(makeStory());
+
+      expect(screen.getByRole('heading', { name: 'Wire up the webhook' })).toHaveClass('text-xl');
+    });
+
+    it('names a spike’s document Findings, in the same style', () => {
+      renderModal(makeSpike());
+
+      expect(screen.getByRole('heading', { name: 'Findings' })).toHaveClass(
+        'text-sm',
+        'text-foreground',
+      );
+    });
+  });
+
+  describe('the action bar', () => {
+    it.each([
+      ['a ready-for-dev story', makeStory({ factory_state: 'ready_for_dev' }), 'Implement'],
+      ['a needs-refinement story', makeStory({ factory_state: 'needs_refinement' }), 'Refine'],
+      ['a spike', makeSpike({ factory_state: 'needs_refinement' }), 'Run spike'],
+      ['a bug', makeBug({ factory_state: 'ready_for_dev' }), 'Fix bug'],
+    ])('launches %s with the short label', (_name, story, label) => {
+      renderModal(story);
+
+      expect(region('footer').getByRole('button', { name: label })).toBeInTheDocument();
+      expect(screen.queryByText(/in claude code/i)).not.toBeInTheDocument();
+    });
+
+    it('starts the launch phase when the launch button is tapped', async () => {
+      const user = userEvent.setup();
+      const story = makeStory({ factory_state: 'ready_for_dev' });
+      const { onOpenSession } = renderModal(story);
+
+      await user.click(region('footer').getByRole('button', { name: 'Implement' }));
+
+      expect(onOpenSession).toHaveBeenCalledWith(
+        expect.objectContaining({ ref: 'ALF-42' }),
+        'implementation',
+      );
+    });
+
+    it('holds status, priority and ⋯ after the launch button', () => {
+      renderModal(makeStory({ factory_state: 'ready_for_dev' }));
+
+      const footer = region('footer');
+      expect(
+        footer.getByRole('button', { name: /change status \(currently ready for dev\)/i }),
+      ).toHaveTextContent('Ready for Dev');
+      expect(footer.getByRole('button', { name: 'Priority' })).toBeInTheDocument();
+      expect(footer.getByRole('button', { name: 'More story actions' })).toBeInTheDocument();
+    });
+
+    it('has no launch button where no phase is offered, and keeps the rest', () => {
+      renderModal(makeStory({ factory_state: 'in_development' }));
+
+      const footer = region('footer');
+      expect(footer.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
+        'Change status (currently In Development)',
+        'Priority',
+        'More story actions',
+      ]);
+    });
+
+    it('carries the bottom safe-area inset', () => {
+      renderModal(makeStory());
+
+      const bar = region('footer')
+        .getByRole('button', { name: 'More story actions' })
+        .closest('[data-action-bar]');
+      expect(bar).toHaveClass('pb-[max(1rem,env(safe-area-inset-bottom))]');
+    });
+
+    it('moves the story to the status picked from the bar', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'in_refinement' }));
+
+      await openMenu(user, /change status/i);
+      await user.click(screen.getByRole('menuitem', { name: 'Ready for Dev' }));
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_dev', {});
+    });
+  });
+
+  describe('the Priority menu', () => {
+    it('lists the four jumps with their disabled states', async () => {
+      const user = userEvent.setup();
+      // Leads its project and ranks above everything else in the Backlog.
+      renderModalWithPeers(makeStory({ priority: 1 }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 2 }),
+      ]);
+
+      await openMenu(user, 'Priority');
+
+      expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+        'Top of project',
+        'Bottom of project',
+        'Top of backlog',
+        'Bottom of backlog',
+      ]);
+      expect(screen.getByRole('menuitem', { name: 'Top of project' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(screen.getByRole('menuitem', { name: 'Top of backlog' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(screen.getByRole('menuitem', { name: 'Bottom of project' })).not.toHaveAttribute(
+        'aria-disabled',
+      );
+      expect(screen.getByRole('menuitem', { name: 'Bottom of backlog' })).not.toHaveAttribute(
+        'aria-disabled',
+      );
+    });
+
+    it.each([
+      ['Top of project', mockMoveCodeInProject, true],
+      ['Bottom of project', mockMoveCodeInProject, false],
+      ['Top of backlog', mockMoveCode, true],
+      ['Bottom of backlog', mockMoveCode, false],
+    ])('%s calls the same store action as the desktop button', async (label, mock, toTop) => {
+      const user = userEvent.setup();
+      renderModalWithPeers(makeStory({ priority: 2 }), [
+        makeStory({ item_id: 'i1b', ref: 'ALF-40', priority: 1 }),
+        makeStory({ item_id: 'i3', ref: 'ALF-44', priority: 3 }),
+      ]);
+
+      await openMenu(user, 'Priority');
+      await user.click(screen.getByRole('menuitem', { name: label }));
+
+      await waitFor(() => {
+        expect(mock).toHaveBeenCalledWith('ALF-42', toTop);
+      });
+    });
+  });
+
+  describe('a Priority jump when an editor opens straight after', () => {
+    it('still reaches the server: the action bar steps aside but is not torn down', async () => {
+      const user = userEvent.setup();
+      renderModalWithPeers(makeStory({ priority: 2, notes: 'A note' }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 1 }),
+      ]);
+
+      await openMenu(user, 'Priority');
+      await user.click(screen.getByRole('menuitem', { name: 'Top of project' }));
+      // Well inside the sync debounce: the bar disappears while the commit is still pending.
+      await user.click(region('body').getByText('A note'));
+
+      await waitFor(() => {
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-42', true);
+      });
+    });
+  });
+
+  describe('the ⋯ menu', () => {
+    const blockedIn = { factory_state: 'blocked', blocked_from: 'in_development' } as const;
+
+    it.each([
+      [
+        'a needs-refinement story',
+        makeStory({ factory_state: 'needs_refinement' }),
+        ['Skip to dev', 'Needs refinement', 'Block…', 'Abandon'],
+        1,
+      ],
+      [
+        'a story in any other lane',
+        makeStory({ factory_state: 'in_development' }),
+        ['Needs refinement', 'Block…', 'Abandon'],
+        1,
+      ],
+      [
+        'a blocked story',
+        makeStory(blockedIn),
+        ['Needs refinement', 'Unblock to In Development', 'Abandon'],
+        1,
+      ],
+      [
+        'an abandoned story',
+        makeStory({ factory_state: 'abandoned' }),
+        ['Needs refinement', 'Block…'],
+        1,
+      ],
+      ['a spike', makeSpike({ factory_state: 'needs_refinement' }), ['Block…', 'Abandon'], 0],
+      ['a bug', makeBug({ factory_state: 'ready_for_dev' }), ['Block…', 'Abandon'], 0],
+    ])('lists, for %s, its items in order', async (_name, story, items, dividers) => {
+      const user = userEvent.setup();
+      renderModal(story);
+
+      await openMenu(user, 'More story actions');
+
+      // Items, checkbox items and dividers together, in DOM order: the menu's text is its items'.
+      expect(screen.getByRole('menu')).toHaveTextContent(new RegExp(`^${items.join('')}$`));
+      expect(screen.queryAllByRole('separator')).toHaveLength(dividers);
+    });
+
+    it('puts the divider between the story properties and the moves', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'needs_refinement' }));
+
+      await openMenu(user, 'More story actions');
+
+      const separator = screen.getByRole('separator');
+      const mark = screen.getByRole('menuitemcheckbox', { name: 'Needs refinement' });
+      const block = screen.getByRole('menuitem', { name: 'Block…' });
+      expect(
+        mark.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        separator.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('reflects the refinement mark on the Needs refinement item', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'ready_for_dev', requires_refinement: false }));
+
+      await openMenu(user, 'More story actions');
+
+      expect(screen.getByRole('menuitemcheckbox', { name: 'Needs refinement' })).not.toBeChecked();
+    });
+
+    it('toggles Needs refinement, parking the story in Ready for Dev with no tab opened', async () => {
+      mockUpdateCodeState.mockResolvedValue(
+        makeSidecar({ factory_state: 'ready_for_dev', requires_refinement: false }),
+      );
+      const openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'needs_refinement' }));
+
+      await openMenu(user, 'More story actions');
+      await user.click(screen.getByRole('menuitemcheckbox', { name: 'Needs refinement' }));
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_dev', {
+        requires_refinement: false,
+      });
+      // The bar's launch button swaps from Refine to Implement, and nothing opened.
+      await waitFor(() => {
+        expect(region('footer').getByRole('button', { name: 'Implement' })).toBeInTheDocument();
+      });
+      expect(openSpy).not.toHaveBeenCalled();
+      openSpy.mockRestore();
+    });
+
+    it('offers Skip to dev on a needs-refinement story and launches the bypass phase', async () => {
+      const user = userEvent.setup();
+      const { onOpenSession } = renderModal(makeStory({ factory_state: 'needs_refinement' }));
+
+      await openMenu(user, 'More story actions');
+      await user.click(screen.getByRole('menuitem', { name: 'Skip to dev' }));
+
+      expect(onOpenSession).toHaveBeenCalledWith(
+        expect.objectContaining({ ref: 'ALF-42' }),
+        'bypass',
+      );
+    });
+
+    it('Abandon sets the abandoned state', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'in_refinement' }));
+
+      await openMenu(user, 'More story actions');
+      await user.click(screen.getByRole('menuitem', { name: 'Abandon' }));
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'abandoned', {});
+    });
+
+    it('Unblock returns the story to where it was blocked from, clearing the reason', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ ...blockedIn, blocked_reason: 'waiting on API' }));
+
+      await openMenu(user, 'More story actions');
+      await user.click(screen.getByRole('menuitem', { name: 'Unblock to In Development' }));
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_development', {
+        blocked_reason: null,
+      });
+    });
+  });
+
+  describe('Block…', () => {
+    it('opens the reason editor at the end of the body and focuses it', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'in_development' }));
+
+      const reason = await pickBlock(user);
+
+      expect(region('body').getByRole('textbox', { name: /why is this blocked/i })).toBe(reason);
+      // Focus lands a task after the menu has closed and let go of it.
+      await waitFor(() => {
+        expect(reason).toHaveFocus();
+      });
+    });
+
+    it('draws Cancel and Confirm block in the footer, in place of the action bar', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'in_development' }));
+
+      await pickBlock(user);
+
+      const footer = region('footer');
+      expect(footer.getByRole('button', { name: 'Confirm block' })).toBeInTheDocument();
+      expect(footer.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+      expect(footer.queryByRole('button', { name: 'More story actions' })).not.toBeInTheDocument();
+      // Not inside the scrolling body, where it could cover the text.
+      expect(
+        region('body').queryByRole('button', { name: 'Confirm block' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('grows the reason editor to fit rather than scrolling inside it', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'in_development' }));
+
+      const reason = await pickBlock(user);
+
+      expect(reason).toHaveClass('overflow-hidden');
+    });
+
+    it('sets blocked and the reason on Confirm block, then brings the bar back', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'in_development' }));
+
+      const reason = await pickBlock(user);
+      await user.type(reason, 'waiting on API');
+      await user.click(region('footer').getByRole('button', { name: 'Confirm block' }));
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'blocked', {
+        blocked_reason: 'waiting on API',
+      });
+      await waitFor(() => {
+        expect(
+          region('footer').getByRole('button', { name: 'More story actions' }),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('Cancel closes the editor and brings the bar back without writing', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'in_development' }));
+
+      await pickBlock(user);
+      await user.click(region('footer').getByRole('button', { name: 'Cancel' }));
+
+      expect(
+        screen.queryByRole('textbox', { name: /why is this blocked/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        region('footer').getByRole('button', { name: 'More story actions' }),
+      ).toBeInTheDocument();
+      expect(mockUpdateCodeState).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the notes editor', () => {
+    it('shows the note in a tinted, tappable well with a pencil', () => {
+      renderModal(makeStory({ notes: 'A note' }));
+
+      const well = region('body').getByRole('button', { name: /a note/i });
+      expect(well).toHaveClass('rounded-md', 'bg-secondary/35');
+      expect(well.querySelector('svg')).toBeInTheDocument();
+    });
+
+    it('opens four rows tall, growing to fit, with Save and Cancel in the footer', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ notes: 'A note' }));
+
+      await user.click(region('body').getByText('A note'));
+
+      const textarea = region('body').getByRole('textbox', { name: /edit notes/i });
+      expect(textarea).toHaveAttribute('rows', '4');
+      expect(textarea).toHaveClass('overflow-hidden');
+      const footer = region('footer');
+      expect(footer.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+      expect(footer.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+      // The bar gives the footer up while the editor is open…
+      expect(footer.queryByRole('button', { name: 'More story actions' })).not.toBeInTheDocument();
+      // …and Save/Cancel are not in the scrolling body, where they could cover the text.
+      expect(region('body').queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    });
+
+    it('saves the trimmed note from the footer and brings the action bar back', async () => {
+      mockUpdateItem.mockResolvedValue({ notes: 'Check the logs' } as never);
+      const user = userEvent.setup();
+      renderModal(makeStory({ notes: null }));
+
+      await user.click(region('body').getByText('Add notes…'));
+      await user.type(
+        region('body').getByRole('textbox', { name: /edit notes/i }),
+        '  Check the logs  ',
+      );
+      await user.click(region('footer').getByRole('button', { name: 'Save' }));
+
+      expect(mockUpdateItem).toHaveBeenCalledWith('i1', { notes: 'Check the logs' });
+      expect(
+        region('footer').getByRole('button', { name: 'More story actions' }),
+      ).toBeInTheDocument();
+    });
+
+    it('Cancel and Escape both close the editor and bring the action bar back', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ notes: 'Keep me' }));
+
+      await user.click(region('body').getByText('Keep me'));
+      await user.click(region('footer').getByRole('button', { name: 'Cancel' }));
+      expect(
+        region('footer').getByRole('button', { name: 'More story actions' }),
+      ).toBeInTheDocument();
+
+      await user.click(region('body').getByText('Keep me'));
+      await user.keyboard('{Escape}');
+      expect(
+        region('footer').getByRole('button', { name: 'More story actions' }),
+      ).toBeInTheDocument();
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+    });
+
+    it('opening it closes an open block-reason editor: one editor at a time', async () => {
+      const user = userEvent.setup();
+      renderModal(makeStory({ factory_state: 'in_development', notes: 'A note' }));
+      await openMenu(user, 'More story actions');
+      await user.click(screen.getByRole('menuitem', { name: 'Block…' }));
+      await screen.findByRole('textbox', { name: /why is this blocked/i });
+
+      await user.click(region('body').getByText('A note'));
+
+      expect(
+        screen.queryByRole('textbox', { name: /why is this blocked/i }),
+      ).not.toBeInTheDocument();
+      expect(region('footer').getByRole('button', { name: 'Save' })).toBeInTheDocument();
+      expect(
+        region('footer').queryByRole('button', { name: 'Confirm block' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the spec row', () => {
+    const MARKDOWN = '# Inbound filter spec\n\nDefault-deny everything.';
+    const HTML =
+      '<!doctype html><html><head><title>ALF-42 — inbound filter</title></head><body><p>hi</p></body></html>';
+
+    it('shows a document row titled from the spec, not the spec itself', () => {
+      renderModal(withSpec(MARKDOWN));
+
+      const row = region('body').getByRole('button', { name: /inbound filter spec/i });
+      expect(row).toHaveTextContent('Tap to read full-screen');
+      // The document is not inlined into the sheet.
+      expect(screen.queryByTestId('markdown')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('spec-html')).not.toBeInTheDocument();
+    });
+
+    it('titles an HTML spec from its <title>', () => {
+      renderModal(withSpec(HTML));
+
+      expect(
+        region('body').getByRole('button', { name: /ALF-42 — inbound filter/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps View in repo beside the heading', () => {
+      renderModal(withSpec(MARKDOWN));
+
+      expect(region('body').getByRole('link', { name: 'View in repo' })).toHaveAttribute(
+        'href',
+        'https://github.com/ac3charland/alfred/blob/abc123/docs/specs/ALF-42.md',
+      );
+    });
+
+    it('opens the spec full-screen over the sheet, and closing it returns focus to the row', async () => {
+      const user = userEvent.setup();
+      renderModal(withSpec(MARKDOWN));
+      const row = region('body').getByRole('button', { name: /inbound filter spec/i });
+
+      await user.click(row);
+
+      const reader = await screen.findByRole('dialog', { name: 'Inbound filter spec' });
+      expect(within(reader).getByTestId('markdown')).toHaveTextContent('Default-deny everything.');
+      expect(reader).toHaveClass('inset-0', 'h-[100dvh]');
+
+      await user.click(within(reader).getByRole('button', { name: 'Close' }));
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('dialog', { name: 'Inbound filter spec' }),
+        ).not.toBeInTheDocument();
+      });
+      expect(row).toHaveFocus();
+    });
+
+    it('returns focus to the row even when the tap never focused it, as in Safari', async () => {
+      const user = userEvent.setup();
+      renderModal(withSpec(MARKDOWN));
+      const row = region('body').getByRole('button', { name: /inbound filter spec/i });
+
+      // `fireEvent.click` does not focus the button, so the reader opens with nothing to go back to.
+      fireEvent.click(row);
+      const reader = await screen.findByRole('dialog', { name: 'Inbound filter spec' });
+      expect(row).not.toHaveFocus();
+      await user.click(within(reader).getByRole('button', { name: 'Close' }));
+
+      await waitFor(() => {
+        expect(row).toHaveFocus();
+      });
+    });
+
+    it('opens an HTML spec in its isolated frame, filling the screen', async () => {
+      const user = userEvent.setup();
+      renderModal(withSpec(HTML));
+
+      await user.click(region('body').getByRole('button', { name: /ALF-42 — inbound filter/ }));
+
+      const frame = await screen.findByTestId('spec-html');
+      expect(frame).toHaveAttribute('sandbox', '');
+      expect(frame).toHaveClass('h-full', 'w-full');
+      expect(frame).not.toHaveClass('h-[28rem]');
+    });
+
+    it('says so when there is no snapshot, instead of showing an empty row', () => {
+      renderModal(makeStory({ spec_markdown: null }));
+
+      expect(region('body').getByText(/no spec yet/i)).toBeInTheDocument();
+      expect(region('body').queryByText('Tap to read full-screen')).not.toBeInTheDocument();
+    });
+
+    it('reads Findings for a spike', () => {
+      renderModal(makeSpike({ spec_markdown: MARKDOWN, spec_path: 'docs/spikes/ALF-42.md' }));
+
+      expect(region('body').getByRole('heading', { name: 'Findings' })).toBeInTheDocument();
+      expect(
+        region('body').getByRole('button', { name: /inbound filter spec/i }),
+      ).toBeInTheDocument();
     });
   });
 });

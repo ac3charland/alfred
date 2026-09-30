@@ -11,7 +11,7 @@ import type { CodeStory } from '@/lib/types';
  * one such document — so only the label and the empty copy differ, each naming the PR that
  * actually writes it. A BUG names none, because none ever comes: its one PR carries the fix.
  */
-const KIND_DOCUMENT: Record<StoryKind, { heading: string; emptyCopy: string }> = {
+export const KIND_DOCUMENT: Record<StoryKind, { heading: string; emptyCopy: string }> = {
   story: {
     heading: 'Spec',
     emptyCopy: 'No spec yet. The refinement PR writes it when it merges.',

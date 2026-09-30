@@ -7,6 +7,7 @@ import { CardChip } from '@/components/atoms/card-chip';
 import { Spinner } from '@/components/atoms/spinner';
 import { LAUNCH_LABELS, type LaunchPhase } from '@/lib/code/launch';
 import type { CodeStory } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 export interface LaunchButtonProperties {
   /** The story to launch. */
@@ -28,6 +29,13 @@ export interface LaunchButtonProperties {
    * `solid` — the prominent button in the story-detail modal header.
    */
   variant?: 'chip' | 'solid';
+  /**
+   * Label the `solid` button with the phase's short form ("Implement", not "Implement in Claude
+   * Code") — for a phone's bottom bar. The `chip` ignores it and keeps its full label.
+   */
+  compact?: boolean;
+  /** Extra classes for the `solid` button (a bar lets it flex and truncate). */
+  className?: string | undefined;
 }
 
 /**
@@ -44,6 +52,8 @@ export function LaunchButton({
   phase,
   onOpenSession,
   variant = 'chip',
+  compact = false,
+  className,
 }: LaunchButtonProperties) {
   const [launching, setLaunching] = React.useState(false);
   const labels = LAUNCH_LABELS[phase];
@@ -70,9 +80,10 @@ export function LaunchButton({
           void handleLaunch();
         }}
         disabled={launching}
+        className={cn(compact && 'min-w-0', className)}
       >
         {launching ? <Spinner size={13} label={labels.busy} className="mr-1.5" /> : null}
-        {labels.idle}
+        {compact ? <span className="truncate">{labels.short}</span> : labels.idle}
       </Button>
     );
   }

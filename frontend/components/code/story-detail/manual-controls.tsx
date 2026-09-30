@@ -15,6 +15,7 @@ import { stateLabel } from '@/components/code/story-detail/state-helpers';
 import { canMoveToState } from '@/lib/code/refinement';
 import { HAPPY_PATH_STATES, STATE_LABELS, useCodeActions } from '@/lib/stores/code-store';
 import type { CodeFactoryState, CodeStory } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 /**
  * The status picker: an outline trigger showing the story's current status over a menu of every
@@ -26,16 +27,18 @@ import type { CodeFactoryState, CodeStory } from '@/lib/types';
  * bug and a spike are never refined, and a greyed-out "Needs Refinement" says that, where a menu
  * silently four items long would just look broken.
  */
-function StatusMenu({
+export function StatusMenu({
   story,
   state,
   disabled,
   onPick,
+  className,
 }: {
   story: Pick<CodeStory, 'title'>;
   state: CodeFactoryState | null;
   disabled: boolean;
   onPick: (next: CodeFactoryState) => void;
+  className?: string;
 }) {
   return (
     <DropdownMenu>
@@ -47,7 +50,7 @@ function StatusMenu({
           // The visible label is the current status, so name the control's *purpose* for
           // assistive tech while still announcing where the story sits today.
           aria-label={`Change status (currently ${stateLabel(state)})`}
-          className="gap-1.5"
+          className={cn('gap-1.5', className)}
         >
           {stateLabel(state)}
           <ChevronDown size={14} className="text-muted-foreground" />
@@ -74,15 +77,18 @@ function StatusMenu({
   );
 }
 
-/** The manual fallback controls — the status dropdown, Block (with reason), Unblock, Abandon. */
-export function ManualControls({ story }: { story: CodeStory }) {
+/**
+ * The story's state transitions and their in-flight guard, shared by the desktop's manual controls
+ * and the phone's action bar and ⋯ menu so both write the same way. `onMoved` runs after a move
+ * lands (the callers close the block-reason editor).
+ */
+export function useStoryTransitions(story: CodeStory, onMoved: () => void) {
   const { updateCodeState } = useCodeActions();
   const ref = story.ref;
   const state = story.factory_state;
   const [pending, setPending] = React.useState(false);
-  const [blockOpen, setBlockOpen] = React.useState(false);
-  const [reason, setReason] = React.useState(story.blocked_reason ?? '');
 
+  /** Where Unblock goes: `blocked_from`, or the first state for a row blocked before it was recorded. */
   const unblockTo = story.blocked_from ?? HAPPY_PATH_STATES[0];
 
   const run = async (next: CodeFactoryState, extra?: { blocked_reason?: string | null }) => {
@@ -90,13 +96,117 @@ export function ManualControls({ story }: { story: CodeStory }) {
     setPending(true);
     try {
       await updateCodeState(ref, next, extra);
-      setBlockOpen(false);
+      onMoved();
     } catch {
       // The store rolled the state back.
     } finally {
       setPending(false);
     }
   };
+
+  return {
+    pending,
+    unblockTo,
+    // Leaving `blocked` must clear the reason with the same write: the PATCH route only forwards
+    // `blocked_reason` when the body carries the key, so omitting it here would strand the old
+    // reason on a story that is no longer blocked.
+    pickStatus: (next: CodeFactoryState) => {
+      void run(next, state === 'blocked' ? { blocked_reason: null } : undefined);
+    },
+    // Unblock is the one-click way back out: the status menu can send a blocked story to ANY lane,
+    // but only this knows which one it came FROM — and it clears the reason along with it.
+    unblock: () => {
+      void run(unblockTo, { blocked_reason: null });
+    },
+    abandon: () => {
+      void run('abandoned');
+    },
+    confirmBlock: (reason: string) => {
+      const trimmed = reason.trim();
+      void run('blocked', { blocked_reason: trimmed === '' ? null : trimmed });
+    },
+  };
+}
+
+export type StoryTransitions = ReturnType<typeof useStoryTransitions>;
+
+/**
+ * The block-reason editor: an amber card holding a textarea and its Confirm/Cancel, opened by
+ * Block. It starts from the story's recorded reason each time it opens (it mounts fresh).
+ *
+ * On a phone the sheet passes `autoGrow`, `actionsTarget` (the footer) and `reveal`: the card
+ * grows with its text, its actions sit below the scrolling body instead of over it, and opening
+ * it scrolls it into view and focuses it.
+ */
+export function BlockReasonEditor({
+  story,
+  pending,
+  onConfirm,
+  onCancel,
+  autoGrow = false,
+  actionsTarget,
+  reveal = false,
+}: {
+  story: CodeStory;
+  pending: boolean;
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+  autoGrow?: boolean;
+  actionsTarget?: Element | null | undefined;
+  reveal?: boolean;
+}) {
+  const [reason, setReason] = React.useState(story.blocked_reason ?? '');
+  const wrapper = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!reveal) return;
+    const node = wrapper.current;
+    // `scrollIntoView` is unimplemented under jsdom, so feature-detect it. `preventScroll` on the
+    // focus: the card is already scrolled to, and a second scroll would only jump it.
+    if (typeof node?.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' });
+    node?.querySelector('textarea')?.focus({ preventScroll: true });
+  }, [reveal]);
+
+  return (
+    <div ref={wrapper}>
+      <TextareaField
+        variant="warning"
+        label="Why is this blocked? (optional)"
+        value={reason}
+        onChange={setReason}
+        onSave={() => {
+          onConfirm(reason);
+        }}
+        onCancel={onCancel}
+        placeholder="e.g. waiting on an upstream API decision"
+        isPending={pending}
+        saveLabel="Confirm block"
+        autoGrow={autoGrow}
+        actionsTarget={actionsTarget}
+      />
+    </div>
+  );
+}
+
+/**
+ * The manual fallback controls — the status dropdown, Block (with reason), Unblock, Abandon.
+ * The desktop card's version: on a phone the same transitions live in the action bar and ⋯ menu.
+ * The block-reason editor's open state is the caller's, since the phone's Block… opens the card
+ * somewhere other than beside its button.
+ */
+export function ManualControls({
+  story,
+  transitions,
+  blockOpen,
+  onBlockOpenChange,
+}: {
+  story: CodeStory;
+  transitions: StoryTransitions;
+  blockOpen: boolean;
+  onBlockOpenChange: (open: boolean) => void;
+}) {
+  const state = story.factory_state;
+  const { pending } = transitions;
 
   return (
     <div className="flex flex-col gap-3">
@@ -108,29 +218,19 @@ export function ManualControls({ story }: { story: CodeStory }) {
           story={story}
           state={state}
           disabled={pending}
-          onPick={(next) => {
-            // Leaving `blocked` must clear the reason with the same write: the PATCH route only
-            // forwards `blocked_reason` when the body carries the key, so omitting it here would
-            // strand the old reason on a story that is no longer blocked.
-            void run(next, state === 'blocked' ? { blocked_reason: null } : undefined);
-          }}
+          onPick={transitions.pickStatus}
         />
         <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-        {/* Unblock is the one-click way back out: the dropdown can send a blocked story to ANY
-            lane, but only this knows which one it came FROM — `blocked_from`, or the first state
-            for a row blocked before that was recorded — and it clears the reason along with it. */}
         {state === 'blocked' ? (
           <Button
             variant="outline"
             size="sm"
             disabled={pending}
-            onClick={() => {
-              void run(unblockTo, { blocked_reason: null });
-            }}
+            onClick={transitions.unblock}
             className="border-amber-500/50 text-amber-400 hover:border-amber-500"
           >
             <CircleCheck size={14} className="mr-1" />
-            {`Unblock to ${stateLabel(unblockTo)}`}
+            {`Unblock to ${stateLabel(transitions.unblockTo)}`}
           </Button>
         ) : null}
         {state === 'blocked' ? null : (
@@ -139,8 +239,7 @@ export function ManualControls({ story }: { story: CodeStory }) {
             size="sm"
             disabled={pending}
             onClick={() => {
-              setReason(story.blocked_reason ?? '');
-              setBlockOpen((on) => !on);
+              onBlockOpenChange(!blockOpen);
             }}
             className="border-amber-500/50 text-amber-400 hover:border-amber-500"
           >
@@ -153,9 +252,7 @@ export function ManualControls({ story }: { story: CodeStory }) {
             variant="outline"
             size="sm"
             disabled={pending}
-            onClick={() => {
-              void run('abandoned');
-            }}
+            onClick={transitions.abandon}
             className="border-destructive/50 text-destructive hover:border-destructive"
           >
             Abandon
@@ -164,21 +261,13 @@ export function ManualControls({ story }: { story: CodeStory }) {
       </div>
 
       {blockOpen ? (
-        <TextareaField
-          variant="warning"
-          label="Why is this blocked? (optional)"
-          value={reason}
-          onChange={setReason}
-          onSave={() => {
-            const trimmed = reason.trim();
-            void run('blocked', { blocked_reason: trimmed === '' ? null : trimmed });
-          }}
+        <BlockReasonEditor
+          story={story}
+          pending={pending}
+          onConfirm={transitions.confirmBlock}
           onCancel={() => {
-            setBlockOpen(false);
+            onBlockOpenChange(false);
           }}
-          placeholder="e.g. waiting on an upstream API decision"
-          isPending={pending}
-          saveLabel="Confirm block"
         />
       ) : null}
     </div>

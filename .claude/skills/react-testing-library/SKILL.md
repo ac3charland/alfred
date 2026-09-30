@@ -141,6 +141,12 @@ await waitFor(() => {
 - **Never use `container.querySelector` or direct DOM node access.**
   The rule `no-container` catches `container.querySelector`; `no-node-access` catches `.children`, `.parentElement`, etc. Both are errors in the recommended config. If you need a scoped query, use `within()`.
 
+- **A component that branches on `useMediaQuery(MOBILE_QUERY)` renders its desktop layout under jsdom** —
+  `jest.setup.ts` stubs every `matchMedia` to `false`. A phone test opts in by overriding
+  `globalThis.matchMedia` so only that query matches (`Object.assign(original(query), { matches: query === MOBILE_QUERY })`;
+  a spread of the `MediaQueryList` trips `no-misused-spread`) and restoring it in `afterEach`
+  (`describe('on a phone')` in `story-detail-modal.test.tsx`).
+
 - **Never use `getBy*` to assert absence.** `getBy*` throws a descriptive error when the element is missing, which makes the test fail with a confusing "unable to find element" message rather than your intended assertion. Use `queryBy*` + `not.toBeInTheDocument()`.
 
 - **Always prefer jest-dom matchers over manual DOM assertions.**
