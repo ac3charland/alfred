@@ -57,14 +57,40 @@ const MIN_LENGTH = 8;
 /** A lowercase word (letters and `._-`) shorter than this is a word, not a generated secret. */
 const MIN_WORD_LENGTH = 16;
 
+/** Variables named like a password: a human chose the value, so a lowercase word can be the secret. */
+const PASSWORD_NAME = /PASS|PWD/i;
+/**
+ * Passwords that ship as a default or an example, and that ordinary text and config say constantly.
+ * Only the ones of {@link MIN_LENGTH} or more matter (shorter values are trivial anyway); `changeme`
+ * is a placeholder rule below.
+ */
+const DEFAULT_PASSWORDS = new Set([
+  'postgres',
+  'password',
+  'passw0rd',
+  'secret',
+  'admin',
+  'root',
+  'example',
+  'test',
+  'default',
+  'supabase',
+]);
+
 /**
  * Whether a value is too generic to search for: it would flag ordinary text (`postgres`,
  * `password`, `proxy-managed`) or is an obvious placeholder (`<password>`, `****`, `changeme`,
  * `${VAR}`, one repeated character).
+ *
+ * A lowercase word under {@link MIN_WORD_LENGTH} is trivial for a generated value (token, key) but
+ * not for a `password`, which a person picks (`correcthorsebat`): there only the well-known defaults
+ * in {@link DEFAULT_PASSWORDS} are dropped.
  */
-export function isTrivialValue(value: string): boolean {
+export function isTrivialValue(value: string, password = false): boolean {
   if (value.length < MIN_LENGTH) return true;
-  if (/^[a-z][a-z._-]*$/.test(value) && value.length < MIN_WORD_LENGTH) return true;
+  if (password) {
+    if (DEFAULT_PASSWORDS.has(value.toLowerCase())) return true;
+  } else if (/^[a-z][a-z._-]*$/.test(value) && value.length < MIN_WORD_LENGTH) return true;
   return (
     /^<.*>$/s.test(value) ||
     /^\*+$/.test(value) ||
@@ -83,14 +109,24 @@ function closingQuote(text: string, from: number, quote: string): number {
   return -1;
 }
 
+/** `NAME=value` assignments, in file order; a key assigned twice appears twice. */
+type Assignments = [name: string, value: string][];
+
+/** A variable name, as opposed to a stray `=` in prose or base64 padding. */
+const VARIABLE_NAME = /^[A-Za-z_][\w.-]*$/;
+
 /**
  * Parse a dotenv file the way `dotenv` does: `export`, `#` comments (a whole line, or ` #…` after an
- * unquoted value or a closing quote), one layer of quotes — a quoted value may span lines — CRLF, and
- * the last of a duplicated key wins. A quote that never closes is read as an ordinary value.
+ * unquoted value or a closing quote), one layer of quotes — a quoted value may span lines — CRLF. A
+ * quote that never closes is read as an ordinary value. Unlike `dotenv`, EVERY assignment of a key
+ * is returned, not the last: a detector must know each value that is or was a credential.
+ *
+ * Also returns the offsets of the lines that opened a quote which did close, so the line pass in
+ * {@link parseEnvLines} leaves those alone.
  */
-function parseEnvFile(content: string): Map<string, string> {
-  const values = new Map<string, string>();
-  const text = content.replaceAll('\r\n', '\n');
+function parseEnvQuoted(text: string): { values: Assignments; closed: Set<number> } {
+  const values: Assignments = [];
+  const closed = new Set<number>();
   let pos = 0;
   while (pos < text.length) {
     const lineStart = pos;
@@ -110,15 +146,54 @@ function parseEnvFile(content: string): Map<string, string> {
       const valueStart = lineStart + lead + eq + 1 + skipped + 1;
       const close = closingQuote(text, valueStart, quote);
       if (close !== -1) {
-        values.set(name, text.slice(valueStart, close));
+        values.push([name, text.slice(valueStart, close)]);
+        closed.add(lineStart);
         const after = text.indexOf('\n', close);
         pos = after === -1 ? text.length : after + 1;
         continue;
       }
     }
-    values.set(name, rest.replace(/\s+#.*$/s, '').trimEnd());
+    values.push([name, rest.replace(/\s+#.*$/s, '').trimEnd()]);
+  }
+  return { values, closed };
+}
+
+/**
+ * A naive pass over every line on its own, so a quote left open on one line cannot swallow the
+ * assignments after it (the quoted parse would read on to the next quote, wherever it is). A value
+ * is read without its quotes; one whose quote never closes on the line is also read without it, and
+ * an unquoted one without a stray trailing quote. Lines in `closed` are skipped: the quoted parse
+ * already took their (multi-line) value whole.
+ */
+function parseEnvLines(text: string, closed: ReadonlySet<number>): Assignments {
+  const values: Assignments = [];
+  let lineStart = 0;
+  for (const raw of text.split('\n')) {
+    const start = lineStart;
+    lineStart += raw.length + 1;
+    const line = raw.replace(/^\s*(export\s+)?/, '');
+    const eq = line.indexOf('=');
+    if (line.startsWith('#') || eq === -1 || closed.has(start)) continue;
+    const name = line.slice(0, eq).trim();
+    if (!VARIABLE_NAME.test(name)) continue;
+    const rest = line.slice(eq + 1).trimStart();
+    const quote = rest[0];
+    if (quote !== undefined && '"\'`'.includes(quote)) {
+      const end = rest.indexOf(quote, 1);
+      values.push([name, end === -1 ? rest.slice(1).trimEnd() : rest.slice(1, end)]);
+      continue;
+    }
+    const value = rest.replace(/\s+#.*$/s, '').trimEnd();
+    values.push([name, value], [name, value.replace(/["'`]+$/, '')]);
   }
   return values;
+}
+
+/** Every assignment in a dotenv file: the quote-aware parse plus the line-by-line one. */
+function parseEnvFile(content: string): Assignments {
+  const text = content.replaceAll('\r\n', '\n');
+  const { values, closed } = parseEnvQuoted(text);
+  return [...values, ...parseEnvLines(text, closed)];
 }
 
 /** Variables a git hook exports that would point `git` at the hook's repo instead of `cwd`. */
@@ -219,11 +294,11 @@ function envFilesIn(root: string): string[] {
   }
 }
 
-function readEnvFile(root: string, relative: string): Map<string, string> {
+function readEnvFile(root: string, relative: string): Assignments {
   try {
     return parseEnvFile(readFileSync(path.join(root, relative), 'utf8'));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map();
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     // The message only names the file and the errno — never file content.
     throw new Error(`cannot read ${relative}: ${(error as NodeJS.ErrnoException).code ?? 'error'}`);
   }
@@ -238,23 +313,28 @@ function decodeQuietly(text: string): string {
 }
 
 /**
- * The passwords a URL-shaped value carries, raw and percent-decoded: the userinfo password (read
- * both as the WHATWG URL parser splits it and greedily up to the last `@`, so an unencoded `@` or `/`
- * in it is still caught) and any `password`-like query parameter. Empty for anything else.
+ * The passwords a URL-shaped value carries, raw and percent-decoded: the userinfo password (as the
+ * WHATWG URL parser splits it, and greedily up to the last `@` so an unencoded `@` or `/` in it is
+ * still caught) and any `password`-like query parameter. Empty for anything else.
+ *
+ * The greedy match is only trusted when the WHATWG parse also finds a password, or cannot parse the
+ * value at all: `https://h:443/x?u=a@b` has no userinfo, and greedily "the password" would be
+ * `443/x?u=a`.
  */
 function urlPasswords(value: string): string[] {
   if (!URL_SHAPED.test(value)) return [];
   const found: string[] = [];
   const greedy = URL_WITH_PASSWORD.exec(value)?.[1];
-  if (greedy !== undefined) found.push(greedy);
   try {
     const url = new URL(value);
     if (url.password !== '') found.push(url.password);
+    if (greedy !== undefined && url.password !== '') found.push(greedy);
     for (const [key, param] of url.searchParams) {
       if (PASSWORD_PARAM.test(key.toLowerCase()) && param !== '') found.push(param);
     }
   } catch {
-    // Not parseable as a URL; the greedy match above is all there is.
+    // Not parseable as a URL; the greedy match is all there is.
+    if (greedy !== undefined) found.push(greedy);
   }
   return [...new Set(found.flatMap((password) => [password, decodeQuietly(password)]))];
 }
@@ -262,27 +342,28 @@ function urlPasswords(value: string): string[] {
 /** Add the secret(s) one variable holds; `where` is `$NAME` for the environment, else `NAME in <file>`. */
 function collect(found: Map<string, string>, name: string, value: string, where: string): void {
   if (/^NEXT_PUBLIC_/i.test(name)) return;
-  const add = (secret: string, source: string): void => {
-    if (!isTrivialValue(secret) && !found.has(secret)) found.set(secret, source);
+  const add = (secret: string, source: string, password = false): void => {
+    if (!isTrivialValue(secret, password) && !found.has(secret)) found.set(secret, source);
   };
   if (URL_SHAPED.test(value)) {
     // Whatever the variable is called, a URL is only secret if its password is;
     // `postgres://postgres:postgres@localhost` is a fixture.
-    const passwords = urlPasswords(value).filter((password) => !isTrivialValue(password));
+    const passwords = urlPasswords(value).filter((password) => !isTrivialValue(password, true));
     if (passwords.length === 0) return;
     add(value, `the value of ${where}`);
-    for (const password of passwords) add(password, `the password from ${where}`);
+    for (const password of passwords) add(password, `the password from ${where}`, true);
     return;
   }
   if (URL_NAME.test(name) || !SECRET_NAME.test(name) || NOT_A_SECRET_NAME.test(name)) return;
   if (PATH_OR_FLAG_VALUE.test(value)) return;
-  add(value, `the value of ${where}`);
+  add(value, `the value of ${where}`, PASSWORD_NAME.test(name));
 }
 
 /**
  * The live secrets this process can see: credential-named variables in the environment and in the
  * gitignored dotenv files of `envRoots` (if any), and the password of every connection-string URL
- * among them. Trivial values are dropped (see {@link isTrivialValue}). Each distinct value appears once.
+ * among them. A dotenv file contributes every assignment of every key, not only the last. Trivial
+ * values are dropped (see {@link isTrivialValue}). Each distinct value appears once.
  */
 export function knownSecrets(options: KnownSecretsOptions = {}): KnownSecret[] {
   const found = new Map<string, string>();

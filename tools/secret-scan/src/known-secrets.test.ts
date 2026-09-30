@@ -16,6 +16,8 @@ const PASSWORD = ['Qz7', 'vLk2', 'Rw9pT'].join('');
 const OTHER = ['Hm4', 'nB8s', 'Yc3dK'].join('');
 const THIRD = ['Ur5', 'eW1q', 'Ld6oV'].join('');
 const SPECIAL = ['p@ss/w', 'ord#', '9Zq!x'].join('');
+// A human-chosen lowercase passphrase: fine for a password, would be a false positive for a token.
+const PHRASE = ['correct', 'horse', 'bat'].join('');
 
 function sources(
   content: string,
@@ -63,6 +65,35 @@ describe('isTrivialValue', () => {
     ['one repeated character', '00000000000'],
   ])('ignores %s', (_case, value) => {
     expect(isTrivialValue(value)).toBe(true);
+  });
+
+  it.each([
+    ['a password-shaped lowercase word', PHRASE],
+    ['a mixed-case password', PASSWORD],
+  ])('keeps %s when it is a password', (_case, value) => {
+    expect(isTrivialValue(value, true)).toBe(false);
+  });
+
+  it('still treats a lowercase word as trivial when it is not a password', () => {
+    expect(isTrivialValue(PHRASE)).toBe(true);
+  });
+
+  it.each(['postgres', 'Password', 'passw0rd', 'secret', 'ADMIN', 'root', 'example', 'test'])(
+    'ignores the well-known default password %s',
+    (value) => {
+      expect(isTrivialValue(value, true)).toBe(true);
+    },
+  );
+
+  it.each([
+    ['too short', 'Ab3$xY9'],
+    ['a placeholder', '<your-password-here>'],
+    ['asterisks', '********'],
+    ['changeme', 'ChangeMe'],
+    ['a variable reference', '${DB_PASSWORD}'],
+    ['one repeated character', '00000000000'],
+  ])('still ignores %s as a password', (_case, value) => {
+    expect(isTrivialValue(value, true)).toBe(true);
   });
 
   it.each([
@@ -148,6 +179,24 @@ describe('knownSecrets sources', () => {
     expect(sources('redis://cache.example.com:6379/0', env)).toEqual([]);
   });
 
+  it.each(['SUPABASE_DB_PASSWORD', 'DB_PWD', 'PGPASSWORD'])(
+    'keeps a human-chosen lowercase password held by %s',
+    (name) => {
+      expect(sources(PHRASE, { [name]: PHRASE })).toEqual([`the value of $${name}`]);
+    },
+  );
+
+  it('keeps the lowercase-word rule for a token or key, which is generated', () => {
+    expect(sources(PHRASE, { SOME_TOKEN: PHRASE, MY_API_KEY: PHRASE })).toEqual([]);
+  });
+
+  it('keeps a lowercase URL password, and ignores a default one', () => {
+    const env = { DATABASE_URL: `postgresql://u:${PHRASE}@host.example.com:5432/postgres` };
+    expect(sources(PHRASE, env)).toEqual(['the password from $DATABASE_URL']);
+    const local = { DATABASE_URL: 'postgresql://postgres:password@localhost:5432/postgres' };
+    expect(sources('password postgresql://postgres:password@localhost', local)).toEqual([]);
+  });
+
   it('ignores trivial and placeholder values', () => {
     const env = {
       PGPASSWORD: 'postgres',
@@ -163,6 +212,20 @@ describe('knownSecrets sources', () => {
 
 describe('knownSecrets URL values', () => {
   const at = `host.example.com:5432/postgres`;
+
+  it('does not read a port, path and query as the password of a greedy match', () => {
+    // Greedy to the last @, `h:443/x?u=a@b` looks like user `h`, password `443/x?u=a`; it is not.
+    const url = ['https://h:443', '/x?u=', 'a@b'].join('');
+    const env = { CALLBACK_URL: url };
+    expect(sources(`${url} 443/x?u=a`, env)).toEqual([]);
+  });
+
+  it('still reads an unencoded @ and / password when the WHATWG parse throws', () => {
+    const password = ['Xk3@', 'vLm8', 'Rw2pT'].join('');
+    const url = `postgresql://u:${password}@host.example.com:port/postgres`;
+    expect(() => new URL(url)).toThrow();
+    expect(sources(password, { DATABASE_URL: url })).toEqual(['the password from $DATABASE_URL']);
+  });
 
   it('takes the password query parameter of a URL', () => {
     const env = { DATABASE_URL: `postgresql://user@${at}?sslmode=require&password=${PASSWORD}` };
@@ -312,10 +375,39 @@ describe('knownSecrets from gitignored dotenv files', () => {
     ]);
   });
 
-  it('lets the last duplicate key win', () => {
+  it('knows every assignment of a duplicated key, not just the last', () => {
     write(root, 'frontend/.env.local', `MY_API_SECRET=${PASSWORD}\nMY_API_SECRET=${OTHER}\n`);
-    expect(fromFile(PASSWORD)).toEqual([]);
+    expect(fromFile(PASSWORD)).toEqual(['the value of MY_API_SECRET in frontend/.env.local']);
     expect(fromFile(OTHER)).toEqual(['the value of MY_API_SECRET in frontend/.env.local']);
+  });
+
+  it('knows the production DATABASE_URL when a local fixture is appended after it', () => {
+    write(
+      root,
+      'frontend/.env.local',
+      [
+        `DATABASE_URL=postgresql://u:${PASSWORD}@host.example.com:5432/postgres`,
+        'DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres',
+        '',
+      ].join('\n'),
+    );
+    expect(fromFile(PASSWORD)).toEqual(['the password from DATABASE_URL in frontend/.env.local']);
+  });
+
+  it('does not let an unclosed quote swallow the secrets on the lines after it', () => {
+    write(
+      root,
+      'frontend/.env.local',
+      [`NOTE="oops`, `MY_API_SECRET=${PASSWORD}`, `SOME_TOKEN="${OTHER}"`, ''].join('\n'),
+    );
+    expect(fromFile(PASSWORD)).toEqual(['the value of MY_API_SECRET in frontend/.env.local']);
+    expect(fromFile(OTHER)).toEqual(['the value of SOME_TOKEN in frontend/.env.local']);
+  });
+
+  it('knows a value whose opening quote never closes, without the quote', () => {
+    write(root, 'frontend/.env.local', `MY_API_SECRET="${PASSWORD}\nSOME_TOKEN=${OTHER}\n`);
+    expect(fromFile(PASSWORD)).toEqual(['the value of MY_API_SECRET in frontend/.env.local']);
+    expect(fromFile(OTHER)).toEqual(['the value of SOME_TOKEN in frontend/.env.local']);
   });
 
   it('collects a double-quoted multi-line value whole, not its first line', () => {
