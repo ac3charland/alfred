@@ -284,11 +284,11 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   at a time, in click order** — concurrent writes can land in either order, and swaps sharing a
   story don't commute; lands a server `priority` (reply or realtime echo — either order, and ranks
   repeat) only if its **`priority_rev`** is newer than the story's last landed one; and **parks**
-  even a newer one while the story has a write queued or in flight, landing it once they settle —
-  an earlier write's reply would drag the row back, or tie it with a neighbour so the next nudge
-  swaps equal ranks for nothing. A jump coalesces into a same-story jump waiting at the queue's
-  tail; a failure (or the 15s request timeout) rolls back that write and everything queued behind
-  it. `backlog-priority-sync.test.tsx` fuzzes this against random reply/echo timing.
+  even a newer one while ANY priority write is queued or in flight, landing them together once the
+  queue drains — a respace renumbers every story, so landing some while others are held scrambles
+  the list. A jump coalesces into a same-story jump waiting at the queue's tail; a failure (or the
+  15s request timeout) rolls back that write and everything queued behind it.
+  `backlog-priority-sync.test.tsx` fuzzes this against random reply/echo timing.
 - **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
   (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
   status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it

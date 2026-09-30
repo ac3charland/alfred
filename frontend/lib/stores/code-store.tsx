@@ -200,8 +200,9 @@ interface ServerRank {
 
 /**
  * The provider's priority-write bookkeeping (ALF-250): the queue in click order, how many queued
- * or in-flight writes touch each story, the newest server rank heard for a story while it had
- * some (parked until they settle), and the revision of the last server rank each story landed.
+ * or in-flight writes touch each story (`pending` is empty once the queue has settled), the newest
+ * server rank heard for each story while any write was pending (parked until the queue settles),
+ * and the revision of the last server rank each story landed.
  */
 interface PriorityWriteBook {
   queue: PriorityWrite[];
@@ -234,9 +235,11 @@ function landRank(
  * Land a server row's story patch (ALF-250). Its `priority` lands only when it is the newest the
  * tab has heard for that story — a reply and the Realtime stream (which carries every write, this
  * tab's own included) arrive in either order, and an echo can trail the reply to a LATER write, so
- * `rev` (`code_items.priority_rev`) decides, never the rank itself: ranks repeat. And while the
- * story still has a priority write of this tab's queued or in flight, even a newer rank describes
- * the Backlog before the owner's latest click, so it's parked in `held` to land once they settle.
+ * `rev` (`code_items.priority_rev`) decides, never the rank itself: ranks repeat. And while ANY
+ * priority write of this tab's is queued or in flight, even a newer rank describes the Backlog
+ * before the owner's latest click, so it's parked in `held` — for every story, not just the ones
+ * written — to land together once the queue settles. A server respace renumbers every story, so
+ * landing some ranks while the written stories keep the old scale would scramble the list.
  */
 function landServerPatch(
   dispatch: React.Dispatch<CodeAction>,
@@ -252,7 +255,7 @@ function landServerPatch(
   const { priority = null, ...rest } = patch;
   dispatch({ type: 'patchStory', itemId, patch: rest });
   if (!isNewerRev(rev, book.landedRev.get(itemId))) return;
-  if ((book.pending.get(itemId) ?? 0) > 0) {
+  if (book.pending.size > 0) {
     const held = book.held.get(itemId);
     if (held === undefined || isNewerRev(rev, held.rev)) book.held.set(itemId, { priority, rev });
     return;
@@ -611,8 +614,8 @@ export function CodeProvider({
   // it runs — a swap trades two stories' current ranks, a jump lands past the current extreme —
   // while the screen has already moved on to the owner's latest click. So they share one queue, in
   // click order, sent one at a time (two in flight can land in either order, and swaps that share
-  // a story don't commute); and a story with a write still queued or in flight keeps the rank the
-  // screen gave it, whatever the server says about it meanwhile (`landServerPatch`).
+  // a story don't commute); and while any write is still queued or in flight the screen keeps the
+  // ranks it has, whatever the server says about any story meanwhile (`landServerPatch`).
   const priorityBookRef = React.useRef<PriorityWriteBook>({
     queue: [],
     pending: new Map(),
@@ -636,8 +639,8 @@ export function CodeProvider({
   // `patchStory` is keyed by `item_id` and a no-op when absent (the race rule), so a change
   // for a story this tab doesn't hold — or one already removed — is harmlessly ignored, and
   // an echo of the user's own optimistic write re-applies identical values (idempotent) — except
-  // a `priority` echo, which can trail a later click and so waits out the story's pending
-  // priority writes (`landServerPatch`, ALF-250).
+  // a `priority` echo, which can trail a later click and so waits out the pending priority
+  // writes (`landServerPatch`, ALF-250).
   React.useEffect(() => {
     const supabase = createClient();
 
@@ -832,7 +835,7 @@ export function CodeProvider({
               row.priority_rev,
             );
           }
-          landHeldPriorities([write]);
+          landHeldPriorities();
         }
       } finally {
         book.draining = false;
@@ -849,13 +852,13 @@ export function CodeProvider({
       }
     }
 
-    /** A story with nothing pending any more takes the newest rank the server gave it meanwhile. */
-    function landHeldPriorities(writes: PriorityWrite[]) {
+    /** Once nothing is pending, every story takes the newest rank the server gave it meanwhile. */
+    function landHeldPriorities() {
       const book = priorityBookRef.current;
-      for (const { itemId } of writes.flatMap((write) => write.touched)) {
-        const held = book.held.get(itemId);
-        if (book.pending.has(itemId) || held === undefined) continue;
-        book.held.delete(itemId);
+      if (book.pending.size > 0) return;
+      const parked = [...book.held];
+      book.held.clear();
+      for (const [itemId, held] of parked) {
         if (isNewerRev(held.rev, book.landedRev.get(itemId)))
           landRank(dispatch, book, itemId, held);
       }
@@ -873,7 +876,7 @@ export function CodeProvider({
         }
       }
       releasePriorityWrites(undone);
-      landHeldPriorities(undone);
+      landHeldPriorities();
       showToastRef.current(
         failed.kind === 'reorder' ? "Couldn't reorder story" : "Couldn't move story",
       );
