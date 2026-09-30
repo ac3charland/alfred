@@ -151,7 +151,7 @@ let wikiPages = [];
 // The singleton sync row, held as a list of 0 or 1 rows: an EMPTY table is "never synced".
 /** @type {Record<string, unknown>[]} */
 let wikiSync = [];
-// ── The session ledger (migration 0046): one row per coding session, keyed by session_id. ──
+// ── The session ledger (migration 0048): one row per coding session, keyed by session_id. ──
 /** @type {Record<string, unknown>[]} */
 let codeSessions = [];
 // The wiki repo itself, as the Git Data API shows it: see `freshGithub` below. `githubSequence`
@@ -1597,13 +1597,7 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
-  // ── Wiki RPCs (migration 0038) ──
-
-  // One atomic append of the bullets not already recorded, returning the post row. The route
-  // asks for the list columns back (`?select=…` + a single-object Accept), which the RPC path
-  // honours the way a table read does. `append_wiki_sent_picks` (migration 0040) appends to both
-  // sections' columns, each against its own; `append_wiki_sent_ideas` is the ideas-only original.
-  // ── The session ledger (migration 0046) ──
+  // ── The session ledger (migration 0048) ──
   // Mirrors the SQL: every column refreshes, except that a stored `recorded` prompt keeps its
   // prompt, provenance, builder and base when a non-recorded row arrives for the same session.
   if (fn === 'upsert_code_sessions' && req.method === 'POST') {
@@ -1629,6 +1623,12 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
+  // ── Wiki RPCs (migration 0038) ──
+
+  // One atomic append of the bullets not already recorded, returning the post row. The route
+  // asks for the list columns back (`?select=…` + a single-object Accept), which the RPC path
+  // honours the way a table read does. `append_wiki_sent_picks` (migration 0040) appends to both
+  // sections' columns, each against its own; `append_wiki_sent_ideas` is the ideas-only original.
   if (
     (fn === 'append_wiki_sent_ideas' || fn === 'append_wiki_sent_picks') &&
     req.method === 'POST'
