@@ -1,0 +1,36 @@
+name: Migration numbers
+
+# Two branches cut from the same `main` can each take the next migration number; both pass their own
+# checks, both merge, and `main` ends up with two `0042_*.sql` files whose relative order nobody chose.
+# This job checks the migrations directory of the tree that is ABOUT to land, so it catches the number
+# a sibling PR took after this branch was cut. The rule (`unique-number`) lives in tools/migration-lint
+# and also runs in `check:fast` (a required check) with the other migration rules; this job runs it
+# alone, in seconds, so a clash is reported by name long before `check-fast` finishes — see the
+# migration-lint skill.
+#
+# actions/checkout on `pull_request` defaults to `refs/pull/<n>/merge`: the PR merged into `main` as of
+# the last push to the PR, not the branch tip. That result goes stale when `main` moves afterwards, and
+# a re-run reuses the same merge commit; only a new push or "Update branch" re-merges. Forcing a fresh
+# merge before every merge is the "Require branches to be up to date" branch protection, not code.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unique-numbers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # NOTE: deliberately NOT filtered by `paths:` and with no `npm ci` step. A required check that
+      # a path filter skips never reports, and GitHub then blocks the merge on it forever; and the
+      # linter is dependency-free Node (it needs `npm run -w`, not node_modules), so the whole job
+      # takes seconds instead of waiting on an install.
+      - name: Check migration numbers are unique
+        run: npm run lint:migrations -w tools/migration-lint -- --rule unique-number

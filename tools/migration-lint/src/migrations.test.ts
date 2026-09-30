@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 import { lintMigrations } from './lint.ts';
 import {
   DEFAULT_MIGRATIONS_DIR,
@@ -6,6 +10,7 @@ import {
   parseSql,
   stripNonCode,
 } from './migrations.ts';
+import { LEGACY_SHARED_NUMBERS } from './rules.ts';
 
 describe('stripNonCode', () => {
   it('removes a line comment so its text never counts as code', () => {
@@ -148,5 +153,42 @@ describe('gatherMigrations against the real migrations', () => {
     const migrations = gatherMigrations(DEFAULT_MIGRATIONS_DIR);
     const findings = lintMigrations(migrations).filter((finding) => finding.rule === 'view-grant');
     expect(findings).toEqual([]);
+  });
+
+  it('returns no unique-number findings — only the two grandfathered pairs share a number', () => {
+    const migrations = gatherMigrations(DEFAULT_MIGRATIONS_DIR);
+    const findings = lintMigrations(migrations).filter(
+      (finding) => finding.rule === 'unique-number',
+    );
+    expect(findings).toEqual([]);
+  });
+});
+
+describe('the grandfathered legacy pairs', () => {
+  it('are all still on disk — renaming an applied migration would make production re-run it', () => {
+    // A renamed legacy file would leave LEGACY_SHARED_NUMBERS naming a file that no longer exists,
+    // and the unique-number rule alone would stay green.
+    const { migrationFiles } = gatherMigrations(DEFAULT_MIGRATIONS_DIR);
+    const grandfathered = [...LEGACY_SHARED_NUMBERS.values()].flatMap((names) => [...names]);
+    expect(grandfathered.filter((name) => !migrationFiles.includes(name))).toEqual([]);
+  });
+});
+
+describe('gatherMigrations filenames', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'migration-lint-files-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('lists the .sql files in filename order and nothing else', () => {
+    for (const name of ['0002_b.sql', '0001_a.sql', 'README.md', '.gitkeep']) {
+      writeFileSync(path.join(dir, name), '-- nothing\n');
+    }
+    expect(gatherMigrations(dir).migrationFiles).toEqual(['0001_a.sql', '0002_b.sql']);
   });
 });
