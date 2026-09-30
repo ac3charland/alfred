@@ -86,7 +86,15 @@ export function EditableNotes({
       {story.notes === null || story.notes.trim() === '' ? (
         <span className="text-muted-foreground/70 hover:text-foreground">Add notes…</span>
       ) : (
-        <span className="whitespace-pre-wrap text-foreground">{story.notes}</span>
+        <span
+          className={
+            isSheet
+              ? 'min-w-0 whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]'
+              : 'whitespace-pre-wrap text-foreground'
+          }
+        >
+          {story.notes}
+        </span>
       )}
       <Pencil
         size={isSheet ? 14 : 12}

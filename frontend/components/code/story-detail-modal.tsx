@@ -227,7 +227,9 @@ function DetailBody({
             <EditableTitle story={story} className="text-xl" />
             {breadcrumb}
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">{prLinks}</div>
+          {story.refinement_pr_url === null && story.implementation_pr_url === null ? null : (
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">{prLinks}</div>
+          )}
 
           <div className="mt-6 flex flex-col gap-2">
             <h3 className={SECTION_HEADING_CLASS.sheet}>Notes</h3>
