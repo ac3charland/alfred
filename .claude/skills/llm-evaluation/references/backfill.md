@@ -72,7 +72,7 @@ Transcription by subagents is the one non-deterministic step, so check it:
 npm run ledger -w tools/session-ledger -- sample --sessions <scratch>/ledger/sessions
 ```
 
-Call `get_session` yourself for each printed id and write the records, one per line, to
+`sample` skips sessions still working, this one included: their usage moves between a copy and a re-fetch. Call `get_session` yourself for each printed id and write the records, one per line, to
 `<scratch>/ledger/verify.ndjson`. Then:
 
 ```bash
