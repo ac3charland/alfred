@@ -3,14 +3,13 @@
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+import { SECTION_HEADING_CLASS } from '@/components/code/story-detail/layout';
 import { PrLink } from '@/components/code/story-detail/pr-link';
 // Refinement now produces self-contained HTML plans (see the refinement skill), but specs
 // snapshotted before that are markdown — sniff the head so each renders in the right mode.
 // (`spec_markdown` is the snapshot column; it holds whichever format the merged spec file was.)
 import { looksLikeHtmlDocument } from '@/lib/html-document';
 import { cn } from '@/lib/utils';
-
-const HEADING_CLASS = 'text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
 export interface SpecViewProperties {
   /** The snapshotted spec body (HTML or markdown), or `null` when nothing is snapshotted yet. */
@@ -76,7 +75,7 @@ export function SpecHeading({
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <h3 className={cn(HEADING_CLASS, className)}>{heading}</h3>
+      <h3 className={cn(SECTION_HEADING_CLASS.dialog, className)}>{heading}</h3>
       {repoUrl === undefined ? null : <PrLink label="View in repo" url={repoUrl} />}
     </div>
   );
