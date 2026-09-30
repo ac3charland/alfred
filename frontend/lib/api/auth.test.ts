@@ -2,7 +2,13 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
-import { resolveIngestClient, validateApiKey, withSession } from './auth';
+import {
+  resolveIngestClient,
+  resolveLedgerClient,
+  validateApiKey,
+  validateLedgerKey,
+  withSession,
+} from './auth';
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
@@ -197,5 +203,121 @@ describe('resolveIngestClient', () => {
     if (result instanceof Response) return;
     expect(result.isAdmin).toBe(false);
     expect(result.supabase).toBe(mockSupabase);
+  });
+});
+
+function bearer(key: string): Request {
+  return new Request('http://localhost/', { headers: { authorization: `Bearer ${key}` } });
+}
+
+describe('validateLedgerKey', () => {
+  const LEDGER_KEY = 'ledger-key-xyz';
+
+  beforeEach(() => {
+    process.env.LEDGER_API_KEY = LEDGER_KEY;
+  });
+
+  afterEach(() => {
+    delete process.env.LEDGER_API_KEY;
+    delete process.env.INGEST_API_KEY;
+  });
+
+  it('accepts the ledger key as a Bearer token', () => {
+    expect(validateLedgerKey(bearer(LEDGER_KEY))).toBe(true);
+  });
+
+  it('rejects a wrong key, including one that shares the right key as a prefix', () => {
+    expect(validateLedgerKey(bearer('wrong-key'))).toBe(false);
+    expect(validateLedgerKey(bearer(`${LEDGER_KEY}x`))).toBe(false);
+    expect(validateLedgerKey(bearer(LEDGER_KEY.slice(0, -1)))).toBe(false);
+  });
+
+  it('rejects the ingest key — the two credentials never stand in for each other', () => {
+    process.env.INGEST_API_KEY = 'ingest-key-abc';
+    expect(validateLedgerKey(bearer('ingest-key-abc'))).toBe(false);
+  });
+
+  it('rejects everything when LEDGER_API_KEY is unset or empty', () => {
+    delete process.env.LEDGER_API_KEY;
+    expect(validateLedgerKey(bearer(''))).toBe(false);
+    expect(validateLedgerKey(bearer('undefined'))).toBe(false);
+    process.env.LEDGER_API_KEY = '';
+    expect(validateLedgerKey(bearer(''))).toBe(false);
+  });
+
+  it('accepts only the Bearer scheme — not x-api-key, not another scheme', () => {
+    expect(
+      validateLedgerKey(new Request('http://localhost/', { headers: { 'x-api-key': LEDGER_KEY } })),
+    ).toBe(false);
+    expect(
+      validateLedgerKey(
+        new Request('http://localhost/', { headers: { authorization: `Basic ${LEDGER_KEY}` } }),
+      ),
+    ).toBe(false);
+    expect(validateLedgerKey(new Request('http://localhost/'))).toBe(false);
+  });
+});
+
+describe('the ingest key and the ledger key are disjoint', () => {
+  afterEach(() => {
+    delete process.env.LEDGER_API_KEY;
+    delete process.env.INGEST_API_KEY;
+  });
+
+  it('validateApiKey (every ingest route) rejects the ledger key', () => {
+    process.env.INGEST_API_KEY = 'ingest-key-abc';
+    process.env.LEDGER_API_KEY = 'ledger-key-xyz';
+    const request = new Request('http://localhost/', {
+      headers: { authorization: 'Bearer ledger-key-xyz' },
+    });
+    expect(validateApiKey(request)).toBe(false);
+  });
+});
+
+describe('resolveLedgerClient', () => {
+  const LEDGER_KEY = 'ledger-key-xyz';
+  const mockAdminSupabase = { from: jest.fn() };
+
+  beforeEach(() => {
+    process.env.LEDGER_API_KEY = LEDGER_KEY;
+    mockCreateAdminClient.mockReturnValue(mockAdminSupabase as never);
+  });
+
+  afterEach(() => {
+    delete process.env.LEDGER_API_KEY;
+  });
+
+  it('resolves the admin client for a valid ledger key, without reading a session', async () => {
+    const request = new Request('http://localhost/', {
+      headers: { authorization: `Bearer ${LEDGER_KEY}` },
+    });
+    const result = await resolveLedgerClient(request);
+
+    expect(result).toBe(mockAdminSupabase);
+    expect(mockCreateClient).not.toHaveBeenCalled();
+  });
+
+  it('resolves the session client for the signed-in owner', async () => {
+    const mockSupabase = makeSupabaseMock({ id: 'user-123' });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const result = await resolveLedgerClient(new Request('http://localhost/'));
+
+    expect(result).toBe(mockSupabase);
+    expect(mockCreateAdminClient).not.toHaveBeenCalled();
+  });
+
+  it('answers 401 with neither', async () => {
+    mockCreateClient.mockResolvedValue(makeSupabaseMock() as never);
+
+    const result = await resolveLedgerClient(
+      new Request('http://localhost/', { headers: { authorization: 'Bearer wrong' } }),
+    );
+
+    expect(result).toBeInstanceOf(Response);
+    if (!(result instanceof Response)) return;
+    expect(result.status).toBe(401);
+    expect(await result.json()).toStrictEqual({ error: 'Unauthorized' });
+    expect(mockCreateAdminClient).not.toHaveBeenCalled();
   });
 });

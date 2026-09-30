@@ -750,6 +750,85 @@ export const habitsQuerySchema = z
 export type HabitsQuery = z.infer<typeof habitsQuerySchema>;
 
 // ---------------------------------------------------------------------------
+// The coding-session ledger (`code_sessions`)
+// ---------------------------------------------------------------------------
+
+/** GET /api/code/ledger-inputs — the repo whose project the backfill replays prompts for. */
+export const ledgerInputsQuerySchema = z.object({
+  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, 'repo must be owner/name'),
+});
+
+/** Rows per POST /api/code/sessions call; the CLI pushes in chunks of exactly this. */
+export const LEDGER_ROWS_MAX = 100;
+
+const ledgerTimestamp = z.iso.datetime({ offset: true }).nullable();
+const ledgerCount = z.number().int().nonnegative().nullable();
+const ledgerText = z.string().nullable();
+
+/**
+ * One `code_sessions` row as the backfill sends it: every column except `refreshed_at`, which
+ * the upsert RPC always stamps itself. Strict, and every key required (nullable where the column
+ * is), so a CLI that drifts from the table is a 400 naming the field rather than a column the
+ * upsert silently nulls.
+ */
+export const ledgerRowSchema = z.strictObject({
+  session_id: z.string().min(1),
+  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
+  title: ledgerText,
+  session_created_at: ledgerTimestamp,
+  status: ledgerText,
+  configured_model: ledgerText,
+  model: ledgerText,
+  served_model: ledgerText,
+  effort_level: ledgerText,
+  cost_usd: z.number().nonnegative().nullable(),
+  input_tokens: ledgerCount,
+  output_tokens: ledgerCount,
+  cache_read_tokens: ledgerCount,
+  cache_write_tokens: ledgerCount,
+  ref: ledgerText,
+  launch_lane: z
+    .enum([
+      'refinement',
+      'spike',
+      'bug',
+      'implementation',
+      'bypass',
+      'epic-refinement',
+      'epic-implementation',
+    ])
+    .nullable(),
+  pr_number: z.number().int().positive().nullable(),
+  pr_state: z.enum(['merged', 'closed', 'open']).nullable(),
+  pr_opened_at: ledgerTimestamp,
+  pr_merged_at: ledgerTimestamp,
+  pr_closed_at: ledgerTimestamp,
+  human_commits_after_open: ledgerCount,
+  base_sha: ledgerText,
+  builder_sha: ledgerText,
+  prompt: ledgerText,
+  prompt_source: z.enum(['reconstructed', 'recorded']).nullable(),
+  spec_path: ledgerText,
+  spec_blob_sha: ledgerText,
+  skills: z.array(z.strictObject({ path: z.string().min(1), blob_sha: ledgerText })),
+  warnings: z.array(z.string().regex(/^[a-z_]+$/)),
+  session_record: z.record(z.string(), z.json()).nullable(),
+});
+
+export type LedgerRow = z.infer<typeof ledgerRowSchema>;
+
+/**
+ * The rows of one POST /api/code/sessions batch. The size bounds are checked by the route
+ * before this runs (an oversized batch is a 413, not a 400). One session may appear once: the
+ * upsert's `on conflict do update` cannot touch a row twice in one statement.
+ */
+export const ledgerRowsSchema = z
+  .array(ledgerRowSchema)
+  .refine((rows) => new Set(rows.map((row) => row.session_id)).size === rows.length, {
+    message: 'a batch may name each session_id once',
+  });
+
+// ---------------------------------------------------------------------------
 // Comms (the communication firewall)
 //
 // Defined in `lib/api/comms-schemas` and re-exported here so every route handler and client

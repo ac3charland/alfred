@@ -16,6 +16,8 @@ declare namespace NodeJS {
     SUPABASE_SERVICE_ROLE_KEY: string;
     SUPABASE_SERVICE_ROLE_JWT?: string;
     INGEST_API_KEY?: string;
+    // The session-ledger key — accepted only by the two ledger routes; unset rejects every keyed call.
+    LEDGER_API_KEY?: string;
     BASE_URL?: string;
     // The Code Dashboard's GitHub measurements (over the projects' repos) — optional and
     // server-only; an unset token simply turns the feature off.
