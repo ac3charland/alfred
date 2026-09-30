@@ -89,8 +89,14 @@ export function buildOtherQuery(
     ...authors.map((login) => `author:${login}`),
     // Negated qualifiers are ANDed, so every given project repo is subtracted from the sweep and
     // no PR can be counted both in its own segment and in Other — nor, for an excluded project
-    // the caller passes in, counted at all.
-    ...repos.map((repo) => `-repo:${repo.owner}/${repo.name}`),
+    // the caller passes in, counted at all. Sorted, so the query depends only on WHICH repos are
+    // subtracted: excluding a project reorders the caller's list, and a reordered query would
+    // miss the cached answer and spend another request against Search's 30/min cap.
+    ...stableSorted(
+      repos.map((repo) => `-repo:${repo.owner}/${repo.name}`),
+      // Code-point order, so the query can't vary with the server's locale.
+      (a, b) => (a < b ? -1 : a > b ? 1 : 0),
+    ),
   ].join(' ');
 }
 

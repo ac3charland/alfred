@@ -265,6 +265,15 @@ describe('fetchPrRatio', () => {
     expect(otherQuery).toContain('-repo:ac3charland/knowledge');
   });
 
+  it('sends the same Other query whichever project is excluded, so its cached answer still serves', async () => {
+    const withoutExclusion = mockSearchResponses([]);
+    await fetchPrRatio({ ...CONFIG, repos: [REALPLAY, ALFRED, KNOWLEDGE] }, WEEK);
+    const withRealplayExcluded = mockSearchResponses([]);
+    await fetchPrRatio({ ...CONFIG, repos: [ALFRED, KNOWLEDGE], excludedRepos: [REALPLAY] }, WEEK);
+
+    expect(queryOf(withRealplayExcluded, 2)).toBe(queryOf(withoutExclusion, 3));
+  });
+
   it('with every project excluded, reports no repos and whatever Other counts', async () => {
     const recorded = mockSearchResponses([{ ok: true, totalCount: 2 }]);
 
