@@ -109,3 +109,20 @@ In a session on this environment:
 npm exec -w frontend -- playwright install --with-deps chromium   # downloads cleanly, no 403
 npm run check:slow -w frontend                                    # Storybook + Playwright e2e green
 ```
+
+## Ledger credential
+
+The session-ledger backfill (the `llm-evaluation` skill's `references/backfill.md`) writes
+`code_sessions` rows through `POST /api/code/sessions` and reads `GET /api/code/ledger-inputs`.
+Those two routes accept only **`LEDGER_API_KEY`**, never the ingest key, and no other route
+accepts it. The session reads untrusted text (PR descriptions, other sessions' titles), so its
+credential must reach nothing else.
+
+- **`LEDGER_API_KEY`** — set it in Vercel's production env, then add it to this environment as an
+  **API credential for alfred's host** sending `Authorization: Bearer <key>`. The proxy adds the
+  header outside the VM, so the key is in no env var, file or transcript. Only if that section
+  isn't offered, set a `LEDGER_API_KEY` environment variable instead (the CLI sends it only when
+  set). Never paste the value into a chat or a committed file.
+- **`ALFRED_BASE_URL`** — the app's URL, as an ordinary environment variable. Not a secret.
+- **`GITHUB_TOKEN`** (optional) — unauthenticated GitHub REST calls from the container share the
+  egress IP's rate limit and can be refused outright; a token avoids that.
