@@ -216,7 +216,7 @@ describe('openChatDb().readMessages', () => {
       chats: CHATS,
       messages: [
         { ...ONE_TO_ONE, rowid: 10, guid: 'ASKED' },
-        ...[2000, 2001, 2002, 2003, 2004, 2005].map((type, index) => ({
+        ...[2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007].map((type, index) => ({
           ...ONE_TO_ONE,
           rowid: 11 + index,
           guid: `OWNER-${String(type)}`,
@@ -224,15 +224,15 @@ describe('openChatDb().readMessages', () => {
           handle: undefined,
           associatedMessageType: type,
         })),
-        {
+        ...[3000, 3006, 3007].map((type, index) => ({
           ...ONE_TO_ONE,
-          rowid: 20,
-          guid: 'OWNER-UNLOVED',
+          rowid: 20 + index,
+          guid: `OWNER-REMOVED-${String(type)}`,
           isFromMe: true,
           handle: undefined,
-          associatedMessageType: 3000,
-        },
-        { ...ONE_TO_ONE, rowid: 21, guid: 'THEIR-LOVE', associatedMessageType: 2000 },
+          associatedMessageType: type,
+        })),
+        { ...ONE_TO_ONE, rowid: 30, guid: 'THEIR-LOVE', associatedMessageType: 2000 },
       ],
     });
 
@@ -244,6 +244,8 @@ describe('openChatDb().readMessages', () => {
       'OWNER-2003',
       'OWNER-2004',
       'OWNER-2005',
+      'OWNER-2006',
+      'OWNER-2007',
     ]);
   });
 
