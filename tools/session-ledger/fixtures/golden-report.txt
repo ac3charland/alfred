@@ -1,0 +1,21 @@
+code_sessions · ac3charland/alfred · 19 sessions · 2026-07-01 → 2026-07-12
+
+coverage          rows   pct
+  linked to a PR    15   79%
+  ref known         15   79%
+  prompt rebuilt     9   47%
+  spec resolved      4   of 5 spec-reading sessions
+  cost recorded     16   84%
+
+lane                n  median $   p90 $   merged  human-reworked
+  implementation    4     18.05       —        3        1
+  bypass            4      5.25       —        1        0
+  bug               2      8.75       —        0        0
+  refinement        1     16.90       —        0        —
+  spike             1     41.22       —        1        —
+  epic-refinement   1     58.70       —        1        —
+  epic-implementation
+                    1    176.53       —        0        0
+  (no PR)           5      3.00       —        —        —
+
+warnings: 19 · top: no_pr 4 · builder_changed_near_start 2 · builder_missing 2

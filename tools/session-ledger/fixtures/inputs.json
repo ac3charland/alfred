@@ -1,0 +1,98 @@
+{
+  "project": {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "key": "ALF",
+    "name": "Alfred",
+    "repo_owner": "ac3charland",
+    "repo_name": "alfred"
+  },
+  "stories": [
+    {
+      "ref": "ALF-9",
+      "title": "Give feedback when the button is pressed",
+      "notes": "Invented notes: show a toast.",
+      "project_id": "11111111-1111-1111-1111-111111111111",
+      "spec_path": "docs/specs/ALF-9.html",
+      "spec_sha": "8e80d75df820d7c8134d0b295246ad8b6eee7c1e",
+      "epic_ref": null,
+      "epic_name": null,
+      "epic_spec_path": null
+    },
+    {
+      "ref": "ALF-10",
+      "title": "Small tweak",
+      "notes": "Invented notes.",
+      "project_id": "11111111-1111-1111-1111-111111111111",
+      "spec_path": null,
+      "spec_sha": null,
+      "epic_ref": null,
+      "epic_name": null,
+      "epic_spec_path": null
+    },
+    {
+      "ref": "ALF-11",
+      "title": "Bug: tasks vanish",
+      "notes": "Invented repro steps.",
+      "project_id": "11111111-1111-1111-1111-111111111111",
+      "spec_path": null,
+      "spec_sha": null,
+      "epic_ref": null,
+      "epic_name": null,
+      "epic_spec_path": null
+    },
+    {
+      "ref": "ALF-13",
+      "title": "Bug: early bug",
+      "notes": null,
+      "project_id": "11111111-1111-1111-1111-111111111111",
+      "spec_path": null,
+      "spec_sha": null,
+      "epic_ref": null,
+      "epic_name": null,
+      "epic_spec_path": null
+    },
+    {
+      "ref": "ALF-14",
+      "title": "Refine the fixture epic's first story",
+      "notes": null,
+      "project_id": "11111111-1111-1111-1111-111111111111",
+      "spec_path": "docs/specs/ALF-14.html",
+      "spec_sha": null,
+      "epic_ref": "ALF-4",
+      "epic_name": "Fixture epic",
+      "epic_spec_path": "docs/specs/epics/ALF-4.html"
+    },
+    {
+      "ref": "ALF-15",
+      "title": "Spike: which cache",
+      "notes": "Invented question.",
+      "project_id": "11111111-1111-1111-1111-111111111111",
+      "spec_path": null,
+      "spec_sha": null,
+      "epic_ref": null,
+      "epic_name": null,
+      "epic_spec_path": null
+    },
+    {
+      "ref": "ALF-16",
+      "title": "Bug: exploding builder",
+      "notes": "this one should explode",
+      "project_id": "11111111-1111-1111-1111-111111111111",
+      "spec_path": null,
+      "spec_sha": null,
+      "epic_ref": null,
+      "epic_name": null,
+      "epic_spec_path": null
+    }
+  ],
+  "epics": [
+    {
+      "ref": "ALF-4",
+      "name": "Fixture epic",
+      "notes": "Invented epic notes.",
+      "project_id": "11111111-1111-1111-1111-111111111111",
+      "spec_path": "docs/specs/epics/ALF-4.html",
+      "spec_sha": "0000000000000000000000000000000000000000"
+    }
+  ]
+}

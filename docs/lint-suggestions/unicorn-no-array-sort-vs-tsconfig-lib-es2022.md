@@ -78,3 +78,6 @@ step.
 - [ ] `frontend/lib/wiki/web/graph.ts` — `buildWikiWeb` puts its edges in key order with
       `stableSorted([...edges.entries()], …)` because `.toSorted(…)` doesn't type-check; `toSorted`
       is the direct form.
+- [ ] `tools/session-ledger/src/sort.ts` — the whole module (`sortedBy`) exists only because
+      `toSorted` doesn't type-check under ES2022; every `sortedBy(xs, cmp)` call becomes
+      `xs.toSorted(cmp)`.
