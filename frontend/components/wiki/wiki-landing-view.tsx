@@ -3,7 +3,8 @@
 import * as React from 'react';
 
 import { EmptyState } from '@/components/atoms/empty-state';
-import { localISODate } from '@/lib/date-utils';
+import { fromUtcMillis, localISODate } from '@/lib/date-utils';
+import { useHydrated } from '@/lib/hooks/use-hydrated';
 import { useWikiPages } from '@/lib/stores/wiki-store';
 import { conceptOfTheDay } from '@/lib/wiki/concept-of-the-day';
 import { buildWikiWeb } from '@/lib/wiki/web/graph';
@@ -30,7 +31,10 @@ interface WikiLandingViewProperties {
  */
 export function WikiLandingView({ now, reducedMotion }: WikiLandingViewProperties) {
   const pages = useWikiPages();
-  const today = localISODate(now);
+  // The day is the browser's calendar date, which the server can't know: it renders its own (UTC)
+  // date, hydration matches it, and the browser's takes over straight after.
+  const hydrated = useHydrated();
+  const today = hydrated ? localISODate(now) : fromUtcMillis(now.getTime());
   const concept = React.useMemo(() => conceptOfTheDay(pages, today), [pages, today]);
   const web = React.useMemo(() => buildWikiWeb(pages), [pages]);
   const headingId = React.useId();

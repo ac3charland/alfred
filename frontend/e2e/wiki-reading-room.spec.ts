@@ -359,6 +359,39 @@ test.describe('the Wiki reading room — phone (390×844)', () => {
   });
 });
 
+/**
+ * A zone whose calendar date differs from UTC's right now: behind UTC before 11:00 UTC, ahead of
+ * it after. The server renders in UTC, so this is the owner off UTC late in the evening.
+ */
+const OFF_UTC_ZONE = new Date().getUTCHours() < 11 ? 'Pacific/Pago_Pago' : 'Pacific/Kiritimati';
+
+test.describe('the Wiki landing — a browser whose date is not the server’s', () => {
+  test.use({ timezoneId: OFF_UTC_ZONE });
+
+  test("dates the card by the browser's calendar, with no hydration mismatch", async ({
+    page,
+    seed,
+  }) => {
+    const errors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
+    page.on('pageerror', (error) => errors.push(error.message));
+    await seedWiki(seed);
+
+    await page.goto('/wiki');
+
+    const card = page.getByRole('region', { name: 'Concept of the day' });
+    const local = await page.evaluate(() =>
+      new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(
+        new Date(),
+      ),
+    );
+    await expect(card.locator('time')).toHaveText(local);
+    expect(errors.filter((text) => /hydrat|#418|#425/i.test(text))).toEqual([]);
+  });
+});
+
 test.describe('the Wiki landing — a short window', () => {
   test.use({ viewport: { width: 1280, height: 640 } });
 
