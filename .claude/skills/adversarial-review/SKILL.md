@@ -56,7 +56,8 @@ anchors the reviewer and defeats the point. Give it:
   wrong thing. It then finishes the code review; the round isn't spent on the demo alone.
 - **Its job and report:** the block below, as written.
 - **Its limits:** report only — no edits, commits, pushes, or GitHub comments. Running the tests
-  and read-only commands is fine.
+  and read-only commands is fine; an experiment that changes files (reverting the fix to watch a
+  test fail) goes in a scratch copy, never the checkout under review — you push from it.
 
 ```text
 Your job is a verdict: does this change do what was asked, correctly? Be independent: trust
