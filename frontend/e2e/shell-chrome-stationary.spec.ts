@@ -43,7 +43,7 @@ test('desktop: the header and sidebar stay put while the task list scrolls', asy
   const folder = await seedLongList(seed);
   await page.goto(`/folders/${folder.id}`);
 
-  const header = page.locator('header');
+  const header = page.locator('[data-shell-header]');
   const sidebar = page.locator('aside');
   const wordmark = sidebar.getByRole('link', { name: 'alfred — back to capture' });
   const task = page.getByText('Task 0', { exact: true });
@@ -69,6 +69,25 @@ test('desktop: the header and sidebar stay put while the task list scrolls', asy
   expect(sidebarAfter.height).toBe(page.viewportSize()?.height);
 });
 
+test('desktop: a folder list taller than the sidebar scrolls inside the nav, not the page', async ({
+  page,
+  seed,
+}) => {
+  const folders = Array.from({ length: 50 }, (_, index) => makeFolder(`Folder ${String(index)}`));
+  await seed({ folders, items: [] });
+  await page.goto('/today');
+
+  const last = page.locator('aside').getByText('Folder 49', { exact: true });
+  await expect(page.locator('aside').getByText('Folder 0', { exact: true })).toBeVisible();
+  await expect(last).not.toBeInViewport();
+
+  await last.scrollIntoViewIfNeeded();
+
+  await expect(last).toBeInViewport();
+  await expect(page.getByTestId('sidebar-shortcut-hint')).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
 test('a row scrolled into view lands below the pinned top bar, not under it', async ({
   page,
   seed,
@@ -81,7 +100,7 @@ test('a row scrolled into view lands below the pinned top bar, not under it', as
     node.scrollIntoView({ block: 'start' });
   });
 
-  const headerBox = await box(page.locator('header'));
+  const headerBox = await box(page.locator('[data-shell-header]'));
   const rowBox = await box(row);
   expect(rowBox.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height);
 });
@@ -93,7 +112,7 @@ test.describe('mobile', () => {
     const folder = await seedLongList(seed);
     await page.goto(`/folders/${folder.id}`);
 
-    const header = page.locator('header');
+    const header = page.locator('[data-shell-header]');
     await expect(page.getByText('Task 0', { exact: true })).toBeVisible();
     const before = await box(header);
 
