@@ -1,10 +1,25 @@
+import type { NumberedLink } from './links';
 import {
   READER_MAX_BULLETS,
+  READER_MAX_FURTHER_READING,
   READER_SUMMARY_SCHEMA,
   isReaderSummary,
   normalizeReaderSummary,
 } from './schema';
-import type { ReaderSummary } from './types';
+import type { ReaderFurtherReadingPick, ReaderSummary } from './types';
+
+/** A post's numbered links, `https://example.com/<n>` for each number up to `count`. */
+function numbered(count: number): NumberedLink[] {
+  return Array.from({ length: count }, (_, index) => ({
+    n: index + 1,
+    url: `https://example.com/${String(index + 1)}`,
+  }));
+}
+
+/** A pick of link `link`, titled and noted after it. */
+function pick(link: number, title = `Piece ${String(link)}`): ReaderFurtherReadingPick {
+  return { link, title, note: `Why link ${String(link)} matters.` };
+}
 
 /** A well-formed summary, the shape every test below varies one field of. */
 function validSummary(): ReaderSummary {
@@ -16,6 +31,7 @@ function validSummary(): ReaderSummary {
       evidence: ['Cites a 12× price drop against a 1.4× latency improvement over eighteen months.'],
       argument: 'Prices fell; latency did not; therefore the hosting decision inverted.',
       who_should_read: 'Anyone choosing between hosted and self-run inference this quarter.',
+      further_reading: [],
     },
   };
 }
@@ -37,7 +53,31 @@ describe('READER_SUMMARY_SCHEMA', () => {
 
     const overview = READER_SUMMARY_SCHEMA.properties.overview;
     expect(overview.additionalProperties).toBe(false);
-    expect(overview.required).toEqual(['novel_ideas', 'evidence', 'argument', 'who_should_read']);
+    expect(overview.required).toEqual([
+      'novel_ideas',
+      'evidence',
+      'argument',
+      'who_should_read',
+      'further_reading',
+    ]);
+  });
+
+  it('asks for further reading as link NUMBERS with a title and a note, and no extras', () => {
+    const { further_reading } = READER_SUMMARY_SCHEMA.properties.overview.properties;
+    expect(further_reading).toMatchObject({
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['link', 'title', 'note'],
+        properties: {
+          link: { type: 'integer' },
+          title: { type: 'string' },
+          note: { type: 'string' },
+        },
+      },
+    });
+    expect(further_reading.description).toContain('empty');
   });
 
   it('carries no maxItems or maxLength anywhere — a rejected keyword would be a 400 on every post', () => {
@@ -77,7 +117,7 @@ describe('isReaderSummary', () => {
     expect(isReaderSummary(without({ ...validSummary() }, key))).toBe(false);
   });
 
-  it.each(['novel_ideas', 'evidence', 'argument', 'who_should_read'])(
+  it.each(['novel_ideas', 'evidence', 'argument', 'who_should_read', 'further_reading'])(
     'rejects an overview missing %s',
     (key) => {
       const summary = validSummary();
@@ -99,6 +139,25 @@ describe('isReaderSummary', () => {
     const summary = validSummary();
     expect(
       isReaderSummary({ ...summary, overview: { ...summary.overview, evidence: 'one bullet' } }),
+    ).toBe(false);
+  });
+
+  it('accepts further reading picks of a whole link number, a title and a note', () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [pick(3), pick(1)];
+    expect(isReaderSummary(summary)).toBe(true);
+  });
+
+  it.each([
+    ['a fractional link number', { link: 1.5, title: 't', note: 'n' }],
+    ['a link number as a string', { link: '2', title: 't', note: 'n' }],
+    ['a pick missing its note', { link: 2, title: 't' }],
+    ['a pick whose title is not a string', { link: 2, title: 4, note: 'n' }],
+    ['a bare string', 'https://example.com/1'],
+  ])('rejects further reading holding %s', (_label, entry) => {
+    const summary = validSummary();
+    expect(
+      isReaderSummary({ ...summary, overview: { ...summary.overview, further_reading: [entry] } }),
     ).toBe(false);
   });
 
@@ -137,7 +196,7 @@ describe('normalizeReaderSummary', () => {
     summary.overview.novel_ideas = Array.from({ length: 9 }, (_, index) => `idea ${String(index)}`);
     summary.overview.evidence = Array.from({ length: 7 }, (_, index) => `fact ${String(index)}`);
 
-    const trimmed = normalizeReaderSummary(summary);
+    const trimmed = normalizeReaderSummary(summary, []);
 
     expect(trimmed.overview.novel_ideas).toHaveLength(READER_MAX_BULLETS);
     expect(trimmed.overview.evidence).toHaveLength(READER_MAX_BULLETS);
@@ -147,15 +206,81 @@ describe('normalizeReaderSummary', () => {
 
   it('leaves a short list, the strings and the headline untouched', () => {
     const summary = validSummary();
-    expect(normalizeReaderSummary(summary)).toEqual(summary);
+    expect(normalizeReaderSummary(summary, [])).toEqual(summary);
   });
 
   it('returns a fresh object rather than mutating the parsed body', () => {
     const summary = validSummary();
     summary.overview.evidence = Array.from({ length: 8 }, () => 'fact');
 
-    normalizeReaderSummary(summary);
+    normalizeReaderSummary(summary, []);
 
     expect(summary.overview.evidence).toHaveLength(8);
+  });
+});
+
+describe('normalizeReaderSummary — further reading', () => {
+  it('maps each pick to the URL its number stands for', () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [pick(2, 'The paper')];
+
+    expect(normalizeReaderSummary(summary, numbered(3)).overview.further_reading).toEqual([
+      { url: 'https://example.com/2', title: 'The paper', note: 'Why link 2 matters.' },
+    ]);
+  });
+
+  it('drops a number the post’s list does not hold, so every stored URL is one the post contains', () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [pick(0), pick(2), pick(9), pick(-1)];
+
+    const urls = normalizeReaderSummary(summary, numbered(3)).overview.further_reading.map(
+      (item) => item.url,
+    );
+
+    expect(urls).toEqual(['https://example.com/2']);
+  });
+
+  it('keeps nothing when the post had no links at all', () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [pick(1)];
+
+    expect(normalizeReaderSummary(summary, []).overview.further_reading).toEqual([]);
+  });
+
+  it('dedupes by number, keeping the first pick, and sorts into link (document) order', () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [pick(3), pick(1, 'First'), pick(3, 'Again'), pick(2)];
+
+    const items = normalizeReaderSummary(summary, numbered(3)).overview.further_reading;
+
+    expect(items.map((item) => item.url)).toEqual([
+      'https://example.com/1',
+      'https://example.com/2',
+      'https://example.com/3',
+    ]);
+    expect(items[2]?.title).toBe('Piece 3');
+  });
+
+  it(`caps the list at ${String(READER_MAX_FURTHER_READING)}, after sorting`, () => {
+    const summary = validSummary();
+    summary.overview.further_reading = Array.from({ length: 14 }, (_, index) => pick(14 - index));
+
+    const items = normalizeReaderSummary(summary, numbered(14)).overview.further_reading;
+
+    expect(items).toHaveLength(READER_MAX_FURTHER_READING);
+    expect(items[0]?.url).toBe('https://example.com/1');
+    expect(items.at(-1)?.url).toBe('https://example.com/10');
+  });
+
+  it('trims titles and notes, and drops an item whose title is blank', () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [
+      { link: 1, title: ' '.repeat(3), note: 'No title.' },
+      { link: 2, title: '  The paper  ', note: '  Its numbers.  ' },
+    ];
+
+    expect(normalizeReaderSummary(summary, numbered(2)).overview.further_reading).toEqual([
+      { url: 'https://example.com/2', title: 'The paper', note: 'Its numbers.' },
+    ]);
   });
 });
