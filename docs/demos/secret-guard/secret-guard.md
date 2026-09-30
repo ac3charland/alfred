@@ -77,7 +77,7 @@ showboat: refused to record command in /tmp/secret-guard-scratch.md: it looks li
   2:6  error  [PostgreSQLConnection] found PostgreSQL connection string: *****************************************************************************************  @secretlint/secretlint-rule-preset-recommend > @secretlint/secretlint-rule-database-connection-string
 
 ✖ 1 problem (1 error, 0 warnings, 0 infos)
-Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local. Any other credential must already be exported in your shell outside the recorded command (never `NAME=value` inside it: the assignment is recorded too), or be masked (`:****@`).
+Nothing was written to /tmp/secret-guard-scratch.md. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local. Any other credential must already be exported in your shell outside the recorded command (never `NAME=value` inside it: the assignment is recorded too), or be masked (`:****@`).
 exit=1
 
 showboat: refused to record command output in /tmp/secret-guard-scratch.md: it looks like a secret, and this repo is public.
@@ -85,7 +85,7 @@ showboat: refused to record command output in /tmp/secret-guard-scratch.md: it l
   1:0  error  [PostgreSQLConnection] found PostgreSQL connection string: **********************************************************  @secretlint/secretlint-rule-preset-recommend > @secretlint/secretlint-rule-database-connection-string
 
 ✖ 1 problem (1 error, 0 warnings, 0 infos)
-Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local. Any other credential must already be exported in your shell outside the recorded command (never `NAME=value` inside it: the assignment is recorded too), or be masked (`:****@`).
+Nothing was written to /tmp/secret-guard-scratch.md (the command itself did run). For live-database evidence run `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local. Any other credential must already be exported in your shell outside the recorded command (never `NAME=value` inside it: the assignment is recorded too), or be masked (`:****@`).
 exit=1
 
 entries recorded: 0
