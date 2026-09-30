@@ -221,6 +221,11 @@ cleanup (the returned function) always runs when navigating away — use this fo
   classes and CSS custom properties (dark theme variables) are absent — the component renders
   with broken styles. The import must be a side-effect import at the top of the file.
 
+- **A `:root`/`html` rule in `globals.css` applies inside every story's iframe too.** A root
+  `scroll-padding-top` for the app's sticky header shifted where the snapshot runner's element
+  screenshot scrolled, clipping tall stories. Scope app-chrome-only root rules to the chrome
+  (`:root:has([data-shell-header])`), not bare `:root`.
+
 - **Never use Tailwind v3 `tailwind.config.js` patterns.** alfred uses Tailwind v4 (CSS-first).
   Styles come from `globals.css` via `@import 'tailwindcss'`. No `content` array config needed
   in the preview — the CSS import is sufficient.

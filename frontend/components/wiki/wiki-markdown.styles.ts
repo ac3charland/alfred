@@ -7,10 +7,13 @@ import { cn } from '@/lib/utils';
  * the open web adds ↗, and a link to a page the snapshot doesn't hold is muted and dotted.
  */
 
-/** The prose container. Headings sit under the sticky shell with room to spare on a hash scroll. */
+/**
+ * The prose container. On a hash scroll the root's scroll padding clears the sticky top bar
+ * (globals.css); a heading's own `scroll-mt-6` adds only a little breathing room below it.
+ */
 export const wikiProseClass = cn(
   'text-[15px] leading-relaxed text-foreground [overflow-wrap:anywhere]',
-  '[&_:is(h1,h2,h3,h4,h5,h6)]:scroll-mt-20 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold',
+  '[&_:is(h1,h2,h3,h4,h5,h6)]:scroll-mt-6 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold',
   '[&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-normal',
   '[&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-normal',
   '[&_h3]:mb-2 [&_h3]:mt-5 [&_h3]:text-base',

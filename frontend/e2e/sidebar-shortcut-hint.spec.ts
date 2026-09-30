@@ -5,10 +5,9 @@ import { expect, test } from './support/fixtures';
  * ALF-207 — the sidebar's "Press ⌘K to go anywhere" hint must stay pinned to the bottom of the
  * *viewport*, never the bottom of the *page*.
  *
- * The document is what grows and scrolls (see app-shell.styles.ts), so the sidebar stretches to
- * match however tall the main content column gets. On a task list long enough to run well past
- * one screen, a plain in-flow hint at the end of the sidebar would render below the fold of the
- * whole page — invisible without scrolling all the way past every task.
+ * The document is what grows and scrolls (see app-shell.styles.ts). Were the sidebar to stretch
+ * with the page, a hint at its end would render below the fold of a long task list — invisible
+ * without scrolling past every task.
  */
 
 // The suite's default project (Desktop Chrome) — pinned here rather than read from

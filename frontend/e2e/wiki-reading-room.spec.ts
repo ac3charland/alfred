@@ -11,7 +11,10 @@ import { expect, test } from './support/fixtures';
 
 const STACKING = '/wiki/concepts/habit-stacking';
 
-/** A page long enough to scroll, with one code-span heading far below the fold. */
+/**
+ * A page long enough to scroll, with one code-span heading far below the fold — and a screen of
+ * text after it, so a hash jump can bring the heading to the top instead of bottoming out.
+ */
 function longRead() {
   const filler = Array.from(
     { length: 40 },
@@ -19,7 +22,7 @@ function longRead() {
   ).join('\n\n');
   return makeWikiPage('wiki/concepts/long-read.md', {
     title: 'Long read',
-    body: `${filler}\n\n## The \`yaml\` parser\n\nThe part worth linking to.\n`,
+    body: `${filler}\n\n## The \`yaml\` parser\n\nThe part worth linking to.\n\n${filler}\n`,
   });
 }
 
@@ -133,6 +136,15 @@ test.describe('the Wiki reading room', () => {
     await expect(heading).toHaveAttribute('id', 'the--parser');
     await expect(heading).toBeInViewport();
     await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBeGreaterThan(0);
+
+    // It lands just below the sticky top bar: clear of it, but not pushed a bar-height further
+    // down by a heading offset that double-counts the bar (ALF-304).
+    const barBottom = await page
+      .locator('[data-shell-header]')
+      .evaluate((node) => node.getBoundingClientRect().bottom);
+    const headingTop = await heading.evaluate((node) => node.getBoundingClientRect().top);
+    expect(headingTop).toBeGreaterThanOrEqual(barBottom);
+    expect(headingTop - barBottom).toBeLessThanOrEqual(32);
   });
 
   test('reads a page the wiki’s way in the real render: no empty id, a bracketed target literal', async ({
