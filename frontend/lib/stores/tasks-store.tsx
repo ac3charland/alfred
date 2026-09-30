@@ -20,6 +20,7 @@ import { dispatchReadiness } from '@/lib/tasks/dispatch';
 import { rankDueToday } from '@/lib/tasks/due-today';
 import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import { DEFAULT_TASK_SORT, type TaskSortMode, sortNodesBy } from '@/lib/tasks/task-sort';
+import { plannedRoots } from '@/lib/tasks/weekly-plan-tasks';
 import type { ItemNode } from '@/lib/tree';
 import { buildTree, collectSubtree, makeOptimisticItem, tempId } from '@/lib/tree';
 import type { Item, ItemType } from '@/lib/types';
@@ -1342,6 +1343,17 @@ export function useTasksByPriority({ showCompleted }: { showCompleted: boolean }
 export function useTasksDueToday({ showCompleted }: { showCompleted: boolean }): ItemNode[] {
   const items = useTasks();
   return React.useMemo(() => rankDueToday(buildTree(items), showCompleted), [items, showCompleted]);
+}
+
+/**
+ * The **Week Plan** forest (ALF-235): the top-level items a weekly review created against
+ * `planId`, in plan order, completed ones included, each with its subtree. Derived from the seeded
+ * store like the other cross-cutting views, so ticking one off in the list moves it instantly. See
+ * `plannedRoots` for the rule itself.
+ */
+export function useWeeklyPlanTasks(planId: string): ItemNode[] {
+  const items = useTasks();
+  return React.useMemo(() => plannedRoots(buildTree(items), planId), [items, planId]);
 }
 
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */

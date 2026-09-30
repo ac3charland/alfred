@@ -98,6 +98,15 @@ test.describe('at a phone width', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
+  test('offers full screen rather than the desktop Expand toggle', async ({ page, seed }) => {
+    await seed(SEED);
+    await page.goto('/plan');
+
+    // Growing the inline frame would only grow a tap target; full screen is the phone's way in.
+    await expect(page.getByRole('button', { name: TAP_LABEL })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Expand plan' })).toBeHidden();
+  });
+
   test('shows no plan and no tap target when nothing is uploaded', async ({ page, seed }) => {
     await seed({});
     await page.goto('/plan');
