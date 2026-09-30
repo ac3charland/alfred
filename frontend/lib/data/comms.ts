@@ -233,6 +233,25 @@ async function readVerdicts(
 }
 
 /**
+ * The rows a tab is waiting on a re-run for, by id — one read, and none at all for an empty list.
+ *
+ * Not windowed, not filtered on tier or triage state: the point is to find a row wherever the
+ * re-run left it, including places the rest of the snapshot does not look (an old shelf row, a
+ * cleared one). The route caps the list, so there is no paging to do.
+ */
+async function readWatched(
+  supabase: SupabaseClient<Database>,
+  ids: readonly string[],
+): Promise<{ messages: CommMessage[]; error: PostgrestError | null }> {
+  if (ids.length === 0) return { messages: [], error: null };
+  const { data, error } = await supabase
+    .from('comm_messages')
+    .select('*')
+    .in('id', [...ids]);
+  return { messages: data ?? [], error };
+}
+
+/**
  * The Comms queue's snapshot: every account, everything above FYI, the newest `shelfLimit` shelf
  * rows, the shelf's and the Reader's counts, the verdicts behind the rows returned, and the
  * classifier's own health. The shell seeds from it; `GET /api/comms/snapshot` re-reads it whenever
@@ -240,6 +259,9 @@ async function readVerdicts(
  *
  * Verdicts are read by `id` from the messages' `verdict_id` — the CURRENT verdict for each
  * message, not the whole audit trail.
+ *
+ * `watchIds` are the rows the caller is waiting on a re-run for; they come back in `watched`, held
+ * apart from `messages` because they can sit where the rest of the snapshot does not reach.
  *
  * The reads are sequenced, each checked for `error` before the next runs. A failure returns what
  * already succeeded, with empty defaults for the rest, AND the error: the shell degrades in
@@ -249,6 +271,7 @@ async function readVerdicts(
 export async function readCommsSnapshot(
   supabase: SupabaseClient<Database>,
   shelfLimit: number = SHELF_PAGE_SIZE,
+  watchIds: readonly string[] = [],
 ): Promise<{ seed: CommsSeed; error: PostgrestError | null }> {
   const now = new Date();
   const since = retentionCutoff(now);
@@ -260,6 +283,7 @@ export async function readCommsSnapshot(
     shelfCount: 0,
     readerClaimedCount: 0,
     lastClassifiedAt: null,
+    watched: [],
   };
 
   const { data: accounts, error: accountsError } = await supabase
@@ -303,6 +327,10 @@ export async function readCommsSnapshot(
     .maybeSingle();
   if (healthError) return { seed, error: healthError };
   seed.health = health ?? undefined;
+
+  const watched = await readWatched(supabase, watchIds);
+  if (watched.error) return { seed, error: watched.error };
+  seed.watched = watched.messages;
 
   return { seed, error: null };
 }

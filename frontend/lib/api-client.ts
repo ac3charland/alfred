@@ -590,9 +590,15 @@ export function fetchCommMessages(query: CommMessagesQuery): Promise<CommMessage
  * store and Realtime keeps it current, so this is the recovery path for whenever a tab may have
  * missed something — and, asked for more shelf rows, how "Show more" pages the shelf (ALF-258).
  */
-export function fetchCommsSnapshot(shelf: number): Promise<CommsSeed> {
+export function fetchCommsSnapshot(
+  shelf: number,
+  watch: readonly string[] = [],
+): Promise<CommsSeed> {
+  // The ids of the re-runs this tab is waiting on, so a row that moved somewhere the snapshot
+  // does not return still comes back (in `watched`). Left off entirely when there are none.
+  const watched = watch.length > 0 ? `&watch=${watch.join(',')}` : '';
   // A read that hangs would hold every later one behind it, so after 15s it fails — and is retried.
-  return apiRequest<CommsSeed>(`/api/comms/snapshot?shelf=${String(shelf)}`, {
+  return apiRequest<CommsSeed>(`/api/comms/snapshot?shelf=${String(shelf)}${watched}`, {
     signal: AbortSignal.timeout(15_000),
   });
 }

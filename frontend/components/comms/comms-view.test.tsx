@@ -25,6 +25,7 @@ beforeEach(() => {
     shelfCount: 0,
     readerClaimedCount: 0,
     lastClassifiedAt: null,
+    watched: [],
   });
   mockPathname = '/comms';
 });
