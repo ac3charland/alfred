@@ -274,7 +274,7 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   subset of `ALL_FACTORY_STATES`, empty = empty list); **`useProjectBoard`** sorts each lane/escape bucket by `priority` and
   orders epics by their best (`min(priority)`) story (no-story epics last). All memoized like the
   other selectors.
-- **`reorderStory` / `moveStory` / `moveStoryInProject`** are the only writers. Each re-ranks
+- **`reorderStory` / `moveStory` / `moveStoryInProject`** are the only client-side writers. Each re-ranks
   on screen at once, then **queues** its RPC in the store. The **view** owns the filter/sort and
   picks the visible neighbour, so `reorderStory` just swaps the pair it's handed (one
   `swap_code_priority` RPC — see the supabase skill).
@@ -282,13 +282,13 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   stories' ranks as the server holds them; a jump lands past the current extreme), while the
   screen has already moved on to later clicks. So the store (ALF-250): sends the queue **one write
   at a time, in click order** — concurrent writes can land in either order, and swaps sharing a
-  story don't commute; **parks** any server `priority` (a reply or a realtime echo) for a story
-  that still has a write queued or in flight, landing it once they settle — an earlier write's
-  reply would drag the row back, or tie it with a neighbour so the next nudge swaps equal ranks
-  for nothing; and **drops** an echo of its own write that a later write of its own has
-  superseded. A jump coalesces into a same-story jump still waiting at the queue's tail, and a
-  failure rolls back that write and everything queued behind it. `backlog-priority-sync.test.tsx`
-  fuzzes this against random reply/echo timing.
+  story don't commute; lands a server `priority` (reply or realtime echo — either order, and ranks
+  repeat) only if its **`priority_rev`** is newer than the story's last landed one; and **parks**
+  even a newer one while the story has a write queued or in flight, landing it once they settle —
+  an earlier write's reply would drag the row back, or tie it with a neighbour so the next nudge
+  swaps equal ranks for nothing. A jump coalesces into a same-story jump waiting at the queue's
+  tail; a failure (or the 15s request timeout) rolls back that write and everything queued behind
+  it. `backlog-priority-sync.test.tsx` fuzzes this against random reply/echo timing.
 - **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
   (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
   status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it
