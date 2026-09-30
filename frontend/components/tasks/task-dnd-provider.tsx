@@ -29,7 +29,6 @@ import { resolveReparent } from '@/lib/dnd/reparent';
 import { stableSorted } from '@/lib/sort';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
-import { residentFolderId } from '@/lib/tasks/residency';
 import { collectSubtree, getItemDepth, isTempId } from '@/lib/tree';
 import type { Item } from '@/lib/types';
 
@@ -274,9 +273,7 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
     // top-level task; any other id is a task → re-parent.
     const isFolderTarget = overId === INBOX_DROP_ID || folders.some((f) => f.id === overId);
     if (isFolderTarget) {
-      // Where the task LIVES, not its `folder_id` label: an Inbox item the classifier already
-      // labelled with this folder still has to be dispatched into it (ALF-216).
-      const move = resolveFolderDrop(draggedId, overId, residentFolderId(dragged));
+      const move = resolveFolderDrop(draggedId, overId, dragged);
       if (move === null) return;
       void (async () => {
         try {

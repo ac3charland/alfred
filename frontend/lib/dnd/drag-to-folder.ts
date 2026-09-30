@@ -1,3 +1,6 @@
+import { residentFolderId } from '@/lib/tasks/residency';
+import type { Item } from '@/lib/types';
+
 /**
  * Pure logic for the drag-a-task-to-a-folder interaction (see the dnd-kit skill).
  *
@@ -22,20 +25,20 @@ export interface FolderMove {
 
 /**
  * Resolve a drag-to-folder drop into the move it should trigger, or `null` for a no-op
- * (dropped on nothing, or onto the task's current location).
+ * (dropped on nothing, or onto where the task already LIVES — its resident folder, not its
+ * `folder_id` label: an Inbox item labelled with a folder still has to be filed into it).
  *
- * @param itemId           the dragged task's id (`active.id`)
- * @param overId           the drop target's id (`over.id`), or `null` if dropped on nothing
- * @param currentFolderId  the folder the dragged task currently LIVES in (`residentFolderId`),
- *                         not its raw `folder_id` — an Inbox item can carry a folder label
+ * @param itemId  the dragged task's id (`active.id`)
+ * @param overId  the drop target's id (`over.id`), or `null` if dropped on nothing
+ * @param item    the dragged task's location fields
  */
 export function resolveFolderDrop(
   itemId: string,
   overId: string | null,
-  currentFolderId: string | null,
+  item: Pick<Item, 'folder_id' | 'dispatched_at'>,
 ): FolderMove | null {
   if (overId === null) return null;
   const folderId = overId === INBOX_DROP_ID ? null : overId;
-  if (folderId === currentFolderId) return null;
+  if (folderId === residentFolderId(item)) return null;
   return { itemId, folderId };
 }
