@@ -8,6 +8,7 @@ import { FieldLabel } from '@/components/atoms/field-label';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
 import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { AddNewRow, OptionRow, ProjectPicker } from '@/components/code/project-picker';
+import { activeEpicsForProject } from '@/lib/code/epics';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
@@ -72,13 +73,20 @@ function GateForm({ items, onOpenChange, onComplete }: Omit<GateDialogProperties
     items.length > 0 && items.every((it) => it.intendedEpicId === firstIntendedEpic)
       ? firstIntendedEpic
       : null;
+  // A hint whose epic has since been archived is dropped: the list below hides archived epics, so
+  // keeping it selected would leave Confirm live on a destination the owner cannot see.
+  const unanimousEpicArchived = epics.some(
+    (e) => e.id === unanimousEpicId && e.archived_at !== null,
+  );
   const [projectId, setProjectId] = React.useState<string | null>(unanimousProjectId);
-  const [epicId, setEpicId] = React.useState<string | null>(unanimousEpicId);
+  const [epicId, setEpicId] = React.useState<string | null>(
+    unanimousEpicArchived ? null : unanimousEpicId,
+  );
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
   const [newEpicOpen, setNewEpicOpen] = React.useState(false);
 
   const selectedProject = projects.find((p) => p.id === projectId) ?? null;
-  const epicsForProject = epics.filter((e) => e.project_id === projectId);
+  const epicsForProject = activeEpicsForProject(epics, projectId);
 
   const {
     error: confirmError,

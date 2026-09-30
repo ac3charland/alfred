@@ -7,6 +7,7 @@ import { Badge } from '@/components/atoms/badge';
 import { Chip } from '@/components/atoms/chip';
 import { PickerChip } from '@/components/atoms/picker-chip';
 import { RecurrenceEditor } from '@/components/tasks/recurrence/recurrence-editor';
+import { activeEpicsForProject } from '@/lib/code/epics';
 import { projectBadgeClasses, projectChipClasses, projectColorFor } from '@/lib/code/project-color';
 import { todayISODate } from '@/lib/date-utils';
 import {
@@ -240,7 +241,7 @@ export function IntendedEpicChip({
   const projects = useProjects();
   const epics = useEpics();
   const epic = epics.find((e) => e.id === epicId);
-  const epicsForProject = epics.filter((e) => e.project_id === projectId);
+  const epicsForProject = activeEpicsForProject(epics, projectId);
   const color = projectColorFor(projects, projectId);
 
   if (size === 'compact') {
