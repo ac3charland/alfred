@@ -1,7 +1,7 @@
 // Boot a throwaway Postgres, apply the migrations — every one, or all but the ones named on the
 // command line — swap two stories' Backlog priority the way the chevron does, and print every row
-// change the swap made. Realtime publishes `code_items`, so these are exactly the updates an open
-// Backlog is sent.
+// change the swap made, with the revision each carries. Realtime publishes `code_items`, so these
+// are exactly the updates an open Backlog is sent.
 import process from 'node:process';
 
 import pg from 'pg';
@@ -24,9 +24,12 @@ try {
   await client.query(`
     insert into projects (id, key, name, repo_owner, repo_name)
       values ('00000000-0000-4000-8000-000000000001', 'ALF', 'Alfred', 'ac3charland', 'alfred');
-    create table demo_writes (n serial, ref text, priority double precision);
+    create table demo_writes (n serial, ref text, priority double precision, priority_rev bigint);
     create function demo_log_write() returns trigger language plpgsql security definer as $$
-      begin insert into demo_writes (ref, priority) values (new.ref, new.priority); return new; end $$;
+      begin
+        insert into demo_writes (ref, priority, priority_rev) values (new.ref, new.priority, new.priority_rev);
+        return new;
+      end $$;
     create trigger demo_log_write after update of priority on code_items
       for each row execute function demo_log_write();
   `);
@@ -46,10 +49,10 @@ try {
   console.log(`Nudge ${before.rows[0].ref} down: swap_code_priority('${before.rows[0].ref}', '${before.rows[1].ref}')`);
   await client.query(`select swap_code_priority($1, $2)`, [before.rows[0].ref, before.rows[1].ref]);
   await client.query('reset role');
-  const writes = await client.query(`select ref, priority from demo_writes order by n`);
+  const writes = await client.query(`select ref, priority, priority_rev from demo_writes order by n`);
   console.log('Row changes Realtime broadcasts:');
   for (const [index, row] of writes.rows.entries()) {
-    console.log(`  ${index + 1}. ${row.ref} → ${row.priority}`);
+    console.log(`  ${index + 1}. ${row.ref} → ${row.priority} (priority_rev ${row.priority_rev})`);
   }
 } finally {
   await client.end();
