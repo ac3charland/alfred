@@ -1,22 +1,19 @@
 name: Migration numbers
 
 # Two branches cut from the same `main` can each take the next migration number; both pass their own
-# checks, both merge, and `main` ends up with two `0042_*.sql` files applied in alphabetical order.
+# checks, both merge, and `main` ends up with two `0042_*.sql` files whose relative order nobody chose.
 # This job checks the migrations directory of the tree that is ABOUT to land, so it catches the number
 # a sibling PR took after this branch was cut. The rule (`unique-number`) lives in tools/migration-lint
-# and also runs in `check:fast` with the other migration rules; this workflow runs it alone so branch
-# protection has a fast, dependency-free check with one meaning to require — see the migration-lint skill.
+# and also runs in `check:fast` (a required check) with the other migration rules; this job runs it
+# alone, in seconds, so a clash is reported by name long before `check-fast` finishes — see the
+# migration-lint skill.
 #
-# What it tests depends on the event, and both are the merged result rather than the branch tip:
-#   pull_request — actions/checkout defaults to `refs/pull/<n>/merge`: the PR merged into `main` as
-#                  of the last push to the PR. A result goes stale when `main` moves afterwards, so
-#                  the required-check + "Require branches to be up to date" branch protection is
-#                  what forces a fresh run against current `main` before merging.
-#   merge_group    — a merge queue's temporary branch: `main` plus every PR queued ahead. Harmless
-#                  until a merge queue is enabled; required checks must report on this event then.
+# actions/checkout on `pull_request` defaults to `refs/pull/<n>/merge`: the PR merged into `main` as of
+# the last push to the PR, not the branch tip. That result goes stale when `main` moves afterwards, and
+# a re-run reuses the same merge commit; only a new push or "Update branch" re-merges. Forcing a fresh
+# merge before every merge is the "Require branches to be up to date" branch protection, not code.
 on:
   pull_request:
-  merge_group:
 
 permissions:
   contents: read
