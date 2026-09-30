@@ -2,6 +2,10 @@ name: CI
 
 on:
   pull_request:
+  # A PR's run tests its merge with the main it saw, so two PRs green alone can still break main
+  # together. Re-checking main after every merge flags that when it lands.
+  push:
+    branches: [main]
 
 jobs:
   check-fast:
