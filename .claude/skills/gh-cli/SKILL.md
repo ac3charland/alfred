@@ -108,6 +108,13 @@ explains the failure has scrolled off the top. Re-fetch the one `job_id` with a 
   URL the agent proxy refuses (`curl: (56) CONNECT tunnel failed, response 403`). There is no
   zip-download path from a remote session — stay with `get_job_logs`.
 
+## Unauthenticated REST from a remote session is already rate-limited
+
+A plain `fetch`/`curl` to `api.github.com` from the cloud container can answer **403 with
+`x-ratelimit-remaining: 0` on the very first call**: unauthenticated requests are limited per
+egress IP, which the container shares. It isn't the proxy and a retry won't help. Send
+`GITHUB_TOKEN` when one is set, or fetch what you need through the GitHub MCP tools instead.
+
 ## What still works fine (don't over-correct)
 
 Only the project-card-fetching porcelain paths are affected. In this repo these worked
