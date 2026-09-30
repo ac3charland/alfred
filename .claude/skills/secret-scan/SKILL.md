@@ -34,7 +34,15 @@ Gitignored files (`.env.local`) are never scanned. Background:
 [the 2026-09-27 postmortem](../../../docs/postmortems/2026-09-27-postgres-credential-leak.md).
 
 `/.secretlintrc.json` is the one config. `tools/showboat/src/secrets.ts` loads it too, so the
-commit gate and showboat's `exec`/`note`/`verify` refusal always agree.
+commit gate and showboat's record-time refusal always agree.
+
+**Live values, not just patterns.** Every scope (and showboat) also refuses content holding the
+*actual value* of a credential it can see: env vars named like `PASS|SECRET|TOKEN|KEY|PWD`, the
+password of any `*_URL`/`*_URI`/`*_DSN`, and the same keys in `frontend/.env.local` — raw,
+URL-encoded, JSON-escaped, base64 and UTF-16. That catches the shapes no pattern can (a bare
+`printenv`, a truncated URI). Trivial values (`postgres`, placeholders, <8 chars) are ignored, and a
+report names only the variable. `known-secrets.ts` is duplicated in `tools/secret-scan` and
+`tools/showboat` (the tools can't import each other's source); change both copies together.
 
 ## When it fires
 
@@ -83,9 +91,10 @@ against the pooler **hangs** rather than fails. Use `echo`.
   `git log --raw` and read them with `git cat-file --batch`. Gitlinks (mode 160000) are skipped.
 - **The working-tree scan doesn't follow symlinks.** A symlink is scanned as its link text; a
   tracked symlink to a directory or a file deleted from disk is not read as a file.
-- **The `*_PASSWORD` rule skips a bare identifier followed by `, } ) ] ;`** (`{ PGPASSWORD: password }`,
-  `DB_PASSWORD: string;`) and the literal `postgres` (the throwaway CI service container). A quoted
-  or YAML/shell literal is flagged — assemble a fake one at runtime.
+- **The `*_PASSWORD` rule exempts only code:** after `:` a letters-only identifier followed by
+  `, } ) ] ;` (`{ PGPASSWORD: password }`, `DB_PASSWORD: string;`), after `=` a member expression
+  (`process.env.X`), and the literal `postgres` (the throwaway CI service container). Anything else,
+  `DB_PASSWORD=<pw>;` included, is flagged — assemble a fake one at runtime.
 - **Commit messages can't carry `[skip ci]`-style tokens.** GitHub then skips the push workflows,
   including this scan, so commitlint rejects them (`no-ci-skip`, see the `commitlint` skill).
 - **`git push <url>` (no remote name) scans the whole history** — `--remotes=<url>` matches no
@@ -93,10 +102,15 @@ against the pooler **hangs** rather than fails. Use `echo`.
 
 ## Blind spots
 
-- Text that starts with a binary signature (a file opening `\x89PNG…`) is skipped; other binaries
-  (fonts, `.webm`) are scanned as text. UTF-16/32 without a BOM isn't decoded.
+- Text that starts with a binary signature (a file opening `\x89PNG…`) is skipped by the scan and
+  copied unscanned by showboat's `image`; other binaries (fonts, `.webm`) are scanned as text.
+  UTF-16/32 without a BOM isn't decoded (the live-value check still matches ASCII values in it).
 - A Postgres URI whose password contains `/`, or `$` followed by a capital, reads as a template to
   the connection-string rule; Cloudflare and R2 credentials have no rule.
+- The same rule also skips a password containing `{…}`, `%VAR%` or `$(…)`, one equal to the
+  username, one of ≥4 repeated characters, and a unix-socket URI with an empty host
+  (`…:pw@/db?host=/var/run/…`).
+- A GIF or screenshot that shows a secret can't be scanned.
 - Detection only: a commit made with `--no-verify`, without hooks installed, or through the web UI
   is caught only by the push workflow, after it's public — and a `[skip ci]` message made there
   silences even that.
