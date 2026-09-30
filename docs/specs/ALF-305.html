@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-305 — Revamp the wiki landing page with a physics web and a concept of the day</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+.plate:has(input[value=a]:checked) [data-opt]:not([data-opt~=a]),
+.plate:has(input[value=b]:checked) [data-opt]:not([data-opt~=b]),
+.plate:has(input[value=c]:checked) [data-opt]:not([data-opt~=c]),
+.plate:has(input[value=d]:checked) [data-opt]:not([data-opt~=d]),
+.plate:has(input[value=e]:checked) [data-opt]:not([data-opt~=e]),
+.plate:has(input[value=f]:checked) [data-opt]:not([data-opt~=f]){display:none}
+
+/* alfred's tokens: frontend/app/globals.css (colours, accent-violet, glow-violet; --radius is unmapped,
+   so Tailwind's defaults: sm 4px, lg 8px). Serif: --font-serif falls back to Georgia (layout.tsx loads
+   Geist only). Heading: atoms/view-heading.tsx; input: atoms/input.tsx; card: atoms/surface-card.tsx;
+   badge: atoms/badge.tsx (muted); group heading: lib/ui/section-heading-class.ts + wiki.styles.ts;
+   rows: wiki-page-row.tsx; fit button: atoms/icon-button.tsx (neutral, md). */
+@font-face{font-family:Geist;font-weight:100 900;font-display:swap;src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-sans.woff2) format("woff2")}
+.app{--background:#0a0e17;--foreground:#e8edf5;--surface:#0f1626;--border:#1e2a3f;--muted-foreground:#8a96a8;
+  --secondary:#1e2a3f;--input:#1e2a3f;--violet:#a78bfa;
+  background:var(--background);color:var(--foreground);overflow:hidden;
+  font:14px/1.45 Geist,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.app p,.app ul,.app h2,.app h3{margin:0;padding:0}
+.app ul{list-style:none}
+.app code{font:inherit;color:inherit}
+.app svg.ic{display:block;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.app .frame{display:flex;flex-direction:column;gap:24px;max-width:768px;margin:0 auto;padding:24px 16px}
+.app .phone{max-width:390px;border-inline:1px solid var(--border)}
+
+/* ViewHeading */
+.app .vh{display:flex;align-items:center;gap:12px}
+.app .vh-ic{display:flex;width:40px;height:40px;flex:none;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:9999px;background:var(--surface);color:var(--violet)}
+.app .vh-t{font:24px/1.3 Georgia,"Times New Roman",serif;color:var(--foreground)}
+.app .vh-d{font-size:14px;color:var(--muted-foreground)}
+
+/* Search input */
+.app .srch{position:relative}
+.app .srch .ic{position:absolute;left:12px;top:10px;color:var(--muted-foreground)}
+.app .inp{display:flex;align-items:center;height:36px;width:100%;border:1px solid var(--border);border-radius:4px;background:var(--input);padding:0 12px 0 36px;font-size:14px;color:var(--muted-foreground)}
+.app .inp.typed{color:var(--foreground)}
+.app .caret{display:inline-block;width:1px;height:16px;margin-left:1px;background:var(--foreground)}
+
+/* Concept of the day card */
+.app .cotd{position:relative;display:flex;flex-direction:column;gap:8px;border:1px solid rgb(167 139 250/.3);border-radius:8px;background:var(--surface);padding:16px;box-shadow:0 0 16px 2px rgba(167,139,250,.15)}
+.app .cotd-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.app .eyebrow{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--violet)}
+.app .date{font-size:12px;color:var(--muted-foreground)}
+.app .cotd-t{font:24px/1.25 Georgia,"Times New Roman",serif;color:var(--foreground)}
+.app .cotd-s{font-size:14px;color:var(--muted-foreground)}
+.app .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.app .badge{border:1px solid rgb(30 42 63/.7);border-radius:9999px;padding:2px 8px;font-size:12px;color:var(--muted-foreground)}
+
+/* Groups and rows */
+.app .grp{display:flex;flex-direction:column;gap:4px}
+.app .gh{padding:0 12px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted-foreground)}
+.app .gh .cnt{margin-left:8px;font-weight:400;color:rgb(138 150 168/.7)}
+.app .row{display:block;border-radius:8px;padding:8px 12px}
+.app .rt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--foreground)}
+.app .rs{margin-top:2px;font-size:14px;color:var(--muted-foreground)}
+.app mark{border-radius:2px;background:rgb(167 139 250/.22);padding:0 2px;color:var(--foreground)}
+
+/* EmptyState (atoms/empty-state.tsx) */
+.app .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 0;text-align:center}
+.app .empty-t{font:24px/1.3 Georgia,"Times New Roman",serif;color:rgb(138 150 168/.5)}
+.app .empty-d{margin-top:8px;font-size:14px;color:rgb(138 150 168/.4)}
+
+/* The web stage */
+.app .stage{position:relative;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden}
+.app .stage svg.wv{display:block;width:100%;height:auto}
+.app .foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;padding:2px 12px 0}
+.app .leg{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted-foreground)}
+.app .leg i{display:inline-block;width:8px;height:8px;margin-right:5px;border-radius:9999px;vertical-align:-1px}
+.app .leg .lc{background:var(--muted-foreground)}
+.app .leg .le{border:1.5px solid var(--muted-foreground)}
+.app .hint{font-size:12px;color:rgb(138 150 168/.7)}
+.app .fit{position:absolute;right:8px;top:8px;display:flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:4px;color:var(--muted-foreground)}
+.app .wv .e{stroke:var(--muted-foreground);stroke-opacity:.28;stroke-width:1}
+.app .wv .e.on{stroke:var(--violet);stroke-opacity:.7;stroke-width:1.5}
+.app .wv .e.dim{stroke-opacity:.1}
+.app .wv .n.con{fill:var(--muted-foreground)}
+.app .wv .n.ent{fill:var(--surface);stroke:var(--muted-foreground);stroke-width:1.5}
+.app .wv .n.nb.con,.app .wv .n.focus{fill:var(--violet)}
+.app .wv .n.nb.ent{stroke:var(--violet)}
+.app .wv .n.dim{opacity:.3}
+.app .wv .n.hov.con{fill:var(--foreground)}
+.app .wv .n.hov.ent{stroke:var(--foreground)}
+.app .wv .halo{fill:var(--violet);fill-opacity:.18}
+.app .wv .hring{fill:none;stroke:var(--foreground);stroke-opacity:.5;stroke-width:1.5}
+.app .wv .lb{font:12px Geist,ui-sans-serif,system-ui,sans-serif;fill:var(--muted-foreground);text-anchor:middle;paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+.app .wv .lb.lf{font-size:13px;font-weight:600;fill:var(--foreground)}
+.app .wv .lb.lh{font-weight:500;fill:var(--foreground)}
+.app .wv .lb.ld{fill-opacity:.45}
+.app .wv .a-s{text-anchor:start}
+.app .wv .a-e{text-anchor:end}
+.app .wv .cur{fill:var(--foreground);stroke:var(--background);stroke-width:1}
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Wiki · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>305</span><span class="sep"> — </span><span class="ttl">Revamp the wiki landing page with a physics web and a concept of the day</span></h1>
+  <p class="change" id="change"><code>/wiki</code> opens on a concept of the day and a live physics web of your concepts and entities; sources and questions live in the side nav.</p>
+  <p class="revised" id="revised">Revised 2026-09-30: D6 drops the Sources and Questions lists from <code>/wiki</code>; the nav carries them (your review). Plate I redrawn, state F added.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d1">D1</a>What the web opens on</h3>
+      <p class="pick">The concept of the day: pulled to the middle, glowing, its links and neighbours lit violet.</p>
+      <p class="why">One glance gives today’s idea and the ideas around it.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>How nodes and names look</h3>
+      <p class="pick">Dots sized by links (concepts filled, entities hollow); names only where lit or zoomed in.</p>
+      <p class="why">Up to 200 names can’t all be legible. Light what matters; zoom for the rest.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>What pointing and clicking do</h3>
+      <p class="pick">Hover lights a neighbourhood, click opens the page, drag pans, pinch or ⌘-scroll zooms.</p>
+      <p class="why">The landing gets you to a page. Plain scrolling still scrolls the page.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>Where the physics comes from</h3>
+      <p class="pick">Add <code>d3-force</code>; copy motivic’s sim, view and gestures into alfred, retuned for dots.</p>
+      <p class="why">Two repos, different nodes. A tuned copy beats a shared package.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>A graph view, despite ALF-259</h3>
+      <p class="pick">Yes. This ticket overrides the epic’s “no graph view”, and the epic doc stays as written.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>What <code>/wiki</code> shows</h3>
+      <p class="pick">Search, concept of the day, then a web of concepts and entities; nothing below.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>How the day’s concept is picked</h3>
+      <p class="pick">Rotation by date: the same concept all day, every concept before any repeat, no storage.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="a" checked>A · At rest</label>
+      <label><input type="radio" name="p1" value="b">B · Hovering a node</label>
+      <label><input type="radio" name="p1" value="c">C · Zoomed in</label>
+      <label><input type="radio" name="p1" value="d">D · Searching</label>
+      <label><input type="radio" name="p1" value="e">E · Phone</label>
+      <label><input type="radio" name="p1" value="f">F · No concepts yet</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="The wiki landing page: heading, search box, a concept-of-the-day card for Desirable difficulty, and a physics web of concepts and entities with that concept lit violet">
+
+        <div class="frame" data-opt="a b c d f">
+          <div class="vh">
+            <div class="vh-ic"><svg class="ic" width="20" height="20" viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></div>
+            <div><h2 class="vh-t">Wiki</h2><p class="vh-d" data-opt="a b c d">72 pages · synced 2h ago</p><p class="vh-d" data-opt="f">20 pages · synced 2h ago</p></div>
+          </div>
+          <div class="srch">
+            <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <div class="inp" data-opt="a b c f">Search the wiki</div>
+            <div class="inp typed" data-opt="d">spaced<span class="caret"></span></div>
+          </div>
+
+          <div class="cotd" data-opt="a b c">
+            <div class="cotd-top"><span class="eyebrow">Concept of the day</span><span class="date">Wed, Sep 30</span></div>
+            <h3 class="cotd-t">Desirable difficulty</h3>
+            <p class="cotd-s">Conditions that make learning feel slower (spacing, interleaving, testing yourself) are the ones that make it last.</p>
+            <div class="tags"><span class="badge">learning</span><span class="badge">memory</span></div>
+          </div>
+
+          <section class="grp" data-opt="a b c">
+            <h3 class="gh">Concepts &amp; entities<span class="cnt">52</span></h3>
+            <div class="stage">
+<svg class="wv" data-opt="a" viewBox="0 0 736 440" aria-hidden="true">
+<line x1="383.1" y1="224" x2="354.1" y2="200.1" class="e"/>
+<line x1="381.3" y1="227.7" x2="321.9" y2="215.4" class="e"/>
+<line x1="349.4" y1="187.8" x2="355.6" y2="149.6" class="e"/>
+<line x1="301.2" y1="315.8" x2="286" y2="281" class="e"/>
+<line x1="309.4" y1="208.3" x2="270.1" y2="165.4" class="e"/>
+<line x1="439.3" y1="180.3" x2="435.3" y2="220.2" class="e"/>
+<line x1="437.2" y1="164.9" x2="415.6" y2="110.2" class="e"/>
+<line x1="407.5" y1="99.1" x2="371.3" y2="69.8" class="e"/>
+<line x1="447.1" y1="176.1" x2="496.1" y2="202.9" class="e"/>
+<line x1="320.4" y1="123.6" x2="400.6" y2="135.7" class="e"/>
+<line x1="319.7" y1="119" x2="351.2" y2="102.8" class="e"/>
+<line x1="306.9" y1="127.2" x2="271" y2="155.1" class="e"/>
+<line x1="468.4" y1="182" x2="416.1" y2="142.3" class="e"/>
+<line x1="467.6" y1="190" x2="397.6" y2="225.6" class="e"/>
+<line x1="473.9" y1="110.1" x2="417.2" y2="133.7" class="e"/>
+<line x1="487.4" y1="108.9" x2="549.7" y2="122.8" class="e"/>
+<line x1="488.2" y1="135.7" x2="417.9" y2="136.9" class="e"/>
+<line x1="502.4" y1="135.9" x2="575.2" y2="138.6" class="e"/>
+<line x1="363.3" y1="103.8" x2="402.2" y2="131.9" class="e"/>
+<line x1="337" y1="150.3" x2="400.6" y2="138.6" class="e"/>
+<line x1="323" y1="152.5" x2="272.5" y2="158.8" class="e"/>
+<line x1="590" y1="136.5" x2="646.8" y2="118" class="e"/>
+<line x1="638" y1="147.6" x2="650.8" y2="122.6" class="e"/>
+<line x1="662.9" y1="77.4" x2="656.2" y2="107.7" class="e"/>
+<line x1="703.1" y1="108.6" x2="662.3" y2="114.4" class="e"/>
+<line x1="704.6" y1="103.1" x2="670" y2="75" class="e"/>
+<line x1="628" y1="151.9" x2="590.1" y2="141" class="e"/>
+<line x1="494.8" y1="278.4" x2="585.9" y2="280.8" class="e"/>
+<line x1="550.6" y1="310.3" x2="587.3" y2="285.7" class="e"/>
+<line x1="537.3" y1="310.5" x2="493.5" y2="282.5" class="e"/>
+<line x1="551.2" y1="318.3" x2="587.5" y2="335.8" class="e"/>
+<line x1="567" y1="239.9" x2="589.7" y2="274" class="e"/>
+<line x1="648" y1="279.8" x2="602.7" y2="280.8" class="e"/>
+<line x1="623" y1="324.5" x2="598.9" y2="288" class="e"/>
+<line x1="559.3" y1="362.9" x2="516.8" y2="365.2" class="e"/>
+<line x1="563.6" y1="355.6" x2="547.5" y2="322" class="e"/>
+<line x1="573.6" y1="358.9" x2="620.6" y2="333.7" class="e"/>
+<line x1="531.1" y1="276.3" x2="494.8" y2="277.9" class="e"/>
+<line x1="479.7" y1="274.6" x2="397.6" y2="233.4" class="e"/>
+<line x1="556.6" y1="231.1" x2="508.8" y2="209.2" class="e"/>
+<line x1="70.1" y1="208" x2="72.3" y2="169" class="e"/>
+<line x1="32" y1="186.8" x2="66.6" y2="165.6" class="e"/>
+<line x1="63.5" y1="211.6" x2="32.1" y2="194" class="e"/>
+<line x1="560.6" y1="131.3" x2="583.1" y2="175.3" class="e"/>
+<line x1="619.3" y1="191.4" x2="595" y2="185" class="e"/>
+<line x1="644" y1="178.5" x2="595.3" y2="182.2" class="e"/>
+<line x1="666.4" y1="199.6" x2="595.1" y2="184.5" class="e"/>
+<line x1="562.5" y1="129.9" x2="621.2" y2="188" class="e"/>
+<line x1="666.3" y1="199.9" x2="634.1" y2="194.6" class="e"/>
+<line x1="482" y1="186.3" x2="578.5" y2="183.1" class="e"/>
+<line x1="215.5" y1="239" x2="176.1" y2="226.7" class="e"/>
+<line x1="218.6" y1="234.8" x2="195.1" y2="199.8" class="e"/>
+<line x1="230.9" y1="243" x2="299.7" y2="256.8" class="e"/>
+<line x1="244.1" y1="307.6" x2="264.2" y2="341.8" class="e"/>
+<line x1="246.7" y1="296.9" x2="300.8" y2="262.4" class="e"/>
+<line x1="128" y1="305.4" x2="126.6" y2="270.4" class="e"/>
+<line x1="171.7" y1="285.6" x2="132.7" y2="266.4" class="e"/>
+<line x1="171.6" y1="292.5" x2="134.7" y2="309.5" class="e"/>
+<line x1="186.8" y1="290.6" x2="232.8" y2="299.6" class="e"/>
+<line x1="217.7" y1="247.3" x2="184.3" y2="283.2" class="e"/>
+<line x1="314.4" y1="255.8" x2="381.6" y2="232.4" class="e"/>
+<line x1="394.3" y1="284.1" x2="290.3" y2="275.1" class="e on"/>
+<line x1="401" y1="276.3" x2="391.8" y2="238" class="e on"/>
+<line x1="396.2" y1="279.4" x2="320.4" y2="218.7" class="e on"/>
+<line x1="394.9" y1="287.9" x2="310.6" y2="319.8" class="e on"/>
+<line x1="398.5" y1="277.4" x2="352.2" y2="201.8" class="e on"/>
+<line x1="405.7" y1="276.5" x2="437.6" y2="179.9" class="e on"/>
+<circle cx="403" cy="284.8" r="13.7" class="halo"/>
+<circle cx="403" cy="284.8" r="6.7" class="n con focus"/>
+<circle cx="389.8" cy="229.5" r="6.7" class="n con nb"/>
+<circle cx="314.5" cy="213.9" r="5.6" class="n con nb"/>
+<circle cx="304" cy="322.3" r="5.1" class="n con nb"/>
+<circle cx="348.2" cy="195.3" r="5.6" class="n con nb"/>
+<circle cx="440.1" cy="172.3" r="6" class="n con nb"/>
+<circle cx="312.9" cy="122.5" r="5.6" class="n con"/>
+<circle cx="474.4" cy="186.6" r="5.6" class="n con"/>
+<circle cx="480.5" cy="107.4" r="5.1" class="n con"/>
+<circle cx="495.3" cy="135.6" r="5.1" class="n con"/>
+<circle cx="357.5" cy="99.6" r="5.1" class="n con"/>
+<circle cx="265" cy="159.8" r="5.6" class="n con"/>
+<circle cx="330" cy="151.6" r="5.1" class="n con"/>
+<circle cx="486.8" cy="278.2" r="6" class="n con"/>
+<circle cx="544" cy="314.8" r="6" class="n con"/>
+<circle cx="563.1" cy="234" r="5.1" class="n con"/>
+<circle cx="593.4" cy="338.6" r="4.5" class="n con"/>
+<circle cx="654.5" cy="279.6" r="4.5" class="n con"/>
+<circle cx="626.9" cy="330.4" r="5.1" class="n con"/>
+<circle cx="566.9" cy="362.5" r="5.6" class="n con"/>
+<circle cx="537.6" cy="276" r="4.5" class="n con"/>
+<circle cx="634.8" cy="153.9" r="5.1" class="n con"/>
+<circle cx="664.5" cy="70.5" r="5.1" class="n con"/>
+<circle cx="710.1" cy="107.6" r="5.1" class="n con"/>
+<circle cx="69.7" cy="215.1" r="5.1" class="n con"/>
+<circle cx="25.9" cy="190.5" r="5.1" class="n con"/>
+<circle cx="557.1" cy="124.5" r="5.6" class="n con"/>
+<circle cx="626.6" cy="193.4" r="5.6" class="n con"/>
+<circle cx="650.5" cy="178" r="4.5" class="n con"/>
+<circle cx="673.3" cy="201.1" r="5.1" class="n con"/>
+<circle cx="223.1" cy="241.4" r="6" class="n con"/>
+<circle cx="191.5" cy="194.4" r="4.5" class="n con"/>
+<circle cx="240.3" cy="301" r="5.6" class="n con"/>
+<circle cx="128.3" cy="312.5" r="5.1" class="n con"/>
+<circle cx="307.2" cy="258.3" r="5.6" class="n con"/>
+<circle cx="178.9" cy="289.1" r="6" class="n con"/>
+<circle cx="413" cy="103.6" r="5.1" class="n con"/>
+<circle cx="502.3" cy="206.3" r="5.1" class="n con"/>
+<circle cx="283.2" cy="274.5" r="5.1" class="n ent nb"/>
+<circle cx="356.6" cy="143.2" r="4.5" class="n ent"/>
+<circle cx="434.6" cy="226.7" r="4.5" class="n ent"/>
+<circle cx="409.2" cy="137" r="6.7" class="n ent"/>
+<circle cx="594.3" cy="281" r="6.4" class="n ent"/>
+<circle cx="510.3" cy="365.6" r="4.5" class="n ent"/>
+<circle cx="654.4" cy="115.5" r="6" class="n ent"/>
+<circle cx="582.8" cy="138.9" r="5.6" class="n ent"/>
+<circle cx="72.7" cy="161.9" r="5.1" class="n ent"/>
+<circle cx="586.9" cy="182.8" r="6.4" class="n ent"/>
+<circle cx="169.9" cy="224.8" r="4.5" class="n ent"/>
+<circle cx="267.5" cy="347.4" r="4.5" class="n ent"/>
+<circle cx="126.3" cy="263.3" r="5.1" class="n ent"/>
+<circle cx="366.2" cy="65.7" r="4.5" class="n ent"/>
+<text x="403" y="305.5" class="lb lf">Desirable difficulty</text>
+<text x="387.1" y="216.1" class="lb">Spaced repetition</text>
+<text x="443.5" y="159.9" class="lb">Deliberate practice</text>
+<text x="342.7" y="184.3" class="lb a-e">Forgetting curve</text>
+<text x="306.2" y="205.3" class="lb a-e">Retrieval practice</text>
+<text x="294.6" y="335.9" class="lb a-e">Interleaving</text>
+<text x="273.1" y="277.6" class="lb a-e">Robert Bjork</text>
+</svg>
+<svg class="wv" data-opt="b" viewBox="0 0 736 440" aria-hidden="true">
+<line x1="394.3" y1="284.1" x2="290.3" y2="275.1" class="e dim"/>
+<line x1="401" y1="276.3" x2="391.8" y2="238" class="e dim"/>
+<line x1="396.2" y1="279.4" x2="320.4" y2="218.7" class="e dim"/>
+<line x1="394.9" y1="287.9" x2="310.6" y2="319.8" class="e dim"/>
+<line x1="398.5" y1="277.4" x2="352.2" y2="201.8" class="e dim"/>
+<line x1="405.7" y1="276.5" x2="437.6" y2="179.9" class="e dim"/>
+<line x1="383.1" y1="224" x2="354.1" y2="200.1" class="e dim"/>
+<line x1="381.3" y1="227.7" x2="321.9" y2="215.4" class="e dim"/>
+<line x1="349.4" y1="187.8" x2="355.6" y2="149.6" class="e dim"/>
+<line x1="301.2" y1="315.8" x2="286" y2="281" class="e dim"/>
+<line x1="309.4" y1="208.3" x2="270.1" y2="165.4" class="e dim"/>
+<line x1="439.3" y1="180.3" x2="435.3" y2="220.2" class="e dim"/>
+<line x1="437.2" y1="164.9" x2="415.6" y2="110.2" class="e dim"/>
+<line x1="407.5" y1="99.1" x2="371.3" y2="69.8" class="e dim"/>
+<line x1="447.1" y1="176.1" x2="496.1" y2="202.9" class="e dim"/>
+<line x1="319.7" y1="119" x2="351.2" y2="102.8" class="e dim"/>
+<line x1="306.9" y1="127.2" x2="271" y2="155.1" class="e dim"/>
+<line x1="467.6" y1="190" x2="397.6" y2="225.6" class="e dim"/>
+<line x1="487.4" y1="108.9" x2="549.7" y2="122.8" class="e dim"/>
+<line x1="502.4" y1="135.9" x2="575.2" y2="138.6" class="e dim"/>
+<line x1="323" y1="152.5" x2="272.5" y2="158.8" class="e dim"/>
+<line x1="590" y1="136.5" x2="646.8" y2="118" class="e dim"/>
+<line x1="638" y1="147.6" x2="650.8" y2="122.6" class="e dim"/>
+<line x1="662.9" y1="77.4" x2="656.2" y2="107.7" class="e dim"/>
+<line x1="703.1" y1="108.6" x2="662.3" y2="114.4" class="e dim"/>
+<line x1="704.6" y1="103.1" x2="670" y2="75" class="e dim"/>
+<line x1="628" y1="151.9" x2="590.1" y2="141" class="e dim"/>
+<line x1="494.8" y1="278.4" x2="585.9" y2="280.8" class="e dim"/>
+<line x1="550.6" y1="310.3" x2="587.3" y2="285.7" class="e dim"/>
+<line x1="537.3" y1="310.5" x2="493.5" y2="282.5" class="e dim"/>
+<line x1="551.2" y1="318.3" x2="587.5" y2="335.8" class="e dim"/>
+<line x1="567" y1="239.9" x2="589.7" y2="274" class="e dim"/>
+<line x1="648" y1="279.8" x2="602.7" y2="280.8" class="e dim"/>
+<line x1="623" y1="324.5" x2="598.9" y2="288" class="e dim"/>
+<line x1="559.3" y1="362.9" x2="516.8" y2="365.2" class="e dim"/>
+<line x1="563.6" y1="355.6" x2="547.5" y2="322" class="e dim"/>
+<line x1="573.6" y1="358.9" x2="620.6" y2="333.7" class="e dim"/>
+<line x1="531.1" y1="276.3" x2="494.8" y2="277.9" class="e dim"/>
+<line x1="479.7" y1="274.6" x2="397.6" y2="233.4" class="e dim"/>
+<line x1="556.6" y1="231.1" x2="508.8" y2="209.2" class="e dim"/>
+<line x1="70.1" y1="208" x2="72.3" y2="169" class="e dim"/>
+<line x1="32" y1="186.8" x2="66.6" y2="165.6" class="e dim"/>
+<line x1="63.5" y1="211.6" x2="32.1" y2="194" class="e dim"/>
+<line x1="560.6" y1="131.3" x2="583.1" y2="175.3" class="e dim"/>
+<line x1="619.3" y1="191.4" x2="595" y2="185" class="e dim"/>
+<line x1="644" y1="178.5" x2="595.3" y2="182.2" class="e dim"/>
+<line x1="666.4" y1="199.6" x2="595.1" y2="184.5" class="e dim"/>
+<line x1="562.5" y1="129.9" x2="621.2" y2="188" class="e dim"/>
+<line x1="666.3" y1="199.9" x2="634.1" y2="194.6" class="e dim"/>
+<line x1="482" y1="186.3" x2="578.5" y2="183.1" class="e dim"/>
+<line x1="215.5" y1="239" x2="176.1" y2="226.7" class="e dim"/>
+<line x1="218.6" y1="234.8" x2="195.1" y2="199.8" class="e dim"/>
+<line x1="230.9" y1="243" x2="299.7" y2="256.8" class="e dim"/>
+<line x1="244.1" y1="307.6" x2="264.2" y2="341.8" class="e dim"/>
+<line x1="246.7" y1="296.9" x2="300.8" y2="262.4" class="e dim"/>
+<line x1="128" y1="305.4" x2="126.6" y2="270.4" class="e dim"/>
+<line x1="171.7" y1="285.6" x2="132.7" y2="266.4" class="e dim"/>
+<line x1="171.6" y1="292.5" x2="134.7" y2="309.5" class="e dim"/>
+<line x1="186.8" y1="290.6" x2="232.8" y2="299.6" class="e dim"/>
+<line x1="217.7" y1="247.3" x2="184.3" y2="283.2" class="e dim"/>
+<line x1="314.4" y1="255.8" x2="381.6" y2="232.4" class="e dim"/>
+<line x1="320.4" y1="123.6" x2="400.6" y2="135.7" class="e on"/>
+<line x1="468.4" y1="182" x2="416.1" y2="142.3" class="e on"/>
+<line x1="473.9" y1="110.1" x2="417.2" y2="133.7" class="e on"/>
+<line x1="488.2" y1="135.7" x2="417.9" y2="136.9" class="e on"/>
+<line x1="363.3" y1="103.8" x2="402.2" y2="131.9" class="e on"/>
+<line x1="337" y1="150.3" x2="400.6" y2="138.6" class="e on"/>
+<circle cx="403" cy="284.8" r="13.7" class="halo"/>
+<circle cx="403" cy="284.8" r="6.7" class="n con focus dim"/>
+<circle cx="389.8" cy="229.5" r="6.7" class="n con dim"/>
+<circle cx="314.5" cy="213.9" r="5.6" class="n con dim"/>
+<circle cx="304" cy="322.3" r="5.1" class="n con dim"/>
+<circle cx="348.2" cy="195.3" r="5.6" class="n con dim"/>
+<circle cx="440.1" cy="172.3" r="6" class="n con dim"/>
+<circle cx="312.9" cy="122.5" r="5.6" class="n con nb"/>
+<circle cx="474.4" cy="186.6" r="5.6" class="n con nb"/>
+<circle cx="480.5" cy="107.4" r="5.1" class="n con nb"/>
+<circle cx="495.3" cy="135.6" r="5.1" class="n con nb"/>
+<circle cx="357.5" cy="99.6" r="5.1" class="n con nb"/>
+<circle cx="265" cy="159.8" r="5.6" class="n con dim"/>
+<circle cx="330" cy="151.6" r="5.1" class="n con nb"/>
+<circle cx="486.8" cy="278.2" r="6" class="n con dim"/>
+<circle cx="544" cy="314.8" r="6" class="n con dim"/>
+<circle cx="563.1" cy="234" r="5.1" class="n con dim"/>
+<circle cx="593.4" cy="338.6" r="4.5" class="n con dim"/>
+<circle cx="654.5" cy="279.6" r="4.5" class="n con dim"/>
+<circle cx="626.9" cy="330.4" r="5.1" class="n con dim"/>
+<circle cx="566.9" cy="362.5" r="5.6" class="n con dim"/>
+<circle cx="537.6" cy="276" r="4.5" class="n con dim"/>
+<circle cx="634.8" cy="153.9" r="5.1" class="n con dim"/>
+<circle cx="664.5" cy="70.5" r="5.1" class="n con dim"/>
+<circle cx="710.1" cy="107.6" r="5.1" class="n con dim"/>
+<circle cx="69.7" cy="215.1" r="5.1" class="n con dim"/>
+<circle cx="25.9" cy="190.5" r="5.1" class="n con dim"/>
+<circle cx="557.1" cy="124.5" r="5.6" class="n con dim"/>
+<circle cx="626.6" cy="193.4" r="5.6" class="n con dim"/>
+<circle cx="650.5" cy="178" r="4.5" class="n con dim"/>
+<circle cx="673.3" cy="201.1" r="5.1" class="n con dim"/>
+<circle cx="223.1" cy="241.4" r="6" class="n con dim"/>
+<circle cx="191.5" cy="194.4" r="4.5" class="n con dim"/>
+<circle cx="240.3" cy="301" r="5.6" class="n con dim"/>
+<circle cx="128.3" cy="312.5" r="5.1" class="n con dim"/>
+<circle cx="307.2" cy="258.3" r="5.6" class="n con dim"/>
+<circle cx="178.9" cy="289.1" r="6" class="n con dim"/>
+<circle cx="413" cy="103.6" r="5.1" class="n con dim"/>
+<circle cx="502.3" cy="206.3" r="5.1" class="n con dim"/>
+<circle cx="283.2" cy="274.5" r="5.1" class="n ent dim"/>
+<circle cx="356.6" cy="143.2" r="4.5" class="n ent dim"/>
+<circle cx="434.6" cy="226.7" r="4.5" class="n ent dim"/>
+<circle cx="409.2" cy="137" r="11.7" class="hring"/>
+<circle cx="409.2" cy="137" r="6.7" class="n ent hov"/>
+<circle cx="594.3" cy="281" r="6.4" class="n ent dim"/>
+<circle cx="510.3" cy="365.6" r="4.5" class="n ent dim"/>
+<circle cx="654.4" cy="115.5" r="6" class="n ent dim"/>
+<circle cx="582.8" cy="138.9" r="5.6" class="n ent dim"/>
+<circle cx="72.7" cy="161.9" r="5.1" class="n ent dim"/>
+<circle cx="586.9" cy="182.8" r="6.4" class="n ent dim"/>
+<circle cx="169.9" cy="224.8" r="4.5" class="n ent dim"/>
+<circle cx="267.5" cy="347.4" r="4.5" class="n ent dim"/>
+<circle cx="126.3" cy="263.3" r="5.1" class="n ent dim"/>
+<circle cx="366.2" cy="65.7" r="4.5" class="n ent dim"/>
+<text x="403" y="305.5" class="lb lf">Desirable difficulty</text>
+<text x="409.2" y="157.7" class="lb lh">John Medina</text>
+<text x="482.8" y="203" class="lb a-s">Sleep and memory</text>
+<text x="302.4" y="124.9" class="lb a-e">Working memory</text>
+<text x="349.3" y="91.7" class="lb a-e">The ten-minute rule</text>
+<text x="489.8" y="101.5" class="lb a-s">Exercise and cognition</text>
+<text x="320.1" y="157.4" class="lb a-e">Multisensory learning</text>
+<text x="505.4" y="139.4" class="lb a-s">Stress and learning</text>
+<path class="cur" transform="translate(412 140)" d="M0 0 L0 16 L4.5 12 L7.5 18.5 L10 17.5 L7 11 L12.5 11 Z"/></svg>
+<svg class="wv" data-opt="c" viewBox="0 0 736 440" aria-hidden="true">
+<line x1="308.5" y1="487.9" x2="114.6" y2="471.2" class="e dim"/>
+<line x1="315.1" y1="480.2" x2="296.1" y2="400.3" class="e dim"/>
+<line x1="310.4" y1="483.2" x2="168.2" y2="369.3" class="e dim"/>
+<line x1="309" y1="491.7" x2="150.5" y2="551.8" class="e dim"/>
+<line x1="312.6" y1="481.2" x2="225.2" y2="338.5" class="e dim"/>
+<line x1="319.9" y1="480.4" x2="379.6" y2="299.4" class="e dim"/>
+<line x1="287.3" y1="386.4" x2="227.1" y2="336.9" class="e dim"/>
+<line x1="285.5" y1="390.1" x2="169.7" y2="366.1" class="e dim"/>
+<line x1="222.5" y1="324.5" x2="234.9" y2="247.3" class="e dim"/>
+<line x1="141.1" y1="547.8" x2="110.3" y2="477.1" class="e dim"/>
+<line x1="157.1" y1="359" x2="80.8" y2="275.5" class="e dim"/>
+<line x1="381.3" y1="299.7" x2="373.1" y2="380.5" class="e dim"/>
+<line x1="379.1" y1="284.3" x2="337.3" y2="178.2" class="e dim"/>
+<line x1="329.1" y1="167.1" x2="257.8" y2="109.3" class="e dim"/>
+<line x1="389.1" y1="295.6" x2="484.7" y2="347.9" class="e dim"/>
+<line x1="166.2" y1="201.2" x2="231.2" y2="167.8" class="e dim"/>
+<line x1="153.5" y1="209.3" x2="81.6" y2="265.2" class="e dim"/>
+<line x1="435.3" y1="320.2" x2="301.8" y2="387.9" class="e dim"/>
+<line x1="459.7" y1="179.7" x2="579.4" y2="206.5" class="e dim"/>
+<line x1="485.8" y1="227.8" x2="624.2" y2="233" class="e dim"/>
+<line x1="182.4" y1="256.4" x2="83.2" y2="268.9" class="e dim"/>
+<line x1="639" y1="231" x2="749.5" y2="194.9" class="e dim"/>
+<line x1="726" y1="253.3" x2="753.5" y2="199.5" class="e dim"/>
+<line x1="773.2" y1="120.6" x2="758.9" y2="184.6" class="e dim"/>
+<line x1="847.5" y1="179.5" x2="765" y2="191.3" class="e dim"/>
+<line x1="849.1" y1="174.1" x2="780.3" y2="118.1" class="e dim"/>
+<line x1="716" y1="257.6" x2="639.1" y2="235.4" class="e dim"/>
+<line x1="471.8" y1="477.3" x2="643.5" y2="481.8" class="e dim"/>
+<line x1="570.5" y1="536.7" x2="645" y2="486.7" class="e dim"/>
+<line x1="557.2" y1="536.8" x2="470.5" y2="481.4" class="e dim"/>
+<line x1="571.1" y1="544.6" x2="644.5" y2="580" class="e dim"/>
+<line x1="601.3" y1="405.7" x2="647.3" y2="475" class="e dim"/>
+<line x1="750.8" y1="479.7" x2="660.3" y2="481.8" class="e dim"/>
+<line x1="705.1" y1="562.5" x2="656.6" y2="489" class="e dim"/>
+<line x1="596.4" y1="625" x2="511.4" y2="629.7" class="e dim"/>
+<line x1="600.7" y1="617.8" x2="567.4" y2="548.4" class="e dim"/>
+<line x1="610.7" y1="621" x2="702.7" y2="571.8" class="e dim"/>
+<line x1="546.2" y1="473.5" x2="471.8" y2="476.8" class="e dim"/>
+<line x1="456.7" y1="473.5" x2="301.8" y2="395.8" class="e dim"/>
+<line x1="590.9" y1="396.8" x2="497.4" y2="354.2" class="e dim"/>
+<line x1="-265.7" y1="359.6" x2="-261.3" y2="280.7" class="e dim"/>
+<line x1="-336.7" y1="319.9" x2="-266.9" y2="277.3" class="e dim"/>
+<line x1="-272.3" y1="363.2" x2="-336.6" y2="327.1" class="e dim"/>
+<line x1="590.3" y1="214.9" x2="635.2" y2="302.7" class="e dim"/>
+<line x1="701.1" y1="326.7" x2="647.1" y2="312.3" class="e dim"/>
+<line x1="743.8" y1="302.2" x2="647.4" y2="309.5" class="e dim"/>
+<line x1="783.2" y1="340.7" x2="647.2" y2="311.9" class="e dim"/>
+<line x1="592.2" y1="213.5" x2="703.1" y2="323.3" class="e dim"/>
+<line x1="783.2" y1="341" x2="715.9" y2="329.9" class="e dim"/>
+<line x1="449.7" y1="316.5" x2="630.6" y2="310.4" class="e dim"/>
+<line x1="-5.3" y1="410.3" x2="-84.6" y2="385.6" class="e dim"/>
+<line x1="-2.1" y1="406.1" x2="-49.3" y2="335.8" class="e dim"/>
+<line x1="10.2" y1="414.3" x2="142" y2="440.8" class="e dim"/>
+<line x1="36.3" y1="523.6" x2="76.7" y2="592.6" class="e dim"/>
+<line x1="38.8" y1="512.9" x2="143.1" y2="446.4" class="e dim"/>
+<line x1="-163.9" y1="530" x2="-166.8" y2="458.1" class="e dim"/>
+<line x1="-82.2" y1="492.7" x2="-160.7" y2="454.2" class="e dim"/>
+<line x1="-82.3" y1="499.5" x2="-157.1" y2="534.1" class="e dim"/>
+<line x1="-67.2" y1="497.7" x2="25" y2="515.6" class="e dim"/>
+<line x1="-3.1" y1="418.6" x2="-69.6" y2="490.3" class="e dim"/>
+<line x1="156.7" y1="439.8" x2="285.8" y2="394.7" class="e dim"/>
+<line x1="167" y1="205.8" x2="319.4" y2="228.7" class="e on"/>
+<line x1="436.1" y1="312.2" x2="334.9" y2="235.3" class="e on"/>
+<line x1="446.2" y1="180.9" x2="336" y2="226.7" class="e on"/>
+<line x1="471.6" y1="227.7" x2="336.7" y2="229.9" class="e on"/>
+<line x1="243.3" y1="168.7" x2="321" y2="224.9" class="e on"/>
+<line x1="196.4" y1="254.3" x2="319.4" y2="231.6" class="e on"/>
+<circle cx="317.2" cy="488.7" r="13.7" class="halo"/>
+<circle cx="317.2" cy="488.7" r="6.7" class="n con focus dim"/>
+<circle cx="294.1" cy="391.9" r="6.7" class="n con dim"/>
+<circle cx="162.3" cy="364.6" r="5.6" class="n con dim"/>
+<circle cx="143.9" cy="554.3" r="5.1" class="n con dim"/>
+<circle cx="221.3" cy="332" r="5.6" class="n con dim"/>
+<circle cx="382.1" cy="291.8" r="6" class="n con dim"/>
+<circle cx="159.5" cy="204.6" r="5.6" class="n con nb"/>
+<circle cx="442.1" cy="316.8" r="5.6" class="n con nb"/>
+<circle cx="452.8" cy="178.2" r="5.1" class="n con nb"/>
+<circle cx="478.7" cy="227.6" r="5.1" class="n con nb"/>
+<circle cx="237.5" cy="164.5" r="5.1" class="n con nb"/>
+<circle cx="75.7" cy="269.9" r="5.6" class="n con dim"/>
+<circle cx="189.4" cy="255.6" r="5.1" class="n con nb"/>
+<circle cx="463.8" cy="477.1" r="6" class="n con dim"/>
+<circle cx="563.9" cy="541.2" r="6" class="n con dim"/>
+<circle cx="597.3" cy="399.8" r="5.1" class="n con dim"/>
+<circle cx="650.3" cy="582.8" r="4.5" class="n con dim"/>
+<circle cx="757.3" cy="479.6" r="4.5" class="n con dim"/>
+<circle cx="709" cy="568.4" r="5.1" class="n con dim"/>
+<circle cx="604" cy="624.6" r="5.6" class="n con dim"/>
+<circle cx="552.7" cy="473.3" r="4.5" class="n con dim"/>
+<circle cx="722.8" cy="259.6" r="5.1" class="n con dim"/>
+<circle cx="774.8" cy="113.6" r="5.1" class="n con dim"/>
+<circle cx="854.6" cy="178.5" r="5.1" class="n con dim"/>
+<circle cx="-266.1" cy="366.7" r="5.1" class="n con dim"/>
+<circle cx="-342.8" cy="323.6" r="5.1" class="n con dim"/>
+<circle cx="586.8" cy="208.1" r="5.6" class="n con dim"/>
+<circle cx="708.5" cy="328.7" r="5.6" class="n con dim"/>
+<circle cx="750.3" cy="301.8" r="4.5" class="n con dim"/>
+<circle cx="790.2" cy="342.2" r="5.1" class="n con dim"/>
+<circle cx="2.3" cy="412.7" r="6" class="n con dim"/>
+<circle cx="-53" cy="330.5" r="4.5" class="n con dim"/>
+<circle cx="32.4" cy="517" r="5.6" class="n con dim"/>
+<circle cx="-163.6" cy="537.1" r="5.1" class="n con dim"/>
+<circle cx="149.5" cy="442.3" r="5.6" class="n con dim"/>
+<circle cx="-75" cy="496.2" r="6" class="n con dim"/>
+<circle cx="334.7" cy="171.5" r="5.1" class="n con dim"/>
+<circle cx="490.9" cy="351.3" r="5.1" class="n con dim"/>
+<circle cx="107.5" cy="470.6" r="5.1" class="n ent dim"/>
+<circle cx="236" cy="240.8" r="4.5" class="n ent dim"/>
+<circle cx="372.5" cy="387" r="4.5" class="n ent dim"/>
+<circle cx="328" cy="230" r="11.7" class="hring"/>
+<circle cx="328" cy="230" r="6.7" class="n ent hov"/>
+<circle cx="651.9" cy="482" r="6.4" class="n ent dim"/>
+<circle cx="504.9" cy="630.1" r="4.5" class="n ent dim"/>
+<circle cx="757.1" cy="192.4" r="6" class="n ent dim"/>
+<circle cx="631.8" cy="233.3" r="5.6" class="n ent dim"/>
+<circle cx="-260.9" cy="273.6" r="5.1" class="n ent dim"/>
+<circle cx="639" cy="310.2" r="6.4" class="n ent dim"/>
+<circle cx="-90.8" cy="383.7" r="4.5" class="n ent dim"/>
+<circle cx="80" cy="598.2" r="4.5" class="n ent dim"/>
+<circle cx="-167.1" cy="451" r="5.1" class="n ent dim"/>
+<circle cx="252.8" cy="105.2" r="4.5" class="n ent dim"/>
+<text x="328" y="250.7" class="lb lh">John Medina</text>
+<text x="450.5" y="333.2" class="lb a-s">Sleep and memory</text>
+<text x="149" y="207" class="lb a-e">Working memory</text>
+<text x="229.3" y="156.6" class="lb a-e">The ten-minute rule</text>
+<text x="462.1" y="172.3" class="lb a-s">Exercise and cognition</text>
+<text x="179.5" y="261.4" class="lb a-e">Multisensory learning</text>
+<text x="488.8" y="231.4" class="lb a-s">Stress and learning</text>
+<text x="294.1" y="412.6" class="lb ld">Spaced repetition</text>
+<text x="639" y="330.6" class="lb ld">Peter Attia</text>
+<text x="382.1" y="311.8" class="lb ld">Deliberate practice</text>
+<text x="31.6" y="432.7" class="lb ld">LLM wiki</text>
+<text x="631.8" y="252.9" class="lb ld">Bringing Baby Home</text>
+<text x="75.7" y="289.5" class="lb ld">Elaboration</text>
+<text x="221.3" y="351.6" class="lb ld">Forgetting curve</text>
+<text x="162.3" y="384.2" class="lb ld">Retrieval practice</text>
+<text x="707.6" y="348.3" class="lb ld">VO₂ max</text>
+<text x="669.2" y="278.7" class="lb ld">Bids for connection</text>
+<text x="334.7" y="190.6" class="lb ld">Flow</text>
+<text x="490.9" y="370.4" class="lb ld">Growth mindset</text>
+<text x="597.3" y="418.9" class="lb ld">Identity-based habits</text>
+<text x="252.8" y="123.7" class="lb ld">Csikszentmihalyi</text>
+</svg>
+              <span class="fit" data-opt="c" title="Fit the web"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></span>
+            </div>
+            <div class="foot"><p class="leg"><span><i class="lc"></i>Concept</span><span><i class="le"></i>Entity</span></p><p class="hint">Pinch or ⌘-scroll to zoom · drag to pan</p></div>
+          </section>
+
+          <div class="empty" data-opt="f">
+            <p class="empty-t">No concepts or entities yet</p>
+            <p class="empty-d">Sources and questions are listed in the nav.</p>
+          </div>
+
+          <section class="grp" data-opt="d">
+            <h3 class="gh">Titles &amp; summaries</h3>
+            <ul>
+              <li class="row"><span class="rt">Spaced repetition <span class="badge">Concept</span></span><span class="rs">Reviewing just before you’d forget resets the forgetting curve at a longer interval each time.</span></li>
+            </ul>
+          </section>
+          <section class="grp" data-opt="d">
+            <h3 class="gh">In page text</h3>
+            <ul>
+              <li class="row"><span class="rt">Desirable difficulty <span class="badge">Concept</span></span><span class="rs">…interleaving and <mark>spaced</mark> practice slow the learner down now and pay it back at the test…</span></li>
+              <li class="row"><span class="rt">Brain Rules <span class="badge">Source</span></span><span class="rs">Rule 5, repeat to remember: <mark>spaced</mark> intervals beat massed study for the same hours…</span></li>
+            </ul>
+          </section>
+        </div>
+
+        <div class="frame phone" data-opt="e">
+          <div class="vh">
+            <div class="vh-ic"><svg class="ic" width="20" height="20" viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></div>
+            <div><h2 class="vh-t">Wiki</h2><p class="vh-d">72 pages · synced 2h ago</p></div>
+          </div>
+          <div class="srch">
+            <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <div class="inp">Search the wiki</div>
+          </div>
+          <div class="cotd">
+            <div class="cotd-top"><span class="eyebrow">Concept of the day</span><span class="date">Wed, Sep 30</span></div>
+            <h3 class="cotd-t">Desirable difficulty</h3>
+            <p class="cotd-s">Conditions that make learning feel slower (spacing, interleaving, testing yourself) are the ones that make it last.</p>
+            <div class="tags"><span class="badge">learning</span><span class="badge">memory</span></div>
+          </div>
+          <section class="grp">
+            <h3 class="gh">Concepts &amp; entities<span class="cnt">52</span></h3>
+            <div class="stage">
+<svg class="wv" viewBox="0 0 358 320" aria-hidden="true">
+<line x1="173.9" y1="162.3" x2="161.2" y2="148.3" class="e"/>
+<line x1="172" y1="164.9" x2="143.9" y2="151.4" class="e"/>
+<line x1="154.9" y1="135.2" x2="151.9" y2="116.9" class="e"/>
+<line x1="141.5" y1="203" x2="137.7" y2="186.5" class="e"/>
+<line x1="133.2" y1="141.6" x2="114.5" y2="109.6" class="e"/>
+<line x1="245.8" y1="131.1" x2="246.2" y2="150.3" class="e"/>
+<line x1="240.3" y1="117.2" x2="217.7" y2="93" class="e"/>
+<line x1="210.7" y1="81.1" x2="202.1" y2="54.9" class="e"/>
+<line x1="251.8" y1="128.3" x2="277.2" y2="150.2" class="e"/>
+<line x1="127.7" y1="66" x2="170.6" y2="69.7" class="e"/>
+<line x1="126.6" y1="69.3" x2="140.9" y2="78.2" class="e"/>
+<line x1="118.2" y1="72.7" x2="112.5" y2="95.7" class="e"/>
+<line x1="206.8" y1="114.2" x2="183.9" y2="77.9" class="e"/>
+<line x1="206.7" y1="127" x2="184.5" y2="161.4" class="e"/>
+<line x1="221.1" y1="56.4" x2="187.5" y2="67.7" class="e"/>
+<line x1="234.7" y1="55.7" x2="270.4" y2="64.2" class="e"/>
+<line x1="219.8" y1="74.8" x2="188" y2="71.4" class="e"/>
+<line x1="233.9" y1="76.8" x2="265.9" y2="82.9" class="e"/>
+<line x1="153.6" y1="79.5" x2="171.1" y2="73.4" class="e"/>
+<line x1="145.7" y1="66.6" x2="170.7" y2="69.5" class="e"/>
+<line x1="134.3" y1="71.5" x2="115.2" y2="97" class="e"/>
+<line x1="278.6" y1="78.8" x2="300.3" y2="55.9" class="e"/>
+<line x1="314.6" y1="73.5" x2="308.6" y2="57.6" class="e"/>
+<line x1="301.9" y1="23.5" x2="304.6" y2="42.2" class="e"/>
+<line x1="328.7" y1="36.1" x2="312.6" y2="45.9" class="e"/>
+<line x1="328.4" y1="29.4" x2="307.3" y2="19.5" class="e"/>
+<line x1="310" y1="80.8" x2="281" y2="83.6" class="e"/>
+<line x1="246.6" y1="209.7" x2="290.9" y2="217.5" class="e"/>
+<line x1="272" y1="238.7" x2="292.4" y2="223.9" class="e"/>
+<line x1="260.6" y1="237" x2="243.6" y2="214.7" class="e"/>
+<line x1="272.3" y1="247.6" x2="288.8" y2="257.6" class="e"/>
+<line x1="313.3" y1="190.2" x2="302.9" y2="211.5" class="e"/>
+<line x1="329.5" y1="217.4" x2="307.6" y2="218.6" class="e"/>
+<line x1="313.4" y1="247.5" x2="302.9" y2="226.5" class="e"/>
+<line x1="276.9" y1="282.4" x2="259" y2="291.9" class="e"/>
+<line x1="280.1" y1="272.1" x2="269.1" y2="250.5" class="e"/>
+<line x1="289.7" y1="274.3" x2="310.9" y2="258.2" class="e"/>
+<line x1="265.6" y1="206" x2="246.7" y2="207.6" class="e"/>
+<line x1="232.1" y1="203.8" x2="187" y2="173.6" class="e"/>
+<line x1="311" y1="179.2" x2="288" y2="159.4" class="e"/>
+<line x1="51.6" y1="141.1" x2="45.7" y2="121" class="e"/>
+<line x1="26.4" y1="136.1" x2="39.3" y2="119.8" class="e"/>
+<line x1="46.6" y1="146.5" x2="29" y2="143.1" class="e"/>
+<line x1="277.7" y1="73.6" x2="277.2" y2="106.8" class="e"/>
+<line x1="294" y1="113.8" x2="285.5" y2="114.5" class="e"/>
+<line x1="313" y1="110.5" x2="285.4" y2="114.1" class="e"/>
+<line x1="317.2" y1="132.5" x2="284.8" y2="118.5" class="e"/>
+<line x1="281.2" y1="72.8" x2="298.2" y2="106.4" class="e"/>
+<line x1="318.7" y1="130.3" x2="307" y2="118.6" class="e"/>
+<line x1="218.4" y1="120" x2="268.7" y2="115.9" class="e"/>
+<line x1="103.3" y1="229.4" x2="82.9" y2="233.5" class="e"/>
+<line x1="104.6" y1="223.2" x2="87.3" y2="211" class="e"/>
+<line x1="118.8" y1="225.6" x2="153.9" y2="215.7" class="e"/>
+<line x1="164.4" y1="257.9" x2="182.7" y2="268.7" class="e"/>
+<line x1="158.4" y1="246.5" x2="160.6" y2="221.2" class="e"/>
+<line x1="141.8" y1="275" x2="138.3" y2="291.1" class="e"/>
+<line x1="118.3" y1="275" x2="132.3" y2="292.5" class="e"/>
+<line x1="121.3" y1="268.6" x2="136.3" y2="268.3" class="e"/>
+<line x1="120.9" y1="266.3" x2="150.6" y2="256.5" class="e"/>
+<line x1="111.5" y1="235.8" x2="112.9" y2="260.8" class="e"/>
+<line x1="164.1" y1="206.6" x2="176.5" y2="176.7" class="e"/>
+<line x1="203.2" y1="181.2" x2="143.2" y2="179.8" class="e on"/>
+<line x1="203.8" y1="178.2" x2="187.9" y2="171.9" class="e on"/>
+<line x1="204" y1="177.9" x2="144" y2="151.2" class="e on"/>
+<line x1="203.9" y1="184.7" x2="149.7" y2="207.2" class="e on"/>
+<line x1="204.8" y1="176.4" x2="162.3" y2="147" class="e on"/>
+<line x1="216.3" y1="173.9" x2="241.7" y2="130" class="e on"/>
+<circle cx="211.9" cy="181.4" r="13.7" class="halo"/>
+<circle cx="211.9" cy="181.4" r="6.7" class="n con focus"/>
+<circle cx="179.8" cy="168.7" r="6.7" class="n con nb"/>
+<circle cx="137.1" cy="148.1" r="5.6" class="n con nb"/>
+<circle cx="143.1" cy="209.9" r="5.1" class="n con nb"/>
+<circle cx="156.1" cy="142.7" r="5.6" class="n con nb"/>
+<circle cx="245.7" cy="123.1" r="6" class="n con nb"/>
+<circle cx="120.1" cy="65.3" r="5.6" class="n con"/>
+<circle cx="210.8" cy="120.6" r="5.6" class="n con"/>
+<circle cx="227.8" cy="54.1" r="5.1" class="n con"/>
+<circle cx="226.9" cy="75.5" r="5.1" class="n con"/>
+<circle cx="146.9" cy="81.9" r="5.1" class="n con"/>
+<circle cx="110.6" cy="103.1" r="5.6" class="n con"/>
+<circle cx="138.6" cy="65.8" r="5.1" class="n con"/>
+<circle cx="238.7" cy="208.3" r="6" class="n con"/>
+<circle cx="265.5" cy="243.4" r="6" class="n con"/>
+<circle cx="316.4" cy="183.8" r="5.1" class="n con"/>
+<circle cx="294.3" cy="261" r="4.5" class="n con"/>
+<circle cx="336" cy="217.1" r="4.5" class="n con"/>
+<circle cx="316.6" cy="253.9" r="5.1" class="n con"/>
+<circle cx="283.6" cy="278.9" r="5.6" class="n con"/>
+<circle cx="272.1" cy="205.4" r="4.5" class="n con"/>
+<circle cx="317.1" cy="80.1" r="5.1" class="n con"/>
+<circle cx="300.9" cy="16.5" r="5.1" class="n con"/>
+<circle cx="334.8" cy="32.4" r="5.1" class="n con"/>
+<circle cx="53.6" cy="147.9" r="5.1" class="n con"/>
+<circle cx="22" cy="141.7" r="5.1" class="n con"/>
+<circle cx="277.8" cy="66" r="5.6" class="n con"/>
+<circle cx="301.6" cy="113.2" r="5.6" class="n con"/>
+<circle cx="319.4" cy="109.6" r="4.5" class="n con"/>
+<circle cx="323.7" cy="135.3" r="5.1" class="n con"/>
+<circle cx="111.1" cy="227.8" r="6" class="n con"/>
+<circle cx="82" cy="207.2" r="4.5" class="n con"/>
+<circle cx="157.8" cy="254.1" r="5.6" class="n con"/>
+<circle cx="143.4" cy="268.1" r="5.1" class="n con"/>
+<circle cx="161.2" cy="213.6" r="5.6" class="n con"/>
+<circle cx="113.3" cy="268.8" r="6" class="n con"/>
+<circle cx="212.9" cy="87.8" r="5.1" class="n con"/>
+<circle cx="282.6" cy="154.8" r="5.1" class="n con"/>
+<circle cx="136.1" cy="179.6" r="5.1" class="n ent nb"/>
+<circle cx="150.8" cy="110.5" r="4.5" class="n ent"/>
+<circle cx="246.3" cy="156.8" r="4.5" class="n ent"/>
+<circle cx="179.3" cy="70.5" r="6.7" class="n ent"/>
+<circle cx="299.2" cy="219" r="6.4" class="n ent"/>
+<circle cx="253.2" cy="294.9" r="4.5" class="n ent"/>
+<circle cx="305.8" cy="50.1" r="6" class="n ent"/>
+<circle cx="273.4" cy="84.3" r="5.6" class="n ent"/>
+<circle cx="43.7" cy="114.2" r="5.1" class="n ent"/>
+<circle cx="277.1" cy="115.2" r="6.4" class="n ent"/>
+<circle cx="76.5" cy="234.8" r="4.5" class="n ent"/>
+<circle cx="188.3" cy="272" r="4.5" class="n ent"/>
+<circle cx="136.7" cy="298" r="5.1" class="n ent"/>
+<circle cx="200.1" cy="48.7" r="4.5" class="n ent"/>
+<text x="211.9" y="202.1" class="lb lf">Desirable difficulty</text>
+<text x="168.9" y="162.4" class="lb a-e">Spaced repetition</text>
+<text x="230.4" y="111.6" class="lb a-s">Deliberate practice</text>
+<text x="147.4" y="134.7" class="lb a-e">Forgetting curve</text>
+<text x="133.8" y="223.8" class="lb a-e">Interleaving</text>
+<text x="126" y="183.4" class="lb a-e">Robert Bjork</text>
+</svg>
+            </div>
+            <div class="foot"><p class="leg"><span><i class="lc"></i>Concept</span><span><i class="le"></i>Entity</span></p><p class="hint">Pinch to zoom</p></div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The new <code>/wiki</code>, drawn from a real d3-force run over a 52-node sample. A: at rest on today’s concept, lit violet with its six neighbours named. B: hovering John Medina lights his neighbourhood and dims the rest. C: zoomed past 1:1 (still hovering), every name that fits shows, and the Fit button appears. D: typing swaps the card and web for today’s search results. E: a 390 px phone. F: a wiki with only sources and questions. Nothing sits under the web; the nav lists every section. Filled dot = concept, ring = entity, size = link count.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>Sources or questions in the web; a small graph on each page; remembering where you dragged nodes; picking or skipping the day’s concept.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul>
+    <li>Overrides ALF-259’s “no graph view” non-goal (D5). The epic document isn’t edited.</li>
+    <li>New dependency: <code>d3-force</code> and three small d3 deps, about 7 kB gzipped.</li>
+  </ul>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p><b>The ticket.</b> ALF-305, “Revamp the wiki landing page with a physics web and a concept of the day”, in epic ALF-259 (Wiki Module). The only note is “Borrow physics approach used in Motivic”. Alex answered four scoping questions in the refinement session:</p>
+  <ul>
+    <li><b>Web nodes:</b> concepts and entities.</li>
+    <li><b>Today’s index:</b> the web replaces the grouped lists; the search box stays on top, and typing swaps in today’s results. The full lists survive on the section views.</li>
+    <li><b>Daily pick:</b> date-seeded rotation (D7).</li>
+    <li><b>Scale:</b> 50–200 pages, today and in the coming months.</li>
+  </ul>
+  <p>The first draft kept the Sources and Questions lists under the web, as the “concepts and entities” option described. In review, Alex cut them: the side nav already lists every section with its count (<code>WikiNav</code>, in both the desktop sidebar and the phone drawer), so the landing is just the card and the web (D6).</p>
+
+  <p><b>What exists today.</b> The Wiki module is ALF-261’s read-only reading room (<code>docs/specs/archive/ALF-261.html</code>).</p>
+  <ul>
+    <li><code>components/wiki/wiki-view.tsx</code> routes by URL (<code>wiki-route.ts</code>). Both <code>/wiki</code> and <code>/wiki/&lt;section&gt;</code> render <code>WikiIndexView</code>: a search box over the pages grouped by section (<code>WikiPageGroup</code> + <code>WikiPageRow</code>). Typing swaps the groups for <code>WikiSearchResults</code>.</li>
+    <li>The store (<code>lib/stores/wiki-store.tsx</code>) seeds the <b>index</b> of every page: path, section, title, summary, tags, <code>created</code>/<code>updated</code>, and <b>outbound <code>links</code></b>. That is enough to build the graph client-side, so no route, migration or Worker change is needed. Bodies load lazily and aren’t needed here.</li>
+    <li>The shell’s content column is <code>max-w-3xl px-4</code> (<code>components/shell/module-router.tsx</code>): 736 px of content on desktop, 358 px on a 390 px phone.</li>
+    <li>There is no d3, no <code>ResizeObserver</code> hook, and no graph code in alfred. <code>lib/use-prefers-reduced-motion.ts</code> and <code>lib/hooks/use-media-query.ts</code> exist.</li>
+  </ul>
+
+  <p><b>What motivic does</b> (<code>ac3charland/motivic</code>, <code>frontend/lib/web/*</code>, <code>frontend/app/web/*</code>, <code>docs/design-system/guidelines/10-motif-web.md</code>):</p>
+  <ul>
+    <li><code>simulation.ts</code> builds a d3-force sim with link, many-body, a weak centring pull, a stronger <b>focus pull</b> (a force, not a pin, so a change of focus glides), collision, and <b>bounds</b> sized to the node count and shaped like the stage.</li>
+    <li>It draws from a <b>seeded LCG</b> via <code>simulation.randomSource()</code>, so the same input lands the same way every run.</li>
+    <li>It <b>pre-rolls headless</b> to α 0.3 before the first paint, then animates one tick per frame. Under reduced motion it <b>settles fully before one paint</b>. Its Storybook baselines rely on this: every story forces reduced motion.</li>
+    <li>A warm restart keeps positions by id. A new node starts beside what it links to.</li>
+    <li>The stage lives outside React (<code>motif-web-stage.ts</code>): each tick writes transforms and path data straight to registered DOM elements, so React renders nodes once.</li>
+    <li><code>view.ts</code> fits all cards (never above 1:1); the view glides to its target until the player zooms or pans.</li>
+    <li><code>use-web-gestures.ts</code> handles pointer and wheel: a press that moves over 4 px drags a card or pans empty stage, the click ending a drag never fires, and wheel or pinch zooms about the pointer.</li>
+    <li>Its nodes are 248×150 cards with a custom rectangle collision.</li>
+  </ul>
+
+  <p><b>What the epic and spike said.</b> ALF-259 §8 lists “No graph view (the spike’s reasons: an unseeded layout can’t pass the Storybook snapshot gate, and there aren’t enough pages yet)”. The spike (<code>docs/spikes/llm-wiki-spike.html</code>) deferred it with the trigger “≥30 pages, and a stated reason”. D5 records why both reasons are now answered. Per the launch prompt, the epic file is background and is not edited.</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>What the web opens on · proposed</h3>
+    <p>The concept of the day (D7) is the web’s <b>focus</b>, in motivic’s sense.</p>
+    <ul>
+      <li><b>Pull:</b> an extra centring force acts on it alone.</li>
+      <li><b>Bloom:</b> its own links rest at about twice the normal length, and its collision radius is larger. Its neighbours sit out on a ring with room for their names. Without the bloom, a hub’s neighbours crowd within about 40 px, and their names overlap. The scratch runs behind Plate I showed this.</li>
+      <li><b>Paint:</b> a violet halo and a bold name. Its edges and neighbours are violet and named at rest (P1 A).</li>
+    </ul>
+    <p>The view fits <b>every</b> node (D10). So the focus lands <i>near</i> the middle, not exactly on it. Motivic’s <code>fitViewAround</code> centres the focus exactly, but it has to fit a box symmetric about the focus. For an off-centre focus that halves the zoom, and the whole-wiki overview is the point of a landing page.</p>
+    <p>Considered: a web with no focus, where the card and the web are unrelated. Also considered: exact centring via <code>fitViewAround</code>.</p>
+    <p>With no concept of the day (no concepts), the web has no focus, and nothing is lit at rest.</p>
+  </section>
+
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>How nodes and names look · proposed</h3>
+    <p>At 50–200 pages the fitted scale is about 0.5–0.8 on a 736 × 440 stage. Title cards (motivic’s treatment) would overlap, or shrink below legibility. So nodes are <b>dots</b> and names are shown selectively.</p>
+    <ul>
+      <li><b>Constant screen size.</b> Dots and names are <b>not</b> scaled by the view; only positions are. Zooming in spreads nodes apart while text stays 12 px, and a 358 px phone fit doesn’t shrink dots to specks.</li>
+      <li><b>Dot radius</b> = clamp(3 + 1.5·√degree, 3, 9) px, where degree = distinct neighbours in the web (D8).</li>
+      <li><b>Kind:</b> a concept is a filled dot and an entity is a 1.5 px ring. At rest both are <code>muted-foreground</code>. Violet belongs to the lit neighbourhood, so it keeps meaning “related to what you’re looking at”. A second hue for entities would clash with the module-colour system (<code>MODULE_ACCENT</code>).</li>
+      <li><b>Edges</b> are straight 1 px <code>muted-foreground</code> lines at 28% opacity, trimmed 2 px short of each dot. Lit edges are 1.5 px violet at 70%. There are no arrows: wiki links are drawn undirected (D8).</li>
+      <li><b>Names</b> are 12 px Geist, <code>muted-foreground</code>, drawn with a 3 px <code>surface</code>-coloured halo (<code>paint-order: stroke</code>) so a name stays legible over edges. The focus’s name is 13 px semibold <code>foreground</code>. The hovered node’s name is medium <code>foreground</code>. Which names show, and where, is D9.</li>
+      <li>One line <b>under the stage</b>, outside it so that nothing zoomed runs beneath it, holds the <b>legend</b> at left (“● Concept ○ Entity”, 12 px muted) and a <b>hint</b> at right (muted/70). The hint reads “Pinch or ⌘-scroll to zoom · drag to pan” on a fine pointer, “Pinch to zoom” on a coarse one.</li>
+    </ul>
+    <p>Considered: title pills for every node (they don’t fit at this scale), and colour-coding entities (it clashes with module hues).</p>
+  </section>
+
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>What pointing and clicking do · proposed</h3>
+    <ul>
+      <li><b>Hover</b> (or keyboard focus, D12) lights a node’s neighbourhood (P1 B). The node gets a <code>foreground</code> fill or ring plus a 50% ring 5 px out. Its neighbours turn violet and show their names, and its edges turn violet. Everything else dims: dots to 30% opacity, edges to 10%. The day’s concept keeps its halo and name. Leaving the node restores the resting state.</li>
+      <li><b>Click</b> opens the page through <code>ViewLink</code> (pushState). The node is a real <code>&lt;a href&gt;</code>, so ⌘/Ctrl-click and middle-click open a new tab.</li>
+      <li><b>Drag</b> works like motivic’s: a press on a node that moves past 4 px drags it with a mouse or pen. Its neighbours follow, it isn’t pinned when released, and the click that ends a drag never navigates. A press on empty stage that moves pans the view. A click on empty stage does nothing, since there is no focus to clear.</li>
+      <li><b>Zoom</b> with a trackpad pinch (browsers send it as <code>wheel</code> + <code>ctrlKey</code>), ⌘/Ctrl + wheel, or a two-finger touch pinch. It zooms about the pointer. A <b>plain wheel is not captured</b>: it scrolls the page, because <code>/wiki</code> scrolls. This departs from motivic, whose page never scrolls, and is the “cooperative gestures” pattern that embedded maps use.</li>
+      <li><b>Touch:</b> the stage sets <code>touch-action: pan-y</code>. One finger scrolls the page through the web, a tap opens a node, and two fingers pinch and pan the web. Dragging a node is pointer-only.</li>
+    </ul>
+    <p>Considered: motivic’s click-to-focus, which re-centres the web on the clicked node and swaps the card. It turns the landing page into an explorer, and each page already shows its own links and backlinks.</p>
+  </section>
+
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>Where the physics comes from · proposed</h3>
+    <p>Add <code>d3-force@^3</code> and <code>@types/d3-force</code> to <code>frontend/</code>, the same versions motivic uses. d3-force pulls in d3-quadtree, d3-dispatch and d3-timer: about 17 kB minified, 7 kB gzipped. Nothing else from d3 is needed: zoom and pan are the ported gesture code, not d3-zoom.</p>
+    <p>Port motivic’s modules by copying and adapting them, keeping their structure, names and doc-comment voice so a reader of both repos recognises them:</p>
+    <ul>
+      <li>The seeded LCG.</li>
+      <li><code>createWebSimulation</code> / <code>prerollSimulation</code> / <code>settleSimulation</code> / <code>positionsOf</code> and the warm-start placement.</li>
+      <li><code>forceBounds</code> (ported and made circle-aware).</li>
+      <li><code>fitView</code>, <code>glideTo</code>, <code>toWorld</code>, <code>zoomAt</code>, <code>wheelZoom</code>, <code>pinchView</code>, <code>movedPastThreshold</code>, and <code>revealCard</code> as <code>revealNode</code>.</li>
+      <li>The stage object (outside React, writing to the DOM each tick).</li>
+      <li>The gesture hook.</li>
+    </ul>
+    <p>Drop the rectangle collision: dots are circles, and d3’s own <code>forceCollide</code> fits (and is quadtree-backed, unlike the O(n²) rectangle pass). Drop the arrowed <code>wirePath</code> in favour of trimmed lines.</p>
+    <p>Considered: a shared npm package or a git dependency on motivic’s code. The repos have different stacks and release cadences, and their nodes differ (dots vs cards). Coupling two repos for about 600 lines isn’t worth it.</p>
+  </section>
+
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>A graph view, despite ALF-259 · settled</h3>
+    <p>This ticket asks for the graph view that ALF-259 §8 and the spike ruled out. Both of their reasons are now answered:</p>
+    <ul>
+      <li><b>Determinism:</b> motivic’s approach is exactly the seeded, settle-before-paint layout the spike said a snapshot needs. It ships committed Storybook baselines of a d3-force web. alfred’s stories force reduced motion the same way (D13).</li>
+      <li><b>Size:</b> at 50–200 pages the wiki is past the spike’s ≥30-page trigger.</li>
+    </ul>
+    <p>The epic document is not edited (launch-prompt instruction). This record is where the override lives.</p>
+  </section>
+
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>What <code>/wiki</code> shows · settled</h3>
+    <p>Top to bottom:</p>
+    <ol>
+      <li>the header (unchanged);</li>
+      <li>the search box (unchanged);</li>
+      <li>the concept-of-the-day card (D7, D11);</li>
+      <li>a “Concepts &amp; entities” group holding the web, headed like the wiki’s other groups (<code>WikiPageGroup</code>) with its node count.</li>
+    </ol>
+    <p>Nothing follows the web. The Sources and Questions lists are reached from the nav (<code>WikiNav</code>: “Sources” and “Questions”, each with its count), as are the section views of concepts and entities. Typing in the search box replaces items 3–4 with <code>WikiSearchResults</code>, as it replaces the groups today (P1 D). The section views <code>/wiki/&lt;section&gt;</code> and the nav are unchanged.</p>
+    <p>With no concepts and no entities, <code>/wiki</code> shows the <code>EmptyState</code> atom under the search box: “No concepts or entities yet”, “Sources and questions are listed in the nav.” (P1 F).</p>
+    <p>Considered: keeping the Sources and Questions lists under the web (the first draft). Cut in review: they duplicate the nav and push the web’s purpose, an overview, down a long page.</p>
+  </section>
+
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>How the day’s concept is picked · settled</h3>
+    <p>The rotation is <b>least recently featured, replayed</b>. It is a pure function of the page index and the local date, so it needs no storage, and every device agrees.</p>
+    <ul>
+      <li><b>Candidates</b> are the concept pages (<code>section === 'concepts'</code>). Entities are never picked.</li>
+      <li><b>A concept joins the rotation the day after its <code>created</code> date.</b> So a page that syncs mid-day never changes that day’s pick. A concept with a missing or malformed <code>created</code> counts as having always existed.</li>
+      <li><b>Exception:</b> on a day when no concept qualifies (the wiki’s first day, or every <code>created</code> is in the future), every concept qualifies.</li>
+      <li><b>Each day’s pick</b> is the qualifying concept featured longest ago; one never featured goes first. Ties break on a 32-bit FNV-1a hash of <code>`${date}|${path}`</code>, lowest first.</li>
+      <li><b>The replay</b> runs day by day from the earliest <code>created</code> date among the concepts to today, recording each day’s pick. Today’s pick is the answer.</li>
+    </ul>
+    <p>Properties:</p>
+    <ul>
+      <li>For a fixed set of <i>n</i> concepts, any <i>n</i> consecutive days show each exactly once.</li>
+      <li>A new concept is featured before any concept repeats. It usually appears the day after it syncs.</li>
+      <li>The pick is the same all day.</li>
+    </ul>
+    <p>Accepted weakness: renaming or deleting a concept rewrites the replayed history, and can change the pick on the day it syncs.</p>
+    <p>“Today” is the local calendar date, alfred’s convention (<code>todayISODate</code>), read from the ticking <code>useNow</code> clock, so a tab left open rolls over at midnight. <b>Implement the replay as a queue.</b> Each day features exactly one concept, so featured dates are unique, and only never-featured concepts can tie. Keep the featured concepts oldest-first in a queue. Keep the qualifying never-featured ones in a set, fed from the concepts sorted by <code>created</code>. Each day, take the set’s lowest hash if the set is non-empty, otherwise the queue’s head, and push the pick to the tail. The refinement prototype matched a naive replay day for day and ran ten years × 200 concepts in about 17 ms; the naive pool-scan took about 550 ms. Memoise on <code>(pages, date)</code>.</p>
+    <p>Considered, and rejected because it misses Alex’s pick: a per-cycle shuffle, <code>shuffle(concepts, seed = ⌊day ÷ n⌋)[day mod n]</code>. It is simpler, but any change in <i>n</i> reshuffles, so an ingest mid-day changes the day’s concept and can repeat one early.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+
+  <section class="rec" id="d8">
+    <h4>D8 · The graph</h4>
+    <ul>
+      <li><b>Nodes:</b> every page with <code>section</code> in {<code>concepts</code>, <code>entities</code>}, in index order (<code>sortWikiPages</code>). The order matters for determinism: d3 assigns initial spiral positions by array index.</li>
+      <li><b>Edges:</b> for each node, each of its <code>links</code> that names another node. Self-links, links to pages not in the snapshot, and links to sources or questions are dropped.</li>
+      <li><b>Direction</b> is discarded: A→B and B→A are one edge, keyed <code>min(path)|max(path)</code>.</li>
+      <li><b>Degree</b> is the number of distinct neighbours.</li>
+      <li>A node with no edges is still drawn. The bounds and centring pull keep it on the stage.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d9">
+    <h4>D9 · Which names show, and where</h4>
+    <p>Candidates, highest priority first:</p>
+    <ol>
+      <li>the focus;</li>
+      <li>the hovered or keyboard-focused node;</li>
+      <li>the lit node’s neighbours;</li>
+      <li>once the view scale is ≥ 1 (1:1 with the world), every node on the stage.</li>
+    </ol>
+    <p>Placement:</p>
+    <ul>
+      <li>A neighbour’s name sits <b>outward</b> from the lit node, just past its dot on the far side. It is anchored <code>start</code> when it lies to the right (unit x &gt; 0.35), <code>end</code> to the left, and centred otherwise.</li>
+      <li>Every other name sits centred under its dot.</li>
+      <li>A name that would cross the stage’s side is nudged back inside.</li>
+      <li><b>Greedy culling:</b> names are placed in priority order, then by degree (descending), then by path. A name whose box overlaps one already placed is hidden. The focus’s name is never hidden.</li>
+    </ul>
+    <p>Name widths are measured once per node, since names are screen-constant. Culling reruns on each paint while a label set is showing. P1 A, C and E show culling at work: on the phone, “Retrieval practice” gives way to “Forgetting curve”. Names are truncated at 28 characters with “…”. The full title is the link’s accessible name.</p>
+  </section>
+
+  <section class="rec" id="d10">
+    <h4>D10 · Forces, world, view: starting values</h4>
+    <p>One <code>WIKI_WEB_FORCES</code> object, as in motivic’s <code>forces.ts</code>. These are the values the Plate I layout was produced with. Tune in that file alone.</p>
+    <div class="scroll"><table>
+      <tr><th>Constant</th><th>Value</th><th>Meaning</th></tr>
+      <tr><td><code>linkDistance</code> / <code>focusLinkDistance</code></td><td>70 / 150</td><td>Rest length of an edge, world px. Edges touching the focus bloom (D1).</td></tr>
+      <tr><td><code>linkStrength</code></td><td>d3 default</td><td>1 / min(degree of either end), so hubs don’t over-constrain.</td></tr>
+      <tr><td><code>charge</code></td><td>−180</td><td>Many-body repulsion (Barnes–Hut).</td></tr>
+      <tr><td><code>centre</code></td><td>0.06</td><td>Centring pull: <code>forceX</code> strength <code>centre ÷ aspect</code>, <code>forceY</code> <code>centre × aspect</code>, so the web takes the stage’s shape.</td></tr>
+      <tr><td><code>focusPull</code></td><td>0.1</td><td>Extra pull on the focus alone.</td></tr>
+      <tr><td><code>collidePadding</code> / <code>focusCollidePadding</code></td><td>14 / 40</td><td><code>forceCollide</code> radius = dot radius + padding.</td></tr>
+      <tr><td><code>worldCell</code>, <code>boundsMargin</code></td><td>160, 12</td><td>World area = nodes × cell², shaped to the stage’s aspect. <code>forceBounds</code> keeps nodes <code>margin</code> inside it. A smaller world piles nodes along its edges.</td></tr>
+      <tr><td><code>fitPadding</code>, <code>labelAllowance</code></td><td>24, 20</td><td>Space around the nodes when fitting, plus room under the lowest dot for its name.</td></tr>
+      <tr><td><code>minScale</code> / <code>maxScale</code> / <code>allNamesScale</code></td><td>0.25 / 3 / 1</td><td>Zoom limits, and the scale from which every name shows (D9). The fit never goes above 1.</td></tr>
+      <tr><td><code>prerollAlpha</code>, <code>restartAlpha</code>, <code>dragAlphaTarget</code>, glide share</td><td>0.3, 0.3, 0.3, 0.12</td><td>As in motivic.</td></tr>
+    </table></div>
+    <p><b>View:</b> <code>screen = world × scale + (x, y)</code>, applied by writing each node’s <code>translate()</code> and each edge’s endpoints. The canvas is <b>not</b> CSS-scaled, because dots and names are screen-constant (D2).</p>
+    <ul>
+      <li>The view follows the fit of all nodes, gliding by the glide share each frame and snapping on the first paint, until the user zooms or pans.</li>
+      <li>From then until the page set changes or the window resizes, it holds, and a <b>Fit</b> <code>IconButton</code> (neutral, md, lucide <code>Maximize</code>, <code>aria-label="Fit the web"</code>) shows at the stage’s top-right (P1 C). Pressing it hands the view back to the fit.</li>
+      <li>Stage height: 440 px, or 320 px below the <code>sm</code> breakpoint.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d11">
+    <h4>D11 · The card</h4>
+    <ul>
+      <li><b>Frame:</b> <code>SurfaceCard</code>’s frame (rounded-lg, border, <code>bg-surface</code>, p-4), with the border at <code>accent-violet/30</code> and <code>glow-violet</code>.</li>
+      <li><b>Top row:</b> the “Concept of the day” eyebrow (<code>eyebrowClass</code>) with the date right-aligned, e.g. “Wed, Sep 30”, <code>text-xs</code> muted.</li>
+      <li><b>Title:</b> <code>font-serif text-2xl</code>. It is a <code>ViewLink</code> made a stretched link (<code>after:absolute after:inset-0</code>), so the whole card clicks through while the link’s name stays the title.</li>
+      <li><b>Summary:</b> <code>text-sm</code> muted, omitted when empty.</li>
+      <li><b>Tags:</b> <code>Badge variant="muted"</code>, omitted when there are none.</li>
+      <li>The card is a <code>&lt;section aria-labelledby&gt;</code> named “Concept of the day”.</li>
+      <li><b>Hover:</b> the border goes to <code>accent-violet/60</code>, with <code>motion-reduce:transition-none</code>.</li>
+      <li>No card is rendered when there are no concepts.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d12">
+    <h4>D12 · Keyboard and screen readers</h4>
+    <p>The web is <b>one tab stop</b>, using a roving <code>tabindex</code>, so a 150-node web costs one Tab, not 150.</p>
+    <ul>
+      <li><b>Tabbing in</b> lands on the focus, or on the first node when there is no focus.</li>
+      <li><b>Moving:</b> ←/↑ go to the previous node and →/↓ to the next, in index order. Home and End go to the first and last. Enter opens the page (native link activation).</li>
+      <li><b>Focused node:</b> it is lit like a hover (D3), wears the app’s <code>focus-visible:ring-2 ring-ring</code> round its dot, and is revealed if the view clips it (motivic’s <code>reveal</code>).</li>
+      <li><b>Structure:</b> the stage is <code>role="group"</code>, labelled by the group heading. A visually hidden hint follows it: “Use the arrow keys to move between pages.”</li>
+      <li><b>Names:</b> each node is a link whose accessible name is the full title, plus a visually hidden “, concept” or “, entity”.</li>
+      <li>The legend and the gesture hint are <code>aria-hidden</code>.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d13">
+    <h4>D13 · Motion</h4>
+    <ul>
+      <li><b>First paint</b> pre-rolls to α 0.3 headless, then the web relaxes into place, one tick per frame, until d3’s α floor.</li>
+      <li><b>A refresh</b> that changes the node or edge set starts a <b>warm</b> sim from current positions (motivic’s <code>startingPositions</code>) and hands the view back to the fit.</li>
+      <li><b>Hover and dim</b> changes are instant: no transition, because a 100-dot fade stutters.</li>
+      <li><b>Reduced motion</b> (<code>usePrefersReducedMotion</code>, or a <code>reducedMotion</code> prop threaded <code>WikiView</code> → landing → web for stories and tests) settles the sim fully before a single paint, with no glide. A drag moves only the held node until release, then the rest jump. This is motivic’s reduced path unchanged.</li>
+      <li>While the search box holds a query, the web is unmounted. Clearing it re-lays the web from scratch, and because the sim is seeded it comes back identically, apart from any nodes you dragged.</li>
+    </ul>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <div class="scroll"><table>
+    <tr><th>Situation</th><th>What <code>/wiki</code> shows</th></tr>
+    <tr><td>Nothing synced</td><td>The existing “Nothing synced yet” empty state. No search box, card or web.</td></tr>
+    <tr><td>Concepts exist</td><td>Card for the day’s concept (D7). The web’s focus is that concept (D1).</td></tr>
+    <tr><td>Entities but no concepts</td><td>No card. The web is drawn with no focus and nothing lit at rest.</td></tr>
+    <tr><td>No concepts and no entities</td><td>Search box, then the <code>EmptyState</code> “No concepts or entities yet” (P1 F, D6).</td></tr>
+    <tr><td>One node</td><td>Drawn at the stage’s middle at scale 1.</td></tr>
+    <tr><td>A refresh brings new or changed pages</td><td>Warm restart (D13). The card and focus don’t change (D7: new concepts qualify tomorrow).</td></tr>
+    <tr><td>Local midnight passes with the tab open</td><td>The card and the web’s focus move to the new day’s concept. The sim restarts warm with the new focus pull and bloom.</td></tr>
+    <tr><td>Typing a query</td><td>Card and web are replaced by <code>WikiSearchResults</code> (P1 D). Clearing restores them (D13).</td></tr>
+    <tr><td><code>/wiki/&lt;section&gt;</code></td><td>Unchanged: search plus that section’s list. It is now the only list of any section’s pages.</td></tr>
+    <tr><td>Page rows, section nav, ⌘K, ⌘P</td><td>Unchanged.</td></tr>
+  </table></div>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <p>No schema, route, API or Worker change. New module-level types and functions:</p>
+  <pre>// lib/wiki/web/graph.ts
+export interface WikiWebNode {
+  path: string;                           // wiki/concepts/x.md; the node id
+  title: string;
+  section: 'concepts' | 'entities';
+  degree: number;                         // distinct neighbours in the web
+}
+export interface WikiWebEdge { a: string; b: string }   // a &lt; b, undirected
+export function buildWikiWeb(pages: readonly WikiPageIndexRow[]):
+  { nodes: WikiWebNode[]; edges: WikiWebEdge[] };
+
+// lib/wiki/concept-of-the-day.ts
+/** The concept featured on `today` (local YYYY-MM-DD), or undefined when there are no concepts. */
+export function conceptOfTheDay(
+  pages: readonly WikiPageIndexRow[],
+  today: string,
+): WikiPageIndexRow | undefined;
+
+// components/wiki/web/wiki-web.tsx
+export interface WikiWebProperties {
+  nodes: readonly WikiWebNode[];
+  edges: readonly WikiWebEdge[];
+  focusPath: string | null;               // the day's concept, or null
+  reducedMotion?: boolean | undefined;    // forced in stories/tests; else prefers-reduced-motion
+  className?: string | undefined;
+}
+
+// lib/wiki/fixtures.ts (new export, shared by stories, RTL and e2e)
+export function wikiWebFixtureSet(): { pages: WikiPageRow[]; sync: WikiSync };</pre>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <h3>Files</h3>
+  <div class="scroll"><table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>frontend/package.json</code>, root lockfile</td><td>Add <code>d3-force@^3</code> and dev <code>@types/d3-force@^3</code> (D4), via <code>npm install -w frontend</code>.</td></tr>
+    <tr><td><code>lib/wiki/web/graph.ts</code> (+ test)</td><td><code>buildWikiWeb</code> (D8).</td></tr>
+    <tr><td><code>lib/wiki/web/forces.ts</code></td><td><code>WIKI_WEB_FORCES</code> (D10), <code>dotRadius(degree)</code>, <code>Point</code>.</td></tr>
+    <tr><td><code>lib/wiki/web/bounds.ts</code> (+ test)</td><td><code>forceBounds</code>, ported from motivic’s <code>rectangle-forces.ts</code> and made circle-aware (limit = half world − margin − dot radius).</td></tr>
+    <tr><td><code>lib/wiki/web/simulation.ts</code> (+ test)</td><td>Port of motivic’s <code>simulation.ts</code>: seeded LCG, <code>worldSize</code>, warm-start placement, <code>createWebSimulation</code> with the D10 forces (<code>forceCollide</code>, not rectangles), plus preroll, settle and <code>positionsOf</code>.</td></tr>
+    <tr><td><code>lib/wiki/web/view.ts</code> (+ test)</td><td>Port of <code>view.ts</code> and <code>motif-web-view.ts</code>’s pure helpers. <code>fitView</code> fits points plus the label allowance; <code>revealNode</code> replaces <code>revealCard</code>.</td></tr>
+    <tr><td><code>lib/wiki/web/labels.ts</code> (+ test)</td><td>Pure: which names show, their placement, nudging and greedy culling (D9). Widths come in as input, so it is testable in jsdom.</td></tr>
+    <tr><td><code>lib/wiki/concept-of-the-day.ts</code> (+ test)</td><td>D7, with FNV-1a in the same file.</td></tr>
+    <tr><td><code>lib/hooks/use-element-size.ts</code> (+ test)</td><td>Port of motivic’s <code>ResizeObserver</code> hook.</td></tr>
+    <tr><td><code>components/wiki/web/wiki-web-stage.ts</code></td><td>Port of <code>motif-web-stage.ts</code>: registers node, edge and label elements and writes them each tick. It also owns the view, the Fit state, hover or focus lighting (by toggling data attributes) and label culling.</td></tr>
+    <tr><td><code>components/wiki/web/use-wiki-web-gestures.ts</code></td><td>Port of <code>use-web-gestures.ts</code>, with D3’s changes: wheel zooms only with ctrl or meta, the pan-y touch policy, no clear-on-click, and node hit-testing by <code>[data-wiki-node]</code>.</td></tr>
+    <tr><td><code>components/wiki/web/wiki-web.tsx</code> (+ test, stories), <code>wiki-web.styles.ts</code></td><td>The stage element; an SVG of edges; one absolutely positioned <code>ViewLink</code> per node (dot and name); legend, hint and Fit button; roving keyboard (D12).</td></tr>
+    <tr><td><code>components/wiki/concept-of-the-day-card.tsx</code> (+ test)</td><td>D11.</td></tr>
+    <tr><td><code>components/wiki/wiki-searchable.tsx</code></td><td>Extracted from <code>wiki-index-view.tsx</code>: the search box, then either <code>WikiSearchResults</code> or its children. Shared by the landing and the section view, so the swap is written once.</td></tr>
+    <tr><td><code>components/wiki/wiki-landing-view.tsx</code> (+ test)</td><td>D6 composition: card and web only, or the D6 empty state. Computes the day from <code>now</code> (threaded from <code>WikiView</code>), then <code>conceptOfTheDay</code> and <code>buildWikiWeb</code>, memoised.</td></tr>
+    <tr><td><code>components/wiki/wiki-index-view.tsx</code></td><td>Becomes section-only (<code>section</code> required), wrapped in <code>WikiSearchable</code>. Rename it to <code>WikiSectionView</code>.</td></tr>
+    <tr><td><code>components/wiki/wiki-view.tsx</code></td><td><code>index</code> → <code>WikiLandingView</code>. Thread <code>now</code> and <code>reducedMotion</code>.</td></tr>
+    <tr><td><code>lib/wiki/fixtures.ts</code></td><td><code>wikiWebFixtureSet()</code>: Plate I’s 52-node graph (list below) plus 3 sources and 2 questions, so search results span sections and the tests can show neither list appears on <code>/wiki</code>. Give each concept a <code>created</code> date spread over the fortnight before the story <code>NOW</code>, and tune the dates so the pick at <code>NOW</code> is “Desirable difficulty”, as drawn.</td></tr>
+    <tr><td><code>components/wiki/wiki-view.stories.tsx</code>, <code>wiki-view.test.tsx</code>, <code>e2e/wiki-reading-room.spec.ts</code></td><td>Update the tests that click a concept row on <code>/wiki</code>: that row is now a web node (Tests). Add the new stories.</td></tr>
+  </table></div>
+
+  <h3>The sample graph (Plate I; seed for <code>wikiWebFixtureSet</code>)</h3>
+  <pre>concepts: desirable-difficulty, spaced-repetition, retrieval-practice, interleaving, forgetting-curve,
+  deliberate-practice, working-memory, sleep-consolidation ("Sleep and memory"), exercise-cognition,
+  stress-learning, attention-ten-minutes ("The ten-minute rule"), elaboration, multisensory, habit-loop,
+  habit-stacking, identity-habits, implementation-intentions, environment-design, two-minute-rule,
+  tiny-habits, dopamine-anticipation, bids-for-connection, four-horsemen, repair-attempts,
+  chestertons-fence, democracy-of-the-dead, zone-2, vo2-max, medicine-3, centenarian-decathlon,
+  llm-wiki, rag-failure, zettelkasten, progressive-summarization, compounding-knowledge,
+  second-brain, flow, growth-mindset                                                    (38)
+entities: robert-bjork, hermann-ebbinghaus, anders-ericsson, john-medina, james-clear, bj-fogg,
+  john-gottman, bringing-baby-home, gk-chesterton, peter-attia, andrej-karpathy, niklas-luhmann,
+  tiago-forte, mihaly-csikszentmihalyi                                                  (14)
+links (67, undirected):
+  desirable-difficulty — robert-bjork, spaced-repetition, retrieval-practice, interleaving,
+                         forgetting-curve, deliberate-practice
+  spaced-repetition — forgetting-curve, retrieval-practice, sleep-consolidation, habit-loop,
+                      compounding-knowledge
+  forgetting-curve — hermann-ebbinghaus        interleaving — robert-bjork
+  retrieval-practice — elaboration             deliberate-practice — anders-ericsson, flow, growth-mindset
+  flow — mihaly-csikszentmihalyi               john-medina — working-memory, sleep-consolidation,
+                                                 exercise-cognition, stress-learning,
+                                                 attention-ten-minutes, multisensory
+  working-memory — attention-ten-minutes, elaboration     multisensory — elaboration
+  exercise-cognition — zone-2                  stress-learning — bringing-baby-home
+  john-gottman — bringing-baby-home, bids-for-connection, four-horsemen, repair-attempts
+  repair-attempts — four-horsemen              bids-for-connection — bringing-baby-home
+  james-clear — habit-loop, habit-stacking, identity-habits, environment-design, two-minute-rule
+  habit-stacking — habit-loop, implementation-intentions   tiny-habits — bj-fogg, habit-stacking,
+                                                             two-minute-rule
+  dopamine-anticipation — habit-loop           identity-habits — growth-mindset
+  gk-chesterton — chestertons-fence, democracy-of-the-dead   chestertons-fence — democracy-of-the-dead
+  peter-attia — zone-2, vo2-max, medicine-3, centenarian-decathlon, sleep-consolidation
+  vo2-max — zone-2, centenarian-decathlon
+  llm-wiki — andrej-karpathy, rag-failure, compounding-knowledge, second-brain
+  zettelkasten — niklas-luhmann, compounding-knowledge      tiago-forte — progressive-summarization,
+                                                             second-brain
+  second-brain — progressive-summarization, zettelkasten</pre>
+
+  <h3>Order of work and subagents</h3>
+  <p>Follow the <code>implement-spec</code> skill. The lead (strongest model) builds the <b>foundations</b> alone: the dependency, <code>graph.ts</code> with its types, <code>forces.ts</code>, <code>wikiWebFixtureSet</code>, the <code>WikiSearchable</code> extraction, and the <code>WikiView</code> → <code>WikiLandingView</code> shell rendering placeholder slots. Then it dispatches mid-tier subagents on disjoint files:</p>
+  <ul>
+    <li><b>Batch 1, in parallel.</b>
+      <ul>
+        <li><b>A · Concept of the day:</b> <code>concept-of-the-day.ts</code> and <code>concept-of-the-day-card.tsx</code> with tests. It must not touch <code>lib/wiki/web/</code>.</li>
+        <li><b>B · Web physics (pure):</b> <code>bounds.ts</code>, <code>simulation.ts</code>, <code>view.ts</code>, <code>labels.ts</code> and <code>use-element-size.ts</code>, with tests. No React components.</li>
+      </ul></li>
+    <li><b>Batch 2, after B.</b> <b>C · Web component:</b> <code>components/wiki/web/*</code>, with tests and component stories, against B’s API.</li>
+    <li><b>The lead keeps:</b> slotting A and C into the landing, the <code>wiki-view</code> stories and baselines, the updated RTL and e2e tests, the full <code>check</code>, the demo, commits and the PR.</li>
+  </ul>
+  <p>The seams to reconcile are <code>WikiWebNode</code> / <code>WikiWebEdge</code> (foundation), <code>WIKI_WEB_FORCES</code> (B reads it, C reads the label constants), and the <code>reducedMotion</code> and <code>now</code> threading.</p>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D6 P1">On <code>/wiki</code>, top to bottom: header, search box, concept-of-the-day card, “Concepts &amp; entities” group with its count and the web, and nothing after it. No section’s list of pages appears on <code>/wiki</code>.</li>
+    <li data-trace="D6 P1">Typing a query replaces the card and web with the existing search results. Clearing the query restores them.</li>
+    <li data-trace="D6 P1">With no concepts and no entities, <code>/wiki</code> shows the search box and the “No concepts or entities yet” empty state.</li>
+    <li data-trace="D6">The <code>/wiki/concepts</code>, <code>/wiki/entities</code>, <code>/wiki/sources</code> and <code>/wiki/questions</code> views, the nav, ⌘K and ⌘P behave as before.</li>
+    <li data-trace="D7">For a given page index and local date, <code>conceptOfTheDay</code> always returns the same concept.</li>
+    <li data-trace="D7">For a fixed set of <i>n</i> concepts, any <i>n</i> consecutive days feature each concept exactly once.</li>
+    <li data-trace="D7">Adding a concept whose <code>created</code> is today doesn’t change today’s pick (except on the wiki’s first day), and it is featured before any concept repeats.</li>
+    <li data-trace="D7">Entities are never picked. With no concepts, there is no card.</li>
+    <li data-trace="D11 P1">The card shows the eyebrow, the date, the title, the summary (if any) and the tags (if any). Clicking anywhere on it opens the page. Its link’s accessible name is the title.</li>
+    <li data-trace="D8">The web draws exactly the concept and entity pages, and one undirected edge per linked pair among them. Links to sources, questions, missing pages or itself are not drawn.</li>
+    <li data-trace="D1 P1">At rest, the day’s concept wears the violet halo and its bold name. Its edges and neighbours are violet, and its neighbours are named. No other node is named at rest below 1:1.</li>
+    <li data-trace="D2 P1">Concepts are filled dots and entities are rings, sized by degree. Dots and names keep their screen size at every zoom.</li>
+    <li data-trace="D3 P1">Hovering a node lights it, its edges and its neighbours, names them, and dims everything else. Leaving restores the resting state.</li>
+    <li data-trace="D3">Clicking a node opens its page in-app. ⌘/Ctrl-click opens it in a new tab. The click that ends a node drag does not navigate.</li>
+    <li data-trace="D3">Dragging a node moves it and its neighbours follow. Dragging empty stage pans. A plain wheel scrolls the page and never zooms. Pinch and ⌘/Ctrl + wheel zoom about the pointer.</li>
+    <li data-trace="D3 P1">On touch, a one-finger vertical swipe over the web scrolls the page, a tap on a node opens it, and a two-finger pinch zooms the web.</li>
+    <li data-trace="D9 P1">From scale 1 up, every node on the stage is named. Overlapping names are culled by priority, and the focus’s name is never culled.</li>
+    <li data-trace="D10 P1">After a zoom or pan, a “Fit the web” button appears top-right. Pressing it returns the view to the fit, and the button disappears.</li>
+    <li data-trace="D10 P1">On first paint every node is inside the stage. The stage is 440 px tall, or 320 px on a phone, and nothing on the page is wider than a 390 px screen.</li>
+    <li data-trace="D12">The web is a single tab stop. Arrow keys, Home and End move between nodes, lighting each like a hover and bringing it into view. Enter opens the page.</li>
+    <li data-trace="D13">With reduced motion the web appears settled in one paint and never glides. Otherwise it relaxes into place after a near-settled first paint.</li>
+    <li data-trace="D4 D5">The same pages lay out identically on every run (seeded), so the Storybook baselines are stable in the Docker gate.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <p>Red/green, per <code>CLAUDE.md</code>.</p>
+  <h3>Unit (Jest)</h3>
+  <ul>
+    <li><code>graph.test.ts</code>: section filter; undirected dedupe; dropped links (cross-section, missing, self); degree; index order.</li>
+    <li><code>concept-of-the-day.test.ts</code>: purity; the <i>n</i>-day round robin over a 30-day window; a new concept doesn’t change today’s pick and is featured next; a <code>created</code> that is null, malformed or in the future; the first-day exception; entities ignored; the empty set; and the midnight boundary (two dates, two picks).</li>
+    <li><code>simulation.test.ts</code>, ported from motivic’s:
+      <ul>
+        <li>two settled runs are equal (determinism);</li>
+        <li>no two dots are closer than their collide radii at rest;</li>
+        <li>every node is inside the bounds;</li>
+        <li>the focus sits nearer the world’s centre than it does without a focus;</li>
+        <li>the focus’s neighbours sit farther out than the same neighbours without bloom;</li>
+        <li>a warm start keeps existing positions and places a new node beside its neighbour.</li>
+      </ul></li>
+    <li><code>view.test.ts</code>: fit (a single node; clamping; the label allowance); zoom about a point; pinch; reveal.</li>
+    <li><code>labels.test.ts</code>: which names show at rest, on hover and at scale ≥ 1; outward anchors; the nudge; culling order; the focus never culled; truncation.</li>
+    <li><code>use-element-size.test.ts</code>.</li>
+  </ul>
+  <h3>RTL</h3>
+  <ul>
+    <li><code>wiki-web.test.tsx</code>, with <code>reducedMotion</code> and a stubbed element size:
+      <ul>
+        <li>one link per node, named by title plus kind;</li>
+        <li>roving tabindex and the arrow, Home, End and Enter keys;</li>
+        <li>hover sets the lit state on the right nodes;</li>
+        <li>the Fit button appears after a ctrl + wheel and not after a plain wheel;</li>
+        <li>a click after a drag doesn’t navigate.</li>
+      </ul></li>
+    <li><code>wiki-landing-view.test.tsx</code> / <code>wiki-view.test.tsx</code>: section order, with no Sources or Questions group on <code>/wiki</code>; search swap and restore; no card without concepts; the D6 empty state without concepts or entities. The existing “opens a page from the index” tests now click the node link inside the “Concepts &amp; entities” region.</li>
+    <li><code>concept-of-the-day-card.test.tsx</code>: fields, omission of an empty summary or empty tags, and the link target.</li>
+  </ul>
+  <h3>Storybook (visual, reduced motion)</h3>
+  <ul>
+    <li><code>wiki-web.stories.tsx</code>:
+      <ul>
+        <li><code>AtRest</code> (P1 A);</li>
+        <li><code>Hovering</code>, via the test-runner’s real <code>hover</code> on <code>[data-wiki-node="wiki/entities/john-medina.md"]</code> and declared last, per the storybook skill (P1 B);</li>
+        <li><code>ZoomedIn</code>, whose play dispatches ctrl + wheel events (P1 C);</li>
+        <li><code>NoFocus</code>;</li>
+        <li><code>OneNode</code>.</li>
+      </ul></li>
+    <li><code>wiki-view.stories.tsx</code>:
+      <ul>
+        <li><code>Index</code> is re-baselined, since the landing changes;</li>
+        <li>new <code>Landing</code>, using <code>wikiWebFixtureSet</code> (P1 A);</li>
+        <li>new <code>LandingPhone</code>, a 390-wide frame (P1 E);</li>
+        <li>new <code>NoConceptsYet</code>, sources and questions only (P1 F);</li>
+        <li>the existing search stories re-baseline if they’re on <code>/wiki</code> (P1 D).</li>
+      </ul></li>
+  </ul>
+  <h3>E2E (Playwright)</h3>
+  <ul>
+    <li>Clicking a web node opens its page.</li>
+    <li>Clicking the card opens the day’s concept.</li>
+    <li>Tab into the web, press → then Enter, and the page opens.</li>
+    <li>Typing hides the web and clearing restores it.</li>
+    <li>Phone (390×844): no element is wider than the screen, the web is visible, and a tap on a node opens it.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the <code>showboat</code> skill’s evidence rules. In short, this change has all three kinds:</p>
+  <ul>
+    <li>the web settling is an animation;</li>
+    <li>the landing is a new visual;</li>
+    <li>hover and click-through form a journey;</li>
+    <li>and it moves the <code>wiki-wikiview--index</code> baseline, whose diff image the <code>storybook</code> skill says to embed.</li>
+  </ul>
+  <p>Put the doc under <code>docs/demos/</code> per <code>CLAUDE.md</code>.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><b>Sources and questions in the web:</b> Alex chose concepts and entities. A concept linked only through a source can therefore look isolated. The cheap later fix is co-citation edges (two pages citing the same <code>raw/</code> source), a derived edge type this spec deliberately doesn’t add.</li>
+    <li><b>A local graph on each page</b>, <b>stored positions</b>, and <b>skip or re-roll for the day’s concept</b> are each a follow-up if wanted. D7 has no storage, so a skip would need some.</li>
+    <li><b>Risk: label legibility at 200 nodes.</b> Culling keeps names from overlapping, but a dense core can still cull most neighbour names at rest. If that happens in the real wiki, raise <code>focusLinkDistance</code> before adding machinery.</li>
+    <li><b>Risk: cooperative touch gestures.</b> If a finger starts a vertical pan before the second lands, the browser owns the gesture and the page scrolls. That is the accepted behaviour of the pattern. Verify on an iPhone, not only in Playwright’s emulation.</li>
+    <li><b>Risk: performance.</b> 200 nodes and about 300 edges written each frame is within what motivic does per card. d3’s Barnes–Hut and quadtree collision are O(n log n). If frames drop, stop writing names that are hidden.</li>
+    <li><b>Unknown: whether the live pages carry <code>created</code>.</b> Check with <code>npm run psql -w database -- -c "select count(*) filter (where created is null), count(*) from wiki_pages where section = 'concepts'"</code>. If most are null, D7 degrades to “always existed” for them: still a full rotation, but a mid-day sync of such a page can change the pick. Say so in the PR if it applies.</li>
+    <li><b>Unknown: the real degree distribution.</b> The sample’s hubs have 6–7 links. A wiki whose focus has 20 neighbours needs the bloom retuned. The constants live in one file for that reason.</li>
+  </ul>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
