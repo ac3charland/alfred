@@ -20,7 +20,9 @@ function htmlTitle(html: string): string {
 }
 
 function markdownTitle(markdown: string): string {
+  // Fenced code first: a `# comment` line in a shell block is not a heading.
+  const prose = markdown.replaceAll(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, '');
   // A single `#` then the text — `##` and deeper are sections, not the document's title.
-  const match = /^#[ \t]+(.+)$/m.exec(markdown);
+  const match = /^#[ \t]+(.+)$/m.exec(prose);
   return match?.[1]?.trim() ?? '';
 }

@@ -32,6 +32,14 @@ describe('specTitle', () => {
     expect(specTitle(markdown, null, 'Spec')).toBe('The real title');
   });
 
+  it('ignores a # comment line inside a fenced code block before the title', () => {
+    const backticks = '```bash\n# install\nnpm ci\n```\n\n# The real title\n';
+    const tildes = '~~~sh\n# install\n~~~\n\n# The real title\n';
+
+    expect(specTitle(backticks, null, 'Spec')).toBe('The real title');
+    expect(specTitle(tildes, null, 'Spec')).toBe('The real title');
+  });
+
   it("falls back to the file's name when the document has no title", () => {
     expect(specTitle('No headings here.', 'docs/specs/ALF-42.md', 'Spec')).toBe('ALF-42.md');
     expect(specTitle('<html><body>x</body></html>', 'docs/specs/ALF-7.html', 'Spec')).toBe(

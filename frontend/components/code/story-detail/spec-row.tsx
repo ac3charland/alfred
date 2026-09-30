@@ -29,6 +29,11 @@ export function SpecRow({ story }: { story: CodeStory }) {
   const [open, setOpen] = React.useState(false);
   const row = React.useRef<HTMLButtonElement>(null);
   const spec = story.spec_markdown;
+  // Parsing an HTML spec for its <title> is not free; only redo it when the document changes.
+  const title = React.useMemo(
+    () => (spec === null ? '' : specTitle(spec, story.spec_path, heading)),
+    [spec, story.spec_path, heading],
+  );
 
   if (spec === null || spec.trim() === '') {
     return (
@@ -41,8 +46,6 @@ export function SpecRow({ story }: { story: CodeStory }) {
       />
     );
   }
-
-  const title = specTitle(spec, story.spec_path, heading);
 
   return (
     <div className="flex flex-col gap-2">
