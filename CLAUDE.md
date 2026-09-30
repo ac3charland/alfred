@@ -149,11 +149,11 @@ Every change to the app's functionality should impact **at least one** test. Not
 Tests prove a change **doesn't regress**; a **demo doc** proves the new behavior
 **actually happens** — and lets a reviewer reproduce it with one command. Unless told
 otherwise, once a user-facing or behavioral change is working and `check` is green,
-capture it as a demo doc at `docs/demos/<feature-or-branch>.md` using the
+capture it as a demo doc at `docs/demos/<feature>/<name>.md` using the
 self-contained demo CLI (no extra runtime, works the same locally, in Claude Code for
 web, and in the sandbox):
 
-- `npm run demo -- init docs/demos/<name>.md "<title>"` to start it.
+- `npm run demo -- init docs/demos/<feature>/<name>.md "<title>"` to start it.
 - `npm run demo -- note …` to narrate; `npm run demo -- exec <file> <lang> "<cmd>"` to
   run the relevant commands / tests / requests and capture their output.
 - For UI changes, screenshot the running app with
@@ -164,7 +164,7 @@ web, and in the sandbox):
   the new baseline (`npm run test:storybook:update -w frontend`) and commit the regenerated
   PNG(s) with the demo doc. See the `storybook` skill (§7) for the full capture-then-approve
   flow; never hand-edit a baseline.
-- Confirm it reproduces with `npm run demo -- verify docs/demos/<name>.md` before you
+- Confirm it reproduces with `npm run demo -- verify docs/demos/<feature>/<name>.md` before you
   wrap up.
 
 **Read the `showboat` skill first** for the full command set and authoring tips
@@ -184,7 +184,7 @@ When you finish a task, **unless the user tells you not to**, wrap it up like th
    content at all times**:
    - **No PR exists yet?** Open one from the feature branch into `main` once the full
      feature is done. **Link the demo doc as a _live, clickable_ link** in the description
-     — generate it with `npm run demo -- pr-link docs/demos/<name>.md` (emits a GitHub blob
+     — generate it with `npm run demo -- pr-link docs/demos/<feature>/<name>.md` (emits a GitHub blob
      URL on the head branch, **not** a bare path, so reviewers can open it and see the
      embedded screenshots/diffs rendered). See the `showboat` skill. A **local** session (no
      `claude.ai` session link) names its model in the description, since commit trailers are
