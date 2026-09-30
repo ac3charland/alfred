@@ -249,7 +249,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <span class="stamp"></span>
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>289</span><span class="sep"> — </span><span class="ttl">Reader: a “Further Reading” section for the articles a post links to</span></h1>
-  <p class="change" id="change">A summarised post’s overview gains a <b>Further reading</b> checklist of the articles it links to: tick some, then send them to the Reader for summarising or straight to Instapaper.</p>
+  <p class="change" id="change">A summarised post’s overview gains a <b>Further reading</b> checklist of the linked sources worth reading in full, as the model judges them: tick some, then send them to the Reader for summarising or straight to Instapaper.</p>
+  <p class="revised" id="revised">Revised 2026-09-30: D2 settled on your review — the model judges which links qualify; a roundup no longer counts wholesale.</p>
 </header>
 
 <section class="sec" id="decisions">
@@ -258,9 +259,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d1">D1</a>How does “Send to Reader” work?</h3>
       <p class="pick">It saves the link into Instapaper’s “To Reader” folder; the existing leg summarises it.</p>
       <p class="why">Instapaper already extracts article text. No new fetcher, parser or intake path.</p></li>
-    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>Where do the links come from?</h3>
-      <p class="pick">The post’s own links, numbered. The model picks numbers and never writes a URL.</p>
-      <p class="why">A URL the model writes can be invented. A number it picks can’t.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>Where does the section sit?</h3>
       <p class="pick">Last, after “Who should read it”, with its own selection and send bar.</p>
       <p class="why">Keeps the wiki bar and the reading bar apart.</p></li>
@@ -273,6 +271,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>What happens to an item once sent?</h3>
       <p class="pick">It shows “In Reader” or “In Instapaper” and can’t be ticked again.</p>
       <p class="why">One send per link; moving it into To Reader in Instapaper still gets it summarised.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Who decides what counts as further reading?</h3>
+      <p class="pick">The model: sources the argument rests on, and roundup items worth reading in full.</p></li>
   </ol>
   <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
 </section>
@@ -388,6 +388,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <ul>
     <li>Prompt goes to v2; the link list adds about a third of a cent per summary.</li>
     <li>“Send to Reader” needs the “To Reader” folder in Instapaper, which already exists (ALF-272).</li>
+    <li>After it ships, a three-post eval checks the model’s judgment (<a href="#after-merge">steps</a>).</li>
   </ul>
 </section>
 
@@ -423,9 +424,10 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </section>
 
   <section class="rec" id="d2">
-    <h3><span class="tag">D2</span>Where do the links come from? · proposed</h3>
-    <p>Alternatives: (a) have the model return URLs it reads from a text that carries them inline. It can mistype or invent them, and a wrong URL is a silent failure. (b) Treat every anchor as further reading without the model. That lists subscribe buttons, sponsors and bylines. (c) Store a link column at intake. That still needs the model to choose among the links.</p>
-    <p>Chosen: at summarise time a pure function numbers the post’s candidate links (D11). The model sees each link’s number inline where it sits in the text, <i>and</i> a numbered list with the URLs. The model returns <code>{ link: n, title, note }</code>. Normalisation drops any number not in the list, so every stored URL is one the post contains. Titles and notes are the model’s own, because anchor text is often “this” or “here”.</p>
+    <h3><span class="tag">D2</span>Who decides what counts as further reading? · settled</h3>
+    <p><b>The model decides; the script never does.</b> Your words in review: not every link is worth an item. The section exists for (1) a source the post’s argument rests on or engages at length — another writer’s article it builds on, rebuts or quotes — that you might want to read in full; and (2) in a link roundup, only the items that look genuinely worth reading, not the whole list. Everything else stays out: passing citations, a link supporting a single fact or number, definitions and reference pages (Wikipedia, docs, a company homepage), the author’s own back catalogue when it is only self-promotion, product pages, and all chrome and sponsors. An empty list is the common, correct answer (D4).</p>
+    <p><b>How the model sees the links.</b> At summarise time a pure function numbers the candidate anchors (D11) — a mechanical pre-filter that only removes things that can never qualify, never a selection. The model sees each number inline where the link sits in the text, <i>and</i> a numbered list with the URLs, so it judges each link by what the surrounding prose does with it. It returns <code>{ link: n, title, note }</code>; normalisation drops any number not in the list, so every stored URL is one the post really contains (a model-written URL could be mistyped or invented). The title names the linked piece, because anchor text is often “this” or “here”; the note says what the post uses it for, which is the reason you’d open it.</p>
+    <p>Considered: every anchor as an item (a script with no judgment — rejected in review); the model writing URLs itself (can invent them).</p>
   </section>
 
   <section class="rec" id="d3">
@@ -515,7 +517,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <h3>Summariser</h3>
   <ul>
     <li>The schema gains <code>overview.further_reading: [{ link: integer, title: string, note: string }]</code>, which is required and may be empty. The guard requires it. A miss is the existing counted <code>schema</code> failure.</li>
-    <li>Prompt addition, in substance: <i>further_reading lists the reading the post points its reader to (articles, papers, posts, videos, books) by the link numbers in the text. In a link roundup, every item is further reading. Never the publication’s own chrome (subscribe, share, comments, app, author profile, the post itself), sponsors or ads. title names the linked piece, not the anchor text. note (≤ 20 words) says what it is and why the post points to it. Up to 10. Empty when the post links nothing worth reading, or when the links block says “none”.</i></li>
+    <li>Prompt addition, in substance: <i>further_reading is for the reader who might want to go to the source. Include a link only if (a) the post’s argument rests on it or engages it at length — it builds on, rebuts, or quotes substantially from that piece — or (b) the post is a link roundup and that item looks genuinely worth reading in full. Be selective: in a roundup, pick the few items with real substance, not the list. Leave out passing citations, links that support a single fact or number, definitions and reference pages, homepages and product pages, the author’s own earlier posts unless the argument depends on them, and the publication’s chrome (subscribe, share, comments, app, author profile, the post itself), sponsors and ads. Refer to links only by their numbers. title names the linked piece, not the anchor text. note (≤ 20 words) says what the post uses it for. Up to 10, but most posts warrant none or a few; empty is the right answer when nothing qualifies, and always when the links block says “none”.</i></li>
     <li>Normalisation (D2, D5, D8): drop unknown numbers, dedupe, sort by number, cap at 10, map to URLs, and trim blank titles (an item whose title is blank after trimming is dropped).</li>
     <li>Subrequests: none added. A fresh post’s HTML is already in memory at intake, and a retried post’s read adds <code>html</code> and <code>canonical_url</code> to its existing select. Check this against the arithmetic in <code>scheduled.ts</code>’s <code>READER_TICK_LIMIT</code> doc comment.</li>
   </ul>
@@ -576,6 +578,7 @@ useFurtherReadingSendInFlight(postId): boolean</pre>
 <section id="ac" data-kind="story">
   <h2>Acceptance criteria</h2>
   <ul class="checks">
+    <li data-trace="D2">The prompt states both inclusion tests and the exclusions, calls empty the common answer, and says nothing that makes a roundup count wholesale (pinned in <code>prompt.test.ts</code>).</li>
     <li data-trace="D2 D7">The summariser’s input carries <code>[n]</code> markers and a numbered links block built from the post’s HTML. A post without HTML gets “none”.</li>
     <li data-trace="D11">Candidates exclude non-http(s) links, links with no visible text, the canonical URL, bylines, app-links and <code>redirect/2/</code> wrappers. Repeats share a number, and the list is capped at 150.</li>
     <li data-trace="D2 D5 D8">A stored <code>further_reading</code> holds only URLs from the numbered list, deduped, in link order, at most 10.</li>
@@ -616,9 +619,17 @@ useFurtherReadingSendInFlight(postId): boolean</pre>
     <li><b>Direct page fetching</b> is out (D1). Instapaper is the reader of the web for alfred.</li>
     <li><b>Confirm while building:</b> that Instapaper’s <code>bookmarks/add</code> with the default <code>resolve_final_url</code> follows a <code>substack.com/redirect/&lt;uuid&gt;</code> wrapper and that the returned bookmark’s <code>url</code> is the final one. The To Reader leg’s <code>siteOf</code> reads that URL. If Instapaper keeps the wrapper, the article’s eyebrow reads <code>substack.com</code>. Record the finding with the Reader’s other build notes in <code>docs/specs/epics/ALF-232-notes.md</code>.</li>
     <li><b>Risk: expired wrappers.</b> A redirect wrapper sent months later may no longer resolve, and Instapaper then saves an error page. The link is sent as it was in the post, and the likely case is a send within days of arrival.</li>
-    <li><b>Risk: the model over-picks chrome.</b> The prompt and D11’s filter aim to prevent it. The owner judges this from the eval output, not from a test.</li>
+    <li><b>Risk: the judgment misses in either direction</b> — padding a roundup with filler, or dropping the one source an essay turns on. No test can judge it (the SDK is mocked everywhere); the owner does, from the eval run in <a href="#after-merge">After it ships</a>, and a miss is a prompt edit plus a version bump.</li>
     <li><b>Instapaper rate limits</b> are undocumented. Ten sequential saves per press is well below anything the send verb hasn’t already survived.</li>
   </ul>
+</section>
+
+<section id="after-merge">
+  <h2>After it ships (for you)</h2>
+  <ol>
+    <li>Run <code>npm run eval:reader -w workers -- --query "&lt;query&gt;" --limit 3</code> over three real posts: an essay whose argument turns on another writer’s piece, a link roundup, and an essay with only passing citations.</li>
+    <li>Check the first lists that source, the second lists a few items rather than all of them, and the third lists nothing. If not, the fix is the prompt (and a version bump), not the code.</li>
+  </ol>
 </section>
 
 </section>
