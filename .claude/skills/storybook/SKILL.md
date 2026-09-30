@@ -342,7 +342,10 @@ ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lin
   is reachable the wrapper **starts `dockerd` itself on Linux** (a headless cloud sandbox / CI
   runner — `dockerd` is launchable as root, self-healing the gate the way `setup:chromium` heals
   the browser binary) and then runs the real gate; on **macOS** it **hard-fails** (start Docker
-  Desktop — there's no `dockerd` to launch). In the cloud, pre-pull the image in the setup
+  Desktop — there's no `dockerd` to launch; an agent can run `open -a Docker`). A macOS failure
+  as `docker: request returned 500 Internal Server Error … /containers/create` (exit 125) is Docker
+  Desktop dying mid-session, not the snapshots — relaunch it and wait until `docker run --rm
+  hello-world` succeeds before re-pushing. In the cloud, pre-pull the image in the setup
   script (`docs/cloud-environment.md`) so the auto-started run isn't waiting on a ~3 GB pull.
   **Auto-start fails with a stale pidfile?** On a reused cloud container the wrapper aborts with
   `Could not start a Docker daemon` over a leftover pidfile from a prior session naming a PID
