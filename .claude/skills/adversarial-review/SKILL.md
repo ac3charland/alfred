@@ -62,12 +62,14 @@ anchors the reviewer and defeats the point. Give it:
 ```text
 Your job is a verdict: does this change do what was asked, correctly? Be independent: trust
 nothing the PR claims until you've checked it, and prefer running (the tests, the repro, the demo
-doc's commands) to reasoning. "Nothing blocking" is a complete, successful review. You are not
-scored on how many findings you return, and each one costs the author a verification cycle.
+doc's commands) to reasoning. "Nothing blocking" is a complete, successful review; you are not
+scored on how many findings you return. Report everything you do find, marking what you can't
+confirm as a question: the author filters.
 
 Check that every requirement is met (for a bug fix: its root cause, not just the symptom) and
 pinned by a test that would fail without the change; the edge cases the change creates; and the
-repo's CLAUDE.md conventions. Skip what the type-check, lint, and format gates enforce; they ran.
+repo's CLAUDE.md conventions. Skip what the repo's automated gates (type-check, lint, format)
+already enforce.
 
 Report, in this order:
 1. Verdict, one line: ship it / ship once the blocking findings are fixed / rethink, and why.
@@ -87,8 +89,8 @@ Add a named focus from the ticket, but don't rewrite the block into a hunt:
   the brief. The *Verified* list gives "it's fine" somewhere to go.
 - **Ask for a scenario, not a score.** Models rate severity poorly; a failure scenario is a claim
   you can check.
-- **Label nits; don't forbid them.** Prompting a reviewer to hold back nits holds back real
-  findings with them. Triage filters them instead.
+- **Don't ask for restraint.** "Be conservative", "only high-severity", or "skip nits" is followed
+  literally and holds back real findings with the noise. The labels sort them; triage filters.
 
 ## Triage every finding
 
@@ -108,7 +110,8 @@ out of a right answer, so hold both directions to the same bar:
   *question* that exposes a real gap is blocking.
 - **Nits:** take one only when it's plainly right, cheap, and in lines the PR already touches;
   otherwise decline it in a line.
-- **Questions:** answer them from the ticket and plan; the answer is the disposition.
+- **Questions:** answer them from the ticket and plan, and the answer is the disposition; one they
+  don't settle goes to the human.
 - **Pre-existing, or real but out of scope → tell the human** in the tab rather than widening the
   diff.
 - **A clean report is a result, not a miss.** Don't re-brief or re-run the reviewer to shake
