@@ -118,6 +118,8 @@ npm run uninstall:launchd -w daemon                           # bootout + remove
   `coalesce(associated_message_type, 0) between 2000 and 3999`, group events
   `coalesce(item_type, 0) != 0`. Without the `coalesce`, `NULL not between …` is NULL — neither
   true nor false — and every ordinary row (which carries no associated type) is filtered away.
+  The owner's own *added* tapbacks (`is_from_me = 1`, 2000–2999) are the exception: a reaction is
+  how the owner answers, so they ship as outbound rows and drain the thread like a typed reply.
 - **`attributedBody` holds the body whenever `text` is empty**, which is most rows on current
   macOS. `typedstream.ts` locates the `NSString` / `NSMutableString` class marker, then the `+`
   type-encoding byte, then a length-prefixed UTF-8 run: one byte under 129, `0x81` + uint16 LE,
