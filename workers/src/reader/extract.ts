@@ -106,10 +106,13 @@ const POST_PATH = /^(?:\/pub\/[^/?#]+)?\/p\/[^/?#]+/;
  * template's `READ IN APP` sits on the `/pub/…/p/…` link, which the path rule takes first and
  * without needing to read any anchor text; the wordings kept here are the ones older and
  * hand-rolled templates use, where the anchor text is the only route from the row to the post.
+ * "Web" is taken wherever "online" is and "email" wherever "post" is, because templates name the
+ * same link both ways ("Read on web", Mailchimp's "View this email in your browser"); "web" has to
+ * end the word, or "Read on the website" would be a link to somewhere else.
  * Each addition is a strict widening — every string the previous pattern matched still matches.
  */
 const VIEW_IN_BROWSER =
-  /view (this )?(post )?(in|on) (your )?browser|read online|view online|read in app/i;
+  /view (this )?((post|email) )?(in|on) (your )?browser|(read|view) (online|on (the )?web\b)|read in app/i;
 
 /** The entities worth decoding by name inside an `href`. Everything else arrives numerically. */
 const NAMED_ENTITIES: Record<string, string> = {

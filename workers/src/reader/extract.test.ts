@@ -76,6 +76,28 @@ describe('extractPost — the fixtures', () => {
     expect(bare.canonical_url).toBe('https://x.example/i/1/2?t=3');
   });
 
+  it.each([
+    'Read on web',
+    'Read on the web',
+    'View on web',
+    'View this email in your browser',
+    'View email in browser',
+  ])('matches the "%s" wording as the web version', (wording) => {
+    const post = extractPost(
+      htmlMessage(`<a href="https://news.example.com/issues/42?t=abc">${wording}</a>`),
+      HARBORLINE,
+    );
+    expect(post.canonical_url).toBe('https://news.example.com/issues/42?t=abc');
+  });
+
+  it('never takes a link to some website for the web version', () => {
+    const post = extractPost(
+      htmlMessage('<a href="https://other.example/">Read on the website</a>'),
+      HARBORLINE,
+    );
+    expect(post.canonical_url).toBeUndefined();
+  });
+
   it('falls back to the anchor text when the mail carries no post path', () => {
     expect(extractPost(READ_IN_APP_MESSAGE, { name: 'The Cadence Weekly' })).toMatchObject({
       canonical_url: 'https://cadence.substack.com/i/149023188/9f2a?utm_source=email',
