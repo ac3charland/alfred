@@ -932,6 +932,62 @@ describe('Backlog', () => {
       }
       expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
     });
+
+    it("keeps the Backlog in the order the owner clicked while a server respace renumbers every story ahead of the jump's reply", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const reply = deferred<CodeItem[]>();
+      mockMoveCodeInProject.mockReturnValueOnce(reply.promise);
+      renderBacklog(
+        [
+          makeStory('other', { priority: 5, project_id: 'p2', epic_id: 'e2', ref: 'RLP-1' }),
+          makeStory('a', { priority: 10 }),
+          makeStory('c', { priority: 30 }),
+        ],
+        { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
+      );
+      const relay = (priority: number, rev: number): CodeItem => ({
+        ...makeSidecar('other', priority, rev),
+        project_id: 'p2',
+        epic_id: 'e2',
+        ref: 'RLP-1',
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-c to top of project' }));
+      await settle();
+      expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-c', true);
+      expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+
+      // The database ran out of float room for the jump, so it respaced EVERY story to 1..N —
+      // and only then landed ALF-c between the first two. All of it is one commit, streamed back
+      // before the jump's reply. A story with no write of its own must not land its new rank
+      // while ALF-c still holds the old scale: 1, 2 and 7.5 would put ALF-c last.
+      for (const row of [
+        relay(1, 1),
+        makeSidecar('a', 2, 2),
+        makeSidecar('c', 3, 3),
+        makeSidecar('c', 1.5, 4),
+      ]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+        expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+      }
+
+      // The reply settles the queue, and the server's ranks land together.
+      await act(async () => {
+        reply.resolve([makeSidecar('c', 1.5, 4)]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+
+      // They are the ranks that landed: a story another tab ranks between ALF-c (1.5) and ALF-a
+      // (2) falls between them, where it would sit above both had the old scale stayed.
+      act(() => {
+        mockCodeItemsHandler?.({ new: relay(1.75, 5) });
+      });
+      expect(rowOrder()).toEqual(['ALF-c', 'RLP-1', 'ALF-a']);
+    });
   });
 
   it('shows the empty state when there are no stories', () => {
