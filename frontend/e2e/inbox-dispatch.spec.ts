@@ -92,6 +92,7 @@ const ALFRED_PROJECT = {
   created_at: new Date(Date.UTC(2024, 0, 1)).toISOString(),
   description: null,
   color: null,
+  exclude_from_pr_ratio: false,
 };
 const TRIAGE_EPIC = {
   id: EPIC_ID,

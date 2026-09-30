@@ -9,6 +9,7 @@ import { ProjectKeyChip } from './project-key-chip';
 const ALFRED: Project = {
   color: null,
   description: null,
+  exclude_from_pr_ratio: false,
   id: 'p-alf',
   name: 'Alfred',
   key: 'ALF',

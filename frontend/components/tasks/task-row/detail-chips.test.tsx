@@ -24,6 +24,7 @@ function project(id: string, name: string, key: string): Project {
   return {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     id,
     name,
     key,

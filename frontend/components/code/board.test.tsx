@@ -98,6 +98,7 @@ const PROJECT: Project = {
   created_at: '2025-01-01T00:00:00Z',
   color: null,
   description: null,
+  exclude_from_pr_ratio: false,
 };
 
 /** A second-created project — so its creation-slot colour is amber, not blue. */

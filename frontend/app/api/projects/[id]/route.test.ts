@@ -26,6 +26,7 @@ const TEST_PROJECT = {
   created_at: '2026-01-01T00:00:00Z',
   description: 'My capture-first task system.',
   color: null,
+  exclude_from_pr_ratio: false,
 };
 
 interface MockResult {
@@ -187,6 +188,36 @@ describe('PATCH /api/projects/[id]', () => {
       mockCreateClient.mockResolvedValue(mockSupabase as never);
 
       const response = await PATCH(patchRequest({ color }), routeContext);
+
+      expect(response.status).toBe(400);
+      expect(mockSupabase.from).not.toHaveBeenCalled();
+    },
+  );
+
+  it('persists an exclusion from the PR ratio, and its reversal', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, {
+      data: { ...TEST_PROJECT, exclude_from_pr_ratio: true },
+      error: undefined,
+    });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(patchRequest({ exclude_from_pr_ratio: true }), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ exclude_from_pr_ratio: true });
+    expect(await response.json()).toMatchObject({ exclude_from_pr_ratio: true });
+
+    await PATCH(patchRequest({ exclude_from_pr_ratio: false }), routeContext);
+    expect(mockSupabase._chain.update).toHaveBeenLastCalledWith({ exclude_from_pr_ratio: false });
+  });
+
+  it.each(['true', 1, null])(
+    'returns 400 for the non-boolean exclusion %p, before any Supabase call',
+    async (excluded) => {
+      const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      const response = await PATCH(patchRequest({ exclude_from_pr_ratio: excluded }), routeContext);
 
       expect(response.status).toBe(400);
       expect(mockSupabase.from).not.toHaveBeenCalled();

@@ -73,8 +73,9 @@ export async function getProjectList(): Promise<{
 
 /**
  * Every project's repo, oldest first — the Dashboard's GitHub measurements measure exactly
- * these. Oldest first is the order `projectColorFor` indexes, so the ratio bar's left-to-right
- * order is its colour order.
+ * these, less any the owner excluded from the PR ratio (the flag rides along for that). Oldest
+ * first is the order `projectColorFor` indexes, so the ratio bar's left-to-right order is its
+ * colour order.
  *
  * Unlike the readers around it, this takes the Supabase client rather than building a cookie
  * one: its routes also answer the ingest API key, whose caller has no cookie and is served by
@@ -86,7 +87,7 @@ export async function listProjectRepos(supabase: SupabaseClient<Database>): Prom
 }> {
   return supabase
     .from('projects')
-    .select('name, repo_owner, repo_name')
+    .select('name, repo_owner, repo_name, exclude_from_pr_ratio')
     .order('created_at', { ascending: true });
 }
 

@@ -300,6 +300,8 @@ export function makeOptimisticProject(input: CreateProjectInput): Project {
     description: null,
     // Automatic: the project wears its creation-slot colour until the owner picks one.
     color: null,
+    // Counted on the PR ratio, like every project, until the owner excludes it.
+    exclude_from_pr_ratio: false,
   };
 }
 

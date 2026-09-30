@@ -103,6 +103,7 @@ beforeEach(() => {
 const PROJECT_A: Project = {
   color: null,
   description: null,
+  exclude_from_pr_ratio: false,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',
@@ -2807,6 +2808,65 @@ describe('code-store', () => {
           await expect(result.current.updateProjectColor('missing', 'blue')).rejects.toThrow(
             /not found/i,
           );
+        });
+        expect(mockUpdateProject).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('updateProjectPrRatioExclusion (the PR-ratio card’s ⋯ menu)', () => {
+      it('optimistically flips the flag, then reconciles with the saved row', async () => {
+        // The server's row wins over the optimistic value, so reconcile is observable.
+        mockUpdateProject.mockResolvedValue({ ...PROJECT_A, exclude_from_pr_ratio: false });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateProjectPrRatioExclusion('p1', true);
+        });
+
+        expect(mockUpdateProject).toHaveBeenCalledWith('p1', { exclude_from_pr_ratio: true });
+        expect(result.current.board.project?.exclude_from_pr_ratio).toBe(false);
+      });
+
+      it('applies the tick before the request resolves', () => {
+        mockUpdateProject.mockReturnValue(new Promise<Project>(() => {}));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        act(() => {
+          void result.current.actions.updateProjectPrRatioExclusion('p1', true);
+        });
+
+        expect(result.current.board.project?.exclude_from_pr_ratio).toBe(true);
+      });
+
+      it('restores the previous flag and toasts on failure', async () => {
+        mockUpdateProject.mockRejectedValue(new Error('patch failed'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [{ ...PROJECT_A, exclude_from_pr_ratio: true }] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.updateProjectPrRatioExclusion('p1', false),
+          ).rejects.toThrow('patch failed');
+        });
+
+        expect(result.current.board.project?.exclude_from_pr_ratio).toBe(true);
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't save the PR ratio exclusion");
+      });
+
+      it('throws when the project is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.updateProjectPrRatioExclusion('missing', true),
+          ).rejects.toThrow(/not found/i);
         });
         expect(mockUpdateProject).not.toHaveBeenCalled();
       });

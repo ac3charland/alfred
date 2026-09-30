@@ -15,6 +15,10 @@ import type { Project } from '@/lib/types';
  * `GITHUB_TOKEN` must be able to read every project's repo — one it can't read fails the whole
  * fan-out, since a partial ratio is a wrong ratio.
  *
+ * The one exception is the ratio's alone: a project flagged `exclude_from_pr_ratio` leaves the
+ * ratio's measured repos (no segment, no share of the total) yet is still subtracted from Other,
+ * so its PRs vanish rather than resurfacing there. The velocity chart measures it regardless.
+ *
  * Kept DB-free: the caller reads the project rows (with whichever Supabase client its auth
  * resolved to) and hands them in, so this stays a pure function of env plus rows.
  *
@@ -54,10 +58,16 @@ export interface GithubRepoConfig {
 }
 
 /**
- * The ratio's config is the shared one under a stricter repo minimum — a distinct type so a
- * caller can't hand `fetchPrRatio` a single-repo config the bar has no split to draw from.
+ * The ratio's config: the shared one, gated by a stricter project minimum, with the owner-excluded
+ * projects split out of `repos` — which holds only the counted ones.
  */
-export type PrRatioConfig = GithubRepoConfig;
+export type PrRatioConfig = GithubRepoConfig & {
+  /**
+   * Projects excluded from the ratio, in creation order. Never searched for, but still subtracted
+   * from the Other sweep so their PRs don't reappear there.
+   */
+  excludedRepos: RatioRepo[];
+};
 
 /** Trim and collapse a blank env value to `undefined`, so `??` defaults treat "" as unset. */
 function envValue(raw: string | undefined): string | undefined {
@@ -77,12 +87,16 @@ function splitList(raw: string | undefined): string[] {
 }
 
 /** The project columns a measurement needs, in the order the caller read them. */
-export type MeasuredProject = Pick<Project, 'name' | 'repo_owner' | 'repo_name'>;
+export type MeasuredProject = Pick<
+  Project,
+  'name' | 'repo_owner' | 'repo_name' | 'exclude_from_pr_ratio'
+>;
 
 /**
  * The shared base both widgets read: a token plus at least one project, or `undefined` when
  * the deployment has neither. Repos keep the given order — the caller reads projects oldest
- * first, the order `projectColorFor` indexes, so the bar's order is its colour order. Never throws.
+ * first, the order `projectColorFor` indexes, so the bar's order is its colour order. Every project
+ * counts here, excluded from the ratio or not. Never throws.
  */
 export function getGithubRepoConfig(
   projects: readonly MeasuredProject[],
@@ -101,9 +115,20 @@ export function getGithubRepoConfig(
 /**
  * The ratio's stricter view of the same config: a split needs at least two repos to be a
  * split, so a one-project deployment gets the velocity chart and no ratio bar.
+ *
+ * The minimum counts every project, BEFORE exclusion. Excluding projects therefore never makes the
+ * ratio unconfigured — which would take the card, and the menu that un-excludes them, off the
+ * Dashboard. Two projects with one excluded draw a one-project bar; all excluded, an empty one.
  */
 export function getPrRatioConfig(projects: readonly MeasuredProject[]): PrRatioConfig | undefined {
   const config = getGithubRepoConfig(projects);
   if (config === undefined || config.repos.length < MINIMUM_RATIO_REPOS) return undefined;
-  return config;
+
+  // `config.repos` is `projects` mapped one-to-one, so the indexes line up.
+  const excluded = (index: number) => projects[index]?.exclude_from_pr_ratio === true;
+  return {
+    ...config,
+    repos: config.repos.filter((_, index) => !excluded(index)),
+    excludedRepos: config.repos.filter((_, index) => excluded(index)),
+  };
 }

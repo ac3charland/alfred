@@ -29,12 +29,26 @@ export interface ProjectRepoRow {
   name: string;
   repo_owner: string;
   repo_name: string;
+  exclude_from_pr_ratio: boolean;
 }
 
 export const PROJECTS: ProjectRepoRow[] = [
-  { name: 'RealPlay', repo_owner: 'ac3charland', repo_name: 'realplay' },
-  { name: 'Alfred', repo_owner: 'ac3charland', repo_name: 'alfred' },
+  {
+    name: 'RealPlay',
+    repo_owner: 'ac3charland',
+    repo_name: 'realplay',
+    exclude_from_pr_ratio: false,
+  },
+  { name: 'Alfred', repo_owner: 'ac3charland', repo_name: 'alfred', exclude_from_pr_ratio: false },
 ];
+
+/** A third project the owner has excluded from the PR ratio, as the knowledge repo ships. */
+export const EXCLUDED_KNOWLEDGE: ProjectRepoRow = {
+  name: 'Knowledge',
+  repo_owner: 'ac3charland',
+  repo_name: 'knowledge',
+  exclude_from_pr_ratio: true,
+};
 
 export interface ProjectsRead {
   data: ProjectRepoRow[] | null;

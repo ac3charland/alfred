@@ -213,6 +213,12 @@ export interface CodeActions {
    */
   updateProjectColor: (projectId: string, color: ProjectColor | null) => Promise<void>;
   /**
+   * Exclude a project from, or restore it to, the Dashboard's PR ratio (the card's ⋯ menu).
+   * Optimistic, so the tick lands at once; a failed save rolls it back and toasts. Resolves only
+   * once the server has the flag, so a caller can refetch the ratio knowing it will be honoured.
+   */
+  updateProjectPrRatioExclusion: (projectId: string, excluded: boolean) => Promise<void>;
+  /**
    * The gate from within the Code view: admit an item already known here to the
    * factory. Inserts an optimistic story card and reconciles with the allocated ref.
    */
@@ -854,6 +860,38 @@ export function CodeProvider({
           },
           onError: () => {
             showToastRef.current("Couldn't save the project color");
+          },
+        });
+      },
+      async updateProjectPrRatioExclusion(projectId, excluded) {
+        const previous = stateRef.current.projects.find((p) => p.id === projectId);
+        if (previous === undefined) {
+          throw new Error(`Project ${projectId} not found in the code store`);
+        }
+        const rollback: Partial<Project> = {
+          exclude_from_pr_ratio: previous.exclude_from_pr_ratio,
+        };
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({
+              type: 'patchProject',
+              id: projectId,
+              patch: { exclude_from_pr_ratio: excluded },
+            });
+          },
+          apiCall: () => api.updateProject(projectId, { exclude_from_pr_ratio: excluded }),
+          reconcile: (saved) => {
+            dispatch({
+              type: 'patchProject',
+              id: projectId,
+              patch: { exclude_from_pr_ratio: saved.exclude_from_pr_ratio },
+            });
+          },
+          rollback: () => {
+            dispatch({ type: 'patchProject', id: projectId, patch: rollback });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't save the PR ratio exclusion");
           },
         });
       },

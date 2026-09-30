@@ -485,6 +485,7 @@ describe('makeOptimisticStory', () => {
   const PROJECT = {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     id: 'p-1',
     name: 'Alfred',
     key: 'ALF',

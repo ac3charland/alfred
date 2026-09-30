@@ -427,7 +427,9 @@ hover, focus or keys. Six hard-won rules:
   programmatically yields a plain `:focus` with no ring — Tailwind's `focus-visible:ring-*`
   won't render. Press Tab instead: `await page.keyboard.press('Tab')`. The control a focus story
   captures must be the **first** focusable element in DOM order, since one Tab lands on it (a
-  single focusable control is simplest).
+  single focusable control is simplest). When something focusable precedes it, the story's play
+  function `.focus()`es that preceding control and the runner's Tab moves on to the target, still
+  a keyboard move (`LegendKeyboardFocus` in `components/code/pr-ratio.stories.tsx`).
 - **A play function's FIRST `userEvent.keyboard` never reaches a `document`-level listener.**
   Nothing in the story iframe holds focus yet, so a story whose state a hotkey drives (the
   Comms queue's / Reader list's `j`-to-select) screenshots the resting state — silently, like

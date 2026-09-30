@@ -1,5 +1,6 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import {
+  EXCLUDED_KNOWLEDGE,
   PROJECTS,
   keyedCaller,
   mockCreateAdminClient,
@@ -128,7 +129,9 @@ describe('GET /api/code/pr-ratio', () => {
 
       await GET(getRequest());
 
-      expect(supabase.table('projects').select).toHaveBeenCalledWith('name, repo_owner, repo_name');
+      expect(supabase.table('projects').select).toHaveBeenCalledWith(
+        'name, repo_owner, repo_name, exclude_from_pr_ratio',
+      );
       expect(supabase.table('projects').order).toHaveBeenCalledWith('created_at', {
         ascending: true,
       });
@@ -152,7 +155,15 @@ describe('GET /api/code/pr-ratio', () => {
 
     it('asks GitHub about exactly the project repos, and subtracts every one from Other', async () => {
       signedIn({
-        data: [...PROJECTS, { name: 'Lumen', repo_owner: 'ac3charland', repo_name: 'lumen' }],
+        data: [
+          ...PROJECTS,
+          {
+            name: 'Lumen',
+            repo_owner: 'ac3charland',
+            repo_name: 'lumen',
+            exclude_from_pr_ratio: false,
+          },
+        ],
         error: null,
       });
       const requested = mockGithub([1, 1, 1, 1]);
@@ -169,6 +180,47 @@ describe('GET /api/code/pr-ratio', () => {
       expect(other).toContain('-repo:ac3charland/realplay');
       expect(other).toContain('-repo:ac3charland/alfred');
       expect(other).toContain('-repo:ac3charland/lumen');
+    });
+
+    it('omits an excluded project, sharing 100 across the rest, and never asks GitHub about it', async () => {
+      const [realplay, alfred] = PROJECTS;
+      signedIn({
+        data: [realplay, EXCLUDED_KNOWLEDGE, alfred].filter((row) => row !== undefined),
+        error: null,
+      });
+      const requested = mockGithub([3, 6, 1]);
+
+      const response = await GET(getRequest());
+      const body = (await response.json()) as RatioBody;
+
+      expect(body.repos.map((repo) => repo.repo)).toEqual([
+        'ac3charland/realplay',
+        'ac3charland/alfred',
+      ]);
+      expect(body.total).toBe(10);
+      const shares = [...body.repos.map((repo) => repo.percentage), body.other?.percentage ?? 0];
+      expect(shares.reduce((sum, share) => sum + share, 0)).toBe(100);
+
+      const queries = requested.map((url) => url.searchParams.get('q') ?? '');
+      expect(queries).toHaveLength(3);
+      expect(queries.filter((query) => /(^| )repo:ac3charland\/knowledge/.test(query))).toEqual([]);
+      // Still subtracted from Other, so its PRs don't reappear there.
+      expect(queries.at(-1)).toContain('-repo:ac3charland/knowledge');
+    });
+
+    it('answers no repos — not a 501 — when every project is excluded', async () => {
+      signedIn({
+        data: PROJECTS.map((project) => ({ ...project, exclude_from_pr_ratio: true })),
+        error: null,
+      });
+      mockGithub([2]);
+
+      const response = await GET(getRequest());
+      expect(response.status).toBe(200);
+
+      const body = (await response.json()) as RatioBody;
+      expect(body.repos).toEqual([]);
+      expect(body.other).toEqual({ count: 2, percentage: 100 });
     });
 
     it('ignores a leftover PR_RATIO_REPOS', async () => {
@@ -271,6 +323,22 @@ describe('GET /api/code/pr-ratio', () => {
 
       expect(response.status).toBe(501);
       expect(requested).toHaveLength(0);
+    });
+
+    it('gates on the projects BEFORE exclusion — two projects with one excluded still answer', async () => {
+      signedIn({
+        data: [...PROJECTS.slice(1), EXCLUDED_KNOWLEDGE],
+        error: null,
+      });
+      mockGithub([6, 0]);
+
+      const response = await GET(getRequest());
+
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as RatioBody;
+      expect(body.repos).toEqual([
+        { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 100 },
+      ]);
     });
 
     it('returns 501 with no projects at all', async () => {

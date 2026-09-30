@@ -884,6 +884,7 @@ export type Database = {
           color: string | null
           created_at: string
           description: string | null
+          exclude_from_pr_ratio: boolean
           github_url: string | null
           id: string
           key: string
@@ -896,6 +897,7 @@ export type Database = {
           color?: string | null
           created_at?: string
           description?: string | null
+          exclude_from_pr_ratio?: boolean
           github_url?: string | null
           id?: string
           key: string
@@ -908,6 +910,7 @@ export type Database = {
           color?: string | null
           created_at?: string
           description?: string | null
+          exclude_from_pr_ratio?: boolean
           github_url?: string | null
           id?: string
           key?: string

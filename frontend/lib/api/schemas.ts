@@ -493,11 +493,12 @@ export const createProjectSchema = z.object({
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 /**
- * Body for PATCH /api/projects/[id] — the description (ALF-179) and the colour (ALF-188), and
- * nothing else. `name`, `key`, `github_url` and the repo fields stay immutable: `key` is carried
- * by every ref, branch name and PR frontmatter, so renaming a project is a real feature with its
- * own consequences rather than a side effect of adding a text column. An object schema STRIPS
- * unknown keys, so a body naming any of them changes nothing.
+ * Body for PATCH /api/projects/[id] — the description (ALF-179), the colour (ALF-188) and the
+ * exclusion from the Dashboard PR ratio (ALF-276), and nothing else. `name`, `key`, `github_url`
+ * and the repo fields stay immutable: `key` is carried by every ref, branch name and PR
+ * frontmatter, so renaming a project is a real feature with its own consequences rather than a
+ * side effect of adding a text column. An object schema STRIPS unknown keys, so a body naming any
+ * of them changes nothing.
  *
  * `color` is a palette key or `null` (Automatic: the project's creation-slot colour) — never a
  * free-form value, matching the column's check constraint so an off-palette pick is a 400 here
@@ -507,6 +508,7 @@ export const updateProjectSchema = z
   .object({
     description: entityDescription.optional(),
     color: z.enum(PROJECT_COLORS).nullable().optional(),
+    exclude_from_pr_ratio: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: 'No fields to update',

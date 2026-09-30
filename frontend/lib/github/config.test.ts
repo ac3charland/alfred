@@ -15,8 +15,21 @@ const REALPLAY: MeasuredProject = {
   name: 'RealPlay',
   repo_owner: 'ac3charland',
   repo_name: 'realplay',
+  exclude_from_pr_ratio: false,
 };
-const ALFRED: MeasuredProject = { name: 'Alfred', repo_owner: 'ac3charland', repo_name: 'alfred' };
+const ALFRED: MeasuredProject = {
+  name: 'Alfred',
+  repo_owner: 'ac3charland',
+  repo_name: 'alfred',
+  exclude_from_pr_ratio: false,
+};
+/** Owner-excluded from the ratio, as the knowledge repo ships. */
+const KNOWLEDGE: MeasuredProject = {
+  name: 'Knowledge',
+  repo_owner: 'ac3charland',
+  repo_name: 'knowledge',
+  exclude_from_pr_ratio: true,
+};
 
 /** Two project rows, oldest first — the order the routes read them in. */
 const PROJECTS: MeasuredProject[] = [REALPLAY, ALFRED];
@@ -52,7 +65,39 @@ describe('getPrRatioConfig', () => {
         { owner: 'ac3charland', name: 'realplay', label: 'RealPlay' },
         { owner: 'ac3charland', name: 'alfred', label: 'Alfred' },
       ],
+      excludedRepos: [],
     });
+  });
+
+  it('moves an excluded project out of the measured repos and into excludedRepos', () => {
+    withEnvironment(CONFIGURED);
+
+    const config = getPrRatioConfig([REALPLAY, KNOWLEDGE, ALFRED]);
+
+    expect(config?.repos.map((repo) => repo.label)).toEqual(['RealPlay', 'Alfred']);
+    expect(config?.excludedRepos).toEqual([
+      { owner: 'ac3charland', name: 'knowledge', label: 'Knowledge' },
+    ]);
+  });
+
+  it('gates on every project before exclusion, so an exclusion never unconfigures the ratio', () => {
+    withEnvironment(CONFIGURED);
+
+    // Two projects, one excluded: a single-project bar, not a 501 that would hide the card and
+    // the menu that un-excludes it.
+    expect(getPrRatioConfig([ALFRED, KNOWLEDGE])?.repos.map((repo) => repo.label)).toEqual([
+      'Alfred',
+    ]);
+    // Every project excluded is still configured — with nothing left to measure.
+    const allExcluded = getPrRatioConfig([{ ...ALFRED, exclude_from_pr_ratio: true }, KNOWLEDGE]);
+    expect(allExcluded?.repos).toEqual([]);
+    expect(allExcluded?.excludedRepos).toHaveLength(2);
+  });
+
+  it('is still unconfigured with a single project, excluded or not', () => {
+    withEnvironment(CONFIGURED);
+
+    expect(getPrRatioConfig([KNOWLEDGE])).toBeUndefined();
   });
 
   it('keeps the caller’s order rather than sorting — it is the bar’s left-to-right order', () => {
@@ -153,6 +198,15 @@ describe('getGithubRepoConfig vs getPrRatioConfig', () => {
 
     expect(getGithubRepoConfig(PROJECTS)).toBeUndefined();
     expect(getPrRatioConfig(PROJECTS)).toBeUndefined();
+  });
+
+  it('keeps measuring an excluded project for the velocity chart — the flag is the ratio’s alone', () => {
+    withEnvironment(CONFIGURED);
+
+    expect(getGithubRepoConfig([REALPLAY, KNOWLEDGE])?.repos.map((repo) => repo.label)).toEqual([
+      'RealPlay',
+      'Knowledge',
+    ]);
   });
 
   it('hands both widgets the same authors, so the page cannot disagree with itself', () => {
