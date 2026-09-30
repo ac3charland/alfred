@@ -22,7 +22,8 @@ const rows = [
   [14, PAT, '+13125550142', 'you will not believe this', '12:20', 0, {}],
   [15, PAT, undefined, 'Laughed at “you will not believe this”', '12:21', 2003, OWNER],
   [16, PAT, undefined, 'Removed a laugh from “you will not believe this”', '12:22', 3003, OWNER],
-  [17, PAT, '+13125550142', 'Loved “Laughed at …”', '12:23', 2000, {}],
+  [17, PAT, undefined, 'calling you now', '12:23', 0, OWNER],
+  [18, PAT, '+13125550142', 'Loved “calling you now”', '12:24', 2000, {}],
 ] as const;
 
 const directory = mkdtempSync(path.join(tmpdir(), 'alfred-demo-'));
