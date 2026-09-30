@@ -1,5 +1,6 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import {
+  EXCLUDED_KNOWLEDGE,
   PROJECTS,
   keyedCaller,
   mockCreateAdminClient,
@@ -115,7 +116,9 @@ describe('GET /api/code/loc-velocity', () => {
     const response = await GET(getRequest());
     expect(response.status).toBe(200);
 
-    expect(supabase.table('projects').select).toHaveBeenCalledWith('name, repo_owner, repo_name');
+    expect(supabase.table('projects').select).toHaveBeenCalledWith(
+      'name, repo_owner, repo_name, exclude_from_pr_ratio',
+    );
     expect(supabase.table('projects').order).toHaveBeenCalledWith('created_at', {
       ascending: true,
     });
@@ -176,6 +179,20 @@ describe('GET /api/code/loc-velocity', () => {
     expect(((await response.json()) as LocVelocityResponse).repos).toStrictEqual([
       'ac3charland/alfred',
     ]);
+  });
+
+  it('still measures a project excluded from the PR ratio — the flag is the ratio’s alone', async () => {
+    signedIn({ data: [...PROJECTS, EXCLUDED_KNOWLEDGE], error: null });
+    const requested = mockGithub([{ status: 200, body: [] }]);
+
+    const response = await GET(getRequest());
+
+    expect(((await response.json()) as LocVelocityResponse).repos).toContain(
+      'ac3charland/knowledge',
+    );
+    expect(requested).toContain(
+      'https://api.github.com/repos/ac3charland/knowledge/stats/contributors',
+    );
   });
 
   it('maps a failed projects read to its status — never 501, which would hide the card', async () => {

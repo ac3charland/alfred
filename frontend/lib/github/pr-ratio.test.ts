@@ -12,12 +12,17 @@ const WEEK: WeekWindow = {
 
 const REALPLAY = { owner: 'ac3charland', name: 'realplay', label: 'RealPlay' };
 const ALFRED = { owner: 'ac3charland', name: 'alfred', label: 'Alfred' };
+const KNOWLEDGE = { owner: 'ac3charland', name: 'knowledge', label: 'Knowledge' };
 
 const CONFIG: PrRatioConfig = {
   repos: [REALPLAY, ALFRED],
+  excludedRepos: [],
   authors: ['ac3charland'],
   token: 'ghp_test',
 };
+
+/** The same deployment with the knowledge project excluded from the ratio. */
+const CONFIG_EXCLUDING_KNOWLEDGE: PrRatioConfig = { ...CONFIG, excludedRepos: [KNOWLEDGE] };
 
 /** No allowlist, so there is nothing to anchor the Other sweep on. */
 const CONFIG_WITHOUT_AUTHORS: PrRatioConfig = { ...CONFIG, authors: [] };
@@ -223,6 +228,70 @@ describe('fetchPrRatio', () => {
     expect(first?.headers['X-GitHub-Api-Version']).toBe('2022-11-28');
     // GitHub rejects API requests with no User-Agent.
     expect(first?.headers['User-Agent']).toBe('alfred');
+  });
+
+  it('sends no query for an excluded project, and omits it from the split', async () => {
+    const recorded = mockSearchResponses([
+      { ok: true, totalCount: 3 },
+      { ok: true, totalCount: 6 },
+      { ok: true, totalCount: 1 },
+    ]);
+
+    const ratio = await fetchPrRatio(CONFIG_EXCLUDING_KNOWLEDGE, WEEK);
+
+    // Two project queries plus Other — none scoped to the excluded repo.
+    expect(recorded).toHaveLength(3);
+    expect(recorded.map((_, index) => queryOf(recorded, index))).not.toContainEqual(
+      expect.stringMatching(/(^| )repo:ac3charland\/knowledge/),
+    );
+    expect(ratio?.repos.map((repo) => repo.label)).toEqual(['RealPlay', 'Alfred']);
+    expect(ratio?.total).toBe(10);
+    expect(ratio?.repos.map((repo) => repo.percentage)).toEqual([30, 60]);
+    expect(ratio?.other).toEqual({ count: 1, percentage: 10 });
+  });
+
+  it('still subtracts an excluded project from Other, so its PRs are never counted there', async () => {
+    const recorded = mockSearchResponses([
+      { ok: true, totalCount: 3 },
+      { ok: true, totalCount: 6 },
+      { ok: true, totalCount: 1 },
+    ]);
+
+    await fetchPrRatio(CONFIG_EXCLUDING_KNOWLEDGE, WEEK);
+
+    const otherQuery = queryOf(recorded, 2);
+    expect(otherQuery).toContain('-repo:ac3charland/realplay');
+    expect(otherQuery).toContain('-repo:ac3charland/alfred');
+    expect(otherQuery).toContain('-repo:ac3charland/knowledge');
+  });
+
+  it('with every project excluded, reports no repos and whatever Other counts', async () => {
+    const recorded = mockSearchResponses([{ ok: true, totalCount: 2 }]);
+
+    const ratio = await fetchPrRatio(
+      { ...CONFIG, repos: [], excludedRepos: [REALPLAY, ALFRED] },
+      WEEK,
+    );
+
+    expect(recorded).toHaveLength(1);
+    expect(ratio).toEqual({
+      week: WEEK,
+      total: 2,
+      repos: [],
+      other: { count: 2, percentage: 100 },
+    });
+  });
+
+  it('with every project excluded and no Other to measure, asks GitHub nothing', async () => {
+    const recorded = mockSearchResponses([]);
+
+    const ratio = await fetchPrRatio(
+      { ...CONFIG_WITHOUT_AUTHORS, repos: [], excludedRepos: [REALPLAY, ALFRED] },
+      WEEK,
+    );
+
+    expect(recorded).toHaveLength(0);
+    expect(ratio).toEqual({ week: WEEK, total: 0, repos: [] });
   });
 
   it('fails the WHOLE call when any repo request fails — a partial ratio is a wrong ratio', async () => {
