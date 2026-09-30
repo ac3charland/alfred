@@ -22,6 +22,10 @@ const PG_SUPERUSER = 'postgres';
 const LEAKED_URI = `postgresql://postgres.abcdefghijklmnop:${PASSWORD}@aws-1-us-east-2.pooler.supabase.com:5432/postgres`;
 const SUPABASE_SECRET_KEY = ['sb', 'secret', 'Xk29fLq8Zr4Tn6Vp1Wy3Bc5D'].join('_');
 const SUPABASE_ACCESS_TOKEN = ['sbp', 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0'].join('_');
+const SUPABASE_ACCESS_TOKEN_V0 = ['sbp', 'v0', 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0'].join(
+  '_',
+);
+const POOLER_HOST = 'aws-1-us-east-2.pooler.supabase.com';
 
 let repo: string;
 
@@ -178,6 +182,28 @@ describe('scanFiles', () => {
     ['supabase --password <value>', `supabase db push --password ${PASSWORD} --linked`],
     ['supabase --password=<value>', `npx supabase link --project-ref abc --password=${PASSWORD}`],
     ['supabase -p <value>', `supabase db dump -p '${PASSWORD}'`],
+    [
+      'a shell PW variable used in a connection URL',
+      `PW=${PASSWORD} psql "postgresql://postgres.ref:$PW@host:5432/postgres"`,
+    ],
+    ['a DB_PASS variable before a `;`', `DB_PASS=${PASSWORD}; psql -h db.example.com`],
+    ['a PGPASS variable', `PGPASS=${PASSWORD} psql -h db.example.com`],
+    ['a quoted SUPABASE_DB_PASS export', `export SUPABASE_DB_PASS='${PASSWORD}'`],
+    ['a DB_PASSWD variable', `DB_PASSWD=${PASSWORD}`],
+    ['a DB_PWD variable', `DB_PWD="${PASSWORD}"`],
+    [
+      'a lowercase alter role password',
+      `alter role alfred_reader with login password '${PASSWORD}';`,
+    ],
+    ['an uppercase create role password', `CREATE ROLE x LOGIN PASSWORD '${PASSWORD}'`],
+    ['an encrypted role password', `create role x encrypted password '${PASSWORD}'`],
+    ['a .pgpass line', `${POOLER_HOST}:5432:postgres:postgres.abcdefghijklmnop:${PASSWORD}`],
+    ['a .pgpass line with a wildcard port', `${POOLER_HOST}:*:postgres:postgres.ref:${PASSWORD}`],
+    ['a .pgpass line after other lines', `# creds\n${POOLER_HOST}:5432:*:alfred:${PASSWORD}\n`],
+    [
+      'a versioned Supabase personal access token',
+      `SUPABASE_ACCESS_TOKEN=${SUPABASE_ACCESS_TOKEN_V0}`,
+    ],
   ])('flags %s', async (_shape, line) => {
     const result = await scanOne('demo.md', `${line}\n`);
     expect(result.ok).toBe(false);
@@ -212,6 +238,28 @@ describe('scanFiles', () => {
     ['supabase --password=${VAR}', 'supabase link --password=${SUPABASE_DB_PASSWORD}'],
     ['supabase -p placeholder', 'supabase db dump -p <password>'],
     ['mkdir -p after a supabase directory', 'cd supabase && mkdir -p migrations/archive'],
+    ['a JS constant with spaces around `=`', `const PASSWORD = 'imap-password';`],
+    [
+      'a JS PASSWORD read from the environment with a fallback',
+      `const PASSWORD = process.env.E2E_USER_PASSWORD ?? 'demo-password-123';`,
+    ],
+    ['a PW variable read from another variable', 'PW=$OTHER_PASSWORD psql "$DATABASE_URL"'],
+    ['a PW variable set to ${VAR}', 'PW=${DB_PASSWORD}'],
+    ['a DB_PASS placeholder', 'DB_PASS=<password>'],
+    ['a masked PGPASS', 'PGPASS=****'],
+    ['a short PW value', 'PW=abc'],
+    ['an empty DB_PASSWD', 'DB_PASSWD='],
+    ['a PASSWORD assignment to the throwaway postgres value', 'POSTGRES_PASS="postgres"'],
+    ['a shell PWD path', 'PWD=/home/user/alfred/frontend npm test'],
+    ['a role password placeholder', `alter role alfred_reader with login password '<password>';`],
+    ['a masked role password', `create role x login password '****'`],
+    ['a role password read from a psql variable', `alter role x password :'pw';`],
+    ['a short role password', `alter role x password 'abc'`],
+    ['a .pgpass placeholder', `${POOLER_HOST}:5432:postgres:postgres.ref:<password>`],
+    ['a .pgpass masked password', `${POOLER_HOST}:5432:postgres:postgres.ref:*****`],
+    ['a colon-separated timestamp', 'started 2026:09:29:10:45:33.123 ok'],
+    ['a Supabase token placeholder', 'SUPABASE_ACCESS_TOKEN=sbp_v0_<token>'],
+    ['a short sbp_ prefix', 'sbp_v0_abc123'],
   ])('passes %s', async (_shape, line) => {
     const result = await scanOne('demo.md', `${line}\n`);
     expect(result.ok).toBe(true);
