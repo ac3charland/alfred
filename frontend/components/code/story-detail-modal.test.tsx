@@ -123,6 +123,7 @@ function makeSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     done_at: null,
     updated_at: '2025-02-02T00:00:00Z',
     priority: 1,
+    priority_rev: 0,
     ...overrides,
   };
 }

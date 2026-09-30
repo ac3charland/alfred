@@ -2867,6 +2867,7 @@ describe('TaskRow — classification & type-gating', () => {
       done_at: null,
       updated_at: '2025-01-02T00:00:00Z',
       priority: 1,
+      priority_rev: 0,
     };
 
     it('replaces the send/convert entries with a single Dispatch', async () => {
@@ -3347,6 +3348,7 @@ describe('TaskRow — epic construction (ALF-129)', () => {
     done_at: null,
     updated_at: '2025-01-02T00:00:00Z',
     priority: -2,
+    priority_rev: 0,
   };
 
   const CONVERTED = {

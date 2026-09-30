@@ -219,6 +219,7 @@ const MOVED_SIDECAR: CodeItem = {
   done_at: null,
   updated_at: '2026-06-22T00:00:00Z',
   priority: 1,
+  priority_rev: 0,
 };
 
 /**
