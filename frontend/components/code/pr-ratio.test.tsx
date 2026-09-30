@@ -10,11 +10,13 @@ import { PrRatio } from './pr-ratio';
 
 jest.mock('@/lib/api-client');
 const mockGetPrRatio = jest.mocked(api.getPrRatio);
+const mockUpdateProject = jest.mocked(api.updateProject);
 
 function makeProject(id: string, name: string, repoName: string, createdAt: string): Project {
   return {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     id,
     name,
     key: name.slice(0, 3).toUpperCase(),
@@ -85,6 +87,35 @@ const RATIO_WITH_OTHER: PrRatioResponse = {
 /** A never-settling fetch, so the loading state can be asserted before data lands. */
 function pending<T>(): Promise<T> {
   return new Promise<T>(() => {});
+}
+
+function noop(): void {
+  // Placeholder until the Promise executor hands over its resolver.
+}
+
+/** A promise the test settles by hand, so the in-between state can be asserted. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let settle: (value: T) => void = noop;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
+  });
+  return {
+    promise,
+    resolve: (value: T) => {
+      settle(value);
+    },
+  };
+}
+
+/** The card's ⋯ trigger. */
+function menuTrigger(): HTMLElement {
+  return screen.getByRole('button', { name: 'PR ratio options' });
+}
+
+/** Open the ⋯ menu and return it. */
+async function openMenu(): Promise<HTMLElement> {
+  await userEvent.click(menuTrigger());
+  return screen.findByRole('menu');
 }
 
 describe('PrRatio', () => {
@@ -407,6 +438,219 @@ describe('PrRatio', () => {
       const links = await screen.findAllByRole('link');
       expect(links.map((link) => link.getAttribute('href'))).toEqual(['/code/p-other']);
       expect(errorSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the ⋯ menu excludes projects from the ratio', () => {
+    /** Created between RealPlay and Alfred, and excluded — as the knowledge repo ships. */
+    const KNOWLEDGE: Project = {
+      ...makeProject('p-knowledge', 'Knowledge', 'knowledge', '2026-01-15T00:00:00Z'),
+      exclude_from_pr_ratio: true,
+    };
+    const ALL_EXCLUDED = PROJECTS.map((project) => ({ ...project, exclude_from_pr_ratio: true }));
+
+    it('shows the ⋯ while the counts are loading', () => {
+      mockGetPrRatio.mockReturnValue(pending());
+
+      renderCard();
+
+      expect(menuTrigger()).toBeInTheDocument();
+    });
+
+    it('shows the ⋯ beside the error line — a repo the token cannot read is excluded from there', async () => {
+      mockGetPrRatio.mockRejectedValue(new Error('502 GitHub request failed'));
+
+      renderCard();
+
+      await screen.findByText("Couldn't load PR counts.");
+      expect(menuTrigger()).toBeInTheDocument();
+    });
+
+    it('shows the ⋯ in a quiet week', async () => {
+      mockGetPrRatio.mockResolvedValue({ ...RATIO, total: 0, repos: [] });
+
+      renderCard();
+
+      await screen.findByText('No PRs merged in the last 7 days.');
+      expect(menuTrigger()).toBeInTheDocument();
+    });
+
+    it('shows the ⋯ beside the bar, after the range', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+
+      renderCard();
+
+      const range = await screen.findByText(/Jul 17 – Jul 24/);
+      expect(
+        range.compareDocumentPosition(menuTrigger()) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('lists every project in creation order, ticking each excluded one, under its heading', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+      renderCard([REALPLAY, KNOWLEDGE, ALFRED]);
+      await screen.findByRole('img');
+
+      const menu = await openMenu();
+
+      expect(within(menu).getByText('Exclude from PR ratio')).toBeInTheDocument();
+      const items = within(menu).getAllByRole('menuitemcheckbox');
+      expect(items.map((item) => item.textContent)).toEqual(['RealPlay', 'Knowledge', 'Alfred']);
+      expect(items.map((item) => item.getAttribute('aria-checked'))).toEqual([
+        'false',
+        'true',
+        'false',
+      ]);
+    });
+
+    it('marks each project with its colour dot', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+      renderCard([REALPLAY, KNOWLEDGE, ALFRED]);
+
+      const menu = await openMenu();
+
+      const dots = within(menu)
+        .getAllByRole('menuitemcheckbox')
+        .map(
+          (item) => item.querySelector('span[aria-hidden="true"].rounded-full')?.className ?? '',
+        );
+      expect(dots[0]).toContain('bg-accent-blue');
+      expect(dots[1]).toContain('bg-accent-amber');
+      expect(dots[2]).toContain('bg-accent-green');
+    });
+
+    it('leaves every other project’s colour as it was when one is excluded', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+
+      // Knowledge still holds slot #2, so Alfred stays green (#3) rather than taking amber.
+      renderCard([REALPLAY, KNOWLEDGE, ALFRED]);
+
+      await screen.findByRole('img');
+      expect(legendDot('RealPlay')).toHaveClass('bg-accent-blue');
+      expect(legendDot('Alfred')).toHaveClass('bg-accent-green');
+      expect(barFills()).toEqual(['bg-accent-blue', 'bg-accent-green']);
+    });
+
+    it('saves the negated flag on a tick, keeps the menu open, and refetches once it lands', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+      const patch = deferred<Project>();
+      mockUpdateProject.mockReturnValue(patch.promise);
+      renderCard();
+      await screen.findByRole('img');
+      const menu = await openMenu();
+
+      await userEvent.click(within(menu).getByRole('menuitemcheckbox', { name: 'RealPlay' }));
+
+      expect(mockUpdateProject).toHaveBeenCalledWith('p-realplay', { exclude_from_pr_ratio: true });
+      // Ticked at once, and still open for the next pick.
+      expect(screen.getByRole('menuitemcheckbox', { name: 'RealPlay' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+      // Not refetched yet: the server reads the flag from the database, so asking before the
+      // PATCH lands would race it.
+      expect(mockGetPrRatio).toHaveBeenCalledTimes(1);
+
+      patch.resolve({ ...REALPLAY, exclude_from_pr_ratio: true });
+      await waitFor(() => {
+        expect(mockGetPrRatio).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+    });
+
+    it('unticks an excluded project with the negation too', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+      mockUpdateProject.mockResolvedValue({ ...KNOWLEDGE, exclude_from_pr_ratio: false });
+      renderCard([REALPLAY, KNOWLEDGE, ALFRED]);
+      const menu = await openMenu();
+
+      await userEvent.click(within(menu).getByRole('menuitemcheckbox', { name: 'Knowledge' }));
+
+      expect(mockUpdateProject).toHaveBeenCalledWith('p-knowledge', {
+        exclude_from_pr_ratio: false,
+      });
+    });
+
+    it('rolls the tick back, and leaves the ratio alone, when the save fails', async () => {
+      mockGetPrRatio.mockResolvedValue(RATIO);
+      mockUpdateProject.mockRejectedValue(new Error('patch failed'));
+      renderCard();
+      await screen.findByRole('img');
+      const menu = await openMenu();
+
+      await userEvent.click(within(menu).getByRole('menuitemcheckbox', { name: 'Alfred' }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('menuitemcheckbox', { name: 'Alfred' })).toHaveAttribute(
+          'aria-checked',
+          'false',
+        );
+      });
+      expect(await screen.findByText("Couldn't save the PR ratio exclusion")).toBeInTheDocument();
+      expect(mockGetPrRatio).toHaveBeenCalledTimes(1);
+    });
+
+    describe('with every project excluded', () => {
+      const LINE = 'All projects excluded from the PR ratio.';
+
+      it('says so in place of the range, bar and legend — even while the counts load', () => {
+        mockGetPrRatio.mockReturnValue(pending());
+
+        const { slot } = renderCard(ALL_EXCLUDED);
+
+        expect(screen.getByText(LINE)).toBeInTheDocument();
+        expect(screen.getByText('PRs merged in the last 7 days')).toBeInTheDocument();
+        expect(menuTrigger()).toBeInTheDocument();
+        // No loading pulse: the store alone decides this state.
+        expect(slot.querySelector('.animate-pulse')).toBeNull();
+      });
+
+      it('never draws an Other-only bar, even when Other merged PRs', async () => {
+        mockGetPrRatio.mockResolvedValue({
+          ...RATIO,
+          total: 3,
+          repos: [],
+          other: { count: 3, percentage: 100 },
+        });
+
+        renderCard(ALL_EXCLUDED);
+
+        await waitFor(() => {
+          expect(mockGetPrRatio).toHaveBeenCalled();
+        });
+        expect(await screen.findByText(LINE)).toBeInTheDocument();
+        expect(screen.queryByRole('img')).not.toBeInTheDocument();
+        expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Jul 17/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/total/)).not.toBeInTheDocument();
+      });
+
+      it('wins over the error line too', async () => {
+        mockGetPrRatio.mockRejectedValue(new Error('502'));
+
+        renderCard(ALL_EXCLUDED);
+
+        expect(await screen.findByText(LINE)).toBeInTheDocument();
+        expect(screen.queryByText("Couldn't load PR counts.")).not.toBeInTheDocument();
+      });
+
+      it('brings the bar back when one project is unticked', async () => {
+        mockGetPrRatio.mockResolvedValueOnce({ ...RATIO, total: 0, repos: [] });
+        mockGetPrRatio.mockResolvedValueOnce({
+          ...RATIO,
+          total: 6,
+          repos: [{ repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 100 }],
+        });
+        mockUpdateProject.mockResolvedValue({ ...ALFRED, exclude_from_pr_ratio: false });
+        renderCard(ALL_EXCLUDED);
+        const menu = await openMenu();
+
+        await userEvent.click(within(menu).getByRole('menuitemcheckbox', { name: 'Alfred' }));
+        await userEvent.keyboard('{Escape}');
+
+        expect(await screen.findByRole('img')).toBeInTheDocument();
+        expect(screen.queryByText(LINE)).not.toBeInTheDocument();
+      });
     });
   });
 });

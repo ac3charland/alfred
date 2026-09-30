@@ -1,14 +1,23 @@
 'use client';
 
+import { MoreHorizontal } from 'lucide-react';
 import * as React from 'react';
 
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/atoms/dropdown-menu';
+import { IconButton } from '@/components/atoms/icon-button';
 import { RatioBar, type RatioSegment } from '@/components/atoms/ratio-bar';
 import { SurfaceCard } from '@/components/atoms/surface-card';
 import { ViewLink } from '@/components/tasks/view-link';
 import { projectBoardHref } from '@/lib/code/board-links';
 import { projectColorFor, projectFillClasses } from '@/lib/code/project-color';
 import { usePrRatio } from '@/lib/hooks/use-pr-ratio';
-import { useProjects } from '@/lib/stores/code-store';
+import { useCodeActions, useProjects } from '@/lib/stores/code-store';
 import type { PrRatioResponse, Project } from '@/lib/types';
 
 const OTHER_LABEL = 'Other';
@@ -123,9 +132,56 @@ function LegendContent({ entry, linked }: { entry: RatioEntry; linked: boolean }
 const TITLE = 'PRs merged in the last 7 days';
 
 /**
+ * The card's ⋯ menu: every project in creation order, ticked when excluded from the ratio. A tick
+ * saves at once and the menu stays open, so several can be flipped in one pass; `onSaved` runs
+ * once the server holds the flag, since the ratio is computed from the database.
+ */
+function PrRatioExcludeMenu({ projects, onSaved }: { projects: Project[]; onSaved: () => void }) {
+  const { updateProjectPrRatioExclusion } = useCodeActions();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton size="md" tone="neutral" aria-label="PR ratio options">
+          <MoreHorizontal size={14} />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Exclude from PR ratio</DropdownMenuLabel>
+        {projects.map((project) => (
+          <DropdownMenuCheckboxItem
+            key={project.id}
+            checked={project.exclude_from_pr_ratio}
+            onCheckedChange={() => {
+              void updateProjectPrRatioExclusion(project.id, !project.exclude_from_pr_ratio).then(
+                onSaved,
+                () => {
+                  // The store already rolled the tick back and toasted.
+                },
+              );
+            }}
+            onSelect={(event) => {
+              event.preventDefault();
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className={`h-2 w-2 shrink-0 rounded-full ${projectFillClasses(projectColorFor(projects, project.id))}`}
+            />
+            {project.name}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
  * The Dashboard's PR-ratio card: how the last seven days' merged pull requests split across
  * the Code module's projects, as a stacked bar plus a per-project legend. Each project wears
  * its module-wide colour, and its legend row opens its board; the bar itself is not interactive.
+ * Its ⋯ menu excludes projects from the ratio: an excluded project simply isn't in the answer,
+ * so nothing here filters — nor says anything was left out.
  *
  * It is an ornament, never a gate. An unconfigured deployment renders **nothing at all** (no
  * card, no gap), and a GitHub failure renders one muted line — either way the Dashboard around
@@ -134,15 +190,30 @@ const TITLE = 'PRs merged in the last 7 days';
  * Must be mounted under a `CodeProvider` (it reads `useProjects`).
  */
 export function PrRatio() {
-  const state = usePrRatio();
-  // Creation order, not the live ranking: it is the slot `projectColorFor` assigns colours by.
+  const { state, refetch } = usePrRatio();
+  // Creation order, not the live ranking: it is the slot `projectColorFor` assigns colours by —
+  // and never filtered by exclusion first, so excluding one project shifts no other's colour.
   const projects = useProjects();
 
   if (state.status === 'unconfigured') return null;
 
+  // In every state below, so the header never jumps — and in the error state too, since one repo
+  // the token can't read fails the whole ratio, and excluding it stops that repo being searched.
+  const menu = <PrRatioExcludeMenu projects={projects} onSaved={refetch} />;
+
+  // Decided from the store alone, so it shows at once and wins over every fetch state: with no
+  // project counted there is no split to draw, even when Other merged PRs.
+  if (projects.length > 0 && projects.every((project) => project.exclude_from_pr_ratio)) {
+    return (
+      <SurfaceCard title={TITLE} action={menu}>
+        <p className="text-sm text-muted-foreground">All projects excluded from the PR ratio.</p>
+      </SurfaceCard>
+    );
+  }
+
   if (state.status === 'loading') {
     return (
-      <SurfaceCard title={TITLE}>
+      <SurfaceCard title={TITLE} action={menu}>
         {/* Reserves the bar's height so the cards below don't jump when the counts land. */}
         <div className="h-2.5 w-full animate-pulse rounded-full bg-border motion-reduce:animate-none" />
       </SurfaceCard>
@@ -151,7 +222,7 @@ export function PrRatio() {
 
   if (state.status === 'error') {
     return (
-      <SurfaceCard title={TITLE}>
+      <SurfaceCard title={TITLE} action={menu}>
         <p className="text-sm text-muted-foreground">Couldn&apos;t load PR counts.</p>
       </SurfaceCard>
     );
@@ -162,7 +233,7 @@ export function PrRatio() {
 
   if (total === 0) {
     return (
-      <SurfaceCard title={TITLE} detail={range}>
+      <SurfaceCard title={TITLE} detail={range} action={menu}>
         {/* A genuinely quiet week — a normal state, not an error. */}
         <p className="text-sm text-muted-foreground">No PRs merged in the last 7 days.</p>
       </SurfaceCard>
@@ -179,7 +250,7 @@ export function PrRatio() {
   }));
 
   return (
-    <SurfaceCard title={TITLE} detail={`${range}  ·  ${String(total)} total`}>
+    <SurfaceCard title={TITLE} detail={`${range}  ·  ${String(total)} total`} action={menu}>
       <RatioBar segments={segments} ariaLabel={describeSplit(entries)} />
       <ul className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
         {entries.map((entry) => (
