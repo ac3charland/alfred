@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
+import { userEvent, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
@@ -275,10 +276,104 @@ export const BugNeedsRefinement: Story = {
   },
 };
 
+/** A phone-sized capture of the dialog: the viewport is applied before the story mounts and plays. */
+const PHONE = {
+  visualTest: { target: '[role="dialog"]', viewport: { width: 390, height: 844 } },
+} as const;
+
+/** A note long enough (~15 lines at phone width) to overflow a short editor and a short screen. */
+const LONG_NOTES = `The owner wants the firewall to default-deny and explain every rejection.
+
+Rejections land in the daily digest, grouped by sender, each with the rule that caught it and a one-tap "allow this sender" link.
+
+Open questions:
+- Should the allow-list live in the repo or in Supabase?
+- How long do we keep rejected items before purging?
+- Does a reply from an allowed sender re-open a thread?
+
+Also: the digest should skip empty days.`;
+
+/** What the block-reason editor is typed with — several lines, so the editor has grown. */
+const BLOCK_REASON = `Waiting on the upstream decision about where the allow-list lives — repo file or a Supabase table.
+
+Ping the owner once the rate-limit story lands. If the answer is Supabase, this story also needs the table and its RLS policy first.`;
+
+/**
+ * The dialog is portalled out of the story canvas, so its controls are queried from the body.
+ * Opens the notes editor by tapping the note, then focuses its textarea the way a tap would.
+ */
+async function openNotesEditor() {
+  const body = within(document.body);
+  await userEvent.click(await body.findByText(/default-deny/i));
+  const textarea = await body.findByRole('textbox', { name: /edit notes/i });
+  await userEvent.click(textarea);
+  return textarea;
+}
+
+/** {@link NeedsRefinement} at 390×844: the two launch buttons and the mark under a phone header. */
+export const MobileNeedsRefinement: Story = {
+  args: NeedsRefinement.args,
+  parameters: PHONE,
+};
+
+/** A blocked story at 390×844: the state chip and the Unblock control, with its reason recorded. */
+export const MobileBlocked: Story = {
+  args: {
+    story: {
+      ...STORY,
+      factory_state: 'blocked',
+      blocked_from: 'ready_for_dev',
+      blocked_reason: 'Waiting on the upstream decision about where the allow-list lives.',
+    },
+  },
+  parameters: PHONE,
+};
+
+/**
+ * Editing a long note at 390×844 with the keyboard down: the editor has the whole note to show
+ * and Save/Cancel are reachable, however tall the note is.
+ */
+export const MobileEditingLongNotes: Story = {
+  args: { story: { ...STORY, notes: LONG_NOTES } },
+  parameters: PHONE,
+  play: async () => {
+    await openNotesEditor();
+  },
+};
+
+/** The block-reason editor at 390×844, mid-reason: the amber card with its actions in view. */
+export const MobileBlockReason: Story = {
+  args: { story: STORY },
+  parameters: PHONE,
+  play: async () => {
+    const body = within(document.body);
+    await userEvent.click(await body.findByRole('button', { name: /^block$/i }));
+    const reason = await body.findByRole('textbox', { name: /why is this blocked/i });
+    await userEvent.type(reason, BLOCK_REASON);
+  },
+};
+
+/**
+ * Editing the long note with the on-screen keyboard up. CI can't raise a real keyboard, so a
+ * short viewport (390×470: the 844px phone minus a ~375px iOS keyboard) stands in — inside the
+ * Storybook frame `visualViewport.height` equals the viewport, which is what the sheet tracks.
+ */
+export const MobileKeyboardUp: Story = {
+  args: { story: { ...STORY, notes: LONG_NOTES } },
+  parameters: { visualTest: { target: '[role="dialog"]', viewport: { width: 390, height: 470 } } },
+  play: async () => {
+    await openNotesEditor();
+  },
+};
+
 /**
  * The same spike once its PR merged: the findings render in the sandboxed frame the specs use,
  * the sha-pinned **View in repo** link points into `docs/spikes/`, and the recorded PR reads
  * **Spike PR**. Nothing is offered to launch — a spike ends at Done, and follow-up is a new story.
+ *
+ * Keep this the LAST story in the file: once the sandboxed frame has rendered, the test-runner's
+ * `waitForPageReady` never settles for any later story in the same file, and every capture after
+ * it times out.
  */
 export const SpikeDone: Story = {
   parameters: {
