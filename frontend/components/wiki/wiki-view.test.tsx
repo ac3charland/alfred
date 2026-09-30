@@ -294,6 +294,22 @@ describe('WikiView — the landing', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Habit stacking' })).toBeInTheDocument();
   });
 
+  it("moves the card and the web's focus to the next day's concept at midnight", () => {
+    const { rerender } = renderAt('/wiki');
+    const focusOf = (name: string) =>
+      within(screen.getByRole('group', { name: /Concepts & entities/ }))
+        .getByRole('link', { name })
+        .closest('[data-wiki-node]');
+    expect(focusOf('Forgetting curve, concept')).toHaveAttribute('data-focus', 'true');
+
+    rerender(<WikiView now={new Date('2026-10-04T16:00:00.000Z')} />);
+
+    const card = screen.getByRole('region', { name: 'Concept of the day' });
+    expect(within(card).getByRole('link', { name: 'Habit stacking' })).toBeInTheDocument();
+    expect(focusOf('Habit stacking, concept')).toHaveAttribute('data-focus', 'true');
+    expect(focusOf('Forgetting curve, concept')).not.toHaveAttribute('data-focus');
+  });
+
   it("opens the day's concept from its card", async () => {
     const user = userEvent.setup();
     renderAt('/wiki');

@@ -191,6 +191,122 @@ describe('WikiWeb — what it draws', () => {
   });
 });
 
+/** Every node's place, by path. */
+const placesOf = (nodes: readonly WikiWebNode[]) =>
+  new Map(nodes.map((node) => [node.path, placeOf(node.path)]));
+
+/** How far, in all, the dots in `before` moved to reach `after`. */
+function totalShift(
+  before: ReadonlyMap<string, { x: number; y: number }>,
+  after: ReadonlyMap<string, { x: number; y: number }>,
+): number {
+  let total = 0;
+  for (const [path, from] of before) {
+    const to = after.get(path);
+    if (to) total += Math.hypot(to.x - from.x, to.y - from.y);
+  }
+  return total;
+}
+
+/** A pointer event as a finger sends it; jsdom has no PointerEvent, so a mouse event carries it. */
+const finger = (
+  type: 'pointerdown' | 'pointermove' | 'pointerup',
+  pointerId: number,
+  x: number,
+  y: number,
+) =>
+  Object.assign(
+    new MouseEvent(type, {
+      bubbles: true,
+      clientX: x,
+      clientY: y,
+      buttons: type === 'pointerup' ? 0 : 1,
+    }),
+    { pointerId, pointerType: 'touch' },
+  );
+
+/** The heading {@link renderWeb} names the web by, for a rerender to keep. */
+const heading = <h3 id="web-heading">Concepts & entities</h3>;
+
+/** {@link renderWeb}'s properties, changed by `properties`, for a rerender. */
+const props = (properties: Partial<WikiWebProperties>): WikiWebProperties => ({
+  nodes: SAMPLE.nodes,
+  edges: SAMPLE.edges,
+  focusPath: FOCUS,
+  labelledBy: 'web-heading',
+  reducedMotion: true,
+  ...properties,
+});
+
+describe('WikiWeb — a refreshed index or a new day', () => {
+  it("re-lights the web around a new day's concept", () => {
+    const { rerender } = renderWeb();
+    const next = 'wiki/concepts/second-brain.md';
+
+    rerender(
+      <>
+        {heading}
+        <WikiWeb {...props({ focusPath: next })} />
+      </>,
+    );
+
+    expect(nodeElement(next).dataset['focus']).toBe('true');
+    expect(nodeElement(FOCUS).dataset['focus']).toBeUndefined();
+    for (const path of neighboursOf(next)) expect(stateOf(path)).toBe('neighbour');
+    expect(stateOf('wiki/entities/robert-bjork.md')).toBe('rest');
+  });
+
+  it('starts warm from where the dots are when a page joins, rather than laying out afresh', () => {
+    const joining = 'wiki/concepts/bids-for-connection.md';
+    const without = {
+      nodes: SAMPLE.nodes.filter((node) => node.path !== joining),
+      edges: SAMPLE.edges.filter(({ a, b }) => a !== joining && b !== joining),
+    };
+    const cold = renderWeb();
+    const afresh = placesOf(without.nodes);
+    cold.unmount();
+
+    const { rerender } = renderWeb(without);
+    const before = placesOf(without.nodes);
+    rerender(
+      <>
+        {heading}
+        <WikiWeb {...props({})} />
+      </>,
+    );
+    const warm = placesOf(without.nodes);
+
+    // A cold layout of the new set scatters the old dots; the warm start leaves them near home.
+    expect(totalShift(before, warm)).toBeLessThan(totalShift(before, afresh) / 3);
+  });
+});
+
+describe('WikiWeb — touch', () => {
+  it('zooms with a two-finger pinch, and offers Fit', () => {
+    renderWeb();
+
+    fireEvent(stage(), finger('pointerdown', 1, 300, 200));
+    fireEvent(stage(), finger('pointerdown', 2, 340, 200));
+    fireEvent(stage(), finger('pointermove', 2, 420, 200));
+    fireEvent(stage(), finger('pointerup', 2, 420, 200));
+    fireEvent(stage(), finger('pointerup', 1, 300, 200));
+
+    expect(screen.getByRole('button', { name: 'Fit the web' })).toBeInTheDocument();
+  });
+
+  it('leaves one finger to the page: it neither drags a node nor pans', () => {
+    renderWeb();
+    const before = placesOf(SAMPLE.nodes);
+
+    fireEvent(linkOf(MEDINA), finger('pointerdown', 1, 300, 200));
+    fireEvent(linkOf(MEDINA), finger('pointermove', 1, 380, 260));
+    fireEvent(linkOf(MEDINA), finger('pointerup', 1, 380, 260));
+
+    expect(placesOf(SAMPLE.nodes)).toEqual(before);
+    expect(screen.queryByRole('button', { name: 'Fit the web' })).not.toBeInTheDocument();
+  });
+});
+
 describe('WikiWeb — the focus at rest', () => {
   it("marks the day's concept, and lights its neighbours and edges", () => {
     renderWeb();
