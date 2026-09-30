@@ -240,6 +240,11 @@ working.
 
 **Always scope `jest.spyOn` to `beforeEach` + `afterEach` (or rely on `restoreAllMocks: true`).** A spy that isn't restored persists its replacement across tests, producing hard-to-diagnose failures.
 
+**An ESM-only dependency fails to import under the frontend's CommonJS Jest.** One that also
+exports a UMD bundle under a `umd` condition (d3's packages) loads through
+`testEnvironmentOptions: { customExportConditions: ['browser', 'umd'] }` in `jest.config.ts`; one
+with no such build (react-markdown) is mocked at the seam instead (`wiki-markdown.test.tsx`).
+
 **In the `tools/*` packages there is no `jest` global.** They run Jest in ESM mode
 (`NODE_OPTIONS=--experimental-vm-modules` + `preset: 'ts-jest/presets/default-esm'`), which does
 not inject the globals — `jest.fn()` there throws `ReferenceError: jest is not defined`. Import

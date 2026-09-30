@@ -409,7 +409,7 @@ component can't be screenshotted — a dialog containing a **sandboxed `srcDoc` 
 wholesale), while the same capture driven straight from Playwright takes under a second.
 
 **Capturing interactive states — the part the docs skip.** The official page never explains
-hover, focus or keys. Five hard-won rules:
+hover, focus or keys. Six hard-won rules:
 
 - **CSS `:hover` is NOT triggered by `userEvent.hover` in a play function.** `userEvent`
   dispatches pointer *events*; it never moves a real pointer, so the `:hover`
@@ -431,6 +431,11 @@ hover, focus or keys. Five hard-won rules:
   the portal case below. Any `userEvent.click` inside the canvas first, and every later
   keystroke lands. Better still, drive the state through a click the component already honours
   and leave the keys to the RTL and Playwright suites.
+- **A component that lays out only after a `ResizeObserver` measures it is still unlaid when
+  the play function starts** (jsdom tests miss this — their fake observer reports at once). Await
+  a `findBy*` for something that appears only once it is laid out before interacting: the wiki
+  web's links join the accessibility tree then, and a zoom sent sooner is undone by the first fit
+  (`wiki-web.stories.tsx`).
 - **An open Radix menu, dialog or popover is invisible to a snapshot unless the story targets
   `body`.** `DropdownMenuContent` and `DropdownMenuSubContent` both render through
   `DropdownMenuPrimitive.Portal` — outside `#storybook-root`, which is `visualTest.target`'s
