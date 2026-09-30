@@ -1,6 +1,7 @@
-import type { Locator, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import {
+  MOCK_URL,
   makeFurtherReading,
   makeReaderOverview,
   makeReaderPost,
@@ -9,10 +10,10 @@ import {
 import { expect, test } from './support/fixtures';
 
 /**
- * A post's Further reading, in the browser: expand the overview, tick links, send them to the
- * Reader, and see them marked. The send route is stubbed with `page.route()` — its own Instapaper
- * traffic (the folder listing, one save per link, the append) is pinned by the route's Jest suite —
- * so this is the checklist, the store's reconcile and the marks the row redraws from its answer.
+ * A post's Further reading, through the whole stack: tick links in the browser, the send route on
+ * the Next server listing Instapaper's folders and saving each link, the stand-in Instapaper in
+ * the mock process recording what it was sent, and the atomic append that marks them — then the
+ * marks the row redraws, which survive a reload.
  */
 
 const PUBLICATION = makeReaderPublication('Gridwork', {
@@ -42,6 +43,18 @@ function roundupPost() {
   });
 }
 
+interface InstapaperCall {
+  path: string;
+  params: Record<string, string>;
+}
+
+/** Every Instapaper call the route made, in order, with its form body. */
+async function instapaperCalls(request: APIRequestContext): Promise<InstapaperCall[]> {
+  const response = await request.get(`${MOCK_URL}/__mock__/state`);
+  const state = (await response.json()) as { instapaperRequests: InstapaperCall[] };
+  return state.instapaperRequests.map(({ path, params }) => ({ path, params }));
+}
+
 async function openRow(page: Page): Promise<Locator> {
   const row = page.getByTestId('reader-row').filter({ hasText: TITLE });
   await row.getByRole('button', { name: 'Overview' }).click();
@@ -49,23 +62,13 @@ async function openRow(page: Page): Promise<Locator> {
   return row;
 }
 
-test.describe('sending Further reading to the Reader', () => {
-  test('ticks two links, sends them to the Reader, and marks them “In Reader”', async ({
+test.describe('sending Further reading', () => {
+  test('ticks two links and sends them into To Reader; they read “In Reader”, after a reload too', async ({
     page,
     seed,
+    request,
   }) => {
     await seed({ readerPublications: [PUBLICATION], readerPosts: [roundupPost()] });
-
-    const requests: unknown[] = [];
-    await page.route(`**/api/reader/posts/${POST_ID}/further-reading`, async (route) => {
-      requests.push(route.request().postDataJSON());
-      const { text: _text, html: _html, ...row } = roundupPost();
-      await route.fulfill({
-        status: 200,
-        json: { post: { ...row, further_sent_reader: [PAPER.url, RELEASE.url] }, unsent: [] },
-      });
-    });
-
     await page.goto('/reader');
     const row = await openRow(page);
 
@@ -73,24 +76,100 @@ test.describe('sending Further reading to the Reader', () => {
     const headings = await row.getByRole('heading', { level: 3 }).allTextContents();
     expect(headings.at(-1)).toBe('Further reading');
 
-    await row.getByRole('checkbox', { name: new RegExp(PAPER.title) }).click();
-    await row.getByRole('checkbox', { name: new RegExp(RELEASE.title) }).click();
+    await row.getByRole('checkbox', { name: PAPER.title }).click();
+    await row.getByRole('checkbox', { name: RELEASE.title }).click();
     await expect(row.getByText('2 selected')).toBeVisible();
     await row.getByRole('button', { name: 'Send to Reader' }).click();
 
-    expect(requests).toEqual([{ destination: 'reader', urls: [PAPER.url, RELEASE.url] }]);
     await expect(row.getByText('In Reader')).toHaveCount(2);
-    await expect(row.getByRole('checkbox', { name: new RegExp(PAPER.title) })).toHaveCount(0);
-    await expect(row.getByRole('checkbox', { name: new RegExp(RELEASE.title) })).toHaveCount(0);
-    await expect(row.getByRole('checkbox', { name: new RegExp(ESSAY.title) })).toHaveAttribute(
+    await expect(row.getByRole('checkbox', { name: PAPER.title })).toHaveCount(0);
+    await expect(row.getByRole('checkbox', { name: RELEASE.title })).toHaveCount(0);
+    await expect(row.getByRole('checkbox', { name: ESSAY.title })).toHaveAttribute(
       'aria-checked',
       'false',
     );
     await expect(row.getByRole('group', { name: 'Selected links' })).toBeHidden();
 
+    // The folder listing, then one save per link into To Reader: by URL, the model's words.
+    expect(await instapaperCalls(request)).toEqual([
+      { path: '/api/1.1/folders/list', params: {} },
+      {
+        path: '/api/1/bookmarks/add',
+        params: {
+          url: PAPER.url,
+          title: PAPER.title,
+          description: PAPER.note,
+          folder_id: '7700001',
+        },
+      },
+      {
+        path: '/api/1/bookmarks/add',
+        params: {
+          url: RELEASE.url,
+          title: RELEASE.title,
+          description: RELEASE.note,
+          folder_id: '7700001',
+        },
+      },
+    ]);
+
     // Each item's open link stays, and opens the link itself in a new tab.
     const open = row.getByRole('link', { name: `Open ${PAPER.title}` });
     await expect(open).toHaveAttribute('href', PAPER.url);
     await expect(open).toHaveAttribute('target', '_blank');
+
+    await page.reload();
+    const reloaded = await openRow(page);
+    await expect(reloaded.getByText('In Reader')).toHaveCount(2);
+  });
+
+  test('sends a link to Instapaper’s Unread, with no folder and no folder listing', async ({
+    page,
+    seed,
+    request,
+  }) => {
+    await seed({ readerPublications: [PUBLICATION], readerPosts: [roundupPost()] });
+    await page.goto('/reader');
+    const row = await openRow(page);
+
+    await row.getByRole('checkbox', { name: ESSAY.title }).click();
+    await row
+      .getByRole('group', { name: 'Selected links' })
+      .getByRole('button', { name: 'Send to Instapaper' })
+      .click();
+
+    await expect(row.getByText('In Instapaper')).toHaveCount(1);
+    expect(await instapaperCalls(request)).toEqual([
+      {
+        path: '/api/1/bookmarks/add',
+        params: { url: ESSAY.url, title: ESSAY.title, description: ESSAY.note },
+      },
+    ]);
+  });
+
+  test('with no To Reader folder, says so, saves nothing and keeps the ticks', async ({
+    page,
+    seed,
+    request,
+  }) => {
+    await seed({
+      readerPublications: [PUBLICATION],
+      readerPosts: [roundupPost()],
+      instapaperFolders: [],
+    });
+    await page.goto('/reader');
+    const row = await openRow(page);
+
+    await row.getByRole('checkbox', { name: PAPER.title }).click();
+    await row.getByRole('button', { name: 'Send to Reader' }).click();
+
+    await expect(page.getByText('There is no “To Reader” folder in Instapaper')).toBeVisible();
+    await expect(row.getByRole('checkbox', { name: PAPER.title })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await expect(row.getByText('In Reader')).toHaveCount(0);
+    const recorded = await instapaperCalls(request);
+    expect(recorded.map((call) => call.path)).toEqual(['/api/1.1/folders/list']);
   });
 });

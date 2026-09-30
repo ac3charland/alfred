@@ -35,6 +35,7 @@
  *     POST /rest/v1/rpc/{comm_purge,comm_record_reply,comm_example_set_version,
  *                        comm_create_inbox_item}
  *                                                             → Comms RPCs
+ *     POST /rest/v1/rpc/append_further_reading_sent           → Further reading sent marks
  *     POST /rest/v1/rpc/{append_wiki_sent_ideas,append_wiki_sent_picks,send_items_to_wiki,
  *                        search_wiki_pages}
  *                                                             → Wiki RPCs
@@ -45,6 +46,7 @@
  *   where page.route() can't reach, so INSTAPAPER_API_URL points it here):
  *     POST /api/1/bookmarks/add                               → a bookmark, or a seeded error
  *     POST /api/1/bookmarks/unarchive                         → the same bookmark, or the error
+ *     POST /api/1.1/folders/list                              → the seeded folders (To Reader)
  *   The research Routine's API trigger (not part of Supabase — the research routes fire it from
  *   the Next server, so RESEARCH_ROUTINE_FIRE_URL points it here):
  *     POST /__mock__/routine/fire      → a session URL, or the status a test set
@@ -137,6 +139,12 @@ let readerHealth = [];
 let instapaperRequests = [];
 /** @type {number | null} */
 let instapaperErrorCode = null;
+// The owner's Instapaper folders, as `folders/list` answers them — the Further reading send to
+// the Reader looks for "To Reader". Defaults to that one folder; a test seeds `[]` for
+// an account that has none.
+const DEFAULT_INSTAPAPER_FOLDERS = [{ type: 'folder', folder_id: 7_700_001, title: 'To Reader' }];
+/** @type {{ type: string, folder_id: number, title: string }[]} */
+let instapaperFolders = DEFAULT_INSTAPAPER_FOLDERS;
 // ── The research Routine: every fire the research routes made, and the status to answer with. ──
 // Recorded as sent — the Authorization and anthropic-beta headers and the fire's `text` — so a test
 // can check the fire was authenticated, versioned and carried the post id and brief. 200 answers
@@ -780,6 +788,13 @@ function newReaderPost(input) {
     research_session_url: input.research_session_url ?? null,
     research_error: input.research_error ?? null,
     research_delivered_at: input.research_delivered_at ?? null,
+    // The exact URL of every Further reading link sent to the Reader / Instapaper (migration 0048).
+    further_sent_reader: Array.isArray(input.further_sent_reader)
+      ? [...input.further_sent_reader]
+      : [],
+    further_sent_instapaper: Array.isArray(input.further_sent_instapaper)
+      ? [...input.further_sent_instapaper]
+      : [],
     created_at: input.created_at ?? receivedAt,
   };
 }
@@ -1633,6 +1648,34 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
+  // One atomic append of the Further reading URLs not already sent to the named destination
+  // (migration 0046), returning the post row through the route's list columns. An unknown
+  // destination raises, as the function does.
+  if (fn === 'append_further_reading_sent' && req.method === 'POST') {
+    const column = { reader: 'further_sent_reader', instapaper: 'further_sent_instapaper' }[
+      String(body?.p_destination)
+    ];
+    if (column === undefined) {
+      sendJson(res, 400, { code: '22023', message: 'unknown destination' });
+      return;
+    }
+    const post = readerPosts.find((row) => String(row.id) === String(body?.p_post));
+    const url = new URL(req.url ?? '/', `http://localhost:${String(PORT)}`);
+    if (post === undefined) {
+      sendJson(res, 406, {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      });
+      return;
+    }
+    for (const link of body?.p_urls ?? []) {
+      if (!post[column].includes(link)) post[column] = [...post[column], link];
+    }
+    const rows = applySelect([post], url.searchParams);
+    sendJson(res, 200, wantsObject(req) ? (rows[0] ?? null) : rows);
+    return;
+  }
+
   // Stamp-then-delete for knowledge rows, all-or-nothing: every id must be an undispatched,
   // childless root knowledge item, or nothing goes. Returns how many were consumed. The
   // corrections-log side effect of the stamp is a real-Postgres trigger, proven by the database
@@ -2337,6 +2380,7 @@ function handleControl(req, res, url, body) {
     instapaperErrorCode = null;
     routineFires = [];
     routineFireStatus = 200;
+    instapaperFolders = DEFAULT_INSTAPAPER_FOLDERS;
     wikiPages = [];
     wikiSync = [];
     github = freshGithub();
@@ -2404,6 +2448,9 @@ function handleControl(req, res, url, body) {
       typeof body?.instapaperErrorCode === 'number' ? body.instapaperErrorCode : null;
     routineFires = [];
     routineFireStatus = typeof body?.routineFireStatus === 'number' ? body.routineFireStatus : 200;
+    instapaperFolders = Array.isArray(body?.instapaperFolders)
+      ? body.instapaperFolders.map((f) => ({ type: 'folder', ...f }))
+      : DEFAULT_INSTAPAPER_FOLDERS;
     // Wiki. The sync row is likewise not defaulted: an empty table is "never synced".
     wikiPages = Array.isArray(body?.wikiPages) ? body.wikiPages.map((p) => newWikiPage(p)) : [];
     wikiSync = Array.isArray(body?.wikiSync) ? body.wikiSync.map((s) => newWikiSync(s)) : [];
@@ -2496,12 +2543,23 @@ function handleControl(req, res, url, body) {
 }
 
 /**
- * Instapaper's Full API, as much of it as the Send route uses: `bookmarks/add` for a newsletter
- * and `bookmarks/unarchive` for an article from To Reader, each answering the JSON array
+ * Instapaper's Full API, as much of it as the send routes use: `bookmarks/add` for a newsletter
+ * or a Further reading link, `bookmarks/unarchive` for an article from To Reader, and
+ * `folders/list` for the Further reading send to the Reader. Each save answers the JSON array
  * Instapaper does — a bookmark, or (when a test seeded one) an error with its code. An add mints
  * a new bookmark id; an unarchive answers with the bookmark it was handed.
  */
 function handleInstapaper(req, res, url, raw) {
+  // The owner's folders, recorded like every other call so a test can see the listing happened.
+  if (url.pathname === '/api/1.1/folders/list' && req.method === 'POST') {
+    instapaperRequests.push({
+      path: url.pathname,
+      authorization: req.headers.authorization ?? '',
+      params: Object.fromEntries(new URLSearchParams(raw)),
+    });
+    sendJson(res, 200, instapaperFolders);
+    return;
+  }
   const add = url.pathname === '/api/1/bookmarks/add';
   const unarchive = url.pathname === '/api/1/bookmarks/unarchive';
   if ((!add && !unarchive) || req.method !== 'POST') {
@@ -2549,7 +2607,7 @@ const server = createServer((req, res) => {
         handleAuth(req, res, url, body);
       } else if (url.pathname.startsWith('/rest/v1/')) {
         handleRest(req, res, url, body);
-      } else if (url.pathname.startsWith('/api/1/')) {
+      } else if (url.pathname.startsWith('/api/1/') || url.pathname.startsWith('/api/1.1/')) {
         handleInstapaper(req, res, url, raw);
       } else {
         sendJson(res, 404, { message: `Not found: ${req.method} ${url.pathname}` });

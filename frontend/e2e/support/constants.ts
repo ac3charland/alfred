@@ -121,6 +121,8 @@ export interface SeedState {
   readerHealth?: ReaderHealth[];
   /** Answer every Instapaper `bookmarks/add` with this error code instead of a bookmark. */
   instapaperErrorCode?: number;
+  /** The owner's Instapaper folders `folders/list` answers with; defaults to one "To Reader". */
+  instapaperFolders?: { folder_id: number; title: string }[];
   /** Answer every research Routine fire with this status (200, the default, accepts it). */
   routineFireStatus?: number;
   /** The wiki's page snapshot, bodies included (the mock serves the body route from them). */
