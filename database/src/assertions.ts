@@ -3636,12 +3636,16 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
 
       // The request exactly as PostgREST hands it to the Worker — JSON text, with an offset and
       // microseconds — because that text is what the abandoning write sends back to match on.
-      await client.query(`set timezone = 'UTC'`);
+      // In a transaction of its own, so the zone is set for this read only and not left behind on
+      // the connection every later assertion shares.
+      await client.query('begin');
+      await client.query(`set local timezone = 'UTC'`);
       const read = await client.query<{ requested: string }>(
         `select to_json(reclassify_requested_at) #>> '{}' as requested
            from comm_messages where id = $1`,
         [id],
       );
+      await client.query('commit');
       const requested = read.rows[0]?.requested;
       if (requested !== '2026-09-09T14:50:00.123456+00:00')
         throw new Error(`the request read back as ${String(requested)}`);
