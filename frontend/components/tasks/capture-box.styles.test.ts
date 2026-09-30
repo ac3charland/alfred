@@ -15,6 +15,10 @@ describe('capture-box styles', () => {
     expect(captureTextareaClass).toContain('text-base');
   });
 
+  it('textarea is capped at 40% of the visible viewport, so a long paste scrolls instead of growing forever', () => {
+    expect(captureTextareaClass).toContain('max-h-[40dvh]');
+  });
+
   it('ghost fades and slides right out of the box, on the shared send-off token', () => {
     // Overlaps the textarea's first line and is decorative (no pointer events).
     expect(captureGhostClass).toContain('absolute');
