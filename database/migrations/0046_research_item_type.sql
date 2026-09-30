@@ -2,7 +2,7 @@
 --
 -- A research item is an open question the owner wants answered from outside sources and written
 -- up: Dispatch hands it to a Claude Code Routine that researches it on the web, and the report
--- lands in the Reader as a post (0043 holds the rest of that).
+-- lands in the Reader as a post (0047 holds the rest of that).
 --
 -- Alone in its own file on purpose. deploy.ts and gen-types.ts apply each migration file in one
 -- transaction, and Postgres refuses to USE an enum value inside the transaction that added it

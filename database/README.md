@@ -18,7 +18,7 @@ Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 fo
 
 ### `0001_initial_schema.sql`
 
-- **`item_type`** enum: `unclassified | task | code | knowledge` (`research` added by `0042`)
+- **`item_type`** enum: `unclassified | task | code | knowledge` (`research` added by `0046`)
 - **`item_status`** enum: `active | completed`
 - **`folders`** — flat organizational buckets (`id`, `name`, `created_at`, and an optional
   `description` saying what belongs there — see `0028`).
@@ -185,13 +185,13 @@ and summarised by the Worker's Reader tick.
 - **`reader_health.instapaper_last_success_at` / `_last_error` / `_last_error_at`** — the To Reader
   leg's own health, apart from the summariser's, read by the Reader header's Instapaper dot.
 
-### `0042_research_item_type.sql` — the `research` item type (ALF-298)
+### `0046_research_item_type.sql` — the `research` item type (ALF-298)
 
 - **`item_type`** gains `research`: an open question the owner wants researched on the web and
   written up. Alone in its file because Postgres refuses to use an enum value inside the
-  transaction that added it; everything that names it is in `0043`.
+  transaction that added it; everything that names it is in `0047`.
 
-### `0043_research.sql` — research items become Reader posts (ALF-298)
+### `0047_research.sql` — research items become Reader posts (ALF-298)
 
 Dispatching a research row consumes it into a Reader post that waits for its report; a Claude Code
 Routine researches the question and delivers the report to the app, and from then on the post is

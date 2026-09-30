@@ -772,7 +772,7 @@ function newReaderPost(input) {
     wiki_sent_evidence: Array.isArray(input.wiki_sent_evidence)
       ? [...input.wiki_sent_evidence]
       : [],
-    // A research post's question and lifecycle (migration 0043). Null on every other source.
+    // A research post's question and lifecycle (migration 0047). Null on every other source.
     research_brief: input.research_brief ?? null,
     research_state: input.research_state ?? null,
     research_attempts: input.research_attempts ?? 0,

@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 0043 — Research items become Reader posts (ALF-298).
+-- 0047 — Research items become Reader posts (ALF-298).
 --
--- A `research` item (the enum value 0042 added) is a question the owner wants researched on the
+-- A `research` item (the enum value 0046 added) is a question the owner wants researched on the
 -- web and written up. Dispatching it consumes the Inbox row into a Reader post that waits for its
 -- report: the app fires a Claude Code Routine per post, the Routine's session researches the
 -- question and PUTs a markdown report back to the app, and from then on the post is summarised
