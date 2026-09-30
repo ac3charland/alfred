@@ -1,17 +1,20 @@
 'use client';
 
-import { CalendarRange, Maximize2 } from 'lucide-react';
+import { CalendarRange, ChevronDown, ChevronUp, Maximize2 } from 'lucide-react';
 import * as React from 'react';
 
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { FullScreenDialog } from '@/components/atoms/dialog';
+import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { ViewHeading } from '@/components/atoms/view-heading';
+import { WeeklyPlanTasks } from '@/components/tasks/weekly-plan-tasks';
 import { formatMonthDay } from '@/lib/date-utils';
 import {
   useSelectedWeeklyPlan,
   useWeeklyPlanActions,
   useWeeklyPlanIndex,
 } from '@/lib/stores/weekly-plan-store';
+import { cn } from '@/lib/utils';
 
 /** The call that fills this view — shown as the empty state, host and key elided. */
 const UPLOAD_SNIPPET = String.raw`curl -X POST https://<alfred-host>/api/weekly-plans \
@@ -25,10 +28,12 @@ const UPLOAD_SNIPPET = String.raw`curl -X POST https://<alfred-host>/api/weekly-
  * laxer copy on one of the two surfaces.
  */
 function PlanFrame({
+  id,
   html,
   testId,
   className,
 }: {
+  id?: string;
   html: string;
   /** Distinguishes the inline frame from the full-screen one; both can be mounted at once. */
   testId: string;
@@ -36,6 +41,7 @@ function PlanFrame({
 }) {
   return (
     <iframe
+      id={id}
       data-testid={testId}
       title="Weekly plan"
       sandbox="allow-scripts"
@@ -65,12 +71,19 @@ function PlanFrame({
  *
  * On a phone the inline frame is too cramped for a plan drawn at desktop widths, so below `md`
  * the whole plan is a tap target that reopens it full screen (see the tap layer below).
+ *
+ * The document opens as a short preview with the work it produced listed underneath
+ * ({@link WeeklyPlanTasks}, ALF-235), so the week's tasks are in view without scrolling past the
+ * whole plan. At `md`+ an Expand toggle grows the frame to near full height; below `md` the tap
+ * layer's full-screen view already does that job, so the toggle is hidden there.
  */
 export function WeeklyPlanView() {
   const index = useWeeklyPlanIndex();
   const selected = useSelectedWeeklyPlan();
   const { selectPlan } = useWeeklyPlanActions();
   const [isFullScreen, setIsFullScreen] = React.useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const frameId = React.useId();
 
   return (
     <>
@@ -114,46 +127,77 @@ export function WeeklyPlanView() {
           </pre>
         </div>
       ) : (
-        <div className="relative flex flex-1 flex-col">
-          <PlanFrame
-            testId="weekly-plan-html"
-            html={selected.html}
-            className="min-h-[40rem] w-full flex-1 rounded-md border border-border/60"
-          />
+        <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-2">
+            <div className="relative">
+              {/* A sandboxed frame can't report its document's height to the app, so the two sizes
+                  are fixed: a preview tall enough to show the plan's opening, and near a full
+                  screen when expanded. */}
+              <PlanFrame
+                id={frameId}
+                testId="weekly-plan-html"
+                html={selected.html}
+                className={cn(
+                  'w-full rounded-md border border-border/60 transition-[height] duration-300 ease-out motion-reduce:transition-none',
+                  // The expanded height is md+ only, like its toggle: below md there is no control
+                  // to collapse it again, so the preview holds whatever the state says.
+                  isExpanded ? 'h-72 md:h-[80vh]' : 'h-72',
+                )}
+              />
 
-          {/* The mobile tap layer. It sits OVER the frame because a tap inside a sandboxed
-              iframe never reaches the app — the frame swallows it — so the plan can only be
-              "tappable" via something covering it. That trades the inline frame's own
-              interactivity on mobile for the tap, which is the point: the plan is read full
-              screen, where its controls are actually reachable. Gone at md+, where the inline
-              frame is roomy and stays directly interactive. */}
-          <ClickableCard
-            aria-label="View the week plan full screen"
-            onClick={() => {
-              setIsFullScreen(true);
-            }}
-            className="absolute inset-0 flex items-end justify-end rounded-md p-3 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue md:hidden"
-          >
-            {/* The visible half of the affordance: an invisible tap layer alone would leave
-                nothing to signal the plan opens. Inert so the tap lands on the layer itself. */}
-            <span className="pointer-events-none inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-              <Maximize2 size={12} aria-hidden="true" />
-              Full screen
-            </span>
-          </ClickableCard>
+              {/* The mobile tap layer. It sits OVER the frame because a tap inside a sandboxed
+                  iframe never reaches the app — the frame swallows it — so the plan can only be
+                  "tappable" via something covering it. That trades the inline frame's own
+                  interactivity on mobile for the tap, which is the point: the plan is read full
+                  screen, where its controls are actually reachable. Gone at md+, where the inline
+                  frame is roomy and stays directly interactive. */}
+              <ClickableCard
+                aria-label="View the week plan full screen"
+                onClick={() => {
+                  setIsFullScreen(true);
+                }}
+                className="absolute inset-0 flex items-end justify-end rounded-md p-3 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue md:hidden"
+              >
+                {/* The visible half of the affordance: an invisible tap layer alone would leave
+                    nothing to signal the plan opens. Inert so the tap lands on the layer itself. */}
+                <span className="pointer-events-none inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+                  <Maximize2 size={12} aria-hidden="true" />
+                  Full screen
+                </span>
+              </ClickableCard>
 
-          <FullScreenDialog
-            open={isFullScreen}
-            onOpenChange={setIsFullScreen}
-            title={`Week Plan · ${formatMonthDay(selected.uploaded_at)}`}
-            closeLabel="Close full screen"
-          >
-            <PlanFrame
-              testId="weekly-plan-html-fullscreen"
-              html={selected.html}
-              className="h-full w-full"
-            />
-          </FullScreenDialog>
+              <FullScreenDialog
+                open={isFullScreen}
+                onOpenChange={setIsFullScreen}
+                title={`Week Plan · ${formatMonthDay(selected.uploaded_at)}`}
+                closeLabel="Close full screen"
+              >
+                <PlanFrame
+                  testId="weekly-plan-html-fullscreen"
+                  html={selected.html}
+                  className="h-full w-full"
+                />
+              </FullScreenDialog>
+            </div>
+
+            <DisclosureToggle
+              aria-expanded={isExpanded}
+              aria-controls={frameId}
+              className="hidden gap-1 self-center md:inline-flex"
+              onClick={() => {
+                setIsExpanded((open) => !open);
+              }}
+            >
+              {isExpanded ? (
+                <ChevronUp size={14} aria-hidden="true" />
+              ) : (
+                <ChevronDown size={14} aria-hidden="true" />
+              )}
+              {isExpanded ? 'Collapse plan' : 'Expand plan'}
+            </DisclosureToggle>
+          </div>
+
+          <WeeklyPlanTasks planId={selected.id} />
         </div>
       )}
     </>

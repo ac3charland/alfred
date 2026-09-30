@@ -322,8 +322,8 @@ describe('unique-number', () => {
     expect(findings[0]?.message).toContain('must start with its number');
   });
 
-  it('tolerates the two legacy pairs already applied in production', () => {
-    // Renaming either 0031 or 0041 file would re-apply it, so both pairs stay exactly as committed.
+  it('tolerates the legacy pairs already applied in production', () => {
+    // Renaming any of these files would re-apply it, so every pair stays exactly as committed.
     expect(
       findingsFor(
         'unique-number',
@@ -332,6 +332,8 @@ describe('unique-number', () => {
           '0031_respace_code_priority.sql',
           '0041_project_color.sql',
           '0041_reader_instapaper_source.sql',
+          '0042_comm_reclassify_failed.sql',
+          '0042_project_pr_ratio_exclusion.sql',
         ),
       ),
     ).toHaveLength(0);

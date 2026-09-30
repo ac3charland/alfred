@@ -6,8 +6,7 @@ import * as React from 'react';
 import { ToggleButton } from '@/components/atoms/toggle-button';
 import { ViewHeading } from '@/components/atoms/view-heading';
 import { TriageRow } from '@/components/tasks/triage-row';
-import { useFolders } from '@/lib/stores/folders-store';
-import { residentFolderId } from '@/lib/tasks/residency';
+import { useBucketName } from '@/lib/hooks/use-bucket-name';
 import type { ItemNode } from '@/lib/tree';
 
 interface TriageListProperties {
@@ -47,14 +46,7 @@ export function TriageList({
   showCompleted,
   onToggleCompleted,
 }: TriageListProperties) {
-  const folders = useFolders();
-
-  // Takes a RESIDENT folder id (see `residentFolderId`), so a task still awaiting triage reads
-  // "Inbox" even when it already carries a folder — the view it actually renders in.
-  const folderName = (folderId: string | null): string =>
-    folderId === null
-      ? 'Inbox'
-      : (folders.find((folder) => folder.id === folderId)?.name ?? 'Unknown');
+  const bucketName = useBucketName();
 
   return (
     <>
@@ -72,7 +64,7 @@ export function TriageList({
               key={task.id}
               node={task}
               depth={0}
-              folderName={folderName(residentFolderId(task))}
+              folderName={bucketName(task)}
               showCompleted={showCompleted}
             />
           ))}
