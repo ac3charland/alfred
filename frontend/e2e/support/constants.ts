@@ -84,6 +84,9 @@ export const E2E_USER = {
 /** The ingest key this deployment is configured with — the credential a keyed caller sends. */
 export const INGEST_API_KEY = 'mock_ingest_key';
 
+/** The session-ledger key — accepted by the two ledger routes and nothing else. */
+export const LEDGER_API_KEY = 'mock_ledger_key';
+
 /** A seed payload: the rows the mock should hold for a test. */
 export interface SeedState {
   folders?: Folder[];

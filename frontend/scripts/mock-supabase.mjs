@@ -22,7 +22,7 @@
  *                                     comm_verdicts,comm_people,comm_handles,comm_rubrics,
  *                                     comm_corrections,comm_classifier_health,
  *                                     reader_publications,reader_posts,reader_health,
- *                                     wiki_pages,wiki_sync}
+ *                                     wiki_pages,wiki_sync,code_sessions}
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories,v_reader_candidates,v_reader_publications}
  *                                                             → computed views
@@ -38,6 +38,7 @@
  *     POST /rest/v1/rpc/{append_wiki_sent_ideas,append_wiki_sent_picks,send_items_to_wiki,
  *                        search_wiki_pages}
  *                                                             → Wiki RPCs
+ *     POST /rest/v1/rpc/upsert_code_sessions                  → the session ledger's upsert
  *   GitHub Git Data API (the wiki writer's six endpoints, under /__mock__/github/repos/…):
  *     GET  …/git/ref/heads/main   GET …/git/commits/{sha}   GET …/git/trees/{sha}
  *     POST …/git/trees            POST …/git/commits         PATCH …/git/refs/heads/main
@@ -139,6 +140,9 @@ let wikiPages = [];
 // The singleton sync row, held as a list of 0 or 1 rows: an EMPTY table is "never synced".
 /** @type {Record<string, unknown>[]} */
 let wikiSync = [];
+// ── The session ledger (migration 0046): one row per coding session, keyed by session_id. ──
+/** @type {Record<string, unknown>[]} */
+let codeSessions = [];
 // The wiki repo itself, as the Git Data API shows it: see `freshGithub` below. `githubSequence`
 // backs `nextSha` (defined near `freshGithub`, much later in the file) and must be initialized
 // before this call — `let` is not hoisted, so declaring it down there would throw a
@@ -424,6 +428,7 @@ function tableFor(name) {
   if (name === 'reader_health') return readerHealth;
   if (name === 'wiki_pages') return wikiPages;
   if (name === 'wiki_sync') return wikiSync;
+  if (name === 'code_sessions') return codeSessions;
   return;
 }
 
@@ -1579,6 +1584,32 @@ function handleRpc(req, res, fn, body) {
   // asks for the list columns back (`?select=…` + a single-object Accept), which the RPC path
   // honours the way a table read does. `append_wiki_sent_picks` (migration 0040) appends to both
   // sections' columns, each against its own; `append_wiki_sent_ideas` is the ideas-only original.
+  // ── The session ledger (migration 0046) ──
+  // Mirrors the SQL: every column refreshes, except that a stored `recorded` prompt keeps its
+  // prompt, provenance, builder and base when a non-recorded row arrives for the same session.
+  if (fn === 'upsert_code_sessions' && req.method === 'POST') {
+    const incoming = Array.isArray(body?.p_rows) ? body.p_rows : [];
+    const KEPT = ['prompt', 'prompt_source', 'builder_sha', 'base_sha'];
+    let keptRecorded = 0;
+    for (const row of incoming) {
+      const existing = codeSessions.find((s) => s.session_id === row.session_id);
+      const next = {
+        skills: [],
+        warnings: [],
+        ...row,
+        refreshed_at: new Date().toISOString(),
+      };
+      if (existing?.prompt_source === 'recorded' && row.prompt_source !== 'recorded') {
+        keptRecorded += 1;
+        for (const column of KEPT) next[column] = existing[column];
+      }
+      if (existing) Object.assign(existing, next);
+      else codeSessions.push(next);
+    }
+    sendJson(res, 200, [{ upserted: incoming.length, kept_recorded: keptRecorded }]);
+    return;
+  }
+
   if (
     (fn === 'append_wiki_sent_ideas' || fn === 'append_wiki_sent_picks') &&
     req.method === 'POST'
@@ -2267,6 +2298,7 @@ function handleControl(req, res, url, body) {
     instapaperErrorCode = null;
     wikiPages = [];
     wikiSync = [];
+    codeSessions = [];
     github = freshGithub();
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
@@ -2333,6 +2365,9 @@ function handleControl(req, res, url, body) {
     // Wiki. The sync row is likewise not defaulted: an empty table is "never synced".
     wikiPages = Array.isArray(body?.wikiPages) ? body.wikiPages.map((p) => newWikiPage(p)) : [];
     wikiSync = Array.isArray(body?.wikiSync) ? body.wikiSync.map((s) => newWikiSync(s)) : [];
+    codeSessions = Array.isArray(body?.codeSessions)
+      ? body.codeSessions.map((r) => ({ ...r }))
+      : [];
     // The wiki repo starts fresh on every seed, with whatever inbox/ folders the test names
     // already taken (so a send's folder-name suffixing can be exercised).
     github = freshGithub(Array.isArray(body?.githubInbox) ? body.githubInbox : []);
@@ -2360,6 +2395,7 @@ function handleControl(req, res, url, body) {
       readerHealth,
       wikiPages,
       wikiSync,
+      codeSessions,
     });
     return;
   }
@@ -2387,6 +2423,7 @@ function handleControl(req, res, url, body) {
       readerHealth,
       wikiPages,
       wikiSync,
+      codeSessions,
       github: githubState(),
     });
     return;
