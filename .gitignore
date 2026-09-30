@@ -22,6 +22,9 @@ stryker.log
 **/__diff_output__/
 **/__received_output__/
 
+# Claude Code's per-machine settings: approved commands land here verbatim, credentials included.
+.claude/settings.local.json
+
 # Local env files — real secrets, never commit. Tracked: *.example
 .env
 .env.local
