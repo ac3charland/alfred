@@ -38,8 +38,11 @@ export function usePrRatio(): PrRatio {
   // Numbers each request; an answer is applied only if no later request has started since, so a
   // slow first refetch can't overwrite a quicker second one. Bumped on unmount, too.
   const latestRequest = React.useRef(0);
+  // A save can land after the card has gone; its refetch would be a GitHub fan-out for nobody.
+  const mounted = React.useRef(false);
 
   const load = React.useCallback(() => {
+    if (!mounted.current) return;
     latestRequest.current += 1;
     const request = latestRequest.current;
     const isLatest = () => request === latestRequest.current;
@@ -56,8 +59,10 @@ export function usePrRatio(): PrRatio {
   }, []);
 
   React.useEffect(() => {
+    mounted.current = true;
     load();
     return () => {
+      mounted.current = false;
       latestRequest.current += 1;
     };
   }, [load]);

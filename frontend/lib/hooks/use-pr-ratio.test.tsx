@@ -145,4 +145,18 @@ describe('usePrRatio', () => {
       expect(result.current.state).toEqual({ status: 'ready', ratio: AFTER });
     });
   });
+
+  it('asks nothing once unmounted — a save landing after the card is gone starts no fetch', async () => {
+    mockGetPrRatio.mockResolvedValue(BEFORE);
+    const { result, unmount } = renderHook(() => usePrRatio());
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('ready');
+    });
+    const { refetch } = result.current;
+
+    unmount();
+    refetch();
+
+    expect(mockGetPrRatio).toHaveBeenCalledTimes(1);
+  });
 });

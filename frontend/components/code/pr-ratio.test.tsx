@@ -467,7 +467,11 @@ describe('PrRatio', () => {
     });
 
     it('shows the ⋯ in a quiet week', async () => {
-      mockGetPrRatio.mockResolvedValue({ ...RATIO, total: 0, repos: [] });
+      mockGetPrRatio.mockResolvedValue({
+        ...RATIO,
+        total: 0,
+        repos: RATIO.repos.map((repo) => ({ ...repo, count: 0, percentage: 0 })),
+      });
 
       renderCard();
 
@@ -650,6 +654,41 @@ describe('PrRatio', () => {
 
         expect(await screen.findByRole('img')).toBeInTheDocument();
         expect(screen.queryByText(LINE)).not.toBeInTheDocument();
+      });
+
+      it('waits for the new split after an untick, never drawing the stale Other-only answer', async () => {
+        mockGetPrRatio.mockResolvedValueOnce({
+          ...RATIO,
+          total: 3,
+          repos: [],
+          other: { count: 3, percentage: 100 },
+        });
+        mockUpdateProject.mockReturnValue(deferred<Project>().promise);
+        const { slot } = renderCard(ALL_EXCLUDED);
+        await waitFor(() => {
+          expect(mockGetPrRatio).toHaveBeenCalled();
+        });
+        const menu = await openMenu();
+
+        await userEvent.click(within(menu).getByRole('menuitemcheckbox', { name: 'Alfred' }));
+
+        // The answer in hand counted no project; the card pulses until one that does lands.
+        expect(screen.queryByText(LINE)).not.toBeInTheDocument();
+        expect(screen.queryByRole('img')).not.toBeInTheDocument();
+        expect(screen.queryByText('No PRs merged in the last 7 days.')).not.toBeInTheDocument();
+        expect(screen.queryByText(/total/)).not.toBeInTheDocument();
+        expect(slot.querySelector('.animate-pulse')).not.toBeNull();
+      });
+
+      it('is not claimed for a lone project — one project is no ratio at all', async () => {
+        mockGetPrRatio.mockResolvedValue(undefined);
+
+        const { slot } = renderCard([{ ...ALFRED, exclude_from_pr_ratio: true }]);
+
+        expect(screen.queryByText(LINE)).not.toBeInTheDocument();
+        await waitFor(() => {
+          expect(slot).toBeEmptyDOMElement();
+        });
       });
     });
   });

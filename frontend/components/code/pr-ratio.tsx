@@ -198,12 +198,14 @@ export function PrRatio() {
   if (state.status === 'unconfigured') return null;
 
   // In every state below, so the header never jumps — and in the error state too, since one repo
-  // the token can't read fails the whole ratio, and excluding it stops that repo being searched.
+  // the token can't read fails the whole ratio, and excluding it drops that repo's own search (it
+  // is still negated in the Other sweep).
   const menu = <PrRatioExcludeMenu projects={projects} onSaved={refetch} />;
 
   // Decided from the store alone, so it shows at once and wins over every fetch state: with no
-  // project counted there is no split to draw, even when Other merged PRs.
-  if (projects.length > 0 && projects.every((project) => project.exclude_from_pr_ratio)) {
+  // project counted there is no split to draw, even when Other merged PRs. Two projects at least,
+  // the ratio's own minimum — a lone project is an unconfigured ratio, which renders nothing.
+  if (projects.length >= 2 && projects.every((project) => project.exclude_from_pr_ratio)) {
     return (
       <SurfaceCard title={TITLE} action={menu}>
         <p className="text-sm text-muted-foreground">All projects excluded from the PR ratio.</p>
@@ -211,7 +213,9 @@ export function PrRatio() {
     );
   }
 
-  if (state.status === 'loading') {
+  // An answer that counted no project is stale once the store counts one again (an untick whose
+  // save and refetch are still in flight): pulse until the new split lands rather than draw it.
+  if (state.status === 'loading' || (state.status === 'ready' && state.ratio.repos.length === 0)) {
     return (
       <SurfaceCard title={TITLE} action={menu}>
         {/* Reserves the bar's height so the cards below don't jump when the counts land. */}
