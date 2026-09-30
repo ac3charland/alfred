@@ -39,7 +39,8 @@
  *     POST /rest/v1/rpc/{append_wiki_sent_ideas,append_wiki_sent_picks,send_items_to_wiki,
  *                        search_wiki_pages}
  *                                                             → Wiki RPCs
- *     POST /rest/v1/rpc/upsert_code_sessions                  → the session ledger's upsert
+ *     POST /rest/v1/rpc/{upsert_code_sessions,record_code_session}
+ *                                                             → the session ledger's two writes
  *   GitHub Git Data API (the wiki writer's six endpoints, under /__mock__/github/repos/…):
  *     GET  …/git/ref/heads/main   GET …/git/commits/{sha}   GET …/git/trees/{sha}
  *     POST …/git/trees            POST …/git/commits         PATCH …/git/refs/heads/main
@@ -162,6 +163,24 @@ let wikiSync = [];
 // ── The session ledger (migration 0049): one row per coding session, keyed by session_id. ──
 /** @type {Record<string, unknown>[]} */
 let codeSessions = [];
+// The ledger's column ownership (migration 0050), shared by the two ledger RPCs below.
+const LEDGER_USAGE = [
+  'input_tokens',
+  'output_tokens',
+  'cache_read_tokens',
+  'cache_write_tokens',
+  'served_model',
+  'subagent_count',
+  'usage_by_model',
+];
+const LEDGER_HOOK_OWNED = [...LEDGER_USAGE, 'cost_usd', 'recorded_at'];
+const LEDGER_PLATFORM_OWNED = ['session_created_at', 'model', 'effort_level', 'ref'];
+const LEDGER_HOOK_CODES = new Set([
+  'price_unknown',
+  'start_unrecorded',
+  'subagents_unreadable',
+  'transcript_regressed',
+]);
 // The wiki repo itself, as the Git Data API shows it: see `freshGithub` below. `githubSequence`
 // backs `nextSha` (defined near `freshGithub`, much later in the file) and must be initialized
 // before this call — `let` is not hoisted, so declaring it down there would throw a
@@ -1612,29 +1631,99 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
-  // ── The session ledger (migration 0049) ──
-  // Mirrors the SQL: every column refreshes, except that a stored `recorded` prompt keeps its
-  // prompt, provenance, builder and base when a non-recorded row arrives for the same session.
+  // ── The session ledger (migrations 0049, 0050) ──
+  // Mirror the SQL's column ownership. The hook-owned columns (usage and cost) are kept on a row
+  // the recording hook wrote; a recorded prompt keeps its prompt, provenance and skills, and the
+  // start it came with; the platform columns never take a null over a recorded value; the
+  // recording codes survive a backfill. The mock has no price history, so a recorded row with
+  // usage reads `price_unknown` and a null cost, as a real one does before the first price fetch.
   if (fn === 'upsert_code_sessions' && req.method === 'POST') {
     const incoming = Array.isArray(body?.p_rows) ? body.p_rows : [];
-    const KEPT = ['prompt', 'prompt_source', 'builder_sha', 'base_sha'];
     let keptRecorded = 0;
     for (const row of incoming) {
       const existing = codeSessions.find((s) => s.session_id === row.session_id);
+      const {
+        subagent_count: _subagents,
+        usage_by_model: _usage,
+        recorded_at: _recorded,
+        ...backfillColumns
+      } = row;
       const next = {
         skills: [],
         warnings: [],
-        ...row,
+        ...backfillColumns,
         refreshed_at: new Date().toISOString(),
       };
-      if (existing?.prompt_source === 'recorded' && row.prompt_source !== 'recorded') {
-        keptRecorded += 1;
-        for (const column of KEPT) next[column] = existing[column];
+      if (existing?.recorded_at) {
+        for (const column of LEDGER_HOOK_OWNED) next[column] = existing[column];
+        for (const column of LEDGER_PLATFORM_OWNED) next[column] = row[column] ?? existing[column];
       }
-      if (existing) Object.assign(existing, next);
-      else codeSessions.push(next);
+      const keepsPrompt =
+        existing?.prompt_source === 'recorded' && row.prompt_source !== 'recorded';
+      const startUnrecorded = existing?.warnings?.includes('start_unrecorded') ?? false;
+      if (keepsPrompt) {
+        keptRecorded += 1;
+        next.prompt = existing.prompt;
+        next.prompt_source = existing.prompt_source;
+        if (!startUnrecorded) next.skills = existing.skills;
+      }
+      if ((keepsPrompt && !startUnrecorded) || (existing?.recorded_at && existing.base_sha)) {
+        next.base_sha = existing.base_sha;
+        next.builder_sha = existing.builder_sha;
+      }
+      if (existing) {
+        const recordingCodes = (existing.warnings ?? []).filter((w) => LEDGER_HOOK_CODES.has(w));
+        next.warnings = [...new Set([...next.warnings, ...recordingCodes])].toSorted();
+        Object.assign(existing, next);
+      } else codeSessions.push(next);
     }
     sendJson(res, 200, [{ upserted: incoming.length, kept_recorded: keptRecorded }]);
+    return;
+  }
+
+  if (fn === 'record_code_session' && req.method === 'POST') {
+    const row = body?.p_row ?? {};
+    let existing = codeSessions.find((s) => s.session_id === row.session_id);
+    const inserted = existing === undefined;
+    if (inserted) {
+      existing = { session_id: row.session_id, repo: row.repo, skills: [], warnings: [] };
+      codeSessions.push(existing);
+    }
+    const before = { ...existing };
+    const takeUsage =
+      row.output_tokens != null &&
+      (before.usage_by_model == null ||
+        before.output_tokens == null ||
+        row.output_tokens >= before.output_tokens);
+    const regressed = row.output_tokens != null && !takeUsage;
+    if (takeUsage) {
+      for (const column of LEDGER_USAGE) existing[column] = row[column] ?? null;
+    }
+    if (row.prompt != null && before.prompt_source !== 'recorded') {
+      existing.prompt = row.prompt;
+      existing.prompt_source = 'recorded';
+      if (row.skills !== undefined) existing.skills = row.skills;
+    }
+    if (row.event === 'session-start' && (!before.recorded_at || before.base_sha == null)) {
+      existing.base_sha = row.base_sha ?? null;
+      existing.builder_sha = row.builder_sha ?? null;
+    }
+    for (const column of LEDGER_PLATFORM_OWNED)
+      existing[column] = before[column] ?? row[column] ?? null;
+    existing.recorded_at = existing.refreshed_at = new Date().toISOString();
+    existing.cost_usd = null;
+    const sent = (row.warnings ?? []).filter((w) =>
+      ['start_unrecorded', 'subagents_unreadable'].includes(w),
+    );
+    const kept = (before.warnings ?? []).filter((w) => !LEDGER_HOOK_CODES.has(w));
+    const set = [
+      ...(regressed || before.warnings?.includes('transcript_regressed')
+        ? ['transcript_regressed']
+        : []),
+      ...(existing.usage_by_model == null ? [] : ['price_unknown']),
+    ];
+    existing.warnings = [...new Set([...kept, ...sent, ...set])].toSorted();
+    sendJson(res, 200, [{ inserted }]);
     return;
   }
 
