@@ -121,7 +121,8 @@ Realtime subscription exactly when that stops being true. Three do:
 
 `patchStory` / the `patch` reducer are keyed by id and a no-op when absent, so a change for an
 unknown/removed row is ignored; and an echo of the user's own optimistic write re-applies
-identical values, so it's **idempotent** — no self-write filtering. Folders have a single browser
+identical values, so it's **idempotent** — no self-write filtering. The exception is a write
+*relative* to server state, whose echo can trail a later click: `priority` (see Priority below). Folders have a single browser
 writer and stay pure seed-once.
 
 The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
@@ -273,13 +274,21 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   subset of `ALL_FACTORY_STATES`, empty = empty list); **`useProjectBoard`** sorts each lane/escape bucket by `priority` and
   orders epics by their best (`min(priority)`) story (no-story epics last). All memoized like the
   other selectors.
-- **`reorderStory(ref, neighbourRef)`** is the only writer: an optimistic **swap** — `patchStory`
-  each of the two stories with the other's `priority` (capture the prior pair for rollback) →
-  `api.reorderCode` → reconcile both returned rows via `codeItemToStoryPatch`. The **view** owns
-  the filter/sort and picks the visible neighbour, so the action just swaps the pair it's handed.
-  It's one `swap_code_priority` RPC (not two PATCHes), which swaps via a negative-sentinel
-  sequence so the `unique(priority)` index never sees a transient duplicate — see the supabase
-  skill (a one-statement CASE swap 409s under a non-deferrable unique index).
+- **`reorderStory` / `moveStory` / `moveStoryInProject`** are the only writers. Each re-ranks
+  on screen at once, then **queues** its RPC in the store. The **view** owns the filter/sort and
+  picks the visible neighbour, so `reorderStory` just swaps the pair it's handed (one
+  `swap_code_priority` RPC — see the supabase skill).
+- **Every priority write is relative to the server's current order** (a swap trades the two
+  stories' ranks as the server holds them; a jump lands past the current extreme), while the
+  screen has already moved on to later clicks. So the store (ALF-250): sends the queue **one write
+  at a time, in click order** — concurrent writes can land in either order, and swaps sharing a
+  story don't commute; **parks** any server `priority` (a reply or a realtime echo) for a story
+  that still has a write queued or in flight, landing it once they settle — an earlier write's
+  reply would drag the row back, or tie it with a neighbour so the next nudge swaps equal ranks
+  for nothing; and **drops** an echo of its own write that a later write of its own has
+  superseded. A jump coalesces into a same-story jump still waiting at the queue's tail, and a
+  failure rolls back that write and everything queued behind it. `backlog-priority-sync.test.tsx`
+  fuzzes this against random reply/echo timing.
 - **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
   (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
   status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it
@@ -290,7 +299,7 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   `move_code_priority_in_project`) in lockstep — the optimistic card must sort to the slot the RPC
   reconciles to.
 - `codeItemToStoryPatch` carries `priority`, so the realtime `code_items` path patches a
-  cross-device reorder into an open tab for free (idempotent echo, as for `factory_state`).
+  cross-device reorder (or a server-side respace) into an open tab, through the same parking rule.
 - Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
 
 ## Transient UI state: local until a cross-row command needs it
