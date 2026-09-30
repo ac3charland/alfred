@@ -164,9 +164,11 @@ x-api-key: <ALFRED_API_KEY>
 
 Reading the payload:
 
-- `repos` holds one entry per project in alfred's Code module — `repo` is that project's GitHub
-  repo and `label` is the project's name — oldest project first, which is the order to report
-  them in.
+- `repos` holds one entry per project in alfred's Code module not excluded from the ratio —
+  `repo` is that project's GitHub repo and `label` is the project's name — oldest project first,
+  which is the order to report them in. An excluded project is simply absent: its PRs are in
+  neither `total` nor `other`, so don't report it as zero. With every project excluded, `repos`
+  is empty and only `other` (if measured) remains.
 - `percentage` values are whole numbers that sum to exactly 100 (largest-remainder rounding),
   so they can be quoted directly without re-deriving them from `count`.
 - `other` counts merged PRs **outside** every project's repo and is **optional** — it is absent

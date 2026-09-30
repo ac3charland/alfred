@@ -57,7 +57,9 @@ Fill in `frontend/.env.local` (Supabase → Project Settings):
 Optional — the Code Dashboard's rolling seven-day PR-ratio card (`GET /api/code/pr-ratio`)
 and lines-changed chart (`GET /api/code/loc-velocity`). The measured repos are the Code
 module's **projects** — every project's repo, oldest project first, each labelled and coloured
-as that project is everywhere else — so there is no repo list to configure. Leave the token
+as that project is everywhere else — so there is no repo list to configure. The ratio card's ⋯
+menu excludes a project from the ratio (stored on its row, so no redeploy): its PRs leave the bar,
+the total and Other alike, while the chart keeps measuring it. Leave the token
 unset and both endpoints answer 501 and neither card renders; the Dashboard is otherwise
 unaffected. The ratio needs at least two projects, the chart one:
 
