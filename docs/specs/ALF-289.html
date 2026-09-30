@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-289 — Reader: a “Further Reading” section for the articles a post links to</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p1:not(:has([value=a]:checked)) [data-opt=a],
+#p1:not(:has([value=b]:checked)) [data-opt=b],
+#p1:not(:has([value=c]:checked)) [data-opt=c],
+#p1:not(:has([value=d]:checked)) [data-opt=d]{display:none}
+
+/* The app's tokens, every value from source:
+     palette, radius             → frontend/app/globals.css (dark palette; accents teal/green/violet)
+     fonts                       → Geist (frontend/public/fonts/geist-sans.woff2); font-serif falls to Georgia
+     row shell, eyebrow … verbs  → components/reader/post-row.styles.ts (rowShellClass selected, eyebrowClass,
+                                   metaClass, titleClass, gistClass, verbRowClass, overviewFooterClass)
+     section heading             → lib/ui/section-heading-class.ts
+     checklist rows, heading row,
+     selection bar, sent marks   → components/reader/wiki-picks.tsx
+     tick box                    → components/tasks/task-row.styles.ts (checkbox 16px, incomplete border)
+     buttons                     → components/atoms/button.tsx (outline / ghost / accent, size sm)
+     badge                       → components/atoms/badge.tsx (secondary)
+     toast                       → components/shell/toast-viewport.tsx                                    */
+@font-face{font-family:Geist;font-weight:100 900;font-display:swap;
+  src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-sans.woff2) format("woff2")}
+.app{--a-bg:#0a0e17;--a-surface:#0f1626;--a-border:#1e2a3f;--a-secondary:#1e2a3f;
+  --a-text:#e8edf5;--a-muted:#8a96a8;--a-teal:#4fd1e0;--a-green:#34d399;--a-violet:#a78bfa;
+  background:var(--a-bg);color:var(--a-text);overflow:hidden;padding:16px;
+  font:14px/1.43 Geist,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.app *{box-sizing:border-box}
+.app p,.app ul,.app h4{margin:0}
+.app .row{max-width:640px;border:1px solid color-mix(in srgb,var(--a-green) 60%,transparent);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--a-green) 60%,transparent);
+  background:color-mix(in srgb,var(--a-secondary) 40%,transparent);border-radius:8px;padding:8px 12px}
+.app .rhead{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px}
+.app .eb{font-size:12px;font-weight:600;color:var(--a-green)}
+.app .meta{font-size:12px;color:var(--a-muted)}
+.app .rtitle{margin-top:6px;font:18px/1.375 Georgia,"Times New Roman",serif}
+.app .gist{margin-top:4px;font-size:14px;line-height:1.625}
+.app .verbs{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.app .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:32px;padding:0 12px;
+  border-radius:4px;font-size:12px;font-weight:500;white-space:nowrap;color:var(--a-text);background:transparent;border:0}
+.app .btn.outline{border:1px solid var(--a-border)}
+.app .btn.accent{background:var(--a-teal);color:var(--a-bg)}
+.app .btn.quiet{color:var(--a-muted);gap:6px}
+.app .btn.clear{padding:0 8px}
+.app .btn.icon{width:28px;height:28px;padding:0;color:var(--a-muted)}
+.app .ov{margin-top:12px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--a-border) 60%,transparent);
+  display:flex;flex-direction:column;gap:12px}
+.app .sh{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--a-muted)}
+.app .elide{font-size:12px;color:var(--a-muted);font-style:italic}
+.app .hrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;min-height:32px}
+.app .picks{list-style:none;padding:0;margin-top:4px;display:flex;flex-direction:column;gap:2px}
+.app .pk{display:flex;align-items:flex-start;gap:10px;border-radius:6px;padding:4px 6px;font-size:14px}
+.app .pk .tx{flex:1;min-width:0}
+.app .pk .ti{font-weight:500}
+.app .pk .no{color:var(--a-muted)}
+.app .plain{list-style:disc;padding-left:20px;margin-top:4px;display:flex;flex-direction:column;gap:4px}
+.app .plain .ti{font-weight:500}
+.app .plain .no{color:var(--a-muted)}
+.app .lnk{color:var(--a-text);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--a-muted) 60%,transparent);text-underline-offset:2px}
+.app .tick{flex:none;width:16px;height:16px;margin-top:2px;border-radius:4px;
+  border:1px solid color-mix(in srgb,var(--a-muted) 50%,transparent);display:flex;align-items:center;justify-content:center}
+.app .tick.on{border-color:var(--a-teal);background:var(--a-teal);color:var(--a-bg)}
+.app .slot{flex:none;width:16px;height:16px;margin-top:2px;display:flex;align-items:center;justify-content:center}
+.app .st{flex:none;display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--a-muted);margin-top:1px}
+.app .g{color:var(--a-green)}
+.app .bar{margin-top:8px;padding:6px 6px 0;border-top:1px solid color-mix(in srgb,var(--a-border) 60%,transparent);
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.app .cnt{font-size:14px;font-weight:600;color:var(--a-teal);white-space:nowrap;margin-right:8px}
+.app .foot{margin-top:12px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--a-border) 60%,transparent);
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.app .stampx{font-size:12px;color:var(--a-muted)}
+.app .badge{border-radius:999px;padding:2px 8px;font-size:12px;background:var(--a-secondary);color:var(--a-muted)}
+.app .toast{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:340px;margin:12px 0 0 auto;
+  border:1px solid var(--a-border);background:var(--a-surface);border-radius:8px;padding:12px 16px;font-size:14px;box-shadow:0 8px 32px 0 rgba(0,0,0,.4)}
+.app .toast .x{color:var(--a-muted);display:inline-flex}
+.app code{font:12px ui-monospace,Menlo,monospace;background:rgba(255,255,255,.06);color:var(--a-text);padding:0 3px;border-radius:4px}
+.ic{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic.b{stroke-width:3}
+</style>
+</head>
+<body data-kind="story">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+</svg>
+
+<main class="page">
+
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Reader · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>289</span><span class="sep"> — </span><span class="ttl">Reader: a “Further Reading” section for the articles a post links to</span></h1>
+  <p class="change" id="change">A summarised post’s overview gains a <b>Further reading</b> checklist of the articles it links to: tick some, then send them to the Reader for summarising or straight to Instapaper.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d1">D1</a>How does “Send to Reader” work?</h3>
+      <p class="pick">It saves the link into Instapaper’s “To Reader” folder; the existing leg summarises it.</p>
+      <p class="why">Instapaper already extracts article text. No new fetcher, parser or intake path.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>Where do the links come from?</h3>
+      <p class="pick">The post’s own links, numbered. The model picks numbers and never writes a URL.</p>
+      <p class="why">A URL the model writes can be invented. A number it picks can’t.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>Where does the section sit?</h3>
+      <p class="pick">Last, after “Who should read it”, with its own selection and send bar.</p>
+      <p class="why">Keeps the wiki bar and the reading bar apart.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>What shows when a post has none?</h3>
+      <p class="pick">Nothing: no heading and no empty line, unlike Novel ideas.</p>
+      <p class="why">Most essays link nothing worth reading, so an empty line on every post is noise.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>How many items at most?</h3>
+      <p class="pick">Ten, in the order the post links them.</p>
+      <p class="why">Roundups run long, and the other lists’ limit of six would cut them short.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>What happens to an item once sent?</h3>
+      <p class="pick">It shows “In Reader” or “In Instapaper” and can’t be ticked again.</p>
+      <p class="why">One send per link; moving it into To Reader in Instapaper still gets it summarised.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="a" checked>Picking</label>
+      <label><input type="radio" name="p1" value="b">After sends</label>
+      <label><input type="radio" name="p1" value="c">One send failed</label>
+      <label><input type="radio" name="p1" value="d">No Instapaper</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="An expanded Reader row for a roundup post. Its overview ends with a Further reading section listing four linked articles, each with a tick box, a title, a one-line note and an open link, and a selection bar with Send to Reader and Send to Instapaper.">
+        <div class="row">
+          <div class="rhead"><span class="eb">Import AI</span><span class="meta">Sep 16 · 9 min</span></div>
+          <p class="rtitle">Import AI 412: three new evals, and a robot that folds</p>
+          <p class="gist">Roundup issue. Most of it restates last week’s benchmark releases; the one new item is a robotics dexterity eval with a surprising sim-to-real gap. Worth the links more than the issue.</p>
+          <div class="verbs">
+            <span class="btn outline">Send to Instapaper</span>
+            <span class="btn">Hide overview</span>
+            <span class="btn outline">Archive</span>
+          </div>
+          <div class="ov">
+            <p class="elide">Novel ideas · Evidence · The argument · Who should read it — unchanged</p>
+
+            <section>
+              <!-- A · Picking -->
+              <div data-opt="a">
+                <div class="hrow"><h4 class="sh">Further reading</h4><span class="btn">Select all</span></div>
+                <ul class="picks">
+                  <li class="pk"><span class="tick on"><svg class="ic b" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx"><span class="ti">The sim-to-real gap in dexterous manipulation</span><br><span class="no">The paper behind the lead item — per-task numbers for the folding benchmark.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="tick"></span><span class="tx"><span class="ti">Why most robotics evals don’t transfer</span><br><span class="no">An essay arguing the suite measures the simulator, not the policy.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="tick on"><svg class="ic b" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx"><span class="ti">FoldBench v2 release notes</span><br><span class="no">The eval itself; skim it for the task list.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="tick"></span><span class="tx"><span class="ti">A sceptic’s reply to “scale the simulator”</span><br><span class="no">The counter-argument the author calls the best case against his own view.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                </ul>
+                <div class="bar"><span class="cnt">2 selected</span><span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-book"/></svg>Send to Reader</span><span class="btn outline">Send to Instapaper</span><span class="btn clear">Clear</span></div>
+              </div>
+
+              <!-- B · After sends -->
+              <div data-opt="b">
+                <div class="hrow"><h4 class="sh">Further reading</h4><span class="btn">Select all</span></div>
+                <ul class="picks">
+                  <li class="pk"><span class="slot g"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span><span class="tx"><span class="ti">The sim-to-real gap in dexterous manipulation</span><br><span class="no">The paper behind the lead item — per-task numbers for the folding benchmark.</span></span><span class="st g"><svg class="ic" width="12" height="12"><use href="#i-check"/></svg>In Reader</span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="tick"></span><span class="tx"><span class="ti">Why most robotics evals don’t transfer</span><br><span class="no">An essay arguing the suite measures the simulator, not the policy.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="slot" style="color:var(--a-muted)"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span><span class="tx"><span class="ti">FoldBench v2 release notes</span><br><span class="no">The eval itself; skim it for the task list.</span></span><span class="st"><svg class="ic" width="12" height="12"><use href="#i-check"/></svg>In Instapaper</span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="tick"></span><span class="tx"><span class="ti">A sceptic’s reply to “scale the simulator”</span><br><span class="no">The counter-argument the author calls the best case against his own view.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                </ul>
+              </div>
+
+              <!-- C · One send failed -->
+              <div data-opt="c">
+                <div class="hrow"><h4 class="sh">Further reading</h4><span class="btn">Select all</span></div>
+                <ul class="picks">
+                  <li class="pk"><span class="slot g"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg></span><span class="tx"><span class="ti">The sim-to-real gap in dexterous manipulation</span><br><span class="no">The paper behind the lead item — per-task numbers for the folding benchmark.</span></span><span class="st g"><svg class="ic" width="12" height="12"><use href="#i-check"/></svg>In Reader</span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="tick"></span><span class="tx"><span class="ti">Why most robotics evals don’t transfer</span><br><span class="no">An essay arguing the suite measures the simulator, not the policy.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="tick on"><svg class="ic b" width="10" height="10"><use href="#i-check"/></svg></span><span class="tx"><span class="ti">FoldBench v2 release notes</span><br><span class="no">The eval itself; skim it for the task list.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                  <li class="pk"><span class="tick"></span><span class="tx"><span class="ti">A sceptic’s reply to “scale the simulator”</span><br><span class="no">The counter-argument the author calls the best case against his own view.</span></span><span class="btn icon"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg></span></li>
+                </ul>
+                <div class="bar"><span class="cnt">1 selected</span><span class="btn accent"><svg class="ic" width="14" height="14"><use href="#i-book"/></svg>Send to Reader</span><span class="btn outline">Send to Instapaper</span><span class="btn clear">Clear</span></div>
+              </div>
+
+              <!-- D · No Instapaper -->
+              <div data-opt="d">
+                <h4 class="sh">Further reading</h4>
+                <ul class="plain">
+                  <li><a class="lnk ti">The sim-to-real gap in dexterous manipulation</a> <span class="no">— The paper behind the lead item — per-task numbers for the folding benchmark.</span></li>
+                  <li><a class="lnk ti">Why most robotics evals don’t transfer</a> <span class="no">— An essay arguing the suite measures the simulator, not the policy.</span></li>
+                  <li><a class="lnk ti">FoldBench v2 release notes</a> <span class="no">— The eval itself; skim it for the task list.</span></li>
+                  <li><a class="lnk ti">A sceptic’s reply to “scale the simulator”</a> <span class="no">— The counter-argument the author calls the best case against his own view.</span></li>
+                </ul>
+              </div>
+            </section>
+          </div>
+          <div class="foot">
+            <div style="display:flex;gap:8px"><span class="btn quiet"><svg class="ic" width="14" height="14"><use href="#i-arrow"/></svg>Original</span><span class="btn quiet"><svg class="ic" width="14" height="14"><use href="#i-rotate"/></svg>Re-summarise</span></div>
+            <span class="stampx">claude-sonnet-5 · prompt v2 · Sep 16</span>
+          </div>
+        </div>
+        <div data-opt="c" class="toast"><span>Sent 1 of 2 to Reader — Instapaper didn’t answer for the other.</span><span class="x"><svg class="ic" width="14" height="14"><use href="#i-x"/></svg></span></div>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The last section of an expanded row. <i>Picking</i> is the checklist, drawn like Novel ideas and Evidence: each item has its own open link (↗), and the bar has two sends. <i>After sends</i> shows the two marks, green for Reader and muted for Instapaper. <i>One send failed</i> shows the toast, with the failed item still ticked. <i>No Instapaper</i> is a deployment without Instapaper credentials, where the section is a plain list of links. The stamp’s <code>prompt v2</code> is the only other change on the row.</figcaption>
+  </figure>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 612 250" role="img" aria-label="Flow: the summariser writes the Further reading list into the post's overview; the owner ticks items; Send to Instapaper saves them to Instapaper Unread; Send to Reader saves them to Instapaper's To Reader folder, which the existing To Reader leg reads every five minutes and turns into new Reader posts.">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--muted);stroke:none"/></marker></defs>
+      <g class="new"><rect x="10" y="20" width="150" height="54" rx="6"/><text x="22" y="42">Summariser</text><text class="s" x="22" y="60">picks link numbers · D2</text></g>
+      <g class="new"><rect x="200" y="20" width="150" height="54" rx="6"/><text x="212" y="42">Further reading</text><text class="s" x="212" y="60">tick → send · D3 D6</text></g>
+      <g><rect x="440" y="20" width="166" height="54" rx="6"/><text x="452" y="42">Instapaper · Unread</text><text class="s" x="452" y="60">read it there</text></g>
+      <g><rect x="200" y="170" width="150" height="54" rx="6"/><text x="212" y="192">Instapaper · To Reader</text><text class="s" x="212" y="210">folder, exists today</text></g>
+      <g><rect x="10" y="170" width="150" height="54" rx="6"/><text x="22" y="192">To Reader leg</text><text class="s" x="22" y="210">5-min tick, exists today</text></g>
+      <path class="hot" d="M160 47H198" marker-end="url(#ah)"/>
+      <path class="hot" d="M350 47H438" marker-end="url(#ah)"/><text class="lb" x="362" y="40">Send to</text><text class="lb" x="362" y="64">Instapaper</text>
+      <path class="hot" d="M275 74V168" marker-end="url(#ah)"/><text class="lb" x="283" y="126">Send to Reader · D1</text>
+      <path d="M200 197H162" marker-end="url(#ah)"/>
+      <path d="M85 170V76" marker-end="url(#ah)"/><text class="lb" x="92" y="126">new post, summarised</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b>The new parts are outlined in teal. “Send to Reader” is a save into a folder that the Reader already reads from, so its whole back half is already built.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>No backfill: posts summarised before this ships show no Further reading unless you re-summarise them. No new fetching of web pages: every send goes through Instapaper.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul>
+    <li>Prompt goes to v2; the link list adds about a third of a cent per summary.</li>
+    <li>“Send to Reader” needs the “To Reader” folder in Instapaper, which already exists (ALF-272).</li>
+  </ul>
+</section>
+
+</section>
+
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p><b>The ticket.</b> ALF-289: <i>“Add a new section to Reader summary: ‘Further Reading’ for articles mentioned and linked to, link roundups, etc. These should be checkable like novel ideas or evidence, but they can either be sent to the reader for summarization or to Instapaper directly.”</i> It is a story in epic ALF-232 (<code>docs/specs/epics/ALF-232.html</code>; build notes in <code>docs/specs/epics/ALF-232-notes.md</code>). The epic is background only. This spec does not change it.</p>
+  <p><b>What exists today.</b></p>
+  <ul>
+    <li><b>The summary.</b> One structured-output call per post (<code>workers/src/reader/summarize.ts</code>). The schema (<code>schema.ts</code>) is <code>headline</code>, <code>gist</code> and <code>overview { novel_ideas, evidence, argument, who_should_read }</code>. The static prompt is in <code>prompt.ts</code> with <code>READER_PROMPT_VERSION = 1</code>. The model’s input is the stored <b>plain text</b>, which has no URLs in it. <code>htmlToText</code> (<code>workers/src/comms/email-text.ts</code>) drops the hrefs.</li>
+    <li><b>The HTML.</b> A newsletter’s email HTML is kept in <code>reader_posts.html</code> (0039, ALF-238) when it produced the text and fits <code>READER_HTML_CHARS</code>. An Instapaper article (0041, ALF-272) keeps no HTML: <code>to-reader.ts</code> strips <code>get_text</code>’s HTML to text and discards it. The retention sweep nulls <code>text</code> and <code>html</code> together at 90 days.</li>
+    <li><b>Links in real Substack mail.</b> Body links are opaque <code>substack.com/redirect/&lt;uuid&gt;</code> wrappers. Chrome links (subscribe, the post itself) are <code>substack.com/redirect/2/&lt;base64&gt;</code>. There are also <code>substack.com/@author</code> bylines and <code>substack.com/app-link/…</code> links. See the fixture <code>workers/src/reader/fixtures/essay.ts</code>. <code>extract.ts</code>’s <code>anchors()</code> already parses anchors with a scheme filter.</li>
+    <li><b>The checklists.</b> <code>components/reader/wiki-picks.tsx</code> makes Novel ideas and Evidence one selection with a “Send to wiki” bar. It mounts only where the wiki is writable. Sent marks are exact text in <code>wiki_sent_ideas</code> / <code>wiki_sent_evidence</code>, appended atomically by <code>append_wiki_sent_picks</code> (0040).</li>
+    <li><b>Instapaper.</b> The app signs <code>bookmarks/add</code> server-side (<code>frontend/lib/instapaper/*</code>, the Send verb’s route <code>app/api/reader/posts/[id]/instapaper</code>). The Worker’s To Reader leg (<code>workers/src/reader/to-reader.ts</code>) lists the folder titled exactly “To Reader” each tick. It takes the oldest bookmarks into free slots under the daily ceiling, inserts them as <code>source = 'instapaper'</code> posts, archives them in Instapaper and summarises them. <code>planBookmark</code> already handles a bookmark that is already a post. Whether Instapaper is configured reaches the client as <code>useInstapaperConfigured()</code>.</li>
+  </ul>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>How does “Send to Reader” work? · proposed</h3>
+    <p>Alternatives: (a) insert a <code>reader_posts</code> row keyed on the URL and have the Worker fetch and extract the page itself. This needs a readability extractor, a third <code>source</code>, a new identity constraint and more subrequests per tick. (b) Resolve the link and hand it to the To Reader leg by some other queue. Both rebuild something Instapaper already does.</p>
+    <p>Chosen: <code>bookmarks/add</code> with <code>folder_id</code> set to the “To Reader” folder. From there the path is ALF-272’s: the leg takes the bookmark within a tick or two (subject to its free slots and the daily ceiling), archives it in Instapaper, and it appears in the list as an Instapaper post. Consequences: a sent-to-Reader item is briefly visible in Instapaper’s To Reader folder, which is where the owner puts things by hand anyway. It fails when Instapaper isn’t configured or the folder is missing, and the route says so (Behaviour). It needs no Worker change for the send.</p>
+  </section>
+
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>Where do the links come from? · proposed</h3>
+    <p>Alternatives: (a) have the model return URLs it reads from a text that carries them inline. It can mistype or invent them, and a wrong URL is a silent failure. (b) Treat every anchor as further reading without the model. That lists subscribe buttons, sponsors and bylines. (c) Store a link column at intake. That still needs the model to choose among the links.</p>
+    <p>Chosen: at summarise time a pure function numbers the post’s candidate links (D11). The model sees each link’s number inline where it sits in the text, <i>and</i> a numbered list with the URLs. The model returns <code>{ link: n, title, note }</code>. Normalisation drops any number not in the list, so every stored URL is one the post contains. Titles and notes are the model’s own, because anchor text is often “this” or “here”.</p>
+  </section>
+
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>Where does the section sit? · proposed</h3>
+    <p>Alternative: directly after Evidence, beside the other checklists. That puts two selection bars in a row with different verbs (“Send to wiki” against “Send to Reader / Instapaper”), which invites sending to the wrong place. Chosen: last in the panel, after “Who should read it” and above the footer. It has its own selection state, independent of the wiki picks. Ticking a link never ticks a bullet.</p>
+  </section>
+
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>What shows when a post has none? · proposed</h3>
+    <p>Novel ideas and Evidence always render because an empty list there is a verdict (“nothing new”). An empty Further reading is not a verdict, just an essay that links nothing worth reading. So it renders nothing. The same holds for every post summarised under prompt v1, whose overview has no <code>further_reading</code> key.</p>
+  </section>
+
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>How many items at most? · proposed</h3>
+    <p>Alternatives: six, matching <code>READER_MAX_BULLETS</code>, which truncates a roundup; or no cap, which makes output tokens unbounded. Chosen: <code>READER_MAX_FURTHER_READING = 10</code>, enforced in normalisation (after sorting by link number), not by the grammar. <code>schema.ts</code>’s header explains why the grammar can’t take <code>maxItems</code>. Ten items at about 40 output tokens each stays well inside <code>max_tokens</code> 4 096.</p>
+  </section>
+
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>What happens to an item once sent? · proposed</h3>
+    <p>Alternative: allow a second send to the other destination. That makes two marks per row and one link bookmarked twice. Chosen: an item sent anywhere is out of the selection, the way a wiki-sent bullet is. The escape hatch is Instapaper’s own. Moving a bookmark into To Reader brings it into the Reader (D1’s path), and the leg’s <code>planBookmark</code> already handles a bookmark that is already a post.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+
+  <section class="rec" id="d7">
+    <h4>D7 · The model input marks links inline, and the stored text is unchanged</h4>
+    <p>When the post has HTML, the model input is built from it: each kept anchor’s text is followed by <code>&nbsp;[n]</code> before <code>htmlToText</code> runs. This is a pre-pass on the HTML string inside <code>workers/src/reader/links.ts</code>, so the comms file is imported, never edited. The block <code>--- links ---</code> then lists <code>[n] &lt;url&gt;</code>, one per line, after the post text. The result is still capped by <code>READER_MODEL_INPUT_CHARS</code> (text first, then the list, truncated whole-line). Stored <code>text</code> and <code>word_count</code> are untouched. A post with no HTML (plain-text mail, pre-0039 rows, swept rows) gets <code>--- links ---\nnone</code> and the prompt says to return an empty list.</p>
+  </section>
+
+  <section class="rec" id="d8">
+    <h4>D8 · Stored in the overview, as URLs</h4>
+    <p>Normalisation maps each kept pick to <code>{ url, title, note }</code> and writes it as <code>overview.further_reading</code> in the existing <code>jsonb</code>. No new column holds the list, and the 90-day sweep never touches it. Items are deduped by link number and sorted by it (document order, D5).</p>
+  </section>
+
+  <section class="rec" id="d9">
+    <h4>D9 · Sent marks: two URL arrays and one atomic append</h4>
+    <p>Mirrors 0040: <code>further_sent_reader text[]</code> and <code>further_sent_instapaper text[]</code>, keyed by exact URL. A re-summarise that keeps a link keeps its mark, and one that drops it drops the item. An RPC appends to one of the two arrays, deduped, in first-occurrence order. Both columns go into <code>READER_POST_LIST_COLUMNS</code>, because they are small.</p>
+  </section>
+
+  <section class="rec" id="d10">
+    <h4>D10 · Instapaper articles keep their HTML</h4>
+    <p>The To Reader leg writes <code>get_text</code>’s HTML into <code>reader_posts.html</code>, under the same <code>READER_HTML_CHARS</code> rule as mail, so an article’s links reach the model and Re-summarise. <b>Guard:</b> the article Send path (<code>restoreOrResave</code>) must keep re-saving by URL only. It must not start uploading this HTML as <code>content</code>. The column comment is updated to say the HTML can be Instapaper’s text view.</p>
+  </section>
+
+  <section class="rec" id="d11">
+    <h4>D11 · Which anchors are candidates</h4>
+    <p>Deterministic filtering is kept minimal, and the model does the judging. Keep an anchor when it is <code>http(s)</code>, has visible text, and is not one of: the post’s own <code>canonical_url</code> (compared on origin + path); <code>substack.com/@…</code>; <code>substack.com/app-link/…</code>; <code>substack.com/redirect/2/…</code> (Substack’s own chrome wrappers). Repeats of one URL share one number. The list is capped at <code>READER_MAX_LINK_CANDIDATES = 150</code> in document order. Wrappers are <b>not</b> unwrapped or resolved in the Worker, because that would cost subrequests. <code>bookmarks/add</code> leaves <code>resolve_final_url</code> at Instapaper’s default, which follows the redirect.</p>
+  </section>
+
+  <section class="rec" id="d12">
+    <h4>D12 · The send route saves each link in turn and keeps what landed</h4>
+    <p>One request per press. Links are saved one at a time with the existing 15 s per-call timeout, and the route stops starting new saves after 20 s so it answers inside the function limit. Only confirmed saves are appended. A partial send answers 200 with the row and the URLs that didn’t go. A send where nothing landed answers the first failure’s status and sentence via <code>sendFailureResponse</code>. The item gets no <code>content</code> and no tags. Its <code>title</code> is the model’s title and its <code>description</code> is the note.</p>
+  </section>
+
+  <section class="rec" id="d13">
+    <h4>D13 · Prompt v2, with no silent re-run</h4>
+    <p><code>READER_PROMPT_VERSION</code> becomes 2 because the instructions change. Per epic D7, nothing re-summarises existing rows. The Re-summarise verb is how an older post gains the section, and only while its HTML is still stored.</p>
+  </section>
+
+  <section class="rec" id="d14">
+    <h4>D14 · Its own component, sharing primitives with WikiPicks</h4>
+    <p><code>components/reader/further-reading.tsx</code> is a new checklist. Its rows differ from WikiPicks’ (two lines, plus a sibling open link that can’t nest inside the row’s button), and so does its bar (two sends). Reuse the tick styles and the row/bar class strings. If they extract cleanly into a shared <code>reader-checklist.styles.ts</code> without changing WikiPicks’ rendering (its Storybook baselines must not move), extract them. Otherwise import from <code>wiki-picks.tsx</code>’s exports rather than copying.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <h3>Rendering (P1)</h3>
+  <ul>
+    <li>The section renders only when <code>overview.further_reading</code> is present, well-formed and non-empty (D4). A malformed list hides the section and leaves the rest of the overview rendering. The frontend guard treats <code>further_reading</code> as optional.</li>
+    <li>Instapaper configured (<code>useInstapaperConfigured()</code>): the checklist in P1 “Picking”. The heading row has Select all / Deselect all over unsent items, or “All sent” with a check once none are left, as WikiPicks does. Each row is a <code>role="checkbox"</code> button (Space toggles, Enter does nothing) holding the title (<code>font-medium</code>) and note (muted) on two lines. A sibling ghost icon link ↗ (<code>aria-label="Open &lt;title&gt;"</code>, <code>target="_blank" rel="noopener noreferrer"</code>) opens the URL.</li>
+    <li>Not configured: P1 “No Instapaper”, a plain bulleted list where each title is the link and the note follows. There are no ticks and no bar. This is independent of whether the wiki is writable.</li>
+    <li>Sent items (P1 “After sends”): the tick slot becomes a check, and a status reads “In Reader” (the module green, <code>MODULE_ACCENT.reader.text</code>) or “In Instapaper” (muted). A URL in both arrays shows “In Reader”. The open link stays.</li>
+    <li>The bar appears when at least one item is ticked: “N selected”, <b>Send to Reader</b> (accent, BookOpen icon), <b>Send to Instapaper</b> (outline) and Clear. While a send is in flight every control in the section is disabled and the pressed button reads “Sending…” with the spinner. In-flight state lives in the store per post, as <code>useWikiSendInFlight</code> does.</li>
+  </ul>
+  <h3>Sending</h3>
+  <div class="scroll"><table>
+    <tr><th>Case</th><th>Route answer</th><th>What the owner sees</th></tr>
+    <tr><td>All saved</td><td>200, row</td><td>Items marked, ticks cleared, no toast</td></tr>
+    <tr><td>Some saved (P1 “One send failed”)</td><td>200, row + <code>unsent</code></td><td>Saved items marked; unsent stay ticked; toast “Sent k of n to Reader — &lt;failure sentence&gt; for the rest” (“…for the other” when one)</td></tr>
+    <tr><td>None saved</td><td>Instapaper’s mapped status + sentence</td><td>Existing error toast with that sentence; ticks kept</td></tr>
+    <tr><td>Reader, no “To Reader” folder</td><td>409 “There is no “To Reader” folder in Instapaper”</td><td>Error toast; nothing saved or marked</td></tr>
+    <tr><td>Not configured</td><td>501</td><td>Unreachable from the UI (no ticks)</td></tr>
+    <tr><td>Every URL already sent, or none still in the overview</td><td>200, row unchanged</td><td>Nothing changes</td></tr>
+  </table></div>
+  <p>The route intersects the requested URLs with the <em>current</em> overview’s list, because a re-summarise can reword things under an open tab. It drops any URL already in either sent array. The destination order is folders/list (Reader only), then the saves, then one append.</p>
+  <h3>Summariser</h3>
+  <ul>
+    <li>The schema gains <code>overview.further_reading: [{ link: integer, title: string, note: string }]</code>, which is required and may be empty. The guard requires it. A miss is the existing counted <code>schema</code> failure.</li>
+    <li>Prompt addition, in substance: <i>further_reading lists the reading the post points its reader to (articles, papers, posts, videos, books) by the link numbers in the text. In a link roundup, every item is further reading. Never the publication’s own chrome (subscribe, share, comments, app, author profile, the post itself), sponsors or ads. title names the linked piece, not the anchor text. note (≤ 20 words) says what it is and why the post points to it. Up to 10. Empty when the post links nothing worth reading, or when the links block says “none”.</i></li>
+    <li>Normalisation (D2, D5, D8): drop unknown numbers, dedupe, sort by number, cap at 10, map to URLs, and trim blank titles (an item whose title is blank after trimming is dropped).</li>
+    <li>Subrequests: none added. A fresh post’s HTML is already in memory at intake, and a retried post’s read adds <code>html</code> and <code>canonical_url</code> to its existing select. Check this against the arithmetic in <code>scheduled.ts</code>’s <code>READER_TICK_LIMIT</code> doc comment.</li>
+  </ul>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+<pre>-- database/migrations/&lt;next&gt;_reader_further_reading.sql   (take the next free number when building)
+alter table reader_posts
+  add column further_sent_reader     text[] not null default '{}',
+  add column further_sent_instapaper text[] not null default '{}';
+comment on column reader_posts.html is '… or, for an Instapaper article, get_text''s HTML …';
+
+create or replace function append_further_reading_sent(p_post uuid, p_destination text, p_urls text[])
+returns setof reader_posts language sql security invoker as $$ … $$;
+  -- p_destination in ('reader','instapaper'), else raise; append dedup'd, first-occurrence order
+grant execute on function append_further_reading_sent(uuid, text, text[]) to anon, authenticated, service_role;
+notify pgrst, 'reload schema';
+
+// workers/src/reader/types.ts + frontend/lib/types.ts
+interface ReaderFurtherReading { url: string; title: string; note: string }
+interface ReaderOverview { …; further_reading?: ReaderFurtherReading[] }   // optional: v1 rows lack it
+// the model's raw pick, Worker only
+interface ReaderFurtherReadingPick { link: number; title: string; note: string }
+
+// workers/src/reader/links.ts  (pure)
+export const READER_MAX_LINK_CANDIDATES = 150;
+export interface NumberedLink { n: number; url: string }
+export function numberLinks(html: string, canonicalUrl?: string): { markedHtml: string; links: NumberedLink[] };
+
+// workers/src/reader/schema.ts
+export const READER_MAX_FURTHER_READING = 10;
+normalizeReaderSummary(summary, links: readonly NumberedLink[]): StoredReaderSummary
+
+// POST /api/reader/posts/[id]/further-reading          (Node runtime, withSession)
+request:  { destination: 'reader' | 'instapaper', urls: string[] /* 1..10, http(s) */ }
+200:      { post: ReaderPostListItem, unsent: string[] }
+errors:   400 bad body · 404 no post · 409 no To Reader folder · 501 unconfigured · Instapaper's mapped statuses
+
+// frontend/lib/stores/reader-store.tsx
+sendFurtherReading(id, destination, urls): Promise&lt;{ post, unsent }&gt;
+useFurtherReadingSendInFlight(postId): boolean</pre>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <ol>
+    <li><b>Migration and types.</b> Write the migration above and read the <code>migration-lint</code> and <code>supabase</code> skills first. Regenerate <code>database.types.ts</code> with its generator. Add the types to both packages, <code>READER_POST_LIST_COLUMNS</code> and <code>database/README.md</code>.</li>
+    <li><b>Worker, red then green.</b> <code>links.ts</code> (+ test against <code>fixtures/essay.ts</code>, plus a new roundup fixture with several <code>redirect/&lt;uuid&gt;</code> body links, a sponsor, a byline and a repeated link). Next the schema, guard and normalisation, then <code>prompt.ts</code> (v2, links block, input cap). Then <code>SummaryInput</code> gains <code>html?</code> and <code>canonicalUrl?</code>, threaded from intake, the retry read and the To Reader leg. <code>to-reader.ts</code> stores <code>html</code> (D10). <code>summarize.ts</code> passes the numbered links to normalisation. Update <code>reader-eval.ts</code> so it prints the further-reading items. The SDK stays mocked everywhere.</li>
+    <li><b>Frontend Instapaper.</b> <code>lib/instapaper/</code> gains <code>listFolders</code> (the same API version the Worker’s client uses) and a <code>buildLinkBookmarkParams({ url, title, note }, folderId?)</code>. The existing post-send params and their “never sets a folder” test stay as they are.</li>
+    <li><b>Route and data.</b> The route per D12 and Behaviour, the Zod schema in <code>lib/api/schemas.ts</code>, <code>appendFurtherReadingSent</code> in <code>lib/data/reader.ts</code>, and route tests with the Supabase route double and a stubbed Instapaper fetch.</li>
+    <li><b>Store and UI.</b> The store action with in-flight tracking and toasts. <code>lib/reader/overview.ts</code> gets the optional-field guard. <code>further-reading.tsx</code> (D14) is mounted last in <code>post-overview.tsx</code>. Add Storybook stories for Picking, After sends, One send failed (toast) and No Instapaper, plus RTL tests.</li>
+    <li><b>E2E, demo, wrap-up.</b> One Playwright flow: expand a seeded post, tick two, send to Reader with the route stubbed, and see the marks. Then the demo doc, the full <code>check</code>, and archive this spec in the implementation PR.</li>
+  </ol>
+  <p>Skills to read first: <code>anthropic-api</code> (structured outputs, integer and object items), <code>cloudflare-workers</code>, <code>supabase</code>, <code>migration-lint</code>, <code>nextjs</code>, <code>data-flow</code>, <code>react</code>, <code>react-testing-library</code>, <code>storybook</code>, <code>playwright</code>, <code>showboat</code>. No comms file is edited.</p>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D2 D7">The summariser’s input carries <code>[n]</code> markers and a numbered links block built from the post’s HTML. A post without HTML gets “none”.</li>
+    <li data-trace="D11">Candidates exclude non-http(s) links, links with no visible text, the canonical URL, bylines, app-links and <code>redirect/2/</code> wrappers. Repeats share a number, and the list is capped at 150.</li>
+    <li data-trace="D2 D5 D8">A stored <code>further_reading</code> holds only URLs from the numbered list, deduped, in link order, at most 10.</li>
+    <li data-trace="D13">New summaries are stamped prompt v2, and no existing summary is re-run.</li>
+    <li data-trace="D10">An Instapaper article’s HTML is stored under the HTML ceiling, and its Send still re-saves by URL only.</li>
+    <li data-trace="D3 D4 P1">The section renders last in the overview only when it has items. A v1 post shows no section.</li>
+    <li data-trace="D6 P1">With Instapaper configured, items tick like Novel ideas. Select all ticks only unsent items, and the bar offers Send to Reader and Send to Instapaper.</li>
+    <li data-trace="D1 P1">Send to Reader saves each ticked URL into the “To Reader” folder. Send to Instapaper saves to Unread. Both mark only confirmed saves.</li>
+    <li data-trace="D6 P1">Sent items show “In Reader” (green) or “In Instapaper” (muted) and can’t be ticked.</li>
+    <li data-trace="D12 P1">A partial send marks what landed, keeps the rest ticked, and toasts “Sent k of n …”.</li>
+    <li data-trace="D1">A missing To Reader folder answers 409 with its sentence, and nothing is saved.</li>
+    <li data-trace="P1">Without Instapaper credentials, the section is a plain list of links.</li>
+    <li data-trace="impl">Each item’s open link opens the URL in a new tab and is not nested inside the row’s checkbox button.</li>
+    <li data-trace="impl">WikiPicks’ Storybook baselines don’t move, and <code>check</code> is green.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><b>Jest (workers):</b> <code>links.test.ts</code> (filtering, numbering, repeats, cap, markers in text); <code>schema.test.ts</code> (guard requires the field; normalisation drops, dedupes, sorts and caps); <code>prompt.test.ts</code> (v2, links block, “none”, cap order); <code>scheduled.test.ts</code> / <code>to-reader.test.ts</code> (HTML threaded to the summariser; article HTML stored); <code>summarize.test.ts</code> (a mocked answer with a bogus link number stores without it).</li>
+    <li><b>Jest (frontend):</b> route tests (every Behaviour table row); <code>bookmark.test.ts</code> (link params with and without <code>folder_id</code>; the post params unchanged); <code>overview.test.ts</code> (optional and malformed <code>further_reading</code>); store tests (in-flight, partial toast, marks reconciled).</li>
+    <li><b>RTL:</b> <code>further-reading.test.tsx</code> (tick, Select all, Space/Enter, sends, disabled while in flight, sent marks, open link attributes); <code>post-overview.test.tsx</code> (placement, absence).</li>
+    <li><b>Storybook snapshots:</b> the four P1 states on <code>post-row.stories.tsx</code> or its own stories file.</li>
+    <li><b>Playwright:</b> the tick → Send to Reader → marked flow, with the route stubbed.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the <code>showboat</code> skill’s evidence rules. The demo must show two things: the summariser’s output for the roundup fixture (via <code>reader-eval --fixtures --dry-run</code> or the prompt/normalisation tests’ output), proving picks come back as URLs from the post; and the four P1 states as screenshots or Storybook snapshot images.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><b>Backfill</b> is out per epic D7. Re-summarise is the owner’s tool, and it works only while the post’s HTML is stored.</li>
+    <li><b>Direct page fetching</b> is out (D1). Instapaper is the reader of the web for alfred.</li>
+    <li><b>Confirm while building:</b> that Instapaper’s <code>bookmarks/add</code> with the default <code>resolve_final_url</code> follows a <code>substack.com/redirect/&lt;uuid&gt;</code> wrapper and that the returned bookmark’s <code>url</code> is the final one. The To Reader leg’s <code>siteOf</code> reads that URL. If Instapaper keeps the wrapper, the article’s eyebrow reads <code>substack.com</code>. Record the finding with the Reader’s other build notes in <code>docs/specs/epics/ALF-232-notes.md</code>.</li>
+    <li><b>Risk: expired wrappers.</b> A redirect wrapper sent months later may no longer resolve, and Instapaper then saves an error page. The link is sent as it was in the post, and the likely case is a send within days of arrival.</li>
+    <li><b>Risk: the model over-picks chrome.</b> The prompt and D11’s filter aim to prevent it. The owner judges this from the eval output, not from a test.</li>
+    <li><b>Instapaper rate limits</b> are undocumented. Ten sequential saves per press is well below anything the send verb hasn’t already survived.</li>
+  </ul>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
