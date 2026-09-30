@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
-import { userEvent, within } from 'storybook/test';
+import { userEvent, waitFor, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
@@ -300,14 +300,19 @@ Ping the owner once the rate-limit story lands. If the answer is Supabase, this 
 
 /**
  * The dialog is portalled out of the story canvas, so its controls are queried from the body.
- * Opens the notes editor by tapping the note, then focuses its textarea the way a tap would.
+ * Opens the notes editor by tapping the note; the editor takes focus on its own.
  */
 async function openNotesEditor() {
   const body = within(document.body);
   await userEvent.click(await body.findByText(/default-deny/i));
-  const textarea = await body.findByRole('textbox', { name: /edit notes/i });
-  await userEvent.click(textarea);
-  return textarea;
+  return body.findByRole('textbox', { name: /edit notes/i });
+}
+
+/** Taps a menu's trigger in the action bar and waits for its (portalled) menu to open. */
+async function openBarMenu(trigger: string) {
+  const body = within(document.body);
+  await userEvent.click(await body.findByRole('button', { name: trigger }));
+  await body.findByRole('menu');
 }
 
 /** {@link NeedsRefinement} at 390×844: the two launch buttons and the mark under a phone header. */
@@ -347,7 +352,12 @@ export const MobileBlockReason: Story = {
   parameters: PHONE,
   play: async () => {
     const body = within(document.body);
-    await userEvent.click(await body.findByRole('button', { name: /^block$/i }));
+    await openBarMenu('More story actions');
+    await userEvent.click(await body.findByRole('menuitem', { name: 'Block…' }));
+    // Let the menu finish closing before typing, so it isn't caught mid-fade.
+    await waitFor(() => {
+      if (body.queryByRole('menu') !== null) throw new Error('the menu is still open');
+    });
     const reason = await body.findByRole('textbox', { name: /why is this blocked/i });
     await userEvent.type(reason, BLOCK_REASON);
   },
@@ -362,7 +372,49 @@ export const MobileKeyboardUp: Story = {
   args: { story: { ...STORY, notes: LONG_NOTES } },
   parameters: { visualTest: { target: '[role="dialog"]', viewport: { width: 390, height: 470 } } },
   play: async () => {
-    await openNotesEditor();
+    const editor = await openNotesEditor();
+    // Scrolled to the end: the note's last line and the editor's bottom edge sit above the
+    // Save/Cancel bar, with a gap — the bar never covers the text.
+    const scroller = editor.closest('[data-sheet-body]');
+    scroller?.scrollTo({ top: scroller.scrollHeight });
+  },
+};
+
+/** The Priority menu open over the sheet: the four jumps, all live (the story has neighbours). */
+export const MobilePriorityMenuOpen: Story = {
+  args: { story: STORY },
+  // A menu is portalled outside the dialog, so capture the whole page (per the storybook skill).
+  parameters: { visualTest: { target: 'body', viewport: { width: 390, height: 844 } } },
+  play: async () => {
+    await openBarMenu('Priority');
+  },
+};
+
+/**
+ * The ⋯ menu open on a needs-refinement story, where it holds the most: Skip to dev, the checked
+ * Needs refinement item, a divider, then Block… and Abandon.
+ */
+export const MobileMoreActionsOpen: Story = {
+  args: NeedsRefinement.args,
+  parameters: { visualTest: { target: 'body', viewport: { width: 390, height: 844 } } },
+  play: async () => {
+    await openBarMenu('More story actions');
+  },
+};
+
+/**
+ * The spec opened from its row: the full-screen reader over the sheet. A markdown spec on
+ * purpose — an HTML one renders in a sandboxed frame, which stalls every later capture in the
+ * file (see the note on {@link SpikeDone}).
+ */
+export const MobileSpecFullScreen: Story = {
+  args: { story: STORY },
+  parameters: { visualTest: { target: 'body', viewport: { width: 390, height: 844 } } },
+  play: async () => {
+    const body = within(document.body);
+    // Anchored: the story's own title ("Draft the inbound filter spec") ends the same way.
+    await userEvent.click(await body.findByRole('button', { name: /^inbound filter spec/i }));
+    await body.findByRole('dialog', { name: 'Inbound filter spec' });
   },
 };
 
