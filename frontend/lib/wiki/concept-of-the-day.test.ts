@@ -63,7 +63,11 @@ function naiveConceptOfTheDay(
   const [earliest] = stableSorted(all.map((row) => row.created).filter(isValidDate), (a, b) =>
     a < b ? -1 : 1,
   );
-  const start = earliest !== undefined && earliest < today ? earliest : today;
+  // Never before the wiki's first year; from it at once when a concept has always existed.
+  const undated = all.some((row) => !isValidDate(row.created));
+  const floor = '2026-01-01';
+  const from = undated || earliest === undefined || earliest < floor ? floor : earliest;
+  const start = from < today ? from : today;
 
   const lastFeatured = new Map<string, number>();
   let result: string | undefined;
@@ -335,6 +339,26 @@ describe('conceptOfTheDay', () => {
 
       // Only the always-existing page qualifies until the other one's date has passed.
       expect(window).toEqual(Array.from({ length: 5 }, () => ancient.path));
+    });
+
+    it('rotates a wiki whose concepts carry no dates at all, every concept before a repeat', () => {
+      const undated = concepts(5, null);
+      const window = picks(undated, days('2026-10-01', 15));
+
+      for (let start = 0; start + 5 <= window.length; start += 1) {
+        expect(new Set(window.slice(start, start + 5)).size).toBe(5);
+      }
+    });
+
+    it('never replays from before 2026, so a mistyped year costs nothing and changes nothing', () => {
+      const others = concepts(4, '2026-02-01');
+      const mistyped = [...others, concept('typo', '1026-09-12')];
+      const atTheFloor = [...others, concept('typo', '2025-12-31')];
+
+      const started = performance.now();
+      const window = picks(mistyped, days('2026-10-01', 10));
+      expect(performance.now() - started).toBeLessThan(100);
+      expect(window).toEqual(picks(atTheFloor, days('2026-10-01', 10)));
     });
 
     it('does not set where the replay starts', () => {

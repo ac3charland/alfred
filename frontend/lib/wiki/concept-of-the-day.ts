@@ -13,6 +13,13 @@ import type { WikiPageIndexRow } from '@/lib/types';
  * simply takes its turn in the rotation from the day after it was created.
  */
 
+/**
+ * The first day the replay can start from: the wiki's first year. A concept with no usable date
+ * has always existed, so a wiki with one replays from here and still rotates rather than taking a
+ * fresh pick each day; and a mistyped year (`1026-09-12`) can't send the replay back centuries.
+ */
+const REPLAY_FLOOR = '2026-01-01';
+
 /** The 32-bit FNV-1a offset basis. */
 const FNV_OFFSET_BASIS = 0x81_1c_9d_c5;
 
@@ -117,7 +124,8 @@ function byCreated(a: DatedCandidate, b: DatedCandidate): number {
 
 /**
  * The concept featured on `today`, replaying the rotation day by day from the earliest date any
- * concept was created (or from `today` alone, when that has not happened yet).
+ * concept was created — or from {@link REPLAY_FLOOR}, when that date is earlier or a concept has no
+ * date at all — or from `today` alone, when that start has not come yet.
  *
  * A concept qualifies on a day once its `created` date is strictly before that day, so a page that
  * syncs mid-day never changes that day's pick; one with no usable date has always qualified. Each
@@ -150,7 +158,10 @@ function replay(
   );
 
   const earliest = dated[0]?.created;
-  const start = earliest !== undefined && earliest < today ? earliest : today;
+  const undated = dated.length < candidates.length;
+  const from =
+    undated || earliest === undefined || earliest < REPLAY_FLOOR ? REPLAY_FLOOR : earliest;
+  const start = from < today ? from : today;
 
   const neverFeatured = new Set(candidates.filter((candidate) => candidate.created === undefined));
   const queue: Candidate[] = [];
