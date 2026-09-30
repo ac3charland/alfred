@@ -727,6 +727,17 @@ describe('fetchUnjudgedAtCeiling', () => {
     expect(query(call).get('cleared_at')).toBe('is.null');
     expect(query(call).get('classify_attempts')).toBe('gte.5');
   });
+
+  it('leaves a row with a re-run request standing to the step that gives up on it', async () => {
+    // Parking one clears its request with no failure stamp, and costs a second write. A stalled
+    // re-run waits for its own turn instead, so that it always ends with the stamp.
+    const calls = mockSupabase(() => Response.json([]));
+
+    await fetchUnjudgedAtCeiling(env, { attemptCeiling: 5, limit: 10 });
+
+    const [call] = calls as [Call];
+    expect(query(call).get('reclassify_requested_at')).toBe('is.null');
+  });
 });
 
 describe('patchMessage', () => {

@@ -539,6 +539,11 @@ export async function fetchStalledReruns(
  *
  * `cleared_at is null` for the same reason as `fetchUnjudgedMessages`: a row a reply already
  * drained needs no further attempt spent parking it either.
+ *
+ * `reclassify_requested_at is null` because a row with a re-run request standing is a stalled
+ * re-run, which `fetchStalledReruns` finds and the sweep abandons first: parking it here instead
+ * would clear the request with no failure stamp (the owner told "still couldn't judge", the
+ * detail line missing) and cost a second write. It is parked in the tick that abandons it.
  */
 export async function fetchUnjudgedAtCeiling(
   env: SupabaseEnv,
@@ -549,6 +554,7 @@ export async function fetchUnjudgedAtCeiling(
     direction: 'eq.inbound',
     tier: 'is.null',
     cleared_at: 'is.null',
+    reclassify_requested_at: 'is.null',
     classify_attempts: `gte.${String(options.attemptCeiling)}`,
     order: 'received_at.asc',
     limit: String(options.limit),
@@ -619,9 +625,9 @@ export const THREAD_CONTEXT_MAX_AGE = '30 days';
  * The messages that came before each of these, grouped by the message they belong to.
  *
  * ONE request for the whole tick, not one per message, and the budget is why: a sweep already
- * spends roughly 42 of the Workers free plan's 50 subrequests, so a per-message query would take
- * a full tick to ~48 against a hard ceiling — and over it the tick throws part-way, having billed
- * model calls for verdicts it never stored. A single RPC with a window function keeps it at ~43
+ * spends roughly 41 of the Workers free plan's 50 subrequests, so a per-message query would take
+ * a full tick to ~47 against a hard ceiling — and over it the tick throws part-way, having billed
+ * model calls for verdicts it never stored. A single RPC with a window function keeps it at ~42
  * and leaves `COMMS_SWEEP_LIMIT` where it is.
  *
  * The rows come back newest-first per message (that is what the window function ranks on), so

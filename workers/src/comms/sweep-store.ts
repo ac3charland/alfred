@@ -19,6 +19,11 @@ const JSON_NULL: unknown = JSON.parse('null');
 /**
  * Clear a message's re-run request, and report whether a row matched.
  *
+ * Clears the failure stamp with it. A stamp that is set has to describe the LATEST request, and a
+ * re-run that ends in a verdict (or a refusal, or a park) is the latest word: without this, a slow
+ * tick that lands its verdict after a later tick has already given the same request up would leave
+ * a "re-run failed" stamp on a row that was in fact re-judged.
+ *
  * Called AFTER the verdict has been written, so a failure in between leaves the request standing
  * and the next tick re-runs it — a duplicate verdict row, which is history rather than damage,
  * against a request that would otherwise be silently dropped.
@@ -27,7 +32,13 @@ export async function clearReclassifyRequest(env: SupabaseEnv, id: string): Prom
   const rows = await fetchJson<unknown[]>(
     env,
     restQueryUrl(env, 'comm_messages', { id: `eq.${id}` }),
-    { method: 'PATCH', body: JSON.stringify({ reclassify_requested_at: JSON_NULL }) },
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        reclassify_requested_at: JSON_NULL,
+        reclassify_failed_at: JSON_NULL,
+      }),
+    },
     `PATCH comm_messages (${id})`,
   );
   return rows.length;

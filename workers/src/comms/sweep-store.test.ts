@@ -31,14 +31,17 @@ function mockSupabase(response: () => Response): Call[] {
 }
 
 describe('clearReclassifyRequest', () => {
-  it('sends a real JSON null, which is the only thing that empties the column', async () => {
+  it('sends a real JSON null, which is the only thing that empties a column', async () => {
     const calls = mockSupabase(() => Response.json([{ id: 'message-1' }]));
 
     await clearReclassifyRequest(env, 'message-1');
 
     expect(calls[0]?.method).toBe('PATCH');
     expect(calls[0]?.url).toContain('/rest/v1/comm_messages?id=eq.message-1');
-    expect(calls[0]?.body).toEqual({ reclassify_requested_at: WIRE_NULL });
+    expect(calls[0]?.body).toEqual({
+      reclassify_requested_at: WIRE_NULL,
+      reclassify_failed_at: WIRE_NULL,
+    });
   });
 
   it('reports how many rows matched, so a vanished message is not a silent success', async () => {

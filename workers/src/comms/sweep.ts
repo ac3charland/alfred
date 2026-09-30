@@ -75,17 +75,18 @@ import {
  * a schedule that does not serialize its invocations.
  *
  * It also keeps the tick inside the Workers **subrequest budget** — 50 outbound fetches per
- * invocation on the Free plan. A sweep spends ~13 before it judges anything (the Inbox
+ * invocation on the Free plan. A sweep spends 12 before it judges anything (the Inbox
  * classifier that shares this tick, the stalled-re-run read, the at-ceiling park, the two
  * eligibility queries, the five context reads, the ONE thread-context read, the closing health
  * stamp) and ~5 per message (the model call and the retry the SDK may add, the verdict insert,
- * the message patches, a rerun's clear). Six lands at ~43. What is left, 7, is where the writes
+ * the message patches, a rerun's clear). Six lands at 42. What is left, 8, is where the writes
  * that judge nothing ride: at most `COMMS_ABANDON_LIMIT` abandoned re-run and one park per stuck
- * row — so a tick that judges six, abandons one and parks six still spends 50 at the very most,
- * and the sweep test pins that worst case. Raise any of it only alongside that arithmetic: over
- * the budget the tick throws part-way, and a half-swept tick bills model calls for verdicts it
- * never managed to store. The thread read is deliberately ONE call for the whole tick rather than
- * one per message — per-message it would be ~47, too close to the ceiling to ship.
+ * row, each a single write (a row with a re-run request standing is never parked, since parking
+ * it would cost two). So a tick that judges six, abandons one and parks six spends 49 at the very
+ * most, and the sweep test pins that worst case. Raise any of it only alongside that arithmetic:
+ * over the budget the tick throws part-way, and a half-swept tick bills model calls for verdicts
+ * it never managed to store. The thread read is deliberately ONE call for the whole tick rather
+ * than one per message — per-message it would be ~47, too close to the ceiling to ship.
  */
 export const COMMS_SWEEP_LIMIT = 6;
 
@@ -313,14 +314,20 @@ async function file(
  * A row that never had a tier is left to `parkAtCeiling`, which runs straight after and files it
  * exactly as it would have without the request.
  *
- * Never throws: this is housekeeping, and a refused write must not starve the judgments behind it.
- * The request simply stays put and the next tick tries again.
+ * Never throws, on the read or the write: this is housekeeping, and a hiccup here must not starve
+ * the judgments behind it. The request simply stays put and the next tick tries again.
  */
 async function abandonStalledReruns(env: CommsSweepEnv, now: Date): Promise<void> {
-  const stalled = await fetchStalledReruns(env, {
-    attemptCeiling: COMMS_ATTEMPT_CEILING,
-    limit: COMMS_ABANDON_LIMIT,
-  });
+  let stalled: CommMessage[];
+  try {
+    stalled = await fetchStalledReruns(env, {
+      attemptCeiling: COMMS_ATTEMPT_CEILING,
+      limit: COMMS_ABANDON_LIMIT,
+    });
+  } catch (error) {
+    console.error('comms classifier: could not read the stalled re-runs', error);
+    return;
+  }
 
   for (const message of stalled) {
     const requestedAt = message.reclassify_requested_at;
