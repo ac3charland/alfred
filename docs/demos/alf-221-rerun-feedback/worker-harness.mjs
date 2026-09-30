@@ -8,6 +8,7 @@
  *   before   the row a re-run keeps failing on, as it stands
  *   abandon  one sweep tick: the request is given up on, with no model call, the verdict kept
  *   no-tier  the same for a row that never had a tier — abandoned, then parked, in one tick
+ *   two-stalled two tier-less stalled re-runs, two ticks: each is abandoned and parked on its own turn
  *   newer    the owner asks AGAIN between the sweep's read and its write: the newer request survives
  *   worklist the re-run worklist no longer reads a row at the ceiling — even when the write that
  *            would give up on it is refused, so a stalled request is never billed again
@@ -15,9 +16,10 @@
  * REAL: `runCommsSweep` out of `workers/src/comms/sweep.ts`, bundled straight from source by
  * esbuild and imported unmodified — the reads it makes, the write it sends, the order of both.
  * STOOD UP LOCALLY: the database, as a few-line in-memory `comm_messages` table that applies the
- * PostgREST filters the sweep uses (`eq.`, `lt.`, `gte.`, `is.null`, `not.is.null`) the way the
- * database does, so a write whose filter no longer matches really does match nothing. The real
- * Postgres behaviour of that conditional write is pinned separately, in the `database`
+ * PostgREST filters the sweep uses (`eq.`, `lt.`, `gte.`, `is.null`, `not.is.null`) and ignores
+ * `order`, so a write whose filter no longer matches really does match nothing. It is an
+ * illustration of the sweep's requests, not a model of Postgres: `eq.` here compares text. The
+ * real Postgres behaviour of that conditional write is pinned separately, in the `database`
  * integration suite. There is no live Anthropic key: any call to the model is recorded and refused,
  * which is how "no model call" is shown rather than claimed.
  *
@@ -33,6 +35,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const NOW = new Date('2026-09-09T15:00:00.000Z');
 const ACCOUNT = 'a0000000-0000-4000-8000-000000000001';
 const DANA = 'b0000000-0000-4000-8000-000000000001';
+const DANA_TWO = 'b0000000-0000-4000-8000-000000000002';
 const REQUESTED = '2026-09-09T14:50:00.123456+00:00';
 
 const section = process.argv[2] ?? '';
@@ -152,6 +155,18 @@ async function main() {
         ],
       },
       newer: { table: [STALLED()], askAgainDuringRead: true },
+      'two-stalled': {
+        ticks: 2,
+        table: [
+          row({ classify_attempts: 5, reclassify_requested_at: REQUESTED }),
+          row({
+            id: DANA_TWO,
+            source_id: 'gmail-2',
+            classify_attempts: 5,
+            reclassify_requested_at: '2026-09-09T14:51:00.000000+00:00',
+          }),
+        ],
+      },
     };
     const scenario = scenarios[section];
     if (scenario === undefined) throw new Error(`unknown section: ${section}`);
@@ -204,6 +219,7 @@ async function main() {
     const show = (label, current) => {
       console.log(`${label}`);
       for (const candidate of current) {
+        if (current.length > 1) console.log(`  row ${candidate.id.slice(-2)}`);
         console.log(`  tier                     ${candidate.tier ?? 'none'}`);
         console.log(`  judged_by                ${candidate.judged_by ?? 'none'}`);
         console.log(`  ask                      ${candidate.ask ?? 'none'}`);
@@ -219,28 +235,40 @@ async function main() {
     // The sweep logs to stderr; the demo prints what it did, so silence that here and say it below.
     const errors = [];
     console.error = (...args) => errors.push(args.map(String).join(' '));
-    const summary = await runCommsSweep(env, NOW);
+    const ticks = scenario.ticks ?? 1;
+    for (let tick = 1; tick <= ticks; tick += 1) {
+      const at = new Date(NOW.getTime() + (tick - 1) * 2 * 60 * 1000);
+      log.length = 0;
+      errors.length = 0;
+      const summary = await runCommsSweep(env, at);
 
-    console.log('');
-    console.log(`one sweep tick at ${NOW.toISOString()} (abandon cap per tick: ${String(COMMS_ABANDON_LIMIT)})`);
-    for (const entry of log) {
-      if (entry.kind === 'read') {
-        console.log(`  read   ${entry.query}  -> ${String(entry.returned)} row(s)`);
-      } else if (entry.kind === 'refused') {
-        console.log(`  WRITE  ${entry.query}  -> refused by the database (403)`);
-      } else {
-        console.log(`  WRITE  ${entry.query}`);
-        console.log(`         ${JSON.stringify(entry.body)}  -> ${String(entry.matched)} row(s) matched`);
+      console.log('');
+      console.log(
+        ticks === 1
+          ? `one sweep tick at ${at.toISOString()} (abandon cap per tick: ${String(COMMS_ABANDON_LIMIT)})`
+          : `sweep tick ${String(tick)} of ${String(ticks)} at ${at.toISOString()} (abandon cap per tick: ${String(COMMS_ABANDON_LIMIT)})`,
+      );
+      for (const entry of log) {
+        if (entry.kind === 'read') {
+          console.log(`  read   ${entry.query}  -> ${String(entry.returned)} row(s)`);
+        } else if (entry.kind === 'refused') {
+          console.log(`  WRITE  ${entry.query}  -> refused by the database (403)`);
+        } else {
+          console.log(`  WRITE  ${entry.query}`);
+          console.log(
+            `         ${JSON.stringify(entry.body)}  -> ${String(entry.matched)} row(s) matched`,
+          );
+        }
       }
+      console.log('');
+      console.log(`model calls made: ${String(modelCalls)}`);
+      console.log(`summary: ${JSON.stringify(summary)}`);
+      for (const line of errors.filter((entry) => entry.includes('abandon'))) {
+        console.log(`log: ${line.split(' Error: ')[0]}`);
+      }
+      console.log('');
+      show(ticks === 1 ? 'the row after the sweep:' : `the rows after tick ${String(tick)}:`, table);
     }
-    console.log('');
-    console.log(`model calls made: ${String(modelCalls)}`);
-    console.log(`summary: ${JSON.stringify(summary)}`);
-    for (const line of errors.filter((entry) => entry.includes('abandon'))) {
-      console.log(`log: ${line.split(' Error: ')[0]}`);
-    }
-    console.log('');
-    show('the row after the sweep:', table);
   } finally {
     rmSync(bundleDir, { recursive: true, force: true });
   }

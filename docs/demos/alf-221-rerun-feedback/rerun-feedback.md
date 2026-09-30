@@ -76,7 +76,7 @@ The existing rollback still applies: the row goes back to normal and the existin
 
 Before this change `fetchReclassifyRequests` did not look at `classify_attempts`, and the at-ceiling park only picks up rows with no tier. A re-run of an already-judged row that kept failing with a bad model response was therefore re-sent on every tick, billed each time, and never cleared.
 
-The Worker is headless, so its real output is the evidence. Each block below runs the real `runCommsSweep`, bundled straight from `workers/src/comms/sweep.ts` and imported unmodified. The database is a few-line in-memory `comm_messages` table that applies PostgREST filters the way the database does, and there is no live model: any call to it is recorded and refused, which is how "no model call" is shown rather than claimed. The real-Postgres behaviour of the conditional write is pinned separately in the `database` integration suite.
+The Worker is headless, so its real output is the evidence. Each block below runs the real `runCommsSweep`, bundled straight from `workers/src/comms/sweep.ts` and imported unmodified. The database is a few-line in-memory `comm_messages` table that applies the handful of PostgREST filters the sweep uses (an illustration of its requests, not a model of Postgres), and there is no live model: any call to it is recorded and refused, which is how "no model call" is shown rather than claimed. The real-Postgres behaviour of the conditional write is pinned separately in the `database` integration suite.
 
 **The row.** A judged row on Today whose re-run has spent all five attempts.
 
@@ -113,7 +113,7 @@ one sweep tick at 2026-09-09T15:00:00.000Z (abandon cap per tick: 1)
   read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=gte.5&limit=1  -> 1 row(s)
   WRITE  id=eq.b0000000-0000-4000-8000-000000000001&reclassify_requested_at=eq.2026-09-09T14:50:00.123456+00:00
          {"reclassify_requested_at":null,"reclassify_failed_at":"2026-09-09T15:00:00.000Z"}  -> 1 row(s) matched
-  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=gte.5&limit=6  -> 0 row(s)
+  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&reclassify_requested_at=is.null&classify_attempts=gte.5&limit=6  -> 0 row(s)
   read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=lt.5&limit=6  -> 0 row(s)
   read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=lt.5&limit=6  -> 0 row(s)
 
@@ -149,7 +149,7 @@ one sweep tick at 2026-09-09T15:00:00.000Z (abandon cap per tick: 1)
   read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=gte.5&limit=1  -> 1 row(s)
   WRITE  id=eq.b0000000-0000-4000-8000-000000000001&reclassify_requested_at=eq.2026-09-09T14:50:00.123456+00:00
          {"reclassify_requested_at":null,"reclassify_failed_at":"2026-09-09T15:00:00.000Z"}  -> 1 row(s) matched
-  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=gte.5&limit=6  -> 1 row(s)
+  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&reclassify_requested_at=is.null&classify_attempts=gte.5&limit=6  -> 1 row(s)
   WRITE  id=eq.b0000000-0000-4000-8000-000000000001&tier=is.null
          {"tier":"today","judged_by":"unjudged","ask":"Not judged — five attempts, none of them usable. Treated as owed until it can be read.","classified_at":"2026-09-09T15:00:00.000Z"}  -> 1 row(s) matched
   read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=lt.5&limit=6  -> 0 row(s)
@@ -166,6 +166,90 @@ the row after the sweep:
   classify_attempts        5
   reclassify_requested_at  none
   reclassify_failed_at     2026-09-09T15:00:00.000Z
+```
+
+**Two stalled re-runs that never had a tier.** Only one is abandoned per tick, and the at-ceiling park skips a row whose request is still standing (`reclassify_requested_at=is.null` on its read). So the second waits, untouched, and is abandoned and parked on its own turn: each ends with a failure stamp, and each park is a single write.
+
+```bash
+node docs/demos/alf-221-rerun-feedback/worker-harness.mjs two-stalled
+```
+
+```output
+the row before the sweep:
+  row 01
+  tier                     none
+  judged_by                none
+  ask                      none
+  classify_attempts        5
+  reclassify_requested_at  2026-09-09T14:50:00.123456+00:00
+  reclassify_failed_at     none
+  row 02
+  tier                     none
+  judged_by                none
+  ask                      none
+  classify_attempts        5
+  reclassify_requested_at  2026-09-09T14:51:00.000000+00:00
+  reclassify_failed_at     none
+
+sweep tick 1 of 2 at 2026-09-09T15:00:00.000Z (abandon cap per tick: 1)
+  read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=gte.5&limit=1  -> 1 row(s)
+  WRITE  id=eq.b0000000-0000-4000-8000-000000000001&reclassify_requested_at=eq.2026-09-09T14:50:00.123456+00:00
+         {"reclassify_requested_at":null,"reclassify_failed_at":"2026-09-09T15:00:00.000Z"}  -> 1 row(s) matched
+  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&reclassify_requested_at=is.null&classify_attempts=gte.5&limit=6  -> 1 row(s)
+  WRITE  id=eq.b0000000-0000-4000-8000-000000000001&tier=is.null
+         {"tier":"today","judged_by":"unjudged","ask":"Not judged — five attempts, none of them usable. Treated as owed until it can be read.","classified_at":"2026-09-09T15:00:00.000Z"}  -> 1 row(s) matched
+  read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=lt.5&limit=6  -> 0 row(s)
+  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=lt.5&limit=6  -> 0 row(s)
+
+model calls made: 0
+summary: {"eligible":0,"classified":0,"failed":0,"parked":1,"aborted":false}
+log: comms classifier: abandoned the re-run of message b0000000-0000-4000-8000-000000000001 after 5 failed attempts
+
+the rows after tick 1:
+  row 01
+  tier                     today
+  judged_by                unjudged
+  ask                      Not judged — five attempts, none of them usable. Treated as owed until it can be read.
+  classify_attempts        5
+  reclassify_requested_at  none
+  reclassify_failed_at     2026-09-09T15:00:00.000Z
+  row 02
+  tier                     none
+  judged_by                none
+  ask                      none
+  classify_attempts        5
+  reclassify_requested_at  2026-09-09T14:51:00.000000+00:00
+  reclassify_failed_at     none
+
+sweep tick 2 of 2 at 2026-09-09T15:02:00.000Z (abandon cap per tick: 1)
+  read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=gte.5&limit=1  -> 1 row(s)
+  WRITE  id=eq.b0000000-0000-4000-8000-000000000002&reclassify_requested_at=eq.2026-09-09T14:51:00.000000+00:00
+         {"reclassify_requested_at":null,"reclassify_failed_at":"2026-09-09T15:02:00.000Z"}  -> 1 row(s) matched
+  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&reclassify_requested_at=is.null&classify_attempts=gte.5&limit=6  -> 1 row(s)
+  WRITE  id=eq.b0000000-0000-4000-8000-000000000002&tier=is.null
+         {"tier":"today","judged_by":"unjudged","ask":"Not judged — five attempts, none of them usable. Treated as owed until it can be read.","classified_at":"2026-09-09T15:02:00.000Z"}  -> 1 row(s) matched
+  read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=lt.5&limit=6  -> 0 row(s)
+  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=lt.5&limit=6  -> 0 row(s)
+
+model calls made: 0
+summary: {"eligible":0,"classified":0,"failed":0,"parked":1,"aborted":false}
+log: comms classifier: abandoned the re-run of message b0000000-0000-4000-8000-000000000002 after 5 failed attempts
+
+the rows after tick 2:
+  row 01
+  tier                     today
+  judged_by                unjudged
+  ask                      Not judged — five attempts, none of them usable. Treated as owed until it can be read.
+  classify_attempts        5
+  reclassify_requested_at  none
+  reclassify_failed_at     2026-09-09T15:00:00.000Z
+  row 02
+  tier                     today
+  judged_by                unjudged
+  ask                      Not judged — five attempts, none of them usable. Treated as owed until it can be read.
+  classify_attempts        5
+  reclassify_requested_at  none
+  reclassify_failed_at     2026-09-09T15:02:00.000Z
 ```
 
 **The owner asks again mid-tick.** The stall is read, then a newer request lands before the write. The write is conditional on the request it read, so it matches zero rows and the newer request survives.
@@ -187,7 +271,7 @@ one sweep tick at 2026-09-09T15:00:00.000Z (abandon cap per tick: 1)
   read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=gte.5&limit=1  -> 1 row(s)
   WRITE  id=eq.b0000000-0000-4000-8000-000000000001&reclassify_requested_at=eq.2026-09-09T14:50:00.123456+00:00
          {"reclassify_requested_at":null,"reclassify_failed_at":"2026-09-09T15:00:00.000Z"}  -> 0 row(s) matched
-  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=gte.5&limit=6  -> 0 row(s)
+  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&reclassify_requested_at=is.null&classify_attempts=gte.5&limit=6  -> 0 row(s)
   read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=lt.5&limit=6  -> 0 row(s)
   read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=lt.5&limit=6  -> 0 row(s)
 
@@ -221,7 +305,7 @@ the row before the sweep:
 one sweep tick at 2026-09-09T15:00:00.000Z (abandon cap per tick: 1)
   read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=gte.5&limit=1  -> 1 row(s)
   WRITE  id=eq.b0000000-0000-4000-8000-000000000001&reclassify_requested_at=eq.2026-09-09T14:50:00.123456+00:00  -> refused by the database (403)
-  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=gte.5&limit=6  -> 0 row(s)
+  read   direction=eq.inbound&tier=is.null&cleared_at=is.null&reclassify_requested_at=is.null&classify_attempts=gte.5&limit=6  -> 0 row(s)
   read   reclassify_requested_at=not.is.null&direction=eq.inbound&classify_attempts=lt.5&limit=6  -> 0 row(s)
   read   direction=eq.inbound&tier=is.null&cleared_at=is.null&classify_attempts=lt.5&limit=6  -> 0 row(s)
 
