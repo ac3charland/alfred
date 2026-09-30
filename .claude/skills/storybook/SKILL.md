@@ -399,9 +399,12 @@ leaves the meta's object in place and the capture still runs. `visualTest: null`
 component can't be screenshotted — a dialog containing a **sandboxed `srcDoc` iframe** hangs
 `postVisit` until the 30 s test timeout (the reason `epic-spec-modal.stories.tsx` opts out
 wholesale), while the same capture driven straight from Playwright takes under a second.
+**Declare that story LAST in its file.** Once a sandboxed frame has rendered, `waitForPageReady`
+never settles for any later story in the same file, so every capture after it times out at 30 s —
+opting the frame's own story out doesn't help the ones that follow.
 
 **Capturing interactive states — the part the docs skip.** The official page never explains
-hover, focus or keys. Five hard-won rules:
+hover, focus or keys. Six hard-won rules:
 
 - **CSS `:hover` is NOT triggered by `userEvent.hover` in a play function.** `userEvent`
   dispatches pointer *events*; it never moves a real pointer, so the `:hover`
@@ -429,6 +432,10 @@ hover, focus or keys. Five hard-won rules:
   default. The baseline then captures the trigger with **no menu**, and the story passes forever:
   the failure is silent, not red. Set `parameters.visualTest = { target: 'body' }` on any story
   whose `play` opens portalled content, and eyeball the first baseline before committing it.
+- **`visualTest.viewport` is applied before the story mounts, so its `play` and any layout chosen
+  in JS (`useMediaQuery`) run at that size** — not resized after the play, which would swap the
+  layout and drop the state the play built. A deliberately short viewport stands in for a raised
+  keyboard: `window.visualViewport` follows it.
 
 **Determinism — freeze motion before every capture.** Anything animated makes the diff
 non-deterministic: an `animate-spin` spinner sits at a random rotation, a
