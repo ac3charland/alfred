@@ -58,6 +58,11 @@ const EPICS = [
   epic('e2', 'p1', 'LLM processing', 'ALF-158'),
   epic('e3', 'p2', 'Other project epic', 'RPL-3'),
 ];
+/** An archived epic of p1 — off the board, so never somewhere new work should be filed. */
+const ARCHIVED_EPIC: Epic = {
+  ...epic('e4', 'p1', 'Retired epic', 'ALF-90'),
+  archived_at: '2025-06-01T10:00:00Z',
+};
 
 describe('detail chips (ALF-67)', () => {
   describe('RepeatChip', () => {
@@ -208,6 +213,30 @@ describe('the label chips (ALF-170)', () => {
       expect(screen.getByRole('button', { name: /LLM processing/ })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'No epic' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Other project epic/ })).not.toBeInTheDocument();
+    });
+
+    it('never offers an archived epic of the selected project', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<IntendedEpicChip projectId="p1" epicId={null} onSelect={jest.fn()} />, {
+        projects: PROJECTS,
+        epics: [...EPICS, ARCHIVED_EPIC],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Epic' }));
+      expect(await screen.findByRole('button', { name: /Inbox triage/ })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Retired epic/ })).not.toBeInTheDocument();
+    });
+
+    it('compact: never offers an archived epic either', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <IntendedEpicChip projectId="p1" epicId="e1" size="compact" onSelect={jest.fn()} />,
+        { projects: PROJECTS, epics: [...EPICS, ARCHIVED_EPIC] },
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Epic: ALF-104' }));
+      expect(await screen.findByRole('button', { name: /LLM processing/ })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Retired epic/ })).not.toBeInTheDocument();
     });
 
     it('shows the ref + name when set and auto-saves a pick', async () => {

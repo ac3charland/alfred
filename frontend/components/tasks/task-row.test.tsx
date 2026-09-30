@@ -4721,6 +4721,26 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
       expect(screen.queryByRole('menuitem', { name: /other work/i })).not.toBeInTheDocument();
     });
 
+    it('never lists an archived epic of the selected project', async () => {
+      const ARCHIVED_EPIC: Epic = {
+        ...EPIC,
+        id: 'e3',
+        name: 'Retired work',
+        ref_number: 141,
+        ref: 'ALF-141',
+        archived_at: '2025-06-01T00:00:00Z',
+      };
+      const user = userEvent.setup();
+      renderTasks([{ ...CODE_ROOT, intended_project_id: PROJECT.id }], {
+        ...seeds,
+        epics: [EPIC, OTHER_EPIC, ARCHIVED_EPIC],
+      });
+      await openLabelSubmenu(user, /^epic/i, 'No epic');
+
+      expect(screen.getByRole('menuitem', { name: 'Inbox triage ALF-140' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /retired work/i })).not.toBeInTheDocument();
+    });
+
     it('writes the picked epic, ticking the current one', async () => {
       mockUpdateItem.mockResolvedValue({
         ...CODE_ROOT,
