@@ -253,6 +253,34 @@ describe('createIMessageSource', () => {
     expect(messages.map((message) => message.source_id)).toEqual(['REAL']);
   });
 
+  it('sends the owner’s tapback as an outbound message on the thread, so it drains what it answers', async () => {
+    const file = fixture({
+      chats: CHATS,
+      messages: [
+        INBOUND,
+        {
+          ...INBOUND,
+          rowid: 11,
+          guid: 'LOVED',
+          text: 'Loved “are you around”',
+          date: nanoseconds('2026-09-01T12:03:00.000Z'),
+          isFromMe: true,
+          handle: undefined,
+          associatedMessageType: 2000,
+        },
+      ],
+    });
+
+    const { messages } = await sourceFor(file).poll(context());
+
+    expect(messages.at(-1)).toMatchObject({
+      source_id: 'LOVED',
+      thread_key: 'iMessage;-;+13125550100',
+      direction: 'outbound',
+      received_at: '2026-09-01T12:03:00.000Z',
+    });
+  });
+
   it('hands back the ROWID it read up to, so the next poll starts after it', async () => {
     const file = fixture({
       chats: CHATS,

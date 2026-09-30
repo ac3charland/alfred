@@ -25,11 +25,16 @@ import { appleNanoseconds, appleSeconds } from './normalize.ts';
 export const MAX_ROWS_PER_POLL = 500;
 
 /**
- * Tapbacks live in `message` like everything else, distinguished only by this range (2000–2005
- * added a reaction, 3000–3005 removed one). They are not messages: a shelf full of "Liked an
- * image" is noise the classifier would have to pay for.
+ * Tapbacks live in `message` like everything else, distinguished only by this range (2000–2999
+ * added a reaction, 3000–3999 removed one). Someone else's tapback is not a message: a shelf full
+ * of "Liked an image" is noise the classifier would have to pay for.
+ *
+ * The owner's own ADDED tapback is kept, because it is how they answer: loving or laughing at a
+ * message acknowledges it as surely as typing "ok" does, and it reaches the server as an outbound
+ * row on the chat's thread, which is what drains the queue (epic D18). A removal answers nothing.
  */
 const TAPBACK_RANGE = [2000, 3999] as const;
+const ADDED_TAPBACK_RANGE = [2000, 2999] as const;
 
 /** The columns the poller reads, checked at startup so schema drift names itself. */
 const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
@@ -92,11 +97,14 @@ export interface ChatDb {
 }
 
 /**
- * Which rows are messages at all. Both `coalesce`s matter: SQL's three-valued logic makes
- * `null not between 2000 and 3999` neither true nor false, so a row with no associated type — most
- * of them — would be dropped by the plain comparison.
+ * Which rows are messages at all, plus the owner's added tapbacks (see TAPBACK_RANGE). Both
+ * `coalesce`s matter: SQL's three-valued logic makes `null not between 2000 and 3999` neither
+ * true nor false, so a row with no associated type — most of them — would be dropped by the plain
+ * comparison.
  */
-const MESSAGE_FILTER = `coalesce(m.associated_message_type, 0) not between ${String(TAPBACK_RANGE[0])} and ${String(TAPBACK_RANGE[1])}
+const MESSAGE_FILTER = `(coalesce(m.associated_message_type, 0) not between ${String(TAPBACK_RANGE[0])} and ${String(TAPBACK_RANGE[1])}
+      or (m.is_from_me = 1
+        and m.associated_message_type between ${String(ADDED_TAPBACK_RANGE[0])} and ${String(ADDED_TAPBACK_RANGE[1])}))
     -- item_type 0 is a message; anything else is a group event (a rename, someone added).
     and coalesce(m.item_type, 0) = 0`;
 

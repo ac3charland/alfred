@@ -211,6 +211,44 @@ describe('openChatDb().readMessages', () => {
     expect(read(file).map((row) => row.guid)).toEqual(['REAL', 'ALSO-REAL']);
   });
 
+  it('keeps a tapback the owner added, which answers the message it reacts to', () => {
+    const file = fixture({
+      chats: CHATS,
+      messages: [
+        { ...ONE_TO_ONE, rowid: 10, guid: 'ASKED' },
+        ...[2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007].map((type, index) => ({
+          ...ONE_TO_ONE,
+          rowid: 11 + index,
+          guid: `OWNER-${String(type)}`,
+          isFromMe: true,
+          handle: undefined,
+          associatedMessageType: type,
+        })),
+        ...[3000, 3006, 3007].map((type, index) => ({
+          ...ONE_TO_ONE,
+          rowid: 20 + index,
+          guid: `OWNER-REMOVED-${String(type)}`,
+          isFromMe: true,
+          handle: undefined,
+          associatedMessageType: type,
+        })),
+        { ...ONE_TO_ONE, rowid: 30, guid: 'THEIR-LOVE', associatedMessageType: 2000 },
+      ],
+    });
+
+    expect(read(file).map((row) => row.guid)).toEqual([
+      'ASKED',
+      'OWNER-2000',
+      'OWNER-2001',
+      'OWNER-2002',
+      'OWNER-2003',
+      'OWNER-2004',
+      'OWNER-2005',
+      'OWNER-2006',
+      'OWNER-2007',
+    ]);
+  });
+
   it('keeps a reply, which carries an associated guid but is still a message', () => {
     const file = fixture({
       chats: CHATS,
