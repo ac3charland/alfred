@@ -208,18 +208,29 @@ export function CaptureBox({
   // Fit the box to what's typed (ALF-285). Resetting to `auto` first is what lets it shrink again:
   // a textarea's scrollHeight never drops below the box it already occupies. The height is
   // pinned in px rather than left to `rows`, so past the `max-h` cap in `captureTextareaClass`
-  // the textarea scrolls inside itself as it always did. No-op in compact mode (no textarea).
+  // the textarea scrolls inside itself as it always did. The surface is held at its current
+  // height while measuring: the collapse would otherwise shorten the document mid-measure and
+  // the browser would clamp the page's scroll position, jumping a scrolled page. No-op in compact
+  // mode (no textarea).
   const fitTextareaToContent = React.useCallback(() => {
     const textarea = textareaReference.current;
-    if (textarea === null) return;
+    const surface = surfaceReference.current;
+    if (textarea === null || surface === null) return;
+    surface.style.height = `${String(surface.offsetHeight)}px`;
     textarea.style.height = 'auto';
     textarea.style.height = `${String(textarea.scrollHeight)}px`;
+    surface.style.height = '';
   }, []);
 
-  // Before paint, so a pasted or restored draft never flashes at the wrong height.
+  // Before paint, so a pasted or restored draft never flashes at the wrong height. A just-sent
+  // capture keeps the tall box until its ghost has flown: the ghost is anchored to the box, and on
+  // the centred landing screen shrinking it first would launch the send-off from a shifted top.
+  // Only the emptied box is held, so typing the next thought still fits at once.
+  const sendingOff = ghosts.length > 0;
   React.useLayoutEffect(() => {
+    if (value === '' && sendingOff) return;
     fitTextareaToContent();
-  }, [value, fitTextareaToContent]);
+  }, [value, sendingOff, fitTextareaToContent]);
 
   // A narrower window re-wraps a draft onto more lines without the value changing.
   React.useEffect(() => {
