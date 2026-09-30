@@ -1,5 +1,5 @@
 import type { WikiPageIndexRow, WikiPageRow, WikiSync } from '@/lib/types';
-import { type WikiSection, splitWikiPath } from '@/lib/wiki/sections';
+import { type WikiSection, splitWikiPath, wikiPagePath } from '@/lib/wiki/sections';
 
 /**
  * Seed builders for the wiki snapshot — one home shared by the unit tests, the stories and the
@@ -190,6 +190,241 @@ export function wikiFixtureSet(): { pages: WikiPageRow[]; sync: WikiSync } {
       atomicHabits,
       brainRules,
       question,
+    ],
+    sync: makeWikiSync(),
+  };
+}
+
+/**
+ * The landing web's sample: 38 concepts and 14 entities linked 67 ways (undirected), in clusters
+ * a reader would recognise — learning and memory, habits, relationships, longevity, knowledge
+ * work — plus three sources and two questions, so a search spans every section and a test can
+ * show that neither list appears on the landing.
+ *
+ * Every concept's `created` falls in the fortnight before the stories' clock (2026-10-03), and
+ * the dates are chosen so that day's concept of the day is "Desirable difficulty".
+ * Each row is `[stem, title, created, summary?, tags?]`.
+ */
+const WEB_CONCEPTS: readonly (readonly [string, string, string, string?, string[]?])[] = [
+  [
+    'desirable-difficulty',
+    'Desirable difficulty',
+    '2026-10-02',
+    'Conditions that make learning feel slower (spacing, interleaving, testing yourself) are the ones that make it last.',
+    ['learning', 'memory'],
+  ],
+  [
+    'spaced-repetition',
+    'Spaced repetition',
+    '2026-09-19',
+    'Reviewing just before you’d forget resets the forgetting curve at a longer interval each time.',
+    ['memory'],
+  ],
+  [
+    'retrieval-practice',
+    'Retrieval practice',
+    '2026-09-19',
+    'Pulling an answer out of memory strengthens it more than reading it again.',
+    ['memory'],
+  ],
+  [
+    'interleaving',
+    'Interleaving',
+    '2026-09-20',
+    'Mixing problem types in one session.',
+    ['learning'],
+  ],
+  [
+    'forgetting-curve',
+    'Forgetting curve',
+    '2026-09-20',
+    'Ebbinghaus’s decay of recall over time.',
+    ['memory'],
+  ],
+  ['deliberate-practice', 'Deliberate practice', '2026-09-21'],
+  ['working-memory', 'Working memory', '2026-09-21'],
+  ['sleep-consolidation', 'Sleep and memory', '2026-09-22'],
+  ['exercise-cognition', 'Exercise and cognition', '2026-09-22'],
+  ['stress-learning', 'Stress and learning', '2026-09-23'],
+  ['attention-ten-minutes', 'The ten-minute rule', '2026-09-23'],
+  ['elaboration', 'Elaboration', '2026-09-24'],
+  ['multisensory', 'Multisensory learning', '2026-09-24'],
+  ['habit-loop', 'Habit loop', '2026-09-25'],
+  ['habit-stacking', 'Habit stacking', '2026-09-25'],
+  ['identity-habits', 'Identity-based habits', '2026-09-26'],
+  ['implementation-intentions', 'Implementation intentions', '2026-09-26'],
+  ['environment-design', 'Environment design', '2026-09-27'],
+  ['two-minute-rule', 'Two-minute rule', '2026-09-27'],
+  ['tiny-habits', 'Tiny habits', '2026-09-28'],
+  ['dopamine-anticipation', 'Dopamine and anticipation', '2026-09-28'],
+  ['bids-for-connection', 'Bids for connection', '2026-09-29'],
+  ['four-horsemen', 'The four horsemen', '2026-09-29'],
+  ['repair-attempts', 'Repair attempts', '2026-09-30'],
+  ['chestertons-fence', 'Chesterton’s fence', '2026-09-30'],
+  ['democracy-of-the-dead', 'Democracy of the dead', '2026-10-01'],
+  ['zone-2', 'Zone 2 training', '2026-10-01'],
+  ['vo2-max', 'VO2 max', '2026-09-19'],
+  ['medicine-3', 'Medicine 3.0', '2026-09-20'],
+  ['centenarian-decathlon', 'Centenarian decathlon', '2026-09-21'],
+  ['llm-wiki', 'LLM wiki', '2026-09-22'],
+  ['rag-failure', 'Why RAG forgets', '2026-09-23'],
+  ['zettelkasten', 'Zettelkasten', '2026-09-24'],
+  ['progressive-summarization', 'Progressive summarization', '2026-09-25'],
+  ['compounding-knowledge', 'Compounding knowledge', '2026-09-26'],
+  ['second-brain', 'Second brain', '2026-09-27'],
+  ['flow', 'Flow', '2026-09-28'],
+  ['growth-mindset', 'Growth mindset', '2026-09-29'],
+];
+
+/** `[stem, title]` for each entity. */
+const WEB_ENTITIES: readonly (readonly [string, string])[] = [
+  ['robert-bjork', 'Robert Bjork'],
+  ['hermann-ebbinghaus', 'Hermann Ebbinghaus'],
+  ['anders-ericsson', 'Anders Ericsson'],
+  ['john-medina', 'John Medina'],
+  ['james-clear', 'James Clear'],
+  ['bj-fogg', 'BJ Fogg'],
+  ['john-gottman', 'John Gottman'],
+  ['bringing-baby-home', 'Bringing Baby Home'],
+  ['gk-chesterton', 'G. K. Chesterton'],
+  ['peter-attia', 'Peter Attia'],
+  ['andrej-karpathy', 'Andrej Karpathy'],
+  ['niklas-luhmann', 'Niklas Luhmann'],
+  ['tiago-forte', 'Tiago Forte'],
+  ['mihaly-csikszentmihalyi', 'Mihaly Csikszentmihalyi'],
+];
+
+/** Each stem's outbound links, by stem; the web draws each pair once, whichever page names it. */
+const WEB_LINKS: Readonly<Record<string, readonly string[]>> = {
+  'desirable-difficulty': [
+    'robert-bjork',
+    'spaced-repetition',
+    'retrieval-practice',
+    'interleaving',
+    'forgetting-curve',
+    'deliberate-practice',
+  ],
+  'spaced-repetition': [
+    'forgetting-curve',
+    'retrieval-practice',
+    'sleep-consolidation',
+    'habit-loop',
+    'compounding-knowledge',
+  ],
+  'forgetting-curve': ['hermann-ebbinghaus'],
+  interleaving: ['robert-bjork'],
+  'retrieval-practice': ['elaboration'],
+  'deliberate-practice': ['anders-ericsson', 'flow', 'growth-mindset'],
+  flow: ['mihaly-csikszentmihalyi'],
+  'john-medina': [
+    'working-memory',
+    'sleep-consolidation',
+    'exercise-cognition',
+    'stress-learning',
+    'attention-ten-minutes',
+    'multisensory',
+  ],
+  'working-memory': ['attention-ten-minutes', 'elaboration'],
+  multisensory: ['elaboration'],
+  'exercise-cognition': ['zone-2'],
+  'stress-learning': ['bringing-baby-home'],
+  'john-gottman': ['bringing-baby-home', 'bids-for-connection', 'four-horsemen', 'repair-attempts'],
+  'repair-attempts': ['four-horsemen'],
+  'bids-for-connection': ['bringing-baby-home'],
+  'james-clear': [
+    'habit-loop',
+    'habit-stacking',
+    'identity-habits',
+    'environment-design',
+    'two-minute-rule',
+  ],
+  'habit-stacking': ['habit-loop', 'implementation-intentions'],
+  'tiny-habits': ['bj-fogg', 'habit-stacking', 'two-minute-rule'],
+  'dopamine-anticipation': ['habit-loop'],
+  'identity-habits': ['growth-mindset'],
+  'gk-chesterton': ['chestertons-fence', 'democracy-of-the-dead'],
+  'chestertons-fence': ['democracy-of-the-dead'],
+  'peter-attia': [
+    'zone-2',
+    'vo2-max',
+    'medicine-3',
+    'centenarian-decathlon',
+    'sleep-consolidation',
+  ],
+  'vo2-max': ['zone-2', 'centenarian-decathlon'],
+  'llm-wiki': ['andrej-karpathy', 'rag-failure', 'compounding-knowledge', 'second-brain'],
+  zettelkasten: ['niklas-luhmann', 'compounding-knowledge'],
+  'tiago-forte': ['progressive-summarization', 'second-brain'],
+  'second-brain': ['progressive-summarization', 'zettelkasten'],
+};
+
+/**
+ * The landing's sample wiki: the 52-page web above, plus Brain Rules, Atomic Habits and Outlive
+ * as sources and two questions. Sources and questions link into the web, and the web links back
+ * to none of them, so a test can show those links are dropped from the drawing.
+ */
+export function wikiWebFixtureSet(): { pages: WikiPageRow[]; sync: WikiSync } {
+  const sectionOf = new Map<string, WikiSection>([
+    ...WEB_CONCEPTS.map(([stem]) => [stem, 'concepts'] as const),
+    ...WEB_ENTITIES.map(([stem]) => [stem, 'entities'] as const),
+  ]);
+  const linksOf = (stem: string): string[] =>
+    (WEB_LINKS[stem] ?? []).map((target) =>
+      wikiPagePath(sectionOf.get(target) ?? 'concepts', target),
+    );
+
+  const concepts = WEB_CONCEPTS.map(([stem, title, created, summary = '', tags = []]) =>
+    makeWikiPage(wikiPagePath('concepts', stem), {
+      title,
+      created,
+      summary,
+      tags,
+      links: linksOf(stem),
+    }),
+  );
+  const entities = WEB_ENTITIES.map(([stem, title]) =>
+    makeWikiPage(wikiPagePath('entities', stem), {
+      title,
+      created: '2026-09-19',
+      links: linksOf(stem),
+    }),
+  );
+  const brainRules = makeWikiPage('wiki/sources/brain-rules.md', {
+    title: 'Brain Rules',
+    summary: "Medina's twelve principles for how the brain actually works.",
+    links: ['wiki/entities/john-medina.md', 'wiki/concepts/spaced-repetition.md'],
+    body: 'Rule 5, repeat to remember: spaced intervals beat massed study for the same hours.\n',
+  });
+  const atomicHabits = makeWikiPage('wiki/sources/atomic-habits.md', {
+    title: 'Atomic Habits',
+    summary: "Clear's system for small, compounding behaviour change.",
+    links: ['wiki/entities/james-clear.md', 'wiki/concepts/habit-stacking.md'],
+  });
+  const outlive = makeWikiPage('wiki/sources/outlive.md', {
+    title: 'Outlive',
+    summary: "Attia's case for medicine that starts before the disease.",
+    links: ['wiki/entities/peter-attia.md', 'wiki/concepts/zone-2.md'],
+  });
+  const habitQuestion = makeWikiPage('wiki/questions/how-long-to-form-a-habit.md', {
+    title: 'How long does a habit take to form?',
+    summary: 'Sixty-six days at the median, with a huge spread.',
+    links: ['wiki/concepts/habit-stacking.md'],
+  });
+  const sleepQuestion = makeWikiPage('wiki/questions/does-sleep-help-memory.md', {
+    title: 'Does sleep help memory?',
+    summary: 'Yes — replay during slow-wave sleep consolidates the day.',
+    links: ['wiki/concepts/sleep-consolidation.md'],
+  });
+
+  return {
+    pages: [
+      ...concepts,
+      ...entities,
+      brainRules,
+      atomicHabits,
+      outlive,
+      habitQuestion,
+      sleepQuestion,
     ],
     sync: makeWikiSync(),
   };
