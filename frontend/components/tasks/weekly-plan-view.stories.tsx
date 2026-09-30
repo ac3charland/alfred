@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
-import type { WeeklyPlan } from '@/lib/types';
+import type { Folder, Item, WeeklyPlan } from '@/lib/types';
 
 import { WeeklyPlanView } from './weekly-plan-view';
 
@@ -41,6 +41,68 @@ const OLDER: WeeklyPlan = {
 
 const summary = (plan: WeeklyPlan) => ({ id: plan.id, uploaded_at: plan.uploaded_at });
 
+const WORK: Folder = {
+  id: 'folder-work',
+  name: 'Work',
+  created_at: '2026-07-01T00:00:00Z',
+  sort_order: 1,
+  description: null,
+};
+
+/** A row the review created against `plan`. `order` is its position in the plan (0 = first). */
+function planned(title: string, plan: WeeklyPlan, order: number, overrides: Partial<Item> = {}) {
+  return {
+    id: `${plan.id}-${String(order)}-${title}`,
+    title,
+    notes: null,
+    source_url: null,
+    raw_capture: title,
+    item_type: 'task',
+    status: 'active',
+    due_date: null,
+    completed_at: null,
+    folder_id: null,
+    dispatched_at: null,
+    parent_id: null,
+    intended_project_id: null,
+    intended_epic_id: null,
+    occurrence_index: null,
+    priority: null,
+    recurrence: null,
+    recurrence_series_id: null,
+    sort_order: order,
+    classified_at: null,
+    classified_provider: null,
+    classified_model: null,
+    classified_prompt_version: null,
+    classified_guess: null,
+    classify_attempts: 0,
+    // The batch stamps position 0 as the NEWEST row, so plan order is newest-first.
+    created_at: new Date(Date.parse(plan.uploaded_at) - order).toISOString(),
+    weekly_plan_id: plan.id,
+    ...overrides,
+  } satisfies Item;
+}
+
+const LAUNCH = planned('Ship the weekly plan view', LATEST, 0, {
+  folder_id: WORK.id,
+  dispatched_at: '2026-07-24T13:00:00Z',
+  priority: 'high',
+});
+
+const PLANNED_TASKS: Item[] = [
+  LAUNCH,
+  planned('Write the demo doc', LATEST, 0, { parent_id: LAUNCH.id }),
+  planned('Open the PR', LATEST, 1, { parent_id: LAUNCH.id }),
+  planned('Clear the inbox to zero', LATEST, 1, {
+    status: 'completed',
+    completed_at: '2026-07-25T09:00:00Z',
+  }),
+  planned('Book the dentist', LATEST, 2, { due_date: '2026-07-27' }),
+  planned('Read up on sandboxed iframes', LATEST, 3, { item_type: 'knowledge' }),
+  planned('Last week’s leftover', OLDER, 0),
+];
+
 const meta = {
   title: 'Tasks/WeeklyPlanView',
   component: WeeklyPlanView,
@@ -51,14 +113,25 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** Several weeks archived: the picker lists them newest-first, labelled by upload date. */
+/**
+ * Several weeks archived: the picker lists them newest-first, labelled by upload date. Under the
+ * document preview sit the tasks this week's review created — a finished one struck through, a
+ * parent with subtasks. The knowledge row it also created stays out of the list.
+ */
 export const Populated: Story = {
   parameters: {
-    store: { weeklyPlans: { index: [summary(LATEST), summary(OLDER)], latest: LATEST } },
+    store: {
+      folders: [WORK],
+      tasks: PLANNED_TASKS,
+      weeklyPlans: { index: [summary(LATEST), summary(OLDER)], latest: LATEST },
+    },
   },
 };
 
-/** A single upload — nothing to pick between, so the picker is hidden. */
+/**
+ * A single upload with nothing created against it yet: no picker (nothing to pick between), and
+ * the task list's empty state explains itself.
+ */
 export const SinglePlan: Story = {
   parameters: { store: { weeklyPlans: { index: [summary(LATEST)], latest: LATEST } } },
 };

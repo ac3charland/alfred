@@ -1,4 +1,4 @@
-import { makeWeeklyPlan } from './support/constants';
+import { makeItem, makeWeeklyPlan } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -85,4 +85,51 @@ test('shows the upload instruction when no plan has been uploaded', async ({ pag
   await expect(page.getByText(/no week plan uploaded yet/i)).toBeVisible();
   await expect(page.getByTestId('weekly-plan-html')).toHaveCount(0);
   await expect(page.getByTestId('weekly-plan-upload-hint')).toContainText('/api/weekly-plans');
+});
+
+test('lists the tasks the plan produced under a short, expandable preview', async ({
+  page,
+  seed,
+}) => {
+  const plan = makeWeeklyPlan(planDocument('Week 12'));
+  await seed({
+    weeklyPlans: [plan],
+    items: [
+      makeItem('Clear the inbox', {
+        item_type: 'task',
+        status: 'completed',
+        completed_at: '2026-07-25T09:00:00Z',
+        weekly_plan_id: plan.id,
+      }),
+      makeItem('Ship the plan view', { item_type: 'task', weekly_plan_id: plan.id }),
+      makeItem('An ordinary capture', { item_type: 'task' }),
+    ],
+  });
+
+  await page.goto('/plan');
+
+  // The work sits under the document: this plan's items in plan order (newest-first, as the
+  // batch stamps it), the finished one still listed, the ordinary capture nowhere.
+  const list = page.getByRole('list', { name: 'Planned tasks' });
+  await expect(list.getByRole('link')).toHaveText(['Ship the plan view', 'Clear the inbox']);
+  await expect(page.getByText('1 of 2 tasks done')).toBeVisible();
+
+  // Ticking one off persists: it stays listed, and the tally survives a reload.
+  await page.getByRole('button', { name: 'Mark "Ship the plan view" complete' }).click();
+  await expect(page.getByText('2 of 2 tasks done')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('2 of 2 tasks done')).toBeVisible();
+  await expect(list.getByRole('link')).toHaveText(['Ship the plan view', 'Clear the inbox']);
+
+  // The document opens as a preview and grows on demand — a real layout change jsdom can't see.
+  const frame = page.getByTestId('weekly-plan-html');
+  const frameHeight = async (): Promise<number> => {
+    const box = await frame.boundingBox();
+    return box?.height ?? 0;
+  };
+  const previewHeight = await frameHeight();
+  await page.getByRole('button', { name: 'Expand plan' }).click();
+  await expect.poll(frameHeight).toBeGreaterThan(previewHeight * 1.5);
+  await page.getByRole('button', { name: 'Collapse plan' }).click();
+  await expect.poll(frameHeight).toBe(previewHeight);
 });

@@ -93,6 +93,7 @@ const viewGrant: Rule = {
 export const LEGACY_SHARED_NUMBERS: ReadonlyMap<number, ReadonlySet<string>> = new Map([
   [31, new Set(['0031_realtime_items.sql', '0031_respace_code_priority.sql'])],
   [41, new Set(['0041_project_color.sql', '0041_reader_instapaper_source.sql'])],
+  [42, new Set(['0042_comm_reclassify_failed.sql', '0042_project_pr_ratio_exclusion.sql'])],
 ]);
 
 /** The number a migration filename starts with (`0042_x.sql` → 42), or `undefined` when it has none. */
