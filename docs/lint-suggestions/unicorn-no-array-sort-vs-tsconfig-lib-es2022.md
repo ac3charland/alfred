@@ -75,3 +75,6 @@ step.
 - [ ] `frontend/lib/github/config.test.ts` — the "keeps the caller's order" test lists two named
       projects in the opposite order by hand, because `PROJECTS.toReversed()` doesn't type-check
       and `unicorn/no-array-reverse` forbids `[...PROJECTS].reverse()`.
+- [ ] `frontend/lib/wiki/web/graph.ts` — `buildWikiWeb` puts its edges in key order with
+      `stableSorted([...edges.entries()], …)` because `.toSorted(…)` doesn't type-check; `toSorted`
+      is the direct form.
