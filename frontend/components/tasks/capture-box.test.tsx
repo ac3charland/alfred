@@ -821,6 +821,118 @@ describe('CaptureBox', () => {
     expect(screen.getByText(/what.s on your mind/i)).toBeInTheDocument();
   });
 
+  // ALF-285: the box was a fixed three rows, so a fourth line (or a wrapping thought) scrolled
+  // inside it — the earliest lines slid out of view and the newest ran under the Capture button.
+  // jsdom does no layout (`scrollHeight` is always 0), so model the two browser facts the fit
+  // depends on: a textarea's scrollHeight is its content plus padding, and is never less than the
+  // box it currently occupies — a stale inline height can only shrink once it is reset to `auto`
+  // (back to the three-row resting box). The E2E spec (capture-expand) measures real layout.
+  describe('grows with its content (ALF-285)', () => {
+    const LINE_HEIGHT = 24;
+    const PADDING = 64; // pt-4 + pb-12
+    const RESTING_HEIGHT = 3 * LINE_HEIGHT + PADDING;
+    const eightLines = Array.from({ length: 8 }, (_, index) => `line ${String(index + 1)}`).join(
+      '\n',
+    );
+    let wrappedLines = 0;
+    let scrollHeightSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      wrappedLines = 0;
+      // The box under test is the only textarea on screen, so read it from the document — the
+      // getter runs on the first layout effect, before `render` has returned a handle to it.
+      scrollHeightSpy = jest
+        .spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get')
+        .mockImplementation(() => {
+          const textarea = document.querySelector('textarea');
+          if (textarea === null) return 0;
+          const content =
+            (textarea.value.split('\n').length + wrappedLines) * LINE_HEIGHT + PADDING;
+          const occupied =
+            textarea.style.height === '' || textarea.style.height === 'auto'
+              ? RESTING_HEIGHT
+              : Number.parseInt(textarea.style.height, 10);
+          return Math.max(content, occupied);
+        });
+    });
+
+    afterEach(() => {
+      scrollHeightSpy.mockRestore();
+    });
+
+    it('rests at three rows while the text fits them', () => {
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+
+      expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+
+      fireEvent.change(textarea, { target: { value: 'one\ntwo' } });
+
+      expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+    });
+
+    it('expands to show every line once the text outgrows three rows', () => {
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+
+      fireEvent.change(textarea, { target: { value: eightLines } });
+
+      expect(textarea).toHaveStyle({ height: `${String(8 * LINE_HEIGHT + PADDING)}px` });
+    });
+
+    it('shrinks again as lines are deleted', () => {
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      fireEvent.change(textarea, { target: { value: eightLines } });
+
+      fireEvent.change(textarea, { target: { value: 'line 1\nline 2\nline 3\nline 4\nline 5' } });
+
+      expect(textarea).toHaveStyle({ height: `${String(5 * LINE_HEIGHT + PADDING)}px` });
+    });
+
+    it('settles back to three rows once the capture is sent', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'line 1' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      fireEvent.change(textarea, { target: { value: eightLines } });
+      expect(textarea).toHaveStyle({ height: `${String(8 * LINE_HEIGHT + PADDING)}px` });
+
+      fireEvent.keyDown(textarea, { key: 'Enter' });
+
+      await waitFor(() => {
+        expect(textarea).toHaveValue('');
+      });
+      expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+    });
+
+    it('re-fits when the box is resized under a draft, since the text now wraps differently', () => {
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      fireEvent.change(textarea, { target: { value: 'one\ntwo' } });
+      expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+
+      // A narrower window: the same two lines now wrap onto five more.
+      wrappedLines = 5;
+      act(() => {
+        globalThis.dispatchEvent(new Event('resize'));
+      });
+
+      expect(textarea).toHaveStyle({ height: `${String(7 * LINE_HEIGHT + PADDING)}px` });
+    });
+
+    it('stops listening for resizes once unmounted', () => {
+      const removeListener = jest.spyOn(globalThis, 'removeEventListener');
+      const { unmount } = renderWithProviders(<CaptureBox />);
+
+      unmount();
+
+      expect(removeListener).toHaveBeenCalledWith('resize', expect.any(Function));
+      removeListener.mockRestore();
+    });
+  });
+
   it('shows the capture button text "Capture" when not saving', () => {
     renderWithProviders(<CaptureBox />);
 
