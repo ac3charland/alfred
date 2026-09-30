@@ -1,6 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Dialog as DialogPrimitive } from 'radix-ui';
+import * as React from 'react';
 
+import { SheetDialog, SheetFooter, useSheetFooterElement } from './dialog';
 import { TextareaField } from './textarea-field';
 
 function setup(overrides: Partial<React.ComponentProps<typeof TextareaField>> = {}) {
@@ -120,5 +123,277 @@ describe('TextareaField', () => {
     expect(screen.getByText('Why is this blocked? (optional)')).toBeInTheDocument();
     const confirm = screen.getByRole('button', { name: 'Confirm block' });
     expect(confirm).toHaveClass('bg-amber-500');
+  });
+});
+
+/** A controlled harness, since the field is controlled and `autoGrow` follows its `value`. */
+function Controlled(properties: Partial<React.ComponentProps<typeof TextareaField>>) {
+  const [value, setValue] = React.useState('one');
+  return (
+    <TextareaField
+      value={value}
+      onChange={setValue}
+      onSave={jest.fn()}
+      onCancel={jest.fn()}
+      aria-label="Edit notes"
+      {...properties}
+    />
+  );
+}
+
+describe('TextareaField autoGrow', () => {
+  const originals = {
+    scrollHeight: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight'),
+    offsetHeight: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight'),
+    clientHeight: Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight'),
+  };
+
+  /**
+   * jsdom has no layout: a 20px line per newline-separated row, plus a 2px border in total. The
+   * content height is read off the one textarea a test renders.
+   */
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => (document.querySelector('textarea')?.value.split('\n').length ?? 1) * 20,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get: () => 102,
+    });
+    Object.defineProperty(Element.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 100,
+    });
+  });
+
+  afterEach(() => {
+    for (const [name, descriptor] of Object.entries(originals)) {
+      const target = name === 'clientHeight' ? Element.prototype : HTMLElement.prototype;
+      if (descriptor === undefined) Reflect.deleteProperty(target, name);
+      else Object.defineProperty(target, name, descriptor);
+    }
+  });
+
+  it('leaves the height to the browser by default (every existing call site)', async () => {
+    const user = userEvent.setup();
+    render(<Controlled />);
+    const textarea = screen.getByLabelText('Edit notes');
+
+    await user.type(textarea, '{Enter}two{Enter}three');
+
+    expect(textarea.style.height).toBe('');
+    expect(textarea).not.toHaveClass('overflow-hidden');
+  });
+
+  it('sizes the textarea to its content on mount, adding the border the content box leaves out', () => {
+    render(<Controlled autoGrow />);
+
+    // 1 line = 20px of content, +2px for the border (offsetHeight 102 − clientHeight 100).
+    expect(screen.getByLabelText('Edit notes').style.height).toBe('22px');
+  });
+
+  it('grows as the note gets longer, with no inner scroll left over', async () => {
+    const user = userEvent.setup();
+    render(<Controlled autoGrow />);
+    const textarea = screen.getByLabelText('Edit notes');
+
+    await user.type(textarea, '{Enter}two{Enter}three{Enter}four');
+
+    expect(textarea.style.height).toBe('82px');
+    // The editor never scrolls internally: the sheet around it is the one scroller.
+    expect(textarea).toHaveClass('overflow-hidden');
+  });
+
+  it('shrinks again when text is deleted', async () => {
+    const user = userEvent.setup();
+    render(<Controlled autoGrow />);
+    const textarea = screen.getByLabelText('Edit notes');
+    await user.type(textarea, '{Enter}two{Enter}three');
+    expect(textarea.style.height).toBe('62px');
+
+    await user.clear(textarea);
+
+    expect(textarea.style.height).toBe('22px');
+  });
+
+  it('keeps `rows` as the floor for an empty note', () => {
+    render(<Controlled autoGrow rows={4} />);
+
+    expect(screen.getByLabelText('Edit notes')).toHaveAttribute('rows', '4');
+  });
+});
+
+describe('TextareaField focusOnMount', () => {
+  it('is not focused on mount by default (every existing call site)', () => {
+    render(<Controlled />);
+
+    expect(screen.getByLabelText('Edit notes')).not.toHaveFocus();
+  });
+
+  it('focuses on mount with the caret at the end of the text, ready to type more', async () => {
+    const user = userEvent.setup();
+    render(<Controlled focusOnMount />);
+    const textarea = screen.getByLabelText<HTMLTextAreaElement>('Edit notes');
+
+    expect(textarea).toHaveFocus();
+    expect(textarea.selectionStart).toBe(3);
+    expect(textarea.selectionEnd).toBe(3);
+
+    await user.keyboard('!');
+    expect(textarea).toHaveValue('one!');
+  });
+});
+
+describe('TextareaField actionsTarget', () => {
+  function renderWithTarget(
+    target: Element | null | undefined,
+    overrides: Partial<React.ComponentProps<typeof TextareaField>> = {},
+  ) {
+    const onSave = jest.fn();
+    const onCancel = jest.fn();
+    const view = render(
+      <div>
+        <div data-testid="field">
+          <TextareaField
+            value="hello"
+            onChange={jest.fn()}
+            onSave={onSave}
+            onCancel={onCancel}
+            aria-label="Edit notes"
+            actionsTarget={target}
+            {...overrides}
+          />
+        </div>
+        <div data-testid="target" />
+      </div>,
+    );
+    return { ...view, onSave, onCancel };
+  }
+
+  it('renders Save / Cancel inline, inside the field, when no target is given', () => {
+    renderWithTarget(undefined);
+
+    expect(screen.getByTestId('field')).toContainElement(
+      screen.getByRole('button', { name: 'Save' }),
+    );
+    expect(screen.getByTestId('field')).toContainElement(
+      screen.getByRole('button', { name: 'Cancel' }),
+    );
+  });
+
+  it('portals Save / Cancel into the given element instead', async () => {
+    const user = userEvent.setup();
+    const target = document.createElement('div');
+    document.body.append(target);
+    const { onSave, onCancel } = renderWithTarget(target);
+
+    expect(target).toContainElement(screen.getByRole('button', { name: 'Save' }));
+    expect(target).toContainElement(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByTestId('field')).not.toContainElement(
+      screen.getByRole('button', { name: 'Save' }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    target.remove();
+  });
+
+  it('draws the portalled row as a full-width bar', () => {
+    const target = document.createElement('div');
+    document.body.append(target);
+    renderWithTarget(target);
+
+    const bar = screen.getByRole('button', { name: 'Save' }).parentElement;
+    expect(bar).toHaveClass(
+      'flex',
+      'gap-2',
+      'border-t',
+      'border-border',
+      'bg-surface',
+      'px-4',
+      'py-2',
+    );
+    target.remove();
+  });
+
+  it('keeps the warning variant right-aligned with its amber confirm in the bar', () => {
+    const target = document.createElement('div');
+    document.body.append(target);
+    renderWithTarget(target, { variant: 'warning', saveLabel: 'Confirm block' });
+
+    const confirm = screen.getByRole('button', { name: 'Confirm block' });
+    expect(confirm).toHaveClass('bg-amber-500');
+    expect(confirm.parentElement).toHaveClass('justify-end');
+    target.remove();
+  });
+
+  it('renders no actions until the target exists (null), rather than flashing them inline', () => {
+    renderWithTarget(null);
+
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the textarea focused when a bar button is pressed, so the keyboard stays up', () => {
+    const target = document.createElement('div');
+    document.body.append(target);
+    renderWithTarget(target);
+
+    // `fireEvent` returns false when the event's default was prevented — which is what stops the
+    // press from moving focus off the textarea (and dropping the keyboard) before the click lands.
+    expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Save' }))).toBe(false);
+    expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Cancel' }))).toBe(false);
+    target.remove();
+  });
+
+  it('leaves the inline buttons alone (desktop behaviour is unchanged)', () => {
+    renderWithTarget(undefined);
+
+    expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Save' }))).toBe(true);
+  });
+
+  describe('inside a sheet', () => {
+    function SheetEditor() {
+      const footer = useSheetFooterElement();
+      return (
+        <TextareaField
+          value="hello"
+          onChange={jest.fn()}
+          onSave={jest.fn()}
+          onCancel={jest.fn()}
+          aria-label="Edit notes"
+          actionsTarget={footer}
+        />
+      );
+    }
+
+    it("takes the sheet's footer while mounted, hiding its resting content", () => {
+      const view = render(
+        <SheetDialog open onOpenChange={jest.fn()}>
+          <DialogPrimitive.Title>Story</DialogPrimitive.Title>
+          <SheetFooter>
+            <nav aria-label="Actions">bar</nav>
+          </SheetFooter>
+          <SheetEditor />
+        </SheetDialog>,
+      );
+
+      const footer = screen.getByRole('dialog').querySelector('[data-sheet-footer]');
+      expect(footer).toContainElement(screen.getByRole('button', { name: 'Save' }));
+      expect(screen.queryByRole('navigation', { name: 'Actions' })).not.toBeInTheDocument();
+
+      view.rerender(
+        <SheetDialog open onOpenChange={jest.fn()}>
+          <DialogPrimitive.Title>Story</DialogPrimitive.Title>
+          <SheetFooter>
+            <nav aria-label="Actions">bar</nav>
+          </SheetFooter>
+        </SheetDialog>,
+      );
+      expect(screen.getByRole('navigation', { name: 'Actions' })).toBeInTheDocument();
+    });
   });
 });
