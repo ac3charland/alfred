@@ -4,7 +4,7 @@ branch: claude/alf-301-back-pressure-secrets-pch7c7
 
 # ALF-301: keeping secrets out of the public repo
 
-*2026-09-29T19:45:39.062Z*
+*2026-09-30T00:02:45.721Z*
 
 The [credential-leak postmortem](../../postmortems/2026-09-27-postgres-credential-leak.md) traced a production Postgres password to a demo doc: showboat recorded a `psql` command with the full connection URI inlined, and nothing scanned for secrets. This branch adds three layers: **commit and push gates** (R3), a **record-time guard** in showboat (R4), and a **safe path** for live queries (R5).
 
@@ -29,8 +29,9 @@ R=$PWD; T=$(mktemp -d); cd "$T" && git init -q && printf "psql %s%s@db.example.c
 env.md
   2:7  error  [PATTERN] found matching *******************************: ***********************                                              @secretlint/secretlint-rule-pattern
   2:7  error  [PATTERN] found matching ***************************************************************************: ***********************  @secretlint/secretlint-rule-pattern
+  2:7  error  [PATTERN] found matching *************************************************************************: ***********************    @secretlint/secretlint-rule-pattern
 
-✖ 2 problems (2 errors, 0 warnings, 0 infos)
+✖ 3 problems (3 errors, 0 warnings, 0 infos)
 
 
 leak.md
@@ -64,7 +65,7 @@ secret-scan: clean (N text entries scanned).
 exit=1
 ```
 
-**Layer 2: showboat refuses to record a secret.** `exec` checks the command before running it and the output before recording it. `note` checks its text, and `verify` never writes or echoes a fresh output that carries one. All of them read the same `/.secretlintrc.json` as the gates. Here the June command is replayed into a scratch doc (the password sits in a shell variable, so this outer block records no secret), then a command whose *output* carries one:
+**Layer 2: showboat refuses to record a secret.** `exec` checks the command before running it and the output before recording it. `note`, `init`, `image` and `video` are checked too (every write scans the whole doc, and `image` copies only real images), and `verify` never writes or echoes a fresh output that carries one. All of them read the same `/.secretlintrc.json` as the gates. Here the June command is replayed into a scratch doc (this outer block splices a fake password together at runtime, so it records no complete secret), then a command whose *output* carries one:
 
 ```bash
 S=/tmp/secret-guard-scratch.md; P=Qz7vLk2; npm run --silent demo -- init $S Scratch --branch x; npm run --silent demo -- exec $S bash "psql 'postgresql://postgres.ref:${P}Rw9pT@aws-1-us-east-2.pooler.supabase.com:5432/postgres' -c 'select 1'" 2>&1; echo "exit=$?"; echo; npm run --silent demo -- exec $S bash "printf '%s%s@db.example.com/postgres\n' postgresql://postgres:$P Rw9pT" 2>&1; echo "exit=$?"; echo; echo "entries recorded: $(grep -c "^\`\`\`bash" $S)"; rm $S
@@ -73,10 +74,10 @@ S=/tmp/secret-guard-scratch.md; P=Qz7vLk2; npm run --silent demo -- init $S Scra
 ```output
 showboat: refused to record command in /tmp/secret-guard-scratch.md: it looks like a secret, and this repo is public.
 <command>
-  1:6  error  [PostgreSQLConnection] found PostgreSQL connection string: *****************************************************************************************  @secretlint/secretlint-rule-preset-recommend > @secretlint/secretlint-rule-database-connection-string
+  2:6  error  [PostgreSQLConnection] found PostgreSQL connection string: *****************************************************************************************  @secretlint/secretlint-rule-preset-recommend > @secretlint/secretlint-rule-database-connection-string
 
 ✖ 1 problem (1 error, 0 warnings, 0 infos)
-Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local; otherwise keep the value in an env var (`"$NAME"`) or mask it (`:****@`).
+Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local. Any other credential must already be exported in your shell outside the recorded command (never `NAME=value` inside it: the assignment is recorded too), or be masked (`:****@`).
 exit=1
 
 showboat: refused to record command output in /tmp/secret-guard-scratch.md: it looks like a secret, and this repo is public.
@@ -84,9 +85,22 @@ showboat: refused to record command output in /tmp/secret-guard-scratch.md: it l
   1:0  error  [PostgreSQLConnection] found PostgreSQL connection string: **********************************************************  @secretlint/secretlint-rule-preset-recommend > @secretlint/secretlint-rule-database-connection-string
 
 ✖ 1 problem (1 error, 0 warnings, 0 infos)
-Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local; otherwise keep the value in an env var (`"$NAME"`) or mask it (`:****@`).
+Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, which reads the URL from frontend/.env.local. Any other credential must already be exported in your shell outside the recorded command (never `NAME=value` inside it: the assignment is recorded too), or be masked (`:****@`).
 exit=1
 
+entries recorded: 0
+```
+
+Patterns can't cover every shape a credential takes, so showboat and the commit gate also refuse the **actual value** of any credential they can see: credential-named environment variables and `frontend/.env.local`. Here `PGPASSWORD` holds a fake password. A bare `printenv`, a URI cut off before `@host`, and UTF-16 output match no pattern, but all three are refused by value:
+
+```bash
+S=/tmp/secret-guard-scratch.md; export PGPASSWORD=$(printf "Qz7vLk2%s" Rw9pT); npm run --silent demo -- init $S Scratch --branch x; for c in 'printenv PGPASSWORD' 'echo "postgresql://u:$PGPASSWORD@h" | cut -d@ -f1' 'printf %s "$PGPASSWORD" | iconv -t UTF-16LE'; do npm run --silent demo -- exec $S bash "$c" 2>&1 | grep -o "contains .*"; done; echo "entries recorded: $(grep -c "^\`\`\`bash" $S)"; rm $S
+```
+
+```output
+contains the value of $PGPASSWORD
+contains the value of $PGPASSWORD
+contains the value of $PGPASSWORD
 entries recorded: 0
 ```
 
@@ -111,16 +125,16 @@ psql: error: connection to server at "127.0.0.1", port 54329 failed: fe_sendauth
 exit=2
 ```
 
-This is now the recorded form in the June demo, whose three `psql` blocks had the password inlined:
+The June demo's three `psql` blocks, which had the password inlined, now use the wrapper:
 
 ```bash
-grep -o "^psql \"\$DATABASE_URL\" -c" docs/demos/alf-35-phase-a/phase-a.md
+grep -o "^npm run --silent psql -w database -- -c" docs/demos/alf-35-phase-a/phase-a.md
 ```
 
 ```output
-psql "$DATABASE_URL" -c
-psql "$DATABASE_URL" -c
-psql "$DATABASE_URL" -c
+npm run --silent psql -w database -- -c
+npm run --silent psql -w database -- -c
+npm run --silent psql -w database -- -c
 ```
 
 The guidance side: `CLAUDE.md` now states the repo is public, and the new `secret-scan` skill plus the showboat and supabase skills point live-DB evidence to `npm run psql`.
