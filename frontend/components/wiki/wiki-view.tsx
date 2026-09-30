@@ -9,9 +9,10 @@ import { useNow } from '@/lib/hooks/use-now';
 import { useWikiActions, useWikiPages } from '@/lib/stores/wiki-store';
 
 import { WikiHeader } from './wiki-header';
-import { WikiIndexView } from './wiki-index-view';
+import { WikiLandingView } from './wiki-landing-view';
 import { WikiPageView } from './wiki-page-view';
 import { parseWikiRoute } from './wiki-route';
+import { WikiSectionView } from './wiki-section-view';
 import { backLinkClass } from './wiki.styles';
 
 /** The module's root; everything else hangs off it as `/wiki/<section>[/<name>]`. */
@@ -19,24 +20,30 @@ export const WIKI_PREFIX = '/wiki';
 
 interface WikiViewProperties {
   /**
-   * The clock the header's "synced 2h ago" reads. Defaults to the live, ticking clock; stories and
-   * tests pin it, since a relative time read off the real clock can't be asserted or snapshotted.
+   * The clock the header's "synced 2h ago" and the landing's concept of the day read. Defaults to
+   * the live, ticking clock; stories and tests pin it, since a relative time or a day's pick read
+   * off the real clock can't be asserted or snapshotted.
    */
   now?: Date | undefined;
+  /**
+   * Force the landing web's reduced-motion path — stories and tests, which need it settled in one
+   * paint. Omitted, the web follows `prefers-reduced-motion`.
+   */
+  reducedMotion?: boolean | undefined;
 }
 
 /**
  * Client-side view router for the Wiki module — the counterpart to `TaskViews` / `CodeView` /
  * `CommsView` / `ReaderView`. Every Wiki page renders this one component, which derives the
  * view purely from the URL, the same `pushState`-driven pattern the other modules use: the
- * index, one section, one page, or not found.
+ * landing, one section, one page, or not found.
  *
  * The store re-reads the snapshot when the tab returns, but that never fires on an in-app
  * navigation (the document never hides), so every navigation within the module — keyed on
  * `pathname`, which also covers entry — triggers the same coalesced `refresh()` (the
  * navigation-refetch pattern). It swallows its own errors, so it never blocks the view.
  */
-export function WikiView({ now }: WikiViewProperties) {
+export function WikiView({ now, reducedMotion }: WikiViewProperties) {
   const pathname = usePathname();
   const { refresh } = useWikiActions();
   const pages = useWikiPages();
@@ -48,19 +55,20 @@ export function WikiView({ now }: WikiViewProperties) {
 
   const index = React.useMemo(() => new Set(pages.map((page) => page.path)), [pages]);
   const route = parseWikiRoute(pathname, index);
+  const clock = now ?? liveNow;
 
   return (
     <div className="flex flex-col gap-6">
-      <WikiHeader now={now ?? liveNow} />
+      <WikiHeader now={clock} />
       {pages.length === 0 ? (
         <EmptyState
           title="Nothing synced yet"
           description="Pages appear here after the wiki's next push reaches Alfred."
         />
       ) : route.kind === 'index' ? (
-        <WikiIndexView />
+        <WikiLandingView now={clock} reducedMotion={reducedMotion} />
       ) : route.kind === 'section' ? (
-        <WikiIndexView section={route.section} />
+        <WikiSectionView section={route.section} />
       ) : route.kind === 'page' ? (
         <WikiRoutedPage path={route.path} />
       ) : (
