@@ -152,7 +152,9 @@ that name maps to.
 Reads `~/Library/Messages/chat.db` read-only and polls forward on ROWID — cursor `{ rowid }`,
 seeded from the anchor on a first run — decoding `attributedBody` whenever `message.text` is empty
 (most rows, on current macOS). Tapbacks (`associated_message_type` 2000–3999) and group-membership
-events (`item_type != 0`) are skipped because they are not messages; **nothing else is**, so a body
+events (`item_type != 0`) are skipped because they are not messages — except a tapback the owner
+_added_ (`is_from_me = 1`, 2000–2999), which ships as an outbound row because reacting is how the
+owner answers and outbound is what drains the queue. **Nothing else is skipped**, so a body
 that will not decode still ships with `body_extracted: false` rather than vanishing. Sender names
 come best-effort from the AddressBook stores and never fail a poll, and edits and unsends are
 invisible to a forward-only poll by design.
