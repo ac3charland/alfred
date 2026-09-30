@@ -224,7 +224,12 @@ things bite, and both surface as every route answering `{"error":"TypeError: fet
 **Bundling a Worker module into a harness** (the `sweep-harness.mjs` pattern): esbuild's ESM
 output throws `Dynamic require of "process" is not supported` when a dependency ships CommonJS
 (`yaml` does). Give the bundle a real `require` via `banner: { js: "import { createRequire } from
-'node:module'; const require = createRequire(import.meta.url);" }`.
+'node:module'; const require = createRequire(import.meta.url);" }`. A frontend `lib/` module in the
+same bundle needs `server-only` stubbed by an `onResolve` plugin, since it throws outside a React
+server build (`docs/demos/reader-web-version-link/evidence.mjs`). Never bundle a base commit's file
+out of `git show <sha>:…` for a "before" column: a shallow clone lacks the sha and later changes to
+its imports break the build, so `verify` rots. Record the before state in a `note` and `exec` only
+the working tree.
 
 **Running an npm script against a stand-in server in the harness's own process** (an eval
 script pointed at a fake third-party API): launch it with async `spawn`, never `spawnSync` —
