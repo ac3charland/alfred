@@ -90,9 +90,15 @@ every view, badge and location label reads). So inside the Inbox the folder / pr
 only **label** (`setFolder`, `setIntendedProject`, `setIntendedEpic`), and **Dispatch** — the row's
 ⋯ menu for one item, the bulk bar for a selection, both through `dispatchItems` and both gated by
 `lib/tasks/dispatch.ts` — is what acts on those labels. Once a row is dispatched its chips are
-hidden and the menu's **Move to…** (`moveTask`) is the only mover: the two surfaces are
-complementary, so collapsing them strands one half of the model. Residency travels with the whole
-subtree, exactly like `folder_id` — every write that files rows stamps both on each of them.
+hidden and **Move to…** (`moveTask`) is its mover: the two surfaces are complementary, so
+collapsing them strands one half of the model. A drag onto a sidebar folder (`moveTask`) files a
+row from either side. Residency travels with the whole subtree, exactly like `folder_id` — every
+write that files rows stamps both on each of them.
+
+**"Is it already there?" reads residency; "is the label unchanged?" reads `folder_id`.** A move's
+no-op guard compares the target with `residentFolderId` (`resolveFolderDrop` takes the item for
+this) — against raw `folder_id`, an Inbox row can never be filed into the folder it is labelled
+with. A label write's no-op (`handleSetFolder`) compares `folder_id`, or clearing a label breaks.
 
 ## Realtime: a push channel wherever a Worker is the second writer
 

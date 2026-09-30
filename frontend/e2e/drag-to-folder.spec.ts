@@ -53,6 +53,46 @@ test.describe('drag a task to a folder', () => {
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Drag me')).toBeVisible();
   });
 
+  test('files an inbox task into the folder it is already labelled with (ALF-216)', async ({
+    page,
+    seed,
+  }) => {
+    // The classifier fills `folder_id` in on an item still awaiting triage, so the label names
+    // the very folder the owner is most likely to drag it onto. It still lives in the Inbox —
+    // the drop onto its labelled folder must dispatch it like a drop onto any other folder.
+    const work = makeFolder('Work', { id: '11111111-1111-4111-8111-111111111111' });
+    await seed({
+      folders: [work],
+      items: [
+        makeItem('Labelled already', {
+          id: '22222222-2222-4222-8222-222222222222',
+          item_type: 'task',
+          folder_id: work.id,
+          dispatched_at: null,
+        }),
+        makeItem('Still untriaged'),
+      ],
+    });
+    await page.goto('/?view=inbox');
+
+    const inbox = page.getByRole('list', { name: 'Tasks' });
+    await expect(inbox.getByText('Labelled already')).toBeVisible();
+    const workFolder = page.getByRole('link', { name: 'Work' });
+
+    await dragOnto(page, inbox.getByText('Labelled already'), workFolder);
+
+    await expect(inbox.getByText('Labelled already')).toBeHidden();
+    // Reload so the rest reads the saved row, not the optimistic patch: a rejected write would
+    // roll the item back into the Inbox.
+    await page.reload();
+    await expect(inbox.getByText('Still untriaged')).toBeVisible();
+    await expect(inbox.getByText('Labelled already')).toBeHidden();
+    await workFolder.click();
+    await expect(
+      page.getByRole('list', { name: 'Tasks' }).getByText('Labelled already'),
+    ).toBeVisible();
+  });
+
   test('filing an unclassified capture by drag classifies it as a task (ALF-72)', async ({
     page,
     seed,
