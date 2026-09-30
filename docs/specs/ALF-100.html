@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-100 — Story detail on a phone</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p2:has(input[value=long]:checked) [data-opt]:not([data-opt=long]),
+#p2:has(input[value=short]:checked) [data-opt]:not([data-opt=short]),
+#p2:has(input[value=block]:checked) [data-opt]:not([data-opt=block]){display:none}
+
+/* alfred's tokens, from source: colours from frontend/app/globals.css (+ Tailwind amber-400/500 for the
+   block tone); fonts: the Geist faces layout.tsx loads; radii are Tailwind's defaults (sm 4px, md 6px).
+   Sheet header/body: components/code/story-detail-modal.tsx; close: atoms/close-button.tsx (dialog, 44px
+   on mobile); state chip: code/state-chip.tsx → atoms/badge.tsx (accent); buttons: atoms/button.tsx
+   (size sm h-8 px-3 text-xs; accent / outline / ghost / ghostAccent); launch: atoms/launch-button.tsx;
+   PR links: story-detail/pr-link.tsx; checkbox: atoms/checkbox-field.tsx; menus: atoms/dropdown-menu.tsx;
+   editors: atoms/textarea-field.tsx (16px on coarse pointers: globals.css); spec box: code/spec-view.tsx. */
+@font-face{font-family:Geist;font-weight:100 900;font-display:swap;src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-sans.woff2) format("woff2")}
+@font-face{font-family:"Geist Mono";font-weight:100 900;font-display:swap;src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-mono.woff2) format("woff2")}
+.app{--background:#0a0e17;--foreground:#e8edf5;--surface:#0f1626;--border:#1e2a3f;--muted-foreground:#8a96a8;
+  --secondary:#1e2a3f;--input:#1e2a3f;--teal:#4fd1e0;--blue:#60a5fa;--red:#f87171;--amber4:#fbbf24;--amber5:#f59e0b;
+  position:relative;background:var(--surface);color:var(--foreground);overflow:hidden;
+  font:14px/20px Geist,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-align:left}
+.app p,.app h4,.app ul{margin:0;padding:0}
+.app code{font:inherit;color:inherit}
+.app svg.ic{display:block;flex:none;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* The phone: a 390px-wide screen, the sheet filling it. */
+.app.phone{width:100%;max-width:390px;margin:0 auto}
+.app .sh-head{display:flex;align-items:center;gap:8px;height:44px;padding:0 4px 0 16px;border-bottom:1px solid var(--border);background:var(--surface)}
+.app .sh-ref{font:500 14px/20px "Geist Mono",ui-monospace,monospace;color:var(--teal)}
+.app .chip{border-radius:999px;padding:2px 8px;font-size:12px;line-height:16px;font-weight:600;letter-spacing:.025em;text-transform:uppercase;background:rgb(79 209 224/.15);color:var(--teal)}
+.app .x{margin-left:auto;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:24px;line-height:1;color:var(--muted-foreground)}
+.app .sh-body{padding:12px 16px 24px}
+.app .crumb{margin-top:6px;font-size:12px;line-height:16px;color:var(--muted-foreground)}
+.app .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:4px;font-size:12px;font-weight:500;white-space:nowrap}
+.app .btn.solid{background:var(--teal);color:var(--background)}
+.app .btn.outline{border:1px solid var(--border);color:var(--foreground)}
+.app .btn.icon{width:32px;padding:0}
+.app .btn.dis{opacity:.5}
+.app .btn.amberfill{background:var(--amber5);color:var(--background)}
+.app .btn.ghost{color:var(--muted-foreground)}
+.app .btn.ghostacc{color:var(--teal)}
+.app .btn .mu{color:var(--muted-foreground)}
+.app .lnk{display:inline-flex;align-items:center;gap:6px;color:var(--blue)}
+.app .lnk svg.ic{width:13px;height:13px}
+.app .sect{margin-top:20px;display:flex;flex-direction:column;gap:8px}
+.app .notes{white-space:pre-wrap}
+
+/* Open menus (atoms/dropdown-menu.tsx). */
+.app.menus{max-width:390px;margin:10px auto 0;padding:14px 16px;background:var(--background);display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-start}
+.app .menu{min-width:8rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);padding:4px;box-shadow:0 4px 6px -1px rgb(0 0 0/.4),0 2px 4px -2px rgb(0 0 0/.4)}
+.app .mi{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;font-size:14px;line-height:20px}
+.app .mi.dis{opacity:.5}
+.app .mi.amb{color:var(--amber4)}
+.app .mi.red{color:var(--red)}
+.app .mcap{width:100%;font-size:12px;color:var(--muted-foreground)}
+
+/* The keyboard-up frame: the sheet is the visible viewport, the keyboard beneath it is device chrome. */
+.app.kbframe{max-width:390px;margin:0 auto;background:var(--surface)}
+.app .vv{position:relative;height:470px;overflow:hidden;display:flex;flex-direction:column}
+.app .vv .sh-body{position:relative;flex:1;min-height:0;overflow:hidden;padding-top:16px}
+.app .vv .sh-body.end{display:flex;flex-direction:column;justify-content:flex-end;padding-top:0;padding-bottom:12px}
+.app .ta{border:1px solid var(--border);border-radius:4px;background:var(--input);padding:6px 8px;font-size:16px;line-height:24px;white-space:pre-wrap;outline:2px solid var(--teal);outline-offset:0}
+.app .ta .caret{display:inline-block;width:1.5px;height:19px;margin-bottom:-3px;background:var(--teal)}
+.app .ta.four{min-height:110px}
+.app .warn{border:1px solid rgb(245 158 11/.3);border-radius:6px;background:rgb(245 158 11/.05);padding:12px;display:flex;flex-direction:column;gap:8px}
+.app .warn .lab{font-size:12px;color:var(--muted-foreground)}
+.app .kbd{height:291px;background:#2c2f36;display:flex;align-items:center;justify-content:center;font:italic 13px Georgia,serif;color:#9aa1ad;letter-spacing:.02em}
+
+/* Launch labels strip. */
+.app.strip{max-width:390px;margin:0 auto;padding:16px;display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:center}
+.app.strip>.btn{justify-self:start}
+.app.strip .when{font-size:12px;color:var(--muted-foreground)}
+
+/* Review rounds 1–2: the editor footer (D2), the D8 headings and the D7 sheet (well, document row, action bar). */
+.app .foot{flex:none;display:flex;gap:8px;padding:8px 16px;border-top:1px solid var(--border);background:var(--surface)}
+.app .foot.end{justify-content:flex-end}
+.app .h2s{font-size:14px;line-height:20px;font-weight:600;color:var(--foreground)}
+.app .ttl-b{font-size:20px;line-height:28px;font-weight:600}
+.app .hrow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.app .well{display:flex;gap:10px;align-items:flex-start;border-radius:6px;background:rgb(30 42 63/.35);padding:10px 12px}
+.app .well .pen{margin-left:auto;margin-top:3px;color:var(--muted-foreground)}
+.app .doc{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--background)}
+.app .doc svg.ic{width:18px;height:18px;color:var(--muted-foreground)}
+.app .doc .dt{font-weight:500}
+.app .doc .ds{font-size:12px;line-height:16px;color:var(--muted-foreground)}
+.app .doc .go{margin-left:auto}
+.app .links{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px}
+.app.phone.tall{height:760px}
+.app .tbar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid var(--border);background:var(--surface)}
+.app .tbar .grow{flex:1}
+.app .msep{height:1px;margin:4px -4px;background:var(--border)}
+.app .mi.chk{padding-left:32px;position:relative}
+.app .mi.chk svg.ic{position:absolute;left:8px;top:9px}
+</style>
+</head>
+<body data-kind="story">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-cu" viewBox="0 0 24 24"><path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></symbol>
+  <symbol id="i-cd" viewBox="0 0 24 24"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></symbol>
+  <symbol id="i-aut" viewBox="0 0 24 24"><path d="M5 3h14"/><path d="m18 13-6-6-6 6"/><path d="M12 7v14"/></symbol>
+  <symbol id="i-adt" viewBox="0 0 24 24"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+  <symbol id="i-updown" viewBox="0 0 24 24"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+</svg>
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Alfred · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>100</span><span class="sep"> — </span><span class="ttl">Story detail on a phone</span></h1>
+  <p class="change" id="change">On a phone, a story opens as a full-screen sheet above the keyboard: what you read scrolls, every action sits in a bottom bar, and notes grow as you type.</p>
+  <p class="revised" id="revised">Revised 2026-09-30: D7 → C (your review). Plate I is redrawn on C alone, and ⋯, the launch labels and the block-reason editor now follow C.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>How the notes editor behaves</h3>
+      <p class="pick">Grows to fit; Save/Cancel sit in a bar below it, never over it.</p>
+      <p class="why">Scrolling to the end always shows the note's last line above the bar.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d8">D8</a>How section headings read</h3>
+      <p class="pick">14px white semibold, in sentence case, instead of small grey capitals.</p>
+      <p class="why">Today they match the breadcrumb, so nothing outranks anything.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>The sheet's layout</h3>
+      <p class="pick">C · the spec as a tap-to-open row, every action in a pinned bottom bar.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>How compact the controls get</h3>
+      <p class="pick">B · one Priority menu, with Block and Abandon under ⋯.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>Launch button wording on phones</h3>
+      <p class="pick">Implement · Refine · Skip to dev · Run spike · Fix bug</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>Which screens change</h3>
+      <p class="pick">Phones only (narrower than 768px). The desktop modal stays pixel-identical.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>The phone shell</h3>
+      <p class="pick">A full-screen sheet sized to the part of the screen above the keyboard.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <div class="mount">
+
+      <div class="app phone tall" role="img" aria-label="The sheet at rest: under the pinned header, a larger title, the breadcrumb and the Refinement PR link. A Notes heading with the note in a tinted editable well with a pencil. A Spec heading over a bordered document row showing a file icon, Inbound filter spec, Tap to read full-screen, and a chevron. A View in repo link sits beside the Spec heading. A pinned bottom bar holds a wide Implement button, the status menu, an icon-only Priority menu and the ⋯ button.">
+        <div class="sh-head"><span class="sh-ref">ALF-42</span><span class="chip">Ready for dev</span><span class="x">×</span></div>
+        <div class="sh-body">
+          <p class="ttl-b">Draft the inbound filter spec</p>
+          <p class="crumb">Alfred › Communication Firewall</p>
+          <div class="links"><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>Refinement PR</span></div>
+          <div class="sect" style="margin-top:24px"><h4 class="h2s">Notes</h4>
+            <div class="well"><p class="notes">The owner wants the firewall to default-deny and explain every rejection.</p><svg class="ic pen"><use href="#i-pen"/></svg></div></div>
+          <div class="sect" style="margin-top:24px">
+            <div class="hrow"><h4 class="h2s">Spec</h4><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>View in repo</span></div>
+            <div class="doc"><svg class="ic"><use href="#i-doc"/></svg><div><p class="dt">Inbound filter spec</p><p class="ds">Tap to read full-screen</p></div><svg class="ic go mu"><use href="#i-right"/></svg></div>
+          </div>
+        </div>
+        <div class="tbar">
+          <span class="btn solid grow">Implement</span>
+          <span class="btn outline">Ready for Dev <svg class="ic mu"><use href="#i-chev"/></svg></span>
+          <span class="btn outline"><svg class="ic"><use href="#i-updown"/></svg><svg class="ic mu"><use href="#i-chev"/></svg></span>
+          <span class="btn outline icon"><svg class="ic"><use href="#i-more"/></svg></span>
+        </div>
+      </div>
+      <div class="app menus" role="img" aria-label="The menus. Priority lists the four jumps, with Bottom of backlog greyed. The ⋯ menu on a ready-for-dev story: a checked Needs refinement item, a divider, Block… in amber and Abandon in red. On a needs-refinement story it adds Skip to dev at the top. On a blocked story, Unblock to Ready for Dev replaces Block….">
+        <p class="mcap">Priority ▾ open</p>
+        <div class="menu">
+          <div class="mi"><svg class="ic"><use href="#i-cu"/></svg>Top of project</div>
+          <div class="mi"><svg class="ic"><use href="#i-cd"/></svg>Bottom of project</div>
+          <div class="mi"><svg class="ic"><use href="#i-aut"/></svg>Top of backlog</div>
+          <div class="mi dis"><svg class="ic"><use href="#i-adt"/></svg>Bottom of backlog</div>
+        </div>
+        <p class="mcap">⋯ on this story · on a needs-refinement story · on a blocked story</p>
+        <div class="menu">
+          <div class="mi chk"><svg class="ic"><use href="#i-check"/></svg>Needs refinement</div>
+          <div class="msep"></div>
+          <div class="mi amb"><svg class="ic"><use href="#i-ban"/></svg>Block…</div>
+          <div class="mi red">Abandon</div>
+        </div>
+        <div class="menu">
+          <div class="mi">Skip to dev</div>
+          <div class="mi chk"><svg class="ic"><use href="#i-check"/></svg>Needs refinement</div>
+          <div class="msep"></div>
+          <div class="mi amb"><svg class="ic"><use href="#i-ban"/></svg>Block…</div>
+          <div class="mi red">Abandon</div>
+        </div>
+        <div class="menu">
+          <div class="mi chk"><svg class="ic"><use href="#i-check"/></svg>Needs refinement</div>
+          <div class="msep"></div>
+          <div class="mi amb"><svg class="ic"><use href="#i-check"/></svg>Unblock to Ready for Dev</div>
+          <div class="mi red">Abandon</div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The sheet at rest. The body holds what you read, and every action sits in the pinned bar. Tapping the spec row opens the spec full-screen.</figcaption>
+  </figure>
+
+  <figure class="plate" id="p2">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p2" value="long" checked>Long note, scrolled to the end</label>
+      <label><input type="radio" name="p2" value="short">Short note</label>
+      <label><input type="radio" name="p2" value="block">Block reason</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app kbframe" role="img" aria-label="Editing with the keyboard up. The sheet ends at the keyboard. Between the scrolling body and the keyboard sits a fixed bar holding Save and Cancel, which never overlaps the editor. Long-note state: the body is scrolled to the end, so the grown editor's last lines, its caret and its bottom border all sit above the bar, with a gap. Short-note state: the Notes heading, a four-row editor, then the Spec heading and its document row. Block-reason state: the amber reason card, fully visible, with Cancel and Confirm block in the bar.">
+        <div class="vv">
+          <div class="sh-head"><span class="sh-ref">ALF-42</span><span class="chip">Ready for dev</span><span class="x">×</span></div>
+          <div class="sh-body end" data-opt="long">
+            <div class="ta">The owner wants the firewall to default-deny and explain every rejection.
+
+Rejections land in the daily digest, grouped by sender, each with the rule that caught it and a one-tap "allow this sender" link.
+
+Open questions:
+- Should the allow-list live in the repo or in Supabase?
+- How long do we keep rejected items before purging?
+- Does a reply from an allowed sender re-open a thread?
+
+Also: the digest should skip empty days.<span class="caret"></span></div>
+          </div>
+          <div class="foot" data-opt="long"><span class="btn ghostacc">Save</span><span class="btn ghost">Cancel</span></div>
+          <div class="sh-body" data-opt="short">
+            <p class="ttl-b">Draft the inbound filter spec</p>
+            <p class="crumb">Alfred › Communication Firewall</p>
+            <div class="sect" style="margin-top:24px"><h4 class="h2s">Notes</h4>
+              <div class="ta four">The owner wants the firewall to default-deny and explain every rejection.<span class="caret"></span></div></div>
+            <div class="sect" style="margin-top:24px"><div class="hrow"><h4 class="h2s">Spec</h4><span class="lnk"><svg class="ic"><use href="#i-ext"/></svg>View in repo</span></div>
+              <div class="doc"><svg class="ic"><use href="#i-doc"/></svg><div><p class="dt">Inbound filter spec</p><p class="ds">Tap to read full-screen</p></div><svg class="ic go mu"><use href="#i-right"/></svg></div></div>
+          </div>
+          <div class="foot" data-opt="short"><span class="btn ghostacc">Save</span><span class="btn ghost">Cancel</span></div>
+          <div class="sh-body end" data-opt="block">
+            <div class="warn"><span class="lab">Why is this blocked? (optional)</span>
+              <div class="ta">Waiting on the upstream decision about where the allow-list lives — repo file or a Supabase table.
+
+Ping the owner once the rate-limit story lands. If the answer is Supabase, this story also needs the table and its RLS policy first.<span class="caret"></span></div></div>
+          </div>
+          <div class="foot end" data-opt="block"><span class="btn ghost">Cancel</span><span class="btn amberfill">Confirm block</span></div>
+        </div>
+        <div class="kbd">keyboard</div>
+      </div>
+    </div>
+    <figcaption><b>Plate II.</b>Editing with the keyboard up. While you edit, Save/Cancel take the action bar's place between the body and the keyboard, so they never cover the text.</figcaption>
+  </figure>
+
+  <figure class="plate" id="p3">
+    <div class="mount">
+      <div class="app strip" role="img" aria-label="The phone launch labels: Implement for a ready-for-dev story; Refine for a needs-refinement story, with Skip to dev in the ⋯ menu; Run spike for a spike; Fix bug for a bug.">
+        <span class="btn solid">Implement</span><span class="when">ready for dev</span>
+        <span class="btn solid">Refine</span><span class="when">needs refinement (Skip to dev is in ⋯)</span>
+        <span class="btn solid">Run spike</span><span class="when">spike</span>
+        <span class="btn solid">Fix bug</span><span class="when">bug</span>
+      </div>
+    </div>
+    <figcaption><b>Plate III.</b>The launch button in the bar (D3). Card chips and the desktop modal keep their full wording.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>Desktop’s notes editor (still two rows). Other dialogs and mobile search keep today’s keyboard handling.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul><li>CI can’t raise an iPhone keyboard; tests shrink the viewport as a stand-in. Please try it once on your phone (<a href="#after-merge">after merge</a>).</li></ul>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p>The ticket (dictated, so “code cards” means the Code board's story detail modal) lists three phone problems: the Notes box shrinks while you type, so long descriptions can't be read; the buttons are wordy and large; and nothing avoids the on-screen keyboard. It also asks for the mobile Storybook screenshots to be checked, and written and captured where they're missing. The human scoped it to phones only (D5) and chose a full-screen sheet (D6). In the first review they also found the layout crowded: the editable notes and the read-only spec look alike, and the headings don't stand out. D7 and D8 answer that.</p>
+  <h3>What exists today</h3>
+  <ul>
+    <li><code>frontend/components/code/story-detail-modal.tsx</code> renders <code>FormDialog</code> (<code>atoms/dialog.tsx</code>) as a centred <code>max-w-2xl</code> card with <code>flex max-h-[85vh] flex-col</code>. The header, action row and the <em>Priority</em> + <em>Move this story</em> footer are fixed. Only the Notes/Spec middle (<code>overflow-y-auto</code>) scrolls. At 390×844 that footer takes about 220px, so the scrolling middle gets roughly a quarter of the screen, and nearly nothing once a keyboard is up.</li>
+    <li><code>EditableNotes</code> (same file) shows the full note while reading, then switches to <code>TextareaField</code> (<code>atoms/textarea-field.tsx</code>), which has a fixed <code>rows=2</code> and <code>resize-none</code>. That switch is the “box shrinks while typing” bug. When reading, the note is plain text styled exactly like the markdown spec below it, which is why the two are hard to tell apart.</li>
+    <li>Refinement now writes HTML specs. <code>SpecView</code> renders those in a white, sandboxed <code>h-[28rem]</code> iframe, which is cramped inside a phone sheet. <code>FullScreenDialog</code> already exists “for handing a cramped embedded document (a week plan, a rendered spec) the whole screen on a phone”. D7 reuses it.</li>
+    <li>Section headings are 12px, uppercase, <code>text-muted-foreground</code> (<code>#8a96a8</code>) on <code>bg-surface</code> (<code>#0f1626</code>). That contrast is about 6:1, which passes WCAG AA. So the problem isn't legibility, it's hierarchy: headings use the same size, weight and colour as the breadcrumb and the checkbox hint. D8 fixes this with size, weight and case, not only colour.</li>
+    <li>The dialog is positioned with <code>fixed top-1/2 -translate-y-1/2</code>. iOS Safari doesn't resize the layout viewport for the keyboard, and <code>dvh</code> ignores the keyboard too, so the card's lower half ends up under the keyboard. Nothing in the app reads <code>window.visualViewport</code> yet.</li>
+    <li>iOS focus-zoom is already solved app-wide: <code>globals.css</code> sets inputs and textareas to 16px under <code>(pointer: coarse)</code> (ALF-115, <code>e2e/mobile-input-zoom.spec.ts</code>). The dialog × is already a 44px target on mobile (ALF-138, <code>e2e/mobile-modal-close.spec.ts</code>).</li>
+    <li>Buttons: <code>PriorityControls</code> draws four labelled outline buttons that wrap to two rows. <code>ManualControls</code> draws the status menu, Block and Abandon. <code>LaunchButton</code> <code>solid</code> uses <code>LAUNCH_LABELS</code> (<code>lib/code/launch.ts</code>), which all end in “in Claude Code”. <code>DropdownMenuCheckboxItem</code> already exists in <code>atoms/dropdown-menu.tsx</code> (D7's Needs refinement item).</li>
+    <li>Screenshots: <code>code-storydetailmodal--mobile-ready-for-dev.png</code> is the only mobile baseline. No mobile baseline exists for editing notes, a needs-refinement story, a blocked story, the block-reason editor, or the keyboard-up case. Step 1 of the <a href="#plan">plan</a> captures those against today's code.</li>
+  </ul>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>The sheet's layout · settled</h3>
+    <p><strong>C: the spec as a row, and a bottom action bar.</strong> The body holds only what you read: title, breadcrumb, PR links, Notes (in a tinted editable well, <code>rounded-md bg-secondary/35 px-3 py-2.5</code>, with a pencil) and the spec as a document row (<code>rounded-lg border border-border bg-background p-3</code>: file icon, spec title, “Tap to read full-screen”, chevron). Tapping the row opens the spec in the existing <code>FullScreenDialog</code>, stacked over the sheet. <em>View in repo</em> stays beside the Spec heading. Every action lives in a pinned bottom bar: the primary launch (<code>flex-1</code>), the status menu, an icon-only Priority menu (<code>aria-label="Priority"</code>), and ⋯. To fit 390px, the refinement mark becomes a <code>DropdownMenuCheckboxItem</code> in ⋯, and the secondary launch (<em>Skip to dev</em>) moves into ⋯ as well, so each costs one more tap than today.</p>
+    <p>Why: the phone's actions sit within thumb reach. Editable notes (the well) and the read-only spec (the document row) differ by shape, not just by heading. And the white 28rem spec iframe no longer squeezes into the sheet, because the full-screen reader is what <code>FullScreenDialog</code> was built for. D2's editor bar takes the action bar's place while you edit, so the sheet has one bottom bar, whatever you're doing.</p>
+    <p>Considered: A, cards (each section in a bordered card; the smallest change, but one long scroll with the actions at the far end); B, tabs (<code>Notes · Spec · Move</code>; roomy, but the status controls end up behind a tab).</p>
+  </section>
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>How the notes editor behaves · proposed (revised in review 1)</h3>
+    <p>On a phone the notes <code>TextareaField</code> auto-grows to its content, with a four-row floor so an empty note still has room. There's no max height and no inner scrollbar: the sheet's body is the one scroller. Its Save/Cancel row moves out of the scroll content into the sheet's <strong>footer</strong>, a <code>shrink-0</code> bar between the scrolling body and the bottom of the visible viewport (the keyboard's top edge, per D6). The body's scroll region therefore ends at the bar's top edge, and scrolling to the end always shows the editor's last line and bottom border above the bar (Plate II). The block-reason editor uses the same footer.</p>
+    <p>Considered: a <code>position: sticky</code> action row inside the scroll content. That was the first draft, and the review rejected it because it floated over the editor and covered its last lines until you scrolled all the way down. Also considered: capping the editor at the visible height with an inner scroll (two nested scrollers on a touch screen), and moving Save/Cancel into the pinned header iOS-style (a different save location from every other editor in the app).</p>
+  </section>
+  <section class="rec" id="d8">
+    <h3><span class="tag">D8</span>How section headings read · proposed</h3>
+    <p>In the sheet, section headings (<em>Notes</em>, <em>Spec</em>/<em>Findings</em>) become <code>text-sm font-semibold text-foreground</code>, in sentence case, with no tracking, and the title steps up to <code>text-xl</code>. That gives three clear levels (title, section, body) where today there are two. The breadcrumb and hints stay muted <code>text-xs</code>, so headings now outrank them. The desktop modal keeps its eyebrow headings (D5). Implement this as a class the heading takes from a <code>layout</code>-aware helper, not as edits to <code>SpecView</code>'s markup, which the epic spec modal shares.</p>
+  </section>
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>How compact the controls get · settled</h3>
+    <p>Menus. A Priority menu (in the bar, an icon-only <code>⇅ ▾</code> outline trigger with <code>aria-label="Priority"</code>) opens the four labelled jumps as menu items, with the icons, disabled states and titles they have today. A ⋯ button (<code>aria-label="More story actions"</code>) holds the rarer actions: <em>Unblock to &lt;lane&gt;</em> (blocked only, first), <em>Block…</em> (when not blocked; it opens the same reason editor today's Block button opens), and <em>Abandon</em> (when not abandoned, <code>destructive</code> item variant). The full ⋯ contents per state are in <a href="#behavior">Behaviour</a>. Button height stays at the <code>sm</code> 32px. Considered: four icon-only priority buttons in one row, rejected by the human.</p>
+  </section>
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>Launch button wording on phones · settled</h3>
+    <p><code>LAUNCH_LABELS</code> gains a <code>short</code> per phase: refinement “Refine”, implementation “Implement”, bypass “Skip to dev”, spike “Run spike”, bug “Fix bug”. The <code>busy</code> labels are unchanged. Only the sheet uses the short form. Board card chips and the desktop modal keep <code>idle</code>.</p>
+  </section>
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>What stays pinned while scrolling · settled with D7</h3>
+    <p>Two pinned regions. At the top is one <code>h-11</code> row: ref, state chip, kind badge, and the 44px ×. The title scrolls with the body. At the bottom is the action bar, which shows the D2 Save/Cancel instead while an editor is open.</p>
+  </section>
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>Which screens change · settled</h3>
+    <p>Phones only, meaning viewports under Tailwind's <code>md</code> (48rem = 768px). Every desktop modal baseline must pass untouched. Consequence: the desktop notes editor still opens at two rows. That's the same bug in a smaller form, and it's listed under <a href="#not-doing">Not doing</a> so it can be picked up separately.</p>
+  </section>
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>The phone shell · settled</h3>
+    <p>A full-bleed, radius-free sheet whose top and height track <code>window.visualViewport</code>, so it always fills exactly the visible screen above the keyboard. See D10 and D11 for the mechanics.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+  <section class="rec" id="d9">
+    <h4>D9 · Detect “phone” in JS, with a query that is false under jsdom</h4>
+    <p>Add <code>export const MOBILE_QUERY = '(width &lt; 48rem)'</code> beside <code>useMediaQuery</code> in <code>lib/hooks/use-media-query.ts</code>, matching Tailwind v4's <code>max-md</code>. The modal reads <code>useMediaQuery(MOBILE_QUERY)</code>. The query must be the <em>mobile</em> one, not <code>!useMediaQuery(DESKTOP_QUERY)</code>: <code>jest.setup.ts</code> stubs every <code>matchMedia</code> to <code>false</code>, so a mobile-positive query keeps the 1,200-line <code>story-detail-modal.test.tsx</code> on the desktop layout it asserts today. Mobile RTL tests override <code>globalThis.matchMedia</code> for that one query. The switch is JS rather than CSS <code>max-md:</code>/<code>md:hidden</code> because the two layouts have different DOM (menus vs buttons). CSS-hidden duplicates would double every <code>getByRole</code> in jsdom, which loads no Tailwind. The modal opens only on the client, so <code>useSyncExternalStore</code>'s server snapshot never flashes the wrong layout.</p>
+  </section>
+  <section class="rec" id="d10">
+    <h4>D10 · <code>useVisualViewport()</code> hook, not viewport meta or <code>dvh</code></h4>
+    <p>New <code>lib/hooks/use-visual-viewport.ts</code>: <code>useSyncExternalStore</code> subscribing to <code>visualViewport</code> <code>resize</code> + <code>scroll</code>. It returns <code>{ height, offsetTop } | null</code> (null when the API is absent or on the server). The snapshot must be referentially stable between identical readings, so cache the last object and return it unless a value changed. <code>interactive-widget=resizes-content</code> was rejected because iOS Safari ignores it and it would relayout every page on Android. <code>100dvh</code> was rejected because it doesn't shrink for the keyboard on iOS.</p>
+  </section>
+  <section class="rec" id="d11">
+    <h4>D11 · A new <code>SheetDialog</code> atom with a footer slot; <code>FullScreenDialog</code> untouched</h4>
+    <p>Add <code>SheetDialog</code> to <code>atoms/dialog.tsx</code>: the same <code>Root → Portal → DialogOverlay → Content</code> scaffold and fade classes as <code>FormDialog</code>. Content is <code>fixed inset-x-0 z-50 flex w-screen flex-col bg-surface</code>, with <code>style={{ top: vv.offsetTop, height: vv.height }}</code> from D10, falling back to <code>top-0 h-[100dvh]</code> when the hook returns null. Its children are the header and the <code>min-h-0 flex-1 overflow-y-auto</code> body. After them it renders an always-present, <code>shrink-0</code> footer element. It publishes that element through a <code>SheetFooterContext</code>, using a callback ref held in state so consumers re-render once it mounts. It also publishes a <code>claim()</code> function that returns a release callback; the footer's resting content (the D7 action bar) hides while any claim is held. <code>FullScreenDialog</code> keeps its <code>100dvh</code> body and serif header; moving it onto <code>SheetDialog</code> is a follow-up (see <a href="#out">Out</a>).</p>
+  </section>
+  <section class="rec" id="d12">
+    <h4>D12 · Keep the focused field visible after a keyboard resize</h4>
+    <p>When D10's reading changes and <code>document.activeElement</code> is an <code>input</code> or <code>textarea</code> inside the sheet, <code>SheetDialog</code> calls <code>activeElement.scrollIntoView({ block: 'nearest' })</code> in the next animation frame. Feature-detect it, since jsdom lacks it (precedent: <code>lib/hooks/use-focus-item-highlight.ts</code>). The browser's own caret-following handles typing after that. Because the footer is outside the scroll region (D2), the caret can never be followed into a spot the bar covers.</p>
+  </section>
+  <section class="rec" id="d13">
+    <h4>D13 · <code>TextareaField</code> gains opt-in <code>autoGrow</code> and <code>actionsTarget</code></h4>
+    <p>Both are off by default, so every existing caller (epic notes, <code>InlineNoteField</code>, the desktop modal) renders byte-identically. <code>autoGrow</code>: a <code>useLayoutEffect</code> keyed on <code>value</code> sets <code>height = 'auto'</code>, then <code>height = scrollHeight + 'px'</code>, with <code>overflow-hidden</code>; <code>rows</code> is the floor. <code>actionsTarget?: Element | null</code>: when set, the action row renders through <code>createPortal</code> into that element (the D11 footer) as a full-width bar (<code>flex gap-2 border-t border-border bg-surface px-4 py-2</code>). The <code>warning</code> variant keeps its right-aligned amber confirm. The editor takes a D11 <code>claim()</code> while mounted. Not CSS <code>field-sizing: content</code>, because WebKit support can't be relied on for this user's iPhone.</p>
+  </section>
+  <section class="rec" id="d14">
+    <h4>D14 · One jump list behind two presentations</h4>
+    <p>Extract <code>usePriorityJumps(story)</code> from <code>story-detail/priority-controls.tsx</code>, returning today's <code>Jump[]</code>. The desktop <code>PriorityControls</code> keeps its markup. The new <code>PriorityMenu</code> (the bar's icon-only trigger) consumes the same list, so labels, icons, disabled flags and the <code>useMoveBurst</code> commits can't drift between layouts.</p>
+  </section>
+  <section class="rec" id="d15">
+    <h4>D15 · Layout is a prop, not a second component tree</h4>
+    <p><code>DetailBody</code> takes <code>layout: 'dialog' | 'sheet'</code>. <code>StoryDetailModal</code> picks <code>FormDialog</code> or <code>SheetDialog</code> from D9. In <code>'dialog'</code> everything renders exactly as today. In <code>'sheet'</code> the body renders the D7 reading content, and the D11 footer's resting content is a new <code>story-detail/action-bar.tsx</code>. That bar composes <code>LaunchButton</code> (<code>compact</code>, primary phase only; D3), the <code>StatusMenu</code> exported from <code>manual-controls.tsx</code>, <code>PriorityMenu</code> (D14), and a new <code>story-detail/more-actions-menu.tsx</code> (⋯). The block-reason editor's open state lifts from <code>ManualControls</code> into <code>DetailBody</code>, because the bar's <em>Block…</em> opens a card rendered in the body. The file is already 320 lines, so move <code>EditableNotes</code> to <code>story-detail/editable-notes.tsx</code> and the spec row to <code>story-detail/spec-row.tsx</code> as part of this.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <h3>Sheet regions (P1, P2)</h3>
+  <table>
+    <thead><tr><th>Region</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td>Header (pinned)</td><td>ref · <code>StateChip</code> · <code>StoryKindBadge</code> · <code>DialogCloseButton</code></td></tr>
+      <tr><td>Body (scrolls)</td><td>title, breadcrumb, PR links, Notes well, spec document row, and the block-reason card when open</td></tr>
+      <tr><td>Footer (pinned)</td><td>at rest, the action bar: launch · status · priority · ⋯. While an editor is open, Save/Cancel.</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>The footer carries the bottom safe-area padding (<code>pb-[max(1rem,env(safe-area-inset-bottom))]</code>). The body needs none of its own.</li>
+    <li>With no launch phase (in development, in review, done, blocked, abandoned), the bar holds status, priority and ⋯, left-aligned.</li>
+    <li>Rotation or window resize across 768px swaps layouts live. An open notes draft survives the swap only if <code>EditableNotes</code> doesn't remount, so keep it at the same position in both trees, or accept the loss and say so in the PR.</li>
+    <li>Radix's scroll lock and focus trap apply unchanged. Open dropdowns portal above the sheet as they do above the card. The full-screen spec opens as a nested Radix dialog, and closing it returns focus to the document row.</li>
+    <li>The spec row's title is the HTML document's <code>&lt;title&gt;</code>, or a markdown spec's first <code>#</code> line, falling back to the file name. Its subtitle is “Tap to read full-screen”. With no snapshot, the row is replaced by today's empty-state copy. A spike reads <em>Findings</em>.</li>
+    <li>Closing with the keyboard up (× or Escape) behaves as today: an unsaved notes draft is dropped, as it is on desktop.</li>
+    <li>With <code>visualViewport</code> absent, the sheet is <code>top-0 h-[100dvh]</code> and D12 is a no-op.</li>
+  </ul>
+  <h3>⋯ contents (D1, D7; P1)</h3>
+  <table>
+    <thead><tr><th>Story</th><th>⋯ items, in order</th></tr></thead>
+    <tbody>
+      <tr><td>needs_refinement (story kind)</td><td>Skip to dev · Needs refinement ☑ · divider · Block… · Abandon</td></tr>
+      <tr><td>other lanes (story kind)</td><td>Needs refinement ☑/☐ · divider · Block… · Abandon</td></tr>
+      <tr><td>blocked</td><td>Needs refinement ☑/☐ · divider · Unblock to &lt;lane&gt; · Abandon</td></tr>
+      <tr><td>abandoned</td><td>Needs refinement ☑/☐ · divider · Block…</td></tr>
+      <tr><td>spike / bug</td><td>as above, with no Needs refinement item, no Skip to dev and no divider (never refined)</td></tr>
+    </tbody>
+  </table>
+  <h3>Editors (D2; P2)</h3>
+  <ul>
+    <li>Notes on the phone use <code>autoGrow</code>, <code>actionsTarget</code> (the footer) and <code>rows={4}</code>. Block reason uses <code>autoGrow</code> and <code>actionsTarget</code> with the default rows. The desktop gets neither.</li>
+    <li>Picking <em>Block…</em> appends the block-reason card at the end of the body, scrolls it into view and focuses its textarea.</li>
+    <li>If two editors could be open at once (notes plus block reason), the most recent claim owns the footer. Opening one closes the other, matching how the desktop modal has one active editor in practice.</li>
+    <li>⌘↵ / Escape / blur semantics are unchanged. Tapping Save in the footer must not blur-cancel first, so give the footer buttons <code>onMouseDown={e =&gt; e.preventDefault()}</code>, the same way the inline editors guard today.</li>
+  </ul>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <ol>
+    <li><strong>Capture today first (the ticket's “write tests and capture them”).</strong> In <code>story-detail-modal.stories.tsx</code>, add phone stories (390×844, <code>target: '[role="dialog"]'</code>): <code>MobileNeedsRefinement</code>, <code>MobileBlocked</code>, <code>MobileEditingLongNotes</code> (a ~15-line note; its <code>play</code> clicks the notes trigger via <code>within(document.body)</code> because the dialog is portalled), <code>MobileBlockReason</code> (<code>play</code> opens the reason editor), and <code>MobileKeyboardUp</code>. That last one is the long-notes play at <code>viewport: { width: 390, height: 470 }</code>: inside the Storybook iframe <code>visualViewport.height</code> equals the viewport, so a short viewport stands in for the keyboard deterministically. Baseline them on <strong>today's</strong> code with <code>npm run test:storybook:update -w frontend</code> and commit them on their own (<code>test(code): capture story detail phone baselines</code>). The rebaseline in step 7 then produces the before/after diffs.</li>
+    <li><code>lib/hooks/use-media-query.ts</code>: <code>MOBILE_QUERY</code> (D9).</li>
+    <li><code>lib/hooks/use-visual-viewport.ts</code> + test (D10).</li>
+    <li><code>atoms/dialog.tsx</code>: <code>SheetDialog</code> with the footer slot and claim (D11) and D12's refocus effect, + tests in <code>dialog.test.tsx</code>.</li>
+    <li><code>atoms/textarea-field.tsx</code>: <code>autoGrow</code>, <code>actionsTarget</code> (D13), + tests.</li>
+    <li>The modal: <code>layout</code> threading (D15), the pinned header (D4), D8 headings, <code>LAUNCH_LABELS.short</code> + <code>LaunchButton</code> <code>compact</code> (D3), <code>usePriorityJumps</code> + <code>PriorityMenu</code> + the ⋯ menu (D1, D14), the action bar and the D7 body (D15). The spec row opens <code>SpecView</code> inside a <code>FullScreenDialog</code>. Update each step-1 story's <code>play</code> only where a control moved (⋯ before <em>Block…</em>). Add <code>MobilePriorityMenuOpen</code> and <code>MobileMoreActionsOpen</code> with <code>target: 'body'</code>, per the storybook skill's portal rule. Also add <code>MobileSpecFullScreen</code>.</li>
+    <li>Rebaseline: <code>npm run test:storybook:update -w frontend</code>. Only the <code>Mobile*</code> PNGs may move. Every other <code>code-storydetailmodal--*</code> baseline must pass unchanged (D5).</li>
+    <li>Playwright: <code>e2e/code-detail-modal-mobile.spec.ts</code> (see <a href="#tests">Tests</a>).</li>
+  </ol>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="impl">Phone baselines for editing notes, needs-refinement, blocked, block-reason and keyboard-up exist and were first captured against the pre-change code.</li>
+    <li data-trace="D6 P1">At 390×844 the story opens as a sheet filling the viewport (box 0,0,390,844), with no radius or border.</li>
+    <li data-trace="D6 P2">When the visible viewport shrinks (keyboard stand-in), the sheet's height follows it, and the focused editor stays in view.</li>
+    <li data-trace="D4 D7 P1">Scrolling the sheet body to the end leaves the header row, the × and the action bar in view.</li>
+    <li data-trace="D2 P2">In the phone notes editor a long note shows in full with no inner scroll (<code>scrollHeight === clientHeight</code>), and an empty note opens at four rows.</li>
+    <li data-trace="D2 P2">While editing, Save/Cancel sit in the sheet footer, outside the scroll region. Scrolled to the end, the editor's bottom edge is above the footer's top edge, with no overlap at any scroll position. The block-reason editor behaves the same.</li>
+    <li data-trace="D8 P1">Sheet section headings render at 14px, semibold, in <code>text-foreground</code> and sentence case. Desktop headings are unchanged.</li>
+    <li data-trace="D3 P3">Phone launch buttons read Implement / Refine + Skip to dev / Run spike / Fix bug. Card chips and the desktop modal keep the full labels.</li>
+    <li data-trace="D1 P1">Priority ▾ lists the four jumps with today's disabled states. The ⋯ contents match the Behaviour table for each state. Each item calls the same store action as today's button.</li>
+    <li data-trace="D7 P1">The sheet matches Plate I: notes in a tinted well, the spec as a row that opens full-screen, and the launch, status, priority and ⋯ controls in the bar. Needs refinement and Skip to dev live in ⋯.</li>
+    <li data-trace="D5">Every existing desktop <code>code-storydetailmodal--*</code> baseline and <code>story-detail-modal.test.tsx</code> assertion passes unchanged.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <table>
+    <thead><tr><th>Tier</th><th>File</th><th>Pins</th></tr></thead>
+    <tbody>
+      <tr><td>Jest</td><td><code>lib/hooks/use-visual-viewport.test.ts(x)</code></td><td>Reads a stubbed <code>visualViewport</code>, updates on <code>resize</code>/<code>scroll</code>, returns the same object for identical readings, and returns null without the API.</td></tr>
+      <tr><td>RTL</td><td><code>atoms/textarea-field.test.tsx</code></td><td><code>autoGrow</code> sets <code>style.height</code> from a stubbed <code>scrollHeight</code> on change; off by default. <code>actionsTarget</code> portals Save/Cancel into the given element; without it they render inline as today.</td></tr>
+      <tr><td>RTL</td><td><code>atoms/dialog.test.tsx</code></td><td><code>SheetDialog</code> applies top/height from the hook and falls back to <code>h-[100dvh]</code>. The footer's resting content hides while a claim is held and returns on release. It calls <code>scrollIntoView</code> on the focused textarea after a viewport change.</td></tr>
+      <tr><td>RTL</td><td><code>code/story-detail-modal.test.tsx</code> (new <code>describe('on a phone')</code> with <code>matchMedia</code> matching <code>MOBILE_QUERY</code>)</td><td>Short launch labels; Priority menu items call <code>applyMove*</code> exactly as the desktop buttons do; the ⋯ contents per state and kind (table-driven); Block… opens the reason editor; D8 heading classes; the spec row opens the full-screen spec; Needs refinement toggles from ⋯; the bar hides while an editor is open and returns after Save/Cancel.</td></tr>
+      <tr><td>RTL</td><td><code>atoms/launch-button.test.tsx</code></td><td><code>compact</code> renders <code>short</code>; the chip and non-compact solid are unchanged.</td></tr>
+      <tr><td>Storybook</td><td><code>story-detail-modal.stories.tsx</code></td><td>The step-1 phone baselines, rebaselined, plus the open-menu stories and <code>MobileSpecFullScreen</code>.</td></tr>
+      <tr><td>Playwright</td><td><code>e2e/code-detail-modal-mobile.spec.ts</code> (<code>hasTouch</code>, 390×844, seeded like <code>code-detail-modal.spec.ts</code>)</td><td>The sheet's bounding box. The header and the action bar stay in view after scrolling to the end. Notes auto-grow: fill 20 lines, then assert no inner overflow. Keyboard stand-in: <code>page.setViewportSize({ width: 390, height: 470 })</code> mid-edit, then assert the sheet is 470 tall, Save's box lies within it, and, after scrolling the body to the end, the textarea's bottom ≤ the footer's top.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>This change moves committed visual snapshots, so the evidence is the auto-emitted diff image for each moved <code>Mobile*</code> baseline. Capture and approve them per the <code>storybook</code> skill §7 and the <code>showboat</code> skill. Add one <code>exec</code> of the new Playwright spec so the keyboard stand-in's pass is on record.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><strong>Desktop notes still open at two rows.</strong> Excluded by D5. The fix is one prop (<code>autoGrow</code>) once D13 lands, so it makes a good follow-up ticket.</li>
+    <li><strong>Other dialogs and <code>FullScreenDialog</code></strong> keep <code>100dvh</code>. The mobile search's input has the same keyboard exposure, and moving it onto <code>SheetDialog</code> is the natural follow-up.</li>
+    <li><strong>Risk: iOS pans the visual viewport when a fixed element's field is focused.</strong> The sheet re-positions to <code>offsetTop</code> on every <code>scroll</code> event, which can jitter for a frame. If it looks bad on device, throttle to <code>requestAnimationFrame</code>. Only a real iPhone shows this.</li>
+    <li><strong>Risk: the bar's width.</strong> The longest status label (“Needs Refinement”) plus <em>Implement</em>, the icon Priority trigger and ⋯ come to about 360px against the 358px usable at 390. The launch button is <code>flex-1</code> with <code>min-w-0 truncate</code>, so it gives up space first. Check at 375px (iPhone mini/SE) too.</li>
+    <li><strong>Unknown:</strong> whether Radix's <code>onOpenAutoFocus</code> ring on the title (visible in today's mobile baseline) shows on a real touch open. If it does, focusing the sheet content instead is a one-line follow-up, not part of this spec.</li>
+  </ul>
+</section>
+
+<section id="after-merge">
+  <h2>After it ships (for you)</h2>
+  <ol>
+    <li>On your iPhone (Safari and the Home-Screen app), open a story with a long note, tap Notes, and type at the end. The editor should grow, Save should sit in its own bar on the keyboard's top edge without covering any text, and the header × should stay put.</li>
+    <li>Tap Block and type a reason: it should behave the same way.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
