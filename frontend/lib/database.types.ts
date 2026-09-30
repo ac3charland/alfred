@@ -366,6 +366,7 @@ export type Database = {
           participants: string[]
           reader_claimed_at: string | null
           received_at: string
+          reclassify_failed_at: string | null
           reclassify_requested_at: string | null
           references_ids: string[]
           rfc822_message_id: string | null
@@ -399,6 +400,7 @@ export type Database = {
           participants?: string[]
           reader_claimed_at?: string | null
           received_at: string
+          reclassify_failed_at?: string | null
           reclassify_requested_at?: string | null
           references_ids?: string[]
           rfc822_message_id?: string | null
@@ -432,6 +434,7 @@ export type Database = {
           participants?: string[]
           reader_claimed_at?: string | null
           received_at?: string
+          reclassify_failed_at?: string | null
           reclassify_requested_at?: string | null
           references_ids?: string[]
           rfc822_message_id?: string | null

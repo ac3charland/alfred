@@ -3615,6 +3615,85 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const commsRerunAbandonResult = await attempt(
+    'comms: abandoning a re-run clears the request and stamps the failure, only if the request is ' +
+      'still the one that was read — a newer request survives (ALF-221)',
+    async () => {
+      const account = await ensureReaderAccount(client);
+      const inserted = await client.query<{ id: string; failed: string | null }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at,
+                                    tier, judged_by, ask, classify_attempts, reclassify_requested_at)
+           values ($1, 'rerun-abandon', 'rerun-abandon-thread', 'rerun@example.com', now(),
+                   'today', 'model', 'Approve the invoice.', 5, '2026-09-09T14:50:00.123456+00:00')
+           returning id, reclassify_failed_at::text as failed`,
+        [account],
+      );
+      const id = inserted.rows[0]?.id;
+      if (!id) throw new Error('could not seed the message');
+      // Nullable with no default: a row that has never had a failed re-run reads NULL.
+      if (inserted.rows[0]?.failed !== null)
+        throw new Error('reclassify_failed_at should start empty');
+
+      // The request exactly as PostgREST hands it to the Worker — JSON text, with an offset and
+      // microseconds — because that text is what the abandoning write sends back to match on.
+      await client.query(`set timezone = 'UTC'`);
+      const read = await client.query<{ requested: string }>(
+        `select to_json(reclassify_requested_at) #>> '{}' as requested
+           from comm_messages where id = $1`,
+        [id],
+      );
+      const requested = read.rows[0]?.requested;
+      if (requested !== '2026-09-09T14:50:00.123456+00:00')
+        throw new Error(`the request read back as ${String(requested)}`);
+
+      const abandon = `update comm_messages
+           set reclassify_requested_at = null, reclassify_failed_at = $3
+         where id = $1 and reclassify_requested_at = $2`;
+
+      // The owner asks again after the Worker read the row: the old stamp no longer matches.
+      await client.query(
+        `update comm_messages set reclassify_requested_at = '2026-09-09T15:00:00+00:00' where id = $1`,
+        [id],
+      );
+      const stale = await client.query(abandon, [id, requested, '2026-09-09T15:01:00.000Z']);
+      if (stale.rowCount !== 0) throw new Error('an abandon wiped out a newer request');
+      const survived = await client.query<{ pending: boolean }>(
+        `select reclassify_requested_at is not null as pending from comm_messages where id = $1`,
+        [id],
+      );
+      if (survived.rows[0]?.pending !== true) throw new Error('the newer request did not survive');
+
+      // Back to the request that was read: now the write matches, and touches nothing else.
+      await client.query(
+        `update comm_messages set reclassify_requested_at = $2::timestamptz where id = $1`,
+        [id, requested],
+      );
+      const matched = await client.query(abandon, [id, requested, '2026-09-09T15:01:00.000Z']);
+      if (matched.rowCount !== 1) throw new Error('the abandon did not match the request it read');
+      const after = await client.query<{
+        requested: string | null;
+        failed: string | null;
+        tier: string;
+        judged_by: string;
+        ask: string;
+        attempts: number;
+      }>(
+        `select reclassify_requested_at::text as requested, reclassify_failed_at::text as failed,
+                tier, judged_by, ask, classify_attempts as attempts
+           from comm_messages where id = $1`,
+        [id],
+      );
+      const row = after.rows[0];
+      if (row?.requested !== null) throw new Error('the request was not cleared');
+      if (!row.failed?.startsWith('2026-09-09 15:01:00'))
+        throw new Error(`the failure was stamped as ${String(row.failed)}`);
+      if (row.tier !== 'today' || row.judged_by !== 'model' || row.ask !== 'Approve the invoice.')
+        throw new Error('the abandon disturbed the verdict the row already had');
+
+      return 'matched the request it read, cleared it, stamped the failure and left the verdict; a newer request was untouched';
+    },
+  );
+
   const readerDiscoveryResult = await attempt(
     'v_reader_discovery: lists an off-roster Substack list-header sender, never substack’s own ' +
       'no-reply senders, and drops a sender once it joins the roster (ALF-233)',
@@ -4880,6 +4959,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     commsInboxItemAtomicResult,
     commsInboxItemConcurrencyResult,
     commsRealtimeResult,
+    commsRerunAbandonResult,
     readerGrantsResult,
     readerHealthSeededResult,
     readerWorklistResult,
