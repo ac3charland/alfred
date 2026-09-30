@@ -223,6 +223,7 @@ function makeSavedSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-02-02T00:00:00Z',
     priority: 1,
+    priority_rev: 0,
     ...overrides,
   };
 }
@@ -1074,6 +1075,7 @@ describe('code-store', () => {
         created_at: '2025-01-04T00:00:00Z',
         updated_at: '2025-01-04T00:00:00Z',
         priority: 1,
+        priority_rev: 0,
       };
 
       it('inserts an optimistic card immediately and reconciles the allocated ref', async () => {
@@ -1441,6 +1443,7 @@ describe('code-store', () => {
         done_at: null,
         updated_at: '2025-01-05T00:00:00Z',
         priority: 1,
+        priority_rev: 0,
       };
 
       it('inserts an optimistic card at needs_refinement, then reconciles the real item_id + ref', async () => {
@@ -2212,6 +2215,78 @@ describe('code-store', () => {
         // The first swap already committed server-side (i1↔i2 stays applied); the second (failed)
         // swap rolls back, so ALF-3 is restored to its original priority.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
+      });
+      it('on a failed swap, also undoes the writes queued behind it on other stories, and never sends them', async () => {
+        let fail!: (error: Error) => void;
+        mockReorderCode.mockReturnValueOnce(
+          new Promise((_resolve, reject) => {
+            fail = reject;
+          }),
+        );
+        const stories = [1, 2, 3, 4].map((n) =>
+          makeStory(`i${String(n)}`, 'e1', 'p1', { ref: `ALF-${String(n)}`, priority: n }),
+        );
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories }) },
+        );
+
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+        await syncPriorityWrites();
+        // Queued while the first is on the wire — and on two stories it doesn't touch.
+        act(() => {
+          result.current.actions.reorderStory('ALF-3', 'ALF-4');
+        });
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 4, i4: 3 });
+
+        await act(async () => {
+          fail(new Error('swap failed'));
+          await Promise.resolve();
+        });
+        await syncPriorityWrites();
+
+        expect(mockReorderCode).toHaveBeenCalledTimes(1);
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 1, i2: 2, i3: 3, i4: 4 });
+      });
+
+      it('after a failed swap, a story takes the rank the server last gave it, not the one it rolled back to', async () => {
+        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+        mockReorderCode
+          .mockResolvedValueOnce([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 7, priority_rev: 1 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1, priority_rev: 2 }),
+          ])
+          .mockRejectedValueOnce(new Error('swap failed'));
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A],
+              epics: [epic],
+              stories: [high, low, third],
+            }),
+          },
+        );
+
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-3');
+        });
+        await syncPriorityWrites();
+
+        // The first reply put ALF-1 at 7, not the 2 this tab expected; that reply was parked while
+        // the second swap was pending, and it is what ALF-1 holds once that swap fails.
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 7, i2: 1, i3: 3 });
       });
     });
 

@@ -12,10 +12,11 @@ import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
  * ALF-250's property test: whatever order the network hands replies and realtime echoes back in,
  * the Backlog never shows anything but the order the owner has clicked it into, and the server
  * ends there too. A fake server runs each priority RPC exactly as the SQL does (one write per
- * story), replies after a random delay, and streams every row it wrote back through the realtime
- * handler — in commit order, as Realtime does, but at a random lag that can trail later replies.
- * Clicks land at random rows at random intervals, on a project-filtered Backlog with another
- * project's stories ranked between the visible ones.
+ * story, each stamped with the next revision), replies after a random delay, and streams every
+ * row it wrote back through the realtime handler — in commit order, as Realtime does, but at a
+ * random lag that can trail later replies. Swaps and both kinds of jump land at random rows at
+ * random intervals, on a project-filtered Backlog with another project's stories ranked between
+ * the visible ones.
  */
 
 jest.mock('@/lib/api-client');
@@ -107,7 +108,7 @@ function makeStory(ref: string, projectId: string, priority: number): CodeStory 
   };
 }
 
-function makeSidecar(ref: string, projectId: string, priority: number): CodeItem {
+function makeSidecar(ref: string, projectId: string, priority: number, rev: number): CodeItem {
   return {
     item_id: ref,
     project_id: projectId,
@@ -128,6 +129,7 @@ function makeSidecar(ref: string, projectId: string, priority: number): CodeItem
     done_at: null,
     updated_at: '2025-01-01T00:00:00Z',
     priority,
+    priority_rev: rev,
   };
 }
 
@@ -152,7 +154,13 @@ function rowOrder(): string[] {
     .map((button) => /^Move (\S+) up$/.exec(button.getAttribute('aria-label') ?? '')?.[1] ?? '');
 }
 
-type Click = 'up' | 'down' | 'to top of project' | 'to bottom of project';
+type Click =
+  | 'up'
+  | 'down'
+  | 'to top of project'
+  | 'to bottom of project'
+  | 'to top of list'
+  | 'to bottom of list';
 
 /** Where a click leaves the visible list, when the screen is showing `order`. */
 function clicked(order: string[], index: number, click: Click): string[] {
@@ -164,6 +172,8 @@ function clicked(order: string[], index: number, click: Click): string[] {
     down: index + 1,
     'to top of project': 0,
     'to bottom of project': next.length,
+    'to top of list': 0,
+    'to bottom of list': next.length,
   }[click];
   next.splice(target, 0, ref);
   return next;
@@ -185,6 +195,8 @@ async function runSession(seed: number): Promise<string[]> {
   const projectOf = new Map(stories.map((story) => [story.ref ?? '', story.project_id ?? '']));
   const server = new Map(stories.map((story) => [story.ref ?? '', story.priority ?? 0]));
   let lastEchoAt = 0;
+  // `code_items.priority_rev`: every committed rank gets the next revision, as the trigger does.
+  let revision = 0;
 
   /** Commit `writes` after a delay, echo them in commit order, and reply with them. */
   function respond(run: () => [string, number][]): Promise<CodeItem[]> {
@@ -193,7 +205,8 @@ async function runSession(seed: number): Promise<string[]> {
         () => {
           const rows = run().map(([ref, priority]) => {
             server.set(ref, priority);
-            return makeSidecar(ref, projectOf.get(ref) ?? '', priority);
+            revision += 1;
+            return makeSidecar(ref, projectOf.get(ref) ?? '', priority, revision);
           });
           const echoAt = Math.max(lastEchoAt + 1, Date.now() + between(0, 600));
           lastEchoAt = echoAt;
@@ -232,7 +245,12 @@ async function runSession(seed: number): Promise<string[]> {
       return [[ref, (neighbour + extreme) / 2]];
     }),
   );
-  mockMoveCode.mockImplementation(() => Promise.reject(new Error('not clicked here')));
+  mockMoveCode.mockImplementation((ref, toTop) =>
+    respond(() => {
+      const all = others(ref).map(([, priority]) => priority);
+      return [[ref, toTop ? Math.min(...all) - 1 : Math.max(...all) + 1]];
+    }),
+  );
 
   const view = renderWithProviders(<AlfredBacklog />, {
     projects: [ALFRED, RELAY],
@@ -250,8 +268,10 @@ async function runSession(seed: number): Promise<string[]> {
     }
     const index = between(0, shown.length);
     const clicks: Click[] = [
-      ...(index > 0 ? (['up', 'to top of project'] as const) : []),
-      ...(index < shown.length - 1 ? (['down', 'to bottom of project'] as const) : []),
+      ...(index > 0 ? (['up', 'to top of project', 'to top of list'] as const) : []),
+      ...(index < shown.length - 1
+        ? (['down', 'to bottom of project', 'to bottom of list'] as const)
+        : []),
     ];
     const click = clicks[between(0, clicks.length)] ?? 'down';
     fireEvent.click(screen.getByRole('button', { name: `Move ${shown[index] ?? ''} ${click}` }));

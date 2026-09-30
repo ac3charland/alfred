@@ -120,7 +120,8 @@ function makeStory(itemId: string, overrides: Partial<CodeStory> = {}): CodeStor
   };
 }
 
-function makeSidecar(itemId: string, priority: number): CodeItem {
+/** A saved `code_items` row; `priorityRev` is the revision the database stamped its rank with. */
+function makeSidecar(itemId: string, priority: number, priorityRev = 0): CodeItem {
   return {
     item_id: itemId,
     project_id: 'p1',
@@ -141,6 +142,7 @@ function makeSidecar(itemId: string, priority: number): CodeItem {
     done_at: null,
     updated_at: '2025-01-02T00:00:00Z',
     priority,
+    priority_rev: priorityRev,
   };
 }
 
@@ -367,7 +369,7 @@ describe('Backlog', () => {
     // The row re-sorts on screen instantly — no waiting on the network for this.
     expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
 
-    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
+    // Only the network SYNC waits (the store's priority queue), so the call lands after a delay.
     await waitFor(() => {
       expect(mockReorderCode).toHaveBeenCalledWith('ALF-b', 'ALF-a');
     });
@@ -425,7 +427,7 @@ describe('Backlog', () => {
     // The row re-sorts on screen instantly — no waiting on the network for this.
     expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'ALF-b']);
 
-    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
+    // Only the network SYNC waits (the store's priority queue), so the call lands after a delay.
     await waitFor(() => {
       expect(mockMoveCode).toHaveBeenCalledWith('ALF-c', true);
     });
@@ -445,7 +447,7 @@ describe('Backlog', () => {
     // The row re-sorts on screen instantly — no waiting on the network for this.
     expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a']);
 
-    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
+    // Only the network SYNC waits (the store's priority queue), so the call lands after a delay.
     await waitFor(() => {
       expect(mockMoveCode).toHaveBeenCalledWith('ALF-a', false);
     });
@@ -475,7 +477,7 @@ describe('Backlog', () => {
       expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'RLP-1']);
       expect(mockMoveCode).not.toHaveBeenCalled();
 
-      // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a delay.
+      // Only the network SYNC waits (the store's priority queue), so the call lands after a delay.
       await waitFor(() => {
         expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-c', true);
       });
@@ -493,7 +495,7 @@ describe('Backlog', () => {
       expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
       expect(mockMoveCode).not.toHaveBeenCalled();
 
-      // Only the network SYNC is debounced (backlog-row.tsx). Once it lands, the reconciled
+      // Only the network SYNC waits (the store's priority queue). Once it lands, the reconciled
       // priority (25) corrects the order — a moves back ahead of c, still behind the other
       // project's story, which never moved.
       await waitFor(() => {
@@ -677,8 +679,8 @@ describe('Backlog', () => {
       const first = deferred<CodeItem[]>();
       mockReorderCode
         .mockReturnValueOnce(first.promise)
-        .mockResolvedValueOnce([makeSidecar('a', 3), makeSidecar('c', 2)])
-        .mockResolvedValueOnce([makeSidecar('a', 4), makeSidecar('d', 3)]);
+        .mockResolvedValueOnce([makeSidecar('a', 3, 3), makeSidecar('c', 2, 4)])
+        .mockResolvedValueOnce([makeSidecar('a', 4, 5), makeSidecar('d', 3, 6)]);
       renderBacklog([
         makeStory('a', { priority: 1 }),
         makeStory('b', { priority: 2 }),
@@ -696,7 +698,7 @@ describe('Backlog', () => {
       // The first reply describes the Backlog as it stood BEFORE the second click. It must not
       // drag ALF-a back up to share ALF-c's rank.
       await act(async () => {
-        first.resolve([makeSidecar('a', 2), makeSidecar('b', 1)]);
+        first.resolve([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]);
         await Promise.resolve();
       });
       expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
@@ -719,7 +721,7 @@ describe('Backlog', () => {
       const first = deferred<CodeItem[]>();
       mockReorderCode
         .mockReturnValueOnce(first.promise)
-        .mockResolvedValueOnce([makeSidecar('a', 3), makeSidecar('c', 2)]);
+        .mockResolvedValueOnce([makeSidecar('a', 3, 3), makeSidecar('c', 2, 4)]);
       renderBacklog([
         makeStory('a', { priority: 1 }),
         makeStory('b', { priority: 2 }),
@@ -736,7 +738,7 @@ describe('Backlog', () => {
       expect(mockReorderCode).toHaveBeenCalledTimes(1);
 
       await act(async () => {
-        first.resolve([makeSidecar('a', 2), makeSidecar('b', 1)]);
+        first.resolve([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]);
         await Promise.resolve();
       });
       await settle();
@@ -750,9 +752,9 @@ describe('Backlog', () => {
     it('sends nudges on different rows to the server in the order they were clicked', async () => {
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
       mockReorderCode
-        .mockResolvedValueOnce([makeSidecar('a', 2), makeSidecar('b', 1)])
-        .mockResolvedValueOnce([makeSidecar('c', 2), makeSidecar('a', 3)])
-        .mockResolvedValueOnce([makeSidecar('a', 2), makeSidecar('c', 3)]);
+        .mockResolvedValueOnce([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)])
+        .mockResolvedValueOnce([makeSidecar('c', 2, 3), makeSidecar('a', 3, 4)])
+        .mockResolvedValueOnce([makeSidecar('a', 2, 5), makeSidecar('c', 3, 6)]);
       renderBacklog([
         makeStory('a', { priority: 1 }),
         makeStory('b', { priority: 2 }),
@@ -779,7 +781,7 @@ describe('Backlog', () => {
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
       const second = deferred<CodeItem[]>();
       mockReorderCode
-        .mockResolvedValueOnce([makeSidecar('a', 2), makeSidecar('b', 1)])
+        .mockResolvedValueOnce([makeSidecar('a', 2, 3), makeSidecar('b', 1, 2)])
         .mockReturnValueOnce(second.promise);
       renderBacklog([
         makeStory('a', { priority: 1 }),
@@ -796,7 +798,7 @@ describe('Backlog', () => {
       // The first swap's row changes stream back only now: ALF-a parked above everything, ALF-b
       // given ALF-a's old rank, then ALF-a given ALF-b's. None of them may move a row the owner
       // has since moved again.
-      for (const row of [makeSidecar('a', 0), makeSidecar('b', 1), makeSidecar('a', 2)]) {
+      for (const row of [makeSidecar('a', 0, 1), makeSidecar('b', 1, 2), makeSidecar('a', 2, 3)]) {
         act(() => {
           mockCodeItemsHandler?.({ new: row });
         });
@@ -804,7 +806,7 @@ describe('Backlog', () => {
       }
 
       await act(async () => {
-        second.resolve([makeSidecar('a', 3), makeSidecar('c', 2)]);
+        second.resolve([makeSidecar('a', 3, 5), makeSidecar('c', 2, 4)]);
         await Promise.resolve();
       });
       await settle();
@@ -814,8 +816,8 @@ describe('Backlog', () => {
     it('ignores an echo that trails the reply of a later nudge on the same row, but still lands a rank another tab set', async () => {
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
       mockReorderCode
-        .mockResolvedValueOnce([makeSidecar('a', 2), makeSidecar('b', 1)])
-        .mockResolvedValueOnce([makeSidecar('a', 3), makeSidecar('c', 2)]);
+        .mockResolvedValueOnce([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)])
+        .mockResolvedValueOnce([makeSidecar('a', 3, 3), makeSidecar('c', 2, 4)]);
       renderBacklog([
         makeStory('a', { priority: 1 }),
         makeStory('b', { priority: 2 }),
@@ -831,13 +833,13 @@ describe('Backlog', () => {
 
       // …before realtime delivers the first swap's changes. They describe ALF-a before the second
       // click, so they must not pull it back up level with ALF-c.
-      for (const row of [makeSidecar('a', 2), makeSidecar('b', 1)]) {
+      for (const row of [makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]) {
         act(() => {
           mockCodeItemsHandler?.({ new: row });
         });
         expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
       }
-      for (const row of [makeSidecar('a', 3), makeSidecar('c', 2)]) {
+      for (const row of [makeSidecar('a', 3, 3), makeSidecar('c', 2, 4)]) {
         act(() => {
           mockCodeItemsHandler?.({ new: row });
         });
@@ -846,9 +848,89 @@ describe('Backlog', () => {
 
       // A rank nothing here wrote is someone else's move, and lands as ever.
       act(() => {
-        mockCodeItemsHandler?.({ new: makeSidecar('a', 0) });
+        mockCodeItemsHandler?.({ new: makeSidecar('a', 0, 5) });
       });
       expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c', 'ALF-d']);
+    });
+
+    it("lands a rank another tab committed after this tab's nudge, even when its echo beats the nudge's reply", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const reply = deferred<CodeItem[]>();
+      mockReorderCode.mockReturnValueOnce(reply.promise);
+      renderBacklog([
+        makeStory('a', { priority: 1 }),
+        makeStory('b', { priority: 2 }),
+        makeStory('c', { priority: 3 }),
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await settle();
+      // The swap commits and its changes stream back — then, before its reply lands, another tab
+      // jumps ALF-a to the top of the Backlog.
+      for (const row of [makeSidecar('a', 2, 1), makeSidecar('b', 1, 2), makeSidecar('a', 0, 3)]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+      }
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-a', 'ALF-c']);
+
+      // The reply describes the Backlog before that jump, so the jump must survive it.
+      await act(async () => {
+        reply.resolve([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c']);
+    });
+
+    it('lands the echo of a nudge whose reply was lost, though earlier echoes carried the same ranks', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const down = deferred<CodeItem[]>();
+      const up = deferred<CodeItem[]>();
+      mockReorderCode
+        .mockReturnValueOnce(down.promise)
+        .mockReturnValueOnce(up.promise)
+        .mockRejectedValueOnce(new Error('the reply never came back'));
+      renderBacklog([makeStory('a', { priority: 1 }), makeStory('b', { priority: 2 })]);
+
+      /** One nudge whose changes stream back before its reply does. */
+      async function nudge(
+        button: string,
+        reply: ReturnType<typeof deferred<CodeItem[]>>,
+        rows: CodeItem[],
+      ) {
+        await user.click(screen.getByRole('button', { name: button }));
+        await settle();
+        for (const row of rows) {
+          act(() => {
+            mockCodeItemsHandler?.({ new: row });
+          });
+        }
+        await act(async () => {
+          reply.resolve(rows);
+          await Promise.resolve();
+        });
+        await settle();
+      }
+
+      await nudge('Move ALF-a down', down, [makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]);
+      await nudge('Move ALF-a up', up, [makeSidecar('a', 1, 3), makeSidecar('b', 2, 4)]);
+      expect(rowOrder()).toEqual(['ALF-a', 'ALF-b']);
+
+      // The third nudge reaches the server and commits, but its reply is lost: the screen rolls
+      // back and says so.
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await settle();
+      expect(rowOrder()).toEqual(['ALF-a', 'ALF-b']);
+
+      // Its changes still stream in. They carry ranks the first nudge's echoes carried too, but
+      // they are the newest the server holds, so the screen must end where the server did.
+      for (const row of [makeSidecar('a', 2, 5), makeSidecar('b', 1, 6)]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+      }
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
     });
   });
 
