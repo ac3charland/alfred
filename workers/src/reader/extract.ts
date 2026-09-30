@@ -106,13 +106,17 @@ const POST_PATH = /^(?:\/pub\/[^/?#]+)?\/p\/[^/?#]+/;
  * template's `READ IN APP` sits on the `/pub/…/p/…` link, which the path rule takes first and
  * without needing to read any anchor text; the wordings kept here are the ones older and
  * hand-rolled templates use, where the anchor text is the only route from the row to the post.
- * "Web" is taken wherever "online" is and "email" wherever "post" is, because templates name the
- * same link both ways ("Read on web", Mailchimp's "View this email in your browser"); "web" has to
- * end the word, or "Read on the website" would be a link to somewhere else.
+ *
+ * Templates word that link in too many ways to list ("Read on web", Mailchimp's "View this email
+ * in your browser", "View it online", "View as a web page"), so the pattern follows the sentence
+ * they share rather than any one phrasing: a verb (view, read, open), optionally what it acts on
+ * (this, it, the post, email, newsletter, issue, message), then where — in a browser, online, on
+ * the web, as a web page. "Web version" and "online version" stand on their own. "Web" has to end
+ * the word, so "Read on the website" or "Read on web.dev" is a link to somewhere else.
  * Each addition is a strict widening — every string the previous pattern matched still matches.
  */
 const VIEW_IN_BROWSER =
-  /view (this )?((post|email) )?(in|on) (your )?browser|(read|view) (online|on (the )?web\b)|read in app/i;
+  /(view|read|open) ((this|it) )?((post|email|newsletter|issue|message) )?((in|on) (your |a )?(web )?browser|online|on (the )?web(?![\w.-])|as (a )?web ?page)|(web|online) version|read in app/i;
 
 /** The entities worth decoding by name inside an `href`. Everything else arrives numerically. */
 const NAMED_ENTITIES: Record<string, string> = {
