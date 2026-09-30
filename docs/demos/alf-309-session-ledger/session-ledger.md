@@ -12,7 +12,7 @@ Everything below runs on invented fixtures: the repo is public, so no real ledge
 
 ## 1 · Build and report over the fixture set
 
-The committed fixtures are 20 session-record lines (one invalid, one truncated, one a subagent could not fetch, one from another repo), 15 PRs and the ledger inputs. They join against a scripted git repo whose every commit is pinned: two versions of the builder file (`prompt=` then `q=`), skills and specs landing over time, a PR branch that merges main in and takes an owner commit after it opens, and a branch forked from an old commit.
+The committed fixtures are 21 session-record lines (one invalid, one truncated, one a subagent could not fetch, one from another repo), 16 PRs and the ledger inputs. They join against a scripted git repo whose every commit is pinned: two versions of the builder file (`prompt=` then `q=`), skills and specs landing over time, a PR branch that merges main in and takes an owner commit after it opens, and a branch forked from an old commit.
 
 ```bash
 rm -rf /tmp/alf-309-demo && npm run -s fixture-repo -w tools/session-ledger -- /tmp/alf-309-demo/repo
@@ -45,29 +45,29 @@ ls $F/leak.ndjson 2>/dev/null || echo "(nothing written)"
 ```
 
 ```output
-invalid record: batch-2.ndjson:9 (session_17Invalid) — created_at is not a timestamp
-invalid record: batch-2.ndjson:11 (no id) — not JSON
-built 19 rows → /tmp/alf-309-demo/rows.ndjson
+invalid record: batch-2.ndjson:10 (session_17Invalid) — created_at is not a timestamp
+invalid record: batch-2.ndjson:12 (no id) — not JSON
+built 20 rows → /tmp/alf-309-demo/rows.ndjson
 --- the same build, pointed inside the repo:
 session-ledger: --out <repo>/tools/session-ledger/fixtures/leak.ndjson is inside the git work tree <repo>; write it to the scratchpad.
 (nothing written)
 ```
 
-The run report: coverage, cost and outcome by lane (p90 only once a lane has 10 sessions; rework is not counted for document lanes or for sessions with no PR), and the top warnings.
+The run report: coverage, cost and outcome by lane (p90 only once a lane has 10 sessions; rework is not counted for document lanes or for sessions with no PR; a PR with no `alfred` block gets its own row, since it has an outcome but no lane), and the top warnings.
 
 ```bash
 npm run -s ledger -w tools/session-ledger -- report /tmp/alf-309-demo/rows.ndjson
 ```
 
 ```output
-code_sessions · ac3charland/alfred · 19 sessions · 2026-07-01 → 2026-07-12
+code_sessions · ac3charland/alfred · 20 sessions · 2026-07-01 → 2026-07-12
 
 coverage          rows   pct
-  linked to a PR    15   79%
-  ref known         15   79%
-  prompt rebuilt     9   47%
-  spec resolved      4   of 5 spec-reading sessions
-  cost recorded     16   84%
+  linked to a PR    16   80%
+  ref known         16   80%
+  prompt rebuilt     9   45%
+  spec resolved      4   of 6 spec-reading sessions
+  cost recorded     17   85%
 
 lane                n  median $   p90 $   merged  human-reworked
   implementation    4     18.05       —        3        1
@@ -77,10 +77,11 @@ lane                n  median $   p90 $   merged  human-reworked
   spike             1     41.22       —        1        —
   epic-refinement   1     58.70       —        1        —
   epic-implementation
-                    1    176.53       —        0        0
-  (no PR)           5      3.00       —        —        —
+                    2     90.02       —        0        0
+  (no PR)           4      4.46       —        —        —
+  (PR, no block)    1      3.00       —        1        1
 
-warnings: 19 · top: no_pr 4 · builder_changed_near_start 2 · builder_missing 2
+warnings: 21 · top: no_pr 4 · builder_missing 3 · builder_changed_near_start 2
 ```
 
 ## 2 · One rebuilt row
@@ -103,7 +104,7 @@ console.log(prompt);
  "session_id": "session_01ImplSpec",
  "repo": "ac3charland/alfred",
  "title": "ALF-9 implement the fixture story",
- "session_created_at": "2026-07-10T01:00:00Z",
+ "session_created_at": "2026-07-10T01:00:00.000Z",
  "status": "SESSION_STATUS_BUCKET_COMPLETED",
  "configured_model": "claude-sonnet-5-5",
  "model": "claude-sonnet-5-5",
@@ -191,7 +192,7 @@ console.log(JSON.stringify(pick("session_13NoPrRef", ["ref", "launch_lane", "pr_
 
 ## 3 · The routes, live
 
-The real app, booted against the in-memory Supabase the E2E suite uses, with a demo ledger key and ingest key configured. `with-app.sh` seeds one project, epic and story, reads the ledger inputs, walks the auth and validation answers, then plays the case the recorded-wins rule exists for: a recording hook has already written a session's exact prompt mid-run, and the backfill later pushes all 19 fixture rows over it through the CLI.
+The real app, booted against the in-memory Supabase the E2E suite uses, with a demo ledger key and ingest key configured. `with-app.sh` seeds one project, epic and story, reads the ledger inputs, walks the auth and validation answers, then plays the case the recorded-wins rule exists for: a recording hook has already written a session's exact prompt mid-run, and the backfill later pushes all 20 fixture rows over it through the CLI.
 
 ```bash
 docs/demos/alf-309-session-ledger/with-app.sh
@@ -214,8 +215,8 @@ ledger key, 101 rows .......... HTTP 413
 == mid-session, a recording hook wrote session_01ImplSpec: its exact prompt, cost 1.00, PR still open
 {"upserted":1,"kept_recorded":0}
 
-== the backfill pushes all 19 fixture rows through the CLI (LEDGER_API_KEY and ALFRED_BASE_URL set)
-pushed 19 rows (19 upserted, 1 kept recorded prompts)
+== the backfill pushes all 20 fixture rows through the CLI (LEDGER_API_KEY and ALFRED_BASE_URL set)
+pushed 20 rows (20 upserted, 1 kept recorded prompts)
 
 == the stored row kept the recorded prompt; cost and PR state refreshed from the backfill
 {"prompt":"the prompt exactly as the owner sent it","prompt_source":"recorded","cost_usd":33.037491,"pr_state":"merged"}
@@ -241,4 +242,38 @@ The stored row:
   cost_usd      "12.250000"
   pr_state      "merged"
   warnings      ["builder_changed_near_start"]
+```
+
+## 5 · Checking the subagents' copies
+
+Subagents copy the session records, so the lead re-fetches a random sample itself and `verify` compares every field the ledger derives from. `sample` draws max(5, 5%) of the ids, skipping sessions still working, whose usage moves between copy and re-fetch. The ids are random, so this prints only what must hold.
+
+```bash
+F=tools/session-ledger/fixtures
+npm run -s ledger -w tools/session-ledger -- sample --sessions $F/sessions > /tmp/alf-309-demo/sample.txt
+echo "sampled: $(wc -l < /tmp/alf-309-demo/sample.txt) ids, $(sort -u /tmp/alf-309-demo/sample.txt | wc -l) distinct"
+echo "found as records in the copies: $(cat $F/sessions/*.ndjson | grep -o "\"id\": \"session_[A-Za-z0-9]*\"" | grep -c -F -f /tmp/alf-309-demo/sample.txt)"
+```
+
+```output
+sampled: 5 ids, 5 distinct
+found as records in the copies: 5
+```
+
+A faithful re-fetch passes; one where a single `cost_usd` differs by a cent fails, naming the session and field.
+
+```bash
+F=tools/session-ledger/fixtures
+head -n 1 $F/sessions/batch-1.ndjson > /tmp/alf-309-demo/verify-ok.ndjson
+node -e "const r = JSON.parse(require(\"fs\").readFileSync(\"/tmp/alf-309-demo/verify-ok.ndjson\", \"utf8\")); r.external_metadata.usage.cost_usd += 0.01; console.log(JSON.stringify(r));" > /tmp/alf-309-demo/verify-bad.ndjson
+npm run -s ledger -w tools/session-ledger -- verify --sessions $F/sessions --against /tmp/alf-309-demo/verify-ok.ndjson; echo "exit $?"
+npm run -s ledger -w tools/session-ledger -- verify --sessions $F/sessions --against /tmp/alf-309-demo/verify-bad.ndjson; echo "exit $?"
+```
+
+```output
+verified 1 session(s): every ledger field matches.
+exit 0
+mismatch: session_01ImplSpec usage
+1 mismatch(es): re-fetch the offending batches.
+exit 1
 ```

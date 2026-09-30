@@ -88,7 +88,7 @@ jq -c 'select(.session_id == "session_01ImplSpec") | . + {prompt: "the prompt ex
 echo
 
 echo
-echo "== the backfill pushes all 19 fixture rows through the CLI (LEDGER_API_KEY and ALFRED_BASE_URL set)"
+echo "== the backfill pushes all 20 fixture rows through the CLI (LEDGER_API_KEY and ALFRED_BASE_URL set)"
 cd "$ROOT"
 ALFRED_BASE_URL="$APP" npm run -s ledger -w tools/session-ledger -- push tools/session-ledger/fixtures/golden-rows.ndjson --report | tail -n 1
 
