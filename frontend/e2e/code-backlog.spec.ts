@@ -74,9 +74,9 @@ test('reorders a story up with the chevron and persists the new order', async ({
   await expect(rows.nth(0)).toContainText('ALF-3');
 
   // Move ALF-4 up: it swaps priority with ALF-3 and leads the list, INSTANTLY (the on-screen
-  // reorder isn't debounced, only the network sync is — see backlog-row.tsx). The swap exchanges
-  // two ADJACENT priorities (2 ↔ 1) through the `swap_code_priority` RPC under a unique(priority)
-  // index — the exact case that 409'd before 0006. A failed swap would roll the optimistic move
+  // reorder isn't debounced, only the network sync is — see the priority queue in code-store.tsx).
+  // The swap exchanges two ADJACENT priorities (2 ↔ 1) through the `swap_code_priority` RPC under a
+  // unique(priority) constraint — the exact case that 409'd before 0006. A failed swap would roll the optimistic move
   // back, leaving ALF-3 on top; asserting the new order proves the swap actually committed.
   const reorderSynced = page.waitForResponse(
     (response) =>
@@ -112,7 +112,8 @@ test('jumps a story to the top and the bottom of the whole Backlog with the arro
 
   // Bump the LAST row to the top: move_code_priority re-ranks it below every live priority in one
   // shot (min-1), unlike the adjacent swap. It should leap over BOTH rows above it, not just one.
-  // The on-screen jump is instant; only the network sync debounces (see backlog-row.tsx).
+  // The on-screen jump is instant; only the network sync debounces (see the priority queue in
+  // code-store.tsx).
   const moveSynced = page.waitForResponse(
     (response) =>
       response.url().includes('/api/code/move') && response.request().method() === 'POST',
@@ -163,7 +164,7 @@ test('jumps a story to the top/bottom of its own PROJECT without disturbing anot
 
   // Bump ALF-5 to the top of ITS PROJECT: it must outrank ALF-3/ALF-4 (its own project) but stay
   // BEHIND RLP-1 (the other project), which never moves. The on-screen jump is instant; only the
-  // network sync debounces (see backlog-row.tsx).
+  // network sync debounces (see the priority queue in code-store.tsx).
   const moveInProjectSynced = page.waitForResponse(
     (response) =>
       response.url().includes('/api/code/move-project') && response.request().method() === 'POST',
