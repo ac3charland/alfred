@@ -26,6 +26,7 @@ import { TypeGlyph } from '@/components/tasks/type-glyph';
 import type { ConvertedEpic } from '@/lib/api-client';
 import { projectBoardHref, storyBoardHref } from '@/lib/code/board-links';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
+import { useBucketName } from '@/lib/hooks/use-bucket-name';
 import { useClassifiedFlash } from '@/lib/hooks/use-classified-flash';
 import { useDismiss } from '@/lib/hooks/use-dismiss';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
@@ -51,7 +52,7 @@ import { useToastActions } from '@/lib/stores/toast-store';
 import { useWikiConfig } from '@/lib/stores/wiki-store';
 import { classificationOrigin } from '@/lib/tasks/classification';
 import { dispatchReadiness, rowDispatchAction } from '@/lib/tasks/dispatch';
-import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
+import { isDispatched } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
 import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
 import type { CodeStory } from '@/lib/types';
@@ -133,6 +134,7 @@ export function TaskRow({
   reorderGapBelow,
 }: TaskRowProperties) {
   const folders = useFolders();
+  const bucketName = useBucketName();
   const allTasks = useTasks();
   const {
     completeTask,
@@ -390,13 +392,10 @@ export function TaskRow({
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — constant dep-array literal; every element is Object.is-equal across renders so React never recomputes, identical to [].
     [isContextRow, allTasks, node.parent_id],
   );
-  const contextFolderId = residentFolderId(node);
   const contextLabel = isContextRow
     ? ancestorTitles.length > 0
       ? ancestorTitles.join(' > ')
-      : contextFolderId
-        ? (folders.find((f) => f.id === contextFolderId)?.name ?? 'Unknown')
-        : 'Inbox'
+      : bucketName(node)
     : null;
 
   const { rowLeft: indentLeft, metaLeft: metaIndentLeft } = useIndentation(depth);
