@@ -1649,7 +1649,7 @@ function handleRpc(req, res, fn, body) {
   }
 
   // One atomic append of the Further reading URLs not already sent to the named destination
-  // (migration 0046), returning the post row through the route's list columns. An unknown
+  // (migration 0048), returning the post row through the route's list columns. An unknown
   // destination raises, as the function does.
   if (fn === 'append_further_reading_sent' && req.method === 'POST') {
     const column = { reader: 'further_sent_reader', instapaper: 'further_sent_instapaper' }[
