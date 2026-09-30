@@ -72,6 +72,9 @@ const mockFetchBody = jest.mocked(api.fetchWikiPageBody);
 const NOW = new Date('2026-10-03T16:00:00.000Z');
 const REPO = 'ac3charland/knowledge';
 
+/** The small fixture wiki's concept of the day at {@link NOW}. */
+const DAYS_CONCEPT = { title: 'Forgetting curve', href: '/wiki/concepts/forgetting-curve' };
+
 let FIXTURES: { pages: WikiPageRow[]; sync: ReturnType<typeof makeWikiSync> };
 
 function fixture(path: string): WikiPageRow {
@@ -174,13 +177,145 @@ describe('WikiView — the empty snapshot', () => {
   });
 });
 
-describe('WikiView — the index and a section', () => {
-  it("groups every page by section in the wiki's order, each heading with its count", () => {
+/** The page's regions, top to bottom, each by the text of the element that labels it. */
+const regionNames = () =>
+  screen
+    .getAllByRole('region')
+    .map((region) => region.getAttribute('aria-labelledby'))
+    .map((id) => document.querySelector(`[id="${CSS.escape(id ?? '')}"]`)?.textContent);
+
+describe('WikiView — the landing', () => {
+  it("opens on the search box, today's concept, then the web of concepts and entities", () => {
     renderAt('/wiki');
 
-    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Concepts3', 'Entities1', 'Sources2', 'Questions1']);
+    expect(screen.getByRole('searchbox', { name: 'Search the wiki' })).toBeInTheDocument();
+    expect(regionNames()).toEqual(['Concept of the day', 'Concepts & entities4']);
+    const card = screen.getByRole('region', { name: 'Concept of the day' });
+    const web = screen.getByRole('region', { name: /Concepts & entities/ });
+    expect(
+      screen.getByRole('searchbox').compareDocumentPosition(card) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(card.compareDocumentPosition(web) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Nothing follows the web.
+    expect(web.nextElementSibling).toBeNull();
+  });
 
+  it("features the day's concept in the card", () => {
+    renderAt('/wiki');
+
+    const card = screen.getByRole('region', { name: 'Concept of the day' });
+    expect(within(card).getByRole('link', { name: DAYS_CONCEPT.title })).toHaveAttribute(
+      'href',
+      DAYS_CONCEPT.href,
+    );
+  });
+
+  it('draws the concepts and entities as a web of links, and lists no section on the landing', () => {
+    renderAt('/wiki');
+
+    const web = screen.getByRole('group', { name: /Concepts & entities/ });
+    expect(
+      within(web)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual([
+      'Forgetting curveForgetting curve, concept',
+      'Habit loopHabit loop, concept',
+      'Habit stackingHabit stacking, concept',
+      'James ClearJames Clear, entity',
+    ]);
+    expect(screen.queryByRole('region', { name: /^Sources/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /^Questions/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Atomic Habits/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /How long does a habit/ })).not.toBeInTheDocument();
+  });
+
+  it('swaps the card and the web for search results, and brings them back when cleared', async () => {
+    const user = userEvent.setup();
+    jest.mocked(api.searchWikiBodies).mockReturnValue(new Promise(() => {}));
+    renderAt('/wiki');
+    const box = screen.getByRole('searchbox', { name: 'Search the wiki' });
+
+    await user.type(box, 'atomic');
+
+    expect(screen.queryByRole('region', { name: 'Concept of the day' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /Concepts & entities/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^Atomic Habits/ })).toBeInTheDocument();
+
+    await user.clear(box);
+
+    expect(screen.getByRole('region', { name: 'Concept of the day' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /Concepts & entities/ })).toBeInTheDocument();
+  });
+
+  it('shows no card when there are no concepts, and still draws the entities', () => {
+    renderAt('/wiki', {
+      pages: [
+        toWikiIndexRow(fixture('wiki/entities/james-clear.md')),
+        toWikiIndexRow(fixture('wiki/sources/atomic-habits.md')),
+      ],
+    });
+
+    expect(screen.queryByRole('region', { name: 'Concept of the day' })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('group', { name: /Concepts & entities/ })).getByRole('link', {
+        name: 'James Clear, entity',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when there are no concepts or entities, pointing to the nav', () => {
+    renderAt('/wiki', {
+      pages: [
+        toWikiIndexRow(fixture('wiki/sources/atomic-habits.md')),
+        toWikiIndexRow(fixture('wiki/questions/how-long-to-form-a-habit.md')),
+      ],
+    });
+
+    expect(screen.getByRole('searchbox', { name: 'Search the wiki' })).toBeInTheDocument();
+    expect(screen.getByText('No concepts or entities yet')).toBeInTheDocument();
+    expect(screen.getByText('Sources and questions are listed in the nav.')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Concept of the day' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Atomic Habits/ })).not.toBeInTheDocument();
+  });
+
+  it('opens a page from the web, client-side', async () => {
+    const user = userEvent.setup();
+    renderAt('/wiki');
+
+    await user.click(
+      within(screen.getByRole('group', { name: /Concepts & entities/ })).getByRole('link', {
+        name: 'Habit stacking, concept',
+      }),
+    );
+
+    expect(pushState).toHaveBeenCalledWith(null, '', '/wiki/concepts/habit-stacking');
+    expect(screen.getByRole('heading', { level: 3, name: 'Habit stacking' })).toBeInTheDocument();
+  });
+
+  it("opens the day's concept from its card", async () => {
+    const user = userEvent.setup();
+    renderAt('/wiki');
+
+    await user.click(
+      within(screen.getByRole('region', { name: 'Concept of the day' })).getByRole('link', {
+        name: DAYS_CONCEPT.title,
+      }),
+    );
+
+    expect(pushState).toHaveBeenCalledWith(null, '', DAYS_CONCEPT.href);
+    expect(screen.getByRole('heading', { level: 3, name: DAYS_CONCEPT.title })).toBeInTheDocument();
+  });
+});
+
+describe('WikiView — a section', () => {
+  it('lists every page of one section on its own route, in index order', () => {
+    renderAt('/wiki/concepts');
+
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Concepts3',
+    ]);
     const concepts = screen.getByRole('region', { name: /Concepts/ });
     expect(
       within(concepts)
@@ -191,22 +326,11 @@ describe('WikiView — the index and a section', () => {
       'Habit loopCue, craving, response, reward — the four-step cycle behind every habit.',
       'Habit stackingAnchoring a new behaviour to an existing routine rather than a clock time.',
     ]);
-    expect(within(concepts).getByRole('link', { name: /Habit stacking/ })).toHaveAttribute(
-      'href',
-      '/wiki/concepts/habit-stacking',
-    );
+    expect(screen.queryByRole('group', { name: /Concepts & entities/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Concept of the day' })).not.toBeInTheDocument();
   });
 
-  it('skips an empty section on the index', () => {
-    renderAt('/wiki', {
-      pages: [toWikiIndexRow(fixture('wiki/concepts/habit-stacking.md'))],
-    });
-
-    expect(screen.getByRole('region', { name: /Concepts/ })).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: /Entities/ })).not.toBeInTheDocument();
-  });
-
-  it('lists one section only on its own route', () => {
+  it('lists the sources on theirs', () => {
     renderAt('/wiki/sources');
 
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
@@ -226,7 +350,7 @@ describe('WikiView — the index and a section', () => {
 
   it('opens a page from its row, client-side', async () => {
     const user = userEvent.setup();
-    renderAt('/wiki');
+    renderAt('/wiki/concepts');
 
     await user.click(screen.getByRole('link', { name: /Habit stacking/ }));
 
@@ -250,7 +374,7 @@ describe('WikiView — not found', () => {
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole('link', { name: 'Back to the wiki' }));
-    expect(screen.getByRole('region', { name: /Concepts/ })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /Concepts & entities/ })).toBeInTheDocument();
   });
 });
 

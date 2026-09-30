@@ -1,15 +1,27 @@
+import type { Locator, Page } from '@playwright/test';
+
 import { type SeedState, WIKI_REPO, makeWikiPage, wikiFixtureSet } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
  * The Wiki module's reading room (ALF-261), end to end against the mock backend seeded with the
- * linked fixture wiki: opening pages, following each kind of link, backlinks, a heading anchor
- * landing, and the body search. These run in a real browser for what jsdom can't show — the
- * real react-markdown render (Jest mocks it), heading ids on real heading elements, a hash scroll,
- * and the phone layout.
+ * linked fixture wiki: the landing's card and web, opening pages, following each kind of link,
+ * backlinks, a heading anchor landing, and the body search. These run in a real browser for what
+ * jsdom can't show — the web's real layout and physics, the real react-markdown render (Jest mocks
+ * it), heading ids on real heading elements, a hash scroll, and the phone layout.
  */
 
 const STACKING = '/wiki/concepts/habit-stacking';
+
+/** The landing's web: a group of links named by the heading above it. */
+const web = (page: Page) => page.getByRole('group', { name: /Concepts & entities/ });
+
+/** Where `locator` sits on the page; it must be laid out. */
+async function boxOf(locator: Locator) {
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error('a landing element has no box');
+  return box;
+}
 
 /**
  * A page long enough to scroll, with one code-span heading far below the fold — and a screen of
@@ -36,21 +48,85 @@ async function seedWiki(
 }
 
 test.describe('the Wiki reading room', () => {
-  test('opens a page from the index', async ({ page, seed }) => {
+  test('opens a page from a node of the landing web', async ({ page, seed }) => {
     await seedWiki(seed);
     await page.goto('/wiki');
 
     await expect(page.getByText('7 pages · synced', { exact: false })).toBeVisible();
-    await page
-      .getByRole('region', { name: /Concepts/ })
-      .getByRole('link', { name: /Habit stacking/ })
-      .click();
+    await web(page).getByRole('link', { name: 'Habit stacking, concept' }).click();
 
     await expect(page).toHaveURL(STACKING);
     await expect(page.getByRole('heading', { level: 3, name: 'Habit stacking' })).toBeVisible();
     await expect(page.getByTestId('wiki-body')).toContainText(
       'A new habit survives when its cue is something you already do.',
     );
+  });
+
+  test("opens the day's concept from its card", async ({ page, seed }) => {
+    await seedWiki(seed);
+    await page.goto('/wiki');
+
+    const card = page.getByRole('region', { name: 'Concept of the day' });
+    const title = card.getByRole('link');
+    const name = await title.textContent();
+    const href = await title.getAttribute('href');
+    // The whole card is the link: a click away from the title still opens it.
+    const box = await boxOf(card);
+    await page.mouse.click(box.x + box.width - 12, box.y + box.height - 12);
+
+    await expect(page).toHaveURL(href ?? '');
+    await expect(page.getByRole('heading', { level: 3, name: name ?? '' })).toBeVisible();
+  });
+
+  test('walks the web from the keyboard and opens a page with Enter', async ({ page, seed }) => {
+    await seedWiki(seed);
+    await page.goto('/wiki');
+    const links = web(page).getByRole('link');
+    await expect(links).toHaveCount(4);
+    const hrefs = await links.evaluateAll((all) => all.map((link) => link.getAttribute('href')));
+
+    // Search box, then the card, then the web's one tab stop: today's concept.
+    await page.getByRole('searchbox', { name: 'Search the wiki' }).focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    const focused = await page.evaluate(() => ({
+      href: document.activeElement?.getAttribute('href'),
+      inWeb: document.activeElement?.closest('[data-wiki-node]') !== null,
+    }));
+    const cardHref = await page
+      .getByRole('region', { name: 'Concept of the day' })
+      .getByRole('link')
+      .getAttribute('href');
+    expect(focused).toEqual({ href: cardHref, inWeb: true });
+    const landed = focused.href;
+
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
+
+    const next = hrefs[hrefs.indexOf(landed ?? '') + 1] ?? hrefs.at(-1);
+    await expect(page).toHaveURL(next ?? '');
+  });
+
+  test('swaps the card and the web for search results, and brings them back', async ({
+    page,
+    seed,
+  }) => {
+    await seedWiki(seed);
+    await page.goto('/wiki');
+    const box = page.getByRole('searchbox', { name: 'Search the wiki' });
+    await expect(web(page)).toBeVisible();
+
+    await box.fill('atomic');
+
+    await expect(web(page)).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Concept of the day' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /^Atomic Habits/ })).toBeVisible();
+
+    await box.fill('');
+
+    await expect(web(page)).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Concept of the day' })).toBeVisible();
+    await expect(web(page)).toHaveJSProperty('offsetHeight', 440);
   });
 
   test('follows an in-app link in the body', async ({ page, seed }) => {
@@ -280,5 +356,63 @@ test.describe('the Wiki reading room — phone (390×844)', () => {
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
       .toBeLessThanOrEqual(390);
+  });
+});
+
+test.describe('the Wiki landing — a short window', () => {
+  test.use({ viewport: { width: 1280, height: 640 } });
+
+  test('lets a plain wheel over the web scroll the page, and zooms only with ⌘/Ctrl', async ({
+    page,
+    seed,
+  }) => {
+    await seedWiki(seed);
+    await page.goto('/wiki');
+    await expect(web(page).getByRole('link', { name: 'James Clear, entity' })).toBeVisible();
+    const scrolled = () => page.evaluate(() => globalThis.scrollY);
+    const stage = await boxOf(web(page));
+    await page.mouse.move(stage.x + stage.width / 2, stage.y + 40);
+
+    await page.mouse.wheel(0, 200);
+
+    await expect.poll(scrolled).toBeGreaterThan(0);
+    await expect(page.getByRole('button', { name: 'Fit the web' })).toHaveCount(0);
+
+    const before = await scrolled();
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -100);
+    await page.keyboard.up('Control');
+
+    await expect(page.getByRole('button', { name: 'Fit the web' })).toBeVisible();
+    expect(await scrolled()).toBe(before);
+  });
+});
+
+test.describe('the Wiki landing — phone (390×844)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('fits the card and the web in the screen, and a tap on a node opens it', async ({
+    page,
+    seed,
+  }) => {
+    await seedWiki(seed);
+    await page.goto('/wiki');
+
+    await expect(web(page)).toBeVisible();
+    await expect(web(page)).toHaveJSProperty('offsetHeight', 320);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+      .toBeLessThanOrEqual(390);
+    const boxes = await Promise.all(
+      [page.getByRole('region', { name: 'Concept of the day' }), web(page)].map((locator) =>
+        boxOf(locator),
+      ),
+    );
+    expect(boxes.filter((box) => box.x < 0 || box.x + box.width > 390)).toEqual([]);
+
+    await web(page).getByRole('link', { name: 'James Clear, entity' }).tap();
+
+    await expect(page).toHaveURL('/wiki/entities/james-clear');
+    await expect(page.getByRole('heading', { level: 3, name: 'James Clear' })).toBeVisible();
   });
 });
