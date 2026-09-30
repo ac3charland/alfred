@@ -26,7 +26,8 @@ export interface FolderMove {
  *
  * @param itemId           the dragged task's id (`active.id`)
  * @param overId           the drop target's id (`over.id`), or `null` if dropped on nothing
- * @param currentFolderId  the dragged task's current `folder_id`
+ * @param currentFolderId  the folder the dragged task currently LIVES in (`residentFolderId`),
+ *                         not its raw `folder_id` — an Inbox item can carry a folder label
  */
 export function resolveFolderDrop(
   itemId: string,
