@@ -831,6 +831,7 @@ describe('CaptureBox', () => {
     const LINE_HEIGHT = 24;
     const PADDING = 64; // pt-4 + pb-12
     const RESTING_HEIGHT = 3 * LINE_HEIGHT + PADDING;
+    const heightOfLines = (count: number) => `${String(count * LINE_HEIGHT + PADDING)}px`;
     const eightLines = Array.from({ length: 8 }, (_, index) => `line ${String(index + 1)}`).join(
       '\n',
     );
@@ -860,57 +861,132 @@ describe('CaptureBox', () => {
       scrollHeightSpy.mockRestore();
     });
 
-    it('rests at three rows while the text fits them', () => {
+    it('rests at three rows while the text fits them', async () => {
+      const user = userEvent.setup();
       renderWithProviders(<CaptureBox />);
       const textarea = screen.getByRole('textbox', { name: /capture box/i });
 
       expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
 
-      fireEvent.change(textarea, { target: { value: 'one\ntwo' } });
+      await user.paste('one\ntwo');
 
       expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
     });
 
-    it('expands to show every line once the text outgrows three rows', () => {
+    it('expands to show every line once the text outgrows three rows', async () => {
+      const user = userEvent.setup();
       renderWithProviders(<CaptureBox />);
       const textarea = screen.getByRole('textbox', { name: /capture box/i });
 
-      fireEvent.change(textarea, { target: { value: eightLines } });
+      await user.paste(eightLines);
 
-      expect(textarea).toHaveStyle({ height: `${String(8 * LINE_HEIGHT + PADDING)}px` });
+      expect(textarea).toHaveStyle({ height: heightOfLines(8) });
     });
 
-    it('shrinks again as lines are deleted', () => {
+    it('grows a line at a time as Shift+Enter adds newlines, capturing nothing', async () => {
+      const user = userEvent.setup();
       renderWithProviders(<CaptureBox />);
       const textarea = screen.getByRole('textbox', { name: /capture box/i });
-      fireEvent.change(textarea, { target: { value: eightLines } });
 
-      fireEvent.change(textarea, { target: { value: 'line 1\nline 2\nline 3\nline 4\nline 5' } });
+      await user.type(
+        textarea,
+        'a{Shift>}{Enter}{/Shift}b{Shift>}{Enter}{/Shift}c{Shift>}{Enter}{/Shift}d',
+      );
 
-      expect(textarea).toHaveStyle({ height: `${String(5 * LINE_HEIGHT + PADDING)}px` });
+      expect(textarea).toHaveStyle({ height: heightOfLines(4) });
+      expect(mockCreateItem).not.toHaveBeenCalled();
     });
 
-    it('settles back to three rows once the capture is sent', async () => {
+    it('shrinks again as lines are deleted', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      await user.paste(eightLines);
+
+      // Three lines of "\nline N" (7 characters each) off the end leaves five.
+      await user.keyboard('{Backspace>21/}');
+
+      expect(textarea).toHaveStyle({ height: heightOfLines(5) });
+    });
+
+    it('holds the tall box while its ghost flies, then settles back to three rows', async () => {
       mockCreateItem.mockResolvedValue({ id: '1', title: 'line 1' } as Awaited<
         ReturnType<typeof apiClient.createItem>
       >);
+      const user = userEvent.setup();
       renderWithProviders(<CaptureBox />);
       const textarea = screen.getByRole('textbox', { name: /capture box/i });
-      fireEvent.change(textarea, { target: { value: eightLines } });
-      expect(textarea).toHaveStyle({ height: `${String(8 * LINE_HEIGHT + PADDING)}px` });
+      await user.paste(eightLines);
+      expect(textarea).toHaveStyle({ height: heightOfLines(8) });
 
-      fireEvent.keyDown(textarea, { key: 'Enter' });
+      await user.keyboard('{Enter}');
+
+      // The ghost is anchored to the box: shrinking it now would move the send-off's launch point.
+      const ghost = await screen.findByTestId('capture-ghost');
+      expect(textarea).toHaveValue('');
+      expect(textarea).toHaveStyle({ height: heightOfLines(8) });
+
+      fireEvent.animationEnd(ghost);
 
       await waitFor(() => {
-        expect(textarea).toHaveValue('');
+        expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
       });
-      expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
     });
 
-    it('re-fits when the box is resized under a draft, since the text now wraps differently', () => {
+    it('fits the next thought at once, even while the last is still flying off', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'line 1' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+      const user = userEvent.setup();
       renderWithProviders(<CaptureBox />);
       const textarea = screen.getByRole('textbox', { name: /capture box/i });
-      fireEvent.change(textarea, { target: { value: 'one\ntwo' } });
+      await user.paste(eightLines);
+      await user.keyboard('{Enter}');
+      await screen.findByTestId('capture-ghost');
+
+      await user.paste('a\nb\nc\nd');
+
+      expect(textarea).toHaveStyle({ height: heightOfLines(4) });
+    });
+
+    it('settles back at once when motion is reduced, since there is no ghost to wait for', async () => {
+      const originalMatchMedia = globalThis.matchMedia;
+      globalThis.matchMedia = (query: string) =>
+        ({
+          matches: true,
+          media: query,
+          onchange: null,
+          addEventListener: jest.fn(),
+          removeEventListener: jest.fn(),
+          dispatchEvent: jest.fn(),
+        }) as unknown as MediaQueryList;
+
+      try {
+        mockCreateItem.mockResolvedValue({ id: '1', title: 'line 1' } as Awaited<
+          ReturnType<typeof apiClient.createItem>
+        >);
+        const user = userEvent.setup();
+        renderWithProviders(<CaptureBox />);
+        const textarea = screen.getByRole('textbox', { name: /capture box/i });
+        await user.paste(eightLines);
+
+        await user.keyboard('{Enter}');
+
+        await waitFor(() => {
+          expect(textarea).toHaveValue('');
+        });
+        expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+        expect(screen.queryByTestId('capture-ghost')).not.toBeInTheDocument();
+      } finally {
+        globalThis.matchMedia = originalMatchMedia;
+      }
+    });
+
+    it('re-fits when the box is resized under a draft, since the text now wraps differently', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      await user.paste('one\ntwo');
       expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
 
       // A narrower window: the same two lines now wrap onto five more.
@@ -919,16 +995,22 @@ describe('CaptureBox', () => {
         globalThis.dispatchEvent(new Event('resize'));
       });
 
-      expect(textarea).toHaveStyle({ height: `${String(7 * LINE_HEIGHT + PADDING)}px` });
+      expect(textarea).toHaveStyle({ height: heightOfLines(7) });
     });
 
-    it('stops listening for resizes once unmounted', () => {
+    it('removes the very resize handler it added once unmounted', () => {
+      const addListener = jest.spyOn(globalThis, 'addEventListener');
       const removeListener = jest.spyOn(globalThis, 'removeEventListener');
       const { unmount } = renderWithProviders(<CaptureBox />);
+      const added = addListener.mock.calls.filter(([type]) => type === 'resize');
+      expect(added.length).toBeGreaterThan(0);
 
       unmount();
 
-      expect(removeListener).toHaveBeenCalledWith('resize', expect.any(Function));
+      for (const [, handler] of added) {
+        expect(removeListener).toHaveBeenCalledWith('resize', handler);
+      }
+      addListener.mockRestore();
       removeListener.mockRestore();
     });
   });
