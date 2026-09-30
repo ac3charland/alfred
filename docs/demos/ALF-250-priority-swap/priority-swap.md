@@ -22,12 +22,12 @@ The journeys below run the real app against the in-memory mock, on the Backlog f
 
 ![](priority-swap-image-4.png)
 
-**The database half.** `code_items` is published to Realtime, so every row change a swap makes is sent to every open Backlog. The swap used to park the nudged story on a sentinel rank above everything before landing it, and that parked rank went out too: the row flashed to the top of the list and slid back. Migration `0042` swaps in one statement (the uniqueness constraint has been deferrable since `0031`, so it is checked at the end of the statement). The swap also locks both rows before reading their ranks, and migration `0043` stamps every rank with a rising `priority_rev`: an open Backlog lands a server rank only if it is newer than the last one it landed, so a late reply or a trailing echo can never pull a row back. This script boots a throwaway Postgres, applies the migrations, nudges a story down, and prints the row changes the swap made.
+**The database half.** `code_items` is published to Realtime, so every row change a swap makes is sent to every open Backlog. The swap used to park the nudged story on a sentinel rank above everything before landing it, and that parked rank went out too: the row flashed to the top of the list and slid back. Migration `0043` swaps in one statement (the uniqueness constraint has been deferrable since `0031`, so it is checked at the end of the statement). The swap also locks both rows before reading their ranks, and migration `0044` stamps every rank with a rising `priority_rev`: an open Backlog lands a server rank only if it is newer than the last one it landed, so a late reply or a trailing echo can never pull a row back. This script boots a throwaway Postgres, applies the migrations, nudges a story down, and prints the row changes the swap made.
 
-Without `0042`, three changes, the first putting ALF-3 above everything:
+Without `0043`, three changes, the first putting ALF-3 above everything:
 
 ```bash
-node docs/demos/ALF-250-priority-swap/swap-writes.mjs 0042_swap_priority_in_one_write
+node docs/demos/ALF-250-priority-swap/swap-writes.mjs 0043_swap_priority_in_one_write
 ```
 
 ```output
@@ -39,7 +39,7 @@ Row changes Realtime broadcasts:
   3. ALF-3 → -1 (priority_rev 5)
 ```
 
-With `0042`, each story is written once, straight to its final rank:
+With `0043`, each story is written once, straight to its final rank:
 
 ```bash
 node docs/demos/ALF-250-priority-swap/swap-writes.mjs

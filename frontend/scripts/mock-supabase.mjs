@@ -148,7 +148,7 @@ let github = freshGithub();
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
-// Migration 0043's `code_priority_rev_seq`: every write that sets a code_item's priority stamps
+// Migration 0044's `code_priority_rev_seq`: every write that sets a code_item's priority stamps
 // its `priority_rev` from here (`setPriority`), so a later write always carries a higher revision.
 let nextPriorityRev = 1;
 // The subtask sort_order sequence (migration 0018's `item_sort_order_seq`): parked high so an
@@ -889,7 +889,7 @@ function newCodeItem(input) {
     done_at: input.done_at ?? null,
     // Global Backlog rank (migration 0005): explicit when seeded, else the next sequence value.
     priority: input.priority ?? nextPriority++,
-    // Revision of that rank (migration 0043); a seeded row keeps its own, 0 unless it names one.
+    // Revision of that rank (migration 0044); a seeded row keeps its own, 0 unless it names one.
     priority_rev: input.priority_rev ?? 0,
   };
 }
@@ -925,7 +925,7 @@ function syncPrioritySequence() {
   nextPriority = max + 1;
 }
 
-/** Set one code_item's priority and stamp its revision, as migration 0043's trigger does. */
+/** Set one code_item's priority and stamp its revision, as migration 0044's trigger does. */
 function setPriority(target, value) {
   target.priority = value;
   target.priority_rev = nextPriorityRev++;
@@ -1326,7 +1326,7 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
-  // Swap two stories' global priority (the Backlog chevron reorder). Mirrors migration 0042: one
+  // Swap two stories' global priority (the Backlog chevron reorder). Mirrors migration 0043: one
   // statement under a deferrable unique constraint, checked once both rows hold their new rank —
   // so a direct exchange, each story written once, straight to its final rank.
   if (fn === 'swap_code_priority' && req.method === 'POST') {

@@ -26,7 +26,7 @@ begin
   if not exists (
     select 1 from pg_constraint where conname = 'code_items_priority_key' and condeferrable
   ) then
-    raise exception '0042 needs code_items_priority_key to be the deferrable constraint 0031 creates';
+    raise exception '0043 needs code_items_priority_key to be the deferrable constraint 0031 creates';
   end if;
 end $$;
 
