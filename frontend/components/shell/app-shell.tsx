@@ -81,7 +81,7 @@ export function AppShell({
         {/* Main content area */}
         <div className="flex flex-1 flex-col min-w-0">
           {/* Header */}
-          <header className={shellHeaderClass}>
+          <header data-shell-header className={shellHeaderClass}>
             {/* Mobile: hamburger + wordmark (the switcher lives inside the hamburger) */}
             <div className="flex items-center gap-3 md:hidden">
               <ShellMobileNav />
