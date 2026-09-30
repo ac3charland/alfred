@@ -85,7 +85,63 @@ const viewGrant: Rule = {
 };
 
 /**
+ * The numbers two already-applied migrations share, each with the exact filenames that share it.
+ * The applier's ledger is keyed by filename, so renaming either file of a pair would make production
+ * treat it as unapplied and run it again — these pairs stay as committed. Listing filenames (not just
+ * numbers) means a third file arriving at one of these numbers still fails {@link uniqueNumber}.
+ */
+export const LEGACY_SHARED_NUMBERS: ReadonlyMap<number, ReadonlySet<string>> = new Map([
+  [31, new Set(['0031_realtime_items.sql', '0031_respace_code_priority.sql'])],
+  [41, new Set(['0041_project_color.sql', '0041_reader_instapaper_source.sql'])],
+]);
+
+/** The number a migration filename starts with (`0042_x.sql` → 42), or `undefined` when it has none. */
+function migrationNumber(file: string): number | undefined {
+  const digits = /^\d+/.exec(file)?.[0];
+  return digits === undefined ? undefined : Number.parseInt(digits, 10);
+}
+
+/** A migration number as it appears in filenames: zero-padded to four digits. */
+function formatNumber(number: number): string {
+  return String(number).padStart(4, '0');
+}
+
+/**
+ * No two migrations may share a number. Migrations apply in filename order and the ledger is keyed
+ * by filename, so a shared number never crashes the applier — it silently leaves the pair's relative
+ * order to the alphabet. It happens when two branches cut from the same `main` each take the next
+ * number and both merge. Numbers are compared as integers, so `42_x.sql` and `0042_y.sql` clash.
+ * The legacy pairs in {@link LEGACY_SHARED_NUMBERS} are tolerated exactly as committed.
+ */
+const uniqueNumber: Rule = {
+  name: 'unique-number',
+  description: 'No two migrations may share a NNNN number (two applied legacy pairs excepted).',
+  check(migrations) {
+    const byNumber = new Map<number, string[]>();
+    for (const file of migrations.migrationFiles) {
+      const number = migrationNumber(file);
+      if (number === undefined) continue;
+      byNumber.set(number, [...(byNumber.get(number) ?? []), file]);
+    }
+    const nextFree = formatNumber(Math.max(0, ...byNumber.keys()) + 1);
+
+    return [...byNumber].flatMap(([number, files]) => {
+      if (files.length < 2) return [];
+      const legacy = LEGACY_SHARED_NUMBERS.get(number);
+      if (legacy !== undefined && files.every((file) => legacy.has(file))) return [];
+      return [
+        {
+          rule: 'unique-number',
+          severity: 'error' as const,
+          message: `migration number ${formatNumber(number)} is used by ${String(files.length)} files: ${files.join(', ')}. Migrations apply in filename order, so a shared number leaves their relative order to the alphabet — usually two branches cut from the same main that each took the next number. Fix: rename the file your branch added (the one not on main — see git diff --name-status origin/main -- database/migrations) to the next free number, ${nextFree}_<name>.sql. Never rename a migration that is already on main: it is applied, and the ledger is keyed by filename, so the new name would run again.`,
+        },
+      ];
+    });
+  },
+};
+
+/**
  * The active rule set, applied to the migrations directory in registration order.
  * This array is the extension point: append a {@link Rule} to lint something new.
  */
-export const rules: readonly Rule[] = [sequenceGrant, viewGrant];
+export const rules: readonly Rule[] = [sequenceGrant, viewGrant, uniqueNumber];

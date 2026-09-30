@@ -13,6 +13,8 @@ export interface MigrationsContext {
   readonly migrationsDir: string;
   /** Path shown in findings (relative to the invocation cwd when possible). */
   readonly displayPath: string;
+  /** The `*.sql` filenames in the directory, in apply (filename) order. */
+  readonly migrationFiles: readonly string[];
   /**
    * Every sequence created across all migrations, in the order encountered. The
    * `name` is normalized (schema dropped, unquoted, lowercased); `file` is the
@@ -329,7 +331,9 @@ export function gatherMigrations(
   const viewCreateFile = new Map<string, string>();
   const viewSelectGrants = new Map<string, Set<string>>();
 
-  for (const file of listSqlFiles(absolute)) {
+  const migrationFiles = listSqlFiles(absolute);
+
+  for (const file of migrationFiles) {
     const stripped = stripNonCode(readFileSync(path.join(absolute, file), 'utf8'));
     const parsed = parseSql(stripped);
     for (const name of parsed.createdSequences) createdSequences.push({ name, file });
@@ -357,6 +361,7 @@ export function gatherMigrations(
   return {
     migrationsDir: absolute,
     displayPath: path.relative(cwd, absolute) || absolute,
+    migrationFiles,
     createdSequences,
     sequenceUsageGrants,
     createdViews,
