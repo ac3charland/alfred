@@ -70,6 +70,7 @@ test.describe('drag a task to a folder', () => {
           folder_id: work.id,
           dispatched_at: null,
         }),
+        makeItem('Still untriaged'),
       ],
     });
     await page.goto('/?view=inbox');
@@ -80,6 +81,11 @@ test.describe('drag a task to a folder', () => {
 
     await dragOnto(page, inbox.getByText('Labelled already'), workFolder);
 
+    await expect(inbox.getByText('Labelled already')).toBeHidden();
+    // Reload so the rest reads the saved row, not the optimistic patch: a rejected write would
+    // roll the item back into the Inbox.
+    await page.reload();
+    await expect(inbox.getByText('Still untriaged')).toBeVisible();
     await expect(inbox.getByText('Labelled already')).toBeHidden();
     await workFolder.click();
     await expect(
