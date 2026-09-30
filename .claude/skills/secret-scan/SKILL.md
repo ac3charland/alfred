@@ -42,8 +42,9 @@ the password of any URL-with-password (userinfo or `?password=`) whatever the na
 from every gitignored `.env*` / `.dev.vars*` file (not `node_modules`, not `*.example`) in the
 current worktree **and** the main checkout — raw, URL-encoded, JSON-escaped, base64/base64url at
 any alignment, and NUL-stripped (UTF-16). That catches the shapes no pattern can (a bare `printenv`,
-a truncated URI). Trivial values (`postgres`, placeholders, <8 chars), paths and `NEXT_PUBLIC_*`
-are ignored, and a report names only the variable and file. `known-secrets.ts` (and its test) is
+a truncated URI). Every assignment of a key counts, not just the last. Trivial values are ignored
+(placeholders, <8 chars, a lowercase word for token/key names, a short default list like
+`postgres` for passwords), as are paths and `NEXT_PUBLIC_*`, and a report names only the variable and file. `known-secrets.ts` (and its test) is
 duplicated in `tools/secret-scan` and `tools/showboat` (the tools can't import each other's
 source); a drift test fails unless both copies change together.
 
