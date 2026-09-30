@@ -191,75 +191,73 @@ type PriorityWrite =
   | { kind: 'reorder'; ref: string; neighbourRef: string; touched: TouchedStory[] }
   | { kind: 'move' | 'moveInProject'; ref: string; toTop: boolean; touched: TouchedStory[] };
 
-/** How long a settled write waits for its realtime echo before it stops recognising it. */
-const ECHO_WAIT_MS = 10_000;
+/** A server rank for a story, with the revision the database stamped it with (ALF-250). */
+interface ServerRank {
+  priority: number | null;
+  /** `code_items.priority_rev`; `undefined` when a payload doesn't carry it (counts as newest). */
+  rev: number | undefined;
+}
 
 /**
  * The provider's priority-write bookkeeping (ALF-250): the queue in click order, how many queued
- * or in-flight writes touch each story, the latest server rank heard for a story while it had
- * some (parked until they settle), and the ranks settled writes gave each story whose realtime
- * echo may still be on its way.
+ * or in-flight writes touch each story, the newest server rank heard for a story while it had
+ * some (parked until they settle), and the revision of the last server rank each story landed.
  */
 interface PriorityWriteBook {
   queue: PriorityWrite[];
   pending: Map<string, number>;
-  held: Map<string, number | null>;
-  echoes: Map<string, { ranks: (number | null)[]; until: number }>;
+  held: Map<string, ServerRank>;
+  landedRev: Map<string, number>;
   draining: boolean;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-/**
- * Whether a realtime rank for a story is the echo of one of this tab's own writes that a LATER
- * write of its own has since replaced (ALF-250). The queue sends writes back to back, so an
- * echo can arrive after the next write's reply has already landed; applying it would drag the
- * row back to where an earlier click left it. Realtime is ordered, so an echo consumes its own
- * record and every older one, and is stale exactly when a newer record remains.
- */
-function isSupersededEcho(
+/** Whether revision `rev` is newer than `than` — an unknown revision on either side counts as newer. */
+function isNewerRev(rev: number | undefined, than: number | undefined): boolean {
+  return rev === undefined || than === undefined || rev > than;
+}
+
+/** Put a server rank on screen and remember its revision. */
+function landRank(
+  dispatch: React.Dispatch<CodeAction>,
   book: PriorityWriteBook,
   itemId: string,
-  priority: number | null | undefined,
-): boolean {
-  const awaited = book.echoes.get(itemId);
-  if (awaited === undefined || priority === undefined) return false;
-  if (Date.now() > awaited.until) {
-    book.echoes.delete(itemId);
-    return false;
-  }
-  const index = awaited.ranks.indexOf(priority);
-  if (index === -1) return false;
-  awaited.ranks.splice(0, index + 1);
-  if (awaited.ranks.length > 0) return true;
-  book.echoes.delete(itemId);
-  return false;
+  { priority, rev }: ServerRank,
+): void {
+  if (rev !== undefined) book.landedRev.set(itemId, rev);
+  const held = book.held.get(itemId);
+  if (held !== undefined && !isNewerRev(held.rev, rev)) book.held.delete(itemId);
+  dispatch({ type: 'patchStory', itemId, patch: { priority } });
 }
 
 /**
- * Land a server row's story patch — less its `priority` while this tab still has a priority write
- * of its own queued or in flight on the story (ALF-250). That rank describes the Backlog as it
- * stood before the owner's later click, so landing it would drag the row back (and can tie it with
- * a neighbour, turning the next nudge into a swap of two equal ranks). It's parked in `held`
- * instead, to land once the story's writes settle.
+ * Land a server row's story patch (ALF-250). Its `priority` lands only when it is the newest the
+ * tab has heard for that story — a reply and the Realtime stream (which carries every write, this
+ * tab's own included) arrive in either order, and an echo can trail the reply to a LATER write, so
+ * `rev` (`code_items.priority_rev`) decides, never the rank itself: ranks repeat. And while the
+ * story still has a priority write of this tab's queued or in flight, even a newer rank describes
+ * the Backlog before the owner's latest click, so it's parked in `held` to land once they settle.
  */
 function landServerPatch(
   dispatch: React.Dispatch<CodeAction>,
   book: PriorityWriteBook,
   itemId: string,
   patch: Partial<CodeStory>,
+  rev: number | undefined,
 ): void {
   if (!('priority' in patch)) {
     dispatch({ type: 'patchStory', itemId, patch });
     return;
   }
-  const { priority, ...rest } = patch;
+  const { priority = null, ...rest } = patch;
+  dispatch({ type: 'patchStory', itemId, patch: rest });
+  if (!isNewerRev(rev, book.landedRev.get(itemId))) return;
   if ((book.pending.get(itemId) ?? 0) > 0) {
-    book.held.set(itemId, priority ?? null);
-    dispatch({ type: 'patchStory', itemId, patch: rest });
+    const held = book.held.get(itemId);
+    if (held === undefined || isNewerRev(rev, held.rev)) book.held.set(itemId, { priority, rev });
     return;
   }
-  book.held.delete(itemId);
-  dispatch({ type: 'patchStory', itemId, patch });
+  landRank(dispatch, book, itemId, { priority, rev });
 }
 
 /**
@@ -619,7 +617,7 @@ export function CodeProvider({
     queue: [],
     pending: new Map(),
     held: new Map(),
-    echoes: new Map(),
+    landedRev: new Map(),
     draining: false,
     timer: null,
   });
@@ -666,15 +664,12 @@ export function CodeProvider({
       // reasoning that keeps the board stable (no flicker, no double notification).
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
-      const book = priorityBookRef.current;
-      const { priority, ...rest } = deliveredColumns(codeItemToStoryPatch(row));
       landServerPatch(
         dispatch,
-        book,
+        priorityBookRef.current,
         row.item_id,
-        isSupersededEcho(book, row.item_id, priority) || priority === undefined
-          ? rest
-          : { ...rest, priority },
+        deliveredColumns(codeItemToStoryPatch(row)),
+        row.priority_rev,
       );
       if (!changedState) return;
 
@@ -829,12 +824,13 @@ export function CodeProvider({
           }
           releasePriorityWrites([write]);
           for (const row of rows) {
-            const awaited = book.echoes.get(row.item_id)?.ranks ?? [];
-            book.echoes.set(row.item_id, {
-              ranks: [...awaited, row.priority],
-              until: Date.now() + ECHO_WAIT_MS,
-            });
-            landServerPatch(dispatch, book, row.item_id, codeItemToStoryPatch(row));
+            landServerPatch(
+              dispatch,
+              book,
+              row.item_id,
+              codeItemToStoryPatch(row),
+              row.priority_rev,
+            );
           }
           landHeldPriorities([write]);
         }
@@ -853,14 +849,15 @@ export function CodeProvider({
       }
     }
 
-    /** A story with nothing pending any more takes the last rank the server gave it meanwhile. */
+    /** A story with nothing pending any more takes the newest rank the server gave it meanwhile. */
     function landHeldPriorities(writes: PriorityWrite[]) {
-      const { pending, held } = priorityBookRef.current;
+      const book = priorityBookRef.current;
       for (const { itemId } of writes.flatMap((write) => write.touched)) {
-        const priority = held.get(itemId);
-        if (pending.has(itemId) || priority === undefined) continue;
-        held.delete(itemId);
-        dispatch({ type: 'patchStory', itemId, patch: { priority } });
+        const held = book.held.get(itemId);
+        if (book.pending.has(itemId) || held === undefined) continue;
+        book.held.delete(itemId);
+        if (isNewerRev(held.rev, book.landedRev.get(itemId)))
+          landRank(dispatch, book, itemId, held);
       }
     }
 
