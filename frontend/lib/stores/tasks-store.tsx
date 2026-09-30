@@ -4,13 +4,16 @@ import type { RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { RESEARCH_SEND_MAX } from '@/lib/api/schemas';
 import { isDueDateOverdue, isDueTodayOrOverdue } from '@/lib/date-utils';
 import { rankByPriority } from '@/lib/priority';
 import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
+import { chunkedSend } from '@/lib/stores/chunked-send';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { useExpansionActions } from '@/lib/stores/expansion-store';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
+import { useResearchConfigured } from '@/lib/stores/research-config';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { useWikiConfig } from '@/lib/stores/wiki-store';
 import { createClient } from '@/lib/supabase/client';
@@ -90,15 +93,15 @@ export type ClassifyTarget = Exclude<ItemType, 'unclassified'>;
  * forbids — chosen from the row's CURRENT type, since that decides which fields it may be
  * carrying. A task's due date is task-only and its recurrence is anchored to it, so both go
  * when it becomes code; a code row's two pre-factory hints are code-only, so both go when it
- * becomes a task. An unclassified or knowledge row can carry neither set (the DB CHECKs), so
- * its flip to task or code is a bare `item_type` patch. Becoming knowledge clears every label
- * at once — the four the DB forbids, plus `folder_id`, since the row's folder chip draws for any
- * undispatched row that carries one and an idea has no folder to go to. `priority` is
- * deliberately never cleared: no constraint forbids it, and a mis-classification corrected
- * straight back keeps the level the owner set.
+ * becomes a task. An unclassified, knowledge or research row can carry neither set (the DB
+ * CHECKs), so its flip to task or code is a bare `item_type` patch. Becoming knowledge or research clears
+ * every label at once — the four the DB forbids, plus `folder_id`, since the row's folder chip
+ * draws for any undispatched row that carries one and neither an idea nor a research question has
+ * a folder to go to. `priority` is deliberately never cleared: no constraint forbids it, and a
+ * mis-classification corrected straight back keeps the level the owner set.
  */
 function classifyPatch(current: ItemType, next: ClassifyTarget): api.UpdateItemInput {
-  if (next === 'knowledge') {
+  if (next === 'knowledge' || next === 'research') {
     return {
       item_type: next,
       due_date: null,
@@ -178,8 +181,10 @@ interface TaskActions {
    * Dispatch: send each READY selected item to its own destination in one press — a task (and
    * its whole subtree) to its folder via the residency PATCH, a code item into the factory via
    * `sendToCode` (the code store's `convertTaskToCode`, passed in because the RPC's optimistic
-   * board card lives in that store), and every knowledge item to the wiki in ONE request (one
-   * commit, one folder per item). Unready items — judged by `dispatchReadiness` — are
+   * board card lives in that store), every knowledge item to the wiki in ONE request (one
+   * commit, one folder per item), and every research item to the Reader's research route in
+   * requests of at most `RESEARCH_SEND_MAX` (each becomes a queued Reader post and fires the
+   * research Routine). Unready items — judged by `dispatchReadiness` — are
    * filtered out BEFORE anything runs: never sent, never "failures". Gated rows are dropped
    * from this store on success. Resolves with the ids that should STAY SELECTED (unready ∪
    * failed), so the bar keeps exactly the unfinished work in front of the owner.
@@ -410,6 +415,15 @@ export function TasksProvider({
   React.useEffect(() => {
     wikiWritableRef.current = wikiWritable;
   }, [wikiWritable]);
+
+  // Likewise whether the research Routine can be fired — the readiness a research row can't read
+  // off itself. ResearchConfigProvider sits above this store beside WikiProvider, so the flag is
+  // captured through an effect-synced ref the same way.
+  const researchConfigured = useResearchConfigured();
+  const researchConfiguredRef = React.useRef(researchConfigured);
+  React.useEffect(() => {
+    researchConfiguredRef.current = researchConfigured;
+  }, [researchConfigured]);
 
   // A create reconciles by swapping the optimistic temp id for the server's, which orphans any
   // UI state still keyed by the old id — a detail panel opened on the row while it saved simply
@@ -831,25 +845,20 @@ export function TasksProvider({
         const unreadyIds: string[] = [];
         const units: BulkUnit[] = [];
         const codeIds: string[] = [];
-        const knowledgeIds: string[] = [];
         const taskSubtreeIds: string[] = [];
-        const context = { wikiWritable: wikiWritableRef.current };
+        const context = {
+          wikiWritable: wikiWritableRef.current,
+          researchConfigured: researchConfiguredRef.current,
+        };
         // The knowledge ids in this dispatch travel together — one request, one commit, one
         // kickoff batch on the wiki's side, not N — in chunks of at most WIKI_SEND_MAX, the
-        // route's bound. `applyBulkSettled` settles per unit, so each id is still its own unit,
-        // but every unit of a chunk awaits that chunk's one shared promise: they succeed or fail
-        // together, and a failure rolls every one of them back. Each send starts lazily with
-        // its chunk's first request, once `knowledgeIds` is complete.
-        const wikiSends = new Map<number, Promise<unknown>>();
-        const sendToWiki = (chunk: number): Promise<unknown> => {
-          let send = wikiSends.get(chunk);
-          if (send === undefined) {
-            const start = chunk * WIKI_SEND_MAX;
-            send = api.sendItemsToWiki({ ids: knowledgeIds.slice(start, start + WIKI_SEND_MAX) });
-            wikiSends.set(chunk, send);
-          }
-          return send;
-        };
+        // route's bound; the research ids likewise in chunks of RESEARCH_SEND_MAX. Each id is
+        // still its own unit, but the units of a chunk share its one send, so they succeed or fail
+        // together and a failure rolls every one of them back.
+        const wikiSend = chunkedSend(WIKI_SEND_MAX, (chunk) => api.sendItemsToWiki({ ids: chunk }));
+        const researchSend = chunkedSend(RESEARCH_SEND_MAX, (chunk) =>
+          api.sendItemsToResearch({ ids: chunk }),
+        );
         for (const id of ids) {
           const item = current.find((row) => row.id === id);
           if (item === undefined) continue;
@@ -860,60 +869,69 @@ export function TasksProvider({
             unreadyIds.push(id);
             continue;
           }
-          if (item.item_type === 'task') {
-            // A decomposed task dispatches with its whole subtree, exactly as bulk Move to
-            // folder cascades — every row gets the residency stamp in its own coherent PATCH.
-            const subtree = collectSubtree(current, id);
-            taskSubtreeIds.push(...subtree.map((row) => row.id));
-            units.push({
-              id,
-              snapshot: subtree,
-              request: () =>
-                Promise.all(subtree.map((row) => api.updateItem(row.id, { dispatched: true }))),
-            });
-          } else if (item.item_type === 'knowledge') {
-            // A ready knowledge row is a childless root, so the row is the whole snapshot. It
-            // leaves this store the way a gated code row does (the RPC deletes it server-side).
-            const chunk = Math.floor(knowledgeIds.length / WIKI_SEND_MAX);
-            knowledgeIds.push(id);
-            units.push({
-              id,
-              snapshot: [item],
-              request: async () => {
-                await sendToWiki(chunk);
-                return [];
-              },
-            });
-          } else {
-            // A ready code item has both hints — the gate has nothing left to ask, so the
-            // existing RPC runs straight off the row. Its optimistic board card lives in the
-            // code store; here the row leaves the Inbox on the same beat as every dispatched
-            // task (it has left task_items server-side anyway), so a mixed selection goes as
-            // one rather than the code rows lingering until the RPC answers (ALF-182).
-            const { intended_project_id: projectId, intended_epic_id: epicId } = item;
-            if (projectId === null || epicId === null) continue;
-            codeIds.push(id);
-            units.push({
-              id,
-              // The row itself is the optimistic change, so it is also the rollback: a failed
-              // gate call restores it exactly as a failed task PATCH restores its subtree. A
-              // ready code row has no children (readiness rejects an epic-shaped one), so the
-              // single row is the whole snapshot.
-              snapshot: [item],
-              request: async () => {
-                await sendToCode(
-                  {
-                    id: item.id,
-                    title: item.title,
-                    notes: item.notes,
-                    source_url: item.source_url,
-                  },
-                  projectId,
-                  epicId,
-                );
-                return [];
-              },
-            });
+          switch (item.item_type) {
+            case 'task': {
+              // A decomposed task dispatches with its whole subtree, exactly as bulk Move to
+              // folder cascades — every row gets the residency stamp in its own coherent PATCH.
+              const subtree = collectSubtree(current, id);
+              taskSubtreeIds.push(...subtree.map((row) => row.id));
+              units.push({
+                id,
+                snapshot: subtree,
+                request: () =>
+                  Promise.all(subtree.map((row) => api.updateItem(row.id, { dispatched: true }))),
+              });
+
+              break;
+            }
+            case 'knowledge': {
+              // A ready knowledge row is a childless root, so the row is the whole snapshot. It
+              // leaves this store the way a gated code row does (the RPC deletes it server-side).
+              units.push({ id, snapshot: [item], request: wikiSend.add(id) });
+
+              break;
+            }
+            case 'research': {
+              // A ready research row is a childless root too, and the dispatch RPC consumes it into
+              // a Reader post the same way, so it leaves this store like a knowledge row. The
+              // request settles when the send does: a fire the Routine refused still answers 200
+              // with a failed post, which is a success here — the question has left the Inbox and
+              // the Reader says what became of it.
+              units.push({ id, snapshot: [item], request: researchSend.add(id) });
+
+              break;
+            }
+            default: {
+              // A ready code item has both hints — the gate has nothing left to ask, so the
+              // existing RPC runs straight off the row. Its optimistic board card lives in the
+              // code store; here the row leaves the Inbox on the same beat as every dispatched
+              // task (it has left task_items server-side anyway), so a mixed selection goes as
+              // one rather than the code rows lingering until the RPC answers (ALF-182).
+              const { intended_project_id: projectId, intended_epic_id: epicId } = item;
+              if (projectId === null || epicId === null) continue;
+              codeIds.push(id);
+              units.push({
+                id,
+                // The row itself is the optimistic change, so it is also the rollback: a failed
+                // gate call restores it exactly as a failed task PATCH restores its subtree. A
+                // ready code row has no children (readiness rejects an epic-shaped one), so the
+                // single row is the whole snapshot.
+                snapshot: [item],
+                request: async () => {
+                  await sendToCode(
+                    {
+                      id: item.id,
+                      title: item.title,
+                      notes: item.notes,
+                      source_url: item.source_url,
+                    },
+                    projectId,
+                    epicId,
+                  );
+                  return [];
+                },
+              });
+            }
           }
         }
         if (units.length === 0) return unreadyIds;
@@ -925,12 +943,12 @@ export function TasksProvider({
             patch: { dispatched_at: new Date().toISOString() },
           });
         }
-        // A gated code row leaves task_items outright, and a knowledge row is deleted once the
-        // wiki has it, so the optimistic form of both is a removal — dispatched in the same
-        // commit as the stamp above, so every dispatched row leaves the Inbox together.
-        // `applyBulkSettled` upserts each failed unit's snapshot, putting a row whose call
-        // failed straight back.
-        const removedIds = [...codeIds, ...knowledgeIds];
+        // A gated code row leaves task_items outright, and a knowledge or research row is deleted
+        // once the wiki or the Reader has it, so the optimistic form of all three is a removal —
+        // dispatched in the same commit as the stamp above, so every dispatched row leaves the
+        // Inbox together. `applyBulkSettled` upserts each failed unit's snapshot, putting a row
+        // whose call failed straight back.
+        const removedIds = [...codeIds, ...wikiSend.ids, ...researchSend.ids];
         if (removedIds.length > 0) dispatch({ type: 'remove', ids: removedIds });
         const failedIds = await applyBulkSettled(
           dispatch,

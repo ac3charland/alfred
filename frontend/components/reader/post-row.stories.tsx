@@ -7,6 +7,7 @@ import {
   makeReaderArticle,
   makeReaderOverview,
   makeReaderPost,
+  makeResearchPost,
 } from '@/lib/reader/fixtures';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
@@ -28,6 +29,11 @@ import { PostRow } from './post-row';
  * bullet sent earlier, two ticked with the selection bar, the send in flight, and every bullet
  * sent. `WikiNotConnected` is that same post with the wiki not connected — the plain list
  * `DoneExpanded` also draws.
+ *
+ * The `Research…` stories are a research post in the four states its row draws: the question
+ * while the session works, no report (a refused fire), a delivered report waiting on its summary,
+ * and a summarised report with its overview open and the wiki checklists live. Every timestamp is
+ * stated against the fixed clock, so nothing drifts into or out of being stale.
  */
 
 const NOW = new Date(2026, 8, 18, 9, 0);
@@ -614,4 +620,160 @@ export const InstapaperNoText: Story = {
     }),
   },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+// ---------------------------------------------------------------------------
+// A research post: the question while its report is written, then the report
+// ---------------------------------------------------------------------------
+
+const QUESTION = 'Is a cold-climate heat pump worth it for our Chicago house?';
+const SESSION_URL = 'https://claude.ai/code/session_01ResearchStory';
+
+/** An ISO instant `minutes` before the fixed clock. */
+function minutesBeforeNow(minutes: number): string {
+  return new Date(NOW.getTime() - minutes * 60_000).toISOString();
+}
+
+/** A research post as the list carries it: no bodies, no brief. */
+function research(overrides: Parameters<typeof makeResearchPost>[0] = {}): ReaderPostListItem {
+  const {
+    text: _text,
+    html: _html,
+    research_brief: _brief,
+    ...listItem
+  } = makeResearchPost({
+    title: QUESTION,
+    research_session_url: SESSION_URL,
+    ...overrides,
+  });
+  return listItem;
+}
+
+/** The session is underway: a fire accepted twenty minutes ago, no report yet. */
+export const ResearchResearching: Story = {
+  args: {
+    post: research({
+      id: 'p-research-running',
+      received_at: minutesBeforeNow(20),
+      created_at: minutesBeforeNow(20),
+      research_state: 'researching',
+      research_fired_at: minutesBeforeNow(19),
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('button', { name: 'Send to Instapaper' })).toBeDisabled();
+    await expect(canvas.getByRole('link', { name: 'Session' })).toHaveAttribute(
+      'href',
+      SESSION_URL,
+    );
+  },
+};
+
+/**
+ * The Routine refused the fire: the alert badge, the row dimmed, the refusal's reason in the
+ * line, and Retry research in Send's place (research is configured on this deployment).
+ */
+export const ResearchNoReport: Story = {
+  args: {
+    post: research({
+      id: 'p-research-failed',
+      received_at: minutesBeforeNow(25),
+      created_at: minutesBeforeNow(25),
+      research_state: 'failed',
+      research_session_url: null,
+      research_error: 'the Routine’s daily run cap or usage limit was reached',
+    }),
+  },
+  parameters: {
+    store: { researchConfigured: true },
+    visualTest: { target: '[data-testid="row-frame"]' },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('button', { name: 'Retry research' })).toBeEnabled();
+    await expect(
+      canvas.queryByRole('button', { name: 'Send to Instapaper' }),
+    ).not.toBeInTheDocument();
+  },
+};
+
+/** The report has arrived and the Worker has not reached it: sendable at once, Session beside Archive. */
+export const ResearchSummarising: Story = {
+  args: {
+    post: research({
+      id: 'p-research-summarising',
+      received_at: minutesBeforeNow(5),
+      created_at: minutesBeforeNow(70),
+      research_state: 'done',
+      research_fired_at: minutesBeforeNow(69),
+      research_delivered_at: minutesBeforeNow(5),
+      word_count: 2530,
+      summary_state: 'pending',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/**
+ * A summarised report with its overview open: Novel ideas and Evidence as wiki checklists (one
+ * idea ticked, so the selection bar is up), and Session in the footer where Original would be.
+ */
+export const ResearchDoneExpanded: Story = {
+  args: {
+    post: research({
+      id: 'p-research-done',
+      received_at: minutesBeforeNow(5),
+      created_at: minutesBeforeNow(70),
+      research_state: 'done',
+      research_fired_at: minutesBeforeNow(69),
+      research_delivered_at: minutesBeforeNow(5),
+      word_count: 2530,
+      summary_state: 'done',
+      gist:
+        'Probably yes if the furnace is near the end of its life: a cold-climate unit carries the ' +
+        'house to about −15°F on its own, and the rebate decides payback. The report works the ' +
+        'arithmetic for your case and flags the one number it couldn’t pin down.',
+      overview: makeReaderOverview({
+        novel_ideas: [
+          'Size for the heating design day, not the cooling load — the opposite of the usual AC rule.',
+          'Keep the furnace as backup for the coldest week rather than a resistance strip.',
+        ],
+        evidence: [
+          'Two cold-climate field studies of whole-house heating through sub-zero weeks.',
+          'The state rebate schedule and the utility’s heat-pump rate.',
+        ],
+        argument:
+          'Capacity at design temperature is no longer the blocker; running cost is, and it turns ' +
+          'on the gas-to-electric price ratio…',
+        who_should_read:
+          'You, before calling installers; the summary is enough to decide whether to get quotes.',
+      }),
+      model: 'claude-sonnet-5',
+      prompt_version: 1,
+      summarized_at: minutesBeforeNow(4),
+    }),
+  },
+  parameters: {
+    store: {
+      researchConfigured: true,
+      wiki: { repo: 'ac3charland/knowledge', writable: true },
+    },
+    visualTest: { target: '[data-testid="row-frame"]' },
+  },
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole('checkbox', {
+        name: 'Size for the heating design day, not the cooling load — the opposite of the usual AC rule.',
+      }),
+    );
+    await expect(await canvas.findByText('1 selected')).toBeInTheDocument();
+    await expect(canvas.getByRole('link', { name: 'Session' })).toHaveAttribute(
+      'href',
+      SESSION_URL,
+    );
+  },
 };

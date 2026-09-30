@@ -27,6 +27,16 @@ import type { SummaryInput } from './types';
 export const READER_PROMPT_VERSION = 1;
 
 /**
+ * The `Publication:` and `Author:` a research report is summarised under. A report has neither: it
+ * is not published anywhere and carries no byline, so the metadata block names what it is — a
+ * document alfred's own research routine wrote for the owner — rather than leaving the model to
+ * take a title or a site for a publisher. This is metadata, not instruction, so the system prompt
+ * below is unchanged and `READER_PROMPT_VERSION` stays where it is.
+ */
+export const RESEARCH_PUBLICATION = 'alfred research — a report written for the owner';
+export const RESEARCH_AUTHOR = 'Claude Code research routine';
+
+/**
  * How much of a post's text the model ever sees — about 37 000 tokens, roughly $0.08 of input at
  * Sonnet 5's list price.
  *

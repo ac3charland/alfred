@@ -1,13 +1,19 @@
+import { isResearchPost } from '@/lib/reader/research';
 import type { ReaderPostListItem } from '@/lib/types';
 
 /**
  * Where the row's "Original" link points: the post's own canonical URL when extraction found
  * one, else a Gmail permalink built from the captured Message-ID, else nothing at all — the
- * disabled state, with a sentence saying why rather than a link to the wrong place.
+ * disabled state, with a sentence saying why rather than a link to the wrong place. A research
+ * post has no original: the same slot points at the Claude Code session that wrote (or is
+ * writing) the report, and the row labels it "Session".
  */
 export type ReaderOpenLink =
-  | { href: string; kind: 'canonical' | 'mailbox'; unavailable: undefined }
+  | { href: string; kind: 'canonical' | 'mailbox' | 'session'; unavailable: undefined }
   | { href: undefined; kind: undefined; unavailable: string };
+
+/** The sentence a research post carries until its Routine fire has been accepted with a URL. */
+export const NO_SESSION_LINK = 'No session link yet.';
 
 /**
  * Is this a web address, and not something an email merely spelled like one?
@@ -47,6 +53,15 @@ function stripAngleBrackets(rawId: string): string {
  * found and no Message-ID was captured, so there is nothing for "Original" to point at.
  */
 export function postOpenLink(post: ReaderPostListItem): ReaderOpenLink {
+  if (isResearchPost(post)) {
+    // Never the newsletter logic: nothing a research post carries names an original, and a
+    // mailbox permalink built from mail that never existed would point at the wrong place.
+    const session = post.research_session_url?.trim();
+    return session !== undefined && isWebUrl(session)
+      ? { href: session, kind: 'session', unavailable: undefined }
+      : { href: undefined, kind: undefined, unavailable: NO_SESSION_LINK };
+  }
+
   const canonical = postWebUrl(post);
   if (canonical !== undefined) {
     return { href: canonical, kind: 'canonical', unavailable: undefined };

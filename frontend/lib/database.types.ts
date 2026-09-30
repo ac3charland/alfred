@@ -993,6 +993,13 @@ export type Database = {
           prompt_version: number | null
           publication_id: string | null
           received_at: string
+          research_attempts: number
+          research_brief: string | null
+          research_delivered_at: string | null
+          research_error: string | null
+          research_fired_at: string | null
+          research_session_url: string | null
+          research_state: string | null
           rfc822_message_id: string | null
           site: string | null
           source: string
@@ -1030,6 +1037,13 @@ export type Database = {
           prompt_version?: number | null
           publication_id?: string | null
           received_at: string
+          research_attempts?: number
+          research_brief?: string | null
+          research_delivered_at?: string | null
+          research_error?: string | null
+          research_fired_at?: string | null
+          research_session_url?: string | null
+          research_state?: string | null
           rfc822_message_id?: string | null
           site?: string | null
           source?: string
@@ -1067,6 +1081,13 @@ export type Database = {
           prompt_version?: number | null
           publication_id?: string | null
           received_at?: string
+          research_attempts?: number
+          research_brief?: string | null
+          research_delivered_at?: string | null
+          research_error?: string | null
+          research_fired_at?: string | null
+          research_session_url?: string | null
+          research_state?: string | null
           rfc822_message_id?: string | null
           site?: string | null
           source?: string
@@ -1529,6 +1550,13 @@ export type Database = {
           prompt_version: number | null
           publication_id: string | null
           received_at: string
+          research_attempts: number
+          research_brief: string | null
+          research_delivered_at: string | null
+          research_error: string | null
+          research_fired_at: string | null
+          research_session_url: string | null
+          research_state: string | null
           rfc822_message_id: string | null
           site: string | null
           source: string
@@ -1575,6 +1603,13 @@ export type Database = {
           prompt_version: number | null
           publication_id: string | null
           received_at: string
+          research_attempts: number
+          research_brief: string | null
+          research_delivered_at: string | null
+          research_error: string | null
+          research_fired_at: string | null
+          research_session_url: string | null
+          research_state: string | null
           rfc822_message_id: string | null
           site: string | null
           source: string
@@ -1912,6 +1947,59 @@ export type Database = {
           snippet: string
         }[]
       }
+      send_items_to_research: {
+        Args: { p_ids: string[] }
+        Returns: {
+          account_key: string | null
+          archived_at: string | null
+          author: string | null
+          canonical_url: string | null
+          comm_message_id: string | null
+          created_at: string
+          gist: string | null
+          gmail_message_id: string | null
+          headline: string | null
+          html: string | null
+          html_extracted: boolean
+          id: string
+          instapaper_bookmark_id: number | null
+          instapaper_sent_at: string | null
+          last_error: string | null
+          model: string | null
+          model_called_at: string | null
+          opened_at: string | null
+          overview: Json | null
+          prompt_version: number | null
+          publication_id: string | null
+          received_at: string
+          research_attempts: number
+          research_brief: string | null
+          research_delivered_at: string | null
+          research_error: string | null
+          research_fired_at: string | null
+          research_session_url: string | null
+          research_state: string | null
+          rfc822_message_id: string | null
+          site: string | null
+          source: string
+          summarize_attempts: number
+          summarized_at: string | null
+          summarizing_since: string | null
+          summary_state: string
+          text: string | null
+          text_swept_at: string | null
+          title: string
+          wiki_sent_evidence: string[]
+          wiki_sent_ideas: string[]
+          word_count: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "reader_posts"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       send_items_to_wiki: { Args: { p_ids: string[] }; Returns: number }
       swap_code_priority: {
         Args: { p_a: string; p_b: string }
@@ -1961,7 +2049,7 @@ export type Database = {
       comm_tier: "asap" | "today" | "whenever" | "fyi"
       habit_day_status: "met" | "partial" | "missed" | "skipped"
       item_status: "active" | "completed"
-      item_type: "unclassified" | "task" | "code" | "knowledge"
+      item_type: "unclassified" | "task" | "code" | "knowledge" | "research"
       task_priority: "high" | "medium" | "low"
     }
     CompositeTypes: {
@@ -2105,7 +2193,7 @@ export const Constants = {
       comm_tier: ["asap", "today", "whenever", "fyi"],
       habit_day_status: ["met", "partial", "missed", "skipped"],
       item_status: ["active", "completed"],
-      item_type: ["unclassified", "task", "code", "knowledge"],
+      item_type: ["unclassified", "task", "code", "knowledge", "research"],
       task_priority: ["high", "medium", "low"],
     },
   },

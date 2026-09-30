@@ -12,16 +12,21 @@ import { createClient } from '@/lib/supabase/server';
 import {
   READER_POST_LIST_COLUMNS,
   appendWikiSentPicks,
+  claimResearchFire,
+  deliverResearchReport,
   getReaderHealthSeed,
   getReaderHealthSnapshot,
+  getReaderPostForResearch,
   getReaderPostForSend,
   getReaderPostForWiki,
   getReaderPostListItem,
   getReaderPostResummarizeState,
   getReaderPosts,
   getReaderSeed,
+  getResearchPostForDelivery,
   markReaderPostSent,
   patchReaderPost,
+  recordResearchFire,
 } from './reader';
 
 // `import 'server-only'` throws outside a Server Component context; neutralise it under Jest.
@@ -39,10 +44,12 @@ beforeEach(() => {
 });
 
 describe('READER_POST_LIST_COLUMNS', () => {
-  it('names every reader_posts column except the two bodies — pinned against the fixture builder', () => {
+  it('names every reader_posts column except the two bodies and the research brief — pinned against the fixture builder', () => {
     const post = makeReaderPost(PUBLICATION.id);
     const fixtureColumns = new Set(
-      Object.keys(post).filter((key) => key !== 'text' && key !== 'html'),
+      Object.keys(post).filter(
+        (key) => key !== 'text' && key !== 'html' && key !== 'research_brief',
+      ),
     );
     const listedColumns = new Set(READER_POST_LIST_COLUMNS.split(','));
 
@@ -58,6 +65,18 @@ describe('READER_POST_LIST_COLUMNS', () => {
     // The row's "in Instapaper" badge is drawn from these, so the list has to carry them.
     expect(listedColumns.has('instapaper_sent_at')).toBe(true);
     expect(listedColumns.has('instapaper_bookmark_id')).toBe(true);
+    // A research row's phase, its Session link and its "No report" reason are drawn from these;
+    // the brief is what the Routine is fired with, read server-side only.
+    for (const column of [
+      'research_state',
+      'research_fired_at',
+      'research_session_url',
+      'research_error',
+      'research_delivered_at',
+    ]) {
+      expect(listedColumns.has(column)).toBe(true);
+    }
+    expect(listedColumns.has('research_brief')).toBe(false);
     // The overview's sent marks are drawn from these, one per checklist section.
     expect(listedColumns.has('wiki_sent_ideas')).toBe(true);
     expect(listedColumns.has('wiki_sent_evidence')).toBe(true);
@@ -428,6 +447,7 @@ describe('getReaderPostForWiki', () => {
       'title',
       'author',
       'canonical_url',
+      'source',
       'received_at',
       'text',
       'overview',
@@ -569,5 +589,272 @@ describe('markReaderPostSent', () => {
 
     expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
     expect(supabase.table('reader_posts').select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
+  });
+});
+
+describe('getReaderPostForResearch', () => {
+  it('reads what a retry needs — the phase inputs, the brief and the attempts — never a body', async () => {
+    const stored = {
+      source: 'research',
+      research_state: 'failed',
+      created_at: '2026-09-29T09:00:00.000Z',
+      research_fired_at: null,
+      research_brief: 'Is a heat pump worth it?',
+      research_attempts: 1,
+    };
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: stored } } });
+
+    const { data } = await getReaderPostForResearch(supabase as never, POST_ID);
+
+    expect(data).toEqual(stored);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    const [columns] = supabase.table('reader_posts').select.mock.calls[0] as [string];
+    expect(columns.split(',')).toStrictEqual([
+      'source',
+      'research_state',
+      'created_at',
+      'research_fired_at',
+      'research_brief',
+      'research_attempts',
+    ]);
+  });
+
+  it('resolves null data for a row that is not there, and passes an error through', async () => {
+    const missing = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+    await expect(getReaderPostForResearch(missing as never, POST_ID)).resolves.toMatchObject({
+      data: null,
+    });
+
+    const broken = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: null, error: { message: 'boom' } } },
+    });
+    const { error } = await getReaderPostForResearch(broken as never, POST_ID);
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('claimResearchFire', () => {
+  it('counts the attempt only if the post is still as it was read — attempts and state both', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: { id: POST_ID } } },
+    });
+
+    const { data } = await claimResearchFire(supabase as never, POST_ID, {
+      attempts: 2,
+      state: 'failed',
+    });
+
+    expect(data).toEqual({ id: POST_ID });
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({ research_attempts: 3 });
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('research_attempts', 2);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('research_state', 'failed');
+  });
+
+  it('matches nothing when another request claimed the post first, and passes an error through', async () => {
+    const lost = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+    await expect(
+      claimResearchFire(lost as never, POST_ID, { attempts: 0, state: 'queued' }),
+    ).resolves.toMatchObject({ data: null });
+
+    const broken = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: null, error: { message: 'boom' } } },
+    });
+    const { error } = await claimResearchFire(broken as never, POST_ID, {
+      attempts: 0,
+      state: 'queued',
+    });
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('recordResearchFire', () => {
+  const NOW = new Date('2026-09-29T12:00:00.000Z');
+
+  it('records an accepted fire: researching, when, the session link, no error', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await recordResearchFire(
+      supabase as never,
+      POST_ID,
+      { ok: true, sessionUrl: 'https://claude.ai/code/session_01Abc' },
+      NOW,
+    );
+
+    // No attempt count: the claim that preceded the fire already made it.
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+      research_state: 'researching',
+      research_fired_at: '2026-09-29T12:00:00.000Z',
+      research_session_url: 'https://claude.ai/code/session_01Abc',
+      research_error: null,
+    });
+  });
+
+  it('records an accepted fire that carried no session link as a null link', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await recordResearchFire(supabase as never, POST_ID, { ok: true, sessionUrl: null }, NOW);
+
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith(
+      expect.objectContaining({ research_session_url: null }),
+    );
+  });
+
+  it('records a failed fire: failed and why — and touches nothing else', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await recordResearchFire(
+      supabase as never,
+      POST_ID,
+      { ok: false, error: 'the Routine’s daily run cap or usage limit was reached' },
+      NOW,
+    );
+
+    // No fired-at and no session link: an earlier session's link still opens, and a stale
+    // researching post keeps the time its last accepted fire was made.
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+      research_state: 'failed',
+      research_error: 'the Routine’s daily run cap or usage limit was reached',
+    });
+  });
+
+  it('scopes the write to the id and reads the row back through the shared columns', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await recordResearchFire(supabase as never, POST_ID, { ok: true, sessionUrl: null }, NOW);
+
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    // A report an earlier session delivered while this fire was in flight must stay delivered:
+    // the guard makes the write match nothing rather than flip it back to researching.
+    expect(supabase.table('reader_posts').neq).toHaveBeenCalledWith('research_state', 'done');
+    expect(supabase.table('reader_posts').select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
+  });
+
+  it('resolves the row it wrote, and passes an error straight through', async () => {
+    const row = { id: POST_ID };
+    const ok = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: row } } });
+    await expect(
+      recordResearchFire(ok as never, POST_ID, { ok: true, sessionUrl: null }, NOW),
+    ).resolves.toMatchObject({ data: row });
+
+    const broken = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: null, error: { message: 'boom' } } },
+    });
+    const { error } = await recordResearchFire(
+      broken as never,
+      POST_ID,
+      { ok: true, sessionUrl: null },
+      NOW,
+    );
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('getResearchPostForDelivery', () => {
+  it('reads only the kind of post and its research state, for the id asked for', async () => {
+    const stored = { source: 'research', research_state: 'researching' };
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: stored } } });
+
+    const { data } = await getResearchPostForDelivery(supabase as never, POST_ID);
+
+    expect(data).toEqual(stored);
+    expect(supabase.table('reader_posts').select).toHaveBeenCalledWith('source,research_state');
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+  });
+
+  it('resolves null data for a row that is not there, and passes an error through', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: null, error: { message: 'boom' } } },
+    });
+
+    const { data, error } = await getResearchPostForDelivery(supabase as never, POST_ID);
+
+    expect(data).toBeNull();
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('deliverResearchReport', () => {
+  const NOW = new Date('2026-09-29T12:00:00.000Z');
+  const REPORT = '# Is a heat pump worth it?\n\nProbably yes, if the furnace is old.';
+  const HTML = '<h1>Is a heat pump worth it?</h1>\n<p>Probably yes, if the furnace is old.</p>';
+
+  it('writes the report, its HTML and word count, the delivered state and a fresh summary state in one update', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await deliverResearchReport(supabase as never, POST_ID, REPORT, HTML, NOW);
+
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledTimes(1);
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+      text: REPORT,
+      html: HTML,
+      word_count: 14,
+      html_extracted: false,
+      research_state: 'done',
+      research_delivered_at: '2026-09-29T12:00:00.000Z',
+      received_at: '2026-09-29T12:00:00.000Z',
+      research_error: null,
+      summary_state: 'pending',
+      summarize_attempts: 0,
+      last_error: null,
+      summarizing_since: null,
+      headline: null,
+      gist: null,
+      overview: null,
+      model: null,
+      prompt_version: null,
+      summarized_at: null,
+    });
+  });
+
+  it.each([
+    ['one two', 2],
+    ['  one\ttwo\n\nthree   four  ', 4],
+    ['# heading', 2],
+    ['word', 1],
+  ])('counts the words of %j by whitespace: %i', async (report, words) => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await deliverResearchReport(supabase as never, POST_ID, report, HTML, NOW);
+
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith(
+      expect.objectContaining({ word_count: words }),
+    );
+  });
+
+  it('guards the write in the WHERE clause: this post, a research post, not already delivered', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await deliverResearchReport(supabase as never, POST_ID, REPORT, HTML, NOW);
+
+    // A read can only say what the row was a moment ago; the filter is what makes two racing
+    // deliveries settle on one.
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('source', 'research');
+    expect(supabase.table('reader_posts').neq).toHaveBeenCalledWith('research_state', 'done');
+  });
+
+  it('answers only the id it wrote — the body is never read back', async () => {
+    const supabase = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: { id: POST_ID } } },
+    });
+
+    const { data } = await deliverResearchReport(supabase as never, POST_ID, REPORT, HTML, NOW);
+
+    expect(data).toEqual({ id: POST_ID });
+    expect(supabase.table('reader_posts').select).toHaveBeenCalledWith('id');
+  });
+
+  it('resolves null data when the guard matched no row, and passes an error through', async () => {
+    const raced = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+    await expect(
+      deliverResearchReport(raced as never, POST_ID, REPORT, HTML, NOW),
+    ).resolves.toMatchObject({ data: null });
+
+    const broken = makeSupabaseDouble({
+      reader_posts: { maybeSingle: { data: null, error: { message: 'boom' } } },
+    });
+    const { error } = await deliverResearchReport(broken as never, POST_ID, REPORT, HTML, NOW);
+    expect(error).toEqual({ message: 'boom' });
   });
 });

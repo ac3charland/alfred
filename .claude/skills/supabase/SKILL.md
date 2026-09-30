@@ -157,6 +157,8 @@ useEffect(() => {
 
 - **A `URLSearchParams`-percent-encoded PostgREST `or=(…)` disjunction is correct, not a bug to fix.** The parens, commas and colons ride inside one query-parameter VALUE, and the server decodes it before parsing — so a test asserting the built URL has to `decodeURIComponent` it before comparing. (`workers/src/reader/worklist.ts`, its test.)
 
+- **`col=not.in.(…)` and `col=neq.x` silently drop every row where `col` is NULL.** PostgREST compiles them to `NOT (col IN …)` / `col <> x`, which is NULL — not true — for a NULL `col`, so an exclusion aimed at a few values also filters out every row that never uses the column, with no error. Spell it NULL-inclusively: `or=(col.is.null,col.eq.x)`. A query record holds only one `or` key, so when it is taken, nest the second disjunction as `and=(or(…))`. (`workers/src/reader/worklist.ts` `fetchRetries`.)
+
 - **Never run recursive subtask queries in a JS loop.** Fetching children level-by-level results in N+1 queries. Use a `WITH RECURSIVE` CTE in a Postgres function and call it via `supabase.rpc()`.
 
 - **A `check` constraint over an array must use `cardinality()`, not `array_length(col, 1)`.**

@@ -1778,6 +1778,68 @@ describe('runReaderTick — an Instapaper post retried', () => {
   });
 });
 
+/** A delivered research report, in the retry read's shape: no publication, site or author. */
+function researchRetry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return retryRow({
+    id: 'post-report',
+    publication_id: WIRE_NULL,
+    author: WIRE_NULL,
+    source: 'research',
+    site: WIRE_NULL,
+    canonical_url: WIRE_NULL,
+    title: 'Is a standing desk worth it for us?',
+    ...overrides,
+  });
+}
+
+describe('runReaderTick — a research report retried', () => {
+  it('names the research routine as the source, not a publication or an author', async () => {
+    harness({ retries: [researchRetry()] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      publication: 'alfred research — a report written for the owner',
+      author: 'Claude Code research routine',
+      title: 'Is a standing desk worth it for us?',
+    });
+  });
+
+  it('gives a report the same source whatever publication, site or author its row carries', async () => {
+    harness({
+      roster: [{ id: 'pub-harborline', name: 'Harborline' }],
+      retries: [
+        researchRetry({
+          publication_id: 'pub-harborline',
+          site: 'worksinprogress.co',
+          author: 'Mira Vantz',
+        }),
+      ],
+    });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      publication: 'alfred research — a report written for the owner',
+      author: 'Claude Code research routine',
+    });
+  });
+
+  it('leaves a newsletter’s publication and author as they were', async () => {
+    harness({ retries: [retryRow()], roster: [{ id: 'pub-harborline', name: 'Harborline' }] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      publication: 'Harborline',
+      author: 'Mira Vantz',
+    });
+  });
+});
+
 describe('runReaderTick — the To Reader leg’s subrequests', () => {
   it('spends at most 48 of the 50 fetches on its worst tick: six new bookmarks', async () => {
     const ids = [100, 101, 102, 103, 104, 105];

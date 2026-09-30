@@ -115,6 +115,13 @@ export function makeReaderPost(
     instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? null,
     wiki_sent_ideas: overrides.wiki_sent_ideas ?? [],
     wiki_sent_evidence: overrides.wiki_sent_evidence ?? [],
+    research_brief: overrides.research_brief ?? null,
+    research_state: overrides.research_state ?? null,
+    research_attempts: overrides.research_attempts ?? 0,
+    research_fired_at: overrides.research_fired_at ?? null,
+    research_session_url: overrides.research_session_url ?? null,
+    research_error: overrides.research_error ?? null,
+    research_delivered_at: overrides.research_delivered_at ?? null,
     created_at: overrides.created_at ?? receivedAt,
   };
 }
@@ -148,6 +155,36 @@ export function makeReaderArticle(
     rfc822_message_id: null,
     html: null,
     instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? bookmarkSequence,
+  };
+}
+
+/**
+ * A research post, as dispatching a research item writes one: the question as its title and
+ * brief, none of a newsletter's mail identity, no publication, and no body until the report is
+ * delivered. Defaults to a post whose Routine fire was accepted and whose session is still
+ * researching; every other phase is stated via `overrides`, as for {@link makeReaderPost}.
+ */
+export function makeResearchPost(
+  overrides: Partial<Omit<ReaderPost, 'overview'>> & { overview?: ReaderOverview | null } = {},
+): ReaderPost {
+  const title = overrides.title ?? 'Is a cold-climate heat pump worth it for our Chicago house?';
+  const base = makeReaderPost(null, { title, ...overrides });
+  return {
+    ...base,
+    source: 'research',
+    account_key: null,
+    gmail_message_id: null,
+    comm_message_id: null,
+    rfc822_message_id: null,
+    research_brief: overrides.research_brief ?? title,
+    research_state: overrides.research_state ?? 'researching',
+    research_attempts: overrides.research_attempts ?? 1,
+    research_fired_at:
+      overrides.research_fired_at === undefined ? base.created_at : overrides.research_fired_at,
+    research_session_url:
+      overrides.research_session_url === undefined
+        ? 'https://claude.ai/code/session_01ResearchFixture'
+        : overrides.research_session_url,
   };
 }
 

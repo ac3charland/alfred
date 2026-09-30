@@ -44,6 +44,18 @@ const ARTICLE: ReaderPostForSend = {
   instapaper_bookmark_id: 4242,
 };
 
+/** A research report the Routine delivered: HTML rendered at delivery, and no address at all. */
+const REPORT: ReaderPostForSend = {
+  title: 'Is a cold-climate heat pump worth it for our Chicago house?',
+  canonical_url: null,
+  gist: 'Probably yes if the furnace is near the end of its life.',
+  html: '<h1>Is a cold-climate heat pump worth it?</h1>\n<p>Probably yes.</p>',
+  text: '# Is a cold-climate heat pump worth it?\n\nProbably yes.',
+  archived_at: null,
+  source: 'research',
+  instapaper_bookmark_id: null,
+};
+
 /** What the stamp reads back: the list row, with no body on it. */
 function savedRow(overrides: Parameters<typeof makeReaderPost>[1] = {}) {
   const {
@@ -314,6 +326,56 @@ describe('POST /api/reader/posts/[id]/instapaper', () => {
     expect(logged).not.toContain('OAuth ');
     expect(logged).not.toContain('oauth_signature');
     expect(logged).not.toContain(BODY_TEXT);
+  });
+
+  describe('a research report', () => {
+    it('saves the stored HTML as private content from “alfred research”, then stamps it sent and archived', async () => {
+      const supabase = signedIn(REPORT);
+      const fetchSpy = instapaperAnswers([{ type: 'bookmark', bookmark_id: 1_234_567 }]);
+
+      const response = await send();
+
+      expect(response.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchSpy.mock.calls[0] ?? [];
+      expect(url).toBe('https://www.instapaper.com/api/1/bookmarks/add');
+      expect(formBody(init)).toEqual({
+        is_private_from_source: 'alfred research',
+        title: REPORT.title,
+        description: REPORT.gist,
+        content: REPORT.html,
+      });
+      expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+        instapaper_sent_at: '2026-09-24T12:00:00.000Z',
+        instapaper_bookmark_id: 1_234_567,
+        archived_at: '2026-09-24T12:00:00.000Z',
+      });
+    });
+
+    it('never sends a url, whatever the row carries, and never moves a bookmark it may hold', async () => {
+      signedIn({ ...REPORT, canonical_url: 'https://example.com/x', instapaper_bookmark_id: 4242 });
+      const fetchSpy = instapaperAnswers([{ type: 'bookmark', bookmark_id: 9 }]);
+
+      await send();
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://www.instapaper.com/api/1/bookmarks/add');
+      expect(formBody(fetchSpy.mock.calls[0]?.[1])).not.toHaveProperty('url');
+    });
+
+    it('409s before the report has arrived — no body to send — without calling Instapaper', async () => {
+      const supabase = signedIn({ ...REPORT, html: null, text: null });
+      const fetchSpy = jest.spyOn(globalThis, 'fetch');
+
+      const response = await send();
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        error: 'Nothing to send — this post has no link and no stored text',
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(supabase.table('reader_posts').update).not.toHaveBeenCalled();
+    });
   });
 
   describe('an article from To Reader', () => {

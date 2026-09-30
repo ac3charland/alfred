@@ -45,9 +45,13 @@
  *   where page.route() can't reach, so INSTAPAPER_API_URL points it here):
  *     POST /api/1/bookmarks/add                               → a bookmark, or a seeded error
  *     POST /api/1/bookmarks/unarchive                         → the same bookmark, or the error
+ *   The research Routine's API trigger (not part of Supabase — the research routes fire it from
+ *   the Next server, so RESEARCH_ROUTINE_FIRE_URL points it here):
+ *     POST /__mock__/routine/fire      → a session URL, or the status a test set
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed   GET /__mock__/state
  *     POST /__mock__/github/fail-next  → make the next matching GitHub request fail once
+ *     POST /__mock__/routine/respond   → { status } every later fire answers (200 = accept)
  *
  * Single-process, in-memory, single worker (playwright.config runs workers: 1),
  * so a shared store with per-test reset/seed is safe. Self-contained: only Node
@@ -133,6 +137,13 @@ let readerHealth = [];
 let instapaperRequests = [];
 /** @type {number | null} */
 let instapaperErrorCode = null;
+// ── The research Routine: every fire the research routes made, and the status to answer with. ──
+// Recorded as sent — the Authorization and anthropic-beta headers and the fire's `text` — so a test
+// can check the fire was authenticated, versioned and carried the post id and brief. 200 answers
+// Anthropic's routine_fire body with a session URL; any other status answers an error body.
+/** @type {{ authorization: string, beta: string, text: string }[]} */
+let routineFires = [];
+let routineFireStatus = 200;
 // ── Wiki (migration 0038): the page snapshot the Worker writes and the module reads. ──
 /** @type {Record<string, unknown>[]} */
 let wikiPages = [];
@@ -761,6 +772,14 @@ function newReaderPost(input) {
     wiki_sent_evidence: Array.isArray(input.wiki_sent_evidence)
       ? [...input.wiki_sent_evidence]
       : [],
+    // A research post's question and lifecycle (migration 0047). Null on every other source.
+    research_brief: input.research_brief ?? null,
+    research_state: input.research_state ?? null,
+    research_attempts: input.research_attempts ?? 0,
+    research_fired_at: input.research_fired_at ?? null,
+    research_session_url: input.research_session_url ?? null,
+    research_error: input.research_error ?? null,
+    research_delivered_at: input.research_delivered_at ?? null,
     created_at: input.created_at ?? receivedAt,
   };
 }
@@ -1654,6 +1673,57 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
+  // Consume research rows into queued Reader posts, all-or-nothing, with send_items_to_wiki's
+  // guards: every id an undispatched, childless root research item, or nothing changes. Answers
+  // the new posts, each carrying its brief (the title, then a blank line and the notes).
+  if (fn === 'send_items_to_research' && req.method === 'POST') {
+    const ids = [...new Set(Array.isArray(body?.p_ids) ? body.p_ids.map(String) : [])];
+    const bad = ids.find((id) => {
+      const item = items.find((row) => String(row.id) === id);
+      return (
+        item === undefined ||
+        item.item_type !== 'research' ||
+        item.parent_id != null ||
+        item.dispatched_at != null
+      );
+    });
+    if (bad !== undefined) {
+      sendJson(res, 400, {
+        code: '23514',
+        message: `send_items_to_research: ${bad} is not an undispatched root research item`,
+      });
+      return;
+    }
+    const parent = items.find(
+      (row) => row.parent_id != null && ids.includes(String(row.parent_id)),
+    );
+    if (parent !== undefined) {
+      sendJson(res, 400, {
+        code: '23514',
+        message: `send_items_to_research: ${String(parent.parent_id)} has subtasks`,
+      });
+      return;
+    }
+    const doomed = items.filter((row) => ids.includes(String(row.id)));
+    const now = new Date().toISOString();
+    const posts = doomed.map((item) => {
+      const notes = typeof item.notes === 'string' ? item.notes.trim() : '';
+      return newReaderPost({
+        source: 'research',
+        title: item.title,
+        research_brief: notes === '' ? item.title : `${String(item.title)}\n\n${notes}`,
+        research_state: 'queued',
+        received_at: now,
+        created_at: now,
+      });
+    });
+    readerPosts.push(...posts);
+    for (const row of doomed) row.dispatched_at = now;
+    deleteRows('items', doomed);
+    sendJson(res, 200, posts);
+    return;
+  }
+
   // Body search as a case-insensitive substring match — the same shape the real function
   // answers with: the path, a snippet whose matched words sit between chr(2) and chr(3), and a
   // rank that puts a title hit above a summary hit above a body hit.
@@ -2265,6 +2335,8 @@ function handleControl(req, res, url, body) {
     readerHealth = [];
     instapaperRequests = [];
     instapaperErrorCode = null;
+    routineFires = [];
+    routineFireStatus = 200;
     wikiPages = [];
     wikiSync = [];
     github = freshGithub();
@@ -2330,6 +2402,8 @@ function handleControl(req, res, url, body) {
     instapaperRequests = [];
     instapaperErrorCode =
       typeof body?.instapaperErrorCode === 'number' ? body.instapaperErrorCode : null;
+    routineFires = [];
+    routineFireStatus = typeof body?.routineFireStatus === 'number' ? body.routineFireStatus : 200;
     // Wiki. The sync row is likewise not defaulted: an empty table is "never synced".
     wikiPages = Array.isArray(body?.wikiPages) ? body.wikiPages.map((p) => newWikiPage(p)) : [];
     wikiSync = Array.isArray(body?.wikiSync) ? body.wikiSync.map((s) => newWikiSync(s)) : [];
@@ -2366,6 +2440,7 @@ function handleControl(req, res, url, body) {
   if (url.pathname === '/__mock__/state' && req.method === 'GET') {
     sendJson(res, 200, {
       instapaperRequests,
+      routineFires,
       folders,
       items,
       projects,
@@ -2388,6 +2463,32 @@ function handleControl(req, res, url, body) {
       wikiPages,
       wikiSync,
       github: githubState(),
+    });
+    return;
+  }
+  if (url.pathname === '/__mock__/routine/respond' && req.method === 'POST') {
+    routineFireStatus = typeof body?.status === 'number' ? body.status : 200;
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+  if (url.pathname === '/__mock__/routine/fire' && req.method === 'POST') {
+    routineFires.push({
+      authorization: req.headers.authorization ?? '',
+      beta: req.headers['anthropic-beta'] ?? '',
+      text: typeof body?.text === 'string' ? body.text : '',
+    });
+    if (routineFireStatus !== 200) {
+      sendJson(res, routineFireStatus, {
+        type: 'error',
+        error: { type: 'mock_error', message: 'Mocked routine refusal' },
+      });
+      return;
+    }
+    const session = `session_mock${String(routineFires.length).padStart(4, '0')}`;
+    sendJson(res, 200, {
+      type: 'routine_fire',
+      claude_code_session_id: session,
+      claude_code_session_url: `https://claude.ai/code/${session}`,
     });
     return;
   }

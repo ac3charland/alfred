@@ -6,7 +6,12 @@ import {
   makeSupabaseDouble,
 } from '@/lib/api/supabase-route-double';
 import { pinClock } from '@/lib/pin-clock';
-import { makeReaderOverview, makeReaderPost, makeReaderPublication } from '@/lib/reader/fixtures';
+import {
+  makeReaderOverview,
+  makeReaderPost,
+  makeReaderPublication,
+  makeResearchPost,
+} from '@/lib/reader/fixtures';
 import { createClient } from '@/lib/supabase/server';
 import type { ReaderPostListItem } from '@/lib/types';
 import { WikiWriteError, commitEnvelopes } from '@/lib/wiki/writer/commit';
@@ -134,6 +139,34 @@ describe('POST /api/reader/posts/[id]/wiki', () => {
     );
     expect(envelope?.files[1]?.content).not.toContain(IDEAS[2]);
     expect(envelope?.files[1]?.content).not.toContain('## Evidence');
+  });
+
+  it('files a research report’s picks alone — its text never goes in as source.md', async () => {
+    const supabase = signedIn(
+      makeResearchPost({
+        id: POST_ID,
+        research_state: 'done',
+        text: BODY_TEXT,
+        received_at: '2026-10-02T22:15:00.000Z',
+        overview: makeReaderOverview({ novel_ideas: IDEAS, evidence: EVIDENCE }),
+      }),
+    );
+
+    const response = await POST(send(POST_ID, { ideas: IDEAS.slice(0, 1) }), context(POST_ID));
+
+    expect(response.status).toBe(200);
+    const files = mockCommit.mock.calls[0]?.[1][0]?.files ?? [];
+    expect(files.map((file) => file.name)).toEqual(['picks-2026-10-03.md']);
+    expect(files[0]?.content).toContain('origin: "model-derived"');
+    expect(files[0]?.content).toContain('source_url: null');
+    expect(files[0]?.content).toContain('author: null');
+    expect(files[0]?.content).toContain(`- ${IDEAS[0] ?? ''}`);
+    expect(JSON.stringify(files)).not.toContain(BODY_TEXT);
+    expect(supabase.rpc).toHaveBeenCalledWith('append_wiki_sent_picks', {
+      p_post: POST_ID,
+      p_ideas: [IDEAS[0]],
+      p_evidence: [],
+    });
   });
 
   it('commits a mixed send as one envelope whose picks file heads both sections', async () => {

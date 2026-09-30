@@ -17,6 +17,7 @@ import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
+import { ResearchConfigProvider } from '@/lib/stores/research-config';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import { WeeklyPlanProvider } from '@/lib/stores/weekly-plan-store';
@@ -115,6 +116,11 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
     repo?: string | null;
     writable?: boolean;
   };
+  /**
+   * Whether the deployment can research a question. Defaults to false — an unconfigured
+   * deployment, which offers Research nowhere — so every existing test renders exactly as before.
+   */
+  researchConfigured?: boolean;
 }
 
 export function renderWithProviders(
@@ -132,80 +138,86 @@ export function renderWithProviders(
     reader = {},
     readerSettings = {},
     wiki = {},
+    researchConfigured = false,
     ...options
   }: ProviderRenderOptions = {},
 ) {
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <ToastProvider>
-        {/* Directly inside ToastProvider and outside every other store, as in the shell layout:
+        <ResearchConfigProvider configured={researchConfigured}>
+          {/* Directly inside ToastProvider and outside every other store, as in the shell layout:
         the Reader overview and the Inbox menus read `writable` from it, and TasksProvider does
         too. */}
-        <WikiProvider
-          initialPages={wiki.pages ?? []}
-          initialSync={wiki.sync ?? null}
-          config={{ repo: wiki.repo ?? null, writable: wiki.writable ?? false }}
-        >
-          <FoldersProvider initialFolders={folders}>
-            {/* Above TasksProvider, as in the shell layout — the store calls its remapId when a
+          <WikiProvider
+            initialPages={wiki.pages ?? []}
+            initialSync={wiki.sync ?? null}
+            config={{ repo: wiki.repo ?? null, writable: wiki.writable ?? false }}
+          >
+            <FoldersProvider initialFolders={folders}>
+              {/* Above TasksProvider, as in the shell layout — the store calls its remapId when a
           create reconciles (ALF-199). */}
-            <ExpansionProvider>
-              <TasksProvider initialTasks={tasks}>
-                <ActiveEditorProvider>
-                  <InboxSelectionProvider>
-                    <DepartingItemsProvider>
-                      <CodeProvider
-                        initialProjects={projects}
-                        initialEpics={epics}
-                        initialStories={stories}
-                      >
-                        <CodeFilterProvider>
-                          <FolderSortProvider>
-                            <WeeklyPlanProvider
-                              initialIndex={weeklyPlans.index}
-                              initialLatest={weeklyPlans.latest}
-                            >
-                              <HabitsProvider
-                                initialHabits={habits.habits}
-                                initialEntries={habits.entries}
-                                initialStats={habits.stats ?? {}}
-                                serverToday={habits.today}
+              <ExpansionProvider>
+                <TasksProvider initialTasks={tasks}>
+                  <ActiveEditorProvider>
+                    <InboxSelectionProvider>
+                      <DepartingItemsProvider>
+                        <CodeProvider
+                          initialProjects={projects}
+                          initialEpics={epics}
+                          initialStories={stories}
+                        >
+                          <CodeFilterProvider>
+                            <FolderSortProvider>
+                              <WeeklyPlanProvider
+                                initialIndex={weeklyPlans.index}
+                                initialLatest={weeklyPlans.latest}
                               >
-                                <CommsProvider
-                                  initialSeed={makeCommsSeed(comms)}
-                                  initialFailed={comms.failed ?? false}
+                                <HabitsProvider
+                                  initialHabits={habits.habits}
+                                  initialEntries={habits.entries}
+                                  initialStats={habits.stats ?? {}}
+                                  serverToday={habits.today}
                                 >
-                                  <CommsSettingsProvider
-                                    initialPeople={commsSettings.people ?? []}
-                                    initialRubrics={commsSettings.rubrics ?? []}
-                                    initialCorrections={commsSettings.corrections ?? []}
+                                  <CommsProvider
+                                    initialSeed={makeCommsSeed(comms)}
+                                    initialFailed={comms.failed ?? false}
                                   >
-                                    <ReaderProvider
-                                      initialPosts={reader.posts ?? []}
-                                      initialHealth={{ health: reader.health, account: undefined }}
-                                      instapaperConfigured={reader.instapaperConfigured ?? true}
+                                    <CommsSettingsProvider
+                                      initialPeople={commsSettings.people ?? []}
+                                      initialRubrics={commsSettings.rubrics ?? []}
+                                      initialCorrections={commsSettings.corrections ?? []}
                                     >
-                                      <ReaderSettingsProvider
-                                        initialPublications={readerSettings.publications ?? []}
-                                        initialCandidates={readerSettings.candidates ?? []}
+                                      <ReaderProvider
+                                        initialPosts={reader.posts ?? []}
+                                        initialHealth={{
+                                          health: reader.health,
+                                          account: undefined,
+                                        }}
+                                        instapaperConfigured={reader.instapaperConfigured ?? true}
                                       >
-                                        {children}
-                                      </ReaderSettingsProvider>
-                                    </ReaderProvider>
-                                  </CommsSettingsProvider>
-                                </CommsProvider>
-                              </HabitsProvider>
-                            </WeeklyPlanProvider>
-                          </FolderSortProvider>
-                        </CodeFilterProvider>
-                      </CodeProvider>
-                    </DepartingItemsProvider>
-                  </InboxSelectionProvider>
-                </ActiveEditorProvider>
-              </TasksProvider>
-            </ExpansionProvider>
-          </FoldersProvider>
-        </WikiProvider>
+                                        <ReaderSettingsProvider
+                                          initialPublications={readerSettings.publications ?? []}
+                                          initialCandidates={readerSettings.candidates ?? []}
+                                        >
+                                          {children}
+                                        </ReaderSettingsProvider>
+                                      </ReaderProvider>
+                                    </CommsSettingsProvider>
+                                  </CommsProvider>
+                                </HabitsProvider>
+                              </WeeklyPlanProvider>
+                            </FolderSortProvider>
+                          </CodeFilterProvider>
+                        </CodeProvider>
+                      </DepartingItemsProvider>
+                    </InboxSelectionProvider>
+                  </ActiveEditorProvider>
+                </TasksProvider>
+              </ExpansionProvider>
+            </FoldersProvider>
+          </WikiProvider>
+        </ResearchConfigProvider>
         {/* The toast viewport (normally mounted in AppShell) so components that fire a
             toast — e.g. the gate in TaskRow — render their message under test. */}
         <ToastViewport />

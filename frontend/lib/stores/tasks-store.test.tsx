@@ -3,7 +3,9 @@ import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import { pinClock } from '@/lib/pin-clock';
+import { makeResearchPost } from '@/lib/reader/fixtures';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
+import { ResearchConfigProvider } from '@/lib/stores/research-config';
 import { WikiProvider } from '@/lib/stores/wiki-store';
 import { holdRealtimeAuth } from '@/lib/supabase/hold-realtime-auth';
 import type { Item } from '@/lib/types';
@@ -26,6 +28,7 @@ const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
 const mockListItems = jest.mocked(apiClient.listItems);
 const mockSendItemsToWiki = jest.mocked(apiClient.sendItemsToWiki);
+const mockSendItemsToResearch = jest.mocked(apiClient.sendItemsToResearch);
 
 // Capture the realtime UPDATE handler the TasksProvider subscribes, so the classifier-verdict
 // tests can drive a simulated `items` change through it without a live Realtime channel.
@@ -128,22 +131,27 @@ function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
   return { promise, settle };
 }
 
-function makeWrapper(initialTasks: Item[], { wikiWritable = false } = {}) {
+function makeWrapper(
+  initialTasks: Item[],
+  { wikiWritable = false, researchConfigured = false } = {},
+) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     // ExpansionProvider wraps the store here as it does in the shell layout — the store hands
-    // it a create's id swap (ALF-199). WikiProvider is outermost, matching lib/test-utils.tsx and
-    // the shell layout, for TasksProvider's read of `useWikiConfig()` — which throws
-    // outside one.
+    // it a create's id swap (ALF-199). The two config providers are outermost, matching
+    // lib/test-utils.tsx and the shell layout, for TasksProvider's reads of `useWikiConfig()` and
+    // `useResearchConfigured()` — each of which throws outside its provider.
     return (
-      <WikiProvider
-        initialPages={[]}
-        initialSync={null}
-        config={{ repo: wikiWritable ? 'ac3charland/knowledge' : null, writable: wikiWritable }}
-      >
-        <ExpansionProvider>
-          <TasksProvider initialTasks={initialTasks}>{children}</TasksProvider>
-        </ExpansionProvider>
-      </WikiProvider>
+      <ResearchConfigProvider configured={researchConfigured}>
+        <WikiProvider
+          initialPages={[]}
+          initialSync={null}
+          config={{ repo: wikiWritable ? 'ac3charland/knowledge' : null, writable: wikiWritable }}
+        >
+          <ExpansionProvider>
+            <TasksProvider initialTasks={initialTasks}>{children}</TasksProvider>
+          </ExpansionProvider>
+        </WikiProvider>
+      </ResearchConfigProvider>
     );
   };
 }
@@ -1341,6 +1349,136 @@ describe('classifying as knowledge', () => {
   });
 });
 
+describe('classifying as research', () => {
+  /** Every label a research row can't carry — the same set a knowledge row is cleared of. */
+  const RESEARCH_CLEARS = {
+    item_type: 'research',
+    due_date: null,
+    recurrence: null,
+    intended_project_id: null,
+    intended_epic_id: null,
+    folder_id: null,
+  };
+
+  it('task → research clears the due date, recurrence, hints and folder in one PATCH', async () => {
+    mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: 'research' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({
+          id: 'item-1',
+          item_type: 'task',
+          due_date: '2026-08-14',
+          folder_id: 'f1',
+          dispatched_at: null,
+          priority: 'high',
+        }),
+      ]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('item-1', 'research');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', RESEARCH_CLEARS);
+  });
+
+  it('code → research clears the same set, dropping the pre-factory hints', async () => {
+    mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: 'research' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({
+          id: 'item-1',
+          item_type: 'code',
+          intended_project_id: 'p1',
+          intended_epic_id: 'e1',
+        }),
+      ]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('item-1', 'research');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', RESEARCH_CLEARS);
+  });
+
+  it('applies the clears optimistically, folder included, and keeps priority', () => {
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({
+          id: 'item-1',
+          item_type: 'unclassified',
+          folder_id: 'f1',
+          dispatched_at: null,
+          priority: 'high',
+        }),
+      ]),
+    });
+
+    act(() => {
+      void result.current.actions.classifyItem('item-1', 'research');
+    });
+
+    expect(result.current.tasks[0]).toMatchObject({
+      item_type: 'research',
+      folder_id: null,
+      priority: 'high',
+    });
+  });
+
+  it.each(['task', 'code'] as const)(
+    'research → %s is a bare item_type patch (nothing to clear)',
+    async (next) => {
+      mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: next }));
+      const { result } = renderHook(useTasksTest, {
+        wrapper: makeWrapper([item({ id: 'item-1', item_type: 'research' })]),
+      });
+
+      await act(async () => {
+        await result.current.actions.classifyItem('item-1', next);
+      });
+
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: next });
+    },
+  );
+
+  it('research → knowledge clears the same set, so the row carries no label either way', async () => {
+    mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: 'knowledge' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'research' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('item-1', 'knowledge');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+      ...RESEARCH_CLEARS,
+      item_type: 'knowledge',
+    });
+  });
+
+  it('bulkClassify sends every row the research clear-set', async () => {
+    mockUpdateItem.mockImplementation((id) => Promise.resolve(item({ id, item_type: 'research' })));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({ id: 'a', item_type: 'task', due_date: '2026-08-14' }),
+        item({ id: 'b', item_type: 'unclassified' }),
+      ]),
+    });
+
+    let failed: string[] = ['sentinel'];
+    await act(async () => {
+      failed = await result.current.actions.bulkClassify(['a', 'b'], 'research');
+    });
+
+    expect(failed).toEqual([]);
+    expect(mockUpdateItem).toHaveBeenCalledWith('a', RESEARCH_CLEARS);
+    expect(mockUpdateItem).toHaveBeenCalledWith('b', RESEARCH_CLEARS);
+  });
+});
+
 describe('bulkClassify sends each row its own clear-set', () => {
   it('a mixed selection gets per-row patches, not one shared object', async () => {
     // The task carries a due date to clear; the unclassified row has nothing to clear, so its
@@ -1809,6 +1947,185 @@ describe('dispatchItems — knowledge rows go to the wiki', () => {
 
     expect(mockSendItemsToWiki).not.toHaveBeenCalled();
     expect(stay).toEqual(['idea-a']);
+  });
+});
+
+describe('dispatchItems — research rows go to the Reader', () => {
+  const questionA = item({ id: 'q-a', title: 'Is a heat pump worth it?', item_type: 'research' });
+  const questionB = item({ id: 'q-b', title: 'Compare ASHP vs GSHP', item_type: 'research' });
+  const questionC = item({ id: 'q-c', title: 'What is the evidence on X?', item_type: 'research' });
+  const readyTask = item({
+    id: 'ready-task',
+    item_type: 'task',
+    folder_id: 'f1',
+    dispatched_at: null,
+  });
+  const idea = item({ id: 'idea-a', title: 'Forgetting is the signal', item_type: 'knowledge' });
+  const CONFIGURED = { researchConfigured: true };
+
+  it('sends every ready research id in ONE request and drops the rows', async () => {
+    mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([questionA, questionB, questionC], CONFIGURED),
+    });
+
+    let stay: string[] = ['sentinel'];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['q-a', 'q-b', 'q-c'], jest.fn());
+    });
+
+    expect(mockSendItemsToResearch).toHaveBeenCalledTimes(1);
+    expect(mockSendItemsToResearch).toHaveBeenCalledWith({ ids: ['q-a', 'q-b', 'q-c'] });
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(result.current.tasks).toHaveLength(0);
+    expect(stay).toEqual([]);
+  });
+
+  it('drops the research rows optimistically, before the send resolves', () => {
+    mockSendItemsToResearch.mockReturnValue(new Promise<{ posts: never[] }>(() => {}));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([questionA, questionB], CONFIGURED),
+    });
+
+    act(() => {
+      void result.current.actions.dispatchItems(['q-a', 'q-b'], jest.fn());
+    });
+
+    expect(result.current.tasks).toHaveLength(0);
+  });
+
+  it('rolls every research row back together when the one send fails', async () => {
+    mockSendItemsToResearch.mockRejectedValue(new Error('502'));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([questionA, questionB, questionC], CONFIGURED),
+    });
+
+    let stay: string[] = [];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['q-a', 'q-b', 'q-c'], jest.fn());
+    });
+
+    expect(mockSendItemsToResearch).toHaveBeenCalledTimes(1);
+    expect(stay).toEqual(['q-a', 'q-b', 'q-c']);
+    expect(result.current.tasks.map((t) => t.id)).toEqual(['q-a', 'q-b', 'q-c']);
+    expect(mockShowToast).toHaveBeenCalledWith("3 of 3 couldn't be dispatched");
+  });
+
+  it('treats a 200 whose posts include a refused fire as sent — the Reader says what happened', async () => {
+    mockSendItemsToResearch.mockResolvedValue({
+      posts: [
+        makeResearchPost({ research_state: 'failed', research_error: 'Routine rate limited' }),
+      ],
+    });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([questionA], CONFIGURED),
+    });
+
+    let stay: string[] = ['sentinel'];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['q-a'], jest.fn());
+    });
+
+    expect(stay).toEqual([]);
+    expect(result.current.tasks).toHaveLength(0);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('sends a mixed selection: the task by PATCH, the idea to the wiki, the questions to research', async () => {
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(item({ id, item_type: 'task', folder_id: 'f1' })),
+    );
+    mockSendItemsToWiki.mockResolvedValue({ sent: ['idea-a'] });
+    mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([readyTask, idea, questionA, questionB], {
+        wikiWritable: true,
+        researchConfigured: true,
+      }),
+    });
+
+    let stay: string[] = ['sentinel'];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(
+        ['ready-task', 'idea-a', 'q-a', 'q-b'],
+        jest.fn(),
+      );
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('ready-task', { dispatched: true });
+    expect(mockSendItemsToWiki).toHaveBeenCalledWith({ ids: ['idea-a'] });
+    expect(mockSendItemsToResearch).toHaveBeenCalledWith({ ids: ['q-a', 'q-b'] });
+    expect(stay).toEqual([]);
+  });
+
+  it('splits more than five questions into sends of at most five', async () => {
+    const questions = Array.from({ length: 6 }, (_, index) =>
+      item({ id: `q-${String(index)}`, item_type: 'research' }),
+    );
+    const ids = questions.map((question) => question.id);
+    mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper(questions, CONFIGURED) });
+
+    let stay: string[] = ['sentinel'];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(ids, jest.fn());
+    });
+
+    expect(mockSendItemsToResearch).toHaveBeenCalledTimes(2);
+    expect(mockSendItemsToResearch).toHaveBeenNthCalledWith(1, { ids: ids.slice(0, 5) });
+    expect(mockSendItemsToResearch).toHaveBeenNthCalledWith(2, { ids: ids.slice(5) });
+    expect(stay).toEqual([]);
+    expect(result.current.tasks).toHaveLength(0);
+  });
+
+  it('rolls back only the chunk whose send failed', async () => {
+    const questions = Array.from({ length: 6 }, (_, index) =>
+      item({ id: `q-${String(index)}`, item_type: 'research' }),
+    );
+    const ids = questions.map((question) => question.id);
+    mockSendItemsToResearch
+      .mockResolvedValueOnce({ posts: [] })
+      .mockRejectedValueOnce(new Error('502'));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper(questions, CONFIGURED) });
+
+    let stay: string[] = [];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(ids, jest.fn());
+    });
+
+    expect(stay).toEqual(['q-5']);
+    expect(result.current.tasks.map((t) => t.id)).toEqual(['q-5']);
+    expect(mockShowToast).toHaveBeenCalledWith("1 of 6 couldn't be dispatched");
+  });
+
+  it('never sends a research row when research is not connected — it stays, unready', async () => {
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([questionA]) });
+
+    let stay: string[] = [];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['q-a'], jest.fn());
+    });
+
+    expect(mockSendItemsToResearch).not.toHaveBeenCalled();
+    expect(stay).toEqual(['q-a']);
+    expect(result.current.tasks.map((t) => t.id)).toEqual(['q-a']);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('never sends a research row that has children', async () => {
+    // Defensive: the shape gate never retypes a parent, so this is a row that arrived this way.
+    const child = item({ id: 'q-child', item_type: 'task', parent_id: 'q-a' });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([questionA, child], CONFIGURED),
+    });
+
+    let stay: string[] = [];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['q-a'], jest.fn());
+    });
+
+    expect(mockSendItemsToResearch).not.toHaveBeenCalled();
+    expect(stay).toEqual(['q-a']);
   });
 });
 

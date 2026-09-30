@@ -23,7 +23,10 @@ import { type InstapaperConfig, getInstapaperConfig } from '@/lib/instapaper/con
 // archives it: once a post is in Instapaper, that is where it lives. A newsletter is saved as a
 // new bookmark carrying its email body. An article that came in through the "To Reader" folder is
 // the owner's own bookmark already, archived by the Worker when it took it in, so its send moves
-// that bookmark back to Unread — and saves it again by URL only if the owner has deleted it.
+// that bookmark back to Unread — and saves it again by URL only if the owner has deleted it. A
+// research report has no link at all: its stored HTML goes as private content from "alfred
+// research", and a report that has not been delivered has no body, so it answers 409 like any post
+// with nothing to send.
 // No request body — everything the bookmark is built from is read here, server-side, because the
 // body sent is the post's own email HTML (or its stored text) and the credentials it is signed
 // with must never reach the browser. Node runtime, for `node:crypto`.

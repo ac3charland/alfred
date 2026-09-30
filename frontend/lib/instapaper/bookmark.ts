@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { postWebUrl } from '@/lib/reader/open-link';
+import { isResearchPost } from '@/lib/reader/research';
 
 import type { InstapaperConfig } from './config';
 import { textToHtml } from './content';
@@ -20,12 +21,17 @@ import { signRequest } from './oauth';
  * bookmark — the Worker archived it when it took it in — so its send is `bookmarks/unarchive`:
  * the owner's own bookmark back at the top of Unread, with its progress and highlights, and no
  * body uploaded. Only when the owner has deleted that bookmark is it saved again, by URL.
+ *
+ * A research report has no address: it is the stored HTML, saved as private content under its own
+ * source label, so it reads in Instapaper as "alfred research" rather than as mail.
  */
 
 /** What a send reads off the post: the route's own select, never the list payload. */
 export interface BookmarkSource {
   title: string;
   canonical_url: string | null;
+  /** Which kind of post this is; a research report is saved under its own source label. */
+  source: string;
   gist: string | null;
   html: string | null;
   text: string | null;
@@ -36,6 +42,12 @@ const TIMEOUT_MS = 15_000;
 
 /** "Invalid or missing bookmark_id": the owner deleted the bookmark in Instapaper. */
 const NO_SUCH_BOOKMARK = 1241;
+
+/** What a private newsletter bookmark says it came from — Instapaper's own value for mail. */
+const EMAIL_SOURCE = 'email';
+
+/** What a research report says it came from, in Instapaper's "Source" line. */
+const RESEARCH_SOURCE = 'alfred research';
 
 /**
  * The body a send carries, down a ladder: the email's HTML, else the stored text as paragraphs
@@ -56,14 +68,18 @@ function bookmarkContent(post: BookmarkSource): string | undefined {
  * Instapaper's own mechanism for mail that has no permanent address. The Original link's Gmail
  * permalink is deliberately never the `url`: Instapaper would save a login wall. `resolve_final_url`
  * is left at Instapaper's default (resolve), because Substack's links redirect.
+ *
+ * A research report goes the same private way whatever its row says: it is never fetched by URL,
+ * and its source label is `alfred research`.
  */
 export function buildBookmarkParams(post: BookmarkSource): Record<string, string> | null {
-  const url = postWebUrl(post);
+  const report = isResearchPost(post);
+  const url = report ? undefined : postWebUrl(post);
   const content = bookmarkContent(post);
   if (url === undefined && content === undefined) return null;
 
   const params: Record<string, string> = {};
-  if (url === undefined) params['is_private_from_source'] = 'email';
+  if (url === undefined) params['is_private_from_source'] = report ? RESEARCH_SOURCE : EMAIL_SOURCE;
   else params['url'] = url;
   // The title saves Instapaper a synchronous lookup, and the gist puts alfred's one-paragraph
   // take under the post in the Instapaper list.

@@ -6,6 +6,9 @@ import {
   INGEST_API_KEY,
   MOCK_PORT,
   MOCK_URL,
+  RESEARCH_DELIVERY_KEY,
+  RESEARCH_ROUTINE_FIRE_TOKEN,
+  RESEARCH_ROUTINE_FIRE_URL,
   WIKI_GITHUB_API_URL,
   WIKI_GITHUB_TOKEN,
   WIKI_REPO,
@@ -43,6 +46,12 @@ const mockEnvironment: Record<string, string> = {
   WIKI_GITHUB_TOKEN,
   WIKI_REPO,
   WIKI_GITHUB_API_URL,
+  // The research Routine, pointed at the mock's fire endpoint so a dispatch's fire is recorded
+  // and readable from /__mock__/state. Same deliberate wiring as the wiki: research is configured,
+  // as in production.
+  RESEARCH_ROUTINE_FIRE_URL,
+  RESEARCH_ROUTINE_FIRE_TOKEN,
+  RESEARCH_DELIVERY_KEY,
 };
 
 export default defineConfig({

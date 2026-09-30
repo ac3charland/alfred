@@ -81,8 +81,24 @@ export function leaseFreeFilter(now: Date): string {
 }
 
 /**
- * Posts that are still pending, still under the attempt ceiling, and not leased by a live tick.
- * Oldest first, so a backlog drains in the order it arrived rather than newest-wins.
+ * The `and=(…)` value that keeps a post out of the summariser until it has something to summarise:
+ * its research state is NULL (a newsletter or an article — every post that is not a research
+ * report) or `done` (a report that has arrived). A research post still `queued`, `researching`
+ * or `failed` has no text yet, so it is left alone.
+ *
+ * It is a nested disjunction under `and` because the obvious spellings fail. The obvious
+ * `research_state=not.in.(queued,researching,failed)` compiles to `NOT (x IN (…))`, which is
+ * NULL — not true — for every row whose state is NULL, so it would quietly drop every newsletter
+ * and article and stop all summarising with no error anywhere. And the query record already
+ * spends its one `or` key on `leaseFreeFilter`, so a second disjunction cannot be another `or`;
+ * `and` is the key PostgREST lets carry a nested `or(…)` beside it.
+ */
+const DELIVERED_OR_NOT_RESEARCH_FILTER = '(or(research_state.is.null,research_state.eq.done))';
+
+/**
+ * Posts that are still pending, still under the attempt ceiling, not leased by a live tick, and
+ * not an undelivered research report (`DELIVERED_OR_NOT_RESEARCH_FILTER`). Oldest first, so a
+ * backlog drains in the order it arrived rather than newest-wins.
  *
  * This read is skipped entirely on a capped day: it exists only to feed model calls, and on
  * a capped day there are none to feed.
@@ -97,6 +113,7 @@ export async function fetchRetries(
     summary_state: 'eq.pending',
     summarize_attempts: 'lt.3',
     or: leaseFreeFilter(now),
+    and: DELIVERED_OR_NOT_RESEARCH_FILTER,
     order: 'created_at.asc',
     limit: String(limit),
   });

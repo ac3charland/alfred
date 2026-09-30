@@ -71,10 +71,16 @@ async function patchWith(body: unknown): Promise<Record<string, unknown>> {
   return firstCallArg(mockSupabase._chain.update);
 }
 
-/** PATCH a row that is stored as Inbox knowledge with `body`: the response, and the update mock. */
-async function patchKnowledge(body: unknown) {
+/**
+ * PATCH a row stored with the given type and residency with `body`: the response, and the update
+ * mock (so a refusal can be shown to have written nothing).
+ */
+async function patchStoredRow(
+  stored: { item_type: string; dispatched_at: string | null },
+  body: unknown,
+) {
   const mockSupabase = makeMockSupabase(TEST_USER, {
-    data: { ...TEST_ITEM, item_type: 'knowledge', dispatched_at: null },
+    data: { ...TEST_ITEM, ...stored },
     error: undefined,
   });
   mockCreateClient.mockResolvedValue(mockSupabase as never);
@@ -89,23 +95,25 @@ async function patchKnowledge(body: unknown) {
   return { response, update: mockSupabase._chain.update };
 }
 
-/** PATCH a row stored as a dispatched task with `body`: the response, and the update mock. */
-async function patchDispatchedTask(body: unknown) {
-  const mockSupabase = makeMockSupabase(TEST_USER, {
-    data: { ...TEST_ITEM, item_type: 'task', dispatched_at: '2026-09-01T00:00:00.000Z' },
-    error: undefined,
-  });
-  mockCreateClient.mockResolvedValue(mockSupabase as never);
-  const response = await PATCH(
-    new Request(`http://localhost/api/items/${TEST_ID}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-      headers: { 'Content-Type': 'application/json' },
-    }),
-    routeContext,
-  );
-  return { response, update: mockSupabase._chain.update };
+const DISPATCHED_AT = '2026-09-01T00:00:00.000Z';
+
+/** PATCH a row that is stored as Inbox knowledge with `body`. */
+function patchKnowledge(body: unknown) {
+  return patchStoredRow({ item_type: 'knowledge', dispatched_at: null }, body);
 }
+
+/** PATCH a row that is stored as Inbox research with `body`. */
+function patchResearch(body: unknown) {
+  return patchStoredRow({ item_type: 'research', dispatched_at: null }, body);
+}
+
+/** PATCH a row stored as a dispatched task with `body`. */
+function patchDispatchedTask(body: unknown) {
+  return patchStoredRow({ item_type: 'task', dispatched_at: DISPATCHED_AT }, body);
+}
+
+const KNOWLEDGE_REFUSAL = 'A knowledge item leaves the Inbox only by being sent to the wiki';
+const RESEARCH_REFUSAL = 'A research item leaves the Inbox only by being dispatched to research';
 
 describe('PATCH /api/items/[id]', () => {
   it('returns 401 when no session', async () => {
@@ -542,6 +550,96 @@ describe('PATCH /api/items/[id]', () => {
         const { response, update } = await patchKnowledge({ item_type: 'knowledge' });
         expect(response.status).toBe(200);
         expect(update).toHaveBeenCalled();
+      });
+    });
+
+    // The same rule for research, whose only way out is POST /api/reader/research: stamped here,
+    // the row would need no folder and render in no view, and would never become a Reader post.
+    describe('refuses to stamp a research row dispatched', () => {
+      it('409s a row that is already research, and writes nothing', async () => {
+        const { response, update } = await patchResearch({ dispatched: true });
+        expect(response.status).toBe(409);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toBe(RESEARCH_REFUSAL);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('409s a row retyped to research in the same PATCH', async () => {
+        const { response, update } = await patchStoredRow(
+          { item_type: 'task', dispatched_at: null },
+          { item_type: 'research', dispatched: true },
+        );
+        expect(response.status).toBe(409);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('still lets a research row retyped to a task be dispatched', async () => {
+        const { response, update } = await patchResearch({ item_type: 'task', dispatched: true });
+        expect(response.status).toBe(200);
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('still returns a research row to the Inbox', async () => {
+        const { response } = await patchResearch({ dispatched: false });
+        expect(response.status).toBe(200);
+      });
+    });
+
+    describe('refuses to retype a dispatched row to research', () => {
+      it('409s a folderless retype of a dispatched task, and writes nothing', async () => {
+        const { response, update } = await patchDispatchedTask({
+          item_type: 'research',
+          folder_id: null,
+        });
+        expect(response.status).toBe(409);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toBe(RESEARCH_REFUSAL);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('still lets the retype ride a return to the Inbox', async () => {
+        const { response, update } = await patchDispatchedTask({
+          item_type: 'research',
+          dispatched: false,
+        });
+        expect(response.status).toBe(200);
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('still lets an Inbox row be retyped to research', async () => {
+        const { response, update } = await patchResearch({ item_type: 'research' });
+        expect(response.status).toBe(200);
+        expect(update).toHaveBeenCalled();
+      });
+    });
+
+    // Each guarded type answers in its own words, and it is the type the row ENDS as that names
+    // the refusal — so a retype between the two names the destination it lands on.
+    describe('names the refusal for the type the row ends as', () => {
+      it('keeps the knowledge wording word for word', async () => {
+        const { response } = await patchKnowledge({ dispatched: true });
+        expect(response.status).toBe(409);
+        expect(((await response.json()) as { error: string }).error).toBe(KNOWLEDGE_REFUSAL);
+      });
+
+      it('names research for a dispatched knowledge row retyped to research', async () => {
+        const { response, update } = await patchStoredRow(
+          { item_type: 'knowledge', dispatched_at: DISPATCHED_AT },
+          { item_type: 'research' },
+        );
+        expect(response.status).toBe(409);
+        expect(((await response.json()) as { error: string }).error).toBe(RESEARCH_REFUSAL);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('names knowledge for a dispatched research row retyped to knowledge', async () => {
+        const { response, update } = await patchStoredRow(
+          { item_type: 'research', dispatched_at: DISPATCHED_AT },
+          { item_type: 'knowledge' },
+        );
+        expect(response.status).toBe(409);
+        expect(((await response.json()) as { error: string }).error).toBe(KNOWLEDGE_REFUSAL);
+        expect(update).not.toHaveBeenCalled();
       });
     });
 

@@ -5,6 +5,7 @@ import { ToastViewport } from '@/components/shell/toast-viewport';
 import { NO_READER_HEALTH } from '@/lib/reader/fixtures';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
+import { ResearchConfigProvider } from '@/lib/stores/research-config';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import { WikiProvider } from '@/lib/stores/wiki-store';
 import type {
@@ -23,6 +24,8 @@ export interface RenderReaderOptions {
   instapaperConfigured?: boolean;
   /** The roster the shell seeds — what names an article linked to a publication. Empty by default. */
   publications?: ReaderPublicationListItem[];
+  /** Whether the deployment can research a question (Retry research). Defaults to true. */
+  researchConfigured?: boolean;
 }
 
 /**
@@ -41,6 +44,7 @@ export function renderReader(
     wikiWritable = false,
     instapaperConfigured = true,
     publications = [],
+    researchConfigured = true,
   }: RenderReaderOptions = {},
 ) {
   // Via RTL's own `wrapper` option, not inlined around `ui` directly: only that way does the
@@ -49,21 +53,23 @@ export function renderReader(
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <ToastProvider>
-        <WikiProvider
-          initialPages={[]}
-          initialSync={null}
-          config={{ repo: wikiWritable ? 'ac3charland/knowledge' : null, writable: wikiWritable }}
-        >
-          <ReaderProvider
-            initialPosts={initialPosts}
-            initialHealth={initialHealth}
-            instapaperConfigured={instapaperConfigured}
+        <ResearchConfigProvider configured={researchConfigured}>
+          <WikiProvider
+            initialPages={[]}
+            initialSync={null}
+            config={{ repo: wikiWritable ? 'ac3charland/knowledge' : null, writable: wikiWritable }}
           >
-            <ReaderSettingsProvider initialPublications={publications} initialCandidates={[]}>
-              {children}
-            </ReaderSettingsProvider>
-          </ReaderProvider>
-        </WikiProvider>
+            <ReaderProvider
+              initialPosts={initialPosts}
+              initialHealth={initialHealth}
+              instapaperConfigured={instapaperConfigured}
+            >
+              <ReaderSettingsProvider initialPublications={publications} initialCandidates={[]}>
+                {children}
+              </ReaderSettingsProvider>
+            </ReaderProvider>
+          </WikiProvider>
+        </ResearchConfigProvider>
         <ToastViewport />
       </ToastProvider>
     );

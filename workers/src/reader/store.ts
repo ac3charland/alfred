@@ -92,7 +92,7 @@ export interface ReaderArticleInsert {
 /** What an insert did. A conflict is a value rather than a throw — another tick owns the post. */
 export type InsertPostResult = { inserted: true; id: string } | { inserted: false; conflict: true };
 
-/** A post that already holds one of the bookmark ids in To Reader, from either source. */
+/** A post that already holds one of the bookmark ids in To Reader, from any source. */
 export interface BookmarkedPost {
   id: string;
   /** Whether the owner archived it in the Reader — then the tick puts it back on the list. */
@@ -181,12 +181,12 @@ interface WireBookmarkedPost {
 }
 
 /**
- * Every post, of either source, that holds one of these bookmark ids — the To Reader leg's
+ * Every post, of any source, that holds one of these bookmark ids — the To Reader leg's
  * "already a post?" read, one fetch for the whole folder listing rather than one per bookmark.
  *
- * Across both sources on purpose: a newsletter the owner sent to Instapaper holds the id of the
- * bookmark that send created, and moving that bookmark into To Reader must bring the newsletter
- * back rather than summarise the same post a second time as an article.
+ * Across every source on purpose: a newsletter or a research report the owner sent to Instapaper
+ * holds the id of the bookmark that send created, and moving that bookmark into To Reader must
+ * bring the post back rather than summarise the same text a second time as an article.
  */
 export async function fetchPostsForBookmarks(
   env: SupabaseEnv,

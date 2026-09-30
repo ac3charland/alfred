@@ -230,6 +230,8 @@ working.
 
 **Never use `jest.mock()` inside `beforeEach` or a test body.** It must be at the module's top level — Jest hoists it before imports. Calling it inside a hook is allowed for re-configuring mock behavior but the module replacement has already happened.
 
+**A pure-ESM dependency (`unified`, `remark-*`, `react-markdown`) fails the frontend's ts-jest transform on its first `export`.** Stub it when the component only passes it through (`components/wiki/wiki-markdown.test.tsx`). When the package's own behaviour is what the test proves, load the real one through Node's loader, which `require`s an ESM graph synchronously on the pinned Node 24: `jest.mock('unified', () => process.getBuiltinModule('node:module').createRequire(__filename)('unified'))`. `import { createRequire } from 'node:module'` won't do — Jest hands back its own wrapper, which fails the same way. (`frontend/lib/reader/report-html.test.ts`.)
+
 **Never forget `__esModule: true` in a factory for default exports.** If a module uses `export default`, the mock factory must include `{ __esModule: true, default: jest.fn() }` or the import will resolve to `undefined`.
 
 **Always use `jest.mocked(fn)` instead of casting `fn as jest.Mock`.** `jest.mocked` is type-safe and doesn't discard the original type. Available since Jest 27; use it everywhere.
