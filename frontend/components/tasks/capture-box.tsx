@@ -205,6 +205,31 @@ export function CaptureBox({
     caretToEndReference.current = true;
   };
 
+  // Fit the box to what's typed (ALF-285). Resetting to `auto` first is what lets it shrink again:
+  // a textarea's scrollHeight never drops below the box it already occupies. The height is
+  // pinned in px rather than left to `rows`, so past the `max-h` cap in `captureTextareaClass`
+  // the textarea scrolls inside itself as it always did. No-op in compact mode (no textarea).
+  const fitTextareaToContent = React.useCallback(() => {
+    const textarea = textareaReference.current;
+    if (textarea === null) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${String(textarea.scrollHeight)}px`;
+  }, []);
+
+  // Before paint, so a pasted or restored draft never flashes at the wrong height.
+  React.useLayoutEffect(() => {
+    fitTextareaToContent();
+  }, [value, fitTextareaToContent]);
+
+  // A narrower window re-wraps a draft onto more lines without the value changing.
+  React.useEffect(() => {
+    if (compact) return;
+    globalThis.addEventListener('resize', fitTextareaToContent);
+    return () => {
+      globalThis.removeEventListener('resize', fitTextareaToContent);
+    };
+  }, [compact, fitTextareaToContent]);
+
   // Placing the caret inline with `setValue` is clobbered by the re-render, so do it on the beat
   // after the new value commits — before paint, so the caret never flashes at the wrong offset.
   React.useLayoutEffect(() => {
