@@ -4,8 +4,9 @@
 # subagent, one unreadable one and a .meta.json, and a private TMPDIR for the state file and log.
 #
 #   docs/demos/alf-310-session-recording/hook.sh dry-run   # print the stop body it would send
-#   docs/demos/alf-310-session-recording/hook.sh gate      # no ALFRED_BASE_URL: silent no-op
+#   docs/demos/alf-310-session-recording/hook.sh gate      # not a cloud session, or no alfred: no-op
 #   docs/demos/alf-310-session-recording/hook.sh refused   # alfred answers 401: logged, still silent
+#   docs/demos/alf-310-session-recording/hook.sh live      # post both events to $ALFRED_BASE_URL
 #
 # Commits are pinned (fixed author, committer and dates), so every sha printed is stable.
 set -euo pipefail
@@ -44,9 +45,19 @@ case "${1:-}" in
     echo "$stdin" | hook stop --dry-run
     ;;
   gate)
+    code=0
+    out="$(echo "$stdin" | CLAUDE_CODE_REMOTE_SESSION_ID= ALFRED_BASE_URL=http://127.0.0.1:9 hook stop 2>&1)" || code=$?
+    echo "a local session (no cse_ id): exit $code, output: '${out}', scratch dir: $(ls "$TMPDIR" | wc -l) entries"
     unset ALFRED_BASE_URL
     code=0; out="$(echo "$stdin" | hook stop 2>&1)" || code=$?
-    echo "exit $code, output: '${out}', scratch dir: $(ls "$TMPDIR" | wc -l) entries"
+    echo "no ALFRED_BASE_URL:           exit $code, output: '${out}', scratch dir: $(ls "$TMPDIR" | wc -l) entries"
+    ;;
+  live)
+    code=0; out="$(hook session-start 2>&1)" || code=$?
+    echo "session-start: exit $code, output: '${out}'"
+    code=0; out="$(echo "$stdin" | hook stop 2>&1)" || code=$?
+    echo "stop:          exit $code, output: '${out}'"
+    if [ -e "$TMPDIR/alfred-session-ledger/hook.log" ]; then cat "$TMPDIR/alfred-session-ledger/hook.log"; else echo "hook.log: none (both writes accepted)"; fi
     ;;
   refused)
     node -e '
@@ -63,5 +74,5 @@ case "${1:-}" in
     echo "hook.log:"
     sed -E 's/^[0-9T:.-]+Z/<time>/' "$TMPDIR/alfred-session-ledger/hook.log"
     ;;
-  *) echo "usage: hook.sh dry-run|gate|refused" >&2; exit 1 ;;
+  *) echo "usage: hook.sh dry-run|gate|refused|live" >&2; exit 1 ;;
 esac

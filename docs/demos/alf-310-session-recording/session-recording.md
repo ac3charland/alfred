@@ -4,11 +4,11 @@ branch: claude/alf-310-record-session-metrics
 
 # ALF-310 — sessions record themselves into the ledger
 
-*2026-09-30T22:20:29.274Z*
+*2026-09-30T22:53:03.140Z*
 
 Every alfred cloud session now writes its own `code_sessions` row as it runs. A project hook (SessionStart + Stop in `.claude/settings.json`) reads the session's transcripts and posts to `POST /api/code/sessions/record`, which calls `record_code_session`. The transcript has no cost, so alfred prices the tokens itself from `model_price_history`, a dated copy of Anthropic's pricing page that the Worker refreshes on its daily tick.
 
-Everything below runs on invented fixtures and a throwaway local Postgres: the repo is public, so no real session or ledger data appears here.
+Everything below runs on invented fixtures, a local app against the E2E suite's in-memory Supabase, and a throwaway local Postgres: the repo is public, so no real session or ledger data appears here.
 
 ## 1 · What a stop sends
 
@@ -77,7 +77,7 @@ state file: {"repo":"ac3charland/alfred","base_sha":"839e92dd1c4847cc8f4034b9e88
 
 ## 2 · Silent everywhere else
 
-Without `ALFRED_BASE_URL` (a local session, another environment, a fork of the public repo) the hook does nothing at all: no output, exit 0, nothing written. When alfred refuses a write, the session still sees nothing; one line lands in the hook's own log, with no header or body.
+Outside an alfred cloud session (no `cse_` session id, or no `ALFRED_BASE_URL`: a local session, another environment, a fork of the public repo) the hook does nothing at all: no output, exit 0, nothing written. When alfred refuses a write, the session still sees nothing; one line lands in the hook's own log, with no header or body.
 
 ```bash
 docs/demos/alf-310-session-recording/hook.sh gate
@@ -85,15 +85,44 @@ docs/demos/alf-310-session-recording/hook.sh refused
 ```
 
 ```output
-exit 0, output: '', scratch dir: 0 entries
+a local session (no cse_ id): exit 0, output: '', scratch dir: 0 entries
+no ALFRED_BASE_URL:           exit 0, output: '', scratch dir: 0 entries
 exit 0, output: ''
 hook.log:
 <time> · stop · session_01FixtureRecorded · 401
 ```
 
-## 3 · Pricing and ownership in real Postgres
+## 3 · Through the real route
 
-Against a throwaway cluster with every migration applied: the hook records a session before any price is known (`price_unknown`, no cost); the Worker's parser reads the captured pricing page (19 models) and `append_model_prices` stores it, which re-prices the session (`claude-haiku-4-5-20251001` prices as `claude-haiku-4-5`: 0.028872 by hand for this usage); the same table again appends nothing; and a backfill re-run for the session fills the PR fields while the recorded usage, cost, prompt and start commit stay.
+The Next app, built and started against the in-memory Supabase, takes both of the hook's writes with the ledger key. The route refuses the ingest key and no auth (401), and a body carrying a cost or a warning code the hook doesn't own (400). A backfill re-run through ALF-309's route then fills the PR fields while the recorded prompt, start commit and usage stay. The mock holds no price history, so the recorded row reads `price_unknown`, exactly as a real one does before the first price fetch.
+
+```bash
+docs/demos/alf-310-session-recording/with-app.sh
+```
+
+```output
+== the hook, run as Claude Code runs it, posting to the app with the ledger key
+session-start: exit 0, output: ''
+stop:          exit 0, output: ''
+hook.log: none (both writes accepted)
+
+== the row both writes left
+{"session_id":"session_01FixtureRecorded","prompt_source":"recorded","ref":"ALF-310","base_sha":"839e92dd1c4847cc8f4034b9e8880dc71fd34323","output_tokens":850,"subagent_count":2,"skills":2,"cost_usd":null,"warnings":["price_unknown","subagents_unreadable"]}
+
+== who gets in, and what the route refuses
+ingest key .................... HTTP 401
+no auth ....................... HTTP 401
+ledger key, a sent cost ....... HTTP 400
+ledger key, a backfill code ... HTTP 400
+
+== a backfill re-run for the same session: PR fields fill in, the recorded columns stay
+{"upserted":1,"kept_recorded":1}
+{"prompt_source":"recorded","base_sha":"839e92dd1c4847cc8f4034b9e8880dc71fd34323","output_tokens":850,"cost_usd":null,"pr_state":"merged","launch_lane":"implementation","warnings":["builder_changed_near_start","price_unknown","subagents_unreadable"]}
+```
+
+## 4 · Pricing and ownership in real Postgres
+
+Against a throwaway cluster with every migration applied: the hook records a session before any price is known (`price_unknown`, no cost); the Worker's parser reads the captured pricing page (19 models) and `append_model_prices` stores it, which re-prices the session (`claude-haiku-4-5-20251001` prices as `claude-haiku-4-5`: 0.028872 by hand for this usage); the same table again appends nothing; and a backfill re-run fills the PR fields while the recorded usage, cost, prompt and start commit stay.
 
 ```bash
 node docs/demos/alf-310-session-recording/prices-and-ownership.mjs
