@@ -162,8 +162,13 @@ earlier ones for the same rule key. This means:
 
 **`unicorn/prevent-abbreviations` is OFF project-wide (deliberate decision)**
 
-- This rule is disabled in both `frontend/` and `workers/` configs (in the unicorn rule-tuning block, alongside `unicorn/no-null`). It forced ecosystem-hostile renames — `utils` → `utilities` (shadcn/ui ships `lib/utils.ts` and its CLI writes that path), `env`/`props`/`params` → verbose forms — that cut against the grain of the libraries the project uses. **Do not re-enable it**, and do not rename identifiers to "fix" abbreviations.
+- This rule is disabled in every package's config (the unicorn rule-tuning block). It forced ecosystem-hostile renames — `utils` → `utilities` (shadcn/ui ships `lib/utils.ts` and its CLI writes that path), `env`/`props`/`params` → verbose forms — that cut against the grain of the libraries the project uses. **Do not re-enable it**, and do not rename identifiers to "fix" abbreviations.
 - `next-env.d.ts` (Next.js generated, at the package root) stays in the global `ignores` array — but because it is *generated output we never lint*, not because of this rule.
+
+**`unicorn/no-null` is OFF only where code is the Postgres row boundary (deliberate, per package)**
+
+- Off in `frontend/` (Supabase rows are `T | null` everywhere) and `tools/session-ledger/` (it emits `code_sessions` rows whose every key must be present, and `JSON.stringify` drops `undefined` keys). On everywhere else, and those packages pass with it.
+- A new package that builds or reads database rows may take the same override, as a decision the owner approves, never as the fix for a red lint run. Everywhere else, write `undefined`.
 
 **TypeScript config files outside `tsconfig.json` include with `allowDefaultProject`**
 
