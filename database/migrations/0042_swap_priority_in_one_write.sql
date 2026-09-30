@@ -13,10 +13,28 @@
 -- 0005 first tried — and 0007 replaced with the sentinel — now stands: each story is written once,
 -- straight to its final rank, and that is all Realtime sees. Ordinary writes still fail fast on a
 -- real duplicate; nothing here defers the check to commit.
+--
+-- The swap also takes both rows' locks BEFORE reading their ranks. A swap is relative — it trades
+-- the ranks the two stories hold when it runs — and a plain read let a concurrent write (a respace
+-- from another session's dispatch, another tab's jump) commit between the read and the UPDATE,
+-- which then wrote the stale ranks over it. Locking in ref order means two swaps sharing a story
+-- queue behind each other instead of deadlocking.
+
+-- Everything below depends on 0031's constraint; fail the deploy rather than 409 every nudge.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'code_items_priority_key' and condeferrable
+  ) then
+    raise exception '0042 needs code_items_priority_key to be the deferrable constraint 0031 creates';
+  end if;
+end $$;
+
 create or replace function swap_code_priority(p_a text, p_b text)
 returns setof code_items language plpgsql security invoker as $$
 declare a_pri double precision; b_pri double precision;
 begin
+  perform 1 from code_items where ref in (p_a, p_b) order by ref for update;
   select priority into a_pri from code_items where ref = p_a;
   select priority into b_pri from code_items where ref = p_b;
   if a_pri is null or b_pri is null then
