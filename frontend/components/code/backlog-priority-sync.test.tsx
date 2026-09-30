@@ -17,7 +17,9 @@ import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
  * random lag that can trail later replies. Swaps and both kinds of jump land at random rows at
  * random intervals, on a project-filtered Backlog with another project's stories ranked between
  * the visible ones. Some project jumps run out of float room and respace every story's rank
- * first, as `move_code_priority_in_project` does, so a rank the tab hears can be on a new scale.
+ * first, as `move_code_priority_in_project` does, so a rank the tab hears can be on a new scale —
+ * and, as the RPC does, they reply with every story's rank, not just the moved one's, so a reply
+ * that lands before its echoes never leaves the tab on two scales.
  */
 
 jest.mock('@/lib/api-client');
@@ -181,15 +183,6 @@ function clicked(order: string[], index: number, click: Click): string[] {
   return next;
 }
 
-/** What one RPC committed: its writes in commit order, and how the fake replies to it. */
-interface Commit {
-  writes: [string, number][];
-  /** The story an RPC that `returning`s only what it moved replies with; unset replies with every row. */
-  moved?: string;
-  /** The RPC respaced every rank before it wrote. */
-  respaced?: boolean;
-}
-
 /** One seeded session of clicks against the fake server. Returns every disagreement it saw. */
 async function runSession(seed: number): Promise<string[]> {
   const random = seededRandom(seed);
@@ -213,35 +206,30 @@ async function runSession(seed: number): Promise<string[]> {
   let revision = 0;
 
   /**
-   * Commit `run()`'s writes after a delay, echo them all in commit order, and reply — with just
-   * the moved story's row when the RPC `returning`s only that, or with every row it wrote.
+   * Commit `run()`'s writes (in commit order) after a delay, echo every one of them in that
+   * order, and reply with each story it wrote at its latest write — a story a respace renumbered
+   * and the jump then moved is echoed twice but replied once, at the rank it ended on.
    */
-  function respond(run: () => Commit): Promise<CodeItem[]> {
+  function respond(run: () => [string, number][]): Promise<CodeItem[]> {
     return new Promise((resolve) => {
       setTimeout(
         () => {
-          const { writes, moved, respaced = false } = run();
-          const rows = writes.map(([ref, priority]) => {
+          const rows = run().map(([ref, priority]) => {
             server.set(ref, priority);
             revision += 1;
             return makeSidecar(ref, projectOf.get(ref) ?? '', priority, revision);
           });
-          const replied =
-            moved === undefined ? rows : rows.filter((row) => row.item_id === moved).slice(-1);
+          const replied = [...new Map(rows.map((row) => [row.item_id, row])).values()];
           const echoAt = Math.max(lastEchoAt + 1, Date.now() + between(0, 600));
           lastEchoAt = echoAt;
           setTimeout(() => {
             for (const row of rows) mockCodeItemsHandler?.({ new: row });
           }, echoAt - Date.now());
-          // A respace's echoes reach the tab before the reply that follows it. That reply carries
-          // only the story the jump moved, so the other stories' new ranks arrive by echo alone;
-          // were the reply to land first, the tab would sit on two rank scales until they did.
-          const replyAt = Date.now() + between(10, 150);
           setTimeout(
             () => {
               resolve(replied);
             },
-            (respaced ? Math.max(replyAt, echoAt + 1) : replyAt) - Date.now(),
+            between(10, 150),
           );
         },
         between(20, 200),
@@ -262,18 +250,15 @@ async function runSession(seed: number): Promise<string[]> {
     return writes;
   }
   mockReorderCode.mockImplementation((a, b) =>
-    respond(() => ({
-      writes: [
-        [a, server.get(b) ?? 0],
-        [b, server.get(a) ?? 0],
-      ],
-    })),
+    respond(() => [
+      [a, server.get(b) ?? 0],
+      [b, server.get(a) ?? 0],
+    ]),
   );
   mockMoveCodeInProject.mockImplementation((ref, toTop) =>
     respond(() => {
       // Some jumps find no float room and respace first, then land against the ranks it wrote.
-      const respaced = serverRandom() < 0.5;
-      const before = respaced ? respace() : [];
+      const before = serverRandom() < 0.5 ? respace() : [];
       const all = others(ref).map(([, priority]) => priority);
       const project = others(ref)
         .filter(([other]) => projectOf.get(other) === projectOf.get(ref))
@@ -283,13 +268,13 @@ async function runSession(seed: number): Promise<string[]> {
       const neighbour = toTop ? Math.max(...beyond) : Math.min(...beyond);
       let landed = (neighbour + extreme) / 2;
       if (beyond.length === 0) landed = toTop ? extreme - 1 : extreme + 1;
-      return { writes: [...before, [ref, landed]], moved: ref, respaced };
+      return [...before, [ref, landed]];
     }),
   );
   mockMoveCode.mockImplementation((ref, toTop) =>
     respond(() => {
       const all = others(ref).map(([, priority]) => priority);
-      return { writes: [[ref, toTop ? Math.min(...all) - 1 : Math.max(...all) + 1]] };
+      return [[ref, toTop ? Math.min(...all) - 1 : Math.max(...all) + 1]];
     }),
   );
 
