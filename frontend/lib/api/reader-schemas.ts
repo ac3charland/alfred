@@ -121,3 +121,34 @@ export const researchReportSchema = z.object({
 });
 
 export type ResearchReportInput = z.infer<typeof researchReportSchema>;
+
+/** The most links one Further reading send may name — the list's own ceiling. */
+export const MAX_FURTHER_READING_SEND = 10;
+
+/** An absolute `http:`/`https:` URL — the only kind a Further reading item carries. */
+function isWebUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Body for POST /api/reader/posts/[id]/further-reading — save ticked Further reading links to
+ * Instapaper: into its "To Reader" folder for the Reader to summarise (`reader`), or to Unread
+ * (`instapaper`). One to ten links, each an absolute web URL; the route still checks every one
+ * against the post's current list, so this only refuses what could never be a list item.
+ */
+export const sendFurtherReadingSchema = z
+  .object({
+    destination: z.enum(['reader', 'instapaper']),
+    urls: z
+      .array(z.string().refine(isWebUrl, 'Not a web link'))
+      .min(1)
+      .max(MAX_FURTHER_READING_SEND),
+  })
+  .strict();
+
+export type SendFurtherReadingInput = z.infer<typeof sendFurtherReadingSchema>;

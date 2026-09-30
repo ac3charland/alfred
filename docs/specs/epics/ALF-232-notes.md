@@ -274,3 +274,11 @@ what a reader who wasn't here needs.
   folding comms' `AccountDot` onto the new `StatusDot`.
 - **The paywalled-teaser marker from Story 1's handoff was not built** — nothing detects the cut,
   and `headline` is still stored and unrendered.
+
+## ALF-289 build notes (Further reading)
+
+- **Unconfirmed: whether Instapaper follows a `substack.com/redirect/<uuid>` wrapper on
+  `bookmarks/add`** (default `resolve_final_url`) and returns the final URL. The cloud session that
+  built it can't reach instapaper.com. Check on the first real send to the Reader: if the article
+  arrives with eyebrow `substack.com`, Instapaper kept the wrapper (`siteOf` reads the bookmark's
+  URL) — record the answer here. — `frontend/lib/instapaper/bookmark.ts` (`buildLinkBookmarkParams`)

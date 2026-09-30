@@ -5,7 +5,12 @@ import type { PatchReaderPostInput, ReaderPostsQuery } from '@/lib/api/reader-sc
 import type { Database, Json } from '@/lib/database.types';
 import type { ResearchFireOutcome } from '@/lib/research/routine';
 import { createClient } from '@/lib/supabase/server';
-import type { ReaderHealthSnapshot, ReaderPostListItem, ReaderPostUpdate } from '@/lib/types';
+import type {
+  FurtherReadingDestination,
+  ReaderHealthSnapshot,
+  ReaderPostListItem,
+  ReaderPostUpdate,
+} from '@/lib/types';
 import type { ReaderPicks, ReaderPostForWiki } from '@/lib/wiki/writer/envelope';
 
 /**
@@ -35,6 +40,8 @@ export const READER_POST_LIST_COLUMNS = [
   'canonical_url',
   'comm_message_id',
   'created_at',
+  'further_sent_instapaper',
+  'further_sent_reader',
   'gist',
   'gmail_message_id',
   'headline',
@@ -255,6 +262,46 @@ export async function appendWikiSentPicks(
       p_post: id,
       p_ideas: [...picks.ideas],
       p_evidence: [...picks.evidence],
+    })
+    .select(READER_POST_LIST_COLUMNS)
+    .single<ReaderPostListItem>();
+}
+
+/** What a Further reading send reads: the overview whose list bounds it, and both sent lists. */
+export interface ReaderPostFurtherRow {
+  overview: Json | null;
+  further_sent_reader: string[];
+  further_sent_instapaper: string[];
+}
+
+/** The Further reading send's read. No body: a link is saved by URL. `.maybeSingle()` for the 404. */
+export async function getReaderPostForFurtherReading(
+  supabase: SupabaseClient<Database>,
+  id: string,
+): Promise<{ data: ReaderPostFurtherRow | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .select('overview,further_sent_reader,further_sent_instapaper')
+    .eq('id', id)
+    .maybeSingle();
+}
+
+/**
+ * Record the links a send saved, through the `append_further_reading_sent` RPC: one atomic append
+ * to the destination's list, adding only URLs not already there — no read-modify-write, so two
+ * tabs sending from one post never erase each other's marks. Answers through the list columns.
+ */
+export async function appendFurtherReadingSent(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  destination: FurtherReadingDestination,
+  urls: readonly string[],
+): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
+  return supabase
+    .rpc('append_further_reading_sent', {
+      p_post: id,
+      p_destination: destination,
+      p_urls: [...urls],
     })
     .select(READER_POST_LIST_COLUMNS)
     .single<ReaderPostListItem>();

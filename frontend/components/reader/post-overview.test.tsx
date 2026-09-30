@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 
-import { makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
+import { makeFurtherReading, makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
 import { PostOverview } from './post-overview';
@@ -13,19 +13,32 @@ function post(
   overview: ReaderOverview,
   wikiSentIdeas: string[] = [],
   wikiSentEvidence: string[] = [],
+  further: { reader?: string[]; instapaper?: string[] } = {},
 ): ReaderPostListItem {
   const { text: _text, ...row } = makeReaderPost(PUBLICATION_ID, {
     summary_state: 'done',
     overview,
     wiki_sent_ideas: wikiSentIdeas,
     wiki_sent_evidence: wikiSentEvidence,
+    further_sent_reader: further.reader ?? [],
+    further_sent_instapaper: further.instapaper ?? [],
   });
   return row;
 }
 
-/** Not writable — no wiki token configured. No provider needed: nothing here reads a store. */
+/**
+ * Neither the wiki nor Instapaper configured. No provider needed: nothing here reads a store —
+ * Further reading is a plain list of links without Instapaper.
+ */
 function renderPlain(overview: ReaderOverview) {
-  return render(<PostOverview overview={overview} post={post(overview)} writable={false} />);
+  return render(
+    <PostOverview
+      overview={overview}
+      post={post(overview)}
+      writable={false}
+      instapaperConfigured={false}
+    />,
+  );
 }
 
 function renderWritable(
@@ -34,9 +47,21 @@ function renderWritable(
   wikiSentEvidence: string[] = [],
 ) {
   const row = post(overview, wikiSentIdeas, wikiSentEvidence);
-  return renderReader(<PostOverview overview={overview} post={row} writable />, [row], undefined, {
-    wikiWritable: true,
-  });
+  return renderReader(
+    <PostOverview overview={overview} post={row} writable instapaperConfigured />,
+    [row],
+    undefined,
+    { wikiWritable: true },
+  );
+}
+
+/** Instapaper connected, the wiki not — so the only checklist is Further reading. */
+function renderFurther(overview: ReaderOverview, furtherSent: { reader?: string[] } = {}) {
+  const row = post(overview, [], [], furtherSent);
+  return renderReader(
+    <PostOverview overview={overview} post={row} writable={false} instapaperConfigured />,
+    [row],
+  );
 }
 
 describe('PostOverview', () => {
@@ -241,6 +266,82 @@ describe('PostOverview — the wiki connected', () => {
 
     expect(screen.getByText('The argument paragraph.')).toHaveClass('mt-1', 'text-sm');
     expect(screen.getByText('Everyone.')).toBeInTheDocument();
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings).toEqual(['Novel ideas', 'Evidence', 'The argument', 'Who should read it']);
+  });
+});
+
+describe('PostOverview — Further reading', () => {
+  const FURTHER = makeFurtherReading();
+
+  it('draws the section last, after Who should read it', () => {
+    renderFurther(makeReaderOverview({ further_reading: FURTHER }));
+
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings).toEqual([
+      'Novel ideas',
+      'Evidence',
+      'The argument',
+      'Who should read it',
+      'Further reading',
+    ]);
+    expect(screen.getAllByRole('checkbox')).toHaveLength(FURTHER.length);
+  });
+
+  it('draws it last when the wiki is connected too, under its own bar and apart from the wiki picks', () => {
+    renderWritable(makeReaderOverview({ further_reading: FURTHER }));
+
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings.at(-1)).toBe('Further reading');
+    expect(headings.indexOf('Who should read it')).toBe(headings.length - 2);
+  });
+
+  it('reads its sent marks from the post', () => {
+    const [first] = FURTHER;
+    if (first === undefined) throw new Error('no fixture item');
+    renderFurther(makeReaderOverview({ further_reading: FURTHER }), { reader: [first.url] });
+
+    expect(screen.getByText('In Reader')).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(FURTHER.length - 1);
+  });
+
+  it('is a plain list of links, after Who should read it, when Instapaper is not configured', () => {
+    renderPlain(makeReaderOverview({ further_reading: FURTHER }));
+
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings.at(-1)).toBe('Further reading');
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    for (const item of FURTHER) {
+      expect(screen.getByRole('link', { name: item.title })).toHaveAttribute('href', item.url);
+    }
+  });
+
+  it.each([
+    ['an empty list', makeReaderOverview({ further_reading: [] })],
+    ['no key, as on a summary written before the list existed', makeReaderOverview()],
+  ])('draws nothing — no heading, no empty line — for %s', (_name, overview) => {
+    renderFurther(overview);
+
+    expect(screen.queryByRole('heading', { name: 'Further reading' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByText(/further reading/i)).not.toBeInTheDocument();
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings).toEqual(['Novel ideas', 'Evidence', 'The argument', 'Who should read it']);
+  });
+
+  it.each([
+    ['not an array', 'https://example.com/a'],
+    ['an item with no title', [{ url: 'https://example.com/a', title: '', note: 'n' }]],
+    ['an item that is not a web URL', [{ url: 'javascript:alert(1)', title: 'T', note: 'n' }]],
+    ['an item of the wrong shape', ['https://example.com/a']],
+  ])('hides only the section, and keeps the rest of the overview, when it is %s', (_name, bad) => {
+    const overview = makeReaderOverview();
+    // What a hand-edited row can hold: the key is typed as the list, the database is not.
+    const malformed = { ...overview, further_reading: bad } as unknown as ReaderOverview;
+    renderFurther(malformed);
+
+    expect(screen.queryByRole('heading', { name: 'Further reading' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
     const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
     expect(headings).toEqual(['Novel ideas', 'Evidence', 'The argument', 'Who should read it']);
   });

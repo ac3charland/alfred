@@ -175,5 +175,9 @@ export async function summarizePost(
     return { kind: 'counted', error: 'schema', ...usageFields(usage) };
   }
 
-  return { kind: 'done', summary: normalizeReaderSummary(parsed), ...usageFields(usage) };
+  return {
+    kind: 'done',
+    summary: normalizeReaderSummary(parsed, request.links),
+    ...usageFields(usage),
+  };
 }

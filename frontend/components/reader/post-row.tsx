@@ -548,6 +548,7 @@ export function PostRow({
                       overview={overview}
                       post={post}
                       writable={writable}
+                      instapaperConfigured={instapaperConfigured}
                     />
                   )}
                   {(hasFooter || originalInPanel) && (

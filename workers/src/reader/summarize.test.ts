@@ -33,6 +33,7 @@ function validSummary(): ReaderSummary {
       evidence: ['A 12× price drop against a 1.4× latency improvement.'],
       argument: 'Prices fell; latency did not; the hosting decision inverted.',
       who_should_read: 'Anyone choosing between hosted and self-run inference.',
+      further_reading: [],
     },
   };
 }
@@ -120,7 +121,10 @@ describe('summarizePost — the request', () => {
     const content = sentParams(spy).messages[0]?.content;
     expect(typeof content).toBe('string');
     const sent = typeof content === 'string' ? content : '';
-    expect(sent.split('--- post text ---\n', 2)[1]).toHaveLength(READER_MODEL_INPUT_CHARS);
+    const text = sent.split('--- post text ---\n', 2)[1] ?? '';
+    expect(text.slice(0, text.indexOf('\n\n--- links ---\n'))).toHaveLength(
+      READER_MODEL_INPUT_CHARS,
+    );
   });
 
   it('builds the client with the reader timeout and one retry', async () => {
@@ -144,6 +148,29 @@ describe('summarizePost — reading a response', () => {
     mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'));
 
     await expect(summarizePost(post, config)).resolves.toEqual({ kind: 'done', summary });
+  });
+
+  it('stores further reading as the URLs of the post’s own links, dropping a number it never had', async () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [
+      { link: 99, title: 'An invented source', note: 'Not a link in the post.' },
+      { link: 2, title: 'The berth study', note: 'The data the argument rests on.' },
+    ];
+    mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'));
+    const html =
+      '<p>See <a href="https://example.com/one">one</a> and ' +
+      '<a href="https://example.com/berths">the berth study</a>.</p>';
+
+    const outcome = await summarizePost({ ...post, html }, config);
+
+    if (outcome.kind !== 'done') throw new Error('expected done');
+    expect(outcome.summary.overview.further_reading).toEqual([
+      {
+        url: 'https://example.com/berths',
+        title: 'The berth study',
+        note: 'The data the argument rests on.',
+      },
+    ]);
   });
 
   it('trims each bullet list to six on the way out', async () => {

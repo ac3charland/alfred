@@ -39,9 +39,11 @@ import { fetchAccessToken } from '../src/comms/gmail-oauth.ts';
 import { instapaperClient, instapaperCredentials } from '../src/instapaper/client.ts';
 import { type ExtractedPost, extractPost } from '../src/reader/extract.ts';
 import { READER_FIXTURES } from '../src/reader/fixtures/index.ts';
+import { numberLinks } from '../src/reader/links.ts';
 import { summarizePost } from '../src/reader/summarize.ts';
 import {
   NO_FOLDER_ERROR,
+  articleHtml,
   articlePublication,
   articleText,
   articleTitle,
@@ -226,6 +228,8 @@ function toSummaryInput(post: ExtractedPost, publication: string): SummaryInput 
     receivedAt: post.received_at,
     wordCount: post.word_count,
     text: post.text,
+    html: post.html,
+    canonicalUrl: post.canonical_url,
   };
 }
 
@@ -242,6 +246,17 @@ function printExtraction(label: string, publication: string, post: ExtractedPost
   console.log(`  ${pad('canonical URL')}${post.canonical_url ?? 'none → mailbox'}`);
   console.log(`  ${pad('word count')}${String(post.word_count)}`);
   console.log(`  ${pad('html_extracted')}${String(post.html_extracted)}`);
+  printLinks(post.html, post.canonical_url);
+}
+
+/**
+ * The numbered links the summariser would be shown — the only URLs a Further reading item can
+ * ever carry. `none` for a post with no stored HTML, as the model is told.
+ */
+function printLinks(html: string | undefined, canonicalUrl: string | undefined): void {
+  const links = html === undefined ? [] : numberLinks(html, canonicalUrl).links;
+  console.log(`  ${pad('links')}${links.length === 0 ? 'none' : String(links.length)}`);
+  for (const link of links) console.log(`    [${String(link.n)}] ${link.url}`);
 }
 
 /** The dollars one call cost at list price, or undefined for a model this file has no price for. */
@@ -270,6 +285,12 @@ function printSummary(model: string, outcome: SummaryOutcome): void {
       if (overview.evidence.length === 0) console.log('    (none)');
       console.log(`  ${pad('argument')}${overview.argument}`);
       console.log(`  ${pad('who should read')}${overview.who_should_read}`);
+      console.log('  further reading');
+      for (const item of overview.further_reading) {
+        console.log(`    - ${item.title} — ${item.note}`);
+        console.log(`      ${item.url}`);
+      }
+      if (overview.further_reading.length === 0) console.log('    (none)');
 
       break;
     }
@@ -413,6 +434,8 @@ async function runInstapaper(options: Options, apiKey: string): Promise<boolean>
     console.log(`  ${pad('site')}${site ?? '(none)'}`);
     console.log(`  ${pad('URL')}${articleUrl(bookmark.url) ?? '(none)'}`);
     console.log(`  ${pad('word count')}${String(wordCount)}`);
+    const storedHtml = articleHtml(html, text);
+    printLinks(storedHtml, articleUrl(bookmark.url));
 
     if (text === '') {
       console.log(
@@ -420,7 +443,15 @@ async function runInstapaper(options: Options, apiKey: string): Promise<boolean>
       );
     } else if (!options.dryRun) {
       const outcome = await summarizePost(
-        { publication, title, receivedAt, wordCount, text },
+        {
+          publication,
+          title,
+          receivedAt,
+          wordCount,
+          text,
+          html: storedHtml,
+          canonicalUrl: articleUrl(bookmark.url),
+        },
         { apiKey, model: options.model },
       );
       printSummary(options.model, outcome);

@@ -23,6 +23,7 @@ import type {
   PatchReaderPostInput,
   PurgeInput,
   ReaderPostsQuery,
+  SendFurtherReadingInput,
   SendItemsToResearchInput,
   SendItemsToWikiInput,
   SendReaderPicksInput,
@@ -47,6 +48,7 @@ import type {
   CommsSeed,
   Epic,
   Folder,
+  FurtherReadingSendResult,
   Habit,
   HabitEntry,
   Item,
@@ -874,6 +876,22 @@ export function sendReaderPicksToWiki(
   body: SendReaderPicksInput,
 ): Promise<ReaderPostListItem> {
   return apiRequest<ReaderPostListItem>(`/api/reader/posts/${postId}/wiki`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Save ticked Further reading links from a post to Instapaper — into "To Reader" for the Reader to
+ * summarise, or to Unread. Answers the post's row with the links that landed marked, and the ones
+ * that didn't. A send where nothing landed refuses with Instapaper's mapped status and sentence; a
+ * missing "To Reader" folder is a 409, a deployment without Instapaper a 501.
+ */
+export function sendFurtherReading(
+  postId: string,
+  body: SendFurtherReadingInput,
+): Promise<FurtherReadingSendResult> {
+  return apiRequest<FurtherReadingSendResult>(`/api/reader/posts/${postId}/further-reading`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

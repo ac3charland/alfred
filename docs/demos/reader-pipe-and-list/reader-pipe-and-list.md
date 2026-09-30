@@ -12,7 +12,7 @@ The summariser itself needs a key and a real mailbox, so it belongs to the check
 
 ## 1 · Extraction, from real newsletter mail
 
-The eval script replays five committed Gmail `messages.get` fixtures through the same extractor the tick uses. Their SHAPE is taken from the owner's own Substack mail — the anchor order, the two hidden preheaders, the RFC 2047 subjects, the MIME layout — and every word inside that shape is invented. Each block is what the pipe would write to `reader_posts`: title from the Subject (decoded — the first one arrives as two adjacent encoded words split mid-word, carrying a curly apostrophe and an emoji), author from the From display name, the canonical URL by B8's rule (the first `/p/<slug>` link on any host, with an optional `/pub/<name>` in front of it, else an anchor whose text offers the web version, else the mailbox fallback), the word count off the stored text — with the preheaders' invisible padding already dropped — and whether HTML was found at all.
+The eval script replays the committed Gmail `messages.get` fixtures through the same extractor the tick uses. Their SHAPE is taken from the owner's own Substack mail — the anchor order, the two hidden preheaders, the RFC 2047 subjects, the MIME layout — and every word inside that shape is invented. Each block is what the pipe would write to `reader_posts`: title from the Subject (decoded — the first one arrives as two adjacent encoded words split mid-word, carrying a curly apostrophe and an emoji), author from the From display name, the canonical URL by B8's rule (the first `/p/<slug>` link on any host, with an optional `/pub/<name>` in front of it, else an anchor whose text offers the web version, else the mailbox fallback), the word count off the stored text — with the preheaders' invisible padding already dropped — and whether HTML was found at all.
 
 ```bash
 npm run eval:reader -w workers -- --fixtures --dry-run 2>/dev/null
@@ -23,7 +23,7 @@ npm run eval:reader -w workers -- --fixtures --dry-run 2>/dev/null
 > workers@0.0.0 eval:reader
 > node --import ./scripts/ts-resolve.mjs scripts/reader-eval.ts --fixtures --dry-run
 
-reader eval — 5 fixtures, extraction only
+reader eval — 6 fixtures, extraction only
 
 essay
   publication    Mira Vantz from Harborline
@@ -32,6 +32,11 @@ essay
   canonical URL  https://open.substack.com/pub/harborline/p/the-grain-ledger
   word count     268
   html_extracted true
+  links          4
+    [1] https://substack.com/redirect/8f2c0b7e-4d19-4a2b-9c51-6f0ab2e77d41
+    [2] https://substack.com/redirect/1b6d40aa-2f77-4c0e-8f13-9a5e2c1d3b88
+    [3] https://substack.com/redirect/6c3e19d5-70b8-4a51-bb2f-52f0c8e9a4d7
+    [4] https://substack.com/redirect/9a7f22c1-05de-4b39-8c64-1d33ba70e5f2
 
 read-in-app
   publication    The Cadence Weekly
@@ -40,6 +45,12 @@ read-in-app
   canonical URL  https://cadence.substack.com/i/149023188/9f2a?utm_source=email
   word count     95
   html_extracted true
+  links          5
+    [1] https://lateralnotes.example.com/2026/09/the-queue-is-the-product
+    [2] https://portstudies.example.org/2026/09/berth-occupancy
+    [3] https://slackwater.example.net/essays/against-the-sprint
+    [4] https://cadence.substack.com/subscribe
+    [5] https://cadence.substack.com/action/disable_email
 
 plain-text-only
   publication    tallowfield
@@ -48,6 +59,7 @@ plain-text-only
   canonical URL  none → mailbox
   word count     190
   html_extracted false
+  links          none
 
 platform-mail
   publication    Substack
@@ -56,6 +68,10 @@ platform-mail
   canonical URL  none → mailbox
   word count     33
   html_extracted true
+  links          3
+    [1] https://substack.com/redirect/harborline-latest
+    [2] https://substack.com/redirect/slackwater-latest
+    [3] https://substack.com/notifications
 
 reaction-notification
   publication    Pell Marrow
@@ -64,6 +80,26 @@ reaction-notification
   canonical URL  https://tidewrack.substack.com/p/berth-9-at-midnight
   word count     19
   html_extracted true
+  links          2
+    [1] https://open.substack.com/users/900012-pell-marrow
+    [2] https://tidewrack.substack.com/api/v1/post/900456/unsubscribe
+
+link-roundup
+  publication    Tove Hallam from Gridwork
+  title          Gridwork 212: three new evals, and a robot that folds
+  author         Tove Hallam from Gridwork
+  canonical URL  https://open.substack.com/pub/gridwork/p/gridwork-212
+  word count     195
+  html_extracted true
+  links          8
+    [1] https://substack.com/redirect/3d1f6a52-8b0e-4c7a-9e21-0a4f5c6d7e81
+    [2] https://substack.com/redirect/7a2e9c14-5b3d-4f60-8a19-2c7d0e1b6f93
+    [3] https://substack.com/redirect/c4b8e2f0-1a6d-4e97-b3c5-8d2f0a9e7c16
+    [4] https://substack.com/redirect/e9d0c3b7-6f24-4a8e-9b51-3c7f2d8a0e44
+    [5] https://substack.com/redirect/1f7b3e9a-0c52-4d86-a4e1-9b2c6d3f8a07
+    [6] https://substack.com/redirect/5a0c8d2e-7b41-4f93-8e6a-1d9b3c5f2e70
+    [7] https://substack.com/redirect/0b6e4d1c-9a37-4f25-8c80-5e2a7d9f1b36
+    [8] https://substack.com/redirect/8e3a5f2d-4c19-4b70-9d68-7f1e0c2b5a93
 ```
 
 The first fixture is the template Substack ships today: the post's own address appears only as `open.substack.com/pub/<name>/p/<slug>`, sitting behind two `substack.com/redirect/2/<base64>` wrappers that are never unwrapped — the second wrapper does carry the post's URL in its payload, but it expires. `publication` and `author` read alike here only because the eval has no roster: it takes the publication from the `From` display name, so there is no roster name for the `<Author> from <Publication>` strip to match against; the tick, which does hold the roster row, stores `Mira Vantz`.

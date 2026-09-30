@@ -93,7 +93,7 @@ describe('fetchRetries', () => {
     const urls = harness([]);
     await fetchRetries(env, NOW, 6);
     expect(query(urls[0])).toContain(
-      'select=id,source,publication_id,site,title,author,canonical_url,received_at,text,' +
+      'select=id,source,publication_id,site,title,author,canonical_url,received_at,text,html,' +
         'word_count,summarize_attempts',
     );
   });
@@ -110,6 +110,7 @@ describe('fetchRetries', () => {
         canonical_url: WIRE_NULL,
         received_at: '2026-09-16T11:06:40.000Z',
         text: WIRE_NULL,
+        html: WIRE_NULL,
         word_count: 0,
         summarize_attempts: 1,
       },
@@ -126,6 +127,7 @@ describe('fetchRetries', () => {
         canonical_url: undefined,
         received_at: '2026-09-16T11:06:40.000Z',
         text: undefined,
+        html: undefined,
         word_count: 0,
         summarize_attempts: 1,
       },

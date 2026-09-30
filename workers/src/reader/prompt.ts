@@ -3,7 +3,7 @@
  *
  * The system prompt is STATIC — the same bytes for every post — so it says nothing about a
  * particular publication and nothing that has to be recomputed. Everything that varies rides in
- * the user turn as a short metadata block followed by the post itself. That split is what makes
+ * the user turn as a short metadata block followed by the post itself and its numbered links. That split is what makes
  * `READER_PROMPT_VERSION` meaningful: it is stamped on every stored summary beside the model id,
  * so a summary written under wording that has since changed can be told apart from one written
  * under the current wording without keeping the old text anywhere.
@@ -14,7 +14,8 @@
  * never asks for JSON in prose — the schema is the contract, and repeating it here would be a
  * second copy to drift.
  */
-import { truncateAtCodePointBoundary } from '../comms/email-text';
+import { htmlToText, truncateAtCodePointBoundary } from '../comms/email-text';
+import { type NumberedLink, numberLinks } from './links';
 import { READER_SUMMARY_SCHEMA, type ReaderSummarySchema } from './schema';
 import type { SummaryInput } from './types';
 
@@ -24,7 +25,7 @@ import type { SummaryInput } from './types';
  * Bump it whenever the system prompt's INSTRUCTIONS change in a way that would change an answer.
  * Reformatting the metadata block or fixing a typo is not a bump; changing what "novel" means is.
  */
-export const READER_PROMPT_VERSION = 1;
+export const READER_PROMPT_VERSION = 2;
 
 /**
  * The `Publication:` and `Author:` a research report is summarised under. A report has neither: it
@@ -54,6 +55,12 @@ export interface ReaderRequest {
   system: string;
   user: string;
   schema: ReaderSummarySchema;
+  /**
+   * The links the user turn lists, by number — what `normalizeReaderSummary` maps the model's
+   * Further reading picks back to URLs with. Only links that made it into the list: a pick of a
+   * number the model was never shown a URL for is dropped like any other unknown number.
+   */
+  links: NumberedLink[];
 }
 
 /**
@@ -87,13 +94,21 @@ What to ignore
 Paywalls
 - Many posts arrive as a teaser: an opening section, then a subscribe wall. Summarise it as a teaser. The gist says what is visible and what is behind the wall; the overview covers only what is actually present. Never guess at the withheld argument.
 
+Further reading
+- In the post text, each link is marked with a number in square brackets right after the linked words, like "the berth study [3]". The links block after the text lists each number's URL. Name links by their numbers only.
+- further_reading is for the reader who might want to go to the source. Include a link only if (a) the post's argument rests on it or engages it at length — it builds on, rebuts, or quotes substantially from that piece — or (b) the post is a link roundup and that item looks genuinely worth reading in full.
+- Be selective. In a roundup, pick the few items with real substance, not the list.
+- Leave out passing citations, links that support a single fact or number, definitions and reference pages, homepages and product pages, the author's own earlier posts unless the argument depends on them, and the publication's chrome (subscribe, share, comments, app, author profile, the post itself), sponsors and ads.
+- Most posts warrant none or a few. An empty further_reading is the common, correct answer when nothing qualifies, and always when the links block says "none".
+
 Fields
 - headline: one line, what the post is about, at most about 20 words.
 - gist: at most about 90 words. The claim, plus whether this is a new take or a restatement. This is the "should I read this?" answer.
 - overview.novel_ideas: up to 6 bullets, each one genuinely new idea. Empty is valid and often correct.
 - overview.evidence: up to 6 bullets of the notable evidence, data or examples the post rests on. Empty if it rests on assertion alone — which is itself worth knowing.
 - overview.argument: at most about 300 words, the argument in the order the post makes it. This is the one-page alternative to reading.
-- overview.who_should_read: at most about 40 words. Who the full post is worth the time for, and who can stop at this summary.`;
+- overview.who_should_read: at most about 40 words. Who the full post is worth the time for, and who can stop at this summary.
+- overview.further_reading: up to 10 items. link is the link's number from the links block. title names the linked piece itself, not the words the link sits on, which are often just "this" or "here". note, at most about 20 words, says what the post uses it for.`;
 
 /**
  * The metadata block that opens the user turn.
@@ -113,18 +128,50 @@ function metadataBlock(post: SummaryInput): string {
 }
 
 /**
- * Build one post's request: the static system prompt, the metadata block plus the post's text,
- * and the schema the answer is constrained to.
+ * The post text the model reads, and the links it may pick from.
  *
- * The text is capped at `READER_MODEL_INPUT_CHARS` on a code-point boundary — cutting mid-pair
- * would put a lone surrogate on the wire, which serialises to a replacement glyph and can fail
- * JSON encoding outright.
+ * With stored HTML the text is rebuilt from it with each candidate link numbered in place, so the
+ * model judges a link by what the prose around it does with it. Without (plain-text mail, a row
+ * from before the HTML was kept, one the retention sweep has emptied of it) the stored text goes
+ * as it is, with no links — the stored text itself is never changed either way.
+ */
+function modelText(post: SummaryInput): { text: string; links: NumberedLink[] } {
+  if (post.html === undefined || post.html.trim() === '') return { text: post.text, links: [] };
+  const { markedHtml, links } = numberLinks(post.html, post.canonicalUrl);
+  return { text: htmlToText(markedHtml), links };
+}
+
+/**
+ * Build one post's request: the static system prompt, the metadata block plus the post's text and
+ * its numbered links, and the schema the answer is constrained to.
+ *
+ * `READER_MODEL_INPUT_CHARS` bounds the text and the links list together, the text first: it is
+ * capped on a code-point boundary — cutting mid-pair would put a lone surrogate on the wire, which
+ * serialises to a replacement glyph and can fail JSON encoding outright — and the list then takes
+ * whole lines while they fit. A list that fits no line reads "none", like a post with no links.
  */
 export function buildReaderRequest(post: SummaryInput): ReaderRequest {
-  const text = truncateAtCodePointBoundary(post.text, READER_MODEL_INPUT_CHARS);
+  const body = modelText(post);
+  const text = truncateAtCodePointBoundary(body.text, READER_MODEL_INPUT_CHARS);
+
+  let room = READER_MODEL_INPUT_CHARS - text.length;
+  const lines: string[] = [];
+  const links: NumberedLink[] = [];
+  for (const link of body.links) {
+    const line = `[${String(link.n)}] ${link.url}`;
+    // The newline in front of each line counts too.
+    if (line.length + 1 > room) break;
+    room -= line.length + 1;
+    lines.push(line);
+    links.push(link);
+  }
+
   return {
     system: SYSTEM_PROMPT,
-    user: `${metadataBlock(post)}\n\n--- post text ---\n${text}`,
+    user:
+      `${metadataBlock(post)}\n\n--- post text ---\n${text}\n\n` +
+      `--- links ---\n${lines.length === 0 ? 'none' : lines.join('\n')}`,
     schema: READER_SUMMARY_SCHEMA,
+    links,
   };
 }

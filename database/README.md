@@ -214,6 +214,21 @@ summarised and read like any other.
 - **`reader_sweep_text`** is unchanged: a report's body sweeps at ninety days; its brief, summary
   and session link stay.
 
+### `0048_reader_further_reading.sql` — a post's Further reading (ALF-289)
+
+The list itself rides in `overview.further_reading` (`{ url, title, note }` items), so it needs no
+column; what is stored here is which of its links the owner has sent.
+
+- **`reader_posts.further_sent_reader` / `further_sent_instapaper`** — the exact URL of every
+  Further reading link sent to the Reader (saved into Instapaper's "To Reader" folder) or to
+  Unread. By URL, so a re-summarise that keeps a link keeps its mark.
+- **`append_further_reading_sent(p_post, p_destination, p_urls)`** — one atomic UPDATE appending to
+  the named destination's column (`reader` or `instapaper`, anything else raises) with
+  `append_wiki_sent_picks`'s rules: only URLs not already present, duplicates collapsed,
+  first-occurrence order.
+- **`reader_posts.html`** — now also holds an Instapaper article's `get_text` HTML, under the same
+  ceiling as mail, so the article's links reach the summariser. An article's Send never uploads it.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it.** `.github/workflows/migrate.yml` runs

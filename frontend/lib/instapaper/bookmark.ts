@@ -24,6 +24,9 @@ import { signRequest } from './oauth';
  *
  * A research report has no address: it is the stored HTML, saved as private content under its own
  * source label, so it reads in Instapaper as "alfred research" rather than as mail.
+ *
+ * A post's Further reading links are saved by URL alone (`buildLinkBookmarkParams`) — to Unread,
+ * or into the "To Reader" folder (`listFolders` finds it) for the Worker to take into the Reader.
  */
 
 /** What a send reads off the post: the route's own select, never the list payload. */
@@ -134,8 +137,11 @@ function answerItems(raw: string): Record<string, unknown>[] {
   );
 }
 
-/** Read Instapaper's answer into an outcome. */
-function readAnswer(status: number, raw: string): AddBookmarkOutcome {
+/** Instapaper's answer as a failure, or nothing when it is not one. */
+function readFailure(
+  status: number,
+  raw: string,
+): Exclude<AddBookmarkOutcome, { kind: 'saved' }> | undefined {
   const items = answerItems(raw);
 
   const error = items.find((item) => item['type'] === 'error');
@@ -144,8 +150,15 @@ function readAnswer(status: number, raw: string): AddBookmarkOutcome {
   if (refusal !== undefined) return { kind: 'refused', refusal, code };
   if (status === 401 || status === 403) return { kind: 'refused', refusal: 'credentials', code };
   if (error !== undefined || status < 200 || status >= 300) return { kind: 'unavailable', code };
+  return undefined;
+}
 
-  const bookmark = items.find((item) => item['type'] === 'bookmark');
+/** Read Instapaper's answer into an outcome. */
+function readAnswer(status: number, raw: string): AddBookmarkOutcome {
+  const failure = readFailure(status, raw);
+  if (failure !== undefined) return failure;
+
+  const bookmark = answerItems(raw).find((item) => item['type'] === 'bookmark');
   const bookmarkId = bookmark?.['bookmark_id'];
   return typeof bookmarkId === 'number'
     ? { kind: 'saved', bookmarkId }
@@ -197,17 +210,84 @@ export async function restoreOrResave(
   const restored = await unarchiveBookmark(config, bookmarkId);
   if (restored.kind !== 'gone') return restored;
 
+  // Never the stored HTML: an article's is Instapaper's own text view, kept only so the
+  // summariser can number its links — uploading it back would save a worse copy of the page.
   const byUrl = postWebUrl(post) !== undefined;
-  const params = buildBookmarkParams(byUrl ? { ...post, html: null, text: null } : post);
+  const params = buildBookmarkParams({ ...post, html: null, text: byUrl ? null : post.text });
   return params === null ? null : addBookmark(config, params);
 }
 
-/** One signed form POST to Instapaper, read into an outcome. Never throws. */
-async function postForm(
+/** One Further reading link, as a save reads it: the URL the post linked, and the model's words for it. */
+export interface LinkBookmarkSource {
+  url: string;
+  title: string;
+  note: string;
+}
+
+/**
+ * The form parameters for saving one Further reading link: by URL, so Instapaper fetches the page
+ * itself — following the redirect a newsletter's wrapped link is, since `resolve_final_url` stays
+ * at its default — titled with the linked piece's name and described with what the post uses it
+ * for. `folderId` files it in a folder (To Reader, for a send to the Reader); without one it lands
+ * in Unread. No content and no tags, as with a post's own send.
+ */
+export function buildLinkBookmarkParams(
+  item: LinkBookmarkSource,
+  folderId?: number,
+): Record<string, string> {
+  const params: Record<string, string> = { url: item.url, title: item.title };
+  const note = item.note.trim();
+  if (note !== '') params['description'] = note;
+  if (folderId !== undefined) params['folder_id'] = String(folderId);
+  return params;
+}
+
+/** One of the owner's Instapaper folders. */
+export interface InstapaperFolder {
+  folderId: number;
+  title: string;
+}
+
+/** What listing the owner's folders came to: the folders, or a save's failure outcomes. */
+export type ListFoldersOutcome =
+  | { kind: 'listed'; folders: InstapaperFolder[] }
+  | Exclude<AddBookmarkOutcome, { kind: 'saved' }>;
+
+/** A folder item's id: Instapaper sends a number, and a string of one on some accounts. */
+function folderIdOf(value: unknown): number | undefined {
+  const id = typeof value === 'string' ? Number(value) : value;
+  return typeof id === 'number' && Number.isInteger(id) ? id : undefined;
+}
+
+/**
+ * The owner's folders, from `folders/list` on the same API version the Worker's To Reader leg
+ * lists them with. Never throws: a failure is a save's outcome, so the route maps it the same way.
+ */
+export async function listFolders(config: InstapaperConfig): Promise<ListFoldersOutcome> {
+  const answer = await postSigned(config, '/api/1.1/folders/list', {});
+  if (answer === undefined) return { kind: 'unavailable', code: undefined };
+  const failure = readFailure(answer.status, answer.raw);
+  if (failure !== undefined) return failure;
+
+  const folders: InstapaperFolder[] = [];
+  for (const item of answerItems(answer.raw)) {
+    const folderId = folderIdOf(item['folder_id']);
+    if (item['type'] !== 'folder' || folderId === undefined) continue;
+    if (typeof item['title'] !== 'string') continue;
+    folders.push({ folderId, title: item['title'] });
+  }
+  return { kind: 'listed', folders };
+}
+
+/**
+ * One signed form POST to Instapaper: its status and raw body, or nothing when it never answered
+ * (a timeout, a network failure). Never throws.
+ */
+async function postSigned(
   config: InstapaperConfig,
   path: string,
   params: Readonly<Record<string, string>>,
-): Promise<AddBookmarkOutcome> {
+): Promise<{ status: number; raw: string } | undefined> {
   const url = `${config.apiUrl}${path}`;
   try {
     const response = await fetch(url, {
@@ -219,10 +299,22 @@ async function postForm(
       body: new URLSearchParams(params).toString(),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    return readAnswer(response.status, await response.text());
+    return { status: response.status, raw: await response.text() };
   } catch {
-    return { kind: 'unavailable', code: undefined };
+    return undefined;
   }
+}
+
+/** One signed form POST to Instapaper, read into an outcome. Never throws. */
+async function postForm(
+  config: InstapaperConfig,
+  path: string,
+  params: Readonly<Record<string, string>>,
+): Promise<AddBookmarkOutcome> {
+  const answer = await postSigned(config, path, params);
+  return answer === undefined
+    ? { kind: 'unavailable', code: undefined }
+    : readAnswer(answer.status, answer.raw);
 }
 
 /** A failed send, as the route answers it: the status, and the sentence the owner's toast says. */
