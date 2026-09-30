@@ -2,17 +2,24 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 import { expect, userEvent, within } from 'storybook/test';
 
+import { ToastViewport } from '@/components/shell/toast-viewport';
 import {
   NO_READER_HEALTH,
+  makeFurtherReading,
   makeReaderArticle,
   makeReaderOverview,
   makeReaderPost,
   makeResearchPost,
 } from '@/lib/reader/fixtures';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
-import { ReaderProvider } from '@/lib/stores/reader-store';
+import { ReaderProvider, useReaderPosts } from '@/lib/stores/reader-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
-import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
+import type {
+  FurtherReadingSendResult,
+  ReaderFurtherReading,
+  ReaderOverview,
+  ReaderPostListItem,
+} from '@/lib/types';
 
 import { PostRow } from './post-row';
 
@@ -34,6 +41,11 @@ import { PostRow } from './post-row';
  * while the session works, no report (a refused fire), a delivered report waiting on its summary,
  * and a summarised report with its overview open and the wiki checklists live. Every timestamp is
  * stated against the fixed clock, so nothing drifts into or out of being stale.
+ *
+ * The `FurtherReading…` stories are the last overview section, on a roundup that links four
+ * pieces: the checklist being picked from, after two sends (one into the Reader, one to
+ * Instapaper), after a send that saved one link of two (the toast under the row, the failed
+ * link still ticked), and on a deployment without Instapaper, where it is a plain list of links.
  */
 
 const NOW = new Date(2026, 8, 18, 9, 0);
@@ -571,6 +583,164 @@ export const WikiNotConnected: Story = {
     await openOverview(canvasElement);
     const canvas = within(canvasElement);
     await expect(await canvas.findByText(HABIT)).toBeInTheDocument();
+    await expect(canvas.queryByRole('checkbox')).not.toBeInTheDocument();
+    await expect(canvas.queryByRole('button', { name: /Select all/ })).not.toBeInTheDocument();
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Further reading, the overview's last section
+// ---------------------------------------------------------------------------
+
+const FURTHER = makeFurtherReading();
+const [SIM_TO_REAL, EVALS_DONT_TRANSFER, , SCEPTICS_REPLY] = FURTHER as [
+  ReaderFurtherReading,
+  ReaderFurtherReading,
+  ReaderFurtherReading,
+  ReaderFurtherReading,
+];
+
+function roundupPost(sent: { reader?: string[]; instapaper?: string[] } = {}): ReaderPostListItem {
+  return post({
+    id: 'p-roundup',
+    author: 'Import AI',
+    title: 'Import AI 412: Robots that fold, and evals that do not transfer',
+    received_at: '2026-09-16T14:00:00.000Z',
+    word_count: 2480,
+    canonical_url: 'https://importai.example.com/p/import-ai-412',
+    summary_state: 'done',
+    gist: 'A roundup whose lead item is a folding benchmark where simulation and hardware disagree.',
+    overview: makeReaderOverview({ further_reading: FURTHER }),
+    model: 'claude-sonnet-5',
+    prompt_version: 2,
+    summarized_at: '2026-09-16T14:05:00.000Z',
+    further_sent_reader: sent.reader ?? [],
+    further_sent_instapaper: sent.instapaper ?? [],
+  });
+}
+
+const FURTHER_PARAMETERS = { visualTest: { target: '[data-testid="row-frame"]' } };
+
+/**
+ * The four links unticked, each with its open link: Select all on the heading row, and no bar
+ * while nothing is ticked.
+ */
+export const FurtherReadingPicking: Story = {
+  args: { post: roundupPost() },
+  parameters: FURTHER_PARAMETERS,
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('checkbox', { name: EVALS_DONT_TRANSFER.title }));
+    await userEvent.click(await canvas.findByRole('checkbox', { name: SCEPTICS_REPLY.title }));
+    await expect(await canvas.findByText('2 selected')).toBeInTheDocument();
+    // The row's own Send verb is also "Send to Instapaper", so the bar's buttons are found in it.
+    const bar = within(canvas.getByRole('group', { name: 'Selected links' }));
+    await expect(bar.getByRole('button', { name: 'Send to Reader' })).toBeEnabled();
+    await expect(bar.getByRole('button', { name: 'Send to Instapaper' })).toBeEnabled();
+  },
+};
+
+/**
+ * Two links already sent: one into the Reader (green), one to Instapaper (muted). Each keeps its
+ * open link, and the other two are still there to tick.
+ */
+export const FurtherReadingAfterSends: Story = {
+  args: { post: roundupPost({ reader: [SIM_TO_REAL.url], instapaper: [EVALS_DONT_TRANSFER.url] }) },
+  parameters: FURTHER_PARAMETERS,
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('In Reader')).toBeInTheDocument();
+    await expect(canvas.getByText('In Instapaper')).toBeInTheDocument();
+    await expect(canvas.getAllByRole('checkbox')).toHaveLength(2);
+  },
+};
+
+function requestUrl(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
+/** What the route answers to a send of two links that saved only the first. */
+const PARTIAL_SEND: FurtherReadingSendResult = {
+  post: roundupPost({ reader: [SIM_TO_REAL.url] }),
+  unsent: [EVALS_DONT_TRANSFER.url],
+  failure: "Instapaper didn't answer",
+};
+
+/**
+ * The row as the list draws it: from the store, so a send that replaces the post redraws it. A
+ * story's `post` arg is only the seed; `PostRow` itself takes whatever row it is handed.
+ */
+function LivePostRow(properties: React.ComponentProps<typeof PostRow>) {
+  const row = useReaderPosts().find((candidate) => candidate.id === properties.post.id);
+  return <PostRow {...properties} post={row ?? properties.post} />;
+}
+
+/** The toast belongs to the viewport's corner; in a frame it sits under the row instead. */
+const withToastUnderRow: Decorator = (Story) => (
+  <div className="relative pb-28 [transform:translateZ(0)]">
+    <Story />
+    <ToastViewport />
+  </div>
+);
+
+/**
+ * Two ticked, sent to the Reader, one saved: the saved link is marked, the other stays ticked so
+ * the retry is one press, and the toast says what stopped it.
+ */
+export const FurtherReadingOneSendFailed: Story = {
+  args: { post: roundupPost() },
+  parameters: FURTHER_PARAMETERS,
+  decorators: [withToastUnderRow],
+  render: (args) => <LivePostRow {...args} />,
+  beforeEach: () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (input) =>
+      requestUrl(input).includes('/further-reading')
+        ? Promise.resolve(
+            Response.json(PARTIAL_SEND, {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          )
+        : new Promise(() => {});
+    return () => {
+      globalThis.fetch = original;
+    };
+  },
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('checkbox', { name: SIM_TO_REAL.title }));
+    await userEvent.click(await canvas.findByRole('checkbox', { name: EVALS_DONT_TRANSFER.title }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Send to Reader' }));
+    await expect(
+      await canvas.findByText("Sent 1 of 2 to Reader — Instapaper didn't answer for the other"),
+    ).toBeInTheDocument();
+    await expect(await canvas.findByText('In Reader')).toBeInTheDocument();
+    await expect(canvas.getByRole('checkbox', { name: EVALS_DONT_TRANSFER.title })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  },
+};
+
+/**
+ * A deployment without Instapaper credentials: the section is a plain list of links, each title
+ * the link with its note after it — no ticks, no Select all, no bar.
+ */
+export const FurtherReadingNoInstapaper: Story = {
+  args: { post: roundupPost() },
+  parameters: { ...FURTHER_PARAMETERS, instapaperConfigured: false },
+  play: async ({ canvasElement }) => {
+    await openOverview(canvasElement);
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('link', { name: SIM_TO_REAL.title })).toHaveAttribute(
+      'href',
+      SIM_TO_REAL.url,
+    );
     await expect(canvas.queryByRole('checkbox')).not.toBeInTheDocument();
     await expect(canvas.queryByRole('button', { name: /Select all/ })).not.toBeInTheDocument();
   },
