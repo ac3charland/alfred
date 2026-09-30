@@ -20,8 +20,11 @@ upsert RPC keeps it.
 - **Credentials.** `POST /api/code/sessions` and `GET /api/code/ledger-inputs` accept only
   `LEDGER_API_KEY` (or the owner's browser session). In the cloud environment it is an API
   credential the proxy adds for alfred's host, so the key is in no env var; the CLI sends
-  `Authorization` itself only when `LEDGER_API_KEY` is set. `ALFRED_BASE_URL` names the app. Never
-  paste a key into the chat. See `docs/cloud-environment.md`.
+  `Authorization` itself only when `LEDGER_API_KEY` is set. `ALFRED_BASE_URL` names the app and
+  needs its scheme (`https://…`); the cloud environment's value can lack one. Node's built-in
+  `fetch` ignores `HTTPS_PROXY`, so run `build` and `push` with `NODE_USE_ENV_PROXY=1`, or the app
+  sees no credential and answers 403. Never paste a key into the chat. See
+  `docs/cloud-environment.md`.
 - **GitHub.** `build` fetches every PR from the REST API. Unauthenticated calls from the cloud
   container share the egress IP's rate limit and can answer 403 at once; set `GITHUB_TOKEN`, or
   fetch the PR list another way (the GitHub MCP's `list_pull_requests`, state all) into a JSON
