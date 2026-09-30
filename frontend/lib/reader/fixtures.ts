@@ -1,6 +1,7 @@
 import type { Json } from '@/lib/database.types';
 import type {
   ReaderCandidate,
+  ReaderFurtherReading,
   ReaderHealth,
   ReaderHealthSnapshot,
   ReaderOverview,
@@ -122,6 +123,8 @@ export function makeReaderPost(
     research_session_url: overrides.research_session_url ?? null,
     research_error: overrides.research_error ?? null,
     research_delivered_at: overrides.research_delivered_at ?? null,
+    further_sent_reader: overrides.further_sent_reader ?? [],
+    further_sent_instapaper: overrides.further_sent_instapaper ?? [],
     created_at: overrides.created_at ?? receivedAt,
   };
 }
@@ -375,7 +378,40 @@ export function makeReaderOverview(overrides: Partial<ReaderOverview> = {}): Rea
     who_should_read:
       overrides.who_should_read ??
       'Anyone tracking robotics benchmarks. Everyone else has the gist.',
+    // Absent unless asked for, as on every summary written before the list existed.
+    ...(overrides.further_reading === undefined
+      ? {}
+      : { further_reading: overrides.further_reading }),
   };
+}
+
+/**
+ * A roundup's Further reading: four linked pieces, in the order the post links them. The URLs are
+ * invented; the titles and notes are the ones the spec's mockup draws.
+ */
+export function makeFurtherReading(): ReaderFurtherReading[] {
+  return [
+    {
+      url: 'https://example.com/sim-to-real-gap',
+      title: 'The sim-to-real gap in dexterous manipulation',
+      note: 'The paper behind the lead item — per-task numbers for the folding benchmark.',
+    },
+    {
+      url: 'https://example.com/evals-dont-transfer',
+      title: 'Why most robotics evals don’t transfer',
+      note: 'An essay arguing the suite measures the simulator, not the policy.',
+    },
+    {
+      url: 'https://example.com/foldbench-v2',
+      title: 'FoldBench v2 release notes',
+      note: 'The eval itself; skim it for the task list.',
+    },
+    {
+      url: 'https://example.com/sceptics-reply',
+      title: 'A sceptic’s reply to “scale the simulator”',
+      note: 'The counter-argument the author calls the best case against his own view.',
+    },
+  ];
 }
 
 /**

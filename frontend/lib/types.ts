@@ -274,12 +274,41 @@ export interface ReaderHealthSnapshot {
  */
 export type ReaderSummaryState = 'pending' | 'done' | 'refused' | 'failed';
 
+/**
+ * One Further reading item: a link the post itself contains, what the linked piece is called, and
+ * what the post uses it for.
+ */
+export interface ReaderFurtherReading {
+  url: string;
+  title: string;
+  note: string;
+}
+
+/** Where a Further reading link is sent: into the Reader (via Instapaper's "To Reader"), or to Unread. */
+export type FurtherReadingDestination = 'reader' | 'instapaper';
+
+/**
+ * What a Further reading send answers: the post's row with its sent marks extended, the links that
+ * did not go, and — when some did not — what stopped them, in words that finish the owner's
+ * toast ("Sent 1 of 2 to Reader — Instapaper didn't answer for the other").
+ */
+export interface FurtherReadingSendResult {
+  post: ReaderPostListItem;
+  unsent: string[];
+  failure?: string;
+}
+
 /** The shape `reader_posts.overview` holds for a `done` post — the model's structured take. */
 export interface ReaderOverview {
   novel_ideas: string[];
   evidence: string[];
   argument: string;
   who_should_read: string;
+  /**
+   * Absent on a summary written before the list existed. Read it through `furtherReadingOf`
+   * (`lib/reader/overview.ts`), which is what checks its shape.
+   */
+  further_reading?: ReaderFurtherReading[];
 }
 
 // ── Wiki (the read-only snapshot of the knowledge repo's compiled pages) — ──
