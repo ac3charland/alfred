@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { type Entry, type ShowboatDocument, parseDocument, serializeDocument } from './document.ts';
@@ -13,8 +13,25 @@ function load(file: string): ShowboatDocument {
   return parseDocument(readFileSync(file, 'utf8'));
 }
 
-function save(file: string, document: ShowboatDocument): void {
-  writeFileSync(file, serializeDocument(document));
+/**
+ * A usage problem the caller should fix (bad arguments, a source that isn't an image); the CLI
+ * reports it to stderr with exit code 2.
+ */
+export class UsageError extends Error {}
+
+/**
+ * Serialize `document` and scan the whole text for a secret, throwing {@link SecretError} on a
+ * finding. Every byte a command writes to the doc goes through here — title, front matter, alt text,
+ * code-fence info string and all — so a field no command thought to check can't slip a secret to disk.
+ */
+async function render(file: string, document: ShowboatDocument): Promise<string> {
+  const text = serializeDocument(document);
+  await refuseSecrets(file, 'demo doc', text);
+  return text;
+}
+
+async function save(file: string, document: ShowboatDocument): Promise<void> {
+  writeFileSync(file, await render(file, document));
 }
 
 export interface InitOptions {
@@ -34,11 +51,17 @@ export interface InitOptions {
  * (e.g. `docs/demos/<feature-name>/<name>.md`) without a manual `mkdir`. When a
  * branch is supplied it's recorded in YAML front matter (see {@link InitOptions}).
  */
-export function init(file: string, title: string, options: InitOptions = {}): void {
+export async function init(file: string, title: string, options: InitOptions = {}): Promise<void> {
   const { branch, now = new Date() } = options;
-  mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   const frontMatter = branch ? `branch: ${branch}` : undefined;
-  save(file, { frontMatter, title, timestamp: now.toISOString(), entries: [] });
+  const text = await render(file, {
+    frontMatter,
+    title,
+    timestamp: now.toISOString(),
+    entries: [],
+  });
+  mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
+  writeFileSync(file, text);
 }
 
 /**
@@ -51,8 +74,9 @@ export class SecretError extends Error {
       `refused to record ${what} in ${file}: it looks like a secret, and this repo is public.\n` +
         `${report.trim()}\n` +
         'Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, ' +
-        'which reads the URL from frontend/.env.local; otherwise keep the value in an env var ' +
-        '(`"$NAME"`) or mask it (`:****@`).',
+        'which reads the URL from frontend/.env.local. Any other credential must already be ' +
+        'exported in your shell outside the recorded command (never `NAME=value` inside it: the ' +
+        'assignment is recorded too), or be masked (`:****@`).',
     );
     this.name = 'SecretError';
   }
@@ -68,7 +92,7 @@ export async function note(file: string, text: string): Promise<void> {
   await refuseSecrets(file, 'note', text);
   const document = load(file);
   document.entries.push({ kind: 'note', text: text.replace(/\n+$/, '') });
-  save(file, document);
+  await save(file, document);
 }
 
 /**
@@ -86,7 +110,7 @@ export async function exec(
   code: string,
   workdir: string,
 ): Promise<RunResult> {
-  await refuseSecrets(file, 'command', code);
+  await refuseSecrets(file, 'command', `${lang}\n${code}`);
   const document = load(file);
   const result = runCode(lang, code, workdir);
   await refuseSecrets(file, 'command output', result.output);
@@ -97,15 +121,37 @@ export async function exec(
     code: code.replace(/\n+$/, ''),
     output: result.output,
   });
-  save(file, document);
+  await save(file, document);
   return result;
+}
+
+const GIF_SIGNATURES = new Set(['GIF87a', 'GIF89a']);
+const SVG_TEXT = /^(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i;
+
+function startsWith(bytes: Buffer, signature: readonly number[], offset = 0): boolean {
+  return signature.every((byte, index) => bytes[offset + index] === byte);
+}
+
+/** True when `bytes` open with a PNG, GIF, JPEG or WebP signature. */
+function isRasterImage(bytes: Buffer): boolean {
+  return (
+    startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) ||
+    GIF_SIGNATURES.has(bytes.subarray(0, 6).toString('latin1')) ||
+    startsWith(bytes, [0xff, 0xd8, 0xff]) ||
+    (bytes.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      bytes.subarray(8, 12).toString('latin1') === 'WEBP')
+  );
 }
 
 /**
  * Embed an image. Accepts either a bare path or a full `![alt](path)`. The source
  * file is copied next to the doc under a generated, collision-free name.
+ *
+ * The source must really be an image (PNG/GIF/JPEG/WebP by signature, or SVG text, which is
+ * scanned like any text) — otherwise `image d.md frontend/.env.local` would publish that file
+ * beside the doc. Nothing is copied or written when the alt text, the SVG or the doc is refused.
  */
-export function image(file: string, argument: string): void {
+export async function image(file: string, argument: string): Promise<void> {
   const document = load(file);
   const markdown = IMAGE_MARKDOWN.exec(argument.trim());
   // Stryker disable next-line StringLiteral: AT_CEILING — when the regex matches, groups 1 and 2 are always captured (they're `[^\]]*` and `[^)]*`); markdown[1]/markdown[2] are never undefined, so the ?? '' fallback is a TS-type-safety guard that is unreachable at runtime.
@@ -113,15 +159,28 @@ export function image(file: string, argument: string): void {
   // Stryker disable next-line StringLiteral: AT_CEILING — same as above; markdown[2] is always defined when the regex matches.
   const source = markdown ? (markdown[2] ?? '') : argument;
 
+  const bytes = readFileSync(source);
+  if (!isRasterImage(bytes)) {
+    const text = bytes.toString('utf8');
+    if (!SVG_TEXT.test(text)) {
+      throw new UsageError(
+        `"${source}" is not an image (expected a PNG, GIF, JPEG, WebP or SVG file); ` +
+          'showboat only copies real images next to a demo doc.',
+      );
+    }
+    await refuseSecrets(file, 'image', text);
+  }
+
   const documentDirectory = path.dirname(path.resolve(file));
   const extension = path.extname(source) || '.png';
   const stem = path.basename(file, path.extname(file));
   const imageCount = document.entries.filter((entry) => entry.kind === 'image').length;
   const generated = `${stem}-image-${String(imageCount + 1)}${extension}`;
 
-  copyFileSync(source, path.join(documentDirectory, generated));
   document.entries.push({ kind: 'image', alt, path: generated });
-  save(file, document);
+  const text = await render(file, document);
+  writeFileSync(path.join(documentDirectory, generated), bytes);
+  writeFileSync(file, text);
 }
 
 /**
@@ -142,24 +201,27 @@ export async function video(
   convert: (webmPath: string) => Promise<Uint8Array> = convertWebmToGif,
 ): Promise<void> {
   const document = load(file);
-  const gif = await convert(webmPath);
-
   const documentDirectory = path.dirname(path.resolve(file));
   const stem = path.basename(file, path.extname(file));
   const imageCount = document.entries.filter((entry) => entry.kind === 'image').length;
   const generated = `${stem}-video-${String(imageCount + 1)}.gif`;
 
-  writeFileSync(path.join(documentDirectory, generated), gif);
+  // Scan the doc (alt text included) before converting or writing anything, so a refusal leaves
+  // the recording and the folder exactly as they were.
   document.entries.push({ kind: 'image', alt, path: generated });
-  save(file, document);
+  const text = await render(file, document);
+  const gif = await convert(webmPath);
+
+  writeFileSync(path.join(documentDirectory, generated), gif);
+  writeFileSync(file, text);
   rmSync(webmPath);
 }
 
 /** Remove and return the most recent entry (an exec drops its code *and* output). */
-export function pop(file: string): Entry | undefined {
+export async function pop(file: string): Promise<Entry | undefined> {
   const document = load(file);
   const removed = document.entries.pop();
-  save(file, document);
+  await save(file, document);
   return removed;
 }
 
@@ -216,7 +278,7 @@ export async function verify(
     if (outputFile !== undefined) throw new SecretError(outputFile, 'command output', report);
     diff.actual = `[withheld: looks like a secret]\n${report.trim()}`;
   }
-  if (outputFile !== undefined) save(outputFile, { ...document, entries });
+  if (outputFile !== undefined) await save(outputFile, { ...document, entries });
   return { ok: diffs.length === 0, diffs, checked };
 }
 

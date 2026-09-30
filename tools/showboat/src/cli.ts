@@ -3,6 +3,7 @@ import process from 'node:process';
 
 import {
   SecretError,
+  UsageError,
   type VerifyResult,
   currentBranch,
   exec,
@@ -40,9 +41,6 @@ Global options:
 
 In this repo, run it through the root script: npm run demo -- <command> ...
 `;
-
-/** A usage problem the caller should fix; reported to stderr with exit code 2. */
-class UsageError extends Error {}
 
 function fail(message: string): never {
   throw new UsageError(message);
@@ -135,7 +133,7 @@ async function main(argv: readonly string[]): Promise<number> {
       if (!file || !title) fail('usage: showboat init <file> <title> [--branch <name>]');
       // Stamp the current branch into front matter so the folder name can be a
       // semantic feature name; --branch overrides the detected branch.
-      init(file, title, { branch: branchOption ?? currentBranch() });
+      await init(file, title, { branch: branchOption ?? currentBranch() });
       return 0;
     }
     case 'note': {
@@ -156,7 +154,7 @@ async function main(argv: readonly string[]): Promise<number> {
       const [file, ...imageParts] = rest;
       const argument = imageParts.join(' ');
       if (!file || !argument) fail('usage: showboat image <file> <path|markdown>');
-      image(file, argument);
+      await image(file, argument);
       return 0;
     }
     case 'video': {
@@ -168,7 +166,7 @@ async function main(argv: readonly string[]): Promise<number> {
     case 'pop': {
       const [file] = rest;
       if (!file) fail('usage: showboat pop <file>');
-      pop(file);
+      await pop(file);
       return 0;
     }
     case 'verify': {
