@@ -47,6 +47,19 @@ function sendRefusal(error: unknown): string | undefined {
 }
 
 /**
+ * The statuses the research retry route answers with a sentence written for the owner: a post
+ * that isn't a research post (404), one that is still running or already delivered (409), and a
+ * deployment with no research set up (501). A 500 is the database talking, not the route.
+ */
+const RETRY_RESEARCH_REFUSAL_STATUSES = new Set([404, 409, 501]);
+
+function retryResearchRefusal(error: unknown): string | undefined {
+  return error instanceof api.ApiError && RETRY_RESEARCH_REFUSAL_STATUSES.has(error.status)
+    ? error.detail
+    : undefined;
+}
+
+/**
  * What a failed wiki send says. Every refusal the send route writes (a bullet re-summarised
  * away, no writer on this deployment, GitHub refusing or busy) is a sentence the owner can act
  * on, so it is quoted whatever the status — unlike {@link refusal}, which only trusts a 409.
@@ -150,6 +163,17 @@ export interface ReaderActions {
    * send — it returns the pending promise and makes no second request.
    */
   sendToInstapaper: (id: string) => Promise<ReaderPostListItem>;
+  /**
+   * Start a new research session for a post with no report — one the Routine refused to start,
+   * or whose session never reported back. Optimistic: the row reads as researching at once
+   * (state, the fire's time, its error cleared), then takes the row the route answers with whole.
+   * That answer is not always a success — a fire the Routine refuses again comes back as the row
+   * failed with the new reason, and is taken as the truth. Only a refusal or a fault rolls the
+   * three fields back and toasts: the route's own sentence when it wrote one for the owner (still
+   * running, not set up), the store's line otherwise. A second press while a retry is in flight
+   * is the same retry — it returns the pending promise and makes no second request.
+   */
+  retryResearch: (id: string) => Promise<ReaderPostListItem>;
   /**
    * Send picked Novel-ideas and Evidence bullets into the wiki: one request, one commit, whatever
    * mix of the two sections it carries. Deliberately NOT optimistic — the send is a commit to
@@ -547,6 +571,53 @@ export function ReaderProvider({
     [beginWrite, endWrite],
   );
 
+  /** One retry per post at a time, by the same rule as {@link sendingRef}. */
+  const retryingRef = React.useRef(new Map<string, Promise<ReaderPostListItem>>());
+
+  const retryResearch = React.useCallback(
+    (id: string): Promise<ReaderPostListItem> => {
+      const inFlight = retryingRef.current.get(id);
+      if (inFlight !== undefined) return inFlight;
+
+      const current = stateRef.current.posts.find((post) => post.id === id);
+      const patch: Partial<ReaderPostListItem> = {
+        research_state: 'researching',
+        research_fired_at: new Date().toISOString(),
+        research_error: null,
+      };
+      // Only the keys this write touches, so a rollback can't clobber a field another write moved.
+      const captured = current === undefined ? {} : capturedFields(current, patch);
+      // Registered as a write in flight: a focus refetch already in the air would otherwise answer
+      // with the row still failed and put the old reading back on screen.
+      beginWrite(id);
+      const retrying = (async () => {
+        try {
+          return await runOptimisticMutation({
+            optimistic: () => {
+              dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch } });
+            },
+            apiCall: () => api.retryResearch(id),
+            reconcile: (saved) => {
+              dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
+            },
+            rollback: () => {
+              dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch: captured } });
+            },
+            onError: (error) => {
+              showToastRef.current(retryResearchRefusal(error) ?? "Couldn't retry that research");
+            },
+          });
+        } finally {
+          endWrite(id);
+          retryingRef.current.delete(id);
+        }
+      })();
+      retryingRef.current.set(id, retrying);
+      return retrying;
+    },
+    [beginWrite, endWrite],
+  );
+
   const actions = React.useMemo<ReaderActions>(
     () => ({
       archive(id) {
@@ -644,10 +715,20 @@ export function ReaderProvider({
           });
       },
       sendToInstapaper,
+      retryResearch,
       refresh,
       reconcileHealth,
     }),
-    [refresh, reconcileHealth, loadArchive, setArchived, sendToInstapaper, beginWrite, endWrite],
+    [
+      refresh,
+      reconcileHealth,
+      loadArchive,
+      setArchived,
+      sendToInstapaper,
+      retryResearch,
+      beginWrite,
+      endWrite,
+    ],
   );
 
   return (

@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-240 — Spike: Instagram message integration to comms</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a; --partial: #d99b2b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a; --partial: #e0ab48;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); overflow-wrap: anywhere; }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .meh { color: var(--partial); font-weight: 600; }
+  .alt { border: 1px solid var(--line); border-left: 3px solid var(--faint); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; }
+  .alt h3 { margin: 0 0 .35rem; font-size: 1rem; color: var(--muted); }
+  .alt p { margin: .35rem 0; font-size: .92rem; }
+  .verdict { font-size: .88rem; margin-top: .5rem; }
+  .verdict .k { display: inline-block; min-width: 5.4rem; font-size: .68rem; font-weight: 700;
+                letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+  @media (max-width: 560px) {
+    .wrap { padding: 1.25rem .9rem 3rem; }
+    h1 { font-size: 1.45rem; }
+    .scroll table { min-width: 34rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Spike · findings · ALF-240</p>
+<h1>ALF-240 — Spike: Instagram message integration to comms</h1>
+<p class="sub">
+  Can the owner's Instagram DMs feed the Comms module (epic
+  <a href="../specs/epics/ALF-7.html">ALF-7</a>)? If so, by which read path, and how does it fit
+  the epic's invariants: dedupe key, cursor, health, the reply-detection drain, and Open in source?
+  The owner's account is a <b>personal</b> account. The owner would consider switching it to Creator
+  if that turned out to be the clean path. It isn't clean (§2).
+</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>1 · Where we landed</h2>
+
+<div class="card teal">
+<p><b>There is no official, terms-clean way to read a personal account's DMs.</b> Meta's messaging
+API serves Professional (Business/Creator) accounts only. Converting has three problems:</p>
+<ul class="tight">
+  <li>The account goes public. A Professional account can't be set to private.</li>
+  <li>The API still can't see <b>group DMs</b>. For D18 that's a missed obligation that leaves no trace.</li>
+  <li>Meta's docs contradict each other on whether a single-owner app receives webhooks for DMs from ordinary senders.</li>
+</ul>
+
+<p><b>If Instagram is built, build it as a third Mac-daemon source that reads the
+<a href="https://developers.beeper.com/desktop-api/">Beeper Desktop API</a> on
+<code>localhost</code>.</b> Beeper Desktop runs the open-source mautrix Instagram bridge on the Mac.
+Its first-party local REST API supplies what the epic needs:</p>
+<ul class="tight">
+  <li>message ids for <code>source_id</code></li>
+  <li>chat ids for <code>thread_key</code></li>
+  <li>an <code>isSender</code> flag for direction, and so for D18's reply-detection drain</li>
+  <li>group chats</li>
+</ul>
+<p>It slots into the daemon's existing <code>Source</code> contract the same way iMessage and WorkMail
+do, and it inherits the same limit: the Mac sleeps.</p>
+
+<p><b>But gate the build on a zero-code trial, and on the owner accepting one real risk.</b> Every
+non-official path, Beeper included, is automated access under
+<a href="https://www.facebook.com/help/instagram/581066165581870">Instagram's Terms §4.2</a>.
+Users of the bridge report checkpoints ("we suspect automated behaviour"), and one reported a disabled
+account.</p>
+<ul class="tight">
+  <li><b>The trial:</b> install Beeper Desktop, connect Instagram on-device, and use it for two
+  weeks with no alfred code.</li>
+  <li><b>What it answers:</b> whether this account gets checkpointed, and the four API questions in §6.</li>
+  <li><b>If it gets checkpointed:</b> the answer is "no Instagram source", not the official API.</li>
+</ul>
+
+<p><b>This amends the epic, so it's the owner's decision.</b> ALF-7 §5 lists "the owner's four actual
+channels" as a non-goal boundary, and D9's table has no fifth row. An Instagram story needs an epic
+revision first. It can only land after the daemon stories E (skeleton) and Q (ingest endpoint).</p>
+</div>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Path</th><th>Personal acct</th><th>Group DMs</th><th>Reply detection (D18)</th><th>Terms-clean</th><th>Verdict</th></tr></thead>
+  <tbody>
+    <tr><td><b>Beeper Desktop API → daemon</b></td><td class="yes">yes</td><td class="yes">yes</td><td class="yes"><code>isSender</code></td><td class="no">no</td><td><b>Recommended, gated</b></td></tr>
+    <tr><td>Official Instagram API (Instagram Login)</td><td class="no">no, must go public</td><td class="no">no</td><td class="yes"><code>is_echo</code></td><td class="yes">yes</td><td>Only if the account goes public, and it still misses groups</td></tr>
+    <tr><td>Self-hosted mautrix-instagram + Matrix homeserver</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td><td class="no">no</td><td>Same bridge as Beeper, plus a homeserver to run</td></tr>
+    <tr><td>instagrapi (Python private API)</td><td class="yes">yes</td><td class="yes">yes</td><td class="meh">inferred</td><td class="no">no</td><td>Highest checkpoint risk; breaks monthly</td></tr>
+    <tr><td>macOS Notification Center DB</td><td class="yes">yes</td><td class="meh">partial</td><td class="no">none</td><td class="meh">grey</td><td>Fails D18: no drain</td></tr>
+    <tr><td>Email notifications</td><td class="yes">yes</td><td>—</td><td class="no">none</td><td class="yes">yes</td><td>No per-DM email found</td></tr>
+    <tr><td>"Download your information"</td><td class="yes">yes</td><td class="yes">yes</td><td>batch</td><td class="yes">yes</td><td>Manual, up to 48 h; backfill only</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>2 · Why</h2>
+
+<h3>The official API is built for businesses talking to customers, not for a person's inbox</h3>
+<ul>
+  <li><b>Professional accounts only.</b> "Your app users must have an Instagram professional account.
+    An Instagram professional account can represent a business or creator"
+    (<a href="https://developers.facebook.com/documentation/instagram-platform/overview">Platform overview</a>).
+    The Basic Display API, the last consumer-account surface, shut down on 2024-12-04 and never
+    exposed DMs anyway.</li>
+  <li><b>Converting makes the account public.</b> "Professional accounts can't be set to private"
+    (<a href="https://www.facebook.com/help/instagram/138925576505882">Instagram Help</a>, verified
+    this session). That applies to Creator as well as Business, and pending follow requests are
+    auto-accepted. For a personal account that is a real cost unrelated to alfred.</li>
+  <li><b>Group DMs are out of reach.</b> "Group messaging is not supported. An Instagram
+    professional account can only converse with one customer per conversation"
+    (<a href="https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api">Messaging API</a>,
+    verified). A group thread asking the owner something would never reach alfred. That breaks D24's
+    rule that a message is never silently skipped, and it is §1's failure 1 (a missed
+    obligation) with no trace anywhere. Keeping the account private is a preference. The group-DM
+    gap is a correctness problem.</li>
+  <li><b>Delivery to a single-owner app is contradictory in the docs.</b>
+    <ul class="tight">
+      <li>Webhooks require the app to be <b>Live</b>
+        (<a href="https://developers.facebook.com/documentation/instagram-platform/webhooks/setup">Webhooks setup</a>).</li>
+      <li>The setup page's requirements table lists "Advanced Access" and business verification
+        "for production access".</li>
+      <li>The Messenger-Platform overview says "Apps with Standard Access can only interact with
+        people who have a role on the app". A friend DMing the owner has no app role.</li>
+      <li>The App Review page says an app "only for a business I own or manage" needs Standard Access
+        and no review.</li>
+      <li>Community reports
+        (<a href="https://community.n8n.io/t/instagram-dms-webhooks-work-only-in-test-mode/176851">n8n, Aug 2025</a>)
+        say DM webhooks fired only for tester accounts.</li>
+    </ul>
+    Only a hands-on test would settle it, and it's moot unless the owner goes public.</li>
+  <li><b>Smaller costs if it were built anyway:</b>
+    <ul class="tight">
+      <li>A 60-day token that must be refreshed before it lapses, the same trap as D23.</li>
+      <li>Only the 20 most recent messages per thread are readable, so D21's backfill is shallow.</li>
+      <li>Request-folder threads inactive for 30 days are hidden.</li>
+      <li>GIFs and stickers fire no webhook.</li>
+      <li>It needs a new webhook route in the Worker, a third "home" the schema doesn't allow today (§3.4).</li>
+    </ul></li>
+</ul>
+
+<h3>Beeper's local API maps onto the epic almost field for field</h3>
+<ul>
+  <li><b>First-party, documented and local.</b> "Local API &amp; MCP for Beeper Desktop … requires
+    Beeper Desktop to be running", covering "WhatsApp, Instagram, Telegram …"
+    (<a href="https://developers.beeper.com/desktop-api/">Desktop API</a>, verified). It listens on
+    <code>localhost:23373</code> with a bearer token created in Settings → Integrations
+    (<a href="https://developers.beeper.com/desktop-api/auth">auth</a>). It has been open to all
+    stable-app users since v4.1.169 (2025-09-02). Reads are "not subject to" Beeper's sending
+    restrictions
+    (<a href="https://beeper.helpjuice.com/beeper-desktop-api-build-with-your-messages-locally">Beeper help</a>).</li>
+  <li><b>Reply detection is built in.</b> Search takes <code>sender=me|others</code>, and every
+    message carries <code>isSender</code>, "True if the authenticated user sent the message"
+    (<a href="https://developers.beeper.com/desktop-api-reference/resources/messages/methods/search">messages/search</a>,
+    verified). That is the iMessage <code>is_from_me</code> pattern the daemon already normalizes
+    (<code>daemon/src/sources/imessage/normalize.ts:153</code>). The existing
+    <code>comm_record_reply</code> drain (<code>database/migrations/0034_comms.sql:393</code>) works
+    unchanged once <code>thread_key</code> is the chat id.</li>
+  <li><b>On-device, open-source bridge.</b> Beeper runs Instagram through the mautrix bridge, "the
+    same bridges we run with On-Device Connections and also on Beeper Cloud"
+    (<a href="https://developers.beeper.com/open-source/">open source</a>). The on-device option means
+    "messages never touch our servers" (<a href="https://www.beeper.com/faq">FAQ</a>). So Beeper adds
+    no new party holding the owner's DMs. The bridge is very actively maintained: releases on
+    2026-08-16, 09-10 and 09-16, and a commit on 2026-09-24
+    (<a href="https://github.com/mautrix/meta/releases">mautrix/meta releases</a>). That matters,
+    because Instagram changed its DM protocol in mid-2026 and bridges broke and were fixed within
+    weeks (<a href="https://mau.fi/blog/2026-07-mautrix-release/">mau.fi, 2026-07</a>). With Beeper,
+    that maintenance is Beeper's job, not alfred's.</li>
+  <li><b>Encryption is no longer an obstacle.</b> "End-to-end encrypted messaging on Instagram is no
+    longer supported as of May 8, 2026"
+    (<a href="https://www.facebook.com/help/instagram/491565145294150">Instagram Help</a>, verified).
+    It had been opt-in only. Any server-side reader now sees every DM except vanish-mode ones.</li>
+  <li><b>Free.</b> Beeper's free tier covers up to 5 accounts, one per network
+    (<a href="https://www.beeper.com/faq">FAQ</a>).</li>
+</ul>
+
+<h3>The risk that doesn't go away</h3>
+<p>Instagram's Terms §4.2 forbid "accessing or collecting information in an automated way without
+our express permission". Beeper, mautrix and instagrapi are all that. The documented consequence is
+checkpoints: Meta may block you "until you do some tasks like completing a captcha, adding a phone
+number or resetting your password"
+(<a href="https://docs.mau.fi/bridges/go/meta/authentication.html">mautrix docs</a>).
+<a href="https://github.com/mautrix/meta/issues/44">mautrix/meta#44</a> ("We suspect automated
+behaviour") has open reports through 2026:</p>
+<ul class="tight">
+  <li>a flag after about an hour of use, on a home IP with 2FA on (2025-12)</li>
+  <li>cookie sessions dying after about 7 days (2026-08)</li>
+  <li>one "account is disabled" report, which another user attributed to the bridge's token rather
+    than the account</li>
+</ul>
+<p>Other users report months without incident. The risk falls on the owner's personal account, not
+on alfred. It's worth taking only if the trial shows this account is left alone.</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>3 · Technical shape</h2>
+
+<svg viewBox="0 0 900 190" role="img" aria-label="Data flow: Instagram to Beeper Desktop on the Mac, polled by the alfred daemon, posted to the Worker ingest endpoint">
+  <style>
+    .bx { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+    .bx.new { stroke: var(--accent); stroke-width: 2; }
+    .t { fill: var(--fg); font: 600 14px -apple-system, sans-serif; }
+    .s { fill: var(--muted); font: 12px -apple-system, sans-serif; }
+    .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#ar); }
+    .mac { fill: none; stroke: var(--faint); stroke-dasharray: 5 4; }
+  </style>
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+  <rect class="mac" x="170" y="10" width="470" height="170" rx="12"/>
+  <text class="s" x="182" y="30">the owner's Mac</text>
+  <rect class="bx" x="10" y="70" width="130" height="64" rx="8"/>
+  <text class="t" x="24" y="98">Instagram</text><text class="s" x="24" y="118">Meta's DM servers</text>
+  <rect class="bx" x="190" y="60" width="200" height="84" rx="8"/>
+  <text class="t" x="204" y="88">Beeper Desktop</text><text class="s" x="204" y="108">on-device mautrix bridge</text><text class="s" x="204" y="126">REST on localhost:23373</text>
+  <rect class="bx new" x="420" y="60" width="200" height="84" rx="8"/>
+  <text class="t" x="434" y="88">alfred daemon</text><text class="s" x="434" y="108">new source: instagram</text><text class="s" x="434" y="126">poll · normalize · sign</text>
+  <rect class="bx" x="690" y="60" width="200" height="84" rx="8"/>
+  <text class="t" x="704" y="88">Worker</text><text class="s" x="704" y="108">POST /comms/ingest (D22)</text><text class="s" x="704" y="126">store · classify · drain</text>
+  <path class="ln" d="M140,102 L188,102"/>
+  <path class="ln" d="M420,102 L392,102"/>
+  <path class="ln" d="M620,102 L688,102"/>
+  <text class="s" x="398" y="160">GET /v1/messages/search</text>
+</svg>
+<p class="small">The daemon pulls from Beeper; nothing pushes into the daemon. The link from Beeper to
+Instagram is Beeper's concern. Everything to the right of the daemon already exists.</p>
+
+<h3>3.1 · The source</h3>
+<p>A third directory, <code>daemon/src/sources/instagram/</code>, implementing the existing
+<code>Source</code> contract (<code>daemon/src/sources/types.ts:35-42</code>:
+<code>key, kind, label, check(), poll(ctx)</code>). The runner, batching, backoff, HMAC signing and
+heartbeat are already source-agnostic (<code>daemon/src/runner.ts</code>). The plug-in steps are the
+ones <code>daemon/src/sources/index.ts:7-12</code> already lists:</p>
+<ul class="tight">
+  <li>a config section in <code>config.ts</code></li>
+  <li>a factory under <code>sources/instagram/</code></li>
+  <li>one branch in <code>createSources()</code></li>
+</ul>
+<p>The Beeper token is a Keychain item reached through <code>createSecretResolver</code>
+(<code>daemon/src/keychain.ts:82-98</code>), never the config file (the same rule as the WorkMail
+password).</p>
+
+<h4>Poll: the daemon polls, it doesn't watch (D10 holds)</h4>
+<pre><code>GET http://localhost:23373/v1/messages/search
+    ?accountIDs=&lt;the Instagram account id from GET /v1/accounts&gt;
+    &amp;dateAfter=&lt;cursor.after − overlap&gt;
+    &amp;excludeLowPriority=false      ← the default is true, which hides chats the owner marked low-priority
+    &amp;limit=20  (the max)  … then page with cursor + direction=after while hasMore
+Authorization: Bearer &lt;token from Keychain&gt;</code></pre>
+<ul>
+  <li><b>Cursor</b> (<code>comm_accounts.cursor</code> is opaque <code>jsonb</code>, so no migration
+    is needed): <code>{ "after": "&lt;ISO timestamp of the newest message ingested&gt;" }</code>.
+    Re-read with a small overlap. The dedupe key makes overlap free:
+    <code>unique (account_id, source_id)</code> (<code>0034_comms.sql:108</code>), and the store
+    counts replays as <code>duplicates</code> (<code>workers/src/comms/store.ts:52</code>). D21's
+    rules apply unchanged: seed from 7 days on first run, and re-seed from <code>last_seen_at</code>,
+    never the window.</li>
+  <li><b><code>excludeLowPriority=false</code> is binding.</b> Beeper's default silently drops chats
+    the owner has marked low-priority. That's §1's failure 1 arriving through a default.</li>
+  <li><b>Don't use the WebSocket</b> (<code>ws://…/v1/ws</code>). Beeper labels it "experimental and
+    may change between desktop releases" and documents no replay, so it's the FSEvents trap again.</li>
+</ul>
+
+<h4>Normalize: Beeper → <code>NormalizedMessage</code> (<code>daemon/src/contract.ts:30-62</code>)</h4>
+<div class="scroll">
+<table>
+  <thead><tr><th>Field</th><th>From</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td><code>source_id</code></td><td>message <code>id</code></td><td>Must survive a Beeper re-login or re-bridge, or a reconnect re-ingests the history as new rows. <b>Unverified: §6 Q2.</b></td></tr>
+    <tr><td><code>thread_key</code></td><td><code>chatID</code></td><td>What <code>comm_record_reply</code> drains on.</td></tr>
+    <tr><td><code>direction</code></td><td><code>isSender</code></td><td>Outbound messages are sent so the drain fires. Owner handle = the <code>'me'</code> sentinel, as iMessage does.</td></tr>
+    <tr><td><code>sender_handle</code> / <code>sender_name</code></td><td><code>senderID</code> → participant's Instagram username / display name (from <code>GET /v1/chats</code>)</td><td>The username is what the roster (D12) keys on.</td></tr>
+    <tr><td><code>chat_name</code>, <code>participants</code></td><td>chat <code>title</code>, <code>participants</code></td><td>Group DMs, which the official API can't see.</td></tr>
+    <tr><td><code>body</code>, <code>body_extracted</code></td><td><code>text</code></td><td>No text and no attachment → empty body, <code>body_extracted: false</code> (D24: stored and flagged, never skipped).</td></tr>
+    <tr><td><code>has_attachments</code></td><td><code>attachments.length &gt; 0</code></td><td>Reels, shares and photos are common in Instagram DMs. D25 routes them through the classifier with the attachment named.</td></tr>
+    <tr><td><code>received_at</code></td><td><code>timestamp</code></td><td>ISO 8601 already.</td></tr>
+    <tr><td><code>rfc822_message_id</code>, <code>in_reply_to</code>, <code>references_ids</code>, <code>list_headers</code></td><td>—</td><td>Absent or empty. The newsletter filter (D13) never applies.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Health: D17 without new machinery</h4>
+<p><code>check()</code> calls <code>GET /v1/info</code> and confirms the Instagram account is listed
+and connected.</p>
+<ul class="tight">
+  <li><b>Beeper not running</b> (connection refused) → <b>erroring</b>, with that reason, not
+    stale. The daemon is up and the source is dead.</li>
+  <li><b>A checkpointed or logged-out bridge</b> → <b>erroring</b> "reconnect Instagram in
+    Beeper". This is the likeliest failure, and D17 exists so it isn't a green dot over a dead
+    source.</li>
+  <li><b>The Mac asleep</b> → <b>stale</b>, exactly as for iMessage. The ASAP latency promise
+    (D17) doesn't extend to Instagram.</li>
+</ul>
+
+<h3>3.2 · Open in source (D20)</h3>
+<p><code>frontend/lib/comms/deep-link.ts:64</code> branches only on <code>'imessage'</code>, and
+every other kind falls through to the Mail branch. An <code>'instagram'</code> account would build a
+broken <code>message://</code> link, so it needs its own branch.</p>
+<ul class="tight">
+  <li><b>Safe floor:</b> <code>https://www.instagram.com/direct/inbox/</code>.</li>
+  <li><b>Better, if it can be sourced:</b> <code>https://www.instagram.com/direct/t/&lt;thread id&gt;/</code>.</li>
+</ul>
+<p>Whether Beeper exposes Instagram's native thread id is unknown (§6 Q4). Open in source is D24's
+recovery path, so the inbox-level link is the minimum, not a nice-to-have.</p>
+
+<h3>3.3 · People and handles (D12)</h3>
+<p>"Anything from my wife is ASAP" only works on Instagram if an Instagram username resolves to a
+person. That needs three changes:</p>
+<ul class="tight">
+  <li>a third handle kind: <code>comm_handles_kind_valid</code> is <code>kind in ('email', 'phone')</code>
+    (<code>0034_comms.sql:227</code>)</li>
+  <li>a username branch in all four copies of handle canonicalization: SQL
+    <code>comm_canonical_handle</code> (<code>0037_comms_etiquette.sql:129-146</code>), whose
+    <code>else</code> branch strips non-digits and would turn a username into an empty string;
+    <code>frontend/lib/comms/people.ts:30</code>; <code>workers/src/comms/prompt.ts:232</code>;
+    and <code>daemon/src/sources/imessage/normalize.ts:49</code></li>
+  <li>the people editor learning the new kind</li>
+</ul>
+
+<h3>3.4 · Every touch point</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>Where</th><th>Change</th></tr></thead>
+  <tbody>
+    <tr><td>new migration</td><td><code>alter type comm_account_kind add value 'instagram'</code> (enum at <code>0034_comms.sql:23</code>). Extend <code>comm_handles_kind_valid</code> and <code>comm_canonical_handle</code>. <code>home</code> stays <code>'daemon'</code> (<code>:44</code>). The official-API path would have needed a third home.</td></tr>
+    <tr><td><code>workers/src/comms/ingest.ts:110</code></td><td>Add <code>'instagram'</code> to <code>ACCOUNT_KINDS</code>, or the endpoint rejects the payload. Same HMAC secret, same route.</td></tr>
+    <tr><td><code>workers/src/comms/types.ts</code></td><td><code>CommAccountKind</code> gains <code>'instagram'</code>.</td></tr>
+    <tr><td><code>daemon/src/contract.ts:15,18</code></td><td><code>SourceKey</code> and <code>SourceKind</code> gain <code>'instagram'</code>. The contract is duplicated by design, so bump nothing else.</td></tr>
+    <tr><td><code>daemon/src/config.ts:47</code>, <code>sources/index.ts</code>, <code>keychain.ts</code></td><td><code>KNOWN_SOURCES</code>, a parse function, a factory branch, and a named Keychain secret for the Beeper token.</td></tr>
+    <tr><td><code>daemon/src/sources/instagram/</code></td><td>New: <code>check</code>, <code>poll</code>, normalize, and fixture-driven tests against recorded Beeper responses.</td></tr>
+    <tr><td><code>frontend/lib/database.types.ts</code></td><td>Regenerated, never hand-edited, so the enum reaches <code>frontend/lib/types.ts:136</code>.</td></tr>
+    <tr><td><code>frontend/lib/comms/deep-link.ts</code>, <code>people.ts</code></td><td>The Instagram branch (§3.2) and handle kind (§3.3).</td></tr>
+    <tr><td><code>docs/specs/epics/ALF-7.html</code></td><td>An epic revision, not this spike's to make: a fifth row in D9, the §5 non-goal wording, and D17's "the Mac is a single point of failure for N of M sources".</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small">Grounding: <code>grep -ri instagram</code> across the repo (excluding
+<code>node_modules</code>) finds nothing relevant. There is no scaffolding to reuse and nothing to
+conflict with.</p>
+
+<h3>3.5 · Inherited limitations</h3>
+<ul>
+  <li><b>Edits and unsends:</b> a forward poll doesn't see them, the same blind spot as D28, accepted
+    for the same reason. Beeper's WebSocket does emit <code>message.upserted</code> and
+    <code>message.deleted</code>, which a later story could use once it's out of "experimental".</li>
+  <li><b>Vanish-mode chats</b> don't bridge
+    (<a href="https://github.com/mautrix/meta/issues/319">mautrix/meta#319</a>, "a bug on the
+    instagram side"). They're invisible, and that should be stated as a limitation, as D28 does.</li>
+  <li><b>No sending, ever.</b> The API can send, and Beeper warns that sending is what gets accounts
+    suspended. The epic's non-goal already forbids it, which also keeps the risk surface to reads.</li>
+</ul>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>4 · Sidebars: appealing alternatives we're not taking</h2>
+
+<div class="alt">
+<h3>Convert to Creator and use Meta's official Instagram API</h3>
+<p>It's the only terms-clean path, and it is well documented:</p>
+<ul class="tight">
+  <li>Instagram Login, with no Facebook Page needed</li>
+  <li><code>messages</code> webhooks with <code>is_echo</code> for the owner's own replies</li>
+  <li>signing via <code>X-Hub-Signature-256</code> with the App Secret</li>
+  <li>a Conversations API for catch-up</li>
+</ul>
+<p>What rules it out:</p>
+<ul class="tight">
+  <li>The account becomes public.</li>
+  <li>Group DMs are unsupported. That's a silent false negative the epic's invariants forbid.</li>
+  <li>The Live mode and Standard vs Advanced Access conflict (§2).</li>
+  <li>A 60-day token to keep alive.</li>
+  <li>A 20-message backfill cap.</li>
+  <li>A new webhook route in the Worker plus a third <code>home</code>.</li>
+</ul>
+<p class="verdict"><span class="k">Revisit if</span>the account becomes Professional for other
+reasons <i>and</i> the owner accepts that group DMs never arrive. Even then, test webhook delivery
+from a non-role sender before writing a spec.</p>
+</div>
+
+<div class="alt">
+<h3>Self-host the mautrix-instagram bridge</h3>
+<p>It removes the Beeper dependency, and it's the same code. But it needs a Matrix homeserver
+(Synapse plus appservice registration plus a database) or Beeper's <code>bbctl</code>, and an
+Instagram login alfred would have to manage. The login is cookie-based, and sessions die after about 7
+days in some reports. The terms risk is identical. Beeper Desktop is the same bridge with someone else
+doing the upkeep.</p>
+<p class="verdict"><span class="k">Revisit if</span>Beeper Desktop's API is withdrawn, paywalled,
+or its breaking changes (about twice a year per its
+<a href="https://developers.beeper.com/desktop-api/changelog">changelog</a>) become a burden.</p>
+</div>
+
+<div class="alt">
+<h3>instagrapi or a Node private-API client inside the daemon</h3>
+<p>This path has no dependency on another app, and instagrapi has DM, pending-inbox and realtime
+reads. What rules it out:</p>
+<ul class="tight">
+  <li>It's Python in a Node daemon.</li>
+  <li>3.0.0 (2026-09-12) changed login with no fallback, and login-breakage issues pile up monthly
+    (e.g. #2807, 2026-09-18).</li>
+  <li>Its own README steers production users to a paid service.</li>
+  <li>The Node libraries are dead: <code>instagram-private-api</code> was last published in
+    2024-03.</li>
+</ul>
+<p>It has the highest checkpoint risk of any option, with alfred holding the owner's raw Instagram
+password.</p>
+</div>
+
+<div class="alt">
+<h3>Read Instagram web notifications from the Notification Center database</h3>
+<p>This is tempting because the daemon already holds Full Disk Access. On this Mac (macOS 26.6.2)
+<code>~/Library/Group Containers/group.com.apple.usernoted/db2/db</code> exists. Its
+<code>record.data</code> blob carries the notification, and web push from instagram.com would land
+under the browser's <code>app_id</code>.</p>
+<p>What rules it out:</p>
+<ul class="tight">
+  <li>It sees <b>incoming messages only</b>, so there's nothing for D18's reply detection. A source
+    with no drain "honours two of the three exits, which is not enough", and the epic forbids
+    shipping one.</li>
+  <li>There's no thread id.</li>
+  <li>Truncation and retention are unknown.</li>
+  <li>Dismissing the notification may drop the record.</li>
+</ul>
+</div>
+
+<div class="alt">
+<h3>Email notifications through the existing Gmail path</h3>
+<p>This would need zero new code, since Gmail is already ingested. But no source shows Instagram
+sending a per-DM email with the message text. What exists are "message reminder" digests about a day
+after an unanswered DM. That's too late for Today, carries no reply signal, and is unreliable as a
+channel. Worth one Gmail search (<code>from:instagram.com</code>) to confirm, but not a design.</p>
+</div>
+
+<div class="alt">
+<h3>"Download your information" exports</h3>
+<p>This path is official and terms-clean, and includes group threads as JSON. But it's manual,
+generation takes minutes to 48 hours, and the link expires in 4 days. Useful for one-off backfill or
+for building story K's eval fixtures from real Instagram DMs. Not an ingestion path.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>5 · Cost</h2>
+<ul>
+  <li><b>Effort:</b> one story, about the size of story G (WorkMail): a daemon source with fixture
+    tests, one migration, a regenerated types file, and a deep-link and handle-kind branch in the
+    frontend. It depends on E and Q (daemon skeleton, ingest endpoint), and it's cheaper after F
+    because the iMessage source is the closest template. It needs an epic revision before
+    refinement.</li>
+  <li><b>Money:</b> $0. Beeper's free tier (5 accounts, one per network) covers it. There's no Meta
+    app, no App Review and no business verification.</li>
+  <li><b>Risk, in order:</b>
+    <ol class="tight">
+      <li>A checkpoint or suspension of the owner's personal Instagram account (terms §4.2). This is
+        the gate.</li>
+      <li>Beeper or Instagram breaking the bridge for days to weeks. The mid-2026 protocol switch
+        broke it, and D17's erroring state is the answer.</li>
+      <li>Beeper changing or paywalling the local API.</li>
+      <li>The Mac being a single point of failure for three of five sources.</li>
+    </ol></li>
+</ul>
+
+<h2>6 · Open questions</h2>
+<p>Q1–Q4 are answerable in an afternoon with <code>curl</code> during the trial. Q5–Q7 are the
+owner's.</p>
+<ol>
+  <li><b>Does <code>/v1/messages/search</code> with no <code>query</code> return every message in
+    the account after <code>dateAfter</code>?</b> The docs list <code>query</code> as a filter, not
+    as required. If it isn't enough, the fallback is <code>GET /v1/chats</code> ordered by
+    <code>lastActivity</code>, then <code>/v1/chats/{id}/messages?direction=after</code> per active
+    chat.</li>
+  <li><b>Are Beeper message ids stable across a re-login or bridge reconnect?</b> This is the dedupe
+    key. If they change, a checkpoint recovery re-ingests the whole window as new rows, the corruption
+    D21 warns about. If they're unstable, a composite of chat id, timestamp and sender is the fallback
+    key.</li>
+  <li><b>Does the on-device Instagram connection backfill?</b> Beeper's Instagram help page says
+    "only new messages sent after setup may appear". The page is undated and mautrix supports
+    backfill. This decides whether D21's 7-day seed means anything for this source.</li>
+  <li><b>Can the native Instagram thread id be recovered</b> for a <code>/direct/t/&lt;id&gt;/</code>
+    deep link, and do message requests from non-followers come through at all?</li>
+  <li><b>Is Instagram DM volume worth a fifth channel?</b> The epic's premise is a small, honest
+    count. If Instagram carries a handful of real asks a month, "tell those people to text" costs
+    less than a source.</li>
+  <li><b>Does the owner accept the terms risk</b> on their personal account, once the two-week
+    trial is in? This is the go/no-go.</li>
+  <li><b>Notifications (the epic's Q0).</b> If Instagram notifications stay on, as the epic asks of
+    Gmail and Messages, the Instagram source is a ledger, not a firewall. That's the same trade the
+    epic already names.</li>
+</ol>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>7 · Sources</h2>
+<h4>Meta / Instagram (fetched 2026-09-24)</h4>
+<ul class="small">
+  <li><a href="https://developers.facebook.com/documentation/instagram-platform/overview">Instagram Platform overview</a>: Professional accounts only; single-user apps need no login flow; Conversations API at 2 calls/s</li>
+  <li><a href="https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api">Messaging API</a>: no group messaging; Standard vs Advanced Access; folders unsupported</li>
+  <li><a href="https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/conversations-api">Conversations API</a>: 20-most-recent-messages cap; 30-day Requests cutoff</li>
+  <li><a href="https://developers.facebook.com/documentation/instagram-platform/webhooks/setup">Webhooks setup</a> and <a href="https://developers.facebook.com/documentation/instagram-platform/webhooks/examples">examples</a>: Live mode; <code>X-Hub-Signature-256</code>; <code>is_echo</code>, <code>is_deleted</code>, <code>message_edit</code></li>
+  <li><a href="https://developers.facebook.com/documentation/business-messaging/instagram-messaging/overview">Messenger Platform: Instagram overview</a> and <a href="https://developers.facebook.com/documentation/business-messaging/instagram-messaging/webhooks">webhooks</a>: "Standard Access can only interact with people who have a role on the app"</li>
+  <li><a href="https://developers.facebook.com/documentation/instagram-platform/app-review">App Review</a>, <a href="https://developers.facebook.com/docs/graph-api/overview/access-levels">access levels</a>, <a href="https://developers.facebook.com/documentation/instagram-platform/reference/refresh_access_token">refresh_access_token</a> (60-day tokens)</li>
+  <li><a href="https://developers.facebook.com/blog/post/2024/09/04/update-on-instagram-basic-display-api/">Basic Display API end of life</a> (2024-12-04)</li>
+  <li>Instagram Help: <a href="https://www.facebook.com/help/instagram/138925576505882">Business vs Creator</a> (can't be private), <a href="https://www.facebook.com/help/instagram/502981923235522">switching to Professional</a>, <a href="https://www.facebook.com/help/instagram/491565145294150">E2EE ended 2026-05-08</a>, <a href="https://www.facebook.com/help/instagram/581066165581870">Terms of Use §4.2</a></li>
+  <li><a href="https://community.n8n.io/t/instagram-dms-webhooks-work-only-in-test-mode/176851">n8n community: DM webhooks only for testers</a></li>
+</ul>
+<h4>Beeper / mautrix / others</h4>
+<ul class="small">
+  <li><a href="https://developers.beeper.com/desktop-api/">Beeper Desktop API</a>, <a href="https://developers.beeper.com/desktop-api/auth">auth</a>, <a href="https://developers.beeper.com/desktop-api-reference/resources/messages/methods/search">messages/search</a>, <a href="https://developers.beeper.com/desktop-api-reference/resources/chats/methods/list">chats/list</a>, <a href="https://developers.beeper.com/desktop-api/websocket-experimental">WebSocket (experimental)</a>, <a href="https://developers.beeper.com/desktop-api/changelog">changelog</a></li>
+  <li><a href="https://developers.beeper.com/open-source/">Beeper open-source bridges</a>, <a href="https://help.beeper.com/en_US/chat-networks/instagram">Beeper Instagram help</a>, <a href="https://www.beeper.com/faq">FAQ / pricing</a>, <a href="https://www.beeper.com/terms">terms</a>, <a href="https://github.com/beeper/desktop-api-js">@beeper/desktop-api</a> (MIT)</li>
+  <li><a href="https://github.com/mautrix/meta">mautrix/meta</a>: <a href="https://github.com/mautrix/meta/releases">releases</a>, <a href="https://github.com/mautrix/meta/issues/44">#44</a>, <a href="https://github.com/mautrix/meta/issues/319">#319</a>, <a href="https://docs.mau.fi/bridges/go/meta/authentication.html">auth docs</a>, <a href="https://mau.fi/blog/2026-07-mautrix-release/">2026-07 release notes</a></li>
+  <li><a href="https://subzeroid.github.io/instagrapi/latest/usage-guide/direct/">instagrapi direct</a> and <a href="https://subzeroid.github.io/instagrapi/latest/usage-guide/best-practices/">best practices</a>; <a href="https://github.com/dilame/instagram-private-api">instagram-private-api</a> (last publish 2024-03-07)</li>
+  <li><a href="https://9to5mac.com/2024/09/01/security-bite-apple-addresses-privacy-concerns-around-notification-center-database-in-macos-sequoia/">Notification Center DB location since Sequoia</a>; <a href="https://9to5mac.com/2025/09/03/instagram-launches-official-ipad-app-now-available-on-app-store/">Instagram iPad app</a> (not offered on Mac)</li>
+</ul>
+<h4>This repo</h4>
+<ul class="small">
+  <li><code>docs/specs/epics/ALF-7.html</code>: D9, D10, D12, D17, D18, D20, D21, D24, D25, D28, §5 non-goals, the story list</li>
+  <li><code>docs/spikes/imessage-ingestion.md</code>: the prior source spike this one follows</li>
+  <li><code>database/migrations/0034_comms.sql</code> (<code>:23</code> enum, <code>:44</code> home, <code>:108</code> dedupe key, <code>:227</code> handle kinds, <code>:393</code> <code>comm_record_reply</code>); <code>0037_comms_etiquette.sql:129-146</code></li>
+  <li><code>workers/src/comms/ingest.ts:110</code>, <code>store.ts</code>, <code>prompt.ts:232</code>; <code>workers/wrangler.toml</code></li>
+  <li><code>daemon/src/contract.ts</code>, <code>sources/types.ts</code>, <code>sources/index.ts</code>, <code>sources/imessage/normalize.ts</code>, <code>config.ts</code>, <code>keychain.ts</code>, <code>runner.ts</code></li>
+  <li><code>frontend/lib/comms/deep-link.ts</code>, <code>people.ts</code>, <code>frontend/lib/types.ts:136</code></li>
+</ul>
+
+</div>
+</body>
+</html>

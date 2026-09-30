@@ -1,4 +1,4 @@
-import { makeReaderPost } from '@/lib/reader/fixtures';
+import { makeReaderPost, makeResearchPost } from '@/lib/reader/fixtures';
 
 import { postOpenLink } from './open-link';
 
@@ -68,5 +68,48 @@ describe('postOpenLink', () => {
     });
 
     expect(postOpenLink(post).kind).toBe('mailbox');
+  });
+});
+
+describe('postOpenLink for a research post', () => {
+  it('points at the Claude Code session, as a session link', () => {
+    const post = makeResearchPost({
+      research_session_url: 'https://claude.ai/code/session_01Abc',
+      // Nothing a research post carries could ever win over its session, but the rule is that it
+      // never falls through to the newsletter logic at all.
+      canonical_url: 'https://example.test/not-this',
+      rfc822_message_id: '<not-this@example.test>',
+    });
+
+    expect(postOpenLink(post)).toEqual({
+      href: 'https://claude.ai/code/session_01Abc',
+      kind: 'session',
+      unavailable: undefined,
+    });
+  });
+
+  it('trims the stored URL', () => {
+    const post = makeResearchPost({
+      research_session_url: '  https://claude.ai/code/session_01Abc\n',
+    });
+    expect(postOpenLink(post).href).toBe('https://claude.ai/code/session_01Abc');
+  });
+
+  it.each([
+    ['no session URL yet', null],
+    ['a blank one', ' '.repeat(3)],
+    ['one that is not a web address', 'javascript:alert(1)'],
+    ['a scheme-less string', 'claude.ai/code/session_01Abc'],
+  ])('is unavailable, with a reason, when the post has %s', (_label, url) => {
+    const post = makeResearchPost({
+      research_session_url: url,
+      canonical_url: 'https://example.test/not-this',
+      rfc822_message_id: '<not-this@example.test>',
+    });
+
+    const link = postOpenLink(post);
+    expect(link.href).toBeUndefined();
+    expect(link.kind).toBeUndefined();
+    expect(link.unavailable).toBe('No session link yet.');
   });
 });

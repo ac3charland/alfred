@@ -46,6 +46,24 @@ function waiting(minutes: number, overrides: Partial<ReaderPostListItem> = {}): 
   });
 }
 
+/**
+ * A research post dispatched `minutes` ago. Defaults to a delivered report waiting on its summary
+ * (delivered as it was dispatched); a question still waiting for its report is stated via
+ * `overrides`.
+ */
+function researchWaiting(
+  minutes: number,
+  overrides: Partial<ReaderPostListItem> = {},
+): ReaderPostListItem {
+  return waiting(minutes, {
+    source: 'research',
+    publication_id: null,
+    research_state: 'done',
+    research_delivered_at: ago(minutes),
+    ...overrides,
+  });
+}
+
 /** A clean health row: the tick ran a moment ago and has never recorded a failure. */
 function liveRow() {
   return makeReaderHealth('live', {}, NOW);
@@ -194,6 +212,19 @@ describe('waitingPosts', () => {
   it('skips a post that never had a body', () => {
     expect(waitingPosts([waiting(40, { word_count: 0 })])).toEqual([]);
   });
+
+  it.each(['queued', 'researching', 'failed'] as const)(
+    'skips a research post whose report has not arrived (%s) — the summariser has nothing to do yet',
+    (state) => {
+      const question = researchWaiting(40, { research_state: state, word_count: 0 });
+      expect(waitingPosts([question])).toEqual([]);
+    },
+  );
+
+  it('counts a delivered research report like any post', () => {
+    const report = researchWaiting(40);
+    expect(waitingPosts([report])).toEqual([report]);
+  });
 });
 
 describe('summariserStalled', () => {
@@ -265,6 +296,37 @@ describe('summariserStalled', () => {
     expect(summariserStalled(health, [claimed], NOW)).toEqual({
       state: 'stalled',
       since: claimed.created_at,
+      cause: 'no summary has landed since',
+    });
+  });
+
+  it('never reads a research question waiting for its report as a stalled summariser', () => {
+    const question = researchWaiting(READER_STALL_MINUTES + 120, {
+      research_state: 'researching',
+      word_count: 0,
+    });
+
+    expect(summariserStalled(quietRow(), [question], NOW)).toEqual({
+      state: 'live',
+      since: null,
+      cause: null,
+    });
+  });
+
+  it('dates a delivered report’s wait from its delivery, not from its dispatch', () => {
+    // Dispatched hours ago, delivered a moment ago: the summariser has had one minute, not hours.
+    const report = researchWaiting(600, { research_delivered_at: ago(1) });
+
+    expect(summariserStalled(quietRow(), [report], NOW)).toEqual({
+      state: 'live',
+      since: null,
+      cause: null,
+    });
+
+    const late = researchWaiting(600, { research_delivered_at: ago(READER_STALL_MINUTES + 25) });
+    expect(summariserStalled(quietRow(), [late], NOW)).toEqual({
+      state: 'stalled',
+      since: late.research_delivered_at,
       cause: 'no summary has landed since',
     });
   });

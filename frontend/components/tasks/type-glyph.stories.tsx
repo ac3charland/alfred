@@ -35,3 +35,9 @@ export const Unclassified: Story = {
 export const KnowledgeIcon: Story = {
   args: { itemType: 'knowledge' },
 };
+
+// A research row — an open question bound for the Reader as a written-up report — reads as
+// binoculars.
+export const ResearchIcon: Story = {
+  args: { itemType: 'research' },
+};

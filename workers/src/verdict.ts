@@ -14,13 +14,14 @@
  * body in which "no opinion" simply isn't sent.
  */
 
-/** The values `items.item_type` may take that mean a decision was made. `knowledge` is the
- *  narrowest of the three: the classifier writes nothing else onto it, not even a folder or a
- *  project, because dispatching a knowledge row sends it to the wiki rather than filing it — and
- *  that field-writing rule is this module's own policy, stricter than anything the database
- *  requires (see `validateVerdict` below), so the owner's own later labelling is never pre-empted
- *  by a guess that turns out to mean nothing on a knowledge row. */
-export type ItemType = 'task' | 'code' | 'knowledge';
+/** The values `items.item_type` may take that mean a decision was made. `knowledge` and
+ *  `research` are the narrowest of the four: the classifier writes nothing else onto either, not
+ *  even a folder or a project, because dispatching a knowledge row sends it to the wiki and
+ *  dispatching a research row sends it to a research run — neither files it. That field-writing
+ *  rule is this module's own policy, stricter than anything the database requires (see
+ *  `validateVerdict` below), so the owner's own later labelling is never pre-empted by a guess
+ *  that turns out to mean nothing on a knowledge or research row. */
+export type ItemType = 'task' | 'code' | 'knowledge' | 'research';
 
 /** The values `items.priority` may take. */
 export type Priority = 'high' | 'medium' | 'low';
@@ -142,7 +143,7 @@ export type ClassifyOutcome = { ok: Verdict } | { failed: ClassifyFailure };
 const PRIORITIES = new Set<string>(['high', 'medium', 'low']);
 /** Every legal `ItemType`, in one place — `prompt.ts` imports this rather than holding its own
  *  copy, so the schema's enum and the type this module accepts can never drift apart. */
-export const ITEM_TYPES: readonly ItemType[] = ['task', 'code', 'knowledge'];
+export const ITEM_TYPES: readonly ItemType[] = ['task', 'code', 'knowledge', 'research'];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Read a field of a parsed JSON object as a string, treating JSON `null` as absence. */
@@ -201,10 +202,10 @@ function isCalendarDate(value: string): boolean {
  * this module's own POLICY, not a database mirror: a priority or folder chip means nothing on a
  * `code` row, and keeping the verdict task-shaped is what stops one from ever landing on one.
  *
- * `knowledge` is narrower still than `code`: it is neither task-shaped nor code-shaped, so it
- * falls through both `isTask` and `isCode` below and keeps nothing but `item_type`. That is the
- * same policy taken to its limit — the classifier suggests knowledge's TYPE and nothing else,
- * so it can never pre-empt a label the owner adds by hand later.
+ * `knowledge` and `research` are narrower still than `code`: neither is task-shaped or
+ * code-shaped, so each falls through both `isTask` and `isCode` below and keeps nothing but
+ * `item_type`. That is the same policy taken to its limit — the classifier suggests the TYPE and
+ * nothing else, so it can never pre-empt a label the owner adds by hand later.
  */
 export function validateVerdict(verdict: Verdict, world: ClosedWorld): Verdict {
   const folderIds = new Set(world.folders.map((folder) => folder.id));
@@ -276,10 +277,10 @@ export function decidedType(item: SweepItem): ItemType | undefined {
  * guessed: keeping an existing `code` while writing a task-shaped due date is exactly the
  * incoherent row `items_task_only_fields` refuses.
  *
- * A held `knowledge` row falls through the `finalType === 'task'` / `'code'` checks below exactly
- * as `code` falls through the task checks: `item_type` itself is never rewritten (it is already
- * held), and every other field stays undefined, so the sweep can only ever fill gaps a knowledge
- * row doesn't have — it never retypes one.
+ * A held `knowledge` or `research` row falls through the `finalType === 'task'` / `'code'` checks
+ * below exactly as `code` falls through the task checks: `item_type` itself is never rewritten
+ * (it is already held), and every other field stays undefined, so the sweep can only ever fill
+ * gaps such a row doesn't have — it never retypes one.
  *
  * The same "end up with" rule has to be applied to the epic, which is why this needs `world`.
  * `validateVerdict` checked the epic against the VERDICT's project; if the item already holds a

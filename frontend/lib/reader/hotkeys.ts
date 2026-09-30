@@ -26,7 +26,7 @@ export type ReaderHotkeyAction =
   | 'previous'
   /** Send the selected post to Instapaper — the row's primary verb. */
   | 'send'
-  /** Open the selected post's original, wherever its Original link points. */
+  /** Open the selected post's original — or, for a research post, its session — wherever the link points. */
   | 'open'
   /** Archive the selected post — or, in the archive, put it back. */
   | 'archive'

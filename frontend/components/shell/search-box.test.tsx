@@ -7,6 +7,7 @@ import { ALFRED_FOCUS_ITEM_EVENT } from '@/components/tasks/alfred-link';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
+import { ResearchConfigProvider } from '@/lib/stores/research-config';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
@@ -95,27 +96,29 @@ function renderSearchBox(
 ) {
   return render(
     <ToastProvider>
-      <WikiProvider
-        initialPages={seed.pages ?? []}
-        initialSync={null}
-        config={{ repo: null, writable: false }}
-      >
-        <FoldersProvider initialFolders={[]}>
-          <ExpansionProvider>
-            <TasksProvider initialTasks={seed.tasks ?? []}>
-              <CodeProvider
-                initialProjects={[]}
-                initialEpics={[]}
-                initialStories={seed.stories ?? []}
-              >
-                <SearchProvider>
-                  <SearchBox />
-                </SearchProvider>
-              </CodeProvider>
-            </TasksProvider>
-          </ExpansionProvider>
-        </FoldersProvider>
-      </WikiProvider>
+      <ResearchConfigProvider configured={false}>
+        <WikiProvider
+          initialPages={seed.pages ?? []}
+          initialSync={null}
+          config={{ repo: null, writable: false }}
+        >
+          <FoldersProvider initialFolders={[]}>
+            <ExpansionProvider>
+              <TasksProvider initialTasks={seed.tasks ?? []}>
+                <CodeProvider
+                  initialProjects={[]}
+                  initialEpics={[]}
+                  initialStories={seed.stories ?? []}
+                >
+                  <SearchProvider>
+                    <SearchBox />
+                  </SearchProvider>
+                </CodeProvider>
+              </TasksProvider>
+            </ExpansionProvider>
+          </FoldersProvider>
+        </WikiProvider>
+      </ResearchConfigProvider>
     </ToastProvider>,
   );
 }

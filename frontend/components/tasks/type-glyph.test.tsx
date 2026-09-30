@@ -28,4 +28,11 @@ describe('TypeGlyph', () => {
     expect(screen.getByRole('img', { name: 'Knowledge' })).toBeInTheDocument();
     expect(container.querySelector('svg')).toHaveClass('lucide-lightbulb');
   });
+
+  it('renders an accessible "Research" binoculars for a research item', () => {
+    const { container } = render(<TypeGlyph itemType="research" />);
+
+    expect(screen.getByRole('img', { name: 'Research' })).toBeInTheDocument();
+    expect(container.querySelector('svg')).toHaveClass('lucide-binoculars');
+  });
 });

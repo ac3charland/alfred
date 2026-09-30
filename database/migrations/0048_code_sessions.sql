@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 0046 — The coding-session ledger (ALF-309).
+-- 0048 — The coding-session ledger (ALF-309).
 --
 -- One row per Claude Code session that worked on an alfred repo: what ran it (model, effort), what
 -- it cost, which PR it produced and how that PR ended, and — rebuilt from git history — the

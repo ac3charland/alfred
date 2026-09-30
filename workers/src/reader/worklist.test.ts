@@ -58,6 +58,37 @@ describe('fetchRetries', () => {
     expect(sent).toContain('limit=6');
   });
 
+  // The summariser must never pick up a research report that has not arrived (queued,
+  // researching, failed), yet must still pick up every newsletter and article — whose
+  // research_state is NULL — and a delivered report. PostgREST has no "is null or equals" operator
+  // on one column, so this is a nested disjunction under `and`: the top-level `or` key is already
+  // the lease filter, and a query object cannot carry two of them.
+  it('excludes an undelivered research post while keeping the posts whose research state is null or done', async () => {
+    const urls = harness([]);
+
+    await fetchRetries(env, NOW, 6);
+
+    const params = new URL(urls[0] ?? 'https://x/').searchParams;
+    expect(params.get('and')).toBe('(or(research_state.is.null,research_state.eq.done))');
+    // The lease filter keeps its own `or`, untouched by the second disjunction.
+    expect(params.getAll('or')).toEqual([leaseFreeFilter(NOW)]);
+    expect(params.getAll('and')).toHaveLength(1);
+  });
+
+  // `research_state=not.in.(queued,researching,failed)` compiles to NOT (research_state IN (…)),
+  // which is NULL — not true — for every newsletter and article, so it would silently stop all
+  // summarising. The null-safe disjunction above is the only spelling that keeps them.
+  it('never uses a not.in filter on research_state, which would drop every newsletter', async () => {
+    const urls = harness([]);
+
+    await fetchRetries(env, NOW, 6);
+
+    const sent = query(urls[0]);
+    expect(sent).not.toContain('research_state=not.in');
+    expect(sent).not.toContain('research_state=neq');
+    expect(sent).not.toContain('not.in.(');
+  });
+
   it('asks only for the columns a retry needs, never the whole row', async () => {
     const urls = harness([]);
     await fetchRetries(env, NOW, 6);
@@ -98,6 +129,34 @@ describe('fetchRetries', () => {
         word_count: 0,
         summarize_attempts: 1,
       },
+    ]);
+  });
+
+  it('reads a delivered research report as its own source, with no publication, site or author', async () => {
+    harness([
+      {
+        id: 'post-report',
+        source: 'research',
+        publication_id: WIRE_NULL,
+        site: WIRE_NULL,
+        title: 'Is a standing desk worth it for us?',
+        author: WIRE_NULL,
+        canonical_url: WIRE_NULL,
+        received_at: '2026-09-29T09:00:00.000Z',
+        text: 'The report.',
+        word_count: 2,
+        summarize_attempts: 0,
+      },
+    ]);
+
+    await expect(fetchRetries(env, NOW, 6)).resolves.toEqual([
+      expect.objectContaining({
+        source: 'research',
+        publication_id: undefined,
+        site: undefined,
+        author: undefined,
+        text: 'The report.',
+      }),
     ]);
   });
 

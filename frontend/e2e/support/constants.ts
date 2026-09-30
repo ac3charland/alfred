@@ -72,6 +72,14 @@ export const WIKI_GITHUB_TOKEN = 'mock_wiki_token';
 export const WIKI_REPO = 'ac3charland/knowledge';
 export const WIKI_GITHUB_API_URL = `${MOCK_URL}/__mock__/github`;
 
+/**
+ * The research feature's harness config (playwright.config): the mock's Routine trigger, a fake
+ * fire token, and the delivery key a test PUTs a report with.
+ */
+export const RESEARCH_ROUTINE_FIRE_URL = `${MOCK_URL}/__mock__/routine/fire`;
+export const RESEARCH_ROUTINE_FIRE_TOKEN = 'mock_routine_token';
+export const RESEARCH_DELIVERY_KEY = 'mock_research_delivery_key';
+
 // Resolved against the Playwright working directory (frontend/, where the config
 // lives). Avoids import.meta, which Playwright's CJS config loader can't transpile.
 export const AUTH_FILE = path.join(process.cwd(), 'e2e', '.auth', 'user.json');
@@ -115,6 +123,8 @@ export interface SeedState {
   readerHealth?: ReaderHealth[];
   /** Answer every Instapaper `bookmarks/add` with this error code instead of a bookmark. */
   instapaperErrorCode?: number;
+  /** Answer every research Routine fire with this status (200, the default, accepts it). */
+  routineFireStatus?: number;
   /** The wiki's page snapshot, bodies included (the mock serves the body route from them). */
   wikiPages?: WikiPageRow[];
   /** The singleton sync row, as a list: an EMPTY list is "never synced". */

@@ -54,6 +54,8 @@ const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
 const mockConvertToCodeEpic = jest.mocked(apiClient.convertToCodeEpic);
 // A knowledge dispatch sends its ids to the wiki in one request.
 const mockSendItemsToWiki = jest.mocked(apiClient.sendItemsToWiki);
+// A research dispatch sends its ids to the Reader's research route in one request per five.
+const mockSendItemsToResearch = jest.mocked(apiClient.sendItemsToResearch);
 
 /** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
 const DISPATCHED_AT = '2025-01-01T11:00:00Z';
@@ -165,6 +167,7 @@ function renderTasks(
     projects?: Project[];
     epics?: Epic[];
     wiki?: { writable: boolean };
+    researchConfigured?: boolean;
   } = {},
 ) {
   return renderWithProviders(<TaskList scope={options.scope ?? { type: 'inbox' }} />, {
@@ -173,6 +176,7 @@ function renderTasks(
     projects: options.projects ?? [],
     epics: options.epics ?? [],
     wiki: options.wiki ?? { writable: false },
+    researchConfigured: options.researchConfigured ?? false,
   });
 }
 
@@ -180,13 +184,13 @@ function renderTasks(
  * The Inbox with select mode available: the header toggle over a selectable list. Press
  * "Select" to enter multi-edit mode, where every root row becomes one toggle button.
  */
-function renderSelectableInbox(items: Item[], wikiWritable = false) {
+function renderSelectableInbox(items: Item[], wikiWritable = false, researchConfigured = false) {
   return renderWithProviders(
     <>
       <InboxSelectToggle />
       <TaskList scope={{ type: 'inbox' }} selectable />
     </>,
-    { tasks: items, wiki: { writable: wikiWritable } },
+    { tasks: items, wiki: { writable: wikiWritable }, researchConfigured },
   );
 }
 
@@ -3092,6 +3096,12 @@ async function openClassifySubmenu(
   await screen.findByRole('menuitem', { name: 'Task' });
 }
 
+/** The Classify as… entries in order — the open ⋯ menu's own entries come before them. */
+function classifyEntryNames(): string[] {
+  const names = menuEntryNames();
+  return names.slice(names.indexOf('Task'));
+}
+
 describe('TaskRow — knowledge rows', () => {
   describe('the glyph', () => {
     it('fills the checkbox slot with the Knowledge lightbulb — no checkbox, no spacer', () => {
@@ -3291,6 +3301,238 @@ describe('TaskRow — knowledge rows', () => {
       renderTasks([KNOWLEDGE_ITEM, CHILD_ITEM], WRITABLE);
 
       await openMenuFor(user, KNOWLEDGE_TITLE);
+      const dispatchItem = screen.getByRole('menuitem', { name: /^dispatch$/i });
+      expect(dispatchItem).toHaveAttribute('aria-disabled', 'true');
+      expect(dispatchItem).toHaveAttribute('title', 'Not ready — has subtasks');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Research rows — an open question bound for a written-up report in the Reader: its own glyph,
+// no labels, notes as the brief, Dispatch to the research Routine
+// ---------------------------------------------------------------------------
+
+const RESEARCH_ITEM: Item = {
+  ...BASE_ITEM,
+  item_type: 'research',
+  title: 'Is a cold-climate heat pump worth it for our Chicago house?',
+};
+const RESEARCH_TITLE = RESEARCH_ITEM.title;
+const RESEARCH_ON = { researchConfigured: true };
+
+describe('TaskRow — research rows', () => {
+  describe('the glyph', () => {
+    it('fills the checkbox slot with the Research binoculars — no checkbox, no spacer', () => {
+      renderTasks([RESEARCH_ITEM], RESEARCH_ON);
+
+      const row = rowFor(RESEARCH_TITLE);
+      const slot = row.querySelector('[data-testid="type-glyph-slot"]');
+      expect(slot).not.toBeNull();
+      expect(slot).not.toHaveClass('hidden');
+      expect(within(slot as HTMLElement).getByRole('img', { name: 'Research' })).toBeVisible();
+      expect(row.querySelector('[data-testid="checkbox-spacer"]')).not.toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: /mark .* complete/i })).toBeNull();
+    });
+
+    it('offers no add-subtask affordance', () => {
+      renderTasks([RESEARCH_ITEM], RESEARCH_ON);
+
+      expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Add story' })).not.toBeInTheDocument();
+    });
+
+    it('shows the binoculars beside the tick box in select mode', async () => {
+      const user = userEvent.setup();
+      renderSelectableInbox([RESEARCH_ITEM], false, true);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+
+      const glyph = screen.getByRole('img', { name: 'Research' });
+      expect(glyph.closest('button')).toHaveAttribute('aria-pressed');
+    });
+  });
+
+  describe('Classify as… Research', () => {
+    it('offers Research after Knowledge when both destinations are connected', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM], { ...WRITABLE, ...RESEARCH_ON });
+
+      await openClassifySubmenu(user, 'Write tests');
+
+      expect(classifyEntryNames()).toEqual(['Task', 'Code', 'Knowledge', 'Research']);
+    });
+
+    it('offers Research straight after Code when only research is connected', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM], RESEARCH_ON);
+
+      await openClassifySubmenu(user, 'Write tests');
+
+      expect(classifyEntryNames()).toEqual(['Task', 'Code', 'Research']);
+    });
+
+    it('offers no Research entry when research is not connected', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM], WRITABLE);
+
+      await openClassifySubmenu(user, 'Write tests');
+
+      expect(classifyEntryNames()).toEqual(['Task', 'Code', 'Knowledge']);
+    });
+
+    it('classifies as Research in one write that clears every label, and shows the binoculars', async () => {
+      mockUpdateItem.mockResolvedValue({ ...UNCLASSIFIED_ITEM, item_type: 'research' });
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM], RESEARCH_ON);
+
+      await openClassifySubmenu(user, 'Write tests');
+      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          item_type: 'research',
+          due_date: null,
+          recurrence: null,
+          intended_project_id: null,
+          intended_epic_id: null,
+          folder_id: null,
+        });
+      });
+      expect(within(rowFor('Write tests')).getByRole('img', { name: 'Research' })).toBeVisible();
+    });
+
+    it('is still offered on a research row, so a wrong guess flips back', async () => {
+      mockUpdateItem.mockResolvedValue({ ...RESEARCH_ITEM, item_type: 'task' });
+      const user = userEvent.setup();
+      renderTasks([RESEARCH_ITEM], RESEARCH_ON);
+
+      await openClassifySubmenu(user, RESEARCH_TITLE);
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'task' });
+      });
+    });
+
+    it('is still offered on a research row when research is not connected', async () => {
+      // A misconfigured deploy must not strand a question: Task and Code still take it back.
+      const user = userEvent.setup();
+      renderTasks([RESEARCH_ITEM]);
+
+      await openClassifySubmenu(user, RESEARCH_TITLE);
+
+      expect(screen.getByRole('menuitem', { name: 'Code' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Research' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the menu', () => {
+    it('carries no label submenus — only Classify as…, Dispatch and Delete around them', async () => {
+      const user = userEvent.setup();
+      renderTasks([RESEARCH_ITEM], { folders: [FOLDER], ...RESEARCH_ON });
+
+      await openMenuFor(user, RESEARCH_TITLE);
+
+      for (const label of ['Due date…', 'Priority…', 'Folder…', 'Project…', 'Epic…']) {
+        expect(screen.queryByRole('menuitem', { name: label })).not.toBeInTheDocument();
+      }
+      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Dispatch' })).toBeInTheDocument();
+    });
+
+    it('carries no label chips on the row, whatever priority it kept', () => {
+      renderTasks([{ ...RESEARCH_ITEM, priority: 'high' }], RESEARCH_ON);
+
+      const row = rowFor(RESEARCH_TITLE);
+      expect(within(row).queryByRole('button', { name: /folder|project|epic|priority/i })).toBe(
+        null,
+      );
+    });
+  });
+
+  describe('the brief', () => {
+    it('is the notes: Open details edits them and saves the change', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...RESEARCH_ITEM,
+        notes: 'Compare ASHP vs ground-source',
+      });
+      const user = userEvent.setup();
+      renderTasks([RESEARCH_ITEM], RESEARCH_ON);
+
+      const panel = await openDetails(user);
+      await user.type(
+        within(panel).getByRole('textbox', { name: 'Notes' }),
+        'Compare ASHP vs ground-source',
+      );
+      await user.click(within(panel).getByRole('button', { name: 'Save notes' }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          notes: 'Compare ASHP vs ground-source',
+        });
+      });
+    });
+  });
+
+  describe('Dispatch', () => {
+    it('sends the row to research, toasts a link to the Reader, and the row leaves', async () => {
+      mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+      const user = userEvent.setup();
+      renderTasks([RESEARCH_ITEM], RESEARCH_ON);
+
+      await openMenuFor(user, RESEARCH_TITLE);
+      await activateMenuItem(user, /^dispatch$/i);
+
+      await waitFor(() => {
+        expect(mockSendItemsToResearch).toHaveBeenCalledWith({ ids: ['item-1'] });
+      });
+      expect(
+        await screen.findByRole('link', { name: 'Sent 1 question to research' }),
+      ).toHaveAttribute('href', '/reader');
+      await waitFor(() => {
+        expect(screen.queryByText(RESEARCH_TITLE)).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps the row and announces nothing but the failure when the send fails', async () => {
+      mockSendItemsToResearch.mockRejectedValue(new Error('502'));
+      const user = userEvent.setup();
+      renderTasks([RESEARCH_ITEM], RESEARCH_ON);
+
+      await openMenuFor(user, RESEARCH_TITLE);
+      await activateMenuItem(user, /^dispatch$/i);
+
+      expect(await screen.findByText("1 of 1 couldn't be dispatched")).toBeInTheDocument();
+      expect(screen.queryByText('Sent 1 question to research')).toBeNull();
+      expect(screen.getByText(RESEARCH_TITLE)).toBeInTheDocument();
+    });
+
+    it('wears the ready pip when research is connected', () => {
+      renderTasks([RESEARCH_ITEM], RESEARCH_ON);
+
+      expect(screen.getByRole('img', { name: 'Ready to dispatch' })).toBeInTheDocument();
+    });
+
+    it('is disabled with "research not connected" — and no pip — when it is not', async () => {
+      const user = userEvent.setup();
+      renderTasks([RESEARCH_ITEM]);
+
+      expect(screen.queryByRole('img', { name: 'Ready to dispatch' })).not.toBeInTheDocument();
+      await openMenuFor(user, RESEARCH_TITLE);
+      const dispatchItem = screen.getByRole('menuitem', { name: /^dispatch$/i });
+      expect(dispatchItem).toHaveAttribute('aria-disabled', 'true');
+      expect(dispatchItem).toHaveAttribute('title', 'Not ready — research not connected');
+      expect(mockSendItemsToResearch).not.toHaveBeenCalled();
+    });
+
+    it('is disabled with "has subtasks" on a research row that has children', async () => {
+      // Defensive: the shape gate never retypes a parent, but a row that arrived this way can't
+      // go out as one brief.
+      const user = userEvent.setup();
+      renderTasks([RESEARCH_ITEM, CHILD_ITEM], RESEARCH_ON);
+
+      await openMenuFor(user, RESEARCH_TITLE);
       const dispatchItem = screen.getByRole('menuitem', { name: /^dispatch$/i });
       expect(dispatchItem).toHaveAttribute('aria-disabled', 'true');
       expect(dispatchItem).toHaveAttribute('title', 'Not ready — has subtasks');

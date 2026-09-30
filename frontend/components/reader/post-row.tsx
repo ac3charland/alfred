@@ -11,10 +11,12 @@ import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { readerHotkeyAction } from '@/lib/reader/hotkeys';
 import { postOpenLink } from '@/lib/reader/open-link';
 import { isReaderOverview } from '@/lib/reader/overview';
+import { researchPhase, researchRetryable } from '@/lib/reader/research';
 import { sendUnavailable } from '@/lib/reader/send';
 import { VIA_INSTAPAPER, isInstapaperPost, postEyebrow } from '@/lib/reader/source';
 import { useReaderPublications } from '@/lib/stores/reader-settings-store';
 import { useInstapaperConfigured, useReaderActions } from '@/lib/stores/reader-store';
+import { useResearchConfigured } from '@/lib/stores/research-config';
 import { useWikiConfig } from '@/lib/stores/wiki-store';
 import type { ReaderPostListItem, ReaderSummaryState } from '@/lib/types';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
@@ -41,6 +43,7 @@ import {
   verbButtonClass,
   verbRowClass,
 } from './post-row.styles';
+import { researchLine } from './research-line';
 
 /**
  * One row of the reading list: publication, arrival, title, gist — and once opened, the
@@ -48,6 +51,12 @@ import {
  * the original stays one quiet link away. An article that came in through Instapaper's To Reader
  * folder is the same row with its site as the eyebrow and "via Instapaper" closing the meta line —
  * every verb, Send included, is the one a newsletter row has.
+ *
+ * A research post is the same row in four more states. While its report is being written it is
+ * the question with a waiting line, Send held (there is nothing to save yet) and a Session link —
+ * the Claude Code run — where Original would be; a refused or silent session reads "no report",
+ * dimmed, with Retry research in Send's place. Once the report arrives it is an ordinary post,
+ * its Session link still in Original's slot.
  *
  * The row owns its own exit animation (archiving collapses before the mutation commits, so the
  * list doesn't jump), its own overview toggle (local `useState`; no cross-row coordination
@@ -178,6 +187,7 @@ export function PostRow({
 }: PostRowProperties) {
   const actions = useReaderActions();
   const instapaperConfigured = useInstapaperConfigured();
+  const researchConfigured = useResearchConfigured();
   const publications = useReaderPublications();
   const { writable } = useWikiConfig();
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -240,8 +250,16 @@ export function PostRow({
     });
   }, [actions, post.id]);
 
+  const retryResearch = React.useCallback(() => {
+    void actions.retryResearch(post.id).catch(() => {
+      // Deliberately silent here: the store rolls the row back and toasts in the route's words.
+    });
+  }, [actions, post.id]);
+
   const link = postOpenLink(post);
   const href = link.href;
+  // The same link, the same key and the same stamp; only a research post's names the run instead.
+  const linkLabel = link.kind === 'session' ? 'Session' : 'Original';
 
   /**
    * Follow the Original link. A click lets the anchor navigate natively; the `o` key opens the tab
@@ -258,12 +276,17 @@ export function PostRow({
     [actions, href, onSelect, post.id],
   );
   const state = summaryState(post);
+  const phase = researchPhase(post, now);
+  // A research post is awaiting its report from the dispatch until the delivery, however that
+  // goes: running, refused, or silent. It has no summary state worth reading until then.
+  const awaitingReport = phase !== undefined && phase !== 'done';
+  const noReport = researchRetryable(phase);
   // A re-summarising row keeps its previous overview too: the panel is about the summary that is
   // being replaced, and pulling it out from under the owner mid-run would be the same blanking
   // the pending gist avoids.
   const keepsSummary = state === 'done' || (state === 'pending' && post.gist !== null);
   const overview = keepsSummary && isReaderOverview(post.overview) ? post.overview : undefined;
-  const dimmed = state === 'failed' || state === 'refused';
+  const dimmed = state === 'failed' || state === 'refused' || noReport;
 
   const retryable = (state === 'failed' || state === 'refused') && canResummarize(post);
   const stamp = state === 'done' ? summaryStamp(post, now) : null;
@@ -278,7 +301,7 @@ export function PostRow({
    */
   const hasPanel = hasOverview || hasFooter;
   const panelOpen = hasPanel && overviewOpen;
-  // Original never makes a panel of its own: it rides in the footer of one that exists for other
+  // Original (or Session) never makes a panel of its own: it rides in the footer of one that exists for other
   // reasons, and otherwise ends the verb row — so every row with a link has exactly one way out.
   const originalInPanel = hasPanel && href !== undefined;
 
@@ -364,7 +387,7 @@ export function PostRow({
       </kbd>
     ) : null;
 
-  /** The Original link, wherever it sits. Absent altogether when there is nowhere to point. */
+  /** The Original (or Session) link, wherever it sits. Absent when there is nowhere to point. */
   const original =
     href === undefined ? null : (
       <Button variant="ghost" size="sm" className={cn(verbButtonClass, originalLinkClass)} asChild>
@@ -377,7 +400,7 @@ export function PostRow({
           }}
         >
           <ArrowUpRight size={14} />
-          Original
+          {linkLabel}
           {hint('o')}
         </a>
       </Button>
@@ -414,31 +437,39 @@ export function PostRow({
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className={eyebrowClass}>{postEyebrow(post, publications)}</span>
                 <span className={metaClass}>
-                  {formatPostDate(post.received_at, now)} · {formatReadMinutes(post.word_count)}
+                  {formatPostDate(post.received_at, now)}
+                  {/* No body until the report lands, so no read time to promise. */}
+                  {!awaitingReport && ` · ${formatReadMinutes(post.word_count)}`}
                   {isInstapaperPost(post) && ` · ${VIA_INSTAPAPER}`}
                 </span>
-                <PostMarkers state={state} sent={post.instapaper_sent_at !== null} />
+                <PostMarkers state={state} phase={phase} sent={post.instapaper_sent_at !== null} />
               </div>
               <p className={titleClass}>{post.title}</p>
-              <p className={gistLineClass(post, state)}>{gistOrPlaceholder(post, state, now)}</p>
+              <p className={awaitingReport ? placeholderGistClass : gistLineClass(post, state)}>
+                {researchLine(post, phase) ?? gistOrPlaceholder(post, state, now)}
+              </p>
             </ClickableCard>
 
             <div className={verbRowClass} data-testid="reader-row-verbs">
-              <Button
-                variant="outline"
-                size="sm"
-                className={verbButtonClass}
-                disabled={unavailable !== undefined}
-                title={unavailable}
-                onClick={() => {
-                  onSelect?.(post.id);
-                  beginSend();
-                }}
-              >
-                Send to Instapaper
-                {/* No keycap on a disabled verb: `i` does nothing while it can't run. */}
-                {unavailable === undefined && hint('i')}
-              </Button>
+              {/* A post with no report has nothing to send and — unlike one still being written —
+                  no report coming, so Retry research stands in Send's place. */}
+              {!noReport && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={verbButtonClass}
+                  disabled={unavailable !== undefined}
+                  title={unavailable}
+                  onClick={() => {
+                    onSelect?.(post.id);
+                    beginSend();
+                  }}
+                >
+                  Send to Instapaper
+                  {/* No keycap on a disabled verb: `i` does nothing while it can't run. */}
+                  {unavailable === undefined && hint('i')}
+                </Button>
+              )}
 
               {hasPanel && (
                 <Button
@@ -472,6 +503,21 @@ export function PostRow({
                 >
                   <RotateCw size={14} />
                   Retry summary
+                </Button>
+              )}
+
+              {noReport && researchConfigured && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(verbButtonClass, 'gap-1.5')}
+                  onClick={() => {
+                    onSelect?.(post.id);
+                    retryResearch();
+                  }}
+                >
+                  <RotateCw size={14} />
+                  Retry research
                 </Button>
               )}
 

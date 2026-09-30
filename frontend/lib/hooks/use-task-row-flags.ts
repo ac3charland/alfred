@@ -18,6 +18,12 @@ export interface TaskRowFlags {
    */
   isKnowledge: boolean;
   /**
+   * A `research` row — an open question bound for a web-research report in the Reader. It
+   * behaves like a knowledge row everywhere a flag is read: it can't be completed, hosts no
+   * subtasks, doesn't drag, and carries no label group; its notes are the research brief.
+   */
+  isResearch: boolean;
+  /**
    * May host subtasks: any task, or a code ROOT (a code child never nests further — the
    * 1-deep rule, enforced here and by the DB trigger). Drives the desktop `+` and the mobile
    * "Add subtask" / "Add story" menu item.
@@ -42,12 +48,12 @@ export interface TaskRowFlags {
   canChangeType: boolean;
   /**
    * The row lifts on a press-and-drag. A completed or temp (unreconciled) id can't be PATCHed
-   * yet, so neither is draggable. Nor is a top-level code or knowledge row: neither has a
-   * legitimate drag target — a folder holds tasks, and a drop there runs `moveTask`, which files
-   * the row like a task (stranding a code item with none of its affordances, or filing an idea
-   * instead of sending it to the wiki). A code CHILD (a story under an in-progress epic) stays
-   * draggable — reordering it among its siblings, including across sibling epics, is a real
-   * feature (see resolveReorder).
+   * yet, so neither is draggable. Nor is a top-level code, knowledge or research row: none has
+   * a legitimate drag target — a folder holds tasks, and a drop there runs `moveTask`, which
+   * files the row like a task (stranding a code item with none of its affordances, filing an
+   * idea instead of sending it to the wiki, or filing a question instead of researching it).
+   * A code CHILD (a story under an in-progress epic) stays draggable — reordering it among its
+   * siblings, including across sibling epics, is a real feature (see resolveReorder).
    */
   canDrag: boolean;
 }
@@ -69,6 +75,7 @@ export function useTaskRowFlags(
   const isUnclassified = node.item_type === 'unclassified';
   const isCode = node.item_type === 'code';
   const isKnowledge = node.item_type === 'knowledge';
+  const isResearch = node.item_type === 'research';
   const isRoot = node.parent_id === null;
   const isCodeRoot = isCode && isRoot;
   const canAddSubtask = isTask || isCodeRoot;
@@ -79,13 +86,15 @@ export function useTaskRowFlags(
     !draggedSubtreeIds.has(node.id) &&
     draggedItemType !== 'code';
   const canChangeType = isRoot && node.children.length === 0;
-  const canDrag = !isCompleted && !isTempId(node.id) && !isCodeRoot && !(isKnowledge && isRoot);
+  const canDrag =
+    !isCompleted && !isTempId(node.id) && !isCodeRoot && !((isKnowledge || isResearch) && isRoot);
 
   return {
     isTask,
     isUnclassified,
     isCode,
     isKnowledge,
+    isResearch,
     canAddSubtask,
     isValidDropTarget,
     canChangeType,

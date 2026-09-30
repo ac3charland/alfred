@@ -395,6 +395,14 @@ baseline change is invisible to review. This is the whole point: the agent appro
 own intended visual changes, with evidence, so a human doesn't have to drive the
 accept-baseline dance by hand.
 
+**A baseline your change doesn't touch fails on `main` too? Suspect two merges, not flakiness.**
+If every re-run fails by the same diff, the render is deterministic. A PR's CI tests its merge with
+the `main` it saw, so a PR that captured a baseline and one that changed its inputs (the
+test-runner, shared CSS, the component) can each pass and break `main` together. Confirm with
+`git merge-base --is-ancestor <input-change> <baseline-commit>` (false: the baseline was captured
+without it), then rebaseline via the steps above. CI re-runs on every push to `main`, so this goes
+red on the merge that caused it.
+
 **Opt-in per story, not blanket.** `postVisit` screenshots a story only when it sets
 `parameters.visualTest`; every other story (molecules, organisms) is still smoke-tested
 and runs its play function, just without a screenshot. This keeps the baseline set small

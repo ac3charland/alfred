@@ -23,6 +23,7 @@ import type {
   PatchReaderPostInput,
   PurgeInput,
   ReaderPostsQuery,
+  SendItemsToResearchInput,
   SendItemsToWikiInput,
   SendReaderPicksInput,
   UpdateEpicInput,
@@ -887,6 +888,26 @@ export function sendItemsToWiki(body: SendItemsToWikiInput): Promise<{ sent: str
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Dispatch research rows: each becomes a queued Reader post (the rows are deleted), and the
+ * research Routine is fired once per post. Returns the new posts as the fires left them —
+ * researching, or failed with the reason. A refused fire is not a request failure: the questions
+ * have left the Inbox either way.
+ */
+export function sendItemsToResearch(
+  body: SendItemsToResearchInput,
+): Promise<{ posts: ReaderPostListItem[] }> {
+  return apiRequest<{ posts: ReaderPostListItem[] }>('/api/reader/research', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Fire the research Routine again for a failed or stale research post; returns the post. */
+export function retryResearch(id: string): Promise<ReaderPostListItem> {
+  return apiRequest<ReaderPostListItem>(`/api/reader/research/${id}/retry`, { method: 'POST' });
 }
 
 export {

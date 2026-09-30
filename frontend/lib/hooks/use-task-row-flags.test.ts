@@ -71,7 +71,18 @@ describe('useTaskRowFlags', () => {
       });
     });
 
-    it.each(['task', 'code', 'unclassified'] as const)(
+    it('marks a research node isResearch, and none of the others', () => {
+      const flags = useTaskRowFlags({ ...BASE_NODE, item_type: 'research' }, false, EMPTY);
+      expect(flags).toMatchObject({
+        isTask: false,
+        isUnclassified: false,
+        isCode: false,
+        isKnowledge: false,
+        isResearch: true,
+      });
+    });
+
+    it.each(['task', 'code', 'unclassified', 'research'] as const)(
       'does not mark a %s node isKnowledge',
       (itemType) => {
         const { isKnowledge } = useTaskRowFlags(
@@ -80,6 +91,14 @@ describe('useTaskRowFlags', () => {
           EMPTY,
         );
         expect(isKnowledge).toBe(false);
+      },
+    );
+
+    it.each(['task', 'code', 'unclassified', 'knowledge'] as const)(
+      'does not mark a %s node isResearch',
+      (itemType) => {
+        const { isResearch } = useTaskRowFlags({ ...BASE_NODE, item_type: itemType }, false, EMPTY);
+        expect(isResearch).toBe(false);
       },
     );
   });
@@ -97,13 +116,16 @@ describe('useTaskRowFlags', () => {
       expect(useTaskRowFlags({ ...BASE_NODE, id: 'temp-abc' }, false, EMPTY).canDrag).toBe(false);
     });
 
-    // A folder holds tasks: a drop there runs moveTask, which would file a code or knowledge
-    // root like a task instead of sending it where its type says it goes.
-    it('keeps a code root and a knowledge root still', () => {
+    // A folder holds tasks: a drop there runs moveTask, which would file a code, knowledge or
+    // research root like a task instead of sending it where its type says it goes.
+    it('keeps a code root, a knowledge root and a research root still', () => {
       expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY).canDrag).toBe(
         false,
       );
       expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'knowledge' }, false, EMPTY).canDrag).toBe(
+        false,
+      );
+      expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'research' }, false, EMPTY).canDrag).toBe(
         false,
       );
     });
@@ -114,9 +136,12 @@ describe('useTaskRowFlags', () => {
   });
 
   describe('the subtask affordance', () => {
-    it('lets a task and a code ROOT add subtasks, but not a code child, unclassified or knowledge row', () => {
+    it('lets a task and a code ROOT add subtasks, but not a code child, unclassified, knowledge or research row', () => {
       expect(
         useTaskRowFlags({ ...BASE_NODE, item_type: 'knowledge' }, false, EMPTY).canAddSubtask,
+      ).toBe(false);
+      expect(
+        useTaskRowFlags({ ...BASE_NODE, item_type: 'research' }, false, EMPTY).canAddSubtask,
       ).toBe(false);
       expect(useTaskRowFlags(BASE_NODE, false, EMPTY).canAddSubtask).toBe(true);
       expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY).canAddSubtask).toBe(
@@ -172,7 +197,7 @@ describe('useTaskRowFlags', () => {
   });
 
   describe('canChangeType (ALF-170)', () => {
-    it.each(['task', 'code', 'unclassified', 'knowledge'] as const)(
+    it.each(['task', 'code', 'unclassified', 'knowledge', 'research'] as const)(
       'is true for a childless %s root',
       (itemType) => {
         const { canChangeType } = useTaskRowFlags(

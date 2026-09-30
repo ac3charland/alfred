@@ -55,10 +55,12 @@ export interface ReaderPublication {
 }
 
 /**
- * Where a post came from: a newsletter in the Gmail mirror, or an article the owner moved into the
- * "To Reader" folder in Instapaper. `reader_posts_source_identity` CHECKs what each one carries.
+ * Where a post came from: a newsletter in the Gmail mirror, an article the owner moved into the
+ * "To Reader" folder in Instapaper, or a report a research routine wrote for the owner.
+ * `reader_posts_source_identity` CHECKs what each one carries. A research post has no text until
+ * its report is delivered, and the tick reads it only from then on (see `fetchRetries`).
  */
-export type ReaderPostSource = 'gmail' | 'instapaper';
+export type ReaderPostSource = 'gmail' | 'instapaper' | 'research';
 
 /** A stored post: every column of `reader_posts`, with its nulls already mapped to `undefined`. */
 export interface ReaderPost {

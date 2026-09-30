@@ -16,6 +16,7 @@ const POST: ReaderPostForWiki = {
   title: 'Why habits stick',
   author: 'Jane Doe',
   canonical_url: 'https://janedoe.substack.com/p/why-habits-stick',
+  source: 'gmail',
   received_at: '2026-10-02T22:15:00.000Z',
   text: 'Habits are the compound interest of self-improvement.\n\nStart tiny.',
 };
@@ -228,6 +229,117 @@ describe('readerEnvelope', () => {
       CAPTURED,
     );
     expect(envelope.files.map((file) => file.name)).toEqual(['picks-2026-10-03.md']);
+  });
+});
+
+/**
+ * A delivered research report: the model's own words, with no author and no address. Even if a row
+ * carried either — nothing writes them — the envelope must not pass them on as a source's.
+ */
+const REPORT_TEXT =
+  '# Is a cold-climate heat pump worth it?\n\n## Bottom line\n\nProbably yes, if the furnace is near the end of its life.';
+
+const REPORT: ReaderPostForWiki = {
+  id: '6f1c2b3a-0000-4000-8000-000000000002',
+  title: 'Is a cold-climate heat pump worth it for our Chicago house?',
+  author: null,
+  canonical_url: null,
+  source: 'research',
+  received_at: '2026-10-02T22:15:00.000Z',
+  text: REPORT_TEXT,
+};
+
+const REPORT_CORE_LINES = [
+  'source_type: "reader-post"',
+  'origin: "model-derived"',
+  'title: "Is a cold-climate heat pump worth it for our Chicago house?"',
+  'author: null',
+  'source_url: null',
+  'published: "2026-10-02"',
+  'captured: "2026-10-03"',
+  'via: "alfred-reader"',
+  'external_id: "alfred:reader-post:6f1c2b3a-0000-4000-8000-000000000002"',
+];
+
+describe('readerEnvelope for a research report', () => {
+  it('golden: a report sends its picks alone — no source.md, origin model-derived, no URL or author', () => {
+    const envelope = readerEnvelope(REPORT, { ideas: IDEAS, evidence: EVIDENCE }, CAPTURED);
+
+    expect(envelope.title).toBe(REPORT.title);
+    expect(envelope.captured).toBe(CAPTURED);
+    expect(envelope.files.map((file) => file.name)).toEqual(['picks-2026-10-03.md']);
+    expect(envelope.files[0]?.content).toBe(
+      [
+        '---',
+        ...REPORT_CORE_LINES,
+        '---',
+        '',
+        '## Novel ideas',
+        '',
+        '- Habit stacking works because the cue is an existing routine, not a time of day.',
+        '- Environment design beats willpower for the first thirty days.',
+        '',
+        '## Evidence',
+        '',
+        '- Lally et al. (2010): median 66 days to automaticity, ranging from 18 to 254.',
+        '- A survey of 2,000 habit-app users: streak users lapsed 40% more often after a first miss.',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('never files the report itself, whatever the row holds', () => {
+    const envelope = readerEnvelope(REPORT, IDEAS_ONLY, CAPTURED);
+
+    for (const file of envelope.files) {
+      expect(file.content).not.toContain('Probably yes');
+      expect(file.content).not.toContain('Bottom line');
+      expect(file.content).not.toContain('fidelity');
+      expect(file.content).not.toContain('third-party');
+    }
+  });
+
+  it('does not pass on an author or an address the row happens to carry', () => {
+    const envelope = readerEnvelope(
+      { ...REPORT, author: 'Claude', canonical_url: 'https://example.com/report' },
+      IDEAS_ONLY,
+      CAPTURED,
+    );
+
+    expect(envelope.files.map((file) => file.name)).toEqual(['picks-2026-10-03.md']);
+    expect(envelope.files[0]?.content).toContain('author: null');
+    expect(envelope.files[0]?.content).toContain('source_url: null');
+    expect(envelope.files[0]?.content).not.toContain('Claude');
+    expect(envelope.files[0]?.content).not.toContain('example.com');
+  });
+
+  it('sends the same picks-only folder once the retention sweep has taken the report', () => {
+    const swept = readerEnvelope({ ...REPORT, text: null }, IDEAS_ONLY, CAPTURED);
+
+    expect(swept).toEqual(readerEnvelope(REPORT, IDEAS_ONLY, CAPTURED));
+  });
+
+  it('titles a blank-titled report Untitled, as for any post', () => {
+    const envelope = readerEnvelope({ ...REPORT, title: ' ' }, IDEAS_ONLY, CAPTURED);
+
+    expect(envelope.title).toBe('Untitled');
+    expect(envelope.files[0]?.content).toContain('title: "Untitled"');
+  });
+
+  it('leaves every other source’s envelope exactly as it was', () => {
+    const gmail = readerEnvelope(POST, { ideas: IDEAS, evidence: EVIDENCE }, CAPTURED);
+
+    // An Instapaper article is filed as source.md plus picks, byte for byte like a newsletter.
+    expect(
+      readerEnvelope(
+        { ...POST, source: 'instapaper' },
+        { ideas: IDEAS, evidence: EVIDENCE },
+        CAPTURED,
+      ),
+    ).toEqual(gmail);
+    expect(gmail.files.map((file) => file.name)).toEqual(['source.md', 'picks-2026-10-03.md']);
+    expect(gmail.files[0]?.content).toContain('origin: "third-party"');
+    expect(gmail.files[0]?.content).toContain('author: "Jane Doe"');
   });
 });
 

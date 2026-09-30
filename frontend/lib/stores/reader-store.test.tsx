@@ -7,6 +7,7 @@ import {
   makeReaderOverview,
   makeReaderPost,
   makeReaderPublication,
+  makeResearchPost,
   resetReaderFixtureClock,
 } from '@/lib/reader/fixtures';
 import type { ReaderHealthSnapshot, ReaderOverview, ReaderPostListItem } from '@/lib/types';
@@ -34,6 +35,7 @@ jest.mock('@/lib/api-client', () => ({
   fetchReaderPosts: jest.fn(),
   fetchReaderHealth: jest.fn(),
   patchReaderPost: jest.fn(),
+  retryResearch: jest.fn(),
   sendReaderPicksToWiki: jest.fn(),
   sendReaderPostToInstapaper: jest.fn(),
 }));
@@ -55,6 +57,17 @@ function post(
   } = {},
 ): ReaderPostListItem {
   const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION.id, overrides);
+  return listItem;
+}
+
+/** A research post, as the list carries it: no bodies and no brief. */
+function researchPost(overrides: Parameters<typeof makeResearchPost>[0] = {}): ReaderPostListItem {
+  const {
+    text: _text,
+    html: _html,
+    research_brief: _brief,
+    ...listItem
+  } = makeResearchPost(overrides);
   return listItem;
 }
 
@@ -834,6 +847,211 @@ describe('resummarize', () => {
       await resummarizing;
     });
     expect(result.current.posts[0]?.summary_state).toBe('pending');
+  });
+});
+
+describe('retryResearch', () => {
+  const FAILED = {
+    id: 'p-1',
+    research_state: 'failed',
+    research_attempts: 1,
+    research_fired_at: '2026-09-18T06:00:00.000Z',
+    research_session_url: null,
+    research_error: 'the research Routine answered HTTP 500',
+  } as const;
+
+  it('flips the row to researching at once, clearing its error and stamping the fire', () => {
+    const row = researchPost(FAILED);
+    mockApi.retryResearch.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    const before = Date.now();
+    act(() => {
+      void result.current.actions.retryResearch('p-1');
+    });
+
+    const held = result.current.posts[0];
+    expect(held).toMatchObject({ research_state: 'researching', research_error: null });
+    expect(Date.parse(held?.research_fired_at ?? '')).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(held?.research_fired_at ?? '')).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('replaces the row with the one the route answered, and asks for that post alone', async () => {
+    const row = researchPost(FAILED);
+    const saved = researchPost({
+      ...FAILED,
+      research_state: 'researching',
+      research_attempts: 2,
+      research_fired_at: '2026-09-18T09:00:00.000Z',
+      research_session_url: 'https://claude.ai/code/session_01Retry',
+      research_error: null,
+    });
+    mockApi.retryResearch.mockResolvedValue(saved);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(result.current.actions.retryResearch('p-1')).resolves.toEqual(saved);
+    });
+
+    expect(mockApi.retryResearch).toHaveBeenCalledTimes(1);
+    expect(mockApi.retryResearch).toHaveBeenCalledWith('p-1');
+    expect(result.current.posts[0]).toEqual(saved);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('takes a refused fire as the answer: the route answers 200 with the row failed again', async () => {
+    const row = researchPost(FAILED);
+    const refused = researchPost({
+      ...FAILED,
+      research_attempts: 2,
+      research_error: 'the Routine’s daily run cap or usage limit was reached',
+    });
+    mockApi.retryResearch.mockResolvedValue(refused);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.retryResearch('p-1');
+    });
+
+    expect(result.current.posts[0]).toEqual(refused);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('rolls back only the fields it touched and toasts the route’s sentence on a 409', async () => {
+    const row = researchPost({ ...FAILED, research_state: 'researching' });
+    // A stale tab: the post is in flight, so the route refuses. The row must read as it did.
+    mockApi.retryResearch.mockRejectedValue(
+      new api.ApiError('API POST failed: 409', 409, 'That research is still running.'),
+    );
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(result.current.actions.retryResearch('p-1')).rejects.toThrow();
+    });
+
+    expect(result.current.posts[0]).toEqual(row);
+    expect(mockShowToast).toHaveBeenCalledTimes(1);
+    expect(mockShowToast).toHaveBeenCalledWith('That research is still running.');
+  });
+
+  it('restores the failed row and its reason when the retry never lands', async () => {
+    const row = researchPost(FAILED);
+    mockApi.retryResearch.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(result.current.actions.retryResearch('p-1')).rejects.toThrow('boom');
+    });
+
+    expect(result.current.posts[0]).toEqual(row);
+    expect(mockShowToast).toHaveBeenCalledTimes(1);
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't retry that research");
+  });
+
+  it('toasts the route’s sentence for a deployment with no research, and the store’s own for a 500', async () => {
+    const row = researchPost(FAILED);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    mockApi.retryResearch.mockRejectedValueOnce(
+      new api.ApiError('API POST failed: 501', 501, 'Research is not set up on this deployment.'),
+    );
+    await act(async () => {
+      await expect(result.current.actions.retryResearch('p-1')).rejects.toThrow();
+    });
+    expect(mockShowToast).toHaveBeenLastCalledWith('Research is not set up on this deployment.');
+
+    // A 500 is the database talking, not the route: its detail is not written for the owner.
+    mockApi.retryResearch.mockRejectedValueOnce(
+      new api.ApiError('API POST failed: 500', 500, 'duplicate key value violates constraint'),
+    );
+    await act(async () => {
+      await expect(result.current.actions.retryResearch('p-1')).rejects.toThrow();
+    });
+    expect(mockShowToast).toHaveBeenLastCalledWith("Couldn't retry that research");
+  });
+
+  it('rolls back without clobbering a field another write changed meanwhile', async () => {
+    const row = researchPost(FAILED);
+    let fail!: (error: Error) => void;
+    mockApi.retryResearch.mockReturnValue(
+      new Promise<ReaderPostListItem>((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let retry: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      retry = result.current.actions.retryResearch('p-1');
+    });
+    act(() => {
+      result.current.actions.markOpened('p-1');
+    });
+    await act(async () => {
+      fail(new Error('boom'));
+      await expect(retry).rejects.toThrow('boom');
+    });
+
+    expect(result.current.posts[0]).toMatchObject({
+      research_state: 'failed',
+      research_error: 'the research Routine answered HTTP 500',
+      research_fired_at: '2026-09-18T06:00:00.000Z',
+    });
+    expect(result.current.posts[0]?.opened_at).not.toBeNull();
+  });
+
+  it('is not undone by a focus refetch that was already in the air', async () => {
+    // The read left the server before the retry reached it, so its answer still calls the row
+    // failed — replacing the list wholesale would put the old state back on screen.
+    const row = researchPost(FAILED);
+    const retrying = deferred<ReaderPostListItem>();
+    mockApi.retryResearch.mockReturnValue(retrying.promise);
+    mockApi.fetchReaderPosts.mockResolvedValue([row]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let retry: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      retry = result.current.actions.retryResearch('p-1');
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.posts[0]?.research_state).toBe('researching');
+
+    await act(async () => {
+      retrying.settle({ ...row, research_state: 'researching', research_error: null });
+      await retry;
+    });
+    expect(result.current.posts[0]?.research_state).toBe('researching');
+  });
+
+  it('makes no second request for a second press while the first is in flight', async () => {
+    const row = researchPost(FAILED);
+    const retrying = deferred<ReaderPostListItem>();
+    mockApi.retryResearch.mockReturnValue(retrying.promise);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let first: Promise<ReaderPostListItem> | undefined;
+    let second: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      first = result.current.actions.retryResearch('p-1');
+      second = result.current.actions.retryResearch('p-1');
+    });
+
+    expect(mockApi.retryResearch).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+
+    await act(async () => {
+      retrying.settle({ ...row, research_state: 'researching', research_error: null });
+      await first;
+    });
+    await flush();
   });
 });
 

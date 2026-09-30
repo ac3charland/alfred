@@ -218,9 +218,17 @@ export type ReaderHealth = Database['public']['Tables']['reader_health']['Row'];
  * A post without its bodies — the list read's shape. The stored text and the email HTML are tens
  * to hundreds of KB each, times hundreds of rows, and the list renders neither (the owner reads in
  * Instapaper; the send's route reads the body server-side), so every list read and every row verb
- * selects the shared `READER_POST_LIST_COLUMNS` instead of `*`.
+ * selects the shared `READER_POST_LIST_COLUMNS` instead of `*`. A research post's brief stays
+ * server-side too: only the routes that fire the research Routine read it.
  */
-export type ReaderPostListItem = Omit<ReaderPost, 'text' | 'html'>;
+export type ReaderPostListItem = Omit<ReaderPost, 'text' | 'html' | 'research_brief'>;
+
+/**
+ * A research post's lifecycle, as `reader_posts.research_state` is CHECKed down to (null on every
+ * other source). Separate from {@link ReaderSummaryState}: a delivered report then walks the
+ * summary states like any post.
+ */
+export type ReaderResearchState = 'queued' | 'researching' | 'done' | 'failed';
 
 /**
  * A roster row with the date of its newest post — what `v_reader_publications` returns and what

@@ -34,5 +34,10 @@ declare namespace NodeJS {
     WIKI_GITHUB_TOKEN?: string;
     WIKI_REPO?: string;
     WIKI_GITHUB_API_URL?: string;
+    // Research — server-only; any of the three unset turns the feature off (no Research in the
+    // Inbox, the research routes answering 501). Never NEXT_PUBLIC_.
+    RESEARCH_ROUTINE_FIRE_URL?: string;
+    RESEARCH_ROUTINE_FIRE_TOKEN?: string;
+    RESEARCH_DELIVERY_KEY?: string;
   }
 }

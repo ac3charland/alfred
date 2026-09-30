@@ -110,6 +110,12 @@ describe('parseVerdict', () => {
     expect(result?.priority).toBe('high');
   });
 
+  it("accepts item_type 'research' — it is a legal enum value, not dropped", () => {
+    const result = parseVerdict({ item_type: 'research', priority: 'high' });
+    expect(result?.item_type).toBe('research');
+    expect(result?.priority).toBe('high');
+  });
+
   it('drops priority to undefined when it is outside the enum, without rejecting the rest', () => {
     const result = parseVerdict({ item_type: 'task', priority: 'urgent' });
     expect(result?.item_type).toBe('task');
@@ -234,6 +240,18 @@ describe('validateVerdict', () => {
     expect(validateVerdict(verdict, buildWorld())).toEqual(
       buildVerdict({ item_type: 'knowledge' }),
     );
+  });
+
+  it('keeps only item_type for a research verdict, dropping every task- and code-shaped field a model supplied', () => {
+    const verdict = buildVerdict({
+      item_type: 'research',
+      priority: 'high',
+      due_date: '2026-08-14',
+      folder_id: 'folder-work',
+      intended_project_id: 'project-alf',
+      intended_epic_id: 'epic-alf',
+    });
+    expect(validateVerdict(verdict, buildWorld())).toEqual(buildVerdict({ item_type: 'research' }));
   });
 });
 
@@ -388,6 +406,53 @@ describe('mergeIntoItem', () => {
     const result = mergeIntoItem(verdict, item, buildWorld());
     expect(result.item_type).toBeUndefined();
     expect(JSON.stringify(result)).toBe('{}');
+  });
+
+  it("keeps a held research row's schema pinned — the sweep never retypes it and never adds a field, task- or code-shaped alike", () => {
+    const item = buildItem({ item_type: 'research' });
+    // All five other fields together, for the same reason as the knowledge row above: a guard
+    // loosened from `finalType === 'code'` to `finalType !== 'task'` would still pass a test that
+    // only tried the task fields, while wrongly letting a research row through for project/epic.
+    const verdict = buildVerdict({
+      item_type: 'research',
+      priority: 'high',
+      due_date: '2026-08-14',
+      folder_id: 'folder-work',
+      intended_project_id: 'project-alf',
+      intended_epic_id: 'epic-alf',
+    });
+    const result = mergeIntoItem(verdict, item, buildWorld());
+    // Already held, so not rewritten — and nothing else is written either: a research row
+    // leaves the Inbox by dispatch, not by filing, so a folder or priority on it means nothing.
+    expect(result.item_type).toBeUndefined();
+    expect(JSON.stringify(result)).toBe('{}');
+  });
+
+  it('never retypes a held research row given a task-shaped verdict, and writes none of its fields', () => {
+    const item = buildItem({ item_type: 'research' });
+    const verdict = buildVerdict({
+      item_type: 'task',
+      priority: 'high',
+      due_date: '2026-08-14',
+      folder_id: 'folder-work',
+    });
+    const result = mergeIntoItem(verdict, item, buildWorld());
+    expect(result.item_type).toBeUndefined();
+    expect(JSON.stringify(result)).toBe('{}');
+  });
+
+  it('writes only the type of a research verdict onto an unclassified row', () => {
+    const verdict = validateVerdict(
+      buildVerdict({
+        item_type: 'research',
+        priority: 'high',
+        folder_id: 'folder-work',
+        intended_project_id: 'project-alf',
+      }),
+      buildWorld(),
+    );
+    const result = mergeIntoItem(verdict, buildItem({ item_type: 'unclassified' }), buildWorld());
+    expect(JSON.stringify(result)).toBe('{"item_type":"research"}');
   });
 
   it('carries no field the item already had, so JSON.stringify produces only the keys that will actually be written', () => {

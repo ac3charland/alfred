@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import { makeResearchPost } from '@/lib/reader/fixtures';
 import { DEPARTURE_MS } from '@/lib/stores/departing-items-store';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { CodeItem, Epic, Folder, Item, Project } from '@/lib/types';
@@ -14,6 +15,7 @@ jest.mock('@/lib/api-client');
 const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
 const mockSendItemsToWiki = jest.mocked(apiClient.sendItemsToWiki);
+const mockSendItemsToResearch = jest.mocked(apiClient.sendItemsToResearch);
 
 const BASE: Item = {
   id: 'item-1',
@@ -124,6 +126,7 @@ function renderInbox(
   folders: Folder[] = FOLDERS,
   code: { projects?: Project[]; epics?: Epic[] } = {},
   wikiWritable = false,
+  researchConfigured = false,
 ) {
   return renderWithProviders(<InboxHarness />, {
     tasks,
@@ -131,6 +134,7 @@ function renderInbox(
     projects: code.projects ?? [],
     epics: code.epics ?? [],
     wiki: { writable: wikiWritable },
+    researchConfigured,
   });
 }
 
@@ -949,5 +953,231 @@ describe('knowledge in the bulk bar', () => {
     expect(screen.getByRole('button', { name: /deselect "i1"/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /deselect "i2"/i })).toBeInTheDocument();
     expect(screen.queryByText(/to the wiki/)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Research rows — Classify as Research, and Dispatch sends every question to the Reader
+// ---------------------------------------------------------------------------
+
+/** A research row — an open question bound for a written-up report in the Reader. */
+function question(id: string): Item {
+  return makeItem(id, { item_type: 'research' });
+}
+
+describe('research in the bulk bar', () => {
+  const WRITABLE = true;
+  const CONFIGURED = true;
+
+  it('offers Research after Knowledge in Classify as when both destinations are connected', async () => {
+    const user = userEvent.setup();
+    renderInbox([makeItem('u1')], FOLDERS, {}, WRITABLE, CONFIGURED);
+
+    await selectRows(user, ['u1']);
+
+    expect(await classifyEntries(user)).toEqual(['Task', 'Code', 'Knowledge', 'Research']);
+  });
+
+  it('offers Research straight after Code when only research is connected', async () => {
+    const user = userEvent.setup();
+    renderInbox([makeItem('u1')], FOLDERS, {}, !WRITABLE, CONFIGURED);
+
+    await selectRows(user, ['u1']);
+
+    expect(await classifyEntries(user)).toEqual(['Task', 'Code', 'Research']);
+  });
+
+  it('offers no Research when research is not connected', async () => {
+    const user = userEvent.setup();
+    renderInbox([makeItem('u1')], FOLDERS, {}, WRITABLE, !CONFIGURED);
+
+    await selectRows(user, ['u1']);
+
+    expect(await classifyEntries(user)).toEqual(['Task', 'Code', 'Knowledge']);
+  });
+
+  it('Classify → Research sends every row the research clear-set', async () => {
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(makeItem(id, { item_type: 'research' })),
+    );
+    const user = userEvent.setup();
+    renderInbox(
+      [makeItem('u1'), makeItem('t1', { item_type: 'task', due_date: '2026-08-14' })],
+      FOLDERS,
+      {},
+      !WRITABLE,
+      CONFIGURED,
+    );
+
+    await selectRows(user, ['u1', 't1']);
+    await pickFromMenu(user, /classify as/i, /^research$/i);
+
+    const clears = {
+      item_type: 'research',
+      due_date: null,
+      recurrence: null,
+      intended_project_id: null,
+      intended_epic_id: null,
+      folder_id: null,
+    };
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('u1', clears);
+    });
+    expect(mockUpdateItem).toHaveBeenCalledWith('t1', clears);
+  });
+
+  it('names a research row with a subtask: "1 not ready — 1 has subtasks"', async () => {
+    const user = userEvent.setup();
+    renderInbox(
+      [question('q'), makeItem('child', { item_type: 'task', parent_id: 'q' })],
+      FOLDERS,
+      {},
+      !WRITABLE,
+      CONFIGURED,
+    );
+
+    await selectRows(user, ['q']);
+
+    expect(screen.getByRole('status')).toHaveTextContent('1 not ready — 1 has subtasks');
+  });
+
+  it('names questions on an instance with no research Routine: "3 not ready — 3 research not connected"', async () => {
+    const user = userEvent.setup();
+    renderInbox([question('q1'), question('q2'), question('q3')]);
+
+    await selectRows(user, ['q1', 'q2', 'q3']);
+
+    expect(screen.getByRole('status')).toHaveTextContent('3 not ready — 3 research not connected');
+    expect(screen.getByRole('button', { name: 'Dispatch' })).toBeDisabled();
+  });
+
+  it('dispatches every question in ONE request and toasts "Sent 3 questions to research" linked to the Reader', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+    const user = userEvent.setup();
+    renderInbox([question('q1'), question('q2'), question('q3')], FOLDERS, {}, false, CONFIGURED);
+
+    await selectRows(user, ['q1', 'q2', 'q3']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(
+      await screen.findByRole('link', { name: 'Sent 3 questions to research' }),
+    ).toHaveAttribute('href', '/reader');
+    expect(mockSendItemsToResearch).toHaveBeenCalledTimes(1);
+    expect(mockSendItemsToResearch).toHaveBeenCalledWith({ ids: ['q1', 'q2', 'q3'] });
+    for (const id of ['q1', 'q2', 'q3']) expect(screen.queryByText(id)).not.toBeInTheDocument();
+  });
+
+  it('says "Sent 1 question to research" for one', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+    const user = userEvent.setup();
+    renderInbox([question('q1'), question('q2')], FOLDERS, {}, false, CONFIGURED);
+
+    await selectRows(user, ['q1']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(
+      await screen.findByRole('link', { name: 'Sent 1 question to research' }),
+    ).toHaveAttribute('href', '/reader');
+  });
+
+  it('sends more than five questions in requests of at most five and counts them all', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+    const ids = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'];
+    const user = userEvent.setup();
+    renderInbox(
+      ids.map((id) => question(id)),
+      FOLDERS,
+      {},
+      false,
+      CONFIGURED,
+    );
+
+    await selectRows(user, ids);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(
+      await screen.findByRole('link', { name: 'Sent 6 questions to research' }),
+    ).toBeInTheDocument();
+    expect(mockSendItemsToResearch).toHaveBeenCalledTimes(2);
+    expect(mockSendItemsToResearch).toHaveBeenNthCalledWith(1, { ids: ids.slice(0, 5) });
+    expect(mockSendItemsToResearch).toHaveBeenNthCalledWith(2, { ids: ids.slice(5) });
+  });
+
+  it('still toasts "Sent 1 question to research" when the Routine refused the start', async () => {
+    // The 200 carries a failed post: the question left the Inbox and the Reader says what
+    // happened, so the toast neither changes nor becomes an error.
+    mockReducedMotion(true);
+    mockSendItemsToResearch.mockResolvedValue({
+      posts: [makeResearchPost({ research_state: 'failed', research_error: 'Routine refused' })],
+    });
+    const user = userEvent.setup();
+    renderInbox([question('q1')], FOLDERS, {}, false, CONFIGURED);
+
+    await selectRows(user, ['q1']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(
+      await screen.findByRole('link', { name: 'Sent 1 question to research' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't be dispatched/)).toBeNull();
+  });
+
+  it('reads "Dispatched n items", with no link, when a task went too', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(
+        makeItem(id, { item_type: 'task', folder_id: 'f1', dispatched_at: '2025-01-02T00:00:00Z' }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderInbox(
+      [question('q1'), makeItem('t1', { item_type: 'task', folder_id: 'f1', dispatched_at: null })],
+      FOLDERS,
+      {},
+      false,
+      CONFIGURED,
+    );
+
+    await selectRows(user, ['q1', 't1']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(await screen.findByText('Dispatched 2 items')).toBeInTheDocument();
+    expect(screen.queryByText(/to research/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Dispatched 2 items' })).toBeNull();
+  });
+
+  it('reads "Dispatched n items" when an idea went alongside the question', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToResearch.mockResolvedValue({ posts: [] });
+    mockSendItemsToWiki.mockResolvedValue({ sent: ['i1'] });
+    const user = userEvent.setup();
+    renderInbox([question('q1'), idea('i1')], FOLDERS, {}, WRITABLE, CONFIGURED);
+
+    await selectRows(user, ['q1', 'i1']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(await screen.findByText('Dispatched 2 items')).toBeInTheDocument();
+    expect(screen.queryByText(/to research|to the wiki/)).toBeNull();
+  });
+
+  it('a failed send puts every question back, still selected', async () => {
+    mockReducedMotion(true);
+    mockSendItemsToResearch.mockRejectedValue(new Error('502'));
+    const user = userEvent.setup();
+    renderInbox([question('q1'), question('q2')], FOLDERS, {}, false, CONFIGURED);
+
+    await selectRows(user, ['q1', 'q2']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(await screen.findByText("2 of 2 couldn't be dispatched")).toBeInTheDocument();
+    expect(mockSendItemsToResearch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('region', { name: 'Bulk actions' })).toHaveTextContent('2 selected');
+    expect(screen.getByRole('button', { name: /deselect "q1"/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /deselect "q2"/i })).toBeInTheDocument();
+    expect(screen.queryByText(/to research/)).toBeNull();
   });
 });
