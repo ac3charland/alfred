@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-283 — Research existing frameworks/techniques for evaluating model performance</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a; --mid: #b7791f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a; --mid: #e0a84a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .9rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .87rem; }
+  th, td { text-align: left; padding: .5rem .65rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); overflow-wrap: anywhere; }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .meh { color: var(--mid); font-weight: 600; }
+  .alt { border: 1px solid var(--line); border-left: 3px solid var(--faint); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; }
+  .alt h3 { margin: 0 0 .35rem; font-size: 1rem; color: var(--muted); }
+  .alt p { margin: .35rem 0; font-size: .92rem; }
+  .verdict { font-size: .88rem; margin-top: .5rem; }
+  .verdict .k { display: inline-block; min-width: 5.4rem; font-size: .68rem; font-weight: 700;
+                letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+  .principle { border: 1px solid var(--line); border-radius: 8px; padding: .75rem 1rem; margin: .7rem 0; }
+  .principle b.n { color: var(--accent); }
+  .principle p { margin: .3rem 0; font-size: .92rem; }
+  .principle .ev { color: var(--muted); font-size: .85rem; }
+  .tag { display: inline-block; font-size: .66rem; font-weight: 700; letter-spacing: .06em;
+         text-transform: uppercase; padding: .05rem .4rem; border-radius: 4px;
+         background: var(--accent-bg); color: var(--accent); vertical-align: middle; }
+  .tag.snip { background: var(--warn-bg); color: var(--warn-fg); }
+  svg text { fill: var(--fg); font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  svg .box { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+  svg .box.hl { stroke: var(--accent); }
+  svg .box.off { stroke-dasharray: 5 4; }
+  svg .arr { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#ah); }
+  svg .lbl { fill: var(--muted); font-size: 11px; }
+  svg .ttl { font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Spike · findings · ALF-283</p>
+<h1>ALF-283 — Research existing frameworks/techniques for evaluating model performance</h1>
+<p class="sub">
+  For the <b>Code module's coding sessions</b>, how should alfred decide with evidence rather than impressions
+  <b>which subagent architectures the launch prompts ask for</b>, and <b>which models and effort levels to default
+  to</b>? Can we reuse an existing framework, or should we hand-spin one from the field's practice?
+</p>
+
+<div class="card">
+<p style="margin:.2rem 0"><b>Scope.</b> The primary subject is the Claude Code on the web sessions that alfred's
+Code module launches. Every session starts from a prefilled link that <code>frontend/lib/code/links.ts</code>
+builds for one of eight lanes, and every session ends in a PR carrying the <code>alfred</code> block. "Model
+performance" here means one of the following changes to such a session:</p>
+<ul class="tight" style="margin:.3rem 0">
+  <li>the session's model</li>
+  <li>its effort level</li>
+  <li>the subagent architecture its prompt asks for</li>
+  <li>the prompt's wording</li>
+</ul>
+<p style="margin:.2rem 0">The Worker's own LLM features (Inbox classifier, Comms triage, Reader summaries) are
+secondary. §6 condenses what this spike found about them.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>1 · Where we landed</h2>
+
+<div class="card teal">
+<p><b>Don't adopt an eval framework as the foundation.</b> alfred already produces most of the data an evaluation
+needs:</p>
+<ul class="tight">
+  <li>Every Code-module PR links its session.</li>
+  <li>Every session record carries its <b>model</b>, <b>effort level</b>, <b>token usage</b> and an
+  <b>API-equivalent <code>cost_usd</code></b>, and it is still readable after the session is archived.</li>
+</ul>
+<p>So first build a thin <b>session ledger</b> that joins ticket, launch, session and PR outcome. Then answer each
+question with the cheapest instrument that can actually resolve it at alfred's volume:</p>
+<ol class="tight">
+  <li><b>Effort and model defaults.</b> Use the ledger. Halving cost is detectable in about two months of implementation launches, and sooner once
+  runs are adjusted for ticket size. For quality, run a <b>non-inferiority</b> check (the cheaper arm is acceptable unless the guardrails show it is clearly worse), not a
+  superiority test.</li>
+  <li><b>Launch-prompt instructions</b>, such as the review round or the clarification gate. Use <b>randomised arms
+  in the launcher</b>, assigned per ticket and recorded at launch. It stays free and ToS-clean, because a human still
+  clicks every launch.</li>
+  <li><b>The adversarial reviewer</b>: keep it, which model runs it, and how it is briefed. Use an offline
+  <b>defect-recall bench</b> made of real escaped bugs traced back to the PRs that introduced them, plus seeded
+  bugs the gates provably miss. This is the one place an existing tool fits: <code>claude plugin eval</code>.</li>
+  <li><b>Epic orchestration.</b> Epics are too rare to test statistically. Review each epic session as a structured
+  case study against the prior evidence, which is unusually one-sided here.</li>
+</ol>
+<p>Reserve a full <b>ticket-replay bench</b> (SWE-bench-style, Harbor-run) for a single high-stakes decision the
+cheaper instruments leave open. It costs real money and months of setup.</p>
+</div>
+
+<div class="callout">
+<b>Four things the question takes for granted that the evidence doesn't support:</b>
+<ol class="tight" style="margin:.4rem 0 .2rem">
+  <li><b>You are already running a model experiment, but it can't be read.</b> The 82 most recent sessions ran on
+  five models and three effort levels, with <code>xhigh</code> on 52 of them. Nothing records why each launch got the
+  model it did, so the variation is tangled up with the ticket. Recording that choice costs one column. Effort is also
+  the cheapest lever: Anthropic documents <code>medium</code> as Opus 5.5's default and says "tuning effort is often
+  a better lever than switching models". Yet only 2 of the 23 Opus 5.5 sessions used <code>medium</code>.</li>
+  <li><b>The review round's findings are not evidence of its value.</b> Claude Code's own docs warn that "a reviewer
+  prompted to find gaps will usually report some, even when the work is sound". A count of findings measures
+  diligence. What would show value is <b>recall</b> (seeded and real bugs caught) and <b>precision</b> (findings you
+  agree were real).</li>
+  <li><b>Most quality questions can't be settled at this volume.</b> Only large gaps are detectable, around 85% vs
+  50% success with 20 sessions per arm (§2.3). So the realistic decision rule is "take the cheaper option unless a
+  guardrail trips", backed by reading transcripts. Proving the better option better is out of reach.</li>
+  <li><b>The cost risk is the tail, not the median.</b> The median session costs $22 at API-equivalent prices. One
+  Fable 5.1 implementation that ran five review rounds cost $1,004. Review rounds and session length multiply cost
+  faster than any model switch divides it, so a per-session cost flag is worth more than a cheaper default.</li>
+</ol>
+</div>
+
+<h3>Decisions</h3>
+<div class="scroll">
+<table>
+<thead><tr><th>Question</th><th>Decision</th><th>Rationale in one line</th></tr></thead>
+<tbody>
+<tr><td>Framework or hand-spin?</td>
+    <td><b>Hand-spin the ledger.</b> Reuse <code>claude plugin eval</code> for the reviewer bench. Hold Harbor in
+    reserve for a replay bench.</td>
+    <td>The ledger is a join over alfred's own data, which no framework can do. The frameworks fit the offline
+    pieces.</td></tr>
+<tr><td>Unit of evaluation</td>
+    <td><b>One launch</b> = ticket × lane × arm (prompt version, model, effort) → session → PR</td>
+    <td>That is the unit you actually choose between, and the unit every outcome can be traced back to.</td></tr>
+<tr><td>Where arms come from</td>
+    <td>Prompt arms: <b>randomised by ticket-ref hash</b> in <code>links.ts</code>. Model and effort arms: the
+    launcher <b>names</b> the model to pick, and the ledger records what was actually used.</td>
+    <td>The session model can't be set from the URL (§2.1). Recording the actual model catches a mismatch, and
+    analysis follows the assigned arm (intention to treat).</td></tr>
+<tr><td>Primary outcome</td>
+    <td><b>Merged without human rework</b>: merged, with no owner-authored commits after the PR opened and no
+    <code>Bug:</code> ticket traced to it within 30 days</td>
+    <td>Tests passing overstates mergeability. METR's maintainers accepted about 24 points fewer agent PRs than the
+    tests implied.</td></tr>
+<tr><td>Decision rule</td>
+    <td><b>Cost-first non-inferiority</b>: adopt the cheaper arm unless it trips a guardrail (rework rate, red-CI
+    count, escaped bugs)</td>
+    <td>A cost halving shows up within about two months. Most quality differences never show up.</td></tr>
+<tr><td>Reviewer questions</td>
+    <td>An offline <b>defect-recall bench</b>: real bugs traced back to the PR that introduced them, plus Stryker
+    mutants that survive the test suite, with reviewer variants × 3 runs</td>
+    <td>The ground truth is known and each case is cheap. It measures exactly "what the gates can't catch", which is
+    the reviewer's stated job.</td></tr>
+<tr><td>Epic orchestration</td>
+    <td>A structured case review of every epic session, with no statistical test</td>
+    <td>n is tiny, and the prior says coding is a poor fit for parallel writers.</td></tr>
+<tr><td>Where it runs</td>
+    <td>The ledger reads the session records, which the Claude Code Remote MCP exposes, from inside a session. It
+    stays a manual instrument and never gates CI.</td>
+    <td>The repo rule: no suite may spend money or need a network.</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>2 · Why</h2>
+
+<h3>2.1 · What alfred already has (the in-repo art)</h3>
+<h4>The knobs, and where each one lives</h4>
+<div class="scroll">
+<table>
+<thead><tr><th>Knob</th><th>Where it lives today</th><th>Recorded?</th></tr></thead>
+<tbody>
+<tr><td>Session model and effort</td>
+    <td>Picked by the human in the claude.ai/code UI. The deep link carries only <code>repo</code> and
+    <code>q</code>. No model or effort parameter is documented (<code>links.ts</code> header; Claude Code deep-link
+    docs).</td>
+    <td class="yes">Yes, after the fact, in the session record</td></tr>
+<tr><td>Lane prompt</td>
+    <td>Eight builders in <code>frontend/lib/code/links.ts</code>: refinement, spike, bug, epic refinement, epic
+    implementation, implementation, bypass, and the development router</td>
+    <td class="no">No prompt version is stamped</td></tr>
+<tr><td>Reviewer subagent</td>
+    <td><code>adversarialReviewStep()</code> in the implementation, bypass and bug prompts: one round, with
+    <code>model: "opus"</code>, report-only, briefed cold (ALF-282, merged 28 Sep)</td>
+    <td class="meh">Dispositions are in the PR description as prose</td></tr>
+<tr><td>Orchestrator and implementer subagents</td>
+    <td>The epic-implementation prompt and <code>implement-epic</code> skill. The implementers' model is
+    <b>unset</b>, so they <b>inherit</b> the lead's model.</td>
+    <td class="no">No</td></tr>
+<tr><td>Model-tier policy</td>
+    <td><code>CLAUDE.md</code> "Model Assignment Rules": lead on the strongest model, teammates on mid-tier,
+    discovery on the cheap model. <b>Nothing puts it into practice.</b> The epic skill never sets a teammate
+    model.</td>
+    <td class="no">No</td></tr>
+</tbody>
+</table>
+</div>
+
+<h4>The data a session already leaves behind</h4>
+<p>Each PR description ends with its session link. Called on an archived session from this repo, <code>get_session</code>
+returns the following (trimmed):</p>
+<pre><code>"id": "session_012rAhVixMoNJrXEghwHiNjC",            // ALF-282, PR #386
+"created_at": "2026-09-28T12:52:53Z", "updated_at": "2026-09-28T15:19:30Z",
+"session_context": { "model": "claude-opus-5-5", "effort_level": "xhigh", ... },
+"configured_model": "claude-opus-5-5", "last_served_model": "claude-opus-5-5",
+"usage": { "input_tokens": 1284, "output_tokens": 114303,
+           "cache_read_tokens": 22387120, "cache_write_tokens": 424588, "cost_usd": 9.696856 },
+"context_usage": { "used_tokens": 308584, "max_tokens": 1000000 },
+"post_turn_summary": { "status_category": "completed", ... }</code></pre>
+<ul class="tight">
+  <li><b>Model and effort are recoverable</b> for every past session, including fallbacks: <code>configured_model</code>
+  against <code>last_served_model</code>.</li>
+  <li><b><code>cost_usd</code> reproduces from list prices</b> (§5). It is a good proxy for plan consumption, which
+  Anthropic does not publish per model.</li>
+  <li><b>Usage appears to include subagents.</b> This spike's own record does not reprice at a single model's rates,
+  which fits its Sonnet subagents. That is inferred, not documented.</li>
+  <li><b>Also on hand:</b>
+    <ul class="tight">
+      <li>PR metadata: commits, diff size, opened and merged times, and review threads.</li>
+      <li>The <b>Adversarial review</b> section, which lists findings by severity with a disposition for each.</li>
+      <li>The <code>fix(…)</code> PRs, 67 merged so far. Each is a bug that got past review.</li>
+    </ul>
+  </li>
+</ul>
+<p><b>What is missing:</b> none of this is joined. <code>code_items</code> records states and PR URLs, but not the
+launch time, the prompt version, the arm, or which session ran it. Sessions that never opened a PR are invisible
+to any PR-based view, which is a survivorship bias.</p>
+
+<h3>2.2 · The history, measured</h3>
+<p>This section covers all 390 PRs (#1–#390), parsed for their <code>alfred</code> block, session link and review
+section. Of the 262 distinct linked sessions, the 82 most recent (11 Aug–28 Sep) were joined to their records. Two of
+those records were spot-checked field for field against the live API and matched exactly.</p>
+
+<h4>Volume</h4>
+<div class="scroll">
+<table>
+<thead><tr><th>PR phase</th><th class="num">Jun</th><th class="num">Jul</th><th class="num">Aug</th><th class="num">Sep</th><th class="num">Total</th><th>Median PR open → merge</th></tr></thead>
+<tbody>
+<tr><td>implementation</td><td class="num">37</td><td class="num">77</td><td class="num">19</td><td class="num">51</td><td class="num">184</td><td>2.2 h</td></tr>
+<tr><td>refinement</td><td class="num">19</td><td class="num">18</td><td class="num">11</td><td class="num">18</td><td class="num">66</td><td>1.1 h</td></tr>
+<tr><td>epic refinement / epic implementation / spike</td><td class="num">—</td><td class="num">2</td><td class="num">—</td><td class="num">6</td><td class="num">8</td><td>11 h (epic refinement)</td></tr>
+<tr><td>no <code>alfred</code> block (mostly pre-Code-module)</td><td class="num">99</td><td class="num">14</td><td class="num">7</td><td class="num">12</td><td class="num">132</td><td>0.5 h</td></tr>
+</tbody>
+</table>
+</div>
+<p>That is <b>about 45 implementation launches a month</b>, which sets the pace of any production trial. Closed
+without merging is rare: 6 of 184 implementation PRs.</p>
+
+<h4>What the sessions ran on, and what they cost</h4>
+<div class="scroll">
+<table>
+<thead><tr><th>Slice (82 sessions)</th><th class="num">n</th><th class="num">Median $</th><th class="num">IQR $</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>All sessions</td><td class="num">82</td><td class="num">22.17</td><td class="num">11.39–44.78</td><td>$4,313 in total, API-equivalent</td></tr>
+<tr><td>Implementation</td><td class="num">54</td><td class="num">26.33</td><td class="num">12.04–49.55</td><td>about 6 h wall clock (an upper bound)</td></tr>
+<tr><td>Refinement</td><td class="num">17</td><td class="num">17.99</td><td class="num">10.03–26.06</td><td></td></tr>
+<tr><td>Epic refinement / epic implementation</td><td class="num">3 / 1</td><td class="num">65.67 / 176.53</td><td class="num">—</td><td>The only epic implementation: 2.6M output tokens</td></tr>
+<tr><td>Implementation · Opus 5.5</td><td class="num">12</td><td class="num">14.96</td><td class="num">10.07–36.34</td><td rowspan="4"><b>Confounded</b>: you chose the model per ticket and the lineup changed over time. A prior, not a result.</td></tr>
+<tr><td>Implementation · Sonnet 5</td><td class="num">20</td><td class="num">20.23</td><td class="num">11.58–31.61</td></tr>
+<tr><td>Implementation · Opus 5</td><td class="num">18</td><td class="num">30.00</td><td class="num">18.97–49.55</td></tr>
+<tr><td>Implementation · Fable 5.1</td><td class="num">3</td><td class="num">222.53</td><td class="num">203.91–613.18</td></tr>
+</tbody>
+</table>
+</div>
+<ul class="tight">
+  <li><b>You already vary the model and effort.</b> The model that actually served each session:
+    <ul class="tight">
+      <li>Opus 5: 32</li>
+      <li>Opus 5.5: 23</li>
+      <li>Sonnet 5: 21</li>
+      <li>Fable 5.1: 5</li>
+      <li>Opus 4.8: 1</li>
+    </ul>
+    Effort was <code>xhigh</code> on 52, <code>high</code> on 27 and <code>medium</code> on 3. Only 2 of the 23 Opus
+    5.5 sessions ran at that model's documented default. Nothing records <em>why</em> a launch got its model, so this
+    variation can't be read as an experiment.</li>
+  <li><b>Sonnet has not been cheaper per session.</b> Sonnet 5 implementation sessions cost more at the median than
+  Opus 5.5 ones and produced more output tokens (127k against 117k). §5 shows why price per token undersells this:
+  on long sessions, token count and length matter more than the model's list price.</li>
+  <li><b>The tail is the cost risk.</b> One Fable 5.1 implementation (ALF-234, PR #340) ran <b>five review rounds</b>
+  and cost <b>$1,004</b>: 5.2M output tokens and 1.5B cache-read tokens, 45× the median. Per-session cost ranges from
+  $1.65 to $1,004. The spread (log sd 1.13) is what makes cost comparisons slower than a price sheet suggests.</li>
+  <li><b>Mid-session switches happen.</b> 3 of the 82 sessions changed model, all upward. The ledger needs the model
+  actually served, not only the one configured.</li>
+</ul>
+
+<h4>What the PR view misses</h4>
+<ul class="tight">
+  <li><b>Survivorship.</b> Of 381 alfred-repo sessions since the first PR, <b>120 (31%) appear in no PR
+  description</b>, and 17 of those failed. Some did ship: 123 PRs, mostly older ones, carry no session link at all.
+  So a PR-only ledger can't see abandoned launches. The ledger has to list sessions as well as PRs.</li>
+  <li><b>The review round is barely recorded yet.</b> Only 4 PRs carry an "Adversarial review" section:
+    <ul class="tight">
+      <li>#322, a one-off on 10 Sep: four rounds, 36 defects.</li>
+      <li>#386, #389 and #390, since ALF-282 made the round standard on 28 Sep.</li>
+    </ul>
+  Where findings are labelled (25 findings): about 8% major, 56% minor and 36% nit, with 85–90% fixed. On ALF-281,
+  the round came back after merge and caught a real major bug the gates had passed. That is an anecdote, not a
+  rate.</li>
+  <li><b>Escaped bugs.</b> 67 merged PRs are titled <code>fix(…)</code>. They are the raw material for the reviewer
+  bench's real-defect cases.</li>
+</ul>
+
+<h3>2.3 · What alfred's volume can and cannot resolve</h3>
+<p>These are simulations, computed in this session (§7, command 3). Each figure is the power to detect the stated
+gap at α = 0.05.</p>
+<div class="scroll">
+<table>
+<thead><tr><th>Design</th><th>Gap to detect</th><th class="num">Power</th></tr></thead>
+<tbody>
+<tr><td rowspan="3">Production A/B, binary outcome, <b>20 sessions per arm</b></td>
+    <td>85% vs 65% merged-without-rework</td><td class="num">19%</td></tr>
+<tr><td>85% vs 50%</td><td class="num">51%</td></tr>
+<tr><td>90% vs 70%</td><td class="num">24%</td></tr>
+<tr><td rowspan="2">Production A/B, binary, <b>80 sessions per arm</b></td>
+    <td>85% vs 65%</td><td class="num">76%</td></tr>
+<tr><td>90% vs 70%</td><td class="num">84%</td></tr>
+<tr><td rowspan="2">Replay bench, paired: same tickets in both arms, 3 trials each</td>
+    <td>65% → 85%, 20 tickets (120 sessions)</td><td class="num">56%</td></tr>
+<tr><td>65% → 85%, 30 tickets (180 sessions)</td><td class="num">75%</td></tr>
+<tr><td rowspan="3">Production, <b>cost per session</b> (log-normal, observed sd 1.13)</td>
+    <td>×0.5 (half the cost), 20 per arm</td><td class="num">44%</td></tr>
+<tr><td>×0.5, 40 per arm</td><td class="num">72%</td></tr>
+<tr><td>×0.67 (a third cheaper), 40 per arm</td><td class="num">32%</td></tr>
+</tbody>
+</table>
+</div>
+<p><b>Read it this way:</b> at alfred's volume, <b>cost is measurable and quality mostly is not</b>.</p>
+<ul class="tight">
+  <li>With about 45 implementation launches a month split two ways, a 2× cost difference takes about two
+  months.</li>
+  <li><b>Regression adjustment</b> on a size covariate shortens that. Use spec length or diff size, the way online
+  experiments use pre-period data (CUPED).</li>
+  <li>A 20-point quality difference needs roughly 80 sessions per arm in production, or about 180 replayed
+  sessions.</li>
+</ul>
+<p>Hence the cost-first, non-inferiority decision rule.</p>
+<p>The ledger still earns its keep on quality in two ways:</p>
+<ul class="tight">
+  <li>It <b>bounds</b> how much worse the cheaper arm can plausibly be.</li>
+  <li>It points you at the transcripts worth reading.</li>
+</ul>
+
+<h3>2.4 · The prior evidence on the two questions</h3>
+<p>Evaluation budget should go where the prior is uncertain. For architecture it mostly isn't:</p>
+<div class="scroll">
+<table>
+<thead><tr><th>Pattern</th><th>What the evidence says</th><th>So evaluate…</th></tr></thead>
+<tbody>
+<tr><td><b>A fresh-context reviewer subagent</b> (the ALF-282 step)</td>
+    <td><b>Supported.</b>
+    <ul class="tight">
+      <li>Claude Code's best-practices docs: "A fresh context improves code review since Claude won't be biased
+      toward code it just wrote."</li>
+      <li>Self-correction without external feedback is unreliable (Huang et al. 2023).</li>
+      <li>LLM judges favour their own generations (Panickssery et al. 2024).</li>
+      <li>A trained critic caught inserted bugs better than paid human reviewers (CriticGPT, 2024).</li>
+    </ul>
+    <b>Caveats:</b> reviewers over-report, and an Opus reviewer of an Opus-written PR is a same-family check, not a
+    cross-model one.</td>
+    <td><b>Which reviewer, and briefed how</b>, measured by recall and precision. Whether to have one at all is the
+    less open question.</td></tr>
+<tr><td><b>Orchestrator plus parallel implementer subagents</b> (the epic lane)</td>
+    <td><b>Weak for coding.</b>
+    <ul class="tight">
+      <li>Anthropic's multi-agent research post: "most coding tasks involve fewer truly parallelizable tasks than
+      research". Multi-agent systems use about 15× the tokens of chat.</li>
+      <li>Cognition's revised view: multi-agent works "when writes stay single-threaded".</li>
+      <li>Claude Code's agent-teams docs: for "sequential tasks, same-file edits, or work with many dependencies, a
+      single session or subagents are more effective".</li>
+      <li>MAST (Cemri et al. 2025): gains over single agents are "often minimal".</li>
+    </ul></td>
+    <td>The case review below, especially slice independence (shared files, integration fixes) and cost. Don't
+    spend a replay budget here.</td></tr>
+<tr><td><b>Cheaper implementer subagents</b> (<code>CLAUDE.md</code>'s tier rule)</td>
+    <td>Anthropic frames an orchestrator with lower-cost workers as a <em>cost</em> pattern. In its research-system
+    post, an Opus 4 lead with Sonnet 4 subagents beat Opus 4 alone by 90.2%, but that is a <em>research</em> eval,
+    not coding.</td>
+    <td>Only if the epic lane survives its case review. Then use the ledger's cost with a rework guardrail.</td></tr>
+<tr><td><b>Effort level</b></td>
+    <td>Anthropic's docs describe <code>xhigh</code> as "deeper reasoning at higher token spend". Your history runs
+    <code>xhigh</code> on 52 of the last 82 sessions. Opus 5.5 defaults to <code>medium</code>, and <code>max</code> is "prone to overthinking; test before adoption".</td>
+    <td><b>First.</b> It is a one-click, per-session change, and the ledger shows its cost at once.</td></tr>
+<tr><td><b>Model</b>: Opus 5.5, Sonnet 5 or Fable 5.1</td>
+    <td>Public leaderboards rank the <em>model plus scaffold</em> on someone else's tasks, and Terminal-Bench
+    submissions show the scaffold moves results as well as the model. Routing and cascade work (FrugalGPT, RouteLLM) argues against
+    a flat "always the strongest".</td>
+    <td>Per lane. Refinement, spike and bug differ in how much judgement they need.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>2.5 · The frameworks, against what the Code module needs</h3>
+<div class="scroll">
+<table>
+<thead><tr><th></th><th><code>claude plugin eval</code></th><th>Harbor</th><th>Inspect AI + <code>inspect_swe</code></th><th>Hand-rolled <code>claude -p</code></th><th>Session ledger (hand-spun)</th></tr></thead>
+<tbody>
+<tr><td>What it runs</td><td>Fresh headless Claude Code runs against a plugin or skill, with graders, a with/without baseline, and <code>--model</code> arms</td><td>Claude Code, Codex CLI, OpenHands and custom agents, in Docker tasks graded by tests</td><td>Claude Code, Codex CLI and others as Inspect agents</td><td>Anything; you own the loop</td><td>Nothing: it reads what production already did</td></tr>
+<tr><td>Fits which question</td><td class="yes">Reviewer bench (a short, bounded task)</td><td class="yes">Full-ticket replays</td><td class="yes">Full-ticket replays</td><td class="meh">Either, with more work</td><td class="yes">Effort, model and prompt arms</td></tr>
+<tr><td>Loads the repo's <code>CLAUDE.md</code> and skills</td><td class="no">No. "CLAUDE.md files … and skills are absent"; ship them in the plugin</td><td class="meh">Whatever the task image contains</td><td class="meh">Whatever the sandbox contains</td><td class="yes">Yes</td><td class="yes">It is production</td></tr>
+<tr><td>Limits</td><td>≤200 turns and ≤3,600&nbsp;s per run; the Bash sandbox allows only granted domains</td><td>Docker; the task image has to run alfred's gates</td><td>Python; Docker or Kubernetes</td><td>You build isolation</td><td>Sees only launches that produced a PR, unless sessions are listed too</td></tr>
+<tr><td>Billing</td><td class="yes">"Counted against your plan's usage or your API bill"</td><td>API key</td><td>API key</td><td>Either</td><td class="yes">Free</td></tr>
+<tr><td>Statistics</td><td class="meh">3 runs by default, a Δ against baseline; no significance test</td><td class="meh">Multiple trials</td><td class="yes">Epochs, <code>stderr()</code></td><td>Yours</td><td>Yours: Wilson intervals and paired tests, as in §6</td></tr>
+<tr><td>Status</td><td>Claude Code ≥ 2.1.269 (this container runs 2.1.283)</td><td>Apache-2.0, active</td><td>MIT, active</td><td>—</td><td>—</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Also considered, with no role here: promptfoo and Evalite (single-call prompt evals; §6), the hosted
+platforms (they would receive your code and transcripts), OpenAI Evals (shuts down on 30&nbsp;Nov&nbsp;2026), and
+the public leaderboards (SWE-bench, Terminal-Bench), which don't measure alfred's conventions or gates.</p>
+
+<h3>2.6 · The practices worth taking</h3>
+<p class="small"><span class="tag">fetched</span> means the primary page was read in this session.
+<span class="tag snip">snippet</span> means the claim rests on search-result text, because this container's proxy
+blocks the domain (arxiv, metr.org, cognition.com).</p>
+
+<div class="principle"><b class="n">P1 · Randomise per ticket, and don't trust felt speed.</b>
+<p>In METR's 2025 randomised trial, each of 246 real issues was randomly assigned AI or no AI. Developers expected a
+24% speed-up and reported a 20% one afterwards, but were measured <b>19% slower</b>. Impressions of "this setup
+feels better" are exactly what randomisation exists to overrule.</p>
+<p class="ev">METR, 2025 <span class="tag snip">snippet</span></p></div>
+
+<div class="principle"><b class="n">P2 · Grade mergeability, not only tests.</b>
+<p>In METR's 2026 study, maintainers' acceptance of test-passing agent PRs ran about 24 points below the automated
+score. Roughly half of the passing PRs would not have been merged. For alfred, the PR's actual fate (merged, reworked,
+reverted, bug filed) is the grade.</p>
+<p class="ev">METR, "Many SWE-bench-passing PRs would not be merged" <span class="tag snip">snippet</span></p></div>
+
+<div class="principle"><b class="n">P3 · Build a bench from your own history, SWE-bench-style.</b>
+<p>A task is a base commit, a problem statement and hidden tests. The tests are split into FAIL_TO_PASS (fail before
+the fix, pass after) and PASS_TO_PASS (must keep passing). alfred's merged implementation PRs already carry the spec
+(the problem statement) and the tests that pinned it. Prefer tickets merged after a model's training cutoff: this
+repo is public, so older solutions may already be in the training data (SWE-rebench, SWE-bench Live).</p>
+<p class="ev">SWE-bench repository <span class="tag">fetched</span>; SWE-rebench and SWE-bench Live <span class="tag snip">snippet</span></p></div>
+
+<div class="principle"><b class="n">P4 · Isolate trials, run several, and choose pass^k where consistency matters.</b>
+<p>"Each trial should be 'isolated' by starting from a clean environment". Use pass^k ("all k trials succeed")
+"for agents where consistency is essential". Start from "20–50 simple tasks drawn from real failures", and "read
+the transcripts".</p>
+<p class="ev">Anthropic, <em>Demystifying evals for AI agents</em> <span class="tag">fetched</span></p></div>
+
+<div class="principle"><b class="n">P5 · Measure a reviewer on bugs you know are there.</b>
+<p>CriticGPT was evaluated on code into which people had deliberately inserted subtle bugs ("tampering"). The
+software-engineering version with real bugs is <b>SZZ</b>: trace the lines a fix deleted back to the change that
+last touched them, which is the change that introduced the bug. alfred has 67 merged <code>fix(…)</code> PRs to
+trace, and <b>Stryker</b> is already set up to generate mutants that survive the test suite. Those are, by
+definition, bugs the gates miss.</p>
+<p class="ev">OpenAI, <em>LLM Critics Help Catch LLM Bugs</em>; Śliwerski, Zimmermann &amp; Zeller 2005
+<span class="tag snip">snippet</span>; the <code>stryker</code> skill in this repo</p></div>
+
+<div class="principle"><b class="n">P6 · Pay only for complexity that demonstrably helps.</b>
+<p>"Consider adding complexity only when it demonstrably improves outcomes." Multi-agent token cost is about 15×
+that of chat, and "token usage by itself explains 80% of the variance" in Anthropic's research eval. An architecture
+that costs more has to beat simply spending those tokens on one agent.</p>
+<p class="ev">Anthropic, <em>Building effective agents</em> and <em>multi-agent research system</em> <span class="tag">fetched</span></p></div>
+
+<div class="principle"><b class="n">P7 · Small n means intervals and paired tests on every number.</b>
+<p>Report the standard error or interval with each score. When two arms answer the same items, test the paired
+difference. The Anthropic statistics post and the Wilson and McNemar machinery in §6 apply unchanged.</p>
+<p class="ev">Anthropic, <em>A statistical approach to model evaluations</em> <span class="tag">fetched</span></p></div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>3 · Technical shape</h2>
+<p>This is enough for a refinement session to expand. It is not the spec.</p>
+
+<svg viewBox="0 0 900 300" role="img" aria-label="Instruments: the launcher assigns an arm, the human launches the session, the session opens a PR, and a ledger joins launch, session record and PR outcome. Offline, a defect-recall bench runs reviewer variants through claude plugin eval, and a reserved replay bench would run full tickets through Harbor.">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--muted)"/></marker></defs>
+  <text x="10" y="16" class="lbl">PRODUCTION (free, subscription, human-launched)</text>
+  <rect class="box hl" x="10" y="26" width="160" height="78" rx="8"/>
+  <text x="22" y="48" class="ttl">Launcher</text>
+  <text x="22" y="66" class="lbl">links.ts: arm = hash(ref)</text>
+  <text x="22" y="82" class="lbl">records arm, prompt ver,</text>
+  <text x="22" y="98" class="lbl">launched_at</text>
+  <rect class="box" x="220" y="26" width="150" height="78" rx="8"/>
+  <text x="232" y="48" class="ttl">Session</text>
+  <text x="232" y="66" class="lbl">human picks model/effort</text>
+  <text x="232" y="82" class="lbl">(launcher names it)</text>
+  <rect class="box" x="420" y="26" width="150" height="78" rx="8"/>
+  <text x="432" y="48" class="ttl">PR</text>
+  <text x="432" y="66" class="lbl">alfred block · session link</text>
+  <text x="432" y="82" class="lbl">review dispositions</text>
+  <text x="432" y="98" class="lbl">merge / rework / fix</text>
+  <rect class="box hl" x="630" y="26" width="260" height="78" rx="8"/>
+  <text x="642" y="48" class="ttl">Session ledger</text>
+  <text x="642" y="66" class="lbl">join: code_items × get_session × PR</text>
+  <text x="642" y="82" class="lbl">→ cost, time, rework, escaped bugs</text>
+  <text x="642" y="98" class="lbl">per arm, with intervals</text>
+  <path class="arr" d="M170,65 L218,65"/>
+  <path class="arr" d="M370,65 L418,65"/>
+  <path class="arr" d="M570,65 L628,65"/>
+  <text x="10" y="146" class="lbl">OFFLINE (targeted)</text>
+  <rect class="box hl" x="10" y="156" width="360" height="90" rx="8"/>
+  <text x="22" y="178" class="ttl">Defect-recall bench (reviewer)</text>
+  <text x="22" y="196" class="lbl">cases: introducing PR of a real fix (SZZ), or merged PR</text>
+  <text x="22" y="212" class="lbl">+ a surviving Stryker mutant · runner: claude plugin eval</text>
+  <text x="22" y="228" class="lbl">arms: reviewer model / brief · 3 runs · recall + FP rate</text>
+  <rect class="box off" x="420" y="156" width="360" height="90" rx="8"/>
+  <text x="432" y="178" class="ttl">Ticket-replay bench (reserved)</text>
+  <text x="432" y="196" class="lbl">base commit + spec · hidden FAIL_TO_PASS tests + gates</text>
+  <text x="432" y="212" class="lbl">+ blind mergeability read · runner: Harbor (Docker)</text>
+  <text x="432" y="228" class="lbl">only for one high-stakes default change</text>
+  <path class="arr" d="M690,104 C690,128 330,124 300,154"/>
+  <text x="150" y="130" class="lbl">escaped bugs become cases</text>
+</svg>
+
+<h4>The ledger: one row per launch (sketch)</h4>
+<pre><code>interface LaunchRow {
+  ref: string; lane: Lane;                      // code_items / links.ts builder
+  arm: string; promptVersion: number;           // NEW: recorded at launch
+  launchedAt: string;                           // NEW (code_items has no launch time today)
+  sessionId?: string;                           // from the PR body's claude.ai/code/session_… link
+  model?: string; effort?: string;              // get_session: session_context.model, effort_level
+  servedModel?: string;                         //   external_metadata.last_served_model (fallback check)
+  costUsd?: number; outputTokens?: number; cacheReadTokens?: number;
+  prNumber?: number; prState: 'merged' | 'closed' | 'open' | 'none';
+  hoursToPr?: number; hoursToMerge?: number;
+  ownerCommitsAfterOpen: number;                // rework by the human
+  redCiRuns: number;                            // failed check runs before merge
+  review?: { findings: number; major: number; fixed: number; declined: number; raised: number };
+  escapedBugs: number;                          // Bug: tickets / fix PRs traced to this PR within 30 days
+}</code></pre>
+
+<h4>Outcomes and guardrails</h4>
+<div class="scroll">
+<table>
+<thead><tr><th>Metric</th><th>Role</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>Cost per launch (<code>cost_usd</code>), and output tokens</td><td>The decision metric for cheaper arms</td><td>get_session</td></tr>
+<tr><td>Merged without rework</td><td>Primary quality outcome (non-inferiority)</td><td>PR commits by author, merge state, SZZ traces</td></tr>
+<tr><td>Red CI runs before merge; review-round majors that were fixed</td><td>Guardrails: early and higher-volume signals</td><td>check runs, PR description</td></tr>
+<tr><td>Escaped bugs within 30 days</td><td>Lagging guardrail</td><td><code>fix(…)</code> PRs and <code>Bug:</code> stories traced back</td></tr>
+<tr><td>Hours from launch to PR, and to merge</td><td>Secondary; confounded by when you're available</td><td>ledger timestamps</td></tr>
+<tr><td>Launches with no PR</td><td>Survivorship check</td><td><code>list_sessions</code> against the ledger</td></tr>
+</tbody>
+</table>
+</div>
+
+<h4>The defect-recall bench (sketch)</h4>
+<ul class="tight">
+  <li><b>Cases (target 15–20).</b>
+    <ul class="tight">
+      <li><em>Real:</em> for a merged <code>fix(…)</code> PR, find the PR that introduced the bug (SZZ, then an
+      owner check). The case is that PR's head, with the bug still present.</li>
+      <li><em>Seeded:</em> take a merged PR and apply one Stryker mutant that <b>survives</b> the package's tests,
+      inside the diff. Such a mutant is invisible to the gates by construction.</li>
+      <li>Add a few <em>requirement misreads</em> that you write by hand, because mutants never model misreading
+      the spec.</li>
+    </ul>
+  </li>
+  <li><b>Runner.</b> The adversarial-review skill, packaged as a plugin with the repo's review-relevant conventions
+  inside it (plugin runs don't load <code>CLAUDE.md</code>). A <code>scaffold_script</code> checks out the case,
+  and <code>--model</code> selects each arm. Run 3 times; ablation <code>none</code>, since a "no reviewer"
+  baseline is meaningless.</li>
+  <li><b>Graders.</b> Did the report name the planted or real defect at its file, and give a correct cause? Use an
+  <code>llm</code> grader with a stronger <code>--judge-model</code>, plus regex on the path. Estimate false
+  positives by owner labelling of a sample of findings on <em>clean</em> PRs.</li>
+  <li><b>Arms worth testing.</b>
+    <ul class="tight">
+      <li>Reviewer model: Opus 5.5, Sonnet 5 or Fable 5.1.</li>
+      <li>Briefing: cold, versus with the implementer's summary.</li>
+      <li>One reviewer, versus two cheaper ones with different focus areas.</li>
+    </ul>
+  </li>
+  <li><b>Cost.</b> A review run is a bounded task, minutes rather than hours. 20 cases × 3 runs × 3 arms is 180
+  runs. The docs say plugin eval counts against plan usage, and <code>--max-cost-usd</code> caps the list-price
+  estimate.</li>
+</ul>
+
+<h4>Files a later story would touch</h4>
+<ul class="tight">
+  <li><code>frontend/lib/code/links.ts</code>: a prompt-version constant per lane, an arm registry, and
+  <code>armFor(ref)</code>, a stable hash. The launcher shows "launch with <em>model · effort</em>" when an arm names
+  one.</li>
+  <li><code>database/migrations/</code>: a <code>code_launches</code> table, one row per launch click (ref, lane,
+  arm, prompt version, launched_at). It is append-only, so relaunches keep their history.</li>
+  <li><code>lib/stores/code-store.tsx</code> <code>openClaudeSession</code>: insert the launch row next to the
+  state write it already awaits.</li>
+  <li><code>tools/session-ledger/</code>: a TypeScript CLI run from a Claude Code session, which has the session
+  MCP. It joins launches, PRs and session records into JSON, and prints per-arm cost and outcome with Wilson
+  intervals, reusing the §6 statistics.</li>
+  <li><code>evals/reviewer/</code>, or a plugin directory: the defect-recall cases, graders and scaffold scripts.</li>
+</ul>
+
+<h4>Suggested order (each step pays for itself)</h4>
+<ol class="tight">
+  <li><b>Backfill the ledger from history.</b> This spike sampled 82 of the 262 linked sessions; the backfill covers
+  all of them, plus the sessions with no PR. It is read-only and needs no product change. It answers "what does each
+  lane cost today, and how often is it reworked?"</li>
+  <li><b>Run an effort trial on one lane</b>: xhigh against the model's default <code>medium</code> or
+  <code>high</code>, alternated by ref hash. Implementation and bug fixes have the most volume.</li>
+  <li><b>Record launches</b> (the table and the prompt versions) so future arms are clean.</li>
+  <li><b>Build the defect-recall bench</b>, then decide the reviewer's model and brief.</li>
+  <li><b>Review each epic session as a case study</b> as epics come up. Revisit the orchestrator only if the case
+  reviews disagree with the prior.</li>
+  <li><b>A replay bench, only if</b> a model-default change is on the table that the ledger cannot bound.</li>
+</ol>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>4 · Sidebars: appealing alternatives we're not taking</h2>
+
+<div class="alt"><h3>Build the replay bench first (Harbor, or Inspect with <code>inspect_swe</code>)</h3>
+<p>It is the most rigorous option. It gives paired comparisons on the same tickets, hidden tests and clean
+isolation, and Harbor runs Claude Code on private task sets.</p>
+<p><b>Why not first:</b></p>
+<ul class="tight">
+  <li>alfred's gates need Docker, a Postgres cluster and Playwright's Chromium inside every task image.</li>
+  <li>Runs are API-billed. At the history's median of $26 per implementation session, 180 sessions is about $4,700
+  for about 75% power on a 20-point gap, before the tail: one session has cost $1,004.</li>
+  <li>The interactive gates ("ASK ME HERE") have to be stubbed, which changes the very prompt under test.</li>
+</ul>
+<p class="verdict"><span class="k">Revisit if</span> a model-default change is proposed that the ledger's guardrails
+can't settle. Harbor is Apache-2.0 and runs Claude Code natively.</p></div>
+
+<div class="alt"><h3>Use <code>claude plugin eval</code> for whole tickets</h3>
+<p>It is first-party, counts against plan usage, gives multiple runs and a baseline, and publishes an HTML
+report.</p>
+<p><b>Why not:</b></p>
+<ul class="tight">
+  <li>Each run is capped at 200 turns and one hour. The sampled implementation sessions ran for hours of wall
+  clock and used about 300k tokens of context.</li>
+  <li>The Bash sandbox blocks the network unless you grant domains.</li>
+  <li><code>CLAUDE.md</code> and skills don't load, so it isn't testing the real launch.</li>
+</ul>
+<p>It fits the bounded reviewer task, so that is where it's used.</p></div>
+
+<div class="alt"><h3>Pick the default model from public leaderboards</h3>
+<p><b>Why not:</b> SWE-bench and Terminal-Bench rank a model plus a scaffold on other people's repositories, and the
+scaffold changes move the results. They say nothing about alfred's conventions, gates, or the clarification
+gate that tells a session to stop and ask. They are a prior, not a decision.</p></div>
+
+<div class="alt"><h3>A METR-style randomised trial with a no-AI control</h3>
+<p><b>Why not:</b> the question is which agent setup to use, not whether to use one. Randomising between arms keeps
+P1's protection against felt speed without the cost of a control group.</p></div>
+
+<div class="alt"><h3>Score PRs with an LLM judge instead of real outcomes</h3>
+<p><b>Why not:</b> the real outcome (merged, reworked, a bug filed) is free and is ground truth. A judge adds bias
+(position, verbosity, self-preference) and cost. Judges belong where there is no ground truth: the bench's grader,
+validated on your labels.</p></div>
+
+<div class="alt"><h3>Agent teams for epics</h3>
+<p><b>Why not:</b> it is still experimental and off by default. The docs themselves say teams cost "significantly
+more tokens" and lose to a single session on dependent work, which describes an epic.</p></div>
+
+<div class="alt"><h3>Automating launches to raise n</h3>
+<p><b>Why not:</b> automated use of the subscription is off the table (code-module spec §1). The honest ways to get
+more n are time, or API-billed offline benches.</p></div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>5 · Cost &amp; open questions</h2>
+<h4>What a session costs under each model (reprice of real records; token counts held fixed)</h4>
+<div class="scroll">
+<table>
+<thead><tr><th>Session</th><th class="num">Reported</th><th class="num">Opus 5.5</th><th class="num">Sonnet 5</th><th class="num">Fable 5.1</th><th class="num">Haiku 4.5</th><th class="num">Cache-read share</th></tr></thead>
+<tbody>
+<tr><td>ALF-282 implementation (#386)</td><td class="num">$9.70</td><td class="num">$8.89–10.17</td><td class="num">$6.68–7.32</td><td class="num">$16.63–19.82</td><td class="num">$3.34–3.66</td><td class="num">46%</td></tr>
+<tr><td>Realtime bug fix (#387)</td><td class="num">$9.15</td><td class="num">$7.92–9.19</td><td class="num">$6.09–6.73</td><td class="num">$14.46–17.65</td><td class="num">$3.05–3.36</td><td class="num">47%</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Ranges are the 5-minute and 1-hour cache-write prices. The reported figure falls inside the Opus range
+both times, so the formula reproduces. This is a non-obvious finding: <b>Opus 5.5's cache reads cost the same as
+Sonnet 5's ($0.20 per million tokens)</b>, and cache reads are about half of a long session's cost. So at equal
+tokens, switching to Sonnet saves only about 30%, not 50%. The bigger levers are effort (output tokens) and context
+length (cache reads grow with every turn). A different model also spends different tokens, which is exactly what
+the ledger measures. In the history, Sonnet 5 implementation sessions cost <em>more</em> at the median than
+Opus 5.5 ones (§2.2). The per-session spread is also huge ($1.65–$1,004), which dwarfs any price-sheet ratio.</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Item</th><th>Estimate</th></tr></thead>
+<tbody>
+<tr><td>Ledger backfill (read-only CLI)</td><td>One story. Its only external dependencies are GitHub and the session records.</td></tr>
+<tr><td>Launch recording and arms</td><td>One story: a migration, <code>links.ts</code> and the store.</td></tr>
+<tr><td>Defect-recall bench</td><td>One story, plus about 2 hours of owner time confirming SZZ traces and labelling false positives.</td></tr>
+<tr><td>Replay bench (reserved)</td><td>Several stories: task images that run alfred's gates, and stubbed human turns. About $4,700 in API spend for a decision-grade run, plus a per-run cost cap.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h4>Open questions</h4>
+<ul class="tight">
+  <li><b>Can plan usage, rather than dollars, be observed?</b> Anthropic publishes no per-model plan multiplier.
+  <code>cost_usd</code> is the best proxy, but a Max plan's real constraint is its limit window. Watch
+  <code>rate_limit_info</code> in the session record.</li>
+  <li><b>Does <code>usage</code> include subagents?</b> The evidence here is only an inference. If it doesn't, the
+  review round and epic implementers are under-counted.</li>
+  <li><b>Is the session-record API reachable outside a Claude Code session?</b> Today the ledger has to run where
+  the session MCP exists. That's fine for a manual instrument, but it blocks a Worker cron.</li>
+  <li><b>How is owner intervention counted?</b> The number of your turns mid-session is the clearest "needed a
+  human" signal, but it isn't in the session record. The transcript events may carry it; that needs
+  checking.</li>
+  <li><b>Is running <code>claude plugin eval</code> on the subscription sanctioned?</b> The docs say plan usage.
+  Spec §1's constraint concerns third-party automation of the subscription, and this is Anthropic's own CLI, run
+  by you. It still needs your confirmation before any bench is built on it.</li>
+</ul>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>6 · Secondary: the Worker's own LLM features</h2>
+<p>The first version of this spike covered these, and its findings stand:</p>
+<ul class="tight">
+  <li><b>Keep the hand-built harness and adopt no framework.</b> <code>npm run eval:comms -w workers</code> already
+  reports its directional metrics (queue recall, asap precision) with Wilson intervals, which the TypeScript
+  frameworks don't. A prototype showed that promptfoo 0.123.1 (2.0&nbsp;GB installed) and Evalite
+  1.0.0-beta.16 can both drive alfred's real <code>buildCommsRequest</code>, but neither computes a paired
+  comparison.</li>
+  <li><b>Add four things.</b>
+    <ul class="tight">
+      <li>Variants × fixtures × <b>k&nbsp;=&nbsp;5 trials</b>. <code>temperature</code> is deprecated, models after
+      Opus 4.6 reject anything but 1.0, and the SDK exposes no logprobs.</li>
+      <li><b>Paired statistics</b>: exact McNemar, and a fixture-clustered bootstrap.</li>
+      <li>A <b>dev/holdout split</b>.</li>
+      <li>A first <b>Inbox classifier suite</b>, seeded from <code>classification_corrections</code>.</li>
+    </ul>
+  </li>
+  <li><b>Labels are the constraint.</b> At 68 comms fixtures, a prompt change must flip 6 fixtures one way and break
+  none to clear p&nbsp;&lt;&nbsp;0.05. That argues for growing the set past 150 from real traffic.</li>
+  <li><b>The Reader's free text</b>: blind pairwise review by the owner first. Add an LLM judge only once it has
+  been validated on TPR/TNR.</li>
+</ul>
+<p>The statistics layer (Wilson intervals, exact McNemar, paired bootstrap) is the same code the session ledger
+needs. Build it once in a shared place.</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>7 · Sources</h2>
+<h4>Repo, data and commands</h4>
+<ol class="tight small">
+  <li>Read: <code>frontend/lib/code/links.ts</code> (all eight builders, <code>adversarialReviewStep</code>); <code>.claude/skills/{implement-epic,adversarial-review,implement-spec,bug,stryker}/SKILL.md</code>; <code>CLAUDE.md</code> "Model Assignment Rules"; <code>docs/specs/code-module/code-module-spec.md</code> §1, §11–13; <code>database/migrations/0002_software_factory.sql</code> (<code>code_items</code>), <code>0030_weekly_plan_items.sql</code> (<code>done_at</code>).</li>
+  <li><code>get_session</code> on <code>session_012rAhVixMoNJrXEghwHiNjC</code> (#386), <code>session_01VqVMqGas1aEWWfArJi9wZp</code> (#387) and this session; PR list and descriptions via the GitHub MCP; searches for merged <code>fix(</code> PRs (67) and "Adversarial review" in PR descriptions (14).</li>
+  <li><code>node power2.mjs</code> and <code>power3.mjs</code>: Fisher-exact power for unpaired arms; paired-replay power (ticket difficulty sd 1.5 logits); log-normal cost-ratio power at the observed sd of 1.13.</li>
+  <li><code>node power.mjs</code> and <code>reprice.mjs</code>: exact McNemar tables (§6), and the per-model reprice of the session records (§5).</li>
+  <li>History mining: all 390 PR descriptions, parsed for their <code>alfred</code> block, session links and review sections; <code>get_session</code> for the 82 most recent linked sessions; <code>list_sessions</code> (600 rows) for sessions with no PR. The aggregates were recomputed from the joined JSON (<code>agg.mjs</code>), and two records re-fetched and matched exactly (§2.2).</li>
+  <li>First version's prototypes: promptfoo and Evalite driving <code>buildCommsRequest</code> over the 68 comms fixtures, in a scratchpad; nothing committed.</li>
+</ol>
+<h4>External</h4>
+<ul class="tight small">
+  <li>Claude Code docs: <a href="https://code.claude.com/docs/en/plugin-evals">plugin evals</a> <span class="tag">fetched</span>; <a href="https://code.claude.com/docs/en/model-config">model configuration</a> (aliases incl. <code>opusplan</code>, effort levels and defaults) <span class="tag">fetched</span>; <a href="https://code.claude.com/docs/en/sub-agents">subagents</a>; <a href="https://code.claude.com/docs/en/agent-teams">agent teams</a>; <a href="https://code.claude.com/docs/en/best-practices">best practices</a>; <a href="https://code.claude.com/docs/en/headless">headless mode</a>; <a href="https://code.claude.com/docs/en/deep-links">deep links</a>; <a href="https://code.claude.com/docs/en/monitoring-usage">monitoring</a></li>
+  <li>Anthropic: <a href="https://platform.claude.com/docs/en/about-claude/pricing">pricing</a> <span class="tag">fetched</span>; <a href="https://platform.claude.com/docs/en/about-claude/models/choosing-a-model">choosing a model</a>; <a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Demystifying evals for AI agents</a> <span class="tag">fetched</span>; <a href="https://www.anthropic.com/engineering/multi-agent-research-system">How we built our multi-agent research system</a> <span class="tag">fetched</span>; <a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> <span class="tag">fetched</span>; <a href="https://www.anthropic.com/research/statistical-approach-to-model-evals">A statistical approach to model evaluations</a> <span class="tag">fetched</span></li>
+  <li>Frameworks: <a href="https://github.com/laude-institute/harbor">Harbor</a> <span class="tag">fetched</span>; <a href="https://github.com/harbor-framework/terminal-bench">Terminal-Bench</a> <span class="tag">fetched</span>; <a href="https://github.com/meridianlabs-ai/inspect_swe">inspect_swe</a> <span class="tag">fetched</span>; <a href="https://github.com/UKGovernmentBEIS/inspect_ai">Inspect AI</a>; <a href="https://github.com/princeton-nlp/SWE-bench">SWE-bench</a> <span class="tag">fetched</span></li>
+  <li>METR: <a href="https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/">early-2025 developer RCT</a>; <a href="https://metr.org/notes/2026-03-10-many-swe-bench-passing-prs-would-not-be-merged-into-main/">many SWE-bench-passing PRs would not be merged</a> <span class="tag snip">snippet</span></li>
+  <li>Multi-agent and review: Cognition, <a href="https://cognition.com/blog/dont-build-multi-agents">Don't Build Multi-Agents</a> and <a href="https://cognition.com/blog/multi-agents-working">follow-up</a> <span class="tag snip">snippet</span>; Cemri et al., <a href="https://arxiv.org/abs/2503.13657">Why Do Multi-Agent LLM Systems Fail?</a>; Huang et al., <a href="https://arxiv.org/abs/2310.01798">LLMs Cannot Self-Correct Reasoning Yet</a>; Panickssery et al., <a href="https://proceedings.neurips.cc/paper_files/paper/2024/hash/7f1f0218e45f5414c79c0679633e47bc-Abstract-Conference.html">LLM Evaluators Recognize and Favor Their Own Generations</a>; McAleese et al., <a href="https://cdn.openai.com/llm-critics-help-catch-llm-bugs-paper.pdf">LLM Critics Help Catch LLM Bugs</a> <span class="tag snip">snippet</span></li>
+  <li>Variance reduction: Deng, Xu, Kohavi &amp; Walker, <a href="https://dl.acm.org/doi/10.1145/2433396.2433413">Improving the sensitivity of online controlled experiments by utilizing pre-experiment data</a> (CUPED, WSDM 2013) <span class="tag snip">snippet</span></li>
+  <li>Bug tracing: Śliwerski, Zimmermann &amp; Zeller, <a href="https://www.researchgate.net/publication/221656991_When_do_changes_induce_fixes">When do changes induce fixes?</a> (MSR 2005); <a href="https://arxiv.org/abs/2603.29378">LLM-based agents for identifying bug-introducing commits</a> <span class="tag snip">snippet</span></li>
+  <li>Agent PRs in the wild: <a href="https://arxiv.org/abs/2602.08915">task-stratified PR acceptance across five agents</a>; <a href="https://arxiv.org/abs/2607.01418">Microsoft's 2026 Claude Code / Copilot CLI rollout</a> <span class="tag snip">snippet</span></li>
+  <li>From the first version (the classifiers): <a href="https://github.com/promptfoo/promptfoo">promptfoo</a>, <a href="https://github.com/mattpocock/evalite">Evalite</a>, OpenAI Evals shutdown (<a href="https://community.openai.com/t/deprecation-notice-evals-will-be-shut-down-on-november-30th-2026/1385537">notice</a>), Husain &amp; Shankar <a href="https://hamel.dev/blog/posts/evals-faq/">AI Evals FAQ</a>, Zheng et al. <a href="https://arxiv.org/abs/2306.05685">MT-Bench judge biases</a></li>
+</ul>
+
+</div>
+</body>
+</html>
