@@ -52,9 +52,11 @@ export function MoreActionsMenu({
 
   const canSkipToDev = launchPhasesFor(story).includes('bypass');
   const canRefine = storyKindOf(story) === 'story';
-  // Picking Block… opens an editor that takes focus. Radix would then hand focus back to this
-  // menu's trigger as it closes, stealing it from the editor (and dropping the keyboard).
-  const openedEditor = React.useRef(false);
+  // Block… opens an editor that takes focus, so it opens once the menu has finished closing — from
+  // `onCloseAutoFocus`, not `onSelect`. A Radix menu keeps trapping focus through its exit
+  // animation and would pull it straight back off an editor that opened any sooner; and left to
+  // itself it then hands focus to its trigger, which the editor has just replaced.
+  const blockRequested = React.useRef(false);
 
   const skipToDev = async () => {
     try {
@@ -79,9 +81,10 @@ export function MoreActionsMenu({
       <DropdownMenuContent
         align="end"
         onCloseAutoFocus={(event) => {
-          if (!openedEditor.current) return;
+          if (!blockRequested.current) return;
+          blockRequested.current = false;
           event.preventDefault();
-          openedEditor.current = false;
+          onBlock();
         }}
       >
         {canSkipToDev ? (
@@ -119,8 +122,7 @@ export function MoreActionsMenu({
             disabled={pending}
             className={AMBER_ITEM}
             onSelect={() => {
-              openedEditor.current = true;
-              onBlock();
+              blockRequested.current = true;
             }}
           >
             <Ban size={14} />

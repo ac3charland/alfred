@@ -160,19 +160,11 @@ export function BlockReasonEditor({
 
   React.useEffect(() => {
     if (!reveal) return;
-    // A task later, not now: Block… is picked from a menu whose focus trap is still up for the
-    // rest of this event, and it would pull focus straight back off the editor. WebKit carries a
-    // tap's user gesture through a short timer, so the phone's keyboard still rises.
-    const timer = setTimeout(() => {
-      const node = wrapper.current;
-      // `scrollIntoView` is unimplemented under jsdom, so feature-detect it. `preventScroll` on
-      // the focus: the card is already scrolled to, and a second scroll would only jump it.
-      if (typeof node?.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' });
-      node?.querySelector('textarea')?.focus({ preventScroll: true });
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-    };
+    const node = wrapper.current;
+    // `scrollIntoView` is unimplemented under jsdom, so feature-detect it. `preventScroll` on the
+    // focus: the card is already scrolled to, and a second scroll would only jump it.
+    if (typeof node?.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' });
+    node?.querySelector('textarea')?.focus({ preventScroll: true });
   }, [reveal]);
 
   return (
