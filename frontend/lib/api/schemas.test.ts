@@ -386,6 +386,16 @@ describe('updateProjectSchema', () => {
   it.each(['violet', '#ff0000', 'Blue', '', 3])('rejects the off-palette colour %p', (color) => {
     expect(updateProjectSchema.safeParse({ color }).success).toBe(false);
   });
+
+  it.each([true, false])('accepts exclude_from_pr_ratio: %p', (excluded) => {
+    const result = updateProjectSchema.safeParse({ exclude_from_pr_ratio: excluded });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toStrictEqual({ exclude_from_pr_ratio: excluded });
+  });
+
+  it.each(['true', 1, null])('rejects the non-boolean exclude_from_pr_ratio %p', (excluded) => {
+    expect(updateProjectSchema.safeParse({ exclude_from_pr_ratio: excluded }).success).toBe(false);
+  });
 });
 
 describe('listItemsQuerySchema', () => {
