@@ -41,6 +41,14 @@ anchors the reviewer and defeats the point. Give it:
   the reviewer judge whether the fix hits the root cause rather than handing it your diagnosis).
 - **Where to look:** the PR number, its diff against the base, and the repo's CLAUDE.md /
   CONTRIBUTING. Fetch the base before diffing against it (the git skill's stale-main trap).
+- **Its first step:** read the PR's demo doc before the diff — the brief names its path, or says
+  there is none and why (the repo exempts the change, or the human waived it). Judge its
+  *evidence* — open every screenshot and captured output, and check it's current; the prose is the
+  author's claim, not proof — against what was asked (the ticket and its spec or plan), in the form
+  the repo's demo conventions call for (a UI change shown, not test output). If it doesn't show each
+  required behavior actually happening — or there's no demo where the repo owes one — that is the
+  report's **first finding**, ahead of the code findings: a diff that reads right can still do the
+  wrong thing. It then finishes the code review; the round isn't spent on the demo alone.
 - **Its job:** be adversarial — hunt for bugs, unmet or misread requirements, tests that don't
   actually pin the behavior, missed edge cases, and convention breaks. Each finding carries
   `file:line`, the evidence, a severity, and a concrete fix.
@@ -49,7 +57,11 @@ anchors the reviewer and defeats the point. Give it:
 ## Triage every finding
 
 - **Verify before you act.** Reproduce it or trace it in the code; a finding is a claim, not a fact.
-- **Legitimate → fix it**, test-first when it's behavioral, through the normal gates.
+- **Legitimate → fix it**, test-first when it's behavioral, through the normal gates. Take a demo
+  finding first — fixing the behavior can moot or move the code findings — and work out whether it's
+  the behavior or the capture. Wrong behavior that got past the suite gets a red test, the fix, then
+  a re-capture; right behavior with missing or unfitting evidence gets captured properly. Never
+  stage the demo to pass.
 - **Declining needs evidence, not preference.** The reviewer may be the stronger model: a false
   premise or a contradicting requirement is a reason, "I disagree" isn't.
 - **Real but out of scope → tell the human** in the tab rather than widening the diff.
