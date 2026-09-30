@@ -269,7 +269,9 @@ export function IntendedEpicChip({
           </Badge>
         }
         value={epicId}
-        options={epicOptions(epicsForProject)}
+        // The badge still shows an archived hint, which the list no longer offers — so give it the
+        // clear entry, or a project with no active epic left opens an empty popover.
+        options={epicOptions(epicsForProject, epic.archived_at === null ? undefined : 'No epic')}
         onSelect={onSelect}
       />
     );

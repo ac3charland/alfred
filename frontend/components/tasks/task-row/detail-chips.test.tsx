@@ -239,6 +239,21 @@ describe('the label chips (ALF-170)', () => {
       expect(screen.queryByRole('button', { name: /Retired epic/ })).not.toBeInTheDocument();
     });
 
+    it('compact: an archived current epic can still be cleared, even with no active epic left', async () => {
+      // The badge keeps showing the archived hint, so its popover must not be a dead end: with
+      // the archived epic hidden and no active sibling, "No epic" is the only way out.
+      const onSelect = jest.fn();
+      const user = userEvent.setup();
+      renderWithProviders(
+        <IntendedEpicChip projectId="p1" epicId="e4" size="compact" onSelect={onSelect} />,
+        { projects: PROJECTS, epics: [ARCHIVED_EPIC] },
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Epic: ALF-90' }));
+      await user.click(await screen.findByRole('button', { name: 'No epic' }));
+      expect(onSelect).toHaveBeenCalledWith(null);
+    });
+
     it('shows the ref + name when set and auto-saves a pick', async () => {
       const onSelect = jest.fn();
       const user = userEvent.setup();
