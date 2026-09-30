@@ -256,3 +256,50 @@ test('the block-reason editor behaves the same way with the keyboard up', async 
   expect(endReason.y + endReason.height).toBeLessThanOrEqual(endFooter.y);
   expect(await reason.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
 });
+
+test('a long unbroken word wraps inside the notes well instead of scrolling the sheet sideways', async ({
+  page,
+  seed,
+}) => {
+  // No `/`, `-` or space to break at, as browsers break URLs there: one word wider than the well.
+  const word = `See ${'x'.repeat(160)}`;
+  const sheet = await openSheet(page, seed, { notes: word });
+  const { body } = regions(sheet);
+
+  const overflow = await body.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBe(0);
+  // The pencil is still inside the well, not pushed off its edge.
+  const well = await box(sheet.getByRole('button', { name: /^See x+/ }));
+  const pencil = await box(sheet.getByRole('button', { name: /^See x+/ }).locator('svg'));
+  expect(pencil.x + pencil.width).toBeLessThanOrEqual(well.x + well.width);
+});
+
+test('a reason editor added below a long note is revealed, and stays clear of the footer when the keyboard rises', async ({
+  page,
+  seed,
+}) => {
+  const sheet = await openSheet(page, seed, {
+    factoryState: 'in_development',
+    notes: longNote(),
+  });
+  const { footer } = regions(sheet);
+  await sheet.getByRole('button', { name: 'More story actions' }).click();
+  await page.getByRole('menuitem', { name: 'Block…' }).click();
+  const reason = sheet.getByRole('textbox', { name: /why is this blocked/i });
+  await expect(reason).toBeFocused();
+  // Appended at the end of a body far taller than the screen, yet scrolled into view.
+  await expect(reason).toBeInViewport({ ratio: 1 });
+
+  // The keyboard rises under the focused field: nothing scrolls by hand, so the sheet itself has
+  // to bring the field back above the footer.
+  await page.setViewportSize({ width: 390, height: 470 });
+
+  await expect.poll(() => heightOf(sheet)).toBe(470);
+  await expect
+    .poll(async () => {
+      const field = await box(reason);
+      const bar = await box(footer);
+      return field.y + field.height <= bar.y;
+    })
+    .toBe(true);
+});
