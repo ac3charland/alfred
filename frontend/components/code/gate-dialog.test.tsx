@@ -316,6 +316,29 @@ describe('GateDialog', () => {
       );
     });
 
+    it('never lists an archived epic, and does not pre-select one', async () => {
+      // The gate is a destination picker: an archived epic is off the board, and a pre-selected
+      // one the list hides would leave Confirm live on a target the owner cannot see.
+      const ARCHIVED: Epic = {
+        ...EPIC,
+        id: 'e-archived',
+        name: 'Retired Epic',
+        ref_number: 7,
+        ref: 'ALF-7',
+        archived_at: '2025-06-01T00:00:00Z',
+      };
+      renderGate(
+        { items: [{ ...ITEM, intendedProjectId: 'p1', intendedEpicId: 'e-archived' }] },
+        { projects: [PROJECT], epics: [EPIC, ARCHIVED] },
+      );
+
+      expect(
+        await screen.findByRole('option', { name: /communication firewall/i }),
+      ).toHaveAttribute('aria-selected', 'false');
+      expect(screen.queryByRole('option', { name: /retired epic/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /send to code module/i })).toBeDisabled();
+    });
+
     it('does not pre-select an epic when the batch disagrees', async () => {
       renderGate(
         {

@@ -26,6 +26,7 @@ import { IconButton } from '@/components/atoms/icon-button';
 import type { PickerChipOption } from '@/components/atoms/picker-chip';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/atoms/popover';
 import type { RowMetaEditing } from '@/components/tasks/task-row/row-meta-cluster';
+import { activeEpicsForProject } from '@/lib/code/epics';
 import { addDays, todayISODate } from '@/lib/date-utils';
 import { PRIORITY_OPTIONS, isPriorityLevel } from '@/lib/priority';
 import { useEpics, useProjects } from '@/lib/stores/code-store';
@@ -237,7 +238,7 @@ export function TaskRowMenu({
   // the DB lets a knowledge row take).
   const showClassify = !isSaving && isInboxRow && canChangeType;
 
-  const epicsForProject = epics.filter((e) => e.project_id === node.intended_project_id);
+  const epicsForProject = activeEpicsForProject(epics, node.intended_project_id);
 
   return (
     <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>

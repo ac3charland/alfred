@@ -7,6 +7,7 @@ import { Badge } from '@/components/atoms/badge';
 import { Chip } from '@/components/atoms/chip';
 import { PickerChip } from '@/components/atoms/picker-chip';
 import { RecurrenceEditor } from '@/components/tasks/recurrence/recurrence-editor';
+import { activeEpicsForProject } from '@/lib/code/epics';
 import { projectBadgeClasses, projectChipClasses, projectColorFor } from '@/lib/code/project-color';
 import { todayISODate } from '@/lib/date-utils';
 import {
@@ -240,7 +241,7 @@ export function IntendedEpicChip({
   const projects = useProjects();
   const epics = useEpics();
   const epic = epics.find((e) => e.id === epicId);
-  const epicsForProject = epics.filter((e) => e.project_id === projectId);
+  const epicsForProject = activeEpicsForProject(epics, projectId);
   const color = projectColorFor(projects, projectId);
 
   if (size === 'compact') {
@@ -268,7 +269,9 @@ export function IntendedEpicChip({
           </Badge>
         }
         value={epicId}
-        options={epicOptions(epicsForProject)}
+        // The badge still shows an archived hint, which the list no longer offers — so give it the
+        // clear entry, or a project with no active epic left opens an empty popover.
+        options={epicOptions(epicsForProject, epic.archived_at === null ? undefined : 'No epic')}
         onSelect={onSelect}
       />
     );

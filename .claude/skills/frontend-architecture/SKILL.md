@@ -46,6 +46,7 @@ home is never a judgement call — it's always `atoms/`.
 | an expand/collapse reveal | `AnimatedHeightCollapse` (+ the `motion` skill) | copying the `grid-rows-[0fr↔1fr]` transition block |
 | a textarea + save/cancel | `TextareaField` | another textarea + two `Button`s inline |
 | an active/inactive nav link class | the shared `navLinkClass` helper | a per-file copy of the same function |
+| the epics a picker offers (the code store also holds archived ones, for the board's Show-archived toggle) | `activeEpicsForProject` (`lib/code/epics`) | `epics.filter((e) => e.project_id === …)`, which offers archived epics |
 
 When the difference between two usages is only a color or size, prefer **adding a cva variant** to
 the existing component over forking a new one.
