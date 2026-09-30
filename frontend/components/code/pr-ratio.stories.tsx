@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
-import { within } from 'storybook/test';
+import { userEvent, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { PrRatioResponse, Project } from '@/lib/types';
@@ -179,6 +179,56 @@ export const Loading: Story = {
  */
 export const Failed: Story = {
   decorators: [stubEndpoint(502, { error: 'GitHub request failed' })],
+};
+
+/** Seeds the card's store with `projects` in place of the meta's. */
+function withProjects(projects: Project[]) {
+  return (Story: React.ComponentType) => (
+    <CodeProvider initialProjects={projects} initialEpics={[]} initialStories={[]}>
+      <Story />
+    </CodeProvider>
+  );
+}
+
+/**
+ * Every project excluded from the ratio: one muted line in place of the range, bar and legend —
+ * even though Other still merged PRs — with the ⋯ kept so a project can be unticked.
+ */
+export const AllExcluded: Story = {
+  decorators: [
+    withProjects(PROJECTS.map((project) => ({ ...project, exclude_from_pr_ratio: true }))),
+    stubEndpoint(200, { ...WITH_OTHER, total: 3, repos: [], other: { count: 3, percentage: 100 } }),
+  ],
+};
+
+/**
+ * The ⋯ menu open over the card: every project in creation order with its colour dot under a muted
+ * heading, the excluded one ticked. Captured on `body`, since the menu is portalled outside the
+ * story root.
+ */
+export const ExcludeMenuOpen: Story = {
+  parameters: {
+    visualTest: { target: 'body' },
+  },
+  decorators: [
+    withProjects(
+      PROJECTS.map((project) => ({
+        ...project,
+        exclude_from_pr_ratio: project.id === 'p-realplay',
+      })),
+    ),
+    stubEndpoint(200, {
+      ...SPLIT,
+      total: 6,
+      repos: [{ repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 100 }],
+    }),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole('img');
+    await userEvent.click(canvas.getByRole('button', { name: 'PR ratio options' }));
+    await within(document.body).findByRole('menu');
+  },
 };
 
 /**
