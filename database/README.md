@@ -185,6 +185,19 @@ and summarised by the Worker's Reader tick.
 - **`reader_health.instapaper_last_success_at` / `_last_error` / `_last_error_at`** — the To Reader
   leg's own health, apart from the summariser's, read by the Reader header's Instapaper dot.
 
+### `0046_code_sessions.sql` — the coding-session ledger (ALF-309)
+
+- **`code_sessions`** — one row per Claude Code session that worked on an alfred repo, keyed by
+  `session_id`: model, effort, cost and tokens from the session record; the PR it produced and its
+  outcome (`human_commits_after_open` is owner rework); and the launch prompt, spec and skills as
+  rebuilt at `base_sha`, main at session start. `warnings` names the reason behind every null;
+  `session_record` keeps the raw record. `ref` has no FK, so history survives a deleted ticket.
+  Written by `tools/session-ledger` through the ledger-key routes; nothing in the app reads it yet.
+- **`upsert_code_sessions(p_rows jsonb)`** — `security invoker`, one statement. Refreshes every
+  column on each run, except that a stored `recorded` prompt keeps its prompt, provenance,
+  `builder_sha` and `base_sha` over an incoming `reconstructed` row. Returns `{upserted,
+  kept_recorded}`.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it.** `.github/workflows/migrate.yml` runs

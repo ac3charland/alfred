@@ -5243,6 +5243,173 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const codeSessionsGrantsResult = await attempt(
+    'upsert_code_sessions is security invoker and executable by all three API roles, and anon ' +
+      'reads no ledger rows (ALF-309)',
+    async () => {
+      const { rows } = await client.query<{
+        secdef: boolean;
+        anon_exec: boolean;
+        auth_exec: boolean;
+        sr_exec: boolean;
+      }>(
+        `select p.prosecdef as secdef,
+                has_function_privilege('anon', p.oid, 'EXECUTE') as anon_exec,
+                has_function_privilege('authenticated', p.oid, 'EXECUTE') as auth_exec,
+                has_function_privilege('service_role', p.oid, 'EXECUTE') as sr_exec
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'upsert_code_sessions'`,
+      );
+      const fn = rows[0];
+      if (rows.length !== 1 || !fn)
+        throw new Error(`expected one upsert_code_sessions, found ${String(rows.length)}`);
+      if (fn.secdef) throw new Error('the function is security definer, not invoker');
+      if (!fn.anon_exec || !fn.auth_exec || !fn.sr_exec)
+        throw new Error(
+          `EXECUTE missing: anon=${String(fn.anon_exec)} authenticated=${String(fn.auth_exec)} service_role=${String(fn.sr_exec)}`,
+        );
+
+      // The owner's session writes through the same RPC the keyed route uses.
+      await asRole(client, 'authenticated', () =>
+        client.query(`select * from upsert_code_sessions($1::jsonb)`, [
+          JSON.stringify([{ session_id: 'session_grant_probe', repo: 'ac3charland/alfred' }]),
+        ]),
+      );
+      const anonRows = await asRole(client, 'anon', () =>
+        client.query(`select session_id from code_sessions`),
+      );
+      if (anonRows.rows.length > 0) throw new Error('anon can read ledger rows');
+      await client.query(`delete from code_sessions where session_id = 'session_grant_probe'`);
+      return 'security invoker, EXECUTE granted to all three roles; anon sees no rows';
+    },
+  );
+
+  const codeSessionsRecordedWinsResult = await attempt(
+    'upsert_code_sessions keeps a recorded prompt (and its builder and base) over a ' +
+      'reconstructed row, refreshing everything else (ALF-309)',
+    async () => {
+      interface LedgerProbe {
+        prompt: string | null;
+        prompt_source: string | null;
+        builder_sha: string | null;
+        base_sha: string | null;
+        cost_usd: string | null;
+        pr_state: string | null;
+        warnings: string[];
+        skills: unknown;
+        refreshed_epoch: number;
+      }
+      const upsert = async (
+        rows: Record<string, unknown>[],
+      ): Promise<{ upserted: number; kept_recorded: number }> => {
+        const result = await asRole(client, 'service_role', () =>
+          client.query<{ upserted: number; kept_recorded: number }>(
+            `select * from upsert_code_sessions($1::jsonb)`,
+            [JSON.stringify(rows)],
+          ),
+        );
+        const counts = result.rows[0];
+        if (!counts) throw new Error('upsert_code_sessions returned no row');
+        return counts;
+      };
+      const read = async (id: string): Promise<LedgerProbe> => {
+        const { rows } = await client.query<LedgerProbe>(
+          `select prompt, prompt_source, builder_sha, base_sha, cost_usd, pr_state, warnings,
+                  skills, extract(epoch from refreshed_at)::float8 as refreshed_epoch
+             from code_sessions where session_id = $1`,
+          [id],
+        );
+        const row = rows[0];
+        if (!row) throw new Error(`no ledger row for ${id}`);
+        return row;
+      };
+      const base = { repo: 'ac3charland/alfred' };
+
+      // A recorded row lands first — the future recording hook's write.
+      const first = await upsert([
+        {
+          ...base,
+          session_id: 'session_recorded',
+          prompt: 'the prompt exactly as sent',
+          prompt_source: 'recorded',
+          builder_sha: 'builder-recorded',
+          base_sha: 'base-recorded',
+          cost_usd: 1.5,
+          refreshed_at: '2000-01-01T00:00:00Z',
+        },
+        {
+          ...base,
+          session_id: 'session_reconstructed',
+          prompt: 'old',
+          prompt_source: 'reconstructed',
+        },
+      ]);
+      if (first.upserted !== 2 || first.kept_recorded !== 0)
+        throw new Error(`first batch counted ${JSON.stringify(first)}`);
+      const before = await read('session_recorded');
+      if (before.refreshed_epoch === Date.parse('2000-01-01T00:00:00Z') / 1000)
+        throw new Error('refreshed_at took the caller’s value instead of now()');
+      if (JSON.stringify(before.skills) !== '[]' || before.warnings.length > 0)
+        throw new Error(
+          `absent skills/warnings did not default: ${JSON.stringify([before.skills, before.warnings])}`,
+        );
+
+      // The backfill re-runs over both sessions.
+      const second = await upsert([
+        {
+          ...base,
+          session_id: 'session_recorded',
+          prompt: 'a rebuilt guess',
+          prompt_source: 'reconstructed',
+          builder_sha: 'builder-rebuilt',
+          base_sha: 'base-rebuilt',
+          cost_usd: 2.25,
+          pr_state: 'merged',
+          warnings: ['builder_changed_near_start'],
+        },
+        {
+          ...base,
+          session_id: 'session_reconstructed',
+          prompt: 'new',
+          prompt_source: 'reconstructed',
+        },
+      ]);
+      if (second.upserted !== 2 || second.kept_recorded !== 1)
+        throw new Error(`re-run counted ${JSON.stringify(second)}`);
+
+      const kept = await read('session_recorded');
+      if (
+        kept.prompt !== 'the prompt exactly as sent' ||
+        kept.prompt_source !== 'recorded' ||
+        kept.builder_sha !== 'builder-recorded' ||
+        kept.base_sha !== 'base-recorded'
+      )
+        throw new Error(`recorded fields were overwritten: ${JSON.stringify(kept)}`);
+      if (Number(kept.cost_usd) !== 2.25 || kept.pr_state !== 'merged')
+        throw new Error(`other columns were not refreshed: ${JSON.stringify(kept)}`);
+      if (kept.warnings.join(',') !== 'builder_changed_near_start')
+        throw new Error(`warnings were not refreshed: ${kept.warnings.join(',')}`);
+      if (!(kept.refreshed_epoch > before.refreshed_epoch))
+        throw new Error('refreshed_at did not advance');
+
+      const replaced = await read('session_reconstructed');
+      if (replaced.prompt !== 'new')
+        throw new Error(`a reconstructed prompt was not replaced: ${String(replaced.prompt)}`);
+
+      // A recorded row may replace a recorded one (the hook re-records every turn).
+      const third = await upsert([
+        { ...base, session_id: 'session_recorded', prompt: 'turn two', prompt_source: 'recorded' },
+      ]);
+      const rerecorded = await read('session_recorded');
+      if (third.kept_recorded !== 0 || rerecorded.prompt !== 'turn two')
+        throw new Error(`recorded over recorded: ${JSON.stringify([third, rerecorded.prompt])}`);
+
+      await client.query(`delete from code_sessions where session_id like 'session_re%'`);
+      return 'kept_recorded=1 on a re-run; recorded prompt/builder/base survive, cost/state/warnings refresh';
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -5338,5 +5505,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     wikiAppendIdeasResult,
     wikiAppendPicksResult,
     wikiSearchResult,
+    codeSessionsGrantsResult,
+    codeSessionsRecordedWinsResult,
   ];
 }
