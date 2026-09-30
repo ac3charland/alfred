@@ -552,6 +552,15 @@ describe('secret guard', () => {
     expect(readFileSync(file, 'utf8')).toBe(before);
   });
 
+  it('says the command ran when only its output is refused, and not for a refused note', async () => {
+    const { file, directory } = tempDoc();
+    await init(file, 'D');
+    await expect(exec(file, 'bash', PRINT_LEAK, directory)).rejects.toThrow(
+      /Nothing was written to .* \(the command itself did run\)/,
+    );
+    await expect(note(file, LEAKED_URI)).rejects.not.toThrow(/did run/);
+  });
+
   it('the refusal steers to psql or a pre-exported credential, never an inline NAME=value', async () => {
     const { file } = tempDoc();
     await init(file, 'D');

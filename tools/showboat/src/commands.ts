@@ -73,7 +73,10 @@ export class SecretError extends Error {
     super(
       `refused to record ${what} in ${file}: it looks like a secret, and this repo is public.\n` +
         `${report.trim()}\n` +
-        'Nothing was written. For live-database evidence run `npm run psql -w database -- -c "<sql>"`, ' +
+        `Nothing was written to ${file}` +
+        // An output is only checked after the command ran, so its own side effects already happened.
+        (what === 'command output' ? ' (the command itself did run). ' : '. ') +
+        'For live-database evidence run `npm run psql -w database -- -c "<sql>"`, ' +
         'which reads the URL from frontend/.env.local. Any other credential must already be ' +
         'exported in your shell outside the recorded command (never `NAME=value` inside it: the ' +
         'assignment is recorded too), or be masked (`:****@`).',
