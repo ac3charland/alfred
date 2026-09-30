@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-309 — Backfill coding session ledger</title><style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p1:has([value=a]:checked) [data-opt=b],#p1:has([value=b]:checked) [data-opt=a]{display:none}
+/* Non-UI output: a terminal in alfred's dark tokens (frontend/app/globals.css) and Geist Mono. */
+.app{--bg:#0a0e17;--fg:#e8edf5;--muted-fg:#8a96a8;--border:#1e2a3f;--primary:#4fd1e0;
+  background:var(--bg);color:var(--fg);overflow:hidden;border:1px solid var(--border);
+  font:12px/1.5 "Geist Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.app .term{margin:0;padding:14px 16px;overflow-x:auto;white-space:pre;font:inherit;color:inherit;background:none;border:0}
+.app .dim{color:var(--muted-fg)}
+.app .hl{color:var(--primary)}
+
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Code module · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>309</span><span class="sep"> — </span><span class="ttl">Backfill coding session ledger</span></h1>
+  <p class="change" id="change">A new <code>code_sessions</code> table in alfred holds one row per alfred-repo coding session: model, effort, cost, PR outcome, and its launch prompt, spec and skills rebuilt from git history.</p>
+  <p class="revised" id="revised">Revised 2026-09-30: D2 → everything read from main at session start; D9 becomes an ancestor check; forward recording split out to a hook story (your review).</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d1">D1</a>Which key lets the backfill in?</h3>
+      <p class="pick">A new <code>LEDGER_API_KEY</code>, accepted only by the two ledger routes and added by the proxy.</p>
+      <p class="why">Departs from “ingest key”, which also creates items and plans; follows ALF-298.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>What’s stored for prompt, spec and skills?</h3>
+      <p class="pick">Prompt as full text; spec and skills as a path plus git blob sha.</p>
+      <p class="why">Git keeps every version. The stored base commit answers any other file later.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>How does the ledger grow later?</h3>
+      <p class="pick">Rows keep the raw session record; recorded values always beat reconstructed ones.</p>
+      <p class="why">New columns backfill without refetching. A re-run can’t clobber the future recording hook.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Which commit counts as “at the time”?</h3>
+      <p class="pick">Main at session start, for the prompt, the spec and the skills alike.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>Where does the ledger live?</h3>
+      <p class="pick">In a Supabase table, seeded now and extended later.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>Which sessions get a row?</h3>
+      <p class="pick">Every alfred-repo session in every lane. Sessions with no PR get cost-only rows.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="a" checked>A · Linked to a PR</label>
+      <label><input type="radio" name="p1" value="b">B · No PR</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="One code_sessions row in expanded display, for a PR-linked session and for a session with no PR">
+<pre class="term" data-opt="a"><span class="dim">alfred=&gt; select * from code_sessions where session_id = 'session_016rv79d7gymhedazyM55jWB';</span>
+<span class="dim">-[ RECORD 1 ]------------+----------------------------------------------</span>
+session_id               | session_016rv79d7gymhedazyM55jWB
+repo                     | ac3charland/alfred
+ref                      | ALF-221
+launch_lane              | implementation
+session_created_at       | 2026-09-30 02:42:53+00
+model                    | claude-sonnet-5-5
+served_model             | claude-sonnet-5-5
+effort_level             | xhigh
+cost_usd                 | 33.037491
+output_tokens            | 310420
+cache_read_tokens        | 108078185
+pr_number                | 415
+pr_state                 | merged
+pr_merged_at             | 2026-09-30 12:26:22+00
+human_commits_after_open | 0
+base_sha                 | 9372104b76143dfd9db851ec862d5b91932e616f
+builder_sha              | 918e5609…
+prompt                   | ALF-221: give feedback when "Re-run classifier" is pressed↵
+                         | ↵
+                         | You are implementing the ticket ALF-221. Implement the merged…
+prompt_source            | <span class="hl">reconstructed</span>
+spec_path                | docs/specs/ALF-221.html
+spec_blob_sha            | 3d3e692b8a424a92eaa57746325d57593d42b922
+skills                   | [{"path": ".claude/skills/implement-spec/SKILL.md",
+                         |   "blob_sha": "ce33bd2cf51487fb644b8806c59c6ef6af9f7094"},
+                         |  {"path": ".claude/skills/adversarial-review/SKILL.md",
+                         |   "blob_sha": "4646ad6dcaccf6b90794a38e98054af8c53c8a1f"}]
+warnings                 | {}
+session_record           | {"id": "session_016rv79d7gymhedazyM55jWB", "session_context": …}
+refreshed_at             | 2026-10-02 14:05:11+00</pre>
+<pre class="term" data-opt="b"><span class="dim">alfred=&gt; select * from code_sessions where session_id = 'session_01…';</span>
+<span class="dim">-[ RECORD 1 ]------------+----------------------------------------------</span>
+session_id               | session_01…
+repo                     | ac3charland/alfred
+ref                      | ALF-2xx
+launch_lane              | <span class="dim">∅</span>
+session_created_at       | 2026-09-14 19:20:07+00
+model                    | claude-opus-5
+served_model             | claude-opus-5
+effort_level             | high
+cost_usd                 | 6.412208
+output_tokens            | 48113
+cache_read_tokens        | 9310554
+pr_number                | <span class="dim">∅</span>
+pr_state                 | <span class="dim">∅</span>
+pr_merged_at             | <span class="dim">∅</span>
+human_commits_after_open | <span class="dim">∅</span>
+base_sha                 | 7f3c… <span class="dim">(main when the session started)</span>
+builder_sha              | <span class="dim">∅</span>
+prompt                   | <span class="dim">∅</span>
+prompt_source            | <span class="dim">∅</span>
+spec_path                | <span class="dim">∅</span>
+spec_blob_sha            | <span class="dim">∅</span>
+skills                   | []
+warnings                 | {<span class="hl">no_pr</span>,<span class="hl">ref_from_title</span>}
+session_record           | {"id": "session_01…", "post_turn_summary": {"status_category": "failed", …}, …}
+refreshed_at             | 2026-10-02 14:05:11+00</pre>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>One ledger row, with some columns left out. A shows PR #415’s real values, with the prompt truncated. B shows the shape of a session that never opened a PR (values illustrative): the row still records cost, and its warnings say what couldn’t be reconstructed and why. ∅ is null.</figcaption>
+  </figure>
+
+  <figure class="plate" id="p2">
+    <div class="mount">
+      <div class="app" role="img" aria-label="The ledger CLI's run report after a backfill">
+<pre class="term"><span class="dim">$ npm run ledger -w tools/session-ledger -- report ledger/rows.ndjson</span>
+code_sessions · ac3charland/alfred · 412 sessions · 2026-06-15 → 2026-10-02
+
+coverage          rows   pct
+  linked to a PR   284   69%
+  ref known        301   73%
+  prompt rebuilt   262   64%
+  spec resolved     97   of 104 spec-reading sessions
+  cost recorded    409   99%
+
+lane               n   median $   p90 $    merged  human-reworked
+  implementation  121     24.10   88.40      117        9
+  bypass           38     17.35   51.02       37        4
+  bug              19      9.80   24.66       19        1
+  refinement       71     16.90   30.12       70        —
+  spike             6     41.22      —         6        —
+  epic-refinement   5     58.70      —         5        —
+  epic-implementation
+                    1    176.53      —         1        0
+  (no PR)         128      8.44   39.90        —        —
+
+warnings: 214 · top: builder_missing 22 · spec_missing_at_base 7 · ref_from_title 17
+pushed 412 rows (412 upserted, 0 kept recorded prompts)</pre>
+      </div>
+    </div>
+    <figcaption><b>Plate II.</b>The run report the backfill skill prints after pushing. The layout and columns are as specced; the counts are illustrative, since the real ones come from the first run.</figcaption>
+  </figure>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 620 250" role="img" aria-label="Four sources feed the session-ledger CLI, which upserts rows through a keyed route into the code_sessions table">
+      <g><rect x="4" y="6" width="182" height="44" rx="4"/><text x="14" y="25">Session records</text><text class="s" x="14" y="41">get_session → NDJSON</text></g>
+      <g><rect x="4" y="66" width="182" height="44" rx="4"/><text x="14" y="85">GitHub PRs</text><text class="s" x="14" y="101">REST · alfred block, link</text></g>
+      <g><rect x="4" y="126" width="182" height="44" rx="4"/><text x="14" y="145">git history</text><text class="s" x="14" y="161">links.ts, specs, skills</text></g>
+      <g class="new"><rect x="4" y="186" width="182" height="44" rx="4"/><text x="14" y="205">Stories &amp; epics</text><text class="s" x="14" y="221">GET /api/code/ledger-inputs</text></g>
+      <g class="new"><rect x="232" y="96" width="150" height="54" rx="4"/><text x="242" y="118">session-ledger CLI</text><text class="s" x="242" y="136">tools/ · replay + join</text></g>
+      <g class="new"><rect x="420" y="40" width="194" height="44" rx="4"/><text x="430" y="59">POST /api/code/sessions</text><text class="s" x="430" y="75">LEDGER_API_KEY only</text></g>
+      <g class="new"><rect x="420" y="150" width="194" height="44" rx="4"/><text x="430" y="169">code_sessions</text><text class="s" x="430" y="185">Supabase · one row per session</text></g>
+      <path class="hot" d="M186 28 C212 28 212 110 232 112"/>
+      <path class="hot" d="M186 88 L232 118"/>
+      <path class="hot" d="M186 148 L232 128"/>
+      <path class="hot" d="M186 208 C212 208 212 140 232 138"/>
+      <path class="hot" d="M382 112 C402 112 402 62 420 62"/>
+      <path class="hot" d="M517 84 L517 150"/>
+      <text class="lb" x="192" y="14">subagents, verified sample</text>
+      <text class="lb" x="523" y="122">upsert RPC</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b>A Claude Code session runs the new <code>session-ledger</code> skill. Its CLI joins four sources and upserts the rows through the one route that can write them.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>No ledger screen in alfred yet, no per-session recording hook (its own story), and no CI-failure, review-finding or escaped-bug metrics.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul>
+    <li>You mint <code>LEDGER_API_KEY</code> for Vercel and the cloud environment’s credentials (<a href="#after-merge">after merge</a>).</li>
+    <li>The first backfill is a manual session run after merge, using about 400 <code>get_session</code> calls on cheap subagents.</li>
+    <li>Rebuilt prompts use today’s ticket notes. They can’t see edits you made before pressing send.</li>
+  </ul>
+</section>
+
+</section>
+
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p><strong>The ask.</strong> ALF-309 is step 1 of the ALF-283 spike’s suggested order (<code>docs/spikes/ALF-283-evaluating-coding-sessions.html</code> §3): backfill a session ledger from history. The spike sampled 82 of the 262 PR-linked sessions. This story covers all of them, plus sessions with no PR. The ticket adds three reconstructed fields to the spike’s model, effort and cost: the prompt that launched the session, the spec it read, and the implementation skill in force. Scope is limited to sessions that worked on this repo.</p>
+  <p><strong>The owner’s answers in refinement:</strong></p>
+  <ul>
+    <li>The ledger is a table that gets seeded now and built on later, not a one-off report (D5).</li>
+    <li>Ticket inputs come through a keyed API read (D1 refines which key).</li>
+    <li>Every lane gets rows, and so do sessions with no PR (D6).</li>
+  </ul>
+  <p><strong>What exists today:</strong></p>
+  <ul>
+    <li><strong>PR descriptions.</strong> Each Code-module PR carries the <code>```alfred</code> block (<code>alfred-ticket</code>, <code>phase</code>, optional <code>spec-path</code>). Most also carry a <code>claude.ai/code/session_…</code> link. <code>workers/src/frontmatter.ts</code> already parses the block with a pure <code>parseFrontmatter</code> that has no imports.</li>
+    <li><strong>Session records.</strong> <code>get_session</code> (the Claude_Code_Remote MCP, reachable only from inside a Claude Code session) returns <code>session_context.{model,effort_level,sources}</code>, <code>configured_model</code>, <code>external_metadata.last_served_model</code>, <code>created_at</code>, <code>post_turn_summary</code> and <code>status_bucket</code>. Cost and tokens sit under <strong><code>external_metadata.usage</code></strong>, as <code>{input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd}</code>. The spike’s trimmed sample showed <code>usage</code> at the top level, but the live record nests it (verified on <code>session_016rv79d7gymhedazyM55jWB</code>). The record carries no prompt and no commit.</li>
+    <li><strong><code>code_items</code>.</strong> It records <code>spec_path</code>, <code>spec_sha</code> and the PR URLs. It records no launch time and no session. Ticket title and notes live on <code>items</code> and are exposed through <code>v_code_stories</code>. <code>GET /api/code</code> is session-only.</li>
+    <li><strong>The prompt builders.</strong> They live in <code>frontend/lib/code/links.ts</code>. Since it appeared on 2026-06-15 the file has had 28 versions and was never renamed. Every version imports <em>only types</em> (<code>import type … from '@/lib/types'</code>), so any historical version runs on its own. The builders turn <code>(project, story|epic)</code> into a URL, and the prompt is the URL’s <code>q</code> parameter.</li>
+    <li><strong>The skills.</strong> <code>implement-spec</code> was added 2026-06-16, <code>implement-epic</code> 2026-09-09, <code>bug</code> 2026-09-06 and <code>adversarial-review</code> 2026-09-28. The prompts name them by path and say “where present”.</li>
+    <li><strong>Commit authorship.</strong> Claude commits are always authored as <code>Claude &lt;noreply@anthropic.com&gt;</code>. Every other author is a human.</li>
+    <li><strong>The repo is public.</strong> Ledger data (cost, ticket notes) must never be committed. Fixtures use invented values.</li>
+    <li><strong>Precedent.</strong> ALF-298’s D2 (settled) gives a Claude-session writer a key that only its own route accepts, delivered as a proxy-injected environment credential. It never uses <code>INGEST_API_KEY</code>.</li>
+  </ul>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>Which key lets the backfill in? · proposed</h3>
+    <p>Add a new server env var, <code>LEDGER_API_KEY</code>. Only <code>GET /api/code/ledger-inputs</code> and <code>POST /api/code/sessions</code> accept it, as <code>Authorization: Bearer</code>, compared in constant time. Both routes also accept the owner’s login session, so the owner can inspect them from a browser. The key reaches the backfill session as an <em>API credential</em> for alfred’s host in the cloud environment. The proxy adds the header outside the VM, so the key is in no env var, file or transcript. If API credentials aren’t available, the fallback is a <code>LEDGER_API_KEY</code> env var, which the CLI sends only when it is set.</p>
+    <p>This departs from the owner’s “ingest-key read” answer in <em>which</em> key, not in the mechanism. <code>INGEST_API_KEY</code> resolves the admin client for items, weekly plans and habits, and this session reads PR descriptions and other sessions’ titles and summaries, which are untrusted text. With the ledger key, an injected session can at worst read ticket notes and corrupt ledger rows, and a re-run repairs the rows. Considered: reusing <code>INGEST_API_KEY</code> (widest blast radius); an env var as the primary route (readable by the session, so it can be exfiltrated).</p>
+  </section>
+
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>Which commit counts as “at the time”? · settled</h3>
+    <p>There is one anchor, <code>base_sha</code>: the last first-parent commit on <code>origin/main</code> whose committer date is at or before the session’s <code>created_at</code>. The prompt is rebuilt from the <code>links.ts</code> in that commit, because Vercel deploys main. The spec and skills are resolved there too, because a session launched from alfred’s link clones main as it starts. <code>builder_sha</code> is the last commit that changed <code>links.ts</code> as of <code>base_sha</code>. It isn’t a second anchor; it only groups rows by prompt version.</p>
+    <p>The owner can pick another branch in the session UI, for example to continue an existing PR branch. D9 flags those rows rather than tracing them. Neither choice sees skill edits a session makes during its own run (ALF-282 created <code>adversarial-review</code> in its own PR). The ledger records what the session <em>started</em> with.</p>
+    <p>Considered: the commit the session’s branch forked from, for the spec and skills (the first draft). It was exact in principle, but on PRs #386 and #415 it was the same commit as main at session start. It needed merge-commit matching, <code>refs/pull</code> fetches and a fallback, and it broke on squash merges and deleted branches, all to cover a case the ancestor check flags.</p>
+  </section>
+
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>What’s stored for prompt, spec and skills? · proposed</h3>
+    <p>The prompt is computed, not a file, so it is stored as text (about 3–5 KB). The spec is stored as <code>spec_path</code> plus <code>spec_blob_sha</code>. The skills are a jsonb array of <code>{path, blob_sha}</code>. <code>git cat-file -p &lt;blob&gt;</code> or a GitHub blob URL returns the exact bytes, forever, from the public repo. <code>base_sha</code> is stored as well, so a later question such as “which CLAUDE.md was in force?” needs no new column. Considered: copying spec and skill text into the row (duplicates git, about 50 KB per spec); storing only <code>base_sha</code> (every reader would have to re-derive which skills a lane named).</p>
+  </section>
+
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>How does the ledger grow later? · proposed</h3>
+    <ul>
+      <li><strong>Raw record.</strong> <code>session_record jsonb</code> keeps the whole <code>get_session</code> JSON verbatim. A later column (for example <code>context_usage</code> or <code>rate_limit_info</code>) can be backfilled in SQL without another MCP sweep.</li>
+      <li><strong>Provenance.</strong> <code>prompt_source</code> is <code>'reconstructed' | 'recorded'</code>. Every row this story writes says <code>reconstructed</code>. The upsert RPC keeps an existing <code>recorded</code> prompt, and its builder and base fields, when a reconstructed row arrives for the same session. The follow-up recording hook (see Out of scope) will write <code>recorded</code> rows, and a backfill re-run can’t overwrite them.</li>
+      <li><strong>Refresh.</strong> Every other column is refreshed on each run (the cost of a still-running session, PR state, warnings).</li>
+    </ul>
+    <p>Considered: append-only snapshots per run (nothing needs refresh history yet); no raw record (every new metric would need another sweep over hundreds of sessions).</p>
+  </section>
+
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>Where does the ledger live? · settled</h3>
+    <p>A <code>code_sessions</code> table in Supabase, one row per session, keyed by <code>session_id</code>. The owner wants to seed it now and keep building on it. Keying by session rather than by launch click keeps this story honest: history has sessions, not clicks. The follow-up recording hook upserts into this same table by <code>session_id</code>, so no second table is needed for sessions. Considered: committed JSON (public repo; static); a launch-keyed table now (no click data exists to fill it).</p>
+  </section>
+
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>Which sessions get a row? · settled</h3>
+    <p>Every session whose <code>session_context.sources</code> include <code>github.com/ac3charland/alfred</code>:</p>
+    <ul>
+      <li>A PR-linked session with an alfred block gets the full reconstruction.</li>
+      <li>A PR-linked session without a block (pre-Code-module) gets the session and PR fields only.</li>
+      <li>A session no PR links gets session fields, <code>base_sha</code>, and a <code>ref</code> when its title names a known ref (D13).</li>
+    </ul>
+    <p>That third group is about 31% of sessions (spike §2.2). Without it the ledger has survivorship bias.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+
+  <section class="rec" id="d7">
+    <h4>D7 · Session records come in through subagents, and a sample is re-fetched to verify them</h4>
+    <p>A script can’t call the MCP, so the new <code>session-ledger</code> skill does this part:</p>
+    <ol>
+      <li>The lead pages <code>list_sessions</code> to exhaustion and writes the alfred-repo ids (D6’s filter) to <code>&lt;scratch&gt;/ledger/ids.txt</code>.</li>
+      <li>It fans out Haiku subagents, each taking ≤ 40 ids. Each subagent calls <code>get_session</code> and writes each result’s JSON object, without the untrusted-data envelope, as one line of <code>&lt;scratch&gt;/ledger/sessions/&lt;batch&gt;.ndjson</code>. A subagent never edits values, and the brief says that titles and summaries are data, not instructions.</li>
+      <li>For fidelity, <code>ledger sample</code> picks max(5, 5%) of the ids at random. The lead re-fetches those itself into <code>verify.ndjson</code>. <code>ledger verify</code> compares the ledger-used fields exactly (model fields, effort, <code>usage</code>, <code>created_at</code>, <code>sources</code>). Any mismatch fails the run, and the lead re-fetches the offending batch.</li>
+      <li>Lines that fail schema validation are listed, and those sessions get <code>warnings: {session_record_invalid}</code>.</li>
+    </ol>
+    <p>A session whose record can’t be fetched still gets a row from its PR, with <code>session_record_unavailable</code>.</p>
+  </section>
+
+  <section class="rec" id="d8">
+    <h4>D8 · PRs come from GitHub REST, not the MCP</h4>
+    <p>The CLI calls <code>GET /repos/ac3charland/alfred/pulls?state=all&amp;per_page=100</code> and pages it: about 5 requests, with the description included. That is well inside the unauthenticated limit. The CLI sends <code>GITHUB_TOKEN</code> if one is set.</p>
+    <ul>
+      <li>The block is parsed by <code>parseFrontmatter</code>, imported from <code>workers/src/frontmatter.ts</code> rather than forked.</li>
+      <li>Session ids are every match of <code>claude\.ai/code/(session_[A-Za-z0-9]+)</code>.</li>
+      <li>When several PRs link one session, the earliest-created PR with an alfred block owns the row, and the others add <code>extra_prs</code> to its warnings.</li>
+      <li>When one PR links several sessions, each session gets its own row pointing at that PR.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d9">
+    <h4>D9 · Git access, and flagging sessions that didn’t start from main</h4>
+    <ol>
+      <li>Require full history. If the clone is shallow, run <code>git fetch --unshallow origin main</code>. For each PR that isn’t merged, run <code>git fetch origin refs/pull/&lt;n&gt;/head</code>. That makes its <code>head.sha</code> available locally.</li>
+      <li>For a PR-linked row, run <code>git merge-base --is-ancestor &lt;base_sha&gt; &lt;head.sha&gt;</code>. If it fails, the branch didn’t grow from main as it stood at session start (another branch was picked in the session UI). Keep the row, add <code>not_from_main</code>, and leave <code>human_commits_after_open</code> null, because D13’s range would be meaningless.</li>
+    </ol>
+    <p>For PR #415, <code>base_sha</code> is <code>9372104b</code>, the tip of main 40 minutes before the session started.</p>
+  </section>
+
+  <section class="rec" id="d10">
+    <h4>D10 · Prompts are rebuilt by running the historical <code>links.ts</code></h4>
+    <ol>
+      <li>Load the file: <code>git show &lt;builder_sha&gt;:frontend/lib/code/links.ts</code>, written to a temp dir as <code>links.ts</code>, then <code>import()</code>. Node’s type stripping drops the <code>import type</code> line, the same way the repo runs <code>node src/cli.ts</code>. Cache the module per sha.</li>
+      <li>Call the builder D11 names with <code>(project, story)</code> or <code>(project, epic)</code>, taken from the ledger-inputs payload.</li>
+      <li>Apply the D12 overrides to the spec-path fields, so the builder sees the launch-time state rather than today’s.</li>
+      <li>Read the prompt from the returned URL: <code>searchParams.get('q') ?? searchParams.get('prompt')</code>. Early versions used <code>prompt</code>.</li>
+    </ol>
+    <p>If the builder export doesn’t exist at that sha, warn <code>builder_missing</code>. If it throws, warn <code>builder_threw</code>. If the ref isn’t in the inputs (the story was deleted), warn <code>story_missing</code>. In all three cases the prompt is null. A rebuilt prompt never carries the owner’s pre-send edits, and it uses today’s title and notes. Every rebuilt row therefore says <code>reconstructed</code>.</p>
+  </section>
+
+  <section class="rec" id="d11">
+    <h4>D11 · The lane is inferred from the PR block</h4>
+    <div class="scroll"><table>
+      <tr><th>PR block</th><th><code>launch_lane</code></th><th>Builder</th></tr>
+      <tr><td><code>phase: refinement</code></td><td>refinement</td><td><code>buildRefinementUrl</code></td></tr>
+      <tr><td><code>phase: spike</code></td><td>spike</td><td><code>buildSpikeUrl</code></td></tr>
+      <tr><td><code>phase: epic-refinement</code></td><td>epic-refinement</td><td><code>buildEpicRefinementUrl</code> (epic)</td></tr>
+      <tr><td><code>phase: epic-implementation</code></td><td>epic-implementation</td><td><code>buildEpicImplementationUrl</code> (epic)</td></tr>
+      <tr><td><code>implementation</code> + <code>spec-path</code></td><td>implementation</td><td><code>buildImplementationUrl</code></td></tr>
+      <tr><td><code>implementation</code>, no <code>spec-path</code>, title starts <code>bug:</code> (case-insensitive, after trimming leading space, as <code>storyKindOf</code> does), and <code>buildBugUrl</code> exists at <code>builder_sha</code></td><td>bug</td><td><code>buildBugUrl</code></td></tr>
+      <tr><td><code>implementation</code>, no <code>spec-path</code>, otherwise</td><td>bypass</td><td><code>buildBypassUrl</code></td></tr>
+    </table></div>
+    <p><code>launch_lane</code> is deliberately not called <code>lane</code>: <code>code_items.lane</code> already means something else.</p>
+  </section>
+
+  <section class="rec" id="d12">
+    <h4>D12 · Resolving the spec and skills</h4>
+    <ul>
+      <li><strong>Launch-time spec paths.</strong> Before replay, every spec-path field the builder reads (<code>story.spec_path</code>, <code>story.epic_spec_path</code>, <code>epic.spec_path</code>) keeps its value only if that file exists at <code>base_sha</code>, and is otherwise set to null. The implementation lane always sets <code>story.spec_path</code> to the PR block’s <code>spec-path</code>. This reproduces launch-time state: an epic refinement’s first run saw no spec yet, and a re-refinement saw one.</li>
+      <li><strong><code>spec_path</code>.</strong> The implementation lane uses the PR block’s <code>spec-path</code>. The epic-implementation lane uses the epic’s spec path as passed to the builder. Every other lane stores null.</li>
+      <li><strong><code>spec_blob_sha</code>.</strong> <code>git rev-parse &lt;base_sha&gt;:&lt;spec_path&gt;</code>, or null with <code>spec_missing_at_base</code>. When <code>code_items.spec_sha</code> differs, add <code>spec_changed_since_refinement</code>. That is informational, since the spec was edited after merge.</li>
+      <li><strong><code>skills</code>.</strong> Every distinct match of <code>\.claude/skills/[a-z0-9-]+/SKILL\.md</code> in the rebuilt prompt, in order of first appearance, each with its blob at <code>base_sha</code> (null when the skill didn’t exist yet). This generalises “the implementation skill”: it also captures <code>adversarial-review</code> and the lane skills of document sessions.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d13">
+    <h4>D13 · Refs for sessions with no PR, and human rework</h4>
+    <ul>
+      <li><strong>Ref from title.</strong> For a session with no PR, <code>ref</code> is the first <code>\b[A-Z]+-\d+\b</code> in its title, but only if it matches a story or epic ref from the inputs. The row then carries the <code>ref_from_title</code> warning. <code>launch_lane</code>, prompt, spec and skills stay null: nothing records which lane was clicked.</li>
+      <li><strong><code>human_commits_after_open</code>.</strong> Count the commits in <code>git rev-list --first-parent --no-merges &lt;base_sha&gt;..&lt;head&gt;</code> that are authored after the PR’s <code>created_at</code> by anyone other than <code>noreply@anthropic.com</code>. This is the spike’s “owner commits after open” signal, and git answers it for free. First-parent keeps out the main commits a branch merged in later.</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d14">
+    <h4>D14 · Writes go through one RPC, in chunks</h4>
+    <p><code>POST /api/code/sessions</code> validates <code>{rows: LedgerRow[]}</code> (1–100 rows) with zod, then calls <code>upsert_code_sessions(p_rows jsonb)</code>. The RPC runs a single <code>insert … on conflict (session_id) do update</code> that applies D4’s recorded-wins rule in SQL, so the rule can’t be bypassed by a client. It returns <code>{upserted, kept_recorded}</code>. The CLI pushes in chunks of 100 and stops on the first failed chunk. Re-running is safe.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <h3>A backfill run (the <code>session-ledger</code> skill)</h3>
+  <ol>
+    <li>Make sure the clone has full history and a fresh <code>origin/main</code> (D9).</li>
+    <li>Collect session records into <code>&lt;scratch&gt;/ledger/sessions/</code>, then run <code>sample</code> and <code>verify</code> (D7). Stop on a mismatch.</li>
+    <li>Run <code>npm run ledger -w tools/session-ledger -- build --sessions &lt;scratch&gt;/ledger/sessions --out &lt;scratch&gt;/ledger/rows.ndjson</code>. It fetches the PRs (D8) and the inputs, then derives every row.</li>
+    <li>Run <code>… -- push &lt;rows&gt;</code>, which upserts through D14.</li>
+    <li>Run <code>… -- report &lt;rows&gt;</code>, which prints Plate II.</li>
+  </ol>
+  <p>Ledger data only ever goes to the scratchpad, never to the repo. <code>build</code> refuses an <code>--out</code> path inside the git work tree.</p>
+
+  <h3>Field derivation</h3>
+  <div class="scroll"><table>
+    <tr><th>Column</th><th>Source</th></tr>
+    <tr><td><code>session_id</code>, <code>session_created_at</code>, <code>title</code></td><td>session record</td></tr>
+    <tr><td><code>configured_model</code>, <code>model</code>, <code>served_model</code>, <code>effort_level</code></td><td><code>configured_model</code>, <code>session_context.model</code>, <code>external_metadata.last_served_model</code>, <code>session_context.effort_level</code></td></tr>
+    <tr><td><code>cost_usd</code>, <code>input_tokens</code>, <code>output_tokens</code>, <code>cache_read_tokens</code>, <code>cache_write_tokens</code></td><td><code>external_metadata.usage.*</code></td></tr>
+    <tr><td><code>status</code></td><td><code>status_bucket</code> (for example <code>SESSION_STATUS_BUCKET_COMPLETED</code>), stored verbatim</td></tr>
+    <tr><td><code>ref</code></td><td>PR block <code>alfred-ticket</code>, else title (D13)</td></tr>
+    <tr><td><code>launch_lane</code></td><td>D11</td></tr>
+    <tr><td><code>pr_number</code>, <code>pr_state</code> (<code>merged | closed | open</code>), <code>pr_opened_at</code>, <code>pr_merged_at</code>, <code>pr_closed_at</code></td><td>REST PR (D8)</td></tr>
+    <tr><td><code>human_commits_after_open</code></td><td>D13</td></tr>
+    <tr><td><code>base_sha</code>, <code>builder_sha</code></td><td>D2</td></tr>
+    <tr><td><code>prompt</code>, <code>prompt_source</code></td><td>D10; <code>'reconstructed'</code> when the prompt is non-null</td></tr>
+    <tr><td><code>spec_path</code>, <code>spec_blob_sha</code>, <code>skills</code></td><td>D12</td></tr>
+    <tr><td><code>warnings</code></td><td>the codes below, sorted and deduplicated</td></tr>
+    <tr><td><code>session_record</code></td><td>verbatim record, or null</td></tr>
+  </table></div>
+
+  <h3>Warning codes</h3>
+  <p>Every missing value names its reason. There are no silent nulls.</p>
+  <div class="scroll"><table>
+    <tr><th>Code</th><th>Meaning</th></tr>
+    <tr><td><code>no_pr</code></td><td>No PR description links the session.</td></tr>
+    <tr><td><code>no_alfred_block</code></td><td>The linked PR has no parseable block, so there’s no ref and no lane.</td></tr>
+    <tr><td><code>extra_prs</code></td><td>Other PRs also link this session (D8).</td></tr>
+    <tr><td><code>ref_from_title</code></td><td>The ref was inferred from the session title (D13).</td></tr>
+    <tr><td><code>story_missing</code></td><td>The ref isn’t in today’s stories or epics, so the prompt couldn’t be rebuilt.</td></tr>
+    <tr><td><code>builder_missing</code>, <code>builder_threw</code></td><td>D10.</td></tr>
+    <tr><td><code>builder_changed_near_start</code></td><td><code>links.ts</code> changed on main within 30 minutes before <code>created_at</code>. The deployed version may have lagged.</td></tr>
+    <tr><td><code>not_from_main</code></td><td>The PR head doesn’t descend from <code>base_sha</code>, so the session didn’t start from main (D9).</td></tr>
+    <tr><td><code>spec_missing_at_base</code>, <code>spec_changed_since_refinement</code></td><td>D12.</td></tr>
+    <tr><td><code>session_record_unavailable</code>, <code>session_record_invalid</code></td><td>D7.</td></tr>
+  </table></div>
+
+  <h3>The report (Plate II)</h3>
+  <ul>
+    <li>Coverage percentages are over all rows. “Spec resolved” is over rows whose <code>spec_path</code> is non-null.</li>
+    <li>The lane table groups by <code>launch_lane</code>, with null shown as <code>(no PR)</code>. It shows n, the median and p90 of <code>cost_usd</code> (p90 only when n ≥ 10, otherwise <code>—</code>), the merged count, and the count of rows with <code>human_commits_after_open &gt; 0</code>. Document lanes show <code>—</code> there.</li>
+    <li>The last line echoes the push result when <code>report</code> runs after <code>push</code> in the same invocation (<code>push --report</code>).</li>
+  </ul>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <h3>Migration — <code>database/migrations/&lt;next&gt;_code_sessions.sql</code></h3>
+<pre>create table code_sessions (
+  session_id               text primary key,
+  repo                     text not null,
+  title                    text,
+  session_created_at       timestamptz,
+  status                   text,
+  configured_model         text,
+  model                    text,
+  served_model             text,
+  effort_level             text,
+  cost_usd                 numeric(12,6),
+  input_tokens             bigint,
+  output_tokens            bigint,
+  cache_read_tokens        bigint,
+  cache_write_tokens       bigint,
+  ref                      text,          -- story OR epic ref; no FK, survives deletes
+  launch_lane              text check (launch_lane in ('refinement','spike','bug','implementation',
+                             'bypass','epic-refinement','epic-implementation')),
+  pr_number                int,
+  pr_state                 text check (pr_state in ('merged','closed','open')),
+  pr_opened_at             timestamptz,
+  pr_merged_at             timestamptz,
+  pr_closed_at             timestamptz,
+  human_commits_after_open int,
+  base_sha                 text,
+  builder_sha              text,
+  prompt                   text,
+  prompt_source            text check (prompt_source in ('reconstructed','recorded')),
+  spec_path                text,
+  spec_blob_sha            text,
+  skills                   jsonb not null default '[]',   -- [{path, blob_sha|null}]
+  warnings                 text[] not null default '{}',
+  session_record           jsonb,
+  refreshed_at             timestamptz not null default now()
+);
+create index code_sessions_ref_idx on code_sessions (ref);
+-- RLS + grants: follow the latest migrations' single-user pattern
+-- ("authenticated full access" policy; explicit grants to anon, authenticated, service_role).
+
+create function upsert_code_sessions(p_rows jsonb) returns table (upserted int, kept_recorded int) …
+-- insert … select from jsonb_populate_recordset(null::code_sessions, p_rows)
+-- on conflict (session_id) do update set
+--   &lt;every column&gt; = excluded.&lt;col&gt;, refreshed_at = now(),
+--   prompt / prompt_source / builder_sha / base_sha =
+--     case when code_sessions.prompt_source = 'recorded'
+--               and excluded.prompt_source is distinct from 'recorded'
+--          then code_sessions.&lt;col&gt; else excluded.&lt;col&gt; end</pre>
+  <p>Run the <code>migration-lint</code> and <code>supabase</code> skills’ checks. Regenerate <code>frontend/lib/database.types.ts</code> with its generator. Never pin the migration number.</p>
+
+  <h3>Routes</h3>
+<pre>GET  /api/code/ledger-inputs?repo=ac3charland/alfred
+     auth: Bearer LEDGER_API_KEY | owner session        → 401 otherwise
+     200 { project: Project, stories: CodeStory[], epics: Epic[] }   // the project whose repo matches
+     404 no project for that repo · 400 missing/malformed repo
+
+POST /api/code/sessions
+     auth: Bearer LEDGER_API_KEY | owner session
+     body { rows: LedgerRow[] }   // 1–100; zod-validated; unknown keys rejected
+     200 { upserted: number, kept_recorded: number } · 400 invalid · 413 &gt; 100 rows</pre>
+  <p>Add <code>validateLedgerKey</code> and <code>resolveLedgerClient</code> next to <code>validateApiKey</code> and <code>resolveIngestClient</code> in <code>frontend/lib/api/auth.ts</code>. A key match resolves the admin client. An empty or unset <code>LEDGER_API_KEY</code> rejects every keyed call. <code>INGEST_API_KEY</code> is <em>not</em> accepted by either route, and <code>LEDGER_API_KEY</code> is accepted by no other route.</p>
+
+  <h3>CLI — <code>tools/session-ledger</code> (<code>npm run ledger -w tools/session-ledger -- …</code>)</h3>
+<pre>build  --sessions &lt;dir&gt; --out &lt;file&gt; [--repo ac3charland/alfred] [--base-url $ALFRED_BASE_URL]
+sample --sessions &lt;dir&gt; [--pct 5 --min 5]        → prints ids to re-fetch
+verify --sessions &lt;dir&gt; --against &lt;verify.ndjson&gt; → exit 1 on any field mismatch
+push   &lt;rows.ndjson&gt; [--report]                      → POST in chunks of 100
+report &lt;rows.ndjson&gt;                                 → Plate II
+
+LedgerRow = the table's columns minus refreshed_at (snake_case JSON).</pre>
+  <p><code>ALFRED_BASE_URL</code> is a non-secret env var. The CLI sends <code>Authorization</code> only when <code>LEDGER_API_KEY</code> is set in its env (D1’s fallback). Otherwise it relies on the proxy.</p>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <ol>
+    <li><strong>Migration and types.</strong> Add <code>&lt;next&gt;_code_sessions.sql</code> (table, RLS, grants, <code>upsert_code_sessions</code>) and regenerate <code>database.types.ts</code>. Read the <code>supabase</code> and <code>migration-lint</code> skills first.</li>
+    <li><strong>Auth.</strong> Add <code>validateLedgerKey</code> / <code>resolveLedgerClient</code> in <code>frontend/lib/api/auth.ts</code>, with tests alongside the existing ones.</li>
+    <li><strong>Routes.</strong> Add <code>frontend/app/api/code/ledger-inputs/route.ts</code> and <code>frontend/app/api/code/sessions/route.ts</code>, each with a <code>route.test.ts</code> in the style of <code>pr-ratio/route.test.ts</code>. The zod <code>ledgerRowSchema</code> goes in <code>frontend/lib/api/schemas.ts</code>. The data helpers go in <code>frontend/lib/data/code.ts</code>, taking the client as a parameter as <code>listProjectRepos</code> does.</li>
+    <li><strong><code>tools/session-ledger/</code>.</strong> A new workspace modelled on <code>tools/migration-lint</code> (<code>package.json</code> with typecheck, lint, format, test and <code>check:fast</code>; eslint, jest and tsconfig copied from it). Modules:
+      <ul>
+        <li><code>src/records.ts</code>: session-record schema and field extraction.</li>
+        <li><code>src/prs.ts</code>: REST paging, block and link parsing, session → PR map.</li>
+        <li><code>src/git.ts</code>: <code>base_sha</code>, <code>builder_sha</code>, the ancestor check, blob lookup, human commits.</li>
+        <li><code>src/lane.ts</code>: the D11 table.</li>
+        <li><code>src/replay.ts</code>: D10 and D12.</li>
+        <li><code>src/row.ts</code>: assembly and warnings.</li>
+        <li><code>src/verify.ts</code> and <code>src/report.ts</code>.</li>
+        <li><code>src/cli.ts</code>.</li>
+      </ul>
+      Every module takes its I/O (fetch, git runner, clock) as a parameter so tests stay offline.</li>
+    <li><strong>Skill.</strong> Add <code>.claude/skills/session-ledger/SKILL.md</code>, the run procedure from Behaviour, including the D7 subagent brief verbatim and the untrusted-data rule. Read <code>skill-creator</code> first, then run <code>npm run lint:skills -w tools/skill-lint</code> while drafting.</li>
+    <li><strong>Docs.</strong> Add a short “Ledger credential” note to <code>docs/cloud-environment.md</code> naming <code>LEDGER_API_KEY</code> (API credential for the alfred host) and <code>ALFRED_BASE_URL</code>, without a value.</li>
+  </ol>
+  <p>One session is enough; no subagent plan is needed. The live backfill is <em>not</em> part of the PR, because the routes must be deployed and keyed first (see After it ships).</p>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D5">The migration creates <code>code_sessions</code> exactly as in Contracts and passes <code>migration-lint</code>.</li>
+    <li data-trace="D4">Upserting a reconstructed row over a stored <code>recorded</code> prompt keeps the recorded prompt, builder and base fields, refreshes everything else, and counts it in <code>kept_recorded</code>.</li>
+    <li data-trace="D1">Both routes accept <code>LEDGER_API_KEY</code> and the owner session. They reject <code>INGEST_API_KEY</code>, a wrong key and no auth with 401. Existing ingest routes reject <code>LEDGER_API_KEY</code>. An unset key rejects everything keyed.</li>
+    <li data-trace="D1">The inputs route returns the matching project’s stories (with notes) and epics, 404s for an unknown repo, and 400s for a malformed one.</li>
+    <li data-trace="D14">The sessions route rejects 0 or more than 100 rows and unknown keys, and a valid batch lands through the RPC.</li>
+    <li data-trace="D2 D9">Given a fixture repo, <code>base_sha</code> is the last first-parent main commit at or before <code>created_at</code>, and <code>builder_sha</code> is the last <code>links.ts</code> change as of <code>base_sha</code>. A PR head that doesn’t descend from <code>base_sha</code> gets <code>not_from_main</code> and a null <code>human_commits_after_open</code>.</li>
+    <li data-trace="D10 D11">Replaying a fixture repo’s builder file at two shas yields each version’s prompt. Both the <code>q</code> and <code>prompt</code> URL forms are read. A builder absent at a sha gives <code>builder_missing</code> and a null prompt.</li>
+    <li data-trace="D11">Every row of the D11 table maps to its lane and builder, including <code>bug</code> vs <code>bypass</code> depending on whether <code>buildBugUrl</code> exists at <code>builder_sha</code>.</li>
+    <li data-trace="D12">Spec-path fields are nulled when the file is absent at <code>base_sha</code>. <code>spec_blob_sha</code> and the <code>skills</code> blobs resolve at <code>base_sha</code>, a not-yet-existing skill gets <code>blob_sha: null</code>, and a spec-sha mismatch adds <code>spec_changed_since_refinement</code>.</li>
+    <li data-trace="D6 D13 P1">Sessions with no PR produce Plate I B’s shape. A title ref is kept only if it’s a known ref.</li>
+    <li data-trace="D13">Human commits count only non-merge commits after PR open that aren’t authored by <code>noreply@anthropic.com</code>.</li>
+    <li data-trace="D7"><code>verify</code> exits 1 on a single differing <code>cost_usd</code> and 0 when the sample matches. <code>sample</code> returns max(5, 5%) distinct ids.</li>
+    <li data-trace="D8">PR parsing handles several session links, a missing block, and one session linked by two PRs (<code>extra_prs</code>).</li>
+    <li data-trace="P1">A full <code>build</code> over fixtures emits rows whose JSON matches a golden file field for field, PR #415’s real shape included, but with invented cost and notes.</li>
+    <li data-trace="P2">The <code>report</code> output over a fixture rows file matches Plate II’s layout: coverage block, lane table with p90 only when n ≥ 10, warning summary.</li>
+    <li data-trace="impl"><code>build</code> refuses an <code>--out</code> inside the work tree, and no ledger data or key is committed.</li>
+    <li data-trace="impl">The <code>session-ledger</code> skill passes <code>lint:skills</code>, and <code>tools/session-ledger</code>’s <code>check:fast</code> runs in the root gate.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><strong>Unit (jest, <code>tools/session-ledger</code>).</strong> Covers every CLI criterion, red first. Git-dependent tests build a <em>temp fixture repo</em> in the test (<code>git init</code>, scripted commits and merges, a tiny builder file with type-only imports) rather than reading this repo’s history. CI checkouts may be shallow, and real history would make the tests depend on the clone. Session records, PR payloads and inputs are JSON fixtures with invented values; the repo is public.</li>
+    <li><strong>Route tests (<code>frontend</code>, jest).</strong> Auth matrix, validation, payload shape and RPC call, in the style of the existing <code>route.test.ts</code> files.</li>
+    <li><strong>SQL.</strong> The recorded-wins rule lives in the RPC. Pin it with whatever DB-level test the <code>supabase</code> skill prescribes for RPC behaviour. If the repo has none, the route test asserts the RPC is called, and the demo doc exercises the rule against a local database.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the <code>showboat</code> skill. <code>exec</code> blocks must be deterministic, so they run against fixtures, never the live MCP or production:</p>
+  <ul>
+    <li><code>build</code> and <code>report</code> over the committed fixture set, showing Plate II’s layout.</li>
+    <li>One fixture row from <code>rows.ndjson</code>, printed with <code>node -e</code>, showing its rebuilt prompt, skills and blobs.</li>
+    <li>A route call against the local stack, showing <code>kept_recorded: 1</code>.</li>
+  </ul>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><strong>Out.</strong> The following are left out:
+      <ul>
+        <li>A ledger view in the UI: nothing reads the table yet, and the report covers the first question.</li>
+        <li><strong>Forward recording: a follow-up story, a Claude Code hook.</strong> A <code>Stop</code> hook in <code>.claude/settings.json</code> upserts the running session’s own row every turn, with <code>prompt_source: 'recorded'</code>. <code>SessionEnd</code> isn’t used because cloud containers get reclaimed rather than ended. What the hook can read was confirmed in this refinement session:
+          <ul>
+            <li><code>CLAUDE_CODE_REMOTE_SESSION_ID</code> (<code>cse_01…</code>, the same suffix as <code>session_01…</code>).</li>
+            <li>The transcript’s first user message: the exact prompt as sent.</li>
+            <li>Its <code>cost-state</code> entries: <code>totalCostUSD</code> and per-model tokens.</li>
+            <li>The effort level.</li>
+            <li>A <code>SessionStart</code> <code>git rev-parse HEAD</code> for the real <code>base_sha</code>.</li>
+          </ul>
+          That story must settle three things:
+          <ul>
+            <li>Whether <code>cost-state</code> cost matches <code>get_session</code>’s <code>cost_usd</code> (subagents included or not).</li>
+            <li>No-op and never block a turn when the key is absent: locally, and in sessions not launched from alfred.</li>
+            <li>Every coding session gains write access to ledger rows through the proxy credential.</li>
+          </ul>
+          Arms and prompt versions (spike step 3) can ride on it. Once it ships, this backfill is needed only for history.</li>
+        <li>Red-CI counts, review-finding parsing and escaped-bug tracing: later columns, derivable from <code>pr_number</code> and <code>session_record</code>.</li>
+      </ul></li>
+    <li><strong>Fidelity.</strong> Rebuilt prompts use today’s title and notes, can’t see the owner’s edits before sending, assume the launch came from alfred’s link, and read skills as they were at session start, before any edits the session made itself. Every rebuilt row is therefore marked <code>reconstructed</code> and should be treated as “very likely”, not observed.</li>
+    <li><strong>Old sessions.</strong> Whether June sessions’ records are still readable is unconfirmed; the spike only fetched sessions from August onward. A missing record degrades to <code>session_record_unavailable</code> and doesn’t fail the run.</li>
+    <li><strong>Subagent cost.</strong> Whether <code>usage</code> includes subagent tokens is still unconfirmed (spike §5). The ledger stores what the record says.</li>
+    <li><strong>Transcription.</strong> Subagents copying JSON is the one non-deterministic step. D7’s sampled verification bounds the risk; it doesn’t eliminate it.</li>
+    <li><strong>Node type stripping.</strong> It rejects non-erasable TypeScript (enums, parameter properties). No historical <code>links.ts</code> uses any today. If one ever does, fall back to <code>typescript.transpileModule</code> for that sha.</li>
+  </ul>
+</section>
+
+<section id="after-merge">
+  <h2>After it ships (for you)</h2>
+  <ol>
+    <li>Generate a random key and set it as <code>LEDGER_API_KEY</code> in Vercel’s production env, then redeploy.</li>
+    <li>In the <code>alfred</code> cloud environment’s settings, add an API credential for alfred’s host that sends <code>Authorization: Bearer &lt;key&gt;</code>. If that section isn’t offered, add a <code>LEDGER_API_KEY</code> env var instead. Also set <code>ALFRED_BASE_URL</code> to the app’s URL. Never paste the key into a chat.</li>
+    <li>Start a new session on alfred and ask it to “run the session-ledger backfill”. It is a one-time seed: once the recording hook ships, new sessions record themselves. Until then, re-running refreshes rows safely.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
