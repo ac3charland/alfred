@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
+import { within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { PrRatioResponse, Project } from '@/lib/types';
@@ -194,9 +195,13 @@ function withNarrowFocusFrame(Story: React.ComponentType) {
 }
 
 /**
- * Tabbing into the card lands on the first project's legend row and draws the app's blue focus
- * ring around it. Other is not focusable, so it never takes the ring. Captured in its own
- * narrow frame (`withNarrowFocusFrame`) so a missing ring fails the snapshot.
+ * Tabbing onto the first project's legend row draws the app's blue focus ring around it. Other is
+ * not focusable, so it never takes the ring. Captured in its own narrow frame
+ * (`withNarrowFocusFrame`) so a missing ring fails the snapshot.
+ *
+ * The header's ⋯ comes first in tab order, so the play function parks focus on it and the
+ * test-runner's one real Tab moves on to the legend row — a keyboard move, so `:focus-visible`
+ * still matches there.
  *
  * Declared ahead of `LegendHover` on purpose: the test-runner's real pointer stays wherever the
  * last story hovered it, so a focus capture taken after that hover would carry the underline too.
@@ -206,6 +211,12 @@ export const LegendKeyboardFocus: Story = {
     visualTest: { target: '[data-testid="pr-ratio-focus-frame"]', focus: true },
   },
   decorators: [withNarrowFocusFrame, stubEndpoint(200, WITH_OTHER)],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Once the counts land, so the legend rows exist behind the ⋯.
+    await canvas.findByRole('img');
+    canvas.getByRole('button', { name: 'PR ratio options' }).focus();
+  },
 };
 
 /** Hovering a project's legend row underlines its name — the row is a link to its board. */

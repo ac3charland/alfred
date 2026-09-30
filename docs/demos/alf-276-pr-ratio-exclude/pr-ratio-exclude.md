@@ -84,3 +84,23 @@ pr-ratio     200  total 7
                    {"repo":"ac3charland/alfred","label":"Alfred","count":6,"percentage":86}
                    other {"count":1,"percentage":14}
 ```
+
+## Visual snapshots
+
+The card's Storybook baselines move on purpose: the ⋯ now ends the header in every state (loading, failed, quiet week, ready, with and without Other). Each diff reads baseline | changed pixels | new render. The keyboard-focus story's ring stays on the first legend row: the ⋯ now comes first in tab order, so the story parks focus on it and the test-runner's Tab moves on to the row.
+
+![](pr-ratio-exclude-image-7.png)
+
+![](pr-ratio-exclude-image-8.png)
+
+![](pr-ratio-exclude-image-9.png)
+
+![](pr-ratio-exclude-image-10.png)
+
+![](pr-ratio-exclude-image-11.png)
+
+![](pr-ratio-exclude-image-12.png)
+
+![](pr-ratio-exclude-image-13.png)
+
+![](pr-ratio-exclude-image-14.png)
