@@ -163,8 +163,8 @@ export function isReaderSummary(value: unknown): value is ReaderSummary {
 }
 
 /**
- * The model's picks as stored items: only numbers the post's list holds, each once (the first
- * pick wins), in link order — which is document order — with blank titles dropped, capped at
+ * The model's picks as stored items: only titled picks of numbers the post's list holds, each
+ * link once (the first titled pick wins), in link order — which is document order — with blank titles dropped, capped at
  * {@link READER_MAX_FURTHER_READING}, and mapped to the URL each number stands for. A number the
  * list doesn't hold is dropped rather than failing the summary: every stored URL is then one the
  * post really contains, and the rest of an otherwise good answer still lands.
@@ -174,9 +174,11 @@ function furtherReadingOf(
   links: readonly NumberedLink[],
 ): ReaderFurtherReading[] {
   const urls = new Map(links.map((link) => [link.n, link.url]));
+  // Blank titles go before the dedupe, so a titled repeat of a link can stand in for them.
   const firstPick = new Map<number, ReaderFurtherReadingPick>();
   for (const entry of picks) {
-    if (urls.has(entry.link) && !firstPick.has(entry.link)) firstPick.set(entry.link, entry);
+    if (entry.title.trim() === '' || !urls.has(entry.link) || firstPick.has(entry.link)) continue;
+    firstPick.set(entry.link, entry);
   }
   // Sorted in place, on the fresh copy: `toSorted` is not in this package's ES2022 lib.
   const ordered = [...firstPick.values()];
@@ -185,9 +187,8 @@ function furtherReadingOf(
   const items: ReaderFurtherReading[] = [];
   for (const entry of ordered) {
     const url = urls.get(entry.link);
-    const title = entry.title.trim();
-    if (url === undefined || title === '') continue;
-    items.push({ url, title, note: entry.note.trim() });
+    if (url === undefined) continue;
+    items.push({ url, title: entry.title.trim(), note: entry.note.trim() });
   }
   return items.slice(0, READER_MAX_FURTHER_READING);
 }

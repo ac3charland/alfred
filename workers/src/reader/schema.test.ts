@@ -272,6 +272,18 @@ describe('normalizeReaderSummary — further reading', () => {
     expect(items.at(-1)?.url).toBe('https://example.com/10');
   });
 
+  it('lets a later pick of a link stand in for an earlier one whose title is blank', () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [
+      { link: 2, title: ' ', note: 'Untitled first try.' },
+      { link: 2, title: 'The paper', note: 'Its numbers.' },
+    ];
+
+    expect(normalizeReaderSummary(summary, numbered(2)).overview.further_reading).toEqual([
+      { url: 'https://example.com/2', title: 'The paper', note: 'Its numbers.' },
+    ]);
+  });
+
   it('trims titles and notes, and drops an item whose title is blank', () => {
     const summary = validSummary();
     summary.overview.further_reading = [
