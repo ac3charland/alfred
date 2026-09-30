@@ -449,6 +449,12 @@ export function moveCodeEpic(ref: string, epicId: string): Promise<CodeItem> {
 }
 
 /**
+ * The store sends Backlog priority writes one at a time (ALF-250), so a request that never
+ * answered would hold every later nudge behind it: each of them gives up after this long.
+ */
+const PRIORITY_WRITE_TIMEOUT_MS = 15_000;
+
+/**
  * Reorder the Backlog: swap two stories' global `priority` (the chevron move). POSTs both refs
  * to the atomic `swap_code_priority` RPC behind `/api/code/reorder` — one statement so the
  * `unique(priority)` index never sees a transient duplicate — and returns the two updated
@@ -457,6 +463,7 @@ export function moveCodeEpic(ref: string, epicId: string): Promise<CodeItem> {
 export async function reorderCode(a: string, b: string): Promise<CodeItem[]> {
   const { rows } = await apiRequest<{ rows: CodeItem[] }>('/api/code/reorder', {
     method: 'POST',
+    signal: AbortSignal.timeout(PRIORITY_WRITE_TIMEOUT_MS),
     body: JSON.stringify({ a, b }),
   });
   return rows;
@@ -471,6 +478,7 @@ export async function reorderCode(a: string, b: string): Promise<CodeItem[]> {
 export async function moveCode(ref: string, toTop: boolean): Promise<CodeItem[]> {
   const { rows } = await apiRequest<{ rows: CodeItem[] }>('/api/code/move', {
     method: 'POST',
+    signal: AbortSignal.timeout(PRIORITY_WRITE_TIMEOUT_MS),
     body: JSON.stringify({ ref, to_top: toTop }),
   });
   return rows;
@@ -486,6 +494,7 @@ export async function moveCode(ref: string, toTop: boolean): Promise<CodeItem[]>
 export async function moveCodeInProject(ref: string, toTop: boolean): Promise<CodeItem[]> {
   const { rows } = await apiRequest<{ rows: CodeItem[] }>('/api/code/move-project', {
     method: 'POST',
+    signal: AbortSignal.timeout(PRIORITY_WRITE_TIMEOUT_MS),
     body: JSON.stringify({ ref, to_top: toTop }),
   });
   return rows;

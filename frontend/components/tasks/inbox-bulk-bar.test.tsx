@@ -104,6 +104,7 @@ function makeSidecar(itemId: string, refNumber: number): CodeItem {
     created_at: '2025-01-02T00:00:00Z',
     updated_at: '2025-01-02T00:00:00Z',
     priority: 1,
+    priority_rev: 0,
   };
 }
 

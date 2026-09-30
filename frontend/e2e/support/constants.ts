@@ -276,6 +276,7 @@ export function makeCodeStory(overrides: Partial<CodeItem> = {}): CodeItem {
     created_at: overrides.created_at ?? nextCreatedAt(),
     updated_at: overrides.updated_at ?? nextCreatedAt(),
     priority: overrides.priority ?? 1,
+    priority_rev: overrides.priority_rev ?? 0,
   };
 }
 

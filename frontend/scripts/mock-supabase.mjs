@@ -148,6 +148,9 @@ let github = freshGithub();
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
+// Migration 0044's `code_priority_rev_seq`: every write that sets a code_item's priority stamps
+// its `priority_rev` from here (`setPriority`), so a later write always carries a higher revision.
+let nextPriorityRev = 1;
 // The subtask sort_order sequence (migration 0018's `item_sort_order_seq`): parked high so an
 // item created without an explicit sort_order (a new subtask) appends below every seeded row.
 let nextSortOrder = 1_000_000;
@@ -886,6 +889,8 @@ function newCodeItem(input) {
     done_at: input.done_at ?? null,
     // Global Backlog rank (migration 0005): explicit when seeded, else the next sequence value.
     priority: input.priority ?? nextPriority++,
+    // Revision of that rank (migration 0044); a seeded row keeps its own, 0 unless it names one.
+    priority_rev: input.priority_rev ?? 0,
   };
 }
 
@@ -920,17 +925,10 @@ function syncPrioritySequence() {
   nextPriority = max + 1;
 }
 
-/**
- * Set one code_item's priority, enforcing the IMMEDIATE unique index `code_items_priority_key`
- * the way Postgres does — reject if any OTHER row already holds the new value. This is what makes
- * the swap RPC a faithful model: a sequence that ever assigns a value still held by another row
- * throws here, exactly as the live DB 409s. Throws on collision; the caller maps it to a 409.
- */
-function setPriorityImmediate(target, value) {
-  if (codeItems.some((row) => row !== target && row.priority === value)) {
-    throw new Error(`duplicate key value violates unique constraint "code_items_priority_key"`);
-  }
+/** Set one code_item's priority and stamp its revision, as migration 0044's trigger does. */
+function setPriority(target, value) {
   target.priority = value;
+  target.priority_rev = nextPriorityRev++;
 }
 
 /** Build a function that picks the right row constructor for a real table. */
@@ -1328,12 +1326,9 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
-  // Swap two stories' global priority (migration 0005/0006 — the Backlog chevron reorder).
-  // Modelled faithfully: `code_items_priority_key` is a NON-deferrable unique index, so Postgres
-  // checks uniqueness PER ROW as each row is updated. A naive `a := b; b := a` therefore 409s
-  // mid-swap (two rows momentarily share a priority) — the exact production bug. So set each row
-  // through `setPriorityImmediate`, which rejects a transient duplicate, and use the same
-  // negative-sentinel sequence the fixed RPC does so every per-row step is unique.
+  // Swap two stories' global priority (the Backlog chevron reorder). Mirrors migration 0043: one
+  // statement under a deferrable unique constraint, checked once both rows hold their new rank —
+  // so a direct exchange, each story written once, straight to its final rank.
   if (fn === 'swap_code_priority' && req.method === 'POST') {
     const a = codeItems.find((row) => row.ref === body?.p_a);
     const b = codeItems.find((row) => row.ref === body?.p_b);
@@ -1344,17 +1339,9 @@ function handleRpc(req, res, fn, body) {
       return;
     }
     const aPriority = a.priority;
-    const bPriority = b.priority;
-    try {
-      setPriorityImmediate(a, -aPriority); // park p_a negative, vacating a_pri
-      setPriorityImmediate(b, aPriority); //  p_b takes a_pri (now free)
-      setPriorityImmediate(a, bPriority); //  p_a lands on b_pri (vacated by p_b)
-    } catch (error) {
-      // Mirror the PostgREST 409 the real unique index raises on a transient duplicate.
-      sendJson(res, 409, { message: error instanceof Error ? error.message : 'duplicate key' });
-      return;
-    }
-    sendJson(res, 200, [a, b]);
+    setPriority(a, b.priority);
+    setPriority(b, aPriority);
+    sendJson(res, 200, a === b ? [a] : [a, b]);
     return;
   }
 
@@ -1368,9 +1355,12 @@ function handleRpc(req, res, fn, body) {
       return;
     }
     const others = codeItems.filter((row) => row !== target).map((row) => row.priority);
-    target.priority = body?.p_to_top
-      ? (others.length === 0 ? 0 : Math.min(...others)) - 1
-      : (others.length === 0 ? 0 : Math.max(...others)) + 1;
+    setPriority(
+      target,
+      body?.p_to_top
+        ? (others.length === 0 ? 0 : Math.min(...others)) - 1
+        : (others.length === 0 ? 0 : Math.max(...others)) + 1,
+    );
     sendJson(res, 200, [target]);
     return;
   }
@@ -1399,17 +1389,20 @@ function handleRpc(req, res, fn, body) {
       .map((row) => row.priority);
     const allOthers = others.map((row) => row.priority);
     if (projectOthers.length === 0) {
-      target.priority = body?.p_to_top
-        ? (allOthers.length === 0 ? 0 : Math.min(...allOthers)) - 1
-        : (allOthers.length === 0 ? 0 : Math.max(...allOthers)) + 1;
+      setPriority(
+        target,
+        body?.p_to_top
+          ? (allOthers.length === 0 ? 0 : Math.min(...allOthers)) - 1
+          : (allOthers.length === 0 ? 0 : Math.max(...allOthers)) + 1,
+      );
     } else if (body?.p_to_top) {
       const extreme = Math.min(...projectOthers);
       const above = allOthers.filter((p) => p < extreme);
-      target.priority = above.length === 0 ? extreme - 1 : (Math.max(...above) + extreme) / 2;
+      setPriority(target, above.length === 0 ? extreme - 1 : (Math.max(...above) + extreme) / 2);
     } else {
       const extreme = Math.max(...projectOthers);
       const below = allOthers.filter((p) => p > extreme);
-      target.priority = below.length === 0 ? extreme + 1 : (Math.min(...below) + extreme) / 2;
+      setPriority(target, below.length === 0 ? extreme + 1 : (Math.min(...below) + extreme) / 2);
     }
     sendJson(res, 200, [target]);
     return;

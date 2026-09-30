@@ -50,6 +50,16 @@ async function asRole<T>(client: Client, role: string, fn: () => Promise<T>): Pr
   }
 }
 
+/** The highest `priority_rev` in a ref → revision map. */
+function newestRev(revs: Map<string, number>): number {
+  return Math.max(...revs.values());
+}
+
+/** One story's `priority_rev` from a ref → revision map, or -1 when it's missing. */
+function revOf(revs: Map<string, number>, ref: string): number {
+  return revs.get(ref) ?? -1;
+}
+
 /** Wrap an assertion so a thrown error (or a rejected query) becomes a failed result, not a crash. */
 export async function attempt(name: string, fn: () => Promise<string>): Promise<AssertionResult> {
   try {
@@ -364,6 +374,158 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         );
       }
       return `${a.ref}:${beforeA}→${beforeB}, ${b.ref}:${beforeB}→${beforeA}`;
+    },
+  );
+
+  const swapWritesResult = await attempt(
+    'swap_code_priority writes each story once, straight to its final rank (ALF-250)',
+    async () => {
+      // Realtime streams every row change a swap makes, so a story parked on a sentinel rank on
+      // the way to its final one is broadcast to every open Backlog at that rank — above
+      // everything — before it lands. Log the swap's writes and hold it to the two final values.
+      const a = await createStory(client, 'story written once A');
+      const b = await createStory(client, 'story written once B');
+      try {
+        await client.query(
+          `create table swap_writes (n serial, ref text, priority double precision)`,
+        );
+        await client.query(
+          `create function log_swap_write() returns trigger language plpgsql security definer as $$
+           begin
+             insert into swap_writes (ref, priority) values (new.ref, new.priority);
+             return new;
+           end; $$`,
+        );
+        await client.query(
+          `create trigger log_swap_write after update of priority on code_items
+             for each row execute function log_swap_write()`,
+        );
+        await asRole(client, 'authenticated', () =>
+          client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]),
+        );
+        const { rows } = await client.query<{ ref: string; priority: string }>(
+          `select ref, priority from swap_writes order by n`,
+        );
+        const writes = rows.map((row) => `${row.ref}=${row.priority}`);
+        const expected = [`${a.ref}=${b.priority}`, `${b.ref}=${a.priority}`];
+        if (writes.length !== 2 || !expected.every((write) => writes.includes(write))) {
+          throw new Error(
+            `expected only ${expected.join(', ')}, the swap wrote ${writes.join(', ')}`,
+          );
+        }
+        return `one write each: ${writes.join(', ')}`;
+      } finally {
+        await client.query(`drop trigger if exists log_swap_write on code_items`);
+        await client.query(`drop function if exists log_swap_write()`);
+        await client.query(`drop table if exists swap_writes`);
+      }
+    },
+  );
+
+  const swapLockResult = await attempt(
+    'swap_code_priority swaps the ranks the stories hold once a concurrent write commits (ALF-250)',
+    async () => {
+      // A swap is relative: it must trade the ranks the two stories hold when it RUNS. Reading them
+      // before taking the rows' locks let a concurrent write (a respace, another tab's jump) commit
+      // in between, and the swap then wrote the stale ranks over it.
+      const a = await createStory(client, 'swapped under a lock A');
+      const b = await createStory(client, 'swapped under a lock B');
+      const connectionConfig = {
+        host: client.host,
+        port: client.port,
+        user: client.user,
+        database: client.database,
+      };
+      const other = new pg.Client(connectionConfig);
+      await other.connect();
+      try {
+        await other.query('begin');
+        const { rows: moved } = await other.query<{ priority: number }>(
+          `update code_items set priority = priority - 1000 where ref = $1 returning priority`,
+          [a.ref],
+        );
+        const movedA = moved[0]?.priority;
+        if (movedA === undefined) throw new Error('could not move story A');
+
+        const swap = asRole(client, 'authenticated', () =>
+          client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]),
+        );
+        const blocked = Symbol('blocked');
+        const raced = await Promise.race([
+          swap,
+          new Promise((resolve) =>
+            setTimeout(() => {
+              resolve(blocked);
+            }, 300),
+          ),
+        ]);
+        if (raced !== blocked) throw new Error('the swap did not wait for the uncommitted write');
+
+        await other.query('commit');
+        await swap;
+        const { rows } = await client.query<{ ref: string; priority: number }>(
+          `select ref, priority from code_items where ref = any($1)`,
+          [[a.ref, b.ref]],
+        );
+        const after = new Map(rows.map((row): [string, number] => [row.ref, row.priority]));
+        if (after.get(b.ref) !== movedA || after.get(a.ref) !== Number(b.priority)) {
+          throw new Error(
+            `expected ${b.ref}=${String(movedA)} and ${a.ref}=${b.priority}, got ${b.ref}=${String(after.get(b.ref))} and ${a.ref}=${String(after.get(a.ref))}`,
+          );
+        }
+        return `${b.ref} took ${a.ref}'s committed rank ${String(movedA)}`;
+      } finally {
+        await other.query('rollback');
+        await other.end();
+      }
+    },
+  );
+
+  const priorityRevResult = await attempt(
+    'every priority write stamps the story a newer priority_rev; other writes leave it (ALF-250)',
+    async () => {
+      // The Backlog tells a stale server rank from a fresh one by this revision, so it must rise on
+      // every write that changes a rank — whichever RPC made it — and on nothing else.
+      const a = await createStory(client, 'revised A');
+      const b = await createStory(client, 'revised B');
+      const revs = async () => {
+        const { rows } = await client.query<{ ref: string; priority_rev: string }>(
+          `select ref, priority_rev from code_items where ref = any($1)`,
+          [[a.ref, b.ref]],
+        );
+        return new Map(rows.map((row): [string, number] => [row.ref, Number(row.priority_rev)]));
+      };
+      const created = await revs();
+      await asRole(client, 'authenticated', () =>
+        client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]),
+      );
+      const swapped = await revs();
+      await asRole(client, 'authenticated', () =>
+        client.query(`select move_code_priority($1, $2)`, [a.ref, true]),
+      );
+      const jumped = await revs();
+      await asRole(client, 'authenticated', () =>
+        client.query(`update code_items set factory_state = 'ready_for_dev' where ref = $1`, [
+          a.ref,
+        ]),
+      );
+      const restated = await revs();
+      if (
+        revOf(swapped, a.ref) <= newestRev(created) ||
+        revOf(swapped, b.ref) <= newestRev(created)
+      ) {
+        throw new Error('the swap did not stamp both stories past every earlier revision');
+      }
+      if (
+        revOf(jumped, a.ref) <= newestRev(swapped) ||
+        revOf(jumped, b.ref) !== revOf(swapped, b.ref)
+      ) {
+        throw new Error('the jump did not stamp only the moved story, past every earlier revision');
+      }
+      if (revOf(restated, a.ref) !== revOf(jumped, a.ref)) {
+        throw new Error('a status change moved the priority revision');
+      }
+      return `created ${String(newestRev(created))} → swapped ${String(newestRev(swapped))} → jumped ${String(revOf(jumped, a.ref))}, unchanged by a status write`;
     },
   );
 
@@ -796,6 +958,112 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         );
 
       return `bumped above ${top.ref} without crossing ${above.ref}, through a respace`;
+    },
+  );
+
+  const jumpRepliesWithRespaceResult = await attempt(
+    'a respacing project-scoped bump replies with EVERY row it renumbered; a plain one replies with just the moved row (ALF-250)',
+    async () => {
+      // The reply is the only ordered channel an open tab has: Realtime echoes trail it, so a
+      // reply carrying just the moved story leaves the tab showing that story on the new rank
+      // scale and every other one on the old scale until the echoes arrive. A respace must
+      // therefore answer with every row it rewrote, current rank and revision included.
+      const projectA = 'f9999999-9999-4999-8999-999999999999';
+      const epicA = 'fa999999-9999-4999-8999-999999999999';
+      const projectB = 'fb999999-9999-4999-8999-999999999999';
+      const epicB = 'fc999999-9999-4999-8999-999999999999';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'JMA', 'Jump A', 'ac3charland', 'jump-a'),
+                  ($2, 'JMB', 'Jump B', 'ac3charland', 'jump-b')`,
+        [projectA, projectB],
+      );
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref)
+           values ($1, $2, 'Jump A Epic', 1, 'JMA-1'), ($3, $4, 'Jump B Epic', 1, 'JMB-1')`,
+        [epicA, projectA, epicB, projectB],
+      );
+
+      // 60000 is in [2^15, 2^16), so its ULP is 2^-37 — the adjacency the sibling check builds,
+      // repeated well above every rank the earlier checks (or their respaces) left behind.
+      const above = await createStory(client, 'the jump rank above', projectB, epicB);
+      const top = await createStory(client, 'the jump project top', projectA, epicA);
+      const low = await createStory(client, 'the jumped story', projectA, epicA);
+      await client.query(`update code_items set priority = 60000 where ref = $1`, [above.ref]);
+      await client.query(
+        `update code_items set priority = 60000 + power(2::float8, -37) where ref = $1`,
+        [top.ref],
+      );
+      await client.query(`update code_items set priority = 61000 where ref = $1`, [low.ref]);
+
+      interface RankRow {
+        readonly item_id: string;
+        readonly ref: string;
+        readonly priority: number;
+        readonly priority_rev: string;
+      }
+      const ranks = async (): Promise<Map<string, RankRow>> => {
+        const { rows } = await client.query<RankRow>(
+          `select item_id, ref, priority, priority_rev from code_items`,
+        );
+        return new Map(rows.map((row): [string, RankRow] => [row.item_id, row]));
+      };
+      const jump = async (ref: string, toTop: boolean): Promise<readonly RankRow[]> => {
+        const { rows } = await asRole(client, 'authenticated', () =>
+          client.query<RankRow>(`select * from move_code_priority_in_project($1, $2)`, [
+            ref,
+            toTop,
+          ]),
+        );
+        return rows;
+      };
+
+      // A jump above `top` midpoints 60000 against 60000 + 2^-37: no rank between them, so the
+      // RPC respaces every story in the Backlog before it can place the jumped one.
+      const respaced = await jump(low.ref, true);
+      const current = await ranks();
+      const stale = [...current.values()].filter((row) => {
+        const replied = respaced.find((reply) => reply.item_id === row.item_id);
+        return replied?.priority !== row.priority || replied.priority_rev !== row.priority_rev;
+      });
+      if (respaced.length !== current.size || stale.length > 0)
+        throw new Error(
+          `a respacing jump replied with ${String(respaced.length)} of the ${String(current.size)} ` +
+            `code_items rows; ${String(stale.length)} missing or stale ` +
+            `(e.g. ${stale
+              .slice(0, 3)
+              .map((row) => row.ref)
+              .join(', ')})`,
+        );
+      const seededAbove = [...current.values()].find((row) => row.ref === above.ref);
+      if (seededAbove?.priority === 60_000)
+        throw new Error('the seeded ranks were not respaced — the fixture proves nothing');
+
+      // The ranks are consecutive integers again, so a second jump takes a clean midpoint and
+      // must reply with exactly the moved row, leaving every other story's revision alone.
+      const before = await ranks();
+      const plain = await jump(low.ref, false);
+      const after = await ranks();
+      const untouched = [...after.values()].filter(
+        (row) => row.ref !== low.ref && row.priority_rev !== before.get(row.item_id)?.priority_rev,
+      );
+      const moved = after.get(plain[0]?.item_id ?? '');
+      if (
+        plain.length !== 1 ||
+        moved?.ref !== low.ref ||
+        plain[0]?.priority !== moved.priority ||
+        plain[0].priority_rev !== moved.priority_rev
+      )
+        throw new Error(
+          `a plain jump replied with ${String(plain.length)} row(s) (${plain.map((row) => row.ref).join(', ')}), ` +
+            `expected exactly ${low.ref} at its stored rank`,
+        );
+      if (untouched.length > 0)
+        throw new Error(
+          `a plain jump re-stamped ${untouched.map((row) => row.ref).join(', ')}, not just ${low.ref}`,
+        );
+
+      return `a respacing jump replied with all ${String(respaced.length)} rows; a plain jump replied with only ${low.ref}`;
     },
   );
 
@@ -4979,6 +5247,9 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     createStoryResult,
     enterModuleResult,
     swapResult,
+    swapWritesResult,
+    swapLockResult,
+    priorityRevResult,
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
@@ -4987,6 +5258,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     outstandingProjectMoveResult,
     respaceOnCreateResult,
     respaceOnMoveResult,
+    jumpRepliesWithRespaceResult,
     taskItemsColumnsResult,
     intendedProjectResult,
     intendedEpicResult,

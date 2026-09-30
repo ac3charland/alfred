@@ -4,7 +4,6 @@ import { ArrowDownToLine, ArrowUpToLine, ChevronsDown, ChevronsUp } from 'lucide
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
-import { useMoveBurst } from '@/lib/hooks/use-move-burst';
 import { useCodeActions, useStoryRankFlags } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 
@@ -23,21 +22,25 @@ export interface Jump {
  * Backlog's neighbour swap has no counterpart here: it needs the visible row above/below, which
  * only a rendered list knows.
  *
- * Reuses the row's icons and its instant-apply + debounced-commit `useMoveBurst`, so a jump
- * re-ranks the story in the store immediately (the jumps re-derive from that new position) and a
- * rapid burst still costs one request. A jump the story already satisfies is disabled, read from
- * `useStoryRankFlags`. One list behind two presentations — the desktop buttons and the phone's
- * menu — so labels, icons and commits can't drift between layouts.
+ * Reuses the row's icons and the same store actions, so a jump re-ranks the story in the store
+ * immediately (the jumps re-derive from that new position) and the store's priority queue syncs it
+ * — a rapid burst still costs one request. A jump the story already satisfies is disabled, read
+ * from `useStoryRankFlags`. One list behind two presentations — the desktop buttons and the
+ * phone's menu — so labels, icons and commits can't drift between layouts.
  *
  * Must be mounted under a `CodeProvider`.
  */
 export function usePriorityJumps(story: CodeStory): Jump[] {
-  const { applyMoveInProjectOptimistic, commitMoveInProject, applyMoveOptimistic, commitMove } =
-    useCodeActions();
+  const { moveStoryInProject, moveStory } = useCodeActions();
   const { isProjectTop, isProjectBottom, isBacklogTop, isBacklogBottom } = useStoryRankFlags(story);
 
-  const moveInProject = useMoveBurst(story.ref, applyMoveInProjectOptimistic, commitMoveInProject);
-  const move = useMoveBurst(story.ref, applyMoveOptimistic, commitMove);
+  const storyRef = story.ref;
+  const moveInProject = (toTop: boolean) => {
+    if (storyRef !== null) moveStoryInProject(storyRef, toTop);
+  };
+  const move = (toTop: boolean) => {
+    if (storyRef !== null) moveStory(storyRef, toTop);
+  };
 
   return [
     {

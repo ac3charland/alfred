@@ -13,6 +13,9 @@ import {
   fetchReaderPublications,
   fetchWikiPageBody,
   fetchWikiPages,
+  moveCode,
+  moveCodeInProject,
+  reorderCode,
   searchWikiBodies,
   sendItemsToWiki,
   sendReaderPicksToWiki,
@@ -243,6 +246,37 @@ function stubSnapshotRead(): jest.Mock<Promise<Response>, [string]> {
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   return fetchMock;
 }
+
+describe('the Backlog priority writes (ALF-250)', () => {
+  // The store sends priority writes one at a time, so a request that never answered would hold
+  // every later nudge behind it for the rest of the session.
+  it.each([
+    ['reorderCode', () => reorderCode('ALF-1', 'ALF-2')],
+    ['moveCode', () => moveCode('ALF-1', true)],
+    ['moveCodeInProject', () => moveCodeInProject('ALF-1', false)],
+  ])(
+    '%s gives up after 15s, so a hung write fails rather than stalling the queue',
+    async (_name, write) => {
+      const timeout = new AbortController();
+      const timeoutSpy = jest.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+      globalThis.fetch = jest.fn(
+        (_path: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('The operation timed out.', 'TimeoutError'));
+            });
+          }),
+      ) as unknown as typeof fetch;
+
+      const sent = write();
+      timeout.abort();
+
+      await expect(sent).rejects.toThrow('timed out');
+      expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+      timeoutSpy.mockRestore();
+    },
+  );
+});
 
 describe('fetchCommsSnapshot', () => {
   it('asks for the shelf size alone when nothing is being watched', async () => {

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -18,10 +18,20 @@ const mockMoveCodeInProject = jest.mocked(api.moveCodeInProject);
 // because an unstubbed fetch happened to leave it unrendered.
 const mockGetPrRatio = jest.mocked(api.getPrRatio);
 
-// The realtime channel the CodeProvider subscribes — stub it so the provider mounts.
+// The realtime channel the CodeProvider subscribes — stub it so the provider mounts, capturing the
+// `code_items` UPDATE handler so a test can deliver the echo of a write.
+let mockCodeItemsHandler: ((payload: { new: CodeItem }) => void) | undefined;
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => {
-    const channel = { on: () => channel, subscribe: () => channel };
+    const channel = {
+      on: (_event: string, filter: { table?: string }, handler: (payload: never) => void) => {
+        if (filter.table === 'code_items') {
+          mockCodeItemsHandler = handler as (payload: { new: CodeItem }) => void;
+        }
+        return channel;
+      },
+      subscribe: () => channel,
+    };
     return {
       realtime: { setAuth: () => Promise.resolve() },
       channel: () => channel,
@@ -110,7 +120,8 @@ function makeStory(itemId: string, overrides: Partial<CodeStory> = {}): CodeStor
   };
 }
 
-function makeSidecar(itemId: string, priority: number): CodeItem {
+/** A saved `code_items` row; `priorityRev` is the revision the database stamped its rank with. */
+function makeSidecar(itemId: string, priority: number, priorityRev = 0): CodeItem {
   return {
     item_id: itemId,
     project_id: 'p1',
@@ -131,6 +142,7 @@ function makeSidecar(itemId: string, priority: number): CodeItem {
     done_at: null,
     updated_at: '2025-01-02T00:00:00Z',
     priority,
+    priority_rev: priorityRev,
   };
 }
 
@@ -174,6 +186,22 @@ function seedTwoProjects() {
     ],
     { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
   );
+}
+
+/** A reply the test hands back when it chooses, so a later click can land while it's out. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
+/** Let every pending priority-sync timer fire and every reply already given land (fake timers). */
+async function settle() {
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(1000);
+  });
 }
 
 describe('Backlog', () => {
@@ -341,7 +369,7 @@ describe('Backlog', () => {
     // The row re-sorts on screen instantly — no waiting on the network for this.
     expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
 
-    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
+    // Only the network SYNC waits (the store's priority queue), so the call lands after a delay.
     await waitFor(() => {
       expect(mockReorderCode).toHaveBeenCalledWith('ALF-b', 'ALF-a');
     });
@@ -399,7 +427,7 @@ describe('Backlog', () => {
     // The row re-sorts on screen instantly — no waiting on the network for this.
     expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'ALF-b']);
 
-    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
+    // Only the network SYNC waits (the store's priority queue), so the call lands after a delay.
     await waitFor(() => {
       expect(mockMoveCode).toHaveBeenCalledWith('ALF-c', true);
     });
@@ -419,7 +447,7 @@ describe('Backlog', () => {
     // The row re-sorts on screen instantly — no waiting on the network for this.
     expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a']);
 
-    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
+    // Only the network SYNC waits (the store's priority queue), so the call lands after a delay.
     await waitFor(() => {
       expect(mockMoveCode).toHaveBeenCalledWith('ALF-a', false);
     });
@@ -449,7 +477,7 @@ describe('Backlog', () => {
       expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'RLP-1']);
       expect(mockMoveCode).not.toHaveBeenCalled();
 
-      // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a delay.
+      // Only the network SYNC waits (the store's priority queue), so the call lands after a delay.
       await waitFor(() => {
         expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-c', true);
       });
@@ -467,7 +495,7 @@ describe('Backlog', () => {
       expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
       expect(mockMoveCode).not.toHaveBeenCalled();
 
-      // Only the network SYNC is debounced (backlog-row.tsx). Once it lands, the reconciled
+      // Only the network SYNC waits (the store's priority queue). Once it lands, the reconciled
       // priority (25) corrects the order — a moves back ahead of c, still behind the other
       // project's story, which never moved.
       await waitFor(() => {
@@ -634,6 +662,392 @@ describe('Backlog', () => {
       await waitFor(() => {
         expect(rowOrder()).toEqual(['ALF-a']);
       });
+    });
+  });
+
+  describe('nudging while earlier syncs are still landing (ALF-250)', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("keeps the row where the latest click put it when an earlier nudge's reply lands late, so the next nudge still moves it", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const first = deferred<CodeItem[]>();
+      mockReorderCode
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValueOnce([makeSidecar('a', 3, 3), makeSidecar('c', 2, 4)])
+        .mockResolvedValueOnce([makeSidecar('a', 4, 5), makeSidecar('d', 3, 6)]);
+      renderBacklog([
+        makeStory('a', { priority: 1 }),
+        makeStory('b', { priority: 2 }),
+        makeStory('c', { priority: 3 }),
+        makeStory('d', { priority: 4 }),
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      // The first swap is on its way to the server…
+      await settle();
+      // …when the owner nudges again.
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
+
+      // The first reply describes the Backlog as it stood BEFORE the second click. It must not
+      // drag ALF-a back up to share ALF-c's rank.
+      await act(async () => {
+        first.resolve([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]);
+        await Promise.resolve();
+      });
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
+
+      // So the next nudge moves it again, rather than swapping two equal ranks for nothing.
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-d', 'ALF-a']);
+
+      await settle();
+      expect(mockReorderCode.mock.calls).toEqual([
+        ['ALF-a', 'ALF-b'],
+        ['ALF-a', 'ALF-c'],
+        ['ALF-a', 'ALF-d'],
+      ]);
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-d', 'ALF-a']);
+    });
+
+    it('holds a nudge until the one before it has landed, so two swaps are never in flight at once', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const first = deferred<CodeItem[]>();
+      mockReorderCode
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValueOnce([makeSidecar('a', 3, 3), makeSidecar('c', 2, 4)]);
+      renderBacklog([
+        makeStory('a', { priority: 1 }),
+        makeStory('b', { priority: 2 }),
+        makeStory('c', { priority: 3 }),
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await settle();
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await settle();
+
+      // A swap is relative to whatever the server holds when it runs, so the second one must
+      // not race the first there.
+      expect(mockReorderCode).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        first.resolve([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(mockReorderCode.mock.calls).toEqual([
+        ['ALF-a', 'ALF-b'],
+        ['ALF-a', 'ALF-c'],
+      ]);
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a']);
+    });
+
+    it('sends nudges on different rows to the server in the order they were clicked', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockReorderCode
+        .mockResolvedValueOnce([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)])
+        .mockResolvedValueOnce([makeSidecar('c', 2, 3), makeSidecar('a', 3, 4)])
+        .mockResolvedValueOnce([makeSidecar('a', 2, 5), makeSidecar('c', 3, 6)]);
+      renderBacklog([
+        makeStory('a', { priority: 1 }),
+        makeStory('b', { priority: 2 }),
+        makeStory('c', { priority: 3 }),
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-c up' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a up' }));
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-a', 'ALF-c']);
+
+      await settle();
+      // Swaps that share a row don't commute: replayed in any other order they leave the server
+      // holding an order nobody clicked.
+      expect(mockReorderCode.mock.calls).toEqual([
+        ['ALF-a', 'ALF-b'],
+        ['ALF-c', 'ALF-a'],
+        ['ALF-a', 'ALF-c'],
+      ]);
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-a', 'ALF-c']);
+    });
+
+    it('ignores the realtime echo of an earlier nudge while a later one on the same row is still syncing', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const second = deferred<CodeItem[]>();
+      mockReorderCode
+        .mockResolvedValueOnce([makeSidecar('a', 2, 3), makeSidecar('b', 1, 2)])
+        .mockReturnValueOnce(second.promise);
+      renderBacklog([
+        makeStory('a', { priority: 1 }),
+        makeStory('b', { priority: 2 }),
+        makeStory('c', { priority: 3 }),
+        makeStory('d', { priority: 4 }),
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await settle();
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
+
+      // The first swap's row changes stream back only now: ALF-a parked above everything, ALF-b
+      // given ALF-a's old rank, then ALF-a given ALF-b's. None of them may move a row the owner
+      // has since moved again.
+      for (const row of [makeSidecar('a', 0, 1), makeSidecar('b', 1, 2), makeSidecar('a', 2, 3)]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+        expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
+      }
+
+      await act(async () => {
+        second.resolve([makeSidecar('a', 3, 5), makeSidecar('c', 2, 4)]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
+    });
+
+    it('ignores an echo that trails the reply of a later nudge on the same row, but still lands a rank another tab set', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockReorderCode
+        .mockResolvedValueOnce([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)])
+        .mockResolvedValueOnce([makeSidecar('a', 3, 3), makeSidecar('c', 2, 4)]);
+      renderBacklog([
+        makeStory('a', { priority: 1 }),
+        makeStory('b', { priority: 2 }),
+        makeStory('c', { priority: 3 }),
+        makeStory('d', { priority: 4 }),
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      // Both swaps reach the server and both replies land — nothing is pending any more…
+      await settle();
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
+
+      // …before realtime delivers the first swap's changes. They describe ALF-a before the second
+      // click, so they must not pull it back up level with ALF-c.
+      for (const row of [makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+        expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
+      }
+      for (const row of [makeSidecar('a', 3, 3), makeSidecar('c', 2, 4)]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+      }
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a', 'ALF-d']);
+
+      // A rank nothing here wrote is someone else's move, and lands as ever.
+      act(() => {
+        mockCodeItemsHandler?.({ new: makeSidecar('a', 0, 5) });
+      });
+      expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c', 'ALF-d']);
+    });
+
+    it("lands a rank another tab committed after this tab's nudge, even when its echo beats the nudge's reply", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const reply = deferred<CodeItem[]>();
+      mockReorderCode.mockReturnValueOnce(reply.promise);
+      renderBacklog([
+        makeStory('a', { priority: 1 }),
+        makeStory('b', { priority: 2 }),
+        makeStory('c', { priority: 3 }),
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await settle();
+      // The swap commits and its changes stream back — then, before its reply lands, another tab
+      // jumps ALF-a to the top of the Backlog.
+      for (const row of [makeSidecar('a', 2, 1), makeSidecar('b', 1, 2), makeSidecar('a', 0, 3)]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+      }
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-a', 'ALF-c']);
+
+      // The reply describes the Backlog before that jump, so the jump must survive it.
+      await act(async () => {
+        reply.resolve([makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c']);
+    });
+
+    it('lands the echo of a nudge whose reply was lost, though earlier echoes carried the same ranks', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const down = deferred<CodeItem[]>();
+      const up = deferred<CodeItem[]>();
+      mockReorderCode
+        .mockReturnValueOnce(down.promise)
+        .mockReturnValueOnce(up.promise)
+        .mockRejectedValueOnce(new Error('the reply never came back'));
+      renderBacklog([makeStory('a', { priority: 1 }), makeStory('b', { priority: 2 })]);
+
+      /** One nudge whose changes stream back before its reply does. */
+      async function nudge(
+        button: string,
+        reply: ReturnType<typeof deferred<CodeItem[]>>,
+        rows: CodeItem[],
+      ) {
+        await user.click(screen.getByRole('button', { name: button }));
+        await settle();
+        for (const row of rows) {
+          act(() => {
+            mockCodeItemsHandler?.({ new: row });
+          });
+        }
+        await act(async () => {
+          reply.resolve(rows);
+          await Promise.resolve();
+        });
+        await settle();
+      }
+
+      await nudge('Move ALF-a down', down, [makeSidecar('a', 2, 1), makeSidecar('b', 1, 2)]);
+      await nudge('Move ALF-a up', up, [makeSidecar('a', 1, 3), makeSidecar('b', 2, 4)]);
+      expect(rowOrder()).toEqual(['ALF-a', 'ALF-b']);
+
+      // The third nudge reaches the server and commits, but its reply is lost: the screen rolls
+      // back and says so.
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a down' }));
+      await settle();
+      expect(rowOrder()).toEqual(['ALF-a', 'ALF-b']);
+
+      // Its changes still stream in. They carry ranks the first nudge's echoes carried too, but
+      // they are the newest the server holds, so the screen must end where the server did.
+      for (const row of [makeSidecar('a', 2, 5), makeSidecar('b', 1, 6)]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+      }
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
+    });
+
+    it("keeps the Backlog in the order the owner clicked while a server respace renumbers every story ahead of the jump's reply", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const reply = deferred<CodeItem[]>();
+      mockMoveCodeInProject.mockReturnValueOnce(reply.promise);
+      renderBacklog(
+        [
+          makeStory('other', { priority: 5, project_id: 'p2', epic_id: 'e2', ref: 'RLP-1' }),
+          makeStory('a', { priority: 10 }),
+          makeStory('c', { priority: 30 }),
+        ],
+        { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
+      );
+      const relay = (priority: number, rev: number): CodeItem => ({
+        ...makeSidecar('other', priority, rev),
+        project_id: 'p2',
+        epic_id: 'e2',
+        ref: 'RLP-1',
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-c to top of project' }));
+      await settle();
+      expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-c', true);
+      expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+
+      // The database ran out of float room for the jump, so it respaced EVERY story to 1..N —
+      // and only then landed ALF-c between the first two. All of it is one commit, streamed back
+      // before the jump's reply. A story with no write of its own must not land its new rank
+      // while ALF-c still holds the old scale: 1, 2 and 7.5 would put ALF-c last.
+      for (const row of [
+        relay(1, 1),
+        makeSidecar('a', 2, 2),
+        makeSidecar('c', 3, 3),
+        makeSidecar('c', 1.5, 4),
+      ]) {
+        act(() => {
+          mockCodeItemsHandler?.({ new: row });
+        });
+        expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+      }
+
+      // The reply settles the queue, and the server's ranks land together.
+      await act(async () => {
+        reply.resolve([makeSidecar('c', 1.5, 4)]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+
+      // They are the ranks that landed: a story another tab ranks between ALF-c (1.5) and ALF-a
+      // (2) falls between them, where it would sit above both had the old scale stayed.
+      act(() => {
+        mockCodeItemsHandler?.({ new: relay(1.75, 5) });
+      });
+      expect(rowOrder()).toEqual(['ALF-c', 'RLP-1', 'ALF-a']);
+    });
+
+    it("takes only the rank from a respacing jump's reply for a story the jump didn't move, keeping a status the Worker moved meanwhile", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const reply = deferred<CodeItem[]>();
+      mockMoveCodeInProject.mockReturnValueOnce(reply.promise);
+      renderBacklog(
+        [
+          makeStory('other', { priority: 5, project_id: 'p2', epic_id: 'e2', ref: 'RLP-1' }),
+          makeStory('a', { priority: 10 }),
+          makeStory('c', { priority: 30 }),
+        ],
+        { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
+      );
+      const relay = (priority: number, rev: number, factoryState: CodeItem['factory_state']) => ({
+        ...makeSidecar('other', priority, rev),
+        project_id: 'p2',
+        epic_id: 'e2',
+        ref: 'RLP-1',
+        factory_state: factoryState,
+      });
+      /** The status chip RLP-1's row shows. */
+      const relayStatus = () =>
+        within(screen.getByRole('link', { name: /^Open RLP-1/ }).closest('li') as HTMLElement)
+          .getAllByText(/^(In Development|Ready for Review)$/)
+          .map((chip) => chip.textContent);
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-c to top of project' }));
+      await settle();
+      expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-c', true);
+      expect(relayStatus()).toEqual(['In Development']);
+
+      // The jump respaced every story (RLP-1 is now rank 1), and right after it committed the
+      // Worker moved RLP-1 to review. That row change streams back before the jump's reply does.
+      act(() => {
+        mockCodeItemsHandler?.({ new: relay(1, 1, 'ready_for_review') });
+      });
+      expect(relayStatus()).toEqual(['Ready for Review']);
+
+      // The reply lists EVERY story, RLP-1 as the jump's transaction saw it — before the Worker's
+      // write. RLP-1 is there for its rank, not its status, so the older status must not land.
+      await act(async () => {
+        reply.resolve([
+          relay(1, 1, 'in_development'),
+          makeSidecar('a', 2, 2),
+          makeSidecar('c', 1.5, 4),
+        ]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(relayStatus()).toEqual(['Ready for Review']);
+      expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+
+      // The ranks the reply gave ALF-c (1.5) and ALF-a (2) are the ones that landed: a story
+      // another tab ranks between them falls between them, where it would sit above both had the
+      // old scale stayed.
+      act(() => {
+        mockCodeItemsHandler?.({ new: relay(1.75, 5, 'ready_for_review') });
+      });
+      expect(rowOrder()).toEqual(['ALF-c', 'RLP-1', 'ALF-a']);
+      expect(relayStatus()).toEqual(['Ready for Review']);
     });
   });
 

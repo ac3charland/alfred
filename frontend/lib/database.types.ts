@@ -83,6 +83,7 @@ export type Database = {
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
           priority: number
+          priority_rev: number
           project_id: string
           ref: string
           ref_number: number
@@ -106,6 +107,7 @@ export type Database = {
           item_id: string
           lane?: Database["public"]["Enums"]["code_lane"]
           priority?: number
+          priority_rev?: number
           project_id: string
           ref: string
           ref_number: number
@@ -129,6 +131,7 @@ export type Database = {
           item_id?: string
           lane?: Database["public"]["Enums"]["code_lane"]
           priority?: number
+          priority_rev?: number
           project_id?: string
           ref?: string
           ref_number?: number
@@ -1697,6 +1700,7 @@ export type Database = {
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
           priority: number
+          priority_rev: number
           project_id: string
           ref: string
           ref_number: number
@@ -1793,6 +1797,7 @@ export type Database = {
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
           priority: number
+          priority_rev: number
           project_id: string
           ref: string
           ref_number: number
@@ -1844,6 +1849,7 @@ export type Database = {
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
           priority: number
+          priority_rev: number
           project_id: string
           ref: string
           ref_number: number
@@ -1874,6 +1880,7 @@ export type Database = {
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
           priority: number
+          priority_rev: number
           project_id: string
           ref: string
           ref_number: number
@@ -1919,6 +1926,7 @@ export type Database = {
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
           priority: number
+          priority_rev: number
           project_id: string
           ref: string
           ref_number: number
