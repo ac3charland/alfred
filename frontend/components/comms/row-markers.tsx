@@ -8,6 +8,7 @@ import {
   decodeFailed,
   expiresSoon,
   isFiltered,
+  isReclassifyPending,
   isRefused,
   isUnjudged,
 } from '@/lib/comms';
@@ -24,6 +25,10 @@ import type { CommMessage, CommPersonWithHandles } from '@/lib/types';
  * ordinary operation, which is the one failure mode this module cannot recover from.
  *
  * All of them are DERIVED. Nothing here is a stored flag, so nothing can go stale.
+ *
+ * One chip is about the verdict rather than a way it can be wrong: a re-run that is waiting on the
+ * Worker. It leads, because it qualifies every other chip — they describe a verdict that is about
+ * to be replaced — and it is on the collapsed row so the wait is visible without opening it.
  */
 
 interface RowMarkersProperties {
@@ -41,6 +46,14 @@ export function RowMarkers({ message, people, now, shelved = false }: RowMarkers
   const expiry = expiresSoon(message, now);
 
   const chips: React.ReactNode[] = [];
+
+  if (isReclassifyPending(message)) {
+    chips.push(
+      <Badge key="rerun-pending" variant="secondary" className="font-medium">
+        Re-run pending
+      </Badge>,
+    );
+  }
 
   if (person?.priority === 'high') {
     chips.push(

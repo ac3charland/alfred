@@ -48,6 +48,39 @@ describe('SurfaceCard', () => {
     expect(screen.getByRole('heading').parentElement?.children).toHaveLength(1);
   });
 
+  it('ends the header with an action, after the detail', () => {
+    render(
+      <SurfaceCard
+        title="PRs merged in the last 7 days"
+        detail="Sep 22 – Sep 29"
+        action={<button type="button">More</button>}
+      >
+        <p>bar</p>
+      </SurfaceCard>,
+    );
+
+    const header = screen.getByRole('heading').parentElement;
+    const detail = screen.getByText('Sep 22 – Sep 29');
+    const action = screen.getByRole('button', { name: 'More' });
+    expect(header).toContainElement(action);
+    expect(detail.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders the action beside a title with no detail', () => {
+    render(
+      <SurfaceCard
+        title="PRs merged in the last 7 days"
+        action={<button type="button">More</button>}
+      >
+        <p>line</p>
+      </SurfaceCard>,
+    );
+
+    expect(screen.getByRole('heading').parentElement).toContainElement(
+      screen.getByRole('button', { name: 'More' }),
+    );
+  });
+
   it('takes extra classes from the caller', () => {
     render(
       <SurfaceCard className="col-span-2">

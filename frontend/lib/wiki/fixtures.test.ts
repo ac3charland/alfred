@@ -1,4 +1,6 @@
-import { makeWikiPage, makeWikiSync } from './fixtures';
+import { conceptOfTheDay } from './concept-of-the-day';
+import { makeWikiPage, makeWikiSync, toWikiIndexRow, wikiWebFixtureSet } from './fixtures';
+import { buildWikiWeb } from './web/graph';
 
 describe('makeWikiPage', () => {
   it('honors an explicit null for created or updated rather than defaulting it', () => {
@@ -34,5 +36,29 @@ describe('makeWikiSync', () => {
     expect(sync.commit_oid).not.toBeNull();
     expect(sync.last_error).toBeNull();
     expect(sync.last_error_at).toBeNull();
+  });
+});
+
+/** The landing sample as the index lists it. */
+const index = () => wikiWebFixtureSet().pages.map((page) => toWikiIndexRow(page));
+
+describe('wikiWebFixtureSet', () => {
+  it('draws a web of 38 concepts and 14 entities, linked 67 ways', () => {
+    const { nodes, edges } = buildWikiWeb(index());
+
+    expect(nodes.filter((node) => node.section === 'concepts')).toHaveLength(38);
+    expect(nodes.filter((node) => node.section === 'entities')).toHaveLength(14);
+    expect(edges).toHaveLength(67);
+  });
+
+  it('carries three sources and two questions beside the web', () => {
+    const sections = index().map((page) => page.section);
+
+    expect(sections.filter((section) => section === 'sources')).toHaveLength(3);
+    expect(sections.filter((section) => section === 'questions')).toHaveLength(2);
+  });
+
+  it("features Desirable difficulty on the stories' day", () => {
+    expect(conceptOfTheDay(index(), '2026-10-03')?.title).toBe('Desirable difficulty');
   });
 });

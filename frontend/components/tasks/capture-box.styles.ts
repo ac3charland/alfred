@@ -10,7 +10,13 @@ export const captureSurfaceClass = cn(
   'transition-[box-shadow,border-color] duration-200 ease-out motion-reduce:transition-none',
   'focus-within:border-accent-teal focus-within:shadow-[0_0_24px_0_rgba(79,209,224,0.12)]',
 );
-export const captureTextareaClass = cn('rounded-2xl bg-transparent px-4 pt-4 pb-12', 'text-base');
+// `max-h` caps the box CaptureBox grows to fit its text (ALF-285): a long paste scrolls inside the
+// textarea rather than pushing the Capture button — and, on the landing screen, the page — off screen.
+export const captureTextareaClass = cn(
+  'rounded-2xl bg-transparent px-4 pt-4 pb-12',
+  'text-base',
+  'max-h-[40dvh]',
+);
 
 /**
  * The capture "ghost": a transient copy of the just-captured text that fades and slides to the

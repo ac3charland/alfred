@@ -117,22 +117,21 @@ async function priorityOf(client: Client, ref: string): Promise<number> {
   return priority;
 }
 
-/** The migration that introduced `items.dispatched_at` — the split point of the backfill replay. */
-const DISPATCH_MIGRATION = '0026_inbox_dispatch.sql';
-
 /**
- * Replay the migration history around the dispatch migration on a throwaway database: everything
- * BEFORE it, then a seeded pre-residency world, then the migration itself. A backfill only ever
- * touches rows that already existed, so it can't be judged on the main connection, where every
- * migration has already run against an empty schema.
- *
- * Returns one row per seeded item: its title and whether the backfill dispatched it.
+ * Replay the migration history around `migration` on a throwaway database: everything BEFORE it,
+ * then `seed` builds the world as it stood, then the migration itself, then `read` inspects the
+ * result. A backfill only ever touches rows that already existed, so it can't be judged on the
+ * main connection, where every migration has already run against an empty schema.
  */
-async function replayDispatchBackfill(
+async function replayMigration<T>(
   client: Client,
-): Promise<{ title: string; dispatched: boolean }[]> {
-  // A code literal, never user input — same footing as the `set role` interpolation above.
-  const database = 'alfred_dispatch_backfill';
+  migration: string,
+  seed: (probe: Client) => Promise<void>,
+  read: (probe: Client) => Promise<T>,
+): Promise<T> {
+  // A code literal (the migration's own name), never user input — same footing as the
+  // `set role` interpolation above.
+  const database = `alfred_replay_${migration.slice(0, 4)}`;
   await client.query(`drop database if exists ${database}`);
   await client.query(`create database ${database}`);
   const probe = new pg.Client({
@@ -144,44 +143,88 @@ async function replayDispatchBackfill(
   await probe.connect();
   try {
     await bootstrapSupabase(probe);
-    await applyMigrations(
-      probe,
-      MIGRATIONS_DIR,
-      (file) => path.basename(file) < DISPATCH_MIGRATION,
-    );
-    // The world as it stood when "in the Inbox" still meant "has no folder": a filed task with a
-    // subtask beneath it, and a loose capture.
-    const { rows: folderRows } = await probe.query<{ id: string }>(
-      `insert into folders (name) values ('Health') returning id`,
-    );
-    const folder = folderRows[0]?.id;
-    if (folder === undefined) throw new Error('could not seed a folder');
-    const { rows: parentRows } = await probe.query<{ id: string }>(
-      `insert into items (title, item_type, folder_id) values ('filed task', 'task', $1)
-         returning id`,
-      [folder],
-    );
-    const parent = parentRows[0]?.id;
-    if (parent === undefined) throw new Error('could not seed a filed task');
-    await probe.query(
-      `insert into items (title, item_type, folder_id, parent_id)
-         values ('filed subtask', 'task', $1, $2)`,
-      [folder, parent],
-    );
-    await probe.query(`insert into items (title, item_type) values ('inbox capture', 'task')`);
-
-    await applyMigrations(
-      probe,
-      MIGRATIONS_DIR,
-      (file) => path.basename(file) === DISPATCH_MIGRATION,
-    );
-    const { rows } = await probe.query<{ title: string; dispatched: boolean }>(
-      `select title, dispatched_at is not null as dispatched from items order by title`,
-    );
-    return rows;
+    await applyMigrations(probe, MIGRATIONS_DIR, (file) => path.basename(file) < migration);
+    await seed(probe);
+    await applyMigrations(probe, MIGRATIONS_DIR, (file) => path.basename(file) === migration);
+    return await read(probe);
   } finally {
     await probe.end();
   }
+}
+
+/** The migration that introduced `items.dispatched_at` — the split point of the backfill replay. */
+const DISPATCH_MIGRATION = '0026_inbox_dispatch.sql';
+
+/**
+ * Replay the dispatch migration over a seeded pre-residency world. Returns one row per seeded
+ * item: its title and whether the backfill dispatched it.
+ */
+async function replayDispatchBackfill(
+  client: Client,
+): Promise<{ title: string; dispatched: boolean }[]> {
+  return replayMigration(
+    client,
+    DISPATCH_MIGRATION,
+    async (probe) => {
+      // The world as it stood when "in the Inbox" still meant "has no folder": a filed task with
+      // a subtask beneath it, and a loose capture.
+      const { rows: folderRows } = await probe.query<{ id: string }>(
+        `insert into folders (name) values ('Health') returning id`,
+      );
+      const folder = folderRows[0]?.id;
+      if (folder === undefined) throw new Error('could not seed a folder');
+      const { rows: parentRows } = await probe.query<{ id: string }>(
+        `insert into items (title, item_type, folder_id) values ('filed task', 'task', $1)
+           returning id`,
+        [folder],
+      );
+      const parent = parentRows[0]?.id;
+      if (parent === undefined) throw new Error('could not seed a filed task');
+      await probe.query(
+        `insert into items (title, item_type, folder_id, parent_id)
+           values ('filed subtask', 'task', $1, $2)`,
+        [folder, parent],
+      );
+      await probe.query(`insert into items (title, item_type) values ('inbox capture', 'task')`);
+    },
+    async (probe) => {
+      const { rows } = await probe.query<{ title: string; dispatched: boolean }>(
+        `select title, dispatched_at is not null as dispatched from items order by title`,
+      );
+      return rows;
+    },
+  );
+}
+
+/** The migration that added `projects.exclude_from_pr_ratio` and pre-ticked the knowledge repo. */
+const PR_RATIO_EXCLUSION_MIGRATION = '0042_project_pr_ratio_exclusion.sql';
+
+/**
+ * Replay the PR-ratio exclusion migration over projects that already existed — the knowledge repo
+ * among them, plus one of the same name under another owner. Returns each project's repo and flag.
+ */
+async function replayPrRatioExclusion(
+  client: Client,
+): Promise<{ repo: string; excluded: boolean }[]> {
+  return replayMigration(
+    client,
+    PR_RATIO_EXCLUSION_MIGRATION,
+    async (probe) => {
+      await probe.query(
+        `insert into projects (key, name, repo_owner, repo_name) values
+           ('ALF', 'Alfred', 'ac3charland', 'alfred'),
+           ('KNO', 'Knowledge', 'ac3charland', 'knowledge'),
+           ('OKN', 'Other knowledge', 'someone-else', 'knowledge')`,
+      );
+    },
+    async (probe) => {
+      const { rows } = await probe.query<{ repo: string; excluded: boolean }>(
+        `select repo_owner || '/' || repo_name as repo, exclude_from_pr_ratio as excluded
+           from projects order by repo`,
+      );
+      return rows;
+    },
+  );
 }
 
 /**
@@ -1618,6 +1661,40 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       const wanted = expected.map((row) => `${row.title}=${String(row.dispatched)}`).join(', ');
       if (actual !== wanted) throw new Error(`expected ${wanted}, got ${actual}`);
       return `pre-existing rows after the migration: ${actual}`;
+    },
+  );
+
+  const prRatioExclusionBackfillResult = await attempt(
+    'the PR-ratio exclusion migration ticks only ac3charland/knowledge among existing projects (ALF-276)',
+    async () => {
+      const rows = await replayPrRatioExclusion(client);
+      const actual = rows.map((row) => `${row.repo}=${String(row.excluded)}`).join(', ');
+      const wanted =
+        'ac3charland/alfred=false, ac3charland/knowledge=true, someone-else/knowledge=false';
+      if (actual !== wanted) throw new Error(`expected ${wanted}, got ${actual}`);
+      return `pre-existing rows after the migration: ${actual}`;
+    },
+  );
+
+  const prRatioExclusionDefaultResult = await attempt(
+    'a project counts on the PR ratio unless flagged — exclude_from_pr_ratio is not null default false (ALF-276)',
+    async () => {
+      // The main connection ran the migration over no projects at all — its update a no-op — so
+      // the seeded project, inserted without the column, carries the default.
+      const { rows } = await client.query<{ excluded: boolean | null }>(
+        `select exclude_from_pr_ratio as excluded from projects where id = $1`,
+        [PROJECT],
+      );
+      if (rows[0]?.excluded !== false)
+        throw new Error(`expected false, got ${String(rows[0]?.excluded)}`);
+      const refused = await client
+        .query(`update projects set exclude_from_pr_ratio = null where id = $1`, [PROJECT])
+        .then(
+          () => false,
+          () => true,
+        );
+      if (!refused) throw new Error('a null exclude_from_pr_ratio was accepted');
+      return 'default false; null refused';
     },
   );
 
@@ -3615,6 +3692,89 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const commsRerunAbandonResult = await attempt(
+    'comms: abandoning a re-run clears the request and stamps the failure, only if the request is ' +
+      'still the one that was read — a newer request survives (ALF-221)',
+    async () => {
+      const account = await ensureReaderAccount(client);
+      const inserted = await client.query<{ id: string; failed: string | null }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at,
+                                    tier, judged_by, ask, classify_attempts, reclassify_requested_at)
+           values ($1, 'rerun-abandon', 'rerun-abandon-thread', 'rerun@example.com', now(),
+                   'today', 'model', 'Approve the invoice.', 5, '2026-09-09T14:50:00.123456+00:00')
+           returning id, reclassify_failed_at::text as failed`,
+        [account],
+      );
+      const id = inserted.rows[0]?.id;
+      if (!id) throw new Error('could not seed the message');
+      // Nullable with no default: a row that has never had a failed re-run reads NULL.
+      if (inserted.rows[0]?.failed !== null)
+        throw new Error('reclassify_failed_at should start empty');
+
+      // The request exactly as PostgREST hands it to the Worker — JSON text, with an offset and
+      // microseconds — because that text is what the abandoning write sends back to match on.
+      // In a transaction of its own, so the zone is set for this read only and not left behind on
+      // the connection every later assertion shares.
+      await client.query('begin');
+      await client.query(`set local timezone = 'UTC'`);
+      const read = await client.query<{ requested: string }>(
+        `select to_json(reclassify_requested_at) #>> '{}' as requested
+           from comm_messages where id = $1`,
+        [id],
+      );
+      await client.query('commit');
+      const requested = read.rows[0]?.requested;
+      if (requested !== '2026-09-09T14:50:00.123456+00:00')
+        throw new Error(`the request read back as ${String(requested)}`);
+
+      const abandon = `update comm_messages
+           set reclassify_requested_at = null, reclassify_failed_at = $3
+         where id = $1 and reclassify_requested_at = $2`;
+
+      // The owner asks again after the Worker read the row: the old stamp no longer matches.
+      await client.query(
+        `update comm_messages set reclassify_requested_at = '2026-09-09T15:00:00+00:00' where id = $1`,
+        [id],
+      );
+      const stale = await client.query(abandon, [id, requested, '2026-09-09T15:01:00.000Z']);
+      if (stale.rowCount !== 0) throw new Error('an abandon wiped out a newer request');
+      const survived = await client.query<{ pending: boolean }>(
+        `select reclassify_requested_at is not null as pending from comm_messages where id = $1`,
+        [id],
+      );
+      if (survived.rows[0]?.pending !== true) throw new Error('the newer request did not survive');
+
+      // Back to the request that was read: now the write matches, and touches nothing else.
+      await client.query(
+        `update comm_messages set reclassify_requested_at = $2::timestamptz where id = $1`,
+        [id, requested],
+      );
+      const matched = await client.query(abandon, [id, requested, '2026-09-09T15:01:00.000Z']);
+      if (matched.rowCount !== 1) throw new Error('the abandon did not match the request it read');
+      const after = await client.query<{
+        requested: string | null;
+        failed: string | null;
+        tier: string;
+        judged_by: string;
+        ask: string;
+        attempts: number;
+      }>(
+        `select reclassify_requested_at::text as requested, reclassify_failed_at::text as failed,
+                tier, judged_by, ask, classify_attempts as attempts
+           from comm_messages where id = $1`,
+        [id],
+      );
+      const row = after.rows[0];
+      if (row?.requested !== null) throw new Error('the request was not cleared');
+      if (!row.failed?.startsWith('2026-09-09 15:01:00'))
+        throw new Error(`the failure was stamped as ${String(row.failed)}`);
+      if (row.tier !== 'today' || row.judged_by !== 'model' || row.ask !== 'Approve the invoice.')
+        throw new Error('the abandon disturbed the verdict the row already had');
+
+      return 'matched the request it read, cleared it, stamped the failure and left the verdict; a newer request was untouched';
+    },
+  );
+
   const readerDiscoveryResult = await attempt(
     'v_reader_discovery: lists an off-roster Substack list-header sender, never substack’s own ' +
       'no-reply senders, and drops a sender once it joins the roster (ALF-233)',
@@ -4849,6 +5009,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     anonInsertResult,
     anonReadResult,
     dispatchBackfillResult,
+    prRatioExclusionBackfillResult,
+    prRatioExclusionDefaultResult,
     dispatchInheritanceResult,
     dispatchFolderDeleteResult,
     dispatchCheckResult,
@@ -4880,6 +5042,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     commsInboxItemAtomicResult,
     commsInboxItemConcurrencyResult,
     commsRealtimeResult,
+    commsRerunAbandonResult,
     readerGrantsResult,
     readerHealthSeededResult,
     readerWorklistResult,

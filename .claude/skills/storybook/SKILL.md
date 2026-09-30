@@ -221,6 +221,11 @@ cleanup (the returned function) always runs when navigating away — use this fo
   classes and CSS custom properties (dark theme variables) are absent — the component renders
   with broken styles. The import must be a side-effect import at the top of the file.
 
+- **A `:root`/`html` rule in `globals.css` applies inside every story's iframe too.** A root
+  `scroll-padding-top` for the app's sticky header shifted where the snapshot runner's element
+  screenshot scrolled, clipping tall stories. Scope app-chrome-only root rules to the chrome
+  (`:root:has([data-shell-header])`), not bare `:root`.
+
 - **Never use Tailwind v3 `tailwind.config.js` patterns.** alfred uses Tailwind v4 (CSS-first).
   Styles come from `globals.css` via `@import 'tailwindcss'`. No `content` array config needed
   in the preview — the CSS import is sufficient.
@@ -402,9 +407,12 @@ leaves the meta's object in place and the capture still runs. `visualTest: null`
 component can't be screenshotted — a dialog containing a **sandboxed `srcDoc` iframe** hangs
 `postVisit` until the 30 s test timeout (the reason `epic-spec-modal.stories.tsx` opts out
 wholesale), while the same capture driven straight from Playwright takes under a second.
+**Declare that story LAST in its file.** Once a sandboxed frame has rendered, `waitForPageReady`
+never settles for any later story in the same file, so every capture after it times out at 30 s —
+opting the frame's own story out doesn't help the ones that follow.
 
 **Capturing interactive states — the part the docs skip.** The official page never explains
-hover, focus or keys. Five hard-won rules:
+hover, focus or keys. Six hard-won rules:
 
 - **CSS `:hover` is NOT triggered by `userEvent.hover` in a play function.** `userEvent`
   dispatches pointer *events*; it never moves a real pointer, so the `:hover`
@@ -419,19 +427,30 @@ hover, focus or keys. Five hard-won rules:
   programmatically yields a plain `:focus` with no ring — Tailwind's `focus-visible:ring-*`
   won't render. Press Tab instead: `await page.keyboard.press('Tab')`. The control a focus story
   captures must be the **first** focusable element in DOM order, since one Tab lands on it (a
-  single focusable control is simplest).
+  single focusable control is simplest). When something focusable precedes it, the story's play
+  function `.focus()`es that preceding control and the runner's Tab moves on to the target, still
+  a keyboard move (`LegendKeyboardFocus` in `components/code/pr-ratio.stories.tsx`).
 - **A play function's FIRST `userEvent.keyboard` never reaches a `document`-level listener.**
   Nothing in the story iframe holds focus yet, so a story whose state a hotkey drives (the
   Comms queue's / Reader list's `j`-to-select) screenshots the resting state — silently, like
   the portal case below. Any `userEvent.click` inside the canvas first, and every later
   keystroke lands. Better still, drive the state through a click the component already honours
   and leave the keys to the RTL and Playwright suites.
+- **A component that lays out only after a `ResizeObserver` measures it is still unlaid when
+  the play function starts** (jsdom tests miss this — their fake observer reports at once). Await
+  a `findBy*` for something that appears only once it is laid out before interacting: the wiki
+  web's links join the accessibility tree then, and a zoom sent sooner is undone by the first fit
+  (`wiki-web.stories.tsx`).
 - **An open Radix menu, dialog or popover is invisible to a snapshot unless the story targets
   `body`.** `DropdownMenuContent` and `DropdownMenuSubContent` both render through
   `DropdownMenuPrimitive.Portal` — outside `#storybook-root`, which is `visualTest.target`'s
   default. The baseline then captures the trigger with **no menu**, and the story passes forever:
   the failure is silent, not red. Set `parameters.visualTest = { target: 'body' }` on any story
   whose `play` opens portalled content, and eyeball the first baseline before committing it.
+- **`visualTest.viewport` is applied before the story mounts, so its `play` and any layout chosen
+  in JS (`useMediaQuery`) run at that size** — not resized after the play, which would swap the
+  layout and drop the state the play built. A deliberately short viewport stands in for a raised
+  keyboard: `window.visualViewport` follows it.
 
 **Determinism — freeze motion before every capture.** Anything animated makes the diff
 non-deterministic: an `animate-spin` spinner sits at a random rotation, a

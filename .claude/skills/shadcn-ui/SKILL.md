@@ -161,6 +161,13 @@ Use this when:
   anchor is not a trigger, so Radix restores focus to nothing: `preventDefault()` in
   `onCloseAutoFocus` and focus the element yourself.
 
+- **Focusing something from a menu item's `onSelect` loses to the menu's focus trap.** The trap
+  stays up through the menu's exit animation, so focus moved during `onSelect` — or a timer after
+  it — is pulled straight back into the menu, and the dialog beneath reclaims it once that unmounts.
+  Open the focus-taking thing from the menu's `onCloseAutoFocus` instead (it fires once the menu has
+  closed): `preventDefault()` there, so the menu doesn't hand focus to its trigger, and do the work.
+  jsdom can't show this — its menu unmounts at once — so only a Playwright `toBeFocused` pins it.
+
 - **Always** add `"use client"` to any file that uses a Radix-based shadcn component, `useState`,
   `useEffect`, event handlers, or browser APIs. In alfred's Next.js App Router context (`isRSC: true`),
   this is most UI component files. Forgetting it produces a hydration mismatch or a runtime error.

@@ -147,6 +147,11 @@ export interface CommMessage {
   verdict_id?: string | undefined;
   classified_at?: string | undefined;
   reclassify_requested_at?: string | undefined;
+  /**
+   * When the sweep gave up on a re-run at the attempt ceiling, keeping the old verdict. Cleared
+   * by the next request, so a value here always describes the latest one.
+   */
+  reclassify_failed_at?: string | undefined;
   cleared_at?: string | undefined;
   cleared_by?: ClearedBy | undefined;
   inbox_item_id?: string | undefined;

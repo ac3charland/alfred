@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
+import { userEvent, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { PrRatioResponse, Project } from '@/lib/types';
@@ -14,6 +15,7 @@ const PROJECTS: Project[] = [
   {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     id: 'p-realplay',
     name: 'RealPlay',
     key: 'RPL',
@@ -26,6 +28,7 @@ const PROJECTS: Project[] = [
   {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     id: 'p-alfred',
     name: 'Alfred',
     key: 'ALF',
@@ -178,6 +181,56 @@ export const Failed: Story = {
   decorators: [stubEndpoint(502, { error: 'GitHub request failed' })],
 };
 
+/** Seeds the card's store with `projects` in place of the meta's. */
+function withProjects(projects: Project[]) {
+  return (Story: React.ComponentType) => (
+    <CodeProvider initialProjects={projects} initialEpics={[]} initialStories={[]}>
+      <Story />
+    </CodeProvider>
+  );
+}
+
+/**
+ * Every project excluded from the ratio: one muted line in place of the range, bar and legend —
+ * even though Other still merged PRs — with the ⋯ kept so a project can be unticked.
+ */
+export const AllExcluded: Story = {
+  decorators: [
+    withProjects(PROJECTS.map((project) => ({ ...project, exclude_from_pr_ratio: true }))),
+    stubEndpoint(200, { ...WITH_OTHER, total: 3, repos: [], other: { count: 3, percentage: 100 } }),
+  ],
+};
+
+/**
+ * The ⋯ menu open over the card: every project in creation order with its colour dot under a muted
+ * heading, the excluded one ticked. Captured on `body`, since the menu is portalled outside the
+ * story root.
+ */
+export const ExcludeMenuOpen: Story = {
+  parameters: {
+    visualTest: { target: 'body' },
+  },
+  decorators: [
+    withProjects(
+      PROJECTS.map((project) => ({
+        ...project,
+        exclude_from_pr_ratio: project.id === 'p-realplay',
+      })),
+    ),
+    stubEndpoint(200, {
+      ...SPLIT,
+      total: 6,
+      repos: [{ repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 100 }],
+    }),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole('img');
+    await userEvent.click(canvas.getByRole('button', { name: 'PR ratio options' }));
+    await within(document.body).findByRole('menu');
+  },
+};
+
 /**
  * `LegendKeyboardFocus`'s own capture frame. At the meta's 760px the ring — a thin stroke — is
  * under 1% of the capture, so a dropped ring would still pass the test-runner's threshold; at
@@ -192,9 +245,13 @@ function withNarrowFocusFrame(Story: React.ComponentType) {
 }
 
 /**
- * Tabbing into the card lands on the first project's legend row and draws the app's blue focus
- * ring around it. Other is not focusable, so it never takes the ring. Captured in its own
- * narrow frame (`withNarrowFocusFrame`) so a missing ring fails the snapshot.
+ * Tabbing onto the first project's legend row draws the app's blue focus ring around it. Other is
+ * not focusable, so it never takes the ring. Captured in its own narrow frame
+ * (`withNarrowFocusFrame`) so a missing ring fails the snapshot.
+ *
+ * The header's ⋯ comes first in tab order, so the play function parks focus on it and the
+ * test-runner's one real Tab moves on to the legend row — a keyboard move, so `:focus-visible`
+ * still matches there.
  *
  * Declared ahead of `LegendHover` on purpose: the test-runner's real pointer stays wherever the
  * last story hovered it, so a focus capture taken after that hover would carry the underline too.
@@ -204,6 +261,12 @@ export const LegendKeyboardFocus: Story = {
     visualTest: { target: '[data-testid="pr-ratio-focus-frame"]', focus: true },
   },
   decorators: [withNarrowFocusFrame, stubEndpoint(200, WITH_OTHER)],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Once the counts land, so the legend rows exist behind the ⋯.
+    await canvas.findByRole('img');
+    canvas.getByRole('button', { name: 'PR ratio options' }).focus();
+  },
 };
 
 /** Hovering a project's legend row underlines its name — the row is a link to its board. */

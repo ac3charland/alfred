@@ -76,6 +76,50 @@ describe('extractPost — the fixtures', () => {
     expect(bare.canonical_url).toBe('https://x.example/i/1/2?t=3');
   });
 
+  it.each([
+    // The wordings the pattern has always matched, pinned so a rewrite can only widen it.
+    'Read online',
+    'View online',
+    'View this post in your browser',
+    // Every other way a template names the same link.
+    'Read on web',
+    'Read on the web',
+    'View on web',
+    'Read it on the web',
+    'View this email in your browser',
+    'View email in browser',
+    'View it in your browser',
+    'View this email online',
+    'View this newsletter in your browser',
+    'View this issue in your browser',
+    'View this message in your browser',
+    'View in web browser',
+    'Read in your browser',
+    'Open in browser',
+    'View as a web page',
+    'View as webpage',
+    'Web version',
+    'View web version',
+    'Read the online version',
+  ])('matches the "%s" wording as the web version', (wording) => {
+    const post = extractPost(
+      htmlMessage(`<a href="https://news.example.com/issues/42?t=abc">${wording}</a>`),
+      HARBORLINE,
+    );
+    expect(post.canonical_url).toBe('https://news.example.com/issues/42?t=abc');
+  });
+
+  it.each(['Read on the website', 'Read on web.dev', 'View on the web-app'])(
+    'never takes "%s", a link to some other site, for the web version',
+    (wording) => {
+      const post = extractPost(
+        htmlMessage(`<a href="https://other.example/">${wording}</a>`),
+        HARBORLINE,
+      );
+      expect(post.canonical_url).toBeUndefined();
+    },
+  );
+
   it('falls back to the anchor text when the mail carries no post path', () => {
     expect(extractPost(READ_IN_APP_MESSAGE, { name: 'The Cadence Weekly' })).toMatchObject({
       canonical_url: 'https://cadence.substack.com/i/149023188/9f2a?utm_source=email',

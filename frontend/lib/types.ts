@@ -193,6 +193,12 @@ export interface CommsSeed {
   readerClaimedCount: number;
   /** The newest verdict across the whole window: the classifier's proof of life. */
   lastClassifiedAt: string | null;
+  /**
+   * The rows the read was asked to `watch`, wherever they sit — a re-run can move a row onto a
+   * shelf page that isn't loaded. Empty unless asked. Held apart from `messages` and never
+   * rendered: it only lets the store say how a re-run ended.
+   */
+  watched: CommMessage[];
 }
 
 // ── Reader (newsletter posts pulled out of Comms and summarised) — ──

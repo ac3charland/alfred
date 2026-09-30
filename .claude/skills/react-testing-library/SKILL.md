@@ -141,6 +141,12 @@ await waitFor(() => {
 - **Never use `container.querySelector` or direct DOM node access.**
   The rule `no-container` catches `container.querySelector`; `no-node-access` catches `.children`, `.parentElement`, etc. Both are errors in the recommended config. If you need a scoped query, use `within()`.
 
+- **A component that branches on `useMediaQuery(MOBILE_QUERY)` renders its desktop layout under jsdom** —
+  `jest.setup.ts` stubs every `matchMedia` to `false`. A phone test opts in by overriding
+  `globalThis.matchMedia` so only that query matches (`Object.assign(original(query), { matches: query === MOBILE_QUERY })`;
+  a spread of the `MediaQueryList` trips `no-misused-spread`) and restoring it in `afterEach`
+  (`describe('on a phone')` in `story-detail-modal.test.tsx`).
+
 - **Never use `getBy*` to assert absence.** `getBy*` throws a descriptive error when the element is missing, which makes the test fail with a confusing "unable to find element" message rather than your intended assertion. Use `queryBy*` + `not.toBeInTheDocument()`.
 
 - **Always prefer jest-dom matchers over manual DOM assertions.**
@@ -167,6 +173,8 @@ await waitFor(() => {
 - **A bare `fireEvent.touchMove` inside an open Radix modal (`FormDialog`, `FullScreenDialog`) throws `Cannot read properties of undefined (reading 'clientX')`** from `react-remove-scroll`, whose document listener reads the touch point off every touchmove. Pass one: `fireEvent.touchMove(el, { touches: [{ clientX: 0, clientY: 100 }] })` (`components/shell/mobile-search.test.tsx`).
 
 - **`readerFixtureSet()` (`frontend/lib/reader/fixtures.ts`) rows render newest-first and `makeReaderPost` stamps increasing `received_at`, so `.nth(0)` is the LAST-built fixture** (the no-link row), not the first. Address rows by title with `.filter({ hasText })` instead of position.
+
+- **jsdom does no layout: `scrollHeight`, `clientHeight` and `getBoundingClientRect` are all 0.** To unit-test an auto-sizing element, `jest.spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get')` with a mock that models the browser rule the code leans on — a textarea's `scrollHeight` never drops below its rendered box (`clientHeight`), so a fit that skips the `height = 'auto'` reset never shrinks. A `function () { this … }` mock trips `unicorn/no-this-outside-of-class`; read the lone element off `document` instead. What the browser actually lays out belongs in an E2E spec measuring `scrollHeight - clientHeight`. (`components/tasks/capture-box.test.tsx`, `e2e/capture-expand.spec.ts`)
 
 - **Don't index a `getAllBy*` result — address the row you mean.** Write a `rowFor(title)` helper that `.find()`s the row by its text and throws when it is missing, then scope with `within(rowFor('Alpha'))`; iterate with `for (const row of rows)` when you really mean all of them. A test that names its rows should not index at all; the `eslint` skill's `defined()` helper is for where indexing is unavoidable. (`components/reader/post-list.test.tsx`)
 

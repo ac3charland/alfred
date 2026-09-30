@@ -5,6 +5,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -68,6 +69,25 @@ describe('DropdownMenu', () => {
       'aria-checked',
       'false',
     );
+  });
+
+  it('heads a group with a muted, non-interactive label', () => {
+    render(
+      <DropdownMenu open>
+        <DropdownMenuTrigger>Open</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuLabel>Exclude from PR ratio</DropdownMenuLabel>
+          <DropdownMenuCheckboxItem checked={false}>Alfred</DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+
+    const label = screen.getByText('Exclude from PR ratio');
+    expect(label).toHaveClass('text-xs', 'text-muted-foreground');
+    expect(label).not.toHaveAttribute('role', 'menuitem');
+    // Only the checkbox item is an item; the label is skipped by keyboard navigation.
+    expect(screen.getAllByRole('menuitemcheckbox')).toHaveLength(1);
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
   });
 
   it('renders a styled sub-trigger and sub-content', () => {

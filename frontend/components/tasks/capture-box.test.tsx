@@ -16,6 +16,7 @@ function makeProject(id: string, name: string, key: string): Project {
   return {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     id,
     name,
     key,
@@ -819,6 +820,200 @@ describe('CaptureBox', () => {
     // Focus leaves the capture entirely — the resting hint returns.
     await user.click(document.body);
     expect(screen.getByText(/what.s on your mind/i)).toBeInTheDocument();
+  });
+
+  // ALF-285: the box was a fixed three rows, so a fourth line (or a wrapping thought) scrolled
+  // inside it — the earliest lines slid out of view and the newest ran under the Capture button.
+  // jsdom does no layout (`scrollHeight` is always 0), so model the two browser facts the fit
+  // depends on: a textarea's scrollHeight is its content plus padding, and is never less than the
+  // box it currently occupies — a stale inline height can only shrink once it is reset to `auto`
+  // (back to the three-row resting box). The E2E spec (capture-expand) measures real layout.
+  describe('grows with its content (ALF-285)', () => {
+    const LINE_HEIGHT = 24;
+    const PADDING = 64; // pt-4 + pb-12
+    const RESTING_HEIGHT = 3 * LINE_HEIGHT + PADDING;
+    const heightOfLines = (count: number) => `${String(count * LINE_HEIGHT + PADDING)}px`;
+    const eightLines = Array.from({ length: 8 }, (_, index) => `line ${String(index + 1)}`).join(
+      '\n',
+    );
+    let wrappedLines = 0;
+    let scrollHeightSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      wrappedLines = 0;
+      // The box under test is the only textarea on screen, so read it from the document — the
+      // getter runs on the first layout effect, before `render` has returned a handle to it.
+      scrollHeightSpy = jest
+        .spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get')
+        .mockImplementation(() => {
+          const textarea = document.querySelector('textarea');
+          if (textarea === null) return 0;
+          const content =
+            (textarea.value.split('\n').length + wrappedLines) * LINE_HEIGHT + PADDING;
+          const occupied =
+            textarea.style.height === '' || textarea.style.height === 'auto'
+              ? RESTING_HEIGHT
+              : Number.parseInt(textarea.style.height, 10);
+          return Math.max(content, occupied);
+        });
+    });
+
+    afterEach(() => {
+      scrollHeightSpy.mockRestore();
+    });
+
+    it('rests at three rows while the text fits them', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+
+      expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+
+      await user.paste('one\ntwo');
+
+      expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+    });
+
+    it('expands to show every line once the text outgrows three rows', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+
+      await user.paste(eightLines);
+
+      expect(textarea).toHaveStyle({ height: heightOfLines(8) });
+    });
+
+    it('grows a line at a time as Shift+Enter adds newlines, capturing nothing', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+
+      await user.type(
+        textarea,
+        'a{Shift>}{Enter}{/Shift}b{Shift>}{Enter}{/Shift}c{Shift>}{Enter}{/Shift}d',
+      );
+
+      expect(textarea).toHaveStyle({ height: heightOfLines(4) });
+      expect(mockCreateItem).not.toHaveBeenCalled();
+    });
+
+    it('shrinks again as lines are deleted', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      await user.paste(eightLines);
+
+      // Three lines of "\nline N" (7 characters each) off the end leaves five.
+      await user.keyboard('{Backspace>21/}');
+
+      expect(textarea).toHaveStyle({ height: heightOfLines(5) });
+    });
+
+    it('holds the tall box while its ghost flies, then settles back to three rows', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'line 1' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      await user.paste(eightLines);
+      expect(textarea).toHaveStyle({ height: heightOfLines(8) });
+
+      await user.keyboard('{Enter}');
+
+      // The ghost is anchored to the box: shrinking it now would move the send-off's launch point.
+      const ghost = await screen.findByTestId('capture-ghost');
+      expect(textarea).toHaveValue('');
+      expect(textarea).toHaveStyle({ height: heightOfLines(8) });
+
+      fireEvent.animationEnd(ghost);
+
+      await waitFor(() => {
+        expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+      });
+    });
+
+    it('fits the next thought at once, even while the last is still flying off', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'line 1' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      await user.paste(eightLines);
+      await user.keyboard('{Enter}');
+      await screen.findByTestId('capture-ghost');
+
+      await user.paste('a\nb\nc\nd');
+
+      expect(textarea).toHaveStyle({ height: heightOfLines(4) });
+    });
+
+    it('settles back at once when motion is reduced, since there is no ghost to wait for', async () => {
+      const originalMatchMedia = globalThis.matchMedia;
+      globalThis.matchMedia = (query: string) =>
+        ({
+          matches: true,
+          media: query,
+          onchange: null,
+          addEventListener: jest.fn(),
+          removeEventListener: jest.fn(),
+          dispatchEvent: jest.fn(),
+        }) as unknown as MediaQueryList;
+
+      try {
+        mockCreateItem.mockResolvedValue({ id: '1', title: 'line 1' } as Awaited<
+          ReturnType<typeof apiClient.createItem>
+        >);
+        const user = userEvent.setup();
+        renderWithProviders(<CaptureBox />);
+        const textarea = screen.getByRole('textbox', { name: /capture box/i });
+        await user.paste(eightLines);
+
+        await user.keyboard('{Enter}');
+
+        await waitFor(() => {
+          expect(textarea).toHaveValue('');
+        });
+        expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+        expect(screen.queryByTestId('capture-ghost')).not.toBeInTheDocument();
+      } finally {
+        globalThis.matchMedia = originalMatchMedia;
+      }
+    });
+
+    it('re-fits when the box is resized under a draft, since the text now wraps differently', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+      const textarea = screen.getByRole('textbox', { name: /capture box/i });
+      await user.paste('one\ntwo');
+      expect(textarea).toHaveStyle({ height: `${String(RESTING_HEIGHT)}px` });
+
+      // A narrower window: the same two lines now wrap onto five more.
+      wrappedLines = 5;
+      act(() => {
+        globalThis.dispatchEvent(new Event('resize'));
+      });
+
+      expect(textarea).toHaveStyle({ height: heightOfLines(7) });
+    });
+
+    it('removes the very resize handler it added once unmounted', () => {
+      const addListener = jest.spyOn(globalThis, 'addEventListener');
+      const removeListener = jest.spyOn(globalThis, 'removeEventListener');
+      const { unmount } = renderWithProviders(<CaptureBox />);
+      const added = addListener.mock.calls.filter(([type]) => type === 'resize');
+      expect(added.length).toBeGreaterThan(0);
+
+      unmount();
+
+      for (const [, handler] of added) {
+        expect(removeListener).toHaveBeenCalledWith('resize', handler);
+      }
+      addListener.mockRestore();
+      removeListener.mockRestore();
+    });
   });
 
   it('shows the capture button text "Capture" when not saving', () => {

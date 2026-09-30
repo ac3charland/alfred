@@ -581,6 +581,7 @@ function newCommMessage(input) {
     verdict_id: input.verdict_id ?? null,
     classified_at: input.classified_at ?? null,
     reclassify_requested_at: input.reclassify_requested_at ?? null,
+    reclassify_failed_at: input.reclassify_failed_at ?? null,
     cleared_at: input.cleared_at ?? null,
     cleared_by: input.cleared_by ?? null,
     inbox_item_id: input.inbox_item_id ?? null,
@@ -833,6 +834,8 @@ function newProject(input) {
     description: input.description ?? null,
     // The owner's palette pick; null = Automatic, the creation-slot colour (migration 0041).
     color: input.color ?? null,
+    // Dropped from the Dashboard PR ratio when true (migration 0042).
+    exclude_from_pr_ratio: input.exclude_from_pr_ratio ?? false,
   };
 }
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { SHELF_LIMIT_MAX, SHELF_PAGE_SIZE } from '@/lib/comms/queue';
+import { SHELF_LIMIT_MAX, SHELF_PAGE_SIZE, WATCH_LIMIT_MAX } from '@/lib/comms/queue';
 
 /**
  * Request shapes for the Comms module's routes — its own file rather than a section of
@@ -42,9 +42,20 @@ export type CommMessagesQuery = z.infer<typeof commMessagesQuerySchema>;
 /**
  * Query for GET /api/comms/snapshot. `shelf` is how many shelf rows the tab is showing — the
  * first page by default, more after "Show more" — so a re-read keeps what is on screen.
+ *
+ * `watch` names the rows the tab is waiting on a re-run for, as a comma-separated list of ids
+ * (`?watch=a,b`, at most `WATCH_LIMIT_MAX`). A re-run can move a row somewhere the snapshot does
+ * not return — a demotion files it on a shelf page that may not be loaded — so the tab asks for
+ * those rows by name. Absent or empty means none; a malformed id, or too many, fails the request
+ * rather than being quietly dropped, since a dropped id is a re-run whose outcome never arrives.
  */
 export const commsSnapshotQuerySchema = z.object({
   shelf: z.coerce.number().int().min(1).max(SHELF_LIMIT_MAX).default(SHELF_PAGE_SIZE),
+  watch: z
+    .string()
+    .optional()
+    .transform((value) => (value === undefined || value === '' ? [] : value.split(',')))
+    .pipe(z.array(z.uuid()).max(WATCH_LIMIT_MAX)),
 });
 
 export type CommsSnapshotQuery = z.infer<typeof commsSnapshotQuerySchema>;

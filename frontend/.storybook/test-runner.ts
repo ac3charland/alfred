@@ -16,10 +16,13 @@ interface VisualTestParameters {
   /** Move keyboard focus into the story (→ `:focus-visible`) before capturing. */
   focus?: boolean;
   /**
-   * Render at this viewport before capturing. Tailwind's responsive (`md:`) prefixes key on the
-   * *browser viewport*, not the container, so a story exercising mobile-vs-desktop layout must
-   * shrink the real page — a fixed-width wrapper alone can't trigger `md:`. Omit for the desktop
-   * default.
+   * Render at this viewport, from before the story mounts through the capture. Tailwind's
+   * responsive (`md:`) prefixes key on the *browser viewport*, not the container, so a story
+   * exercising mobile-vs-desktop layout must shrink the real page — a fixed-width wrapper alone
+   * can't trigger `md:`. Applied before the story renders so its `play` function runs at this
+   * size too: a layout chosen in JS (`useMediaQuery`) or a keyboard stand-in (a short viewport)
+   * would otherwise be set up at the desktop size and rebuilt on the later resize. Omit for the
+   * desktop default.
    */
   viewport?: { width: number; height: number };
 }
@@ -49,6 +52,18 @@ const config: TestRunnerConfig = {
   setup() {
     expect.extend({ toMatchImageSnapshot });
   },
+  async preVisit(page, context) {
+    const storyContext = await getStoryContext(page, context);
+    if (storyContext.tags.includes('docs')) return;
+
+    const visual = (storyContext.parameters as { visualTest?: VisualTestParameters }).visualTest;
+    if (!visual) return;
+
+    // Pin the viewport before the story mounts and plays: the requested mobile size for a
+    // responsive story, else the desktop default (which also resets any narrowing a prior mobile
+    // story left behind, so it can't leak into a later desktop capture and flip it to mobile).
+    await page.setViewportSize(visual.viewport ?? DEFAULT_VIEWPORT);
+  },
   async postVisit(page, context) {
     const storyContext = await getStoryContext(page, context);
 
@@ -59,10 +74,6 @@ const config: TestRunnerConfig = {
     const visual = (storyContext.parameters as { visualTest?: VisualTestParameters }).visualTest;
     // Only atom stories opt in; leave the rest of the Storybook untouched.
     if (!visual) return;
-
-    // Pin the viewport before capture: the requested mobile size for a responsive story, else
-    // the desktop default (which also resets any narrowing a prior mobile story left behind).
-    await page.setViewportSize(visual.viewport ?? DEFAULT_VIEWPORT);
 
     await page.addStyleTag({ content: FREEZE_MOTION });
 

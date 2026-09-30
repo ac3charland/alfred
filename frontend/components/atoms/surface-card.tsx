@@ -10,6 +10,11 @@ interface SurfaceCardProperties {
   title?: string;
   /** A secondary line beside the title, baseline-aligned and pushed to the far end. */
   detail?: string;
+  /**
+   * A control that ends the header, after the detail — a ⋯ menu trigger, say. Part of the
+   * header row, so it needs a `title` to appear.
+   */
+  action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
@@ -21,7 +26,10 @@ interface SurfaceCardProperties {
  * Presentation only — the frame every dashboard panel is drawn in, so a panel's file is about
  * what it shows rather than re-deriving the same border, radius, padding and header rhythm.
  */
-export function SurfaceCard({ title, detail, children, className }: SurfaceCardProperties) {
+export function SurfaceCard({ title, detail, action, children, className }: SurfaceCardProperties) {
+  const detailLine = detail !== undefined && (
+    <p className="text-xs text-muted-foreground">{detail}</p>
+  );
   return (
     <div
       className={cn(
@@ -32,7 +40,15 @@ export function SurfaceCard({ title, detail, children, className }: SurfaceCardP
       {title !== undefined && (
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h3 className="text-sm font-medium text-foreground">{title}</h3>
-          {detail !== undefined && <p className="text-xs text-muted-foreground">{detail}</p>}
+          {action === undefined ? (
+            detailLine
+          ) : (
+            // Centred rather than baseline-aligned: the action is a box, not a line of text.
+            <div className="flex items-center gap-2">
+              {detailLine}
+              {action}
+            </div>
+          )}
         </div>
       )}
       {children}

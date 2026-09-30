@@ -90,9 +90,15 @@ every view, badge and location label reads). So inside the Inbox the folder / pr
 only **label** (`setFolder`, `setIntendedProject`, `setIntendedEpic`), and **Dispatch** — the row's
 ⋯ menu for one item, the bulk bar for a selection, both through `dispatchItems` and both gated by
 `lib/tasks/dispatch.ts` — is what acts on those labels. Once a row is dispatched its chips are
-hidden and the menu's **Move to…** (`moveTask`) is the only mover: the two surfaces are
-complementary, so collapsing them strands one half of the model. Residency travels with the whole
-subtree, exactly like `folder_id` — every write that files rows stamps both on each of them.
+hidden and **Move to…** (`moveTask`) is its mover: the two surfaces are complementary, so
+collapsing them strands one half of the model. A drag onto a sidebar folder (`moveTask`) files a
+row from either side. Residency travels with the whole subtree, exactly like `folder_id` — every
+write that files rows stamps both on each of them.
+
+**"Is it already there?" reads residency; "is the label unchanged?" reads `folder_id`.** A move's
+no-op guard compares the target with `residentFolderId` (`resolveFolderDrop` takes the item for
+this) — against raw `folder_id`, an Inbox row can never be filed into the folder it is labelled
+with. A label write's no-op (`handleSetFolder`) compares `folder_id`, or clearing a label breaks.
 
 ## Realtime: a push channel wherever a Worker is the second writer
 
@@ -142,6 +148,13 @@ without having missed anything), the browser comes back `online`, a failed optim
 re-read itself honest: local dispatches made while it is in flight are recorded and replayed over
 the snapshot; rows with a write in flight keep their optimistic value. A trigger mid-read runs one
 more read after it (a loop — recursion trips `react-hooks/immutability`).
+
+**An outcome the browser can't watch happen** — a re-run the Worker answers minutes later — is
+tracked in a ref (nothing renders from it), with the *pending* state derived from the row itself
+(`isReclassifyPending`) so a reload and a second tab agree. The poll finds the outcome by asking the
+snapshot to `watch` the ids (`seed.watched`): a re-run can move a row onto a shelf page the tab never
+loaded. It asks only about writes the server has **acknowledged** — a read that began earlier finds
+the row with no request on it, which reads exactly like one already answered.
 
 **Liveness is recency, not an event log.** The store holds only `loaded` (false until the first
 successful read, forever if the shell's own seed read failed) and `lastReadAt` (the client's own

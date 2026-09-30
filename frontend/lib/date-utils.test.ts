@@ -7,8 +7,10 @@ import {
   isDueDateOverdue,
   isDueToday,
   isDueTodayOrOverdue,
+  localISODate,
   monthGridDays,
   toISODate,
+  todayISODate,
 } from './date-utils';
 
 pinClock('2026-07-28T12:00:00.000Z');
@@ -324,5 +326,17 @@ describe('addDays', () => {
     // the split on "-" hands `Number('04T00:00:00+00:00')` → NaN, and `new Date(NaN)` throws
     // on `toISOString()`. The row menu's due-date presets normalise for exactly this reason.
     expect(() => addDays('2026-09-04T00:00:00+00:00', 1)).toThrow();
+  });
+});
+
+describe('localISODate', () => {
+  it("reads an instant's local calendar date, not its UTC one", () => {
+    // Built from local fields, so the answer is the same in every zone the suite runs in.
+    expect(localISODate(new Date(2026, 8, 30, 23, 59))).toBe('2026-09-30');
+    expect(localISODate(new Date(2026, 9, 1, 0, 0))).toBe('2026-10-01');
+  });
+
+  it("is today's date for the live clock", () => {
+    expect(todayISODate()).toBe(localISODate(new Date()));
   });
 });

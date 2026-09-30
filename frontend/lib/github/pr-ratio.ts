@@ -87,9 +87,16 @@ export function buildOtherQuery(
     'is:merged',
     `merged:${week.start}..${week.end}`,
     ...authors.map((login) => `author:${login}`),
-    // Negated qualifiers are ANDed, so every measured repo is subtracted from the sweep and
-    // no PR can be counted both in its own segment and in Other.
-    ...repos.map((repo) => `-repo:${repo.owner}/${repo.name}`),
+    // Negated qualifiers are ANDed, so every given project repo is subtracted from the sweep and
+    // no PR can be counted both in its own segment and in Other — nor, for an excluded project
+    // the caller passes in, counted at all. Sorted, so the query depends only on WHICH repos are
+    // subtracted: excluding a project reorders the caller's list, and a reordered query would
+    // miss the cached answer and spend another request against Search's 30/min cap.
+    ...stableSorted(
+      repos.map((repo) => `-repo:${repo.owner}/${repo.name}`),
+      // Code-point order, so the query can't vary with the server's locale.
+      (a, b) => (a < b ? -1 : a > b ? 1 : 0),
+    ),
   ].join(' ');
 }
 
@@ -159,7 +166,7 @@ async function countMergedPrs(
 }
 
 /**
- * The window's split across every project repo — plus the "Other" bucket for everything
+ * The window's split across every counted project repo — plus the "Other" bucket for everything
  * merged outside them, when the config can anchor that sweep — or `undefined` when ANY
  * request failed. Partial results are deliberately discarded: a bar whose segments were
  * counted under different rules is a *wrong* ratio, and showing nothing beats showing that.
@@ -172,7 +179,13 @@ export async function fetchPrRatio(
   config: PrRatioConfig,
   week: WeekWindow,
 ): Promise<PrRatioResponse | undefined> {
-  const otherQuery = buildOtherQuery(config.repos, week, config.authors);
+  // Excluded projects are never searched, but Other still subtracts them: an excluded project's
+  // PRs vanish from the ratio rather than resurfacing as "merged elsewhere".
+  const otherQuery = buildOtherQuery(
+    [...config.repos, ...config.excludedRepos],
+    week,
+    config.authors,
+  );
   const queries = config.repos.map((repo) => buildSearchQuery(repo, week, config.authors));
   if (otherQuery !== undefined) queries.push(otherQuery);
 

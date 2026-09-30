@@ -418,3 +418,50 @@ test('leaves the Backlog with no ratio card at all — it lives on the Dashboard
   await expect(page.getByText('PRs merged in the last 7 days')).toBeHidden();
   await expect(page.getByText('Lines changed per week')).toBeHidden();
 });
+
+test('excludes a project from the PR ratio through the card’s ⋯ menu, and the tick survives a reload', async ({
+  page,
+  seed,
+}) => {
+  // Real UUIDs: the exclusion is a PATCH /api/projects/[id], which validates the id.
+  const alfred = makeProject('Alfred', { id: '00000000-0000-4000-8000-0000000000a1', key: 'ALF' });
+  const knowledge = makeProject('Knowledge', {
+    id: '00000000-0000-4000-8000-0000000000a2',
+    key: 'KNO',
+    repo_name: 'knowledge',
+  });
+  await seed({ projects: [alfred, knowledge] });
+  await stubGithub(page);
+  await page.goto('/code/dashboard');
+
+  await page.getByRole('button', { name: 'PR ratio options' }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu.getByText('Exclude from PR ratio')).toBeVisible();
+  const knowledgeItem = menu.getByRole('menuitemcheckbox', { name: 'Knowledge' });
+  await expect(knowledgeItem).toHaveAttribute('aria-checked', 'false');
+
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/projects/${knowledge.id}`) &&
+      response.request().method() === 'PATCH',
+  );
+  // The card asks for the ratio again once the save lands, so the bar reflects it.
+  const refetched = page.waitForRequest('**/api/code/pr-ratio*');
+  await knowledgeItem.click();
+  const response = await saved;
+  expect(response.ok()).toBe(true);
+  await refetched;
+
+  // Ticked, and the menu stayed open for another pick.
+  await expect(knowledgeItem).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByRole('menuitemcheckbox', { name: 'Alfred' })).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'PR ratio options' }).click();
+  await expect(
+    page.getByRole('menu').getByRole('menuitemcheckbox', { name: 'Knowledge' }),
+  ).toHaveAttribute('aria-checked', 'true');
+  await expect(
+    page.getByRole('menu').getByRole('menuitemcheckbox', { name: 'Alfred' }),
+  ).toHaveAttribute('aria-checked', 'false');
+});

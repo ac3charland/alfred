@@ -8,16 +8,18 @@ import {
   resetWikiFixtureClock,
   toWikiIndexRow,
   wikiFixtureSet,
+  wikiWebFixtureSet,
 } from '@/lib/wiki/fixtures';
 
 import { WikiView } from './wiki-view';
 
 /**
- * The Wiki module's reading room, one story per state the mockups draw: the index, a section,
- * both search moments, a page with every link kind and its backlinks, a page loading and failing,
- * not found, the empty snapshot and a failed sync. Seeded from the fixture set through
- * `parameters.store.wiki`; the body read and the body search are stubbed at `fetch`, since the
- * view reaches them through the store and the API client.
+ * The Wiki module's reading room, one story per state the mockups draw: the landing (small, full,
+ * on a phone, and with no concepts or entities), a section, both search moments, a page with
+ * every link kind and its backlinks, a page loading and failing, not found, the empty snapshot and
+ * a failed sync. Seeded from the fixture sets through `parameters.store.wiki`; the body read and
+ * the body search are stubbed at `fetch`, since the view reaches them through the store and the
+ * API client. The landing's web runs with reduced motion, so it settles before its one paint.
  */
 
 /** The instant the header's relative times read against: two hours after the fixture sync. */
@@ -28,6 +30,10 @@ const REPO = 'ac3charland/knowledge';
 resetWikiFixtureClock();
 const FIXTURES = wikiFixtureSet();
 const INDEX = FIXTURES.pages.map((page) => toWikiIndexRow(page));
+
+resetWikiFixtureClock();
+const WEB_FIXTURES = wikiWebFixtureSet();
+const WEB_INDEX = WEB_FIXTURES.pages.map((page) => toWikiIndexRow(page));
 
 /** The body hits a search for "forgetting" gets: the curve (a title match too) and Brain Rules. */
 const FORGETTING_HITS: WikiSearchHit[] = [
@@ -101,8 +107,14 @@ function stubWikiFetch({
   };
 }
 
-const withFrame: Decorator = (Story) => (
-  <div data-testid="wiki-frame" className="w-[768px] bg-background p-6">
+/** The shell's content column: 768 px on a desktop, or a 390 px phone's (`parameters.phone`). */
+const withFrame: Decorator = (Story, { parameters }) => (
+  <div
+    data-testid="wiki-frame"
+    className={
+      parameters['phone'] === true ? 'w-[390px] bg-background p-4' : 'w-[768px] bg-background p-6'
+    }
+  >
     <Story />
   </div>
 );
@@ -117,7 +129,7 @@ const meta = {
   title: 'Wiki/WikiView',
   component: WikiView,
   decorators: [withFrame],
-  args: { now: NOW },
+  args: { now: NOW, reducedMotion: true },
   parameters: {
     ...at('/wiki'),
     store: { wiki: { pages: INDEX, sync: FIXTURES.sync, repo: REPO } },
@@ -128,9 +140,41 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Every page, grouped Concepts · Entities · Sources · Questions, each heading with its count. */
+/** The landing over the small wiki: today's concept, then a four-dot web, and nothing below. */
 export const Index: Story = {
   beforeEach: stubWikiFetch(),
+};
+
+/** The landing over the 52-page sample: today's concept at the heart of a web of its neighbours. */
+export const Landing: Story = {
+  beforeEach: stubWikiFetch(),
+  parameters: { store: { wiki: { pages: WEB_INDEX, sync: WEB_FIXTURES.sync, repo: REPO } } },
+};
+
+/** The same landing on a 390 px phone: the web's stage is shorter, and nothing overflows. */
+export const LandingPhone: Story = {
+  beforeEach: stubWikiFetch(),
+  parameters: {
+    phone: true,
+    store: { wiki: { pages: WEB_INDEX, sync: WEB_FIXTURES.sync, repo: REPO } },
+    visualTest: { viewport: { width: 390, height: 844 } },
+  },
+};
+
+/** A wiki of only sources and questions: no card, no web, and a pointer to the nav. */
+export const NoConceptsYet: Story = {
+  beforeEach: stubWikiFetch(),
+  parameters: {
+    store: {
+      wiki: {
+        pages: WEB_INDEX.filter(
+          (page) => page.section === 'sources' || page.section === 'questions',
+        ),
+        sync: WEB_FIXTURES.sync,
+        repo: REPO,
+      },
+    },
+  },
 };
 
 /** One section — the index filtered to Concepts. */

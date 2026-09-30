@@ -291,6 +291,7 @@ interface WireMessage {
   verdict_id: string | null;
   classified_at: string | null;
   reclassify_requested_at: string | null;
+  reclassify_failed_at: string | null;
   cleared_at: string | null;
   cleared_by: ClearedBy | null;
   inbox_item_id: string | null;
@@ -325,6 +326,7 @@ function toMessage(row: WireMessage): CommMessage {
     verdict_id: row.verdict_id ?? undefined,
     classified_at: row.classified_at ?? undefined,
     reclassify_requested_at: row.reclassify_requested_at ?? undefined,
+    reclassify_failed_at: row.reclassify_failed_at ?? undefined,
     cleared_at: row.cleared_at ?? undefined,
     cleared_by: row.cleared_by ?? undefined,
     inbox_item_id: row.inbox_item_id ?? undefined,
@@ -487,15 +489,43 @@ export async function fetchUnjudgedMessages(
  * exactly this reason (the row is re-judged without being un-cleared). The waste this guards
  * against elsewhere is a standing backlog silently re-billing every tick; a single named row is a
  * bounded, deliberate cost the owner asked for.
+ *
+ * It IS filtered on `classify_attempts`, for the reverse reason: a re-run that keeps failing with
+ * a bad model response counts an attempt each time, and past the ceiling it would otherwise be
+ * re-sent — and billed — on every tick forever, since nothing else looks at a row that has a
+ * tier. A request at the ceiling is `fetchStalledReruns`'s to give up on instead.
  */
 export async function fetchReclassifyRequests(
   env: SupabaseEnv,
-  options: { limit: number },
+  options: { limit: number; attemptCeiling: number },
 ): Promise<CommMessage[]> {
   const url = restQueryUrl(env, 'comm_messages', {
     select: '*',
     reclassify_requested_at: 'not.is.null',
     direction: 'eq.inbound',
+    classify_attempts: `lt.${String(options.attemptCeiling)}`,
+    order: 'reclassify_requested_at.asc',
+    limit: String(options.limit),
+  });
+  const rows = await fetchJson<WireMessage[]>(env, url, {}, 'GET comm_messages');
+  return rows.map((row) => toMessage(row));
+}
+
+/**
+ * The re-run requests that have spent every attempt — the complement of
+ * `fetchReclassifyRequests`, so between them every pending request is either judged or given up
+ * on. Not filtered on the tier: a row that never had one is a stalled re-run as much as a judged
+ * row is, and is parked afterwards as it would be without the request.
+ */
+export async function fetchStalledReruns(
+  env: SupabaseEnv,
+  options: { attemptCeiling: number; limit: number },
+): Promise<CommMessage[]> {
+  const url = restQueryUrl(env, 'comm_messages', {
+    select: '*',
+    reclassify_requested_at: 'not.is.null',
+    direction: 'eq.inbound',
+    classify_attempts: `gte.${String(options.attemptCeiling)}`,
     order: 'reclassify_requested_at.asc',
     limit: String(options.limit),
   });
@@ -509,6 +539,11 @@ export async function fetchReclassifyRequests(
  *
  * `cleared_at is null` for the same reason as `fetchUnjudgedMessages`: a row a reply already
  * drained needs no further attempt spent parking it either.
+ *
+ * `reclassify_requested_at is null` because a row with a re-run request standing is a stalled
+ * re-run, which `fetchStalledReruns` finds and the sweep abandons first: parking it here instead
+ * would clear the request with no failure stamp (the owner told "still couldn't judge", the
+ * detail line missing) and cost a second write. It is parked in the tick that abandons it.
  */
 export async function fetchUnjudgedAtCeiling(
   env: SupabaseEnv,
@@ -519,6 +554,7 @@ export async function fetchUnjudgedAtCeiling(
     direction: 'eq.inbound',
     tier: 'is.null',
     cleared_at: 'is.null',
+    reclassify_requested_at: 'is.null',
     classify_attempts: `gte.${String(options.attemptCeiling)}`,
     order: 'received_at.asc',
     limit: String(options.limit),

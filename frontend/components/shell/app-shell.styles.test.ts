@@ -1,4 +1,4 @@
-import { shellRootClass, sidebarShortcutHintClass } from './app-shell.styles';
+import { shellHeaderClass, shellRootClass, sidebarClass } from './app-shell.styles';
 
 describe('app-shell root sizing', () => {
   it('sizes to the dynamic viewport so the landing screen fits the visible area on mobile', () => {
@@ -20,18 +20,23 @@ describe('app-shell root sizing', () => {
   });
 });
 
-describe('sidebar "Press ⌘K" hint (ALF-207)', () => {
-  it('sticks to the viewport bottom instead of drifting down with the stretched sidebar', () => {
-    // The sidebar stretches to match a page that can grow far past one screen (see
-    // `shellRootClass`), so a plain in-flow position would let this hint scroll off past the
-    // bottom of the *page* rather than staying pinned to the bottom of the *viewport*.
-    const tokens = sidebarShortcutHintClass.split(/\s+/);
+describe('stationary chrome (ALF-304)', () => {
+  it('pins the top bar to the viewport top above scrolling content', () => {
+    // The document scrolls (see `shellRootClass`), so only `sticky` keeps the bar on screen; the
+    // z-layer lifts it over the `z-10` drop gaps in the task list yet under dialogs (`z-50`).
+    const tokens = shellHeaderClass.split(/\s+/);
     expect(tokens).toContain('sticky');
-    expect(tokens).toContain('bottom-0');
+    expect(tokens).toContain('top-0');
+    expect(tokens).toContain('z-20');
+    expect(tokens).toContain('bg-surface');
   });
 
-  it('repaints opaque so stuck content behind it does not show through', () => {
-    const tokens = sidebarShortcutHintClass.split(/\s+/);
-    expect(tokens).toContain('bg-surface');
+  it('pins the desktop sidebar to one viewport tall so its nav scrolls on its own', () => {
+    // A stretched sidebar would scroll away with the page; sticky + one dynamic viewport tall keeps
+    // it put, and `self-start` stops the flex row stretching it back to the page's height.
+    const tokens = sidebarClass.split(/\s+/);
+    expect(tokens).toEqual(
+      expect.arrayContaining(['md:sticky', 'md:top-0', 'md:h-dvh', 'md:self-start']),
+    );
   });
 });

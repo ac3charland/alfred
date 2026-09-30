@@ -237,7 +237,38 @@ describe('sendReaderPostToInstapaper', () => {
   });
 });
 
+/** Answer one snapshot read, recording the path it was asked for. */
+function stubSnapshotRead(): jest.Mock<Promise<Response>, [string]> {
+  const fetchMock = jest.fn<Promise<Response>, [string]>(() => Promise.resolve(Response.json({})));
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
 describe('fetchCommsSnapshot', () => {
+  it('asks for the shelf size alone when nothing is being watched', async () => {
+    const fetchMock = stubSnapshotRead();
+
+    await fetchCommsSnapshot(50);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/comms/snapshot?shelf=50');
+  });
+
+  it('asks for the rows being watched as one comma-separated list', async () => {
+    const fetchMock = stubSnapshotRead();
+
+    await fetchCommsSnapshot(100, ['id-a', 'id-b']);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/comms/snapshot?shelf=100&watch=id-a,id-b');
+  });
+
+  it('leaves `watch` off entirely for an empty list', async () => {
+    const fetchMock = stubSnapshotRead();
+
+    await fetchCommsSnapshot(50, []);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/comms/snapshot?shelf=50');
+  });
+
   it('gives up after 15s, so a hung read fails rather than holding the view', async () => {
     const timeout = new AbortController();
     const timeoutSpy = jest.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);

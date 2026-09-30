@@ -41,13 +41,21 @@ export function launchPhasesFor(story: Pick<CodeStory, 'factory_state' | 'title'
   return [];
 }
 
-/** The button label + the in-flight (spinner) label for each launch phase. */
-export const LAUNCH_LABELS: Record<LaunchPhase, { idle: string; busy: string }> = {
-  refinement: { idle: 'Refine in Claude Code', busy: 'Opening refinement' },
-  implementation: { idle: 'Implement in Claude Code', busy: 'Opening implementation' },
-  bypass: { idle: 'Skip to Development', busy: 'Opening development' },
-  spike: { idle: 'Run spike in Claude Code', busy: 'Opening spike' },
-  bug: { idle: 'Fix bug in Claude Code', busy: 'Opening bug fix' },
+/**
+ * The button label, its short form, and the in-flight (spinner) label for each launch phase.
+ * `short` is what a phone's bottom bar has room for; the card chips and the desktop modal keep
+ * `idle`.
+ */
+export const LAUNCH_LABELS: Record<LaunchPhase, { idle: string; short: string; busy: string }> = {
+  refinement: { idle: 'Refine in Claude Code', short: 'Refine', busy: 'Opening refinement' },
+  implementation: {
+    idle: 'Implement in Claude Code',
+    short: 'Implement',
+    busy: 'Opening implementation',
+  },
+  bypass: { idle: 'Skip to Development', short: 'Skip to dev', busy: 'Opening development' },
+  spike: { idle: 'Run spike in Claude Code', short: 'Run spike', busy: 'Opening spike' },
+  bug: { idle: 'Fix bug in Claude Code', short: 'Fix bug', busy: 'Opening bug fix' },
 };
 
 /** The factory state a successful launch transitions the story into. */

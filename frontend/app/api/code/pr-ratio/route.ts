@@ -16,7 +16,8 @@ const DEFAULT_TIMEZONE = 'UTC';
 
 // ---------------------------------------------------------------------------
 // GET /api/code/pr-ratio — the merged-PR split across the Code module's projects (one repo
-// each, oldest project first, labelled by project name) for the seven days ending NOW, so a
+// each, oldest project first, labelled by project name; a project flagged
+// `exclude_from_pr_ratio` is simply absent) for the seven days ending NOW, so a
 // review held on a Friday (or a slipped Sunday) sees a full week of work instead of only the
 // days since Monday.
 //
@@ -25,7 +26,8 @@ const DEFAULT_TIMEZONE = 'UTC';
 // for them. Same number the Dashboard card shows, reachable from a script.
 //
 // The 501/502 split is load-bearing for the caller: 501 means "this deployment doesn't do PR
-// ratios" (no token, or fewer than two projects), which the card treats as "render nothing";
+// ratios" (no token, or fewer than two projects — counted before exclusion, so excluding one
+// never hides the card), which the card treats as "render nothing";
 // 502 means "configured, but GitHub is unhappy right now", which it shows as a muted note —
 // silence there would read as "zero PRs merged this week". A failed projects read is neither:
 // it maps to its own status, never 501, so a database hiccup can't make the card vanish.

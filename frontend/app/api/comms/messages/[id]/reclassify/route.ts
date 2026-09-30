@@ -14,8 +14,9 @@ import { readCommMessage } from '@/lib/data/comms-messages';
 //
 // The attempt counter is reset with the request, which is what makes this reach a row the
 // classification ceiling has already given up on — the marked, unjudged rows this verb exists
-// for. The new verdict arrives later, on the next poll; the response is just the row carrying
-// its pending request.
+// for. So is the failure stamp an earlier re-run may have left: a stamp that is still set must
+// always describe the latest request, so it goes back to empty with each new one. The new verdict
+// arrives later, on the next poll; the response is just the row carrying its pending request.
 // ---------------------------------------------------------------------------
 
 export const POST = withSession(
@@ -34,7 +35,11 @@ export const POST = withSession(
 
     const { data, error } = await supabase
       .from('comm_messages')
-      .update({ reclassify_requested_at: new Date().toISOString(), classify_attempts: 0 })
+      .update({
+        reclassify_requested_at: new Date().toISOString(),
+        classify_attempts: 0,
+        reclassify_failed_at: null,
+      })
       .eq('id', id)
       .select()
       .single();

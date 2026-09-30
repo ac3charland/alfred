@@ -178,15 +178,17 @@ function makeClient(results: Partial<Record<Table, Answer>>) {
   return { client: { from } as never, calls };
 }
 
-/** Which of the snapshot's four `comm_messages` reads a request is. */
-function messageRead(query: RecordedQuery): 'active' | 'shelf' | 'claimed' | 'last' {
+/** Which of the snapshot's five `comm_messages` reads a request is. */
+function messageRead(query: RecordedQuery): 'active' | 'shelf' | 'claimed' | 'last' | 'watched' {
+  // The only `comm_messages` read that names ids: the rows a tab is waiting on a re-run for.
+  if (query.in !== undefined) return 'watched';
   if (query.or === 'tier.is.null,tier.neq.fyi') return 'active';
   if (query.not.some(([column]) => column === 'reader_claimed_at')) return 'claimed';
   if (query.not.some(([column]) => column === 'classified_at')) return 'last';
   return 'shelf';
 }
 
-/** Answer the four message reads separately; any of them may be a queue of pages. */
+/** Answer the message reads separately; any of them may be a queue of pages. */
 function messages(
   answers: Partial<Record<ReturnType<typeof messageRead>, Result | Result[]>>,
 ): (query: RecordedQuery) => Result {
@@ -572,6 +574,58 @@ describe('readCommsSnapshot', () => {
     expect(error?.message).toBe('nope');
     expect(seed.health).toBeUndefined();
     expect(seed.accounts).toEqual([ACCOUNT]);
+  });
+  describe('watch', () => {
+    const WATCHED = [
+      makeCommMessage(ACCOUNT.id, { tier: 'fyi', judged_by: 'model' }),
+      makeCommMessage(ACCOUNT.id, { tier: 'today', judged_by: 'model' }),
+    ];
+    const ids = WATCHED.map((message) => message.id);
+
+    it('reads the named rows in one extra request, wherever they sit', async () => {
+      const { client, calls } = makeClient({
+        comm_messages: messages({ watched: { data: WATCHED, error: null } }),
+      });
+
+      const { seed, error } = await readCommsSnapshot(client, SHELF_PAGE_SIZE, ids);
+
+      expect(error).toBeNull();
+      expect(seed.watched).toEqual(WATCHED);
+      const reads = calls.comm_messages.filter((query) => messageRead(query) === 'watched');
+      expect(reads).toHaveLength(1);
+      expect(reads[0]?.in).toEqual(['id', ids]);
+    });
+
+    it('keeps them out of `messages`: they are never rendered', async () => {
+      const { client } = makeClient({
+        comm_messages: messages({ watched: { data: WATCHED, error: null } }),
+      });
+
+      const { seed } = await readCommsSnapshot(client, SHELF_PAGE_SIZE, ids);
+
+      expect(seed.messages).toEqual([]);
+    });
+
+    it('makes no extra read when nothing is watched', async () => {
+      const { client, calls } = makeClient({});
+
+      const { seed } = await readCommsSnapshot(client);
+
+      expect(seed.watched).toEqual([]);
+      expect(calls.comm_messages.some((query) => messageRead(query) === 'watched')).toBe(false);
+    });
+
+    it('fails the whole read when the watched rows cannot be read', async () => {
+      // The caller replaces its view with what this returns, and a tab that missed the outcome of
+      // a re-run because a read half-worked would never be told what became of it.
+      const { client } = makeClient({
+        comm_messages: messages({ watched: { data: null, error: { message: 'boom' } } }),
+      });
+
+      const { error } = await readCommsSnapshot(client, SHELF_PAGE_SIZE, ids);
+
+      expect(error?.message).toBe('boom');
+    });
   });
 });
 

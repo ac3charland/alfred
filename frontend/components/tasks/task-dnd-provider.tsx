@@ -273,7 +273,7 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
     // top-level task; any other id is a task → re-parent.
     const isFolderTarget = overId === INBOX_DROP_ID || folders.some((f) => f.id === overId);
     if (isFolderTarget) {
-      const move = resolveFolderDrop(draggedId, overId, dragged.folder_id);
+      const move = resolveFolderDrop(draggedId, overId, dragged);
       if (move === null) return;
       void (async () => {
         try {

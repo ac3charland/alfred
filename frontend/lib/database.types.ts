@@ -366,6 +366,7 @@ export type Database = {
           participants: string[]
           reader_claimed_at: string | null
           received_at: string
+          reclassify_failed_at: string | null
           reclassify_requested_at: string | null
           references_ids: string[]
           rfc822_message_id: string | null
@@ -399,6 +400,7 @@ export type Database = {
           participants?: string[]
           reader_claimed_at?: string | null
           received_at: string
+          reclassify_failed_at?: string | null
           reclassify_requested_at?: string | null
           references_ids?: string[]
           rfc822_message_id?: string | null
@@ -432,6 +434,7 @@ export type Database = {
           participants?: string[]
           reader_claimed_at?: string | null
           received_at?: string
+          reclassify_failed_at?: string | null
           reclassify_requested_at?: string | null
           references_ids?: string[]
           rfc822_message_id?: string | null
@@ -884,6 +887,7 @@ export type Database = {
           color: string | null
           created_at: string
           description: string | null
+          exclude_from_pr_ratio: boolean
           github_url: string | null
           id: string
           key: string
@@ -896,6 +900,7 @@ export type Database = {
           color?: string | null
           created_at?: string
           description?: string | null
+          exclude_from_pr_ratio?: boolean
           github_url?: string | null
           id?: string
           key: string
@@ -908,6 +913,7 @@ export type Database = {
           color?: string | null
           created_at?: string
           description?: string | null
+          exclude_from_pr_ratio?: boolean
           github_url?: string | null
           id?: string
           key?: string

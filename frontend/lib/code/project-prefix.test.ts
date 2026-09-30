@@ -6,6 +6,7 @@ function makeProject(overrides: Partial<Project> & Pick<Project, 'id' | 'name' |
   return {
     color: null,
     description: null,
+    exclude_from_pr_ratio: false,
     repo_owner: 'ac3charland',
     repo_name: 'alfred',
     github_url: null,

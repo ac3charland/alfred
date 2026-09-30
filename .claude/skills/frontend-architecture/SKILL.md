@@ -42,6 +42,7 @@ home is never a judgement call — it's always `atoms/`.
 | a click-to-edit field (display ↔ edit, with draft/rollback) | `EditableTextField` / `useInlineEdit` (both wrap `InlineEditField`) | reimplementing draft + Enter/Escape + rollback per field |
 | a modal | `FormDialog` / `DialogOverlay` | pasting `Dialog.Root → Portal → Overlay → Content` again |
 | a full-bleed modal (hand a cramped embedded document the whole screen) | `FullScreenDialog` (same atom file) | overriding `FormDialog`'s centring translate + radius + padding back off |
+| a phone-sized sheet that must stay above the on-screen keyboard, with a pinned footer | `SheetDialog` + `SheetFooter` (same atom file; sizes to `visualViewport`) | `FullScreenDialog`'s `100dvh`, which iOS doesn't shrink for the keyboard |
 | a pill / status chip | `Badge` variants | a bespoke `rounded-full px-2 …` span |
 | an expand/collapse reveal | `AnimatedHeightCollapse` (+ the `motion` skill) | copying the `grid-rows-[0fr↔1fr]` transition block |
 | a textarea + save/cancel | `TextareaField` | another textarea + two `Button`s inline |
