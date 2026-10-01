@@ -84,7 +84,8 @@ export interface ExtractedPost {
 }
 
 /** `<a … href="…" …>text</a>`, href quoted either way or bare, text non-greedy across newlines. */
-const ANCHOR = /<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))[^>]*>([\S\s]*?)<\/a>/gi;
+export const ANCHOR =
+  /<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))[^>]*>([\S\s]*?)<\/a>/gi;
 
 /** `<title>…</title>`, the fallback source for a post whose subject line was empty. */
 const HTML_TITLE = /<title[^>]*>([\S\s]*?)<\/title>/i;
@@ -174,36 +175,40 @@ function firstDecodable(leaves: GmailPayload[], mimeType: string): string | unde
 }
 
 /** One anchor: its href as a parsed `http(s)` URL, and its visible text. */
-interface Anchor {
+export interface Anchor {
   url: URL;
   text: string;
 }
 
 /**
- * Every anchor whose href is a URL the owner can safely be sent to, in document order.
+ * One {@link ANCHOR} match read into an anchor, or undefined when its href is not a URL the owner
+ * can safely be sent to.
  *
  * `new URL` both parses and rejects: a relative path, a malformed href and a `javascript:` or
  * `mailto:` scheme all drop out here rather than downstream, so nothing past this function has to
  * remember that the value ends up in an `href`.
  */
+export function readAnchor(match: RegExpMatchArray): Anchor | undefined {
+  const href = decodeEntities(match[1] ?? match[2] ?? match[3] ?? '').trim();
+  if (href === '') return undefined;
+
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+
+  return { url, text: collapse(decodeEntities((match[4] ?? '').replaceAll(/<[^>]*>/g, ' '))) };
+}
+
+/** Every anchor {@link readAnchor} keeps, in document order. */
 function anchors(html: string): Anchor[] {
   const found: Anchor[] = [];
   for (const match of html.matchAll(ANCHOR)) {
-    const href = decodeEntities(match[1] ?? match[2] ?? match[3] ?? '').trim();
-    if (href === '') continue;
-
-    let url: URL;
-    try {
-      url = new URL(href);
-    } catch {
-      continue;
-    }
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') continue;
-
-    found.push({
-      url,
-      text: collapse(decodeEntities((match[4] ?? '').replaceAll(/<[^>]*>/g, ' '))),
-    });
+    const anchor = readAnchor(match);
+    if (anchor !== undefined) found.push(anchor);
   }
   return found;
 }
