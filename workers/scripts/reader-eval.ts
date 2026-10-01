@@ -232,8 +232,9 @@ function toSummaryInput(post: ExtractedPost, publication: string): SummaryInput 
   };
 }
 
+/** A label padded to one column, always with at least one space after it: the longest label is 15. */
 function pad(label: string): string {
-  return label.padEnd(15);
+  return label.padEnd(16);
 }
 
 /**
