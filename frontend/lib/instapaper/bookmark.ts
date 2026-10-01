@@ -74,6 +74,31 @@ export function buildBookmarkParams(post: BookmarkSource): Record<string, string
   return params;
 }
 
+/** A Further reading item, as a link send reads it. */
+export interface LinkBookmarkSource {
+  url: string;
+  title: string;
+  note: string;
+}
+
+/**
+ * The form parameters for saving one Further reading link: the URL as the post carries it, the
+ * model's title, and its note as the description, so Instapaper's list says why it was saved. No
+ * content — Instapaper fetches the page itself, following a redirect wrapper to the article
+ * (`resolve_final_url` is left at its default) — and no tags. `folderId` puts it in a folder (the
+ * "To Reader" one, for a send to the Reader); without it the link lands in Unread.
+ */
+export function buildLinkBookmarkParams(
+  item: LinkBookmarkSource,
+  folderId?: number,
+): Record<string, string> {
+  const params: Record<string, string> = { url: item.url, title: item.title };
+  const note = item.note.trim();
+  if (note !== '') params['description'] = note;
+  if (folderId !== undefined) params['folder_id'] = String(folderId);
+  return params;
+}
+
 /** Why Instapaper said no, for the refusals the owner can be told something useful about. */
 export type InstapaperRefusal =
   | 'opted-out'
@@ -118,16 +143,25 @@ function answerItems(raw: string): Record<string, unknown>[] {
   );
 }
 
-/** Read Instapaper's answer into an outcome. */
-function readAnswer(status: number, raw: string): AddBookmarkOutcome {
-  const items = answerItems(raw);
-
+/** The failure an answer carries — an error item or a non-2xx status — or undefined for none. */
+function answerFailure(
+  status: number,
+  items: readonly Record<string, unknown>[],
+): Exclude<AddBookmarkOutcome, { kind: 'saved' }> | undefined {
   const error = items.find((item) => item['type'] === 'error');
   const code = typeof error?.['error_code'] === 'number' ? error['error_code'] : undefined;
   const refusal = code === undefined ? undefined : REFUSAL_BY_CODE.get(code);
   if (refusal !== undefined) return { kind: 'refused', refusal, code };
   if (status === 401 || status === 403) return { kind: 'refused', refusal: 'credentials', code };
   if (error !== undefined || status < 200 || status >= 300) return { kind: 'unavailable', code };
+  return undefined;
+}
+
+/** Read Instapaper's answer into an outcome. */
+function readAnswer(status: number, raw: string): AddBookmarkOutcome {
+  const items = answerItems(raw);
+  const failure = answerFailure(status, items);
+  if (failure !== undefined) return failure;
 
   const bookmark = items.find((item) => item['type'] === 'bookmark');
   const bookmarkId = bookmark?.['bookmark_id'];
@@ -186,12 +220,12 @@ export async function restoreOrResave(
   return params === null ? null : addBookmark(config, params);
 }
 
-/** One signed form POST to Instapaper, read into an outcome. Never throws. */
-async function postForm(
+/** One signed form POST to Instapaper: its status and raw body, or undefined if none came. */
+async function postSigned(
   config: InstapaperConfig,
   path: string,
   params: Readonly<Record<string, string>>,
-): Promise<AddBookmarkOutcome> {
+): Promise<{ status: number; raw: string } | undefined> {
   const url = `${config.apiUrl}${path}`;
   try {
     const response = await fetch(url, {
@@ -203,10 +237,65 @@ async function postForm(
       body: new URLSearchParams(params).toString(),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    return readAnswer(response.status, await response.text());
+    return { status: response.status, raw: await response.text() };
   } catch {
+    return undefined;
+  }
+}
+
+/** One signed form POST to Instapaper, read into an outcome. Never throws. */
+async function postForm(
+  config: InstapaperConfig,
+  path: string,
+  params: Readonly<Record<string, string>>,
+): Promise<AddBookmarkOutcome> {
+  const answer = await postSigned(config, path, params);
+  return answer === undefined
+    ? { kind: 'unavailable', code: undefined }
+    : readAnswer(answer.status, answer.raw);
+}
+
+/** One of the owner's Instapaper folders. */
+export interface InstapaperFolder {
+  folderId: number;
+  title: string;
+}
+
+/** What listing the folders came to: the folders, or a save's failure outcomes. */
+export type ListFoldersOutcome =
+  | { kind: 'listed'; folders: InstapaperFolder[] }
+  | Exclude<AddBookmarkOutcome, { kind: 'saved' }>;
+
+/** A folder id as Instapaper writes it — a number, or a string of digits. */
+function folderIdOf(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+  return undefined;
+}
+
+/**
+ * The owner's folders, through `folders/list` on API 1.1 — the version the Worker's To Reader leg
+ * lists them with. Never throws: a refusal or a failure is an outcome, as a save's is.
+ */
+export async function listFolders(config: InstapaperConfig): Promise<ListFoldersOutcome> {
+  const answer = await postSigned(config, '/api/1.1/folders/list', {});
+  if (answer === undefined) return { kind: 'unavailable', code: undefined };
+
+  const items = answerItems(answer.raw);
+  const failure = answerFailure(answer.status, items);
+  if (failure !== undefined) return failure;
+  // A body that isn't a JSON list of items is a broken answer, not an empty folder list.
+  if (items.length === 0 && answer.raw.trim() !== '[]') {
     return { kind: 'unavailable', code: undefined };
   }
+
+  const folders: InstapaperFolder[] = [];
+  for (const item of items) {
+    const folderId = folderIdOf(item['folder_id']);
+    const title = item['title'];
+    if (folderId !== undefined && typeof title === 'string') folders.push({ folderId, title });
+  }
+  return { kind: 'listed', folders };
 }
 
 /** A failed send, as the route answers it: the status, and the sentence the owner's toast says. */

@@ -4,6 +4,8 @@ import {
   type BookmarkSource,
   addBookmark,
   buildBookmarkParams,
+  buildLinkBookmarkParams,
+  listFolders,
   restoreOrResave,
   sendFailureResponse,
   unarchiveBookmark,
@@ -407,5 +409,100 @@ describe('restoreOrResave', () => {
       code: undefined,
     });
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildLinkBookmarkParams', () => {
+  const ITEM = {
+    url: 'https://substack.com/redirect/3f1e0c2a-6b7d-4e58-9a14-2c8d5e7f9b01',
+    title: 'The sim-to-real gap in dexterous manipulation',
+    note: 'The paper behind the lead item.',
+  };
+
+  it('saves the link as the post carries it, with the title and the note as description', () => {
+    expect(buildLinkBookmarkParams(ITEM)).toEqual({
+      url: ITEM.url,
+      title: ITEM.title,
+      description: 'The paper behind the lead item.',
+    });
+  });
+
+  it('puts it in a folder when given one', () => {
+    expect(buildLinkBookmarkParams(ITEM, 4242)).toEqual({
+      url: ITEM.url,
+      title: ITEM.title,
+      description: 'The paper behind the lead item.',
+      folder_id: '4242',
+    });
+  });
+
+  it('leaves the description out for a blank note', () => {
+    expect(buildLinkBookmarkParams({ ...ITEM, note: '  ' })).not.toHaveProperty('description');
+  });
+
+  it('never sends content, tags or resolve_final_url — Instapaper fetches and resolves the link', () => {
+    const keys = Object.keys(buildLinkBookmarkParams(ITEM, 1));
+    expect(keys).not.toContain('content');
+    expect(keys).not.toContain('tags');
+    expect(keys).not.toContain('resolve_final_url');
+  });
+});
+
+describe('listFolders', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('lists the folders through API 1.1, signed', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        answer([
+          { type: 'meta' },
+          { type: 'folder', folder_id: 10, title: 'Long reads' },
+          { type: 'folder', folder_id: '4242', title: 'To Reader' },
+          { type: 'folder', title: 'no id' },
+        ]),
+      );
+
+    await expect(listFolders(CONFIG)).resolves.toEqual({
+      kind: 'listed',
+      folders: [
+        { folderId: 10, title: 'Long reads' },
+        { folderId: 4242, title: 'To Reader' },
+      ],
+    });
+    expect(urlOf(spy.mock.calls[0]?.[0] ?? '')).toBe(
+      'https://www.instapaper.com/api/1.1/folders/list',
+    );
+    const headers = spy.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    expect(headers['Authorization']).toMatch(/^OAuth /);
+  });
+
+  it('answers an empty list for an account with no folders', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(answer([]));
+    await expect(listFolders(CONFIG)).resolves.toEqual({ kind: 'listed', folders: [] });
+  });
+
+  it('reads a refusal the way a save does', async () => {
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(answer([{ type: 'error', error_code: 1040, message: 'x' }], 400));
+    await expect(listFolders(CONFIG)).resolves.toEqual({
+      kind: 'refused',
+      refusal: 'rate-limited',
+      code: 1040,
+    });
+  });
+
+  it('is unavailable when Instapaper fails, times out or answers something that is not JSON', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(answer({}, 503));
+    await expect(listFolders(CONFIG)).resolves.toMatchObject({ kind: 'unavailable' });
+
+    jest.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('timeout'));
+    await expect(listFolders(CONFIG)).resolves.toMatchObject({ kind: 'unavailable' });
+
+    jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('<html>', { status: 200 }));
+    await expect(listFolders(CONFIG)).resolves.toMatchObject({ kind: 'unavailable' });
   });
 });

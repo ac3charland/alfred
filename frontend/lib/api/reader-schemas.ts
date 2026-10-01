@@ -78,3 +78,27 @@ export const updateReaderPublicationSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: 'No fields to update' });
 
 export type UpdateReaderPublicationInput = z.infer<typeof updateReaderPublicationSchema>;
+
+/** An `http(s)` URL — the only kind a Further reading send may carry. */
+const webUrl = z.string().refine((value) => {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, 'Not an http(s) link');
+
+/**
+ * Body for POST /api/reader/posts/[id]/further-reading — the ticked Further reading links and
+ * where they go: `reader` (Instapaper's "To Reader" folder, which the Reader takes in) or
+ * `instapaper` (Unread). One to ten, the most a post's list holds.
+ */
+export const sendFurtherReadingSchema = z
+  .object({
+    destination: z.enum(['reader', 'instapaper']),
+    urls: z.array(webUrl).min(1).max(10),
+  })
+  .strict();
+
+export type SendFurtherReadingInput = z.infer<typeof sendFurtherReadingSchema>;

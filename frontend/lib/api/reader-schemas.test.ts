@@ -1,6 +1,7 @@
 import {
   createReaderPublicationSchema,
   patchReaderPostSchema,
+  sendFurtherReadingSchema,
   updateReaderPublicationSchema,
 } from './reader-schemas';
 
@@ -83,5 +84,52 @@ describe('patchReaderPostSchema', () => {
 
   it('rejects an un-resummarise — there is no such verb', () => {
     expect(patchReaderPostSchema.safeParse({ resummarize: false }).success).toBe(false);
+  });
+});
+
+/** `n` distinct http(s) links. */
+function urls(n: number): string[] {
+  return Array.from({ length: n }, (_, i) => `https://e.com/${String(i)}`);
+}
+
+describe('sendFurtherReadingSchema', () => {
+  const URL_A = 'https://substack.com/redirect/3f1e0c2a-6b7d-4e58-9a14-2c8d5e7f9b01';
+
+  it.each(['reader', 'instapaper'])('takes a send to %s', (destination) => {
+    expect(sendFurtherReadingSchema.safeParse({ destination, urls: [URL_A] }).success).toBe(true);
+  });
+
+  it('refuses any other destination', () => {
+    expect(sendFurtherReadingSchema.safeParse({ destination: 'wiki', urls: [URL_A] }).success).toBe(
+      false,
+    );
+  });
+
+  it('takes one to ten links and no more, and refuses none', () => {
+    expect(
+      sendFurtherReadingSchema.safeParse({ destination: 'reader', urls: urls(10) }).success,
+    ).toBe(true);
+    expect(
+      sendFurtherReadingSchema.safeParse({ destination: 'reader', urls: urls(11) }).success,
+    ).toBe(false);
+    expect(sendFurtherReadingSchema.safeParse({ destination: 'reader', urls: [] }).success).toBe(
+      false,
+    );
+  });
+
+  it.each(['javascript:alert(1)', 'mailto:a@example.com', 'not a url', '/relative'])(
+    'refuses %s as a link',
+    (url) => {
+      expect(
+        sendFurtherReadingSchema.safeParse({ destination: 'reader', urls: [url] }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('refuses extra keys', () => {
+    expect(
+      sendFurtherReadingSchema.safeParse({ destination: 'reader', urls: [URL_A], tags: ['x'] })
+        .success,
+    ).toBe(false);
   });
 });

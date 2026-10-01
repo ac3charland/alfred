@@ -1,6 +1,7 @@
 import type { Json } from '@/lib/database.types';
 import type {
   ReaderCandidate,
+  ReaderFurtherReading,
   ReaderHealth,
   ReaderHealthSnapshot,
   ReaderOverview,
@@ -115,6 +116,8 @@ export function makeReaderPost(
     instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? null,
     wiki_sent_ideas: overrides.wiki_sent_ideas ?? [],
     wiki_sent_evidence: overrides.wiki_sent_evidence ?? [],
+    further_sent_reader: overrides.further_sent_reader ?? [],
+    further_sent_instapaper: overrides.further_sent_instapaper ?? [],
     created_at: overrides.created_at ?? receivedAt,
   };
 }
@@ -338,7 +341,37 @@ export function makeReaderOverview(overrides: Partial<ReaderOverview> = {}): Rea
     who_should_read:
       overrides.who_should_read ??
       'Anyone tracking robotics benchmarks. Everyone else has the gist.',
+    // Absent unless asked for, as on every post summarised before the field existed.
+    ...(overrides.further_reading === undefined
+      ? {}
+      : { further_reading: overrides.further_reading }),
   };
+}
+
+/** The Import AI mockup's Further reading: four linked sources, in the order the post links them. */
+export function makeFurtherReading(): ReaderFurtherReading[] {
+  return [
+    {
+      url: 'https://substack.com/redirect/3f1e0c2a-6b7d-4e58-9a14-2c8d5e7f9b01',
+      title: 'The sim-to-real gap in dexterous manipulation',
+      note: 'The paper behind the lead item — per-task numbers for the folding benchmark.',
+    },
+    {
+      url: 'https://substack.com/redirect/7a2b9d4e-1c3f-4a6b-8d05-e9f2c1b4a736',
+      title: 'Why most robotics evals don’t transfer',
+      note: 'An essay arguing the suite measures the simulator, not the policy.',
+    },
+    {
+      url: 'https://substack.com/redirect/c5d8e1f3-2a4b-4c7d-9e60-1b3a5c7d9e2f',
+      title: 'FoldBench v2 release notes',
+      note: 'The eval itself; skim it for the task list.',
+    },
+    {
+      url: 'https://substack.com/redirect/1d7f3b5c-9e2a-4d8b-b316-7c4e2a9f1d58',
+      title: 'A sceptic’s reply to “scale the simulator”',
+      note: 'The counter-argument the author calls the best case against his own view.',
+    },
+  ];
 }
 
 /**

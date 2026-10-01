@@ -23,6 +23,7 @@ import type {
   PatchReaderPostInput,
   PurgeInput,
   ReaderPostsQuery,
+  SendFurtherReadingInput,
   SendItemsToWikiInput,
   SendReaderPicksInput,
   UpdateEpicInput,
@@ -873,6 +874,30 @@ export function sendReaderPicksToWiki(
   body: SendReaderPicksInput,
 ): Promise<ReaderPostListItem> {
   return apiRequest<ReaderPostListItem>(`/api/reader/posts/${postId}/wiki`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * What a Further reading send answers: the row with the confirmed links marked, the links that
+ * did not go, and — when some didn't — why, as a phrase ("Instapaper didn't answer").
+ */
+export interface FurtherReadingSendResult {
+  post: ReaderPostListItem;
+  unsent: string[];
+  failure?: string;
+}
+
+/**
+ * Send ticked Further reading links to Instapaper: into its "To Reader" folder (`reader`, which
+ * the Reader takes in and summarises) or to Unread (`instapaper`).
+ */
+export function sendReaderFurtherReading(
+  postId: string,
+  body: SendFurtherReadingInput,
+): Promise<FurtherReadingSendResult> {
+  return apiRequest<FurtherReadingSendResult>(`/api/reader/posts/${postId}/further-reading`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

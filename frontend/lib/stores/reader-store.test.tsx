@@ -3,6 +3,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import {
+  makeFurtherReading,
   makeReaderHealth,
   makeReaderOverview,
   makeReaderPost,
@@ -19,6 +20,7 @@ import {
   useActiveCount,
   useArchiveStatus,
   useArchivedPosts,
+  useFurtherReadingSendInFlight,
   useInstapaperConfigured,
   useReaderActions,
   useReaderHealth,
@@ -36,6 +38,7 @@ jest.mock('@/lib/api-client', () => ({
   patchReaderPost: jest.fn(),
   sendReaderPicksToWiki: jest.fn(),
   sendReaderPostToInstapaper: jest.fn(),
+  sendReaderFurtherReading: jest.fn(),
 }));
 const mockApi = jest.mocked(api);
 
@@ -94,6 +97,7 @@ function state(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HE
     archiveFull: false,
     healthReconcileStartedAt: null,
     wikiSendsInFlight: [],
+    furtherReadingSendsInFlight: [],
     instapaperConfigured: true,
   };
 }
@@ -1590,5 +1594,180 @@ describe('useInstapaperConfigured', () => {
       wrapper: makeWrapper([], NO_HEALTH, configured),
     });
     expect(result.current).toBe(configured);
+  });
+});
+
+describe('sendFurtherReading', () => {
+  const [FIRST, SECOND] = makeFurtherReading().map((item) => item.url) as [string, string];
+  const done = () =>
+    post({
+      id: 'p-1',
+      summary_state: 'done',
+      overview: makeReaderOverview({ further_reading: makeFurtherReading() }),
+    });
+
+  it('sends the links to the destination and reconciles with the row the server wrote, no toast', async () => {
+    const row = done();
+    const saved: ReaderPostListItem = { ...row, further_sent_reader: [FIRST, SECOND] };
+    mockApi.sendReaderFurtherReading.mockResolvedValue({ post: saved, unsent: [] });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.sendFurtherReading('p-1', 'reader', [FIRST, SECOND]),
+      ).resolves.toEqual({ post: saved, unsent: [] });
+    });
+
+    expect(mockApi.sendReaderFurtherReading).toHaveBeenCalledWith('p-1', {
+      destination: 'reader',
+      urls: [FIRST, SECOND],
+    });
+    expect(result.current.posts[0]).toEqual(saved);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('is not optimistic: nothing reads sent until the server confirms', () => {
+    const row = done();
+    mockApi.sendReaderFurtherReading.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    act(() => {
+      void result.current.actions.sendFurtherReading('p-1', 'instapaper', [FIRST]);
+    });
+
+    expect(result.current.posts[0]?.further_sent_instapaper).toEqual([]);
+  });
+
+  it.each([
+    ['reader', [SECOND], 'Sent 1 of 2 to Reader — Instapaper didn’t answer for the other'],
+    ['instapaper', [SECOND], 'Sent 1 of 2 to Instapaper — Instapaper didn’t answer for the other'],
+  ] as const)(
+    'toasts a partial send to %s with what landed, and keeps the row it wrote',
+    async (destination, unsent, toast) => {
+      const row = done();
+      const saved: ReaderPostListItem = { ...row, further_sent_reader: [FIRST] };
+      mockApi.sendReaderFurtherReading.mockResolvedValue({
+        post: saved,
+        unsent: [...unsent],
+        failure: 'Instapaper didn’t answer',
+      });
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+      await act(async () => {
+        await result.current.actions.sendFurtherReading('p-1', destination, [FIRST, SECOND]);
+      });
+
+      expect(mockShowToast).toHaveBeenCalledWith(toast);
+      expect(result.current.posts[0]).toEqual(saved);
+    },
+  );
+
+  it('says “for the rest” when more than one link was left behind', async () => {
+    const row = done();
+    const urls = makeFurtherReading().map((item) => item.url);
+    mockApi.sendReaderFurtherReading.mockResolvedValue({
+      post: row,
+      unsent: urls.slice(1),
+      failure: 'Instapaper is rate-limiting',
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.sendFurtherReading('p-1', 'reader', urls);
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith(
+      'Sent 1 of 4 to Reader — Instapaper is rate-limiting for the rest',
+    );
+  });
+
+  it.each([
+    [409, 'There is no “To Reader” folder in Instapaper'],
+    [429, 'Instapaper is rate-limiting — try again in a minute'],
+    [502, "Instapaper didn't answer — try again"],
+  ])(
+    'toasts the route’s %i sentence, rethrows, and leaves the row unchanged',
+    async (status, sentence) => {
+      const row = done();
+      mockApi.sendReaderFurtherReading.mockRejectedValue(
+        new api.ApiError(`API POST failed: ${String(status)}`, status, sentence),
+      );
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+      await act(async () => {
+        await expect(
+          result.current.actions.sendFurtherReading('p-1', 'reader', [FIRST]),
+        ).rejects.toThrow();
+      });
+
+      expect(mockShowToast).toHaveBeenCalledWith(sentence);
+      expect(result.current.posts[0]).toEqual(row);
+    },
+  );
+
+  it('toasts its own line when the failure carried no sentence', async () => {
+    mockApi.sendReaderFurtherReading.mockRejectedValue(new Error('network down'));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([done()]) });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.sendFurtherReading('p-1', 'instapaper', [FIRST]),
+      ).rejects.toThrow('network down');
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't send those links");
+  });
+
+  it('holds the post in flight, refusing a second send until the first settles', async () => {
+    const row = done();
+    const sending = deferred<{ post: ReaderPostListItem; unsent: string[] }>();
+    mockApi.sendReaderFurtherReading.mockReturnValue(sending.promise);
+    const { result } = renderHook(
+      () => ({
+        ...useStore(),
+        inFlight: useFurtherReadingSendInFlight('p-1'),
+        other: useFurtherReadingSendInFlight('p-2'),
+        wiki: useWikiSendInFlight('p-1'),
+      }),
+      { wrapper: makeWrapper([row]) },
+    );
+
+    let first: Promise<unknown> | undefined;
+    act(() => {
+      first = result.current.actions.sendFurtherReading('p-1', 'reader', [FIRST]);
+    });
+    expect(result.current.inFlight).toBe(true);
+    expect(result.current.other).toBe(false);
+    // Its own in-flight state: a reading send never holds the wiki checklist.
+    expect(result.current.wiki).toBe(false);
+
+    await act(async () => {
+      await expect(
+        result.current.actions.sendFurtherReading('p-1', 'instapaper', [SECOND]),
+      ).rejects.toThrow('already in flight');
+    });
+    expect(mockApi.sendReaderFurtherReading).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      sending.settle({ post: row, unsent: [] });
+      await first;
+    });
+    expect(result.current.inFlight).toBe(false);
+  });
+
+  it('clears the in-flight mark when a send fails', async () => {
+    mockApi.sendReaderFurtherReading.mockRejectedValueOnce(new Error('boom'));
+    const { result } = renderHook(
+      () => ({ ...useStore(), inFlight: useFurtherReadingSendInFlight('p-1') }),
+      { wrapper: makeWrapper([done()]) },
+    );
+
+    await act(async () => {
+      await expect(
+        result.current.actions.sendFurtherReading('p-1', 'reader', [FIRST]),
+      ).rejects.toThrow();
+    });
+
+    expect(result.current.inFlight).toBe(false);
   });
 });

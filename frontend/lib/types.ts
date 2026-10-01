@@ -266,12 +266,30 @@ export interface ReaderHealthSnapshot {
  */
 export type ReaderSummaryState = 'pending' | 'done' | 'refused' | 'failed';
 
+/**
+ * One Further reading item: a link the post makes that the model judged worth reading in full.
+ * The URL is exactly as the post carries it — often an opaque Substack redirect wrapper — and is
+ * the item's identity: the sent marks are recorded by it.
+ */
+export interface ReaderFurtherReading {
+  url: string;
+  /** The linked piece's name (anchor text is often "this" or "here"). */
+  title: string;
+  /** What the post uses it for — the reason to open it. */
+  note: string;
+}
+
+/** Where a Further reading item can be sent: the Reader (via Instapaper's "To Reader") or Unread. */
+export type FurtherReadingDestination = 'reader' | 'instapaper';
+
 /** The shape `reader_posts.overview` holds for a `done` post — the model's structured take. */
 export interface ReaderOverview {
   novel_ideas: string[];
   evidence: string[];
   argument: string;
   who_should_read: string;
+  /** Absent on every post summarised before the summariser was asked for it. */
+  further_reading?: ReaderFurtherReading[];
 }
 
 // ── Wiki (the read-only snapshot of the knowledge repo's compiled pages) — ──

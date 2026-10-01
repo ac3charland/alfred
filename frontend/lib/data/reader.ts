@@ -4,7 +4,12 @@ import 'server-only';
 import type { PatchReaderPostInput, ReaderPostsQuery } from '@/lib/api/reader-schemas';
 import type { Database, Json } from '@/lib/database.types';
 import { createClient } from '@/lib/supabase/server';
-import type { ReaderHealthSnapshot, ReaderPostListItem, ReaderPostUpdate } from '@/lib/types';
+import type {
+  FurtherReadingDestination,
+  ReaderHealthSnapshot,
+  ReaderPostListItem,
+  ReaderPostUpdate,
+} from '@/lib/types';
 import type { ReaderPicks, ReaderPostForWiki } from '@/lib/wiki/writer/envelope';
 
 /**
@@ -33,6 +38,8 @@ export const READER_POST_LIST_COLUMNS = [
   'canonical_url',
   'comm_message_id',
   'created_at',
+  'further_sent_instapaper',
+  'further_sent_reader',
   'gist',
   'gmail_message_id',
   'headline',
@@ -247,6 +254,52 @@ export async function appendWikiSentPicks(
       p_post: id,
       p_ideas: [...picks.ideas],
       p_evidence: [...picks.evidence],
+    })
+    .select(READER_POST_LIST_COLUMNS)
+    .single<ReaderPostListItem>();
+}
+
+/** What a Further reading send reads: the list it may send from, and what it has already sent. */
+export interface ReaderPostFurtherReadingRow {
+  id: string;
+  /** The structured take, whose `further_reading` bounds what a send may name. */
+  overview: Json | null;
+  further_sent_reader: string[];
+  further_sent_instapaper: string[];
+}
+
+/**
+ * A Further reading send's pre-read: no body, since the bookmarks carry only a link, a title and
+ * a note. `.maybeSingle()`, so a missing row is the route's 404.
+ */
+export async function getReaderPostForFurtherReading(
+  supabase: SupabaseClient<Database>,
+  id: string,
+): Promise<{ data: ReaderPostFurtherReadingRow | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .select('id,overview,further_sent_reader,further_sent_instapaper')
+    .eq('id', id)
+    .maybeSingle();
+}
+
+/**
+ * Record the links Instapaper confirmed as sent to one destination, through the
+ * `append_further_reading_sent` RPC: one atomic append of only the URLs not already there, so two
+ * tabs sending from the same post can never erase each other's marks. The row comes back through
+ * the shared list columns.
+ */
+export async function appendFurtherReadingSent(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  destination: FurtherReadingDestination,
+  urls: readonly string[],
+): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
+  return supabase
+    .rpc('append_further_reading_sent', {
+      p_post: id,
+      p_destination: destination,
+      p_urls: [...urls],
     })
     .select(READER_POST_LIST_COLUMNS)
     .single<ReaderPostListItem>();
