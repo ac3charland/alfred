@@ -6,7 +6,7 @@ description: >
   pricing, experiment design, and backfilling with tools/session-ledger. Use when choosing a model
   or effort default, costing a lane, judging a prompt or review change, or when a session's row is
   missing. Trigger on: "evaluate models", "LLM eval", "session cost", "effort level", "A/B the
-  prompt", "session ledger", "code_sessions", "backfill the ledger", "recording hook",
+  prompt", "replay a ticket", "session ledger", "code_sessions", "backfill the ledger", "recording hook",
   "model_price_history". Not for the Worker's LLM features (classifier, comms, reader): use their
   eval:* scripts.
 ---
@@ -31,9 +31,13 @@ description: >
   - [backfill.md](./references/backfill.md) — the run procedure that (re)seeds `code_sessions`
     from history: collecting session records with subagents, verifying them, `build`, `push`,
     `report`, and its warning codes
+  - [replay.md](./references/replay.md) — rebuilding one merged ticket in fresh sessions per arm
+    (model, effort, subagent setup): base commit, prompt, `create_session` limits, cost, blind judge
 
 The evidence, power simulations and sources behind this skill are in the ALF-283 spike,
-`docs/spikes/ALF-283-evaluating-coding-sessions.html`. Read it before proposing a new instrument.
+`docs/spikes/ALF-283-evaluating-coding-sessions.html`. Read it before proposing a new instrument. A
+worked replay of one ticket, a single Opus agent against a Fable orchestrator with Sonnet
+implementers, is in `docs/spikes/ALF-265-opus-vs-fable-orchestrator.html`.
 
 ## The question this answers
 
@@ -50,7 +54,7 @@ adds history and everything after the session (PR outcomes):
 | Columns | What they are |
 | --- | --- |
 | `configured_model`, `model`, `served_model`, `effort_level` | what was picked, and what actually served the last turn (a fallback shows as a mismatch) |
-| `cost_usd`, `*_tokens` | API-equivalent cost and tokens. Recorded rows: whole-session totals, subagents included as far as their transcripts show (`subagent_usage_partial` when not; no cost then), priced by alfred from `model_price_history`. Backfill-only rows (`recorded_at` null): the session record's, whose subagent coverage is unconfirmed |
+| `cost_usd`, `*_tokens` | API-equivalent cost and tokens. Recorded rows: whole-session totals, subagents included as far as their transcripts show (`subagent_usage_partial` when not; no cost then), priced by alfred from `model_price_history`. Backfill-only rows (`recorded_at` null): the session record's, which includes subagents |
 | `usage_by_model`, `subagent_count`, `recorded_at` | recorded rows only: tokens per model split main thread vs subagents, and the last hook write |
 | `launch_lane`, `ref` | which launch prompt started it, inferred from the PR's `alfred` block |
 | `pr_state`, `pr_*_at`, `human_commits_after_open` | the outcome: merged or not, and owner rework after the PR opened |
@@ -71,6 +75,7 @@ a backfill wrote to the scratchpad.
 | Did a launch-prompt instruction help | randomised arms by ticket-ref hash in `links.ts`, recorded at launch | prompts recorded; arms not built |
 | Which reviewer model or brief | an offline defect-recall bench (real escaped bugs + surviving Stryker mutants) on `claude plugin eval` | not built |
 | Epic orchestration | a structured case review of each epic session | manual |
+| Where two arms differ on one ticket (a case study, not a decision) | a paired replay: [replay.md](./references/replay.md) | manual; ALF-265 ran one |
 | A high-stakes model-default change the ledger can't bound | a ticket-replay bench (Harbor) | reserved: costly |
 
 Prefer the cheapest instrument that can resolve the question. Don't score PRs with an LLM judge
