@@ -180,7 +180,11 @@ describe('POST /api/reader/posts/[id]/further-reading', () => {
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as Record<string, unknown>;
-    expect(body).toEqual({ post: listRow({ further_sent_reader: [A.url] }), unsent: [] });
+    expect(body).toEqual({
+      post: listRow({ further_sent_reader: [A.url] }),
+      landed: [A.url, C.url],
+      unsent: [],
+    });
     expect(adds).toEqual([
       { url: A.url, title: A.title, description: A.note, folder_id: '9' },
       { url: C.url, title: C.title, description: C.note, folder_id: '9' },
@@ -218,6 +222,7 @@ describe('POST /api/reader/posts/[id]/further-reading', () => {
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as Record<string, unknown>;
+    expect(body['landed']).toEqual([A.url]);
     expect(body['unsent']).toEqual([B.url]);
     expect(body['failure']).toBe('This publication has opted out of Instapaper');
     expect(supabase.rpc).toHaveBeenCalledWith('append_further_reading_sent', {
@@ -237,6 +242,20 @@ describe('POST /api/reader/posts/[id]/further-reading', () => {
     expect(await response.json()).toEqual({
       error: 'Instapaper is rate-limiting — try again in a minute',
     });
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('stops at credentials the Instapaper refused: one save, the 502 sentence, nothing marked', async () => {
+    const supabase = signedIn();
+    const { adds } = instapaper(
+      addsAnswer(failure(1042), Response.json(SAVED), Response.json(SAVED)),
+    );
+
+    const response = await send({ destination: 'reader', urls: [A.url, B.url, C.url] });
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "Instapaper rejected alfred's credentials" });
+    expect(adds).toHaveLength(1);
     expect(supabase.rpc).not.toHaveBeenCalled();
   });
 
@@ -279,7 +298,7 @@ describe('POST /api/reader/posts/[id]/further-reading', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ post: row, unsent: [] });
+    expect(await response.json()).toEqual({ post: row, landed: [], unsent: [] });
     expect(spy).not.toHaveBeenCalled();
     expect(supabase.rpc).not.toHaveBeenCalled();
   });

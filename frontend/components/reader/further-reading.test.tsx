@@ -146,7 +146,7 @@ describe('FurtherReading — checklist', () => {
   it('sends the ticked urls to the Reader in overview order, then clears and folds the bar', async () => {
     const user = userEvent.setup();
     const sent = post([A, C]);
-    mockApi.sendReaderFurtherReading.mockResolvedValue({ post: sent, unsent: [] });
+    mockApi.sendReaderFurtherReading.mockResolvedValue({ post: sent, landed: [], unsent: [] });
     renderLive();
 
     await user.click(tick('Gamma'));
@@ -167,7 +167,11 @@ describe('FurtherReading — checklist', () => {
 
   it('sends to Instapaper with its own destination', async () => {
     const user = userEvent.setup();
-    mockApi.sendReaderFurtherReading.mockResolvedValue({ post: post([], [B]), unsent: [] });
+    mockApi.sendReaderFurtherReading.mockResolvedValue({
+      post: post([], [B]),
+      landed: [],
+      unsent: [],
+    });
     renderLive();
 
     await user.click(tick('Beta'));
@@ -198,7 +202,7 @@ describe('FurtherReading — checklist', () => {
     for (const box of screen.getAllByRole('checkbox')) expect(box).toBeDisabled();
 
     await act(async () => {
-      pending.settle({ post: post([], [A]), unsent: [] });
+      pending.settle({ post: post([], [A]), landed: [], unsent: [] });
       await pending.promise;
     });
     await waitFor(() => {
@@ -229,6 +233,7 @@ describe('FurtherReading — checklist', () => {
     const user = userEvent.setup();
     mockApi.sendReaderFurtherReading.mockResolvedValue({
       post: post([A]),
+      landed: [A],
       unsent: [B],
       failure: "Instapaper didn't answer",
     });

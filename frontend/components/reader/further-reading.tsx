@@ -50,7 +50,9 @@ import {
  * URL (the sent marks are recorded as URLs, and two items with one URL are one link), so
  * collapsing the overview drops it; whether a send is in the air comes from the store, which
  * owns the write so one that outlives its collapsed row still lands. A send that part-landed
- * leaves exactly the URLs that did not go ticked, so the retry is one press.
+ * leaves exactly the URLs that did not go ticked, so the retry is one press. While a send is in
+ * the air every control is disabled — the ticks, Select all, both sends and Clear — but the open
+ * links stay live: opening an article changes nothing here, and a link cannot be disabled anyway.
  */
 
 export interface FurtherReadingProperties {

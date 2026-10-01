@@ -27,7 +27,9 @@ import { furtherReadingOf, isReaderOverview } from '@/lib/reader/overview';
 // list underneath an open tab; a link no longer offered is silently dropped), and any already
 // sent to ANY destination is dropped too: a send with nothing left answers the row unchanged and
 // calls nothing. The links are saved one at a time, so a partial result is possible — the answer
-// lists the `unsent` ones and, when there are some, the first failure's sentence for the toast.
+// lists the `landed` ones (what it confirmed and marked, so a stale tab's count is not guessed
+// from its own ticks), the `unsent` ones and, when there are some, the first failure's sentence
+// for the toast.
 //
 // The marks are recorded AFTER the saves, in one write of just the links that landed. Reserving
 // them first would risk marking a link sent that never reached Instapaper; this way the worst case
@@ -73,7 +75,7 @@ export const POST = withSession(
       seen.add(item.url);
       return true;
     });
-    if (candidates.length === 0) return jsonOk({ post: row, unsent: [] });
+    if (candidates.length === 0) return jsonOk({ post: row, landed: [], unsent: [] });
 
     let folderId: number | undefined;
     if (destination === 'reader') {
@@ -132,6 +134,7 @@ export const POST = withSession(
     }
     return jsonOk({
       post: saved,
+      landed,
       unsent,
       ...(failure === undefined ? {} : { failure: failure.detail }),
     });

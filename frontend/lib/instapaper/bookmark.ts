@@ -196,8 +196,8 @@ export async function unarchiveBookmark(
 /**
  * An article's send: its bookmark back to Unread, or — when the owner deleted that bookmark — a
  * new one saved by URL with no content, so Instapaper fetches the page as it did the first time.
- * The stored text is Instapaper's own text view, never a better body than the page; it is sent
- * only for a bookmark that never had a URL. Null when the bookmark is gone and there is nothing
+ * The stored HTML is Instapaper's own text view and is never uploaded as `content`; the stored
+ * text stands in only for a bookmark that never had a URL, as paragraphs. Null when the bookmark is gone and there is nothing
  * to save in its place. The answer's bookmark id is the one the post holds from here on.
  */
 export async function restoreOrResave(
@@ -209,7 +209,9 @@ export async function restoreOrResave(
   if (restored.kind !== 'gone') return restored;
 
   const byUrl = postWebUrl(post) !== undefined;
-  const params = buildBookmarkParams(byUrl ? { ...post, html: null, text: null } : post);
+  const params = buildBookmarkParams(
+    byUrl ? { ...post, html: null, text: null } : { ...post, html: null },
+  );
   return params === null ? null : addBookmark(config, params);
 }
 
@@ -337,20 +339,36 @@ export async function listFolders(config: InstapaperConfig): Promise<ListFolders
  */
 export const SEND_DEADLINE_MS = 20_000;
 
+/**
+ * The refusals that are Instapaper's standing answer to alfred, not to one link: bad credentials,
+ * a missing Premium subscription, a rate limit. Every later save would fail the same way (and a
+ * rate limit only gets worse for being pressed), so a send stops at one of these — the same set
+ * the Worker's To Reader leg stops on. A refusal about the link itself (`invalid-url`,
+ * `opted-out`, `needs-content`) or a plain non-answer is one bookmark's bad moment: the next link
+ * is still tried.
+ */
+const SEND_STOPPING: ReadonlySet<InstapaperRefusal> = new Set([
+  'credentials',
+  'premium',
+  'rate-limited',
+]);
+
 /** What a run of link saves came to: the links Instapaper confirmed, and the ones it did not. */
 export interface SendLinksResult {
   landed: string[];
-  /** Failed, or never started because the deadline passed first. In the order given. */
+  /** Failed, or never started (the deadline passed, or a stopping refusal came first). In order. */
   unsent: string[];
   /** The first save's failure, if any save failed — what the owner is told about the rest. */
   firstFailure: Exclude<AddBookmarkOutcome, { kind: 'saved' }> | undefined;
 }
 
 /**
- * Save Further reading links one after another, in the order given. One at a time, because
- * Instapaper rate-limits and because the order the owner ticked them in is the order they should
- * land in Unread. A failed save does not stop the rest — a refused link is about that link — but
- * no new save STARTS once {@link SEND_DEADLINE_MS} has passed since `startedAt`. `now` is
+ * Save Further reading links one after another, in the order given (the overview's order, since
+ * the route builds the candidates from it). One at a time, because Instapaper rate-limits and
+ * because that is the order they should land in Unread. A failed save does not stop the rest — a
+ * refused link is about that link — unless the refusal is {@link SEND_STOPPING}: then the rest are
+ * reported unsent without a call. Nor does any new save START once {@link SEND_DEADLINE_MS} has
+ * passed since `startedAt`. `now` is
  * injectable so the deadline is testable without waiting. Never throws.
  */
 export async function sendLinks(
@@ -360,8 +378,9 @@ export async function sendLinks(
 ): Promise<SendLinksResult> {
   const now = options.now ?? Date.now;
   const result: SendLinksResult = { landed: [], unsent: [], firstFailure: undefined };
+  let stopped = false;
   for (const item of items) {
-    if (now() - options.startedAt >= SEND_DEADLINE_MS) {
+    if (stopped || now() - options.startedAt >= SEND_DEADLINE_MS) {
       result.unsent.push(item.url);
       continue;
     }
@@ -371,6 +390,7 @@ export async function sendLinks(
     } else {
       result.unsent.push(item.url);
       result.firstFailure ??= outcome;
+      if (outcome.kind === 'refused' && SEND_STOPPING.has(outcome.refusal)) stopped = true;
     }
   }
   return result;

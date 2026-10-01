@@ -359,7 +359,9 @@ describe('restoreOrResave', () => {
       .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }))
       .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 77 }]));
 
-    await expect(restoreOrResave(CONFIG, ARTICLE, 42)).resolves.toEqual({
+    await expect(
+      restoreOrResave(CONFIG, { ...ARTICLE, html: '<p>text view</p>' }, 42),
+    ).resolves.toEqual({
       kind: 'saved',
       bookmarkId: 77,
     });
@@ -388,6 +390,24 @@ describe('restoreOrResave', () => {
       description: 'Street noise tracks foot traffic, not ordinances.',
       content: '<p>The article, as Instapaper had it.</p>',
     });
+  });
+
+  it('never uploads the text view’s HTML, even for a bookmark that had no URL', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }))
+      .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 79 }]));
+
+    await restoreOrResave(
+      CONFIG,
+      { ...ARTICLE, canonical_url: null, html: '<div class="tv">markup</div>' },
+      42,
+    );
+
+    const params = forms(spy)[1]?.[1];
+    expect(params?.['is_private_from_source']).toBe('email');
+    expect(params?.['content']).toContain('The article, as Instapaper had it.');
+    expect(params?.['content']).not.toContain('markup');
   });
 
   it('is null when the bookmark is gone and there is nothing to save in its place', async () => {
@@ -520,6 +540,33 @@ describe('sendLinks', () => {
       unsent: ['https://example.com/b', 'https://example.com/c'],
       firstFailure: { kind: 'refused', refusal: 'opted-out', code: 1221 },
     });
+  });
+
+  it('stops at an account-wide refusal: no further save starts and the rest are unsent', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(Response.json([{ type: 'error', error_code: 1042 }], { status: 400 })),
+      );
+
+    const result = await sendLinks(CONFIG, ITEMS, { startedAt: 0, now: () => 0 });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(result.landed).toEqual([]);
+    expect(result.unsent).toEqual(ITEMS.map((item) => item.url));
+    expect(result.firstFailure).toEqual({ kind: 'refused', refusal: 'credentials', code: 1042 });
+  });
+
+  it('moves on past a refusal that is about one link', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1240 }], { status: 400 }))
+      .mockImplementation(() => Promise.resolve(Response.json(SAVED)));
+
+    const result = await sendLinks(CONFIG, ITEMS, { startedAt: 0, now: () => 0 });
+
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(result.unsent).toEqual(['https://example.com/a']);
   });
 
   it('starts no new save once the deadline has passed, and reports those links unsent', async () => {

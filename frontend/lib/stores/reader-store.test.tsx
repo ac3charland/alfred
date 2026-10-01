@@ -1492,7 +1492,7 @@ describe('sendFurtherReading', () => {
 
     const saved: ReaderPostListItem = { ...row, further_sent_reader: URLS };
     await act(async () => {
-      sending.settle({ post: saved, unsent: [] });
+      sending.settle({ post: saved, landed: [], unsent: [] });
       await send;
     });
 
@@ -1508,13 +1508,13 @@ describe('sendFurtherReading', () => {
   it('resolves with the post and the unsent urls', async () => {
     const row = unsentFurtherReadingPost();
     const saved: ReaderPostListItem = { ...row, further_sent_reader: URLS };
-    mockApi.sendReaderFurtherReading.mockResolvedValue({ post: saved, unsent: [] });
+    mockApi.sendReaderFurtherReading.mockResolvedValue({ post: saved, landed: [], unsent: [] });
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
 
     await act(async () => {
       await expect(
         result.current.actions.sendFurtherReading('p-1', 'reader', URLS),
-      ).resolves.toEqual({ post: saved, unsent: [] });
+      ).resolves.toEqual({ post: saved, landed: [], unsent: [] });
     });
   });
 
@@ -1523,6 +1523,7 @@ describe('sendFurtherReading', () => {
     const saved: ReaderPostListItem = { ...row, further_sent_reader: [URLS[0] ?? ''] };
     mockApi.sendReaderFurtherReading.mockResolvedValue({
       post: saved,
+      landed: [URLS[0] ?? ''],
       unsent: [URLS[1] ?? ''],
       failure: "Instapaper didn't answer",
     });
@@ -1543,6 +1544,7 @@ describe('sendFurtherReading', () => {
     const three = [...URLS, 'https://a.example/3'];
     mockApi.sendReaderFurtherReading.mockResolvedValue({
       post: row,
+      landed: [URLS[0] ?? ''],
       unsent: [URLS[1] ?? '', three[2] ?? ''],
       failure: "Instapaper didn't answer — try again",
     });
@@ -1554,6 +1556,27 @@ describe('sendFurtherReading', () => {
 
     expect(mockShowToast).toHaveBeenCalledWith(
       "Sent 1 of 3 to Instapaper — Instapaper didn't answer for the rest",
+    );
+  });
+
+  it('counts what the route confirmed, not the ticks minus the unsent', async () => {
+    const row = unsentFurtherReadingPost();
+    const three = [...URLS, 'https://a.example/3'];
+    // One tick was already sent from another tab, so it is in neither list.
+    mockApi.sendReaderFurtherReading.mockResolvedValue({
+      post: row,
+      landed: [three[1] ?? ''],
+      unsent: [three[2] ?? ''],
+      failure: "Instapaper didn't answer",
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.sendFurtherReading('p-1', 'reader', three);
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith(
+      "Sent 1 of 3 to Reader — Instapaper didn't answer for the rest",
     );
   });
 
@@ -1613,7 +1636,7 @@ describe('sendFurtherReading', () => {
     expect(mockShowToast).not.toHaveBeenCalled();
 
     await act(async () => {
-      sending.settle({ post: row, unsent: [] });
+      sending.settle({ post: row, landed: [], unsent: [] });
       await first;
     });
   });
@@ -1634,7 +1657,7 @@ describe('sendFurtherReading', () => {
       result.current.actions.refresh();
     });
     await act(async () => {
-      sending.settle({ post: { ...row, further_sent_reader: URLS }, unsent: [] });
+      sending.settle({ post: { ...row, further_sent_reader: URLS }, landed: [], unsent: [] });
       await send;
     });
     await act(async () => {

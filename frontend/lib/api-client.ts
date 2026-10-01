@@ -886,6 +886,8 @@ export function sendReaderPicksToWiki(
  */
 export interface SendFurtherReadingResult {
   post: ReaderPostListItem;
+  /** The URLs the route confirmed saved and marked, in overview order; `[]` when none was left to send. */
+  landed: string[];
   unsent: string[];
   failure?: string;
 }

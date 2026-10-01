@@ -209,7 +209,7 @@ export interface ReaderActions {
     id: string,
     destination: FurtherReadingDestination,
     urls: readonly string[],
-  ) => Promise<{ post: ReaderPostListItem; unsent: string[] }>;
+  ) => Promise<{ post: ReaderPostListItem; landed: string[]; unsent: string[] }>;
   /**
    * Re-read the health snapshot and replace it whole. Runs beside `refresh()` on the same
    * return-to-the-foreground signals: the surface is derived against a ticking clock, so a seed
@@ -693,15 +693,10 @@ export function ReaderProvider({
           dispatch({ type: 'posts', action: { type: 'replace', id, item: result.post } });
           if (result.unsent.length > 0) {
             showToastRef.current(
-              partialSendToast(
-                destination,
-                urls.length - result.unsent.length,
-                urls.length,
-                result.failure,
-              ),
+              partialSendToast(destination, result.landed.length, urls.length, result.failure),
             );
           }
-          return { post: result.post, unsent: result.unsent };
+          return { post: result.post, landed: result.landed, unsent: result.unsent };
         } catch (error) {
           showToastRef.current(furtherReadingSendFailure(error));
           throw error;

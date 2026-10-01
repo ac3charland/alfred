@@ -197,7 +197,11 @@ describe('sendReaderPicksToWiki', () => {
 
 describe('sendReaderFurtherReading', () => {
   it('posts the destination and urls to the post’s further-reading route and hands back the row and the unsent urls', async () => {
-    const result = { post: { id: 'post-1' }, unsent: ['https://example.com/b'] };
+    const result = {
+      post: { id: 'post-1' },
+      landed: ['https://example.com/a'],
+      unsent: ['https://example.com/b'],
+    };
     const spy = stubFetch(result);
 
     await expect(
