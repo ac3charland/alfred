@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/server';
 
 import {
   READER_POST_LIST_COLUMNS,
+  appendFurtherReadingSent,
   appendWikiSentPicks,
   getReaderHealthSeed,
   getReaderHealthSnapshot,
@@ -61,6 +62,9 @@ describe('READER_POST_LIST_COLUMNS', () => {
     // The overview's sent marks are drawn from these, one per checklist section.
     expect(listedColumns.has('wiki_sent_ideas')).toBe(true);
     expect(listedColumns.has('wiki_sent_evidence')).toBe(true);
+    // The Further reading section's sent marks are drawn from these, one per destination.
+    expect(listedColumns.has('further_sent_reader')).toBe(true);
+    expect(listedColumns.has('further_sent_instapaper')).toBe(true);
   });
 });
 
@@ -501,6 +505,42 @@ describe('appendWikiSentPicks', () => {
       ideas: ['Idea one'],
       evidence: [],
     });
+
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
+describe('appendFurtherReadingSent', () => {
+  it('appends to the named destination through the one atomic RPC and reads the row back through the list columns', async () => {
+    const { text: _text, ...saved } = makeReaderPost(PUBLICATION.id, {
+      id: POST_ID,
+      further_sent_instapaper: ['https://example.com/a'],
+    });
+    const supabase = makeSupabaseDouble({});
+    const chain = makeChain({ single: { data: saved } });
+    supabase.rpc.mockReturnValue(chain);
+
+    const { data } = await appendFurtherReadingSent(supabase as never, POST_ID, 'instapaper', [
+      'https://example.com/a',
+    ]);
+
+    expect(supabase.rpc).toHaveBeenCalledWith('append_further_reading_sent', {
+      p_post: POST_ID,
+      p_destination: 'instapaper',
+      p_urls: ['https://example.com/a'],
+    });
+    expect(chain.select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
+    expect(chain.single).toHaveBeenCalled();
+    expect(data).toEqual(saved);
+  });
+
+  it('passes a Supabase error straight through', async () => {
+    const supabase = makeSupabaseDouble({});
+    supabase.rpc.mockReturnValue(makeChain({ single: { data: null, error: { message: 'boom' } } }));
+
+    const { error } = await appendFurtherReadingSent(supabase as never, POST_ID, 'reader', [
+      'https://example.com/a',
+    ]);
 
     expect(error).toEqual({ message: 'boom' });
   });

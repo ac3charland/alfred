@@ -78,3 +78,23 @@ export const updateReaderPublicationSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: 'No fields to update' });
 
 export type UpdateReaderPublicationInput = z.infer<typeof updateReaderPublicationSchema>;
+
+/**
+ * Body for POST /api/reader/posts/[id]/further-reading — the Further reading links the owner
+ * ticked, and where to send them: the Reader (Instapaper's "To Reader" folder, for summarising)
+ * or Instapaper's Unread. One to ten URLs, ten being the most a summary lists. Every URL must be
+ * a web link: `z.string().url()` alone accepts any scheme (`javascript:`, `ftp:`, `mailto:`), and
+ * these are handed on to Instapaper and opened by the owner, so only http(s) passes. `.strict()`
+ * rejects a stray key rather than ignoring a field the client thought it was sending.
+ */
+export const sendFurtherReadingSchema = z
+  .object({
+    destination: z.enum(['reader', 'instapaper']),
+    urls: z
+      .array(z.url().refine((url) => /^https?:\/\//i.test(url), 'Not a web link'))
+      .min(1)
+      .max(10),
+  })
+  .strict();
+
+export type SendFurtherReadingInput = z.infer<typeof sendFurtherReadingSchema>;

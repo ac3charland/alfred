@@ -36,7 +36,7 @@
  *                        comm_create_inbox_item}
  *                                                             → Comms RPCs
  *     POST /rest/v1/rpc/{append_wiki_sent_ideas,append_wiki_sent_picks,send_items_to_wiki,
- *                        search_wiki_pages}
+ *                        search_wiki_pages,append_further_reading_sent}
  *                                                             → Wiki RPCs
  *   GitHub Git Data API (the wiki writer's six endpoints, under /__mock__/github/repos/…):
  *     GET  …/git/ref/heads/main   GET …/git/commits/{sha}   GET …/git/trees/{sha}
@@ -45,6 +45,7 @@
  *   where page.route() can't reach, so INSTAPAPER_API_URL points it here):
  *     POST /api/1/bookmarks/add                               → a bookmark, or a seeded error
  *     POST /api/1/bookmarks/unarchive                         → the same bookmark, or the error
+ *     POST /api/1.1/folders/list                              → the seeded folders (To Reader by default)
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed   GET /__mock__/state
  *     POST /__mock__/github/fail-next  → make the next matching GitHub request fail once
@@ -133,6 +134,16 @@ let readerHealth = [];
 let instapaperRequests = [];
 /** @type {number | null} */
 let instapaperErrorCode = null;
+// The owner's Instapaper folders, as `folders/list` answers them. A fresh mock has the one folder
+// the Reader's sends into "To Reader" need; a test seeds `instapaperFolders: []` to stand in for
+// an account without it, which is the 409 the further-reading route answers.
+/** @type {{ folder_id: number, title: string }[]} */
+let instapaperFolders = [{ folder_id: 7, title: 'To Reader' }];
+// How many `bookmarks/add` calls succeed before the rest answer an error: a send of several links
+// then part-lands, which is the one outcome a seeded error code (every call failing) cannot show.
+// Null means every add succeeds.
+/** @type {number | null} */
+let instapaperAddFailAfter = null;
 // ── Wiki (migration 0038): the page snapshot the Worker writes and the module reads. ──
 /** @type {Record<string, unknown>[]} */
 let wikiPages = [];
@@ -760,6 +771,13 @@ function newReaderPost(input) {
     // The same for Evidence bullets (migration 0040).
     wiki_sent_evidence: Array.isArray(input.wiki_sent_evidence)
       ? [...input.wiki_sent_evidence]
+      : [],
+    // The exact URL of every Further reading item already sent, per destination (migration 0046).
+    further_sent_reader: Array.isArray(input.further_sent_reader)
+      ? [...input.further_sent_reader]
+      : [],
+    further_sent_instapaper: Array.isArray(input.further_sent_instapaper)
+      ? [...input.further_sent_instapaper]
       : [],
     created_at: input.created_at ?? receivedAt,
   };
@@ -1614,6 +1632,49 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
+  // One atomic append of a Further reading send's URLs to the chosen destination's column
+  // (migration 0046), each destination deduplicated against its own column only. Another
+  // destination is the real function's raise, which PostgREST answers with a 400. The list
+  // columns come back the same way the wiki append's do.
+  if (fn === 'append_further_reading_sent' && req.method === 'POST') {
+    const column =
+      body?.p_destination === 'reader'
+        ? 'further_sent_reader'
+        : body?.p_destination === 'instapaper'
+          ? 'further_sent_instapaper'
+          : undefined;
+    if (column === undefined) {
+      sendJson(res, 400, {
+        code: 'P0001',
+        message: 'append_further_reading_sent: destination must be reader or instapaper',
+      });
+      return;
+    }
+    const post = readerPosts.find((row) => String(row.id) === String(body?.p_post));
+    const url = new URL(req.url ?? '/', `http://localhost:${String(PORT)}`);
+    if (post === undefined) {
+      if (wantsObject(req)) {
+        sendJson(res, 406, {
+          code: 'PGRST116',
+          message: 'JSON object requested, multiple (or no) rows returned',
+        });
+        return;
+      }
+      sendJson(res, 200, []);
+      return;
+    }
+    const held = new Set(post[column]);
+    for (const sent of body?.p_urls ?? []) {
+      if (!held.has(sent)) {
+        held.add(sent);
+        post[column] = [...(post[column] ?? []), sent];
+      }
+    }
+    const rows = applySelect([post], url.searchParams);
+    sendJson(res, 200, wantsObject(req) ? (rows[0] ?? null) : rows);
+    return;
+  }
+
   // Stamp-then-delete for knowledge rows, all-or-nothing: every id must be an undispatched,
   // childless root knowledge item, or nothing goes. Returns how many were consumed. The
   // corrections-log side effect of the stamp is a real-Postgres trigger, proven by the database
@@ -2265,6 +2326,8 @@ function handleControl(req, res, url, body) {
     readerHealth = [];
     instapaperRequests = [];
     instapaperErrorCode = null;
+    instapaperFolders = [{ folder_id: 7, title: 'To Reader' }];
+    instapaperAddFailAfter = null;
     wikiPages = [];
     wikiSync = [];
     github = freshGithub();
@@ -2330,6 +2393,14 @@ function handleControl(req, res, url, body) {
     instapaperRequests = [];
     instapaperErrorCode =
       typeof body?.instapaperErrorCode === 'number' ? body.instapaperErrorCode : null;
+    instapaperFolders = Array.isArray(body?.instapaperFolders)
+      ? body.instapaperFolders.map((folder, index) => ({
+          folder_id: typeof folder?.folder_id === 'number' ? folder.folder_id : 7 + index,
+          title: String(folder?.title ?? ''),
+        }))
+      : [{ folder_id: 7, title: 'To Reader' }];
+    instapaperAddFailAfter =
+      typeof body?.instapaperAddFailAfter === 'number' ? body.instapaperAddFailAfter : null;
     // Wiki. The sync row is likewise not defaulted: an empty table is "never synced".
     wikiPages = Array.isArray(body?.wikiPages) ? body.wikiPages.map((p) => newWikiPage(p)) : [];
     wikiSync = Array.isArray(body?.wikiSync) ? body.wikiSync.map((s) => newWikiSync(s)) : [];
@@ -2403,7 +2474,8 @@ function handleControl(req, res, url, body) {
 function handleInstapaper(req, res, url, raw) {
   const add = url.pathname === '/api/1/bookmarks/add';
   const unarchive = url.pathname === '/api/1/bookmarks/unarchive';
-  if ((!add && !unarchive) || req.method !== 'POST') {
+  const listFolders = url.pathname === '/api/1.1/folders/list';
+  if ((!add && !unarchive && !listFolders) || req.method !== 'POST') {
     sendJson(res, 404, { message: `No Instapaper route: ${req.method} ${url.pathname}` });
     return;
   }
@@ -2417,6 +2489,26 @@ function handleInstapaper(req, res, url, raw) {
     sendJson(res, 400, [
       { type: 'error', error_code: instapaperErrorCode, message: 'Mocked Instapaper error' },
     ]);
+    return;
+  }
+  if (
+    add &&
+    instapaperAddFailAfter !== null &&
+    instapaperRequests.filter((call) => call.path === '/api/1/bookmarks/add').length >
+      instapaperAddFailAfter
+  ) {
+    // Past the seeded count, an add fails the way an Instapaper outage does: a 5xx with no body.
+    res.writeHead(503, CORS_HEADERS);
+    res.end();
+    return;
+  }
+  if (listFolders) {
+    // The further-reading route finds "To Reader" by exact title before saving into it.
+    sendJson(
+      res,
+      200,
+      instapaperFolders.map((folder) => ({ type: 'folder', ...folder })),
+    );
     return;
   }
   const bookmarkId = unarchive ? Number(params['bookmark_id']) : 1000 + instapaperRequests.length;
@@ -2448,7 +2540,7 @@ const server = createServer((req, res) => {
         handleAuth(req, res, url, body);
       } else if (url.pathname.startsWith('/rest/v1/')) {
         handleRest(req, res, url, body);
-      } else if (url.pathname.startsWith('/api/1/')) {
+      } else if (url.pathname.startsWith('/api/1/') || url.pathname.startsWith('/api/1.1/')) {
         handleInstapaper(req, res, url, raw);
       } else {
         sendJson(res, 404, { message: `Not found: ${req.method} ${url.pathname}` });

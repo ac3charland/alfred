@@ -118,16 +118,25 @@ function answerItems(raw: string): Record<string, unknown>[] {
   );
 }
 
-/** Read Instapaper's answer into an outcome. */
-function readAnswer(status: number, raw: string): AddBookmarkOutcome {
-  const items = answerItems(raw);
-
+/** The refusal or failure an answer carries, or undefined when it carries none. */
+function readFailure(
+  status: number,
+  items: readonly Record<string, unknown>[],
+): Exclude<AddBookmarkOutcome, { kind: 'saved' }> | undefined {
   const error = items.find((item) => item['type'] === 'error');
   const code = typeof error?.['error_code'] === 'number' ? error['error_code'] : undefined;
   const refusal = code === undefined ? undefined : REFUSAL_BY_CODE.get(code);
   if (refusal !== undefined) return { kind: 'refused', refusal, code };
   if (status === 401 || status === 403) return { kind: 'refused', refusal: 'credentials', code };
   if (error !== undefined || status < 200 || status >= 300) return { kind: 'unavailable', code };
+  return undefined;
+}
+
+/** Read Instapaper's answer into an outcome. */
+function readAnswer(status: number, raw: string): AddBookmarkOutcome {
+  const items = answerItems(raw);
+  const failure = readFailure(status, items);
+  if (failure !== undefined) return failure;
 
   const bookmark = items.find((item) => item['type'] === 'bookmark');
   const bookmarkId = bookmark?.['bookmark_id'];
@@ -145,6 +154,24 @@ export function addBookmark(
   params: Readonly<Record<string, string>>,
 ): Promise<AddBookmarkOutcome> {
   return postForm(config, '/api/1/bookmarks/add', params);
+}
+
+/**
+ * The params for saving one Further reading link: the model's title for it as the title, its note
+ * as the description (left out when blank), and the To Reader folder when one is given. No
+ * `content` and no tags — Instapaper fetches the linked page itself, which is the point of
+ * sending a link — and `resolve_final_url` stays at Instapaper's default, because the links are
+ * often redirecting tracker URLs.
+ */
+export function buildLinkBookmarkParams(
+  item: { url: string; title: string; note: string },
+  folderId?: number,
+): Record<string, string> {
+  const params: Record<string, string> = { url: item.url, title: item.title };
+  const note = item.note.trim();
+  if (note !== '') params['description'] = note;
+  if (folderId !== undefined) params['folder_id'] = String(folderId);
+  return params;
 }
 
 /** What moving a bookmark back to Unread came to — a save's outcomes, or a bookmark that is gone. */
@@ -186,12 +213,12 @@ export async function restoreOrResave(
   return params === null ? null : addBookmark(config, params);
 }
 
-/** One signed form POST to Instapaper, read into an outcome. Never throws. */
-async function postForm(
+/** One signed form POST to Instapaper: its status and raw body, or null when it never answered. */
+async function postSigned(
   config: InstapaperConfig,
   path: string,
   params: Readonly<Record<string, string>>,
-): Promise<AddBookmarkOutcome> {
+): Promise<{ status: number; raw: string } | null> {
   const url = `${config.apiUrl}${path}`;
   try {
     const response = await fetch(url, {
@@ -203,10 +230,22 @@ async function postForm(
       body: new URLSearchParams(params).toString(),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    return readAnswer(response.status, await response.text());
+    return { status: response.status, raw: await response.text() };
   } catch {
-    return { kind: 'unavailable', code: undefined };
+    return null;
   }
+}
+
+/** One signed form POST to Instapaper, read as a bookmark's outcome. Never throws. */
+async function postForm(
+  config: InstapaperConfig,
+  path: string,
+  params: Readonly<Record<string, string>>,
+): Promise<AddBookmarkOutcome> {
+  const answer = await postSigned(config, path, params);
+  return answer === null
+    ? { kind: 'unavailable', code: undefined }
+    : readAnswer(answer.status, answer.raw);
 }
 
 /** A failed send, as the route answers it: the status, and the sentence the owner's toast says. */
@@ -237,4 +276,102 @@ export function sendFailureResponse(
   outcome: Exclude<AddBookmarkOutcome, { kind: 'saved' }>,
 ): SendFailure {
   return SEND_FAILURES[outcome.kind === 'refused' ? outcome.refusal : 'unavailable'];
+}
+
+/** The folder Further reading links sent to the Reader land in, matched exactly by title. */
+export const TO_READER_FOLDER = 'To Reader';
+
+/** One of the owner's Instapaper folders. */
+export interface InstapaperFolder {
+  folderId: number;
+  title: string;
+}
+
+/** What listing the owner's folders came to. */
+export type ListFoldersOutcome =
+  | { kind: 'listed'; folders: InstapaperFolder[] }
+  | Exclude<AddBookmarkOutcome, { kind: 'saved' }>;
+
+/** One folder out of the answer's items, or undefined for anything else (ids may be strings). */
+function readFolder(item: Record<string, unknown>): InstapaperFolder | undefined {
+  if (item['type'] !== 'folder' || typeof item['title'] !== 'string') return undefined;
+  const raw = item['folder_id'];
+  const folderId = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  return typeof folderId === 'number' && Number.isInteger(folderId)
+    ? { folderId, title: item['title'] }
+    : undefined;
+}
+
+function isJson(raw: string): boolean {
+  try {
+    JSON.parse(raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The owner's folders, so a send to the Reader can find the id of "To Reader". Never throws: a
+ * timeout, a network failure and every answer Instapaper can give come back as an outcome.
+ */
+export async function listFolders(config: InstapaperConfig): Promise<ListFoldersOutcome> {
+  const answer = await postSigned(config, '/api/1.1/folders/list', {});
+  if (answer === null) return { kind: 'unavailable', code: undefined };
+  const items = answerItems(answer.raw);
+  const failure = readFailure(answer.status, items);
+  if (failure !== undefined) return failure;
+  // A body that was not JSON reads as no items, which must not pass for an owner with no folders.
+  if (items.length === 0 && !isJson(answer.raw)) return { kind: 'unavailable', code: undefined };
+  return {
+    kind: 'listed',
+    folders: items.flatMap((item) => readFolder(item) ?? []),
+  };
+}
+
+/**
+ * How long a send keeps starting new saves. The route runs inside a serverless function whose own
+ * limit is 30 s; stopping at 20 s leaves room for the in-flight save (it has its own
+ * {@link TIMEOUT_MS}) and the write that records the marks, so a slow Instapaper costs the owner
+ * some unsent links rather than the whole answer.
+ */
+export const SEND_DEADLINE_MS = 20_000;
+
+/** What a run of link saves came to: the links Instapaper confirmed, and the ones it did not. */
+export interface SendLinksResult {
+  landed: string[];
+  /** Failed, or never started because the deadline passed first. In the order given. */
+  unsent: string[];
+  /** The first save's failure, if any save failed — what the owner is told about the rest. */
+  firstFailure: Exclude<AddBookmarkOutcome, { kind: 'saved' }> | undefined;
+}
+
+/**
+ * Save Further reading links one after another, in the order given. One at a time, because
+ * Instapaper rate-limits and because the order the owner ticked them in is the order they should
+ * land in Unread. A failed save does not stop the rest — a refused link is about that link — but
+ * no new save STARTS once {@link SEND_DEADLINE_MS} has passed since `startedAt`. `now` is
+ * injectable so the deadline is testable without waiting. Never throws.
+ */
+export async function sendLinks(
+  config: InstapaperConfig,
+  items: readonly { url: string; title: string; note: string }[],
+  options: { folderId?: number; startedAt: number; now?: () => number },
+): Promise<SendLinksResult> {
+  const now = options.now ?? Date.now;
+  const result: SendLinksResult = { landed: [], unsent: [], firstFailure: undefined };
+  for (const item of items) {
+    if (now() - options.startedAt >= SEND_DEADLINE_MS) {
+      result.unsent.push(item.url);
+      continue;
+    }
+    const outcome = await addBookmark(config, buildLinkBookmarkParams(item, options.folderId));
+    if (outcome.kind === 'saved') {
+      result.landed.push(item.url);
+    } else {
+      result.unsent.push(item.url);
+      result.firstFailure ??= outcome;
+    }
+  }
+  return result;
 }

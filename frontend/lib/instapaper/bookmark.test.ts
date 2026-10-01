@@ -2,10 +2,15 @@
 import {
   type AddBookmarkOutcome,
   type BookmarkSource,
+  SEND_DEADLINE_MS,
+  TO_READER_FOLDER,
   addBookmark,
   buildBookmarkParams,
+  buildLinkBookmarkParams,
+  listFolders,
   restoreOrResave,
   sendFailureResponse,
+  sendLinks,
   unarchiveBookmark,
 } from './bookmark';
 import type { InstapaperConfig } from './config';
@@ -407,5 +412,132 @@ describe('restoreOrResave', () => {
       code: undefined,
     });
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildLinkBookmarkParams', () => {
+  const ITEM = { url: 'https://example.com/a', title: 'A piece', note: 'Why the post cites it.' };
+
+  it('sends the link, its title and its note as description, with the folder when given', () => {
+    expect(buildLinkBookmarkParams(ITEM, 77)).toEqual({
+      url: 'https://example.com/a',
+      title: 'A piece',
+      description: 'Why the post cites it.',
+      folder_id: '77',
+    });
+  });
+
+  it('sends no folder_id without a folder, and never a body, tags or resolve_final_url', () => {
+    expect(buildLinkBookmarkParams(ITEM)).toEqual({
+      url: ITEM.url,
+      title: ITEM.title,
+      description: ITEM.note,
+    });
+  });
+
+  it('leaves the description out when the note is blank', () => {
+    expect(buildLinkBookmarkParams({ ...ITEM, note: '  ' })).not.toHaveProperty('description');
+  });
+
+  it('names the To Reader folder exactly', () => {
+    expect(TO_READER_FOLDER).toBe('To Reader');
+  });
+});
+
+/** Instapaper answering every call with the given raw body. */
+function respond(body: string, status = 200): jest.SpiedFunction<typeof fetch> {
+  return jest
+    .spyOn(globalThis, 'fetch')
+    .mockImplementation(() => Promise.resolve(new Response(body, { status })));
+}
+
+describe('listFolders', () => {
+  it('POSTs a signed request to folders/list and reads numeric and string folder ids', async () => {
+    const fetchSpy = respond(
+      JSON.stringify([
+        { type: 'folder', folder_id: 12, title: 'To Reader' },
+        { type: 'folder', folder_id: '34', title: 'Later' },
+        { type: 'user', user_id: 1 },
+      ]),
+    );
+
+    const outcome = await listFolders(CONFIG);
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://www.instapaper.com/api/1.1/folders/list');
+    expect(outcome).toEqual({
+      kind: 'listed',
+      folders: [
+        { folderId: 12, title: 'To Reader' },
+        { folderId: 34, title: 'Later' },
+      ],
+    });
+  });
+
+  it('maps a refusal', async () => {
+    respond(JSON.stringify([{ type: 'error', error_code: 1042, message: 'x' }]), 401);
+    expect(await listFolders(CONFIG)).toEqual({
+      kind: 'refused',
+      refusal: 'credentials',
+      code: 1042,
+    });
+  });
+
+  it('is unavailable for a body that is not JSON', async () => {
+    respond('<html>503</html>');
+    expect(await listFolders(CONFIG)).toEqual({ kind: 'unavailable', code: undefined });
+  });
+
+  it('lists nothing for an owner with no folders', async () => {
+    respond('[]');
+    expect(await listFolders(CONFIG)).toEqual({ kind: 'listed', folders: [] });
+  });
+
+  it('is unavailable when the request itself fails', async () => {
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    expect(await listFolders(CONFIG)).toEqual({ kind: 'unavailable', code: undefined });
+  });
+});
+
+describe('sendLinks', () => {
+  const ITEMS = [
+    { url: 'https://example.com/a', title: 'A', note: '' },
+    { url: 'https://example.com/b', title: 'B', note: '' },
+    { url: 'https://example.com/c', title: 'C', note: '' },
+  ];
+  const SAVED = [{ type: 'bookmark', bookmark_id: 1 }];
+
+  it('saves each link in turn and keeps going past a failed one, remembering the first failure', async () => {
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json(SAVED))
+      .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1221 }], { status: 400 }))
+      .mockResolvedValueOnce(Response.json([{ type: 'error', error_code: 1040 }], { status: 400 }));
+
+    const result = await sendLinks(CONFIG, ITEMS, { startedAt: 0, now: () => 0 });
+
+    expect(result).toEqual({
+      landed: ['https://example.com/a'],
+      unsent: ['https://example.com/b', 'https://example.com/c'],
+      firstFailure: { kind: 'refused', refusal: 'opted-out', code: 1221 },
+    });
+  });
+
+  it('starts no new save once the deadline has passed, and reports those links unsent', async () => {
+    const fetchSpy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => Promise.resolve(Response.json(SAVED)));
+    const clock = [0, SEND_DEADLINE_MS - 1, SEND_DEADLINE_MS];
+
+    const result = await sendLinks(CONFIG, ITEMS, {
+      startedAt: 0,
+      now: () => clock.shift() ?? SEND_DEADLINE_MS,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      landed: ['https://example.com/a', 'https://example.com/b'],
+      unsent: ['https://example.com/c'],
+      firstFailure: undefined,
+    });
   });
 });

@@ -1,6 +1,7 @@
 import {
   createReaderPublicationSchema,
   patchReaderPostSchema,
+  sendFurtherReadingSchema,
   updateReaderPublicationSchema,
 } from './reader-schemas';
 
@@ -83,5 +84,55 @@ describe('patchReaderPostSchema', () => {
 
   it('rejects an un-resummarise — there is no such verb', () => {
     expect(patchReaderPostSchema.safeParse({ resummarize: false }).success).toBe(false);
+  });
+});
+
+describe('sendFurtherReadingSchema', () => {
+  const urls = ['https://example.com/a', 'https://example.org/b'];
+
+  it('accepts a destination with one to ten http(s) urls', () => {
+    const parsed = sendFurtherReadingSchema.safeParse({ destination: 'reader', urls });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toEqual({ destination: 'reader', urls });
+    expect(
+      sendFurtherReadingSchema.safeParse({
+        destination: 'instapaper',
+        urls: Array.from({ length: 10 }, (_, i) => `https://example.com/${String(i)}`),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an empty urls list — a send with nothing in it has no meaning', () => {
+    expect(sendFurtherReadingSchema.safeParse({ destination: 'reader', urls: [] }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects more than ten urls — a summary lists no more than that', () => {
+    const eleven = Array.from({ length: 11 }, (_, i) => `https://example.com/${String(i)}`);
+    expect(
+      sendFurtherReadingSchema.safeParse({ destination: 'reader', urls: eleven }).success,
+    ).toBe(false);
+  });
+
+  it.each(['javascript:alert(1)', 'ftp://example.com/a', 'mailto:a@example.com', 'not a url'])(
+    'rejects %s — only web links go to Instapaper',
+    (url) => {
+      expect(
+        sendFurtherReadingSchema.safeParse({ destination: 'reader', urls: [url] }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('rejects an extra key rather than ignoring it', () => {
+    expect(
+      sendFurtherReadingSchema.safeParse({ destination: 'reader', urls, force: true }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an unknown or missing destination', () => {
+    expect(sendFurtherReadingSchema.safeParse({ destination: 'wiki', urls }).success).toBe(false);
+    expect(sendFurtherReadingSchema.safeParse({ urls }).success).toBe(false);
   });
 });

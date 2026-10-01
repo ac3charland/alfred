@@ -1,5 +1,5 @@
 import type { Json } from '@/lib/database.types';
-import type { ReaderOverview } from '@/lib/types';
+import type { ReaderFurtherReading, ReaderOverview } from '@/lib/types';
 
 /**
  * The type guard over `reader_posts.overview`'s jsonb — the generated row type is `Json | null`,
@@ -41,4 +41,42 @@ export function isReaderOverview(value: Json | null): value is JsonReaderOvervie
  */
 export function isBullet(bullet: string): boolean {
   return bullet.trim() !== '';
+}
+
+/** True for a plain, non-null, non-array object, read as far as a Further reading item's fields. */
+function isRecord(value: unknown): value is Partial<Record<keyof ReaderFurtherReading, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whether `value` has the SHAPE of a Further reading list: an array whose every entry is an
+ * object with string `url`, `title` and `note`. Says nothing about blank strings — see
+ * {@link furtherReadingOf}, which also filters those.
+ */
+export function isFurtherReadingList(value: unknown): value is ReaderFurtherReading[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.url === 'string' &&
+        typeof item.title === 'string' &&
+        typeof item.note === 'string',
+    )
+  );
+}
+
+/**
+ * The Further reading items an overview should show. {@link isReaderOverview} deliberately ignores
+ * this key, so a malformed list cannot take the rest of the overview down with it; this is where
+ * it is judged instead. A list of the wrong shape (not an array, or an entry missing a string
+ * field) yields `[]`, hiding the section. A well-shaped list is filtered item by item: an entry
+ * whose url or title is blank after trimming is no link to open or label to show, so it is
+ * dropped while its neighbours stay. The note may be empty. An absent key (a summary written
+ * under the first prompt version) yields `[]` too.
+ */
+export function furtherReadingOf(overview: ReaderOverview): ReaderFurtherReading[] {
+  const list: unknown = overview.further_reading;
+  if (!isFurtherReadingList(list)) return [];
+  return list.filter((item) => item.url.trim() !== '' && item.title.trim() !== '');
 }

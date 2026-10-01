@@ -272,6 +272,18 @@ export interface ReaderOverview {
   evidence: string[];
   argument: string;
   who_should_read: string;
+  /**
+   * The linked articles worth reading in full. Optional because summaries written under the
+   * first prompt version lack it; the section renders only when it is present and well-formed.
+   */
+  further_reading?: ReaderFurtherReading[];
+}
+
+/** One Further reading item: the link's exact URL, the linked piece's title, and what the post uses it for. */
+export interface ReaderFurtherReading {
+  url: string;
+  title: string;
+  note: string;
 }
 
 // ── Wiki (the read-only snapshot of the knowledge repo's compiled pages) — ──

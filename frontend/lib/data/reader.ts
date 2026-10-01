@@ -33,6 +33,8 @@ export const READER_POST_LIST_COLUMNS = [
   'canonical_url',
   'comm_message_id',
   'created_at',
+  'further_sent_instapaper',
+  'further_sent_reader',
   'gist',
   'gmail_message_id',
   'headline',
@@ -247,6 +249,30 @@ export async function appendWikiSentPicks(
       p_post: id,
       p_ideas: [...picks.ideas],
       p_evidence: [...picks.evidence],
+    })
+    .select(READER_POST_LIST_COLUMNS)
+    .single<ReaderPostListItem>();
+}
+
+/**
+ * Record a Further reading send's URLs as sent to one destination, through the
+ * `append_further_reading_sent` RPC: one atomic update that adds to that destination's column
+ * only the URLs not already present in it. The dedupe is against that column alone; the route
+ * is what refuses a URL already sent to the other destination. No read-modify-write,
+ * which would let two tabs sending from the same post race and the later send erase the earlier
+ * one's marks. The row comes back through the shared list columns, so the body never rides along.
+ */
+export async function appendFurtherReadingSent(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  destination: 'reader' | 'instapaper',
+  urls: readonly string[],
+): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
+  return supabase
+    .rpc('append_further_reading_sent', {
+      p_post: id,
+      p_destination: destination,
+      p_urls: [...urls],
     })
     .select(READER_POST_LIST_COLUMNS)
     .single<ReaderPostListItem>();

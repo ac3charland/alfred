@@ -115,6 +115,8 @@ export function makeReaderPost(
     instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? null,
     wiki_sent_ideas: overrides.wiki_sent_ideas ?? [],
     wiki_sent_evidence: overrides.wiki_sent_evidence ?? [],
+    further_sent_reader: overrides.further_sent_reader ?? [],
+    further_sent_instapaper: overrides.further_sent_instapaper ?? [],
     created_at: overrides.created_at ?? receivedAt,
   };
 }

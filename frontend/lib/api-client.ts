@@ -23,6 +23,7 @@ import type {
   PatchReaderPostInput,
   PurgeInput,
   ReaderPostsQuery,
+  SendFurtherReadingInput,
   SendItemsToWikiInput,
   SendReaderPicksInput,
   UpdateEpicInput,
@@ -873,6 +874,35 @@ export function sendReaderPicksToWiki(
   body: SendReaderPicksInput,
 ): Promise<ReaderPostListItem> {
   return apiRequest<ReaderPostListItem>(`/api/reader/posts/${postId}/wiki`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * What a further-reading send answers: the row with its sent marks extended, the URLs that did
+ * not land (failed, or not started before the route's deadline), and — whenever some did not —
+ * the first failure's sentence, which the toast quotes.
+ */
+export interface SendFurtherReadingResult {
+  post: ReaderPostListItem;
+  unsent: string[];
+  failure?: string;
+}
+
+/**
+ * Send ticked Further reading links from a post to the Reader (Instapaper's "To Reader" folder)
+ * or to Instapaper's Unread. Resolves with the post's list row, its sent marks extended, and the
+ * URLs that did not land, so a partly failed send can say which links to retry. The route may
+ * refuse with a 400 (bad body), a 404 (no such post), a 409 (no "To Reader" folder in
+ * Instapaper), a 501 (Instapaper not configured on this deployment), or else Instapaper's own
+ * failure mapped to a status.
+ */
+export function sendReaderFurtherReading(
+  postId: string,
+  body: SendFurtherReadingInput,
+): Promise<SendFurtherReadingResult> {
+  return apiRequest<SendFurtherReadingResult>(`/api/reader/posts/${postId}/further-reading`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

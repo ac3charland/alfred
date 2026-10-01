@@ -18,6 +18,7 @@ import {
   reorderCode,
   searchWikiBodies,
   sendItemsToWiki,
+  sendReaderFurtherReading,
   sendReaderPicksToWiki,
   sendReaderPostToInstapaper,
   updateReaderPublication,
@@ -189,6 +190,28 @@ describe('sendReaderPicksToWiki', () => {
       body: {
         ideas: ['A new habit needs an existing cue.'],
         evidence: ['Lally et al. (2010): median 66 days.'],
+      },
+    });
+  });
+});
+
+describe('sendReaderFurtherReading', () => {
+  it('posts the destination and urls to the post’s further-reading route and hands back the row and the unsent urls', async () => {
+    const result = { post: { id: 'post-1' }, unsent: ['https://example.com/b'] };
+    const spy = stubFetch(result);
+
+    await expect(
+      sendReaderFurtherReading('post-1', {
+        destination: 'instapaper',
+        urls: ['https://example.com/a', 'https://example.com/b'],
+      }),
+    ).resolves.toEqual(result);
+    expect(requested(spy)).toEqual({
+      path: '/api/reader/posts/post-1/further-reading',
+      method: 'POST',
+      body: {
+        destination: 'instapaper',
+        urls: ['https://example.com/a', 'https://example.com/b'],
       },
     });
   });
