@@ -164,6 +164,7 @@ export const OneSendFailed: Story = {
       Promise.resolve(
         Response.json({
           post: roundupPost([MODEL_COSTS.url]),
+          landed: [MODEL_COSTS.url],
           unsent: [REBUTTAL.url],
           failure: "Instapaper didn't answer",
         }),
