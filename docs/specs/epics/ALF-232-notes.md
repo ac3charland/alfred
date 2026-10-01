@@ -274,3 +274,25 @@ what a reader who wasn't here needs.
   folding comms' `AccountDot` onto the new `StatusDot`.
 - **The paywalled-teaser marker from Story 1's handoff was not built** — nothing detects the cut,
   and `headline` is still stored and unrendered.
+
+## Further reading build notes (ALF-289)
+
+What the Further reading story's build learned that its spec does not say.
+
+- **Whether Instapaper resolves a `substack.com/redirect/<uuid>` wrapper is unconfirmed.** The
+  send route hands the link to `bookmarks/add` exactly as the post carried it, with
+  `resolve_final_url` left at Instapaper's default, and the build ran with no live Instapaper
+  credentials, so nothing here observed the returned bookmark's `url`. If Instapaper keeps the
+  wrapper, the To Reader leg's `siteOf` reads `substack.com` and the article's eyebrow says so;
+  the first real send through the folder is the check, and the fix if it fails is in the Worker's
+  `siteOf`, not in the send.
+- **The retry read now selects `html`** (`workers/src/reader/worklist.ts`), so a retried post's
+  links reach the model the way a fresh post's do. Same read, two more columns: the tick's
+  subrequest arithmetic is unchanged.
+- **An Instapaper article's HTML is stored only when its text was readable** and the HTML fits
+  `READER_HTML_CHARS` — one condition beyond the mail rule, so a row holding markup always holds a
+  body, as the retention sweep assumes.
+- **The links block is held to a quarter of the model's input cap**, cut whole-line; the text
+  takes the rest. A very long post loses tail text rather than links, and a number the cap cut
+  from the block is also absent from the list normalisation resolves against, so the model can
+  never name it.
