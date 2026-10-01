@@ -32,12 +32,14 @@ description: >
     from history: collecting session records with subagents, verifying them, `build`, `push`,
     `report`, and its warning codes
   - [replay.md](./references/replay.md) — rebuilding one merged ticket in fresh sessions per arm
-    (model, effort, subagent setup): base commit, prompt, `create_session` limits, cost, blind judge
+    (model, effort, subagent setup): base commit, prompt, `create_session` limits, cost, blind judge,
+    and replaying a past review round
 
 The evidence, power simulations and sources behind this skill are in the ALF-283 spike,
 `docs/spikes/ALF-283-evaluating-coding-sessions.html`. Read it before proposing a new instrument. A
 worked replay of one ticket, a single Opus agent against a Fable orchestrator with Sonnet
-implementers, is in `docs/spikes/ALF-265-opus-vs-fable-orchestrator.html`.
+implementers, is in `docs/spikes/ALF-265-opus-vs-fable-orchestrator.html`. Sonnet against Opus as
+the reviewer, replayed on three past review rounds, is in `docs/spikes/ALF-266-sonnet-vs-opus-reviewer.html`.
 
 ## The question this answers
 
@@ -73,7 +75,7 @@ a backfill wrote to the scratchpad.
 | --- | --- | --- |
 | Effort or model default for a lane | the ledger: cost per lane, rework as the guardrail | ledger exists |
 | Did a launch-prompt instruction help | randomised arms by ticket-ref hash in `links.ts`, recorded at launch | prompts recorded; arms not built |
-| Which reviewer model or brief | an offline defect-recall bench (real escaped bugs + surviving Stryker mutants) on `claude plugin eval` | not built |
+| Which reviewer model or brief | an offline defect-recall bench (real escaped bugs + surviving Stryker mutants) on `claude plugin eval` | not built; ALF-266 replayed 3 review rounds by hand |
 | Epic orchestration | a structured case review of each epic session | manual |
 | Where two arms differ on one ticket (a case study, not a decision) | a paired replay: [replay.md](./references/replay.md) | manual; ALF-265 ran one |
 | A high-stakes model-default change the ledger can't bound | a ticket-replay bench (Harbor) | reserved: costly |

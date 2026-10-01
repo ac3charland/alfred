@@ -10,6 +10,7 @@ use it to find where arms differ, and the ledger to decide.
 - [Set up the arms](#set-up-the-arms)
 - [Measure cost](#measure-cost)
 - [Judge the output](#judge-the-output)
+- [Replaying a review round](#replaying-a-review-round)
 
 ## Set up the arms
 
@@ -42,7 +43,11 @@ use it to find where arms differ, and the ledger to decide.
 
 - **`get_session` → `usage.cost_usd` is the cost.** It includes subagents with their real output:
   in the ALF-265 replays it exceeded the transcripts' main-thread tokens by the subagents' share.
-  It refreshes only at a turn's end, so read it once the session is idle.
+  It refreshes only at a turn's end, so read it once the session is idle. A child writes its cache
+  at the 1-hour rate (2× input), while a reviewer or implementer subagent in production writes at
+  the 5-minute rate (1.25×): reprice `cache_write_tokens` before comparing with production.
+- **`list_events` usage is the stream-start snapshot**, main thread included: its output counts
+  are placeholders. Take output from `get_session`.
 - **The per-model split comes from the transcript.** Have each arm run the hook in dry-run as its
   last step, from a worktree of main when its base predates the hook:
   `echo '{"transcript_path":"<main .jsonl>"}' | CLAUDE_CODE_REMOTE_SESSION_ID=$CLAUDE_CODE_REMOTE_SESSION_ID node tools/session-ledger/src/hook/cli.ts stop --dry-run`.
@@ -61,3 +66,23 @@ use it to find where arms differ, and the ledger to decide.
   across order. Judges favour their own family, and position bias is real.
 - Pair the judge with the outputs the gates already give: green pre-push `check:slow`, test counts,
   and the review round's findings and their dispositions.
+
+## Replaying a review round
+
+To compare reviewer models or briefs on PRs whose review already ran (worked in ALF-266):
+
+- **The brief is the transcript's.** Page the implementing session's `list_events` for the `Agent`
+  tool_use with `model: "opus"`: its `input.prompt` is the brief, and the reviewer's own events
+  (`parent_tool_use_id`) follow it. The reviewed commit is the PR head at the spawn: the reviewer's
+  first `git log`, since a new branch's push prints no range. Briefs are hand-written per PR, so the
+  prompt is consistent across arms of one case, never across cases.
+- **The child is the reviewer:** `create_session` with `source_revision` set to that head, and the brief
+  verbatim behind a preamble. The preamble points `origin/main` at the base (`git update-ref`) and
+  skips the brief's fetch, because today's main holds the PR's fix commits. It forbids reading the PR
+  and hands over the body GitHub stored at review time, which can differ from the create call (an
+  appended footer, a reformatted link).
+- **Ground truth is what the author verified:** findings fixed, or raised as real. It comes from one
+  Opus run, so add a fresh run of the original model as a control, and verify every new finding a
+  report labels major against the commit. A reviewer that sampled a GIF's frames reported a false major.
+- A child can stall in setup: it stays PENDING, with no events after the setup script's image pull.
+  Archive it and relaunch.
