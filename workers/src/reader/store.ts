@@ -80,6 +80,8 @@ export interface ReaderArticleInsert {
   text: string;
   word_count: number;
   html_extracted: boolean;
+  /** get_text's HTML, when it produced the text and fits `READER_HTML_CHARS`. Never uploaded. */
+  html?: string | undefined;
   /**
    * `pending` with the lease taken, for an article with text to summarise; `failed` with its
    * reason, filed in the same insert, for one Instapaper could make no text of.

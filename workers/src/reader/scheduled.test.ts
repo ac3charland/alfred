@@ -1,11 +1,12 @@
 import type { GmailMessage } from '../comms/gmail-api';
 import { type FetchInit, type FetchInput, spyOnFetch } from '../fetch-stub';
 import { READER_DEFAULT_DAILY_CAP } from './config';
+import { READER_HTML_CHARS, extractPost } from './extract';
 import { ESSAY_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE, READ_IN_APP_MESSAGE } from './fixtures';
 import * as retention from './retention';
 import { READER_TICK_BUDGET_MS, runReaderRetention, runReaderTick } from './scheduled';
 import * as summarize from './summarize';
-import type { ReaderEnv, ReaderSummary, SummaryInput, SummaryOutcome } from './types';
+import type { ReaderEnv, StoredReaderSummary, SummaryInput, SummaryOutcome } from './types';
 
 const SUPABASE_URL = 'https://proj.supabase.co';
 const OAUTH_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -42,7 +43,7 @@ function without(
   return Object.fromEntries(entries) as unknown as ReaderEnv;
 }
 
-const SUMMARY: ReaderSummary = {
+const SUMMARY: StoredReaderSummary = {
   headline: 'Open port telemetry narrowed the routing spread',
   gist: 'Three ports published berth telemetry and the spread fell from $4.10 to $1.30 a tonne.',
   overview: {
@@ -50,6 +51,13 @@ const SUMMARY: ReaderSummary = {
     evidence: ['$4.10 → $1.30 a tonne over eighteen months'],
     argument: 'Publishing the feed destroyed an information rent and raised throughput.',
     who_should_read: 'Anyone running a queue with private state.',
+    further_reading: [
+      {
+        url: 'https://substack.com/redirect/8f2c0b7e-4d19-4a2b-9c51-6f0ab2e77d41',
+        title: 'The open berth-occupancy feeds',
+        note: 'The telemetry the whole argument is built on.',
+      },
+    ],
   },
 };
 
@@ -731,7 +739,7 @@ describe('runReaderTick — the terminal patch', () => {
       gist: SUMMARY.gist,
       overview: SUMMARY.overview,
       model: 'claude-sonnet-5',
-      prompt_version: 1,
+      prompt_version: 2,
       summary_state: 'done',
       summarized_at: NOW_ISO,
       model_called_at: NOW_ISO,
@@ -1024,6 +1032,13 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
     expect(summarized).toHaveBeenCalledTimes(3);
     // The model sees the roster's name for the publication, not the view's sender handle.
     expect(summarizedInputs(summarized)[0]).toMatchObject({ publication: 'Harborline' });
+    // And the HTML already in memory, with the post's own address, so its links can be numbered
+    // — no read added for it.
+    const essay = extractPost(ESSAY_MESSAGE, { name: 'Harborline' });
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      html: essay.html,
+      canonicalUrl: essay.canonical_url,
+    });
 
     expect(summary).toEqual({
       discovered: 1,
@@ -1387,6 +1402,8 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
       text: 'Cities Are Getting Quieter\nStreet noise fell in six downtowns.',
       word_count: 10,
       html_extracted: true,
+      // Instapaper's text view, kept so the article's links reach the summariser.
+      html: ARTICLE_HTML,
       summary_state: 'pending',
       summarizing_since: NOW_ISO,
     });
@@ -1413,13 +1430,15 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
         receivedAt: NOW_ISO,
         wordCount: 10,
         text: 'Cities Are Getting Quieter\nStreet noise fell in six downtowns.',
+        html: ARTICLE_HTML,
+        canonicalUrl: 'https://www.worksinprogress.co/issue/quiet-cities',
       },
     ]);
     // The same terminal patch a newsletter gets, `model_called_at` included — which is what makes
     // an article count against the daily ceiling.
     expect(payload(restCalls(calls, 'reader_posts', 'PATCH')[0])).toMatchObject({
       summary_state: 'done',
-      prompt_version: 1,
+      prompt_version: 2,
       model_called_at: NOW_ISO,
     });
     expect(summary).toMatchObject({ intake: 0, summarized: 1 });
@@ -1744,6 +1763,44 @@ function articleRetry(overrides: Record<string, unknown> = {}): Record<string, u
     ...overrides,
   });
 }
+
+describe('runReaderTick — the To Reader leg, an article over the HTML ceiling', () => {
+  it('stores and summarises its text without the HTML, which is never truncated', async () => {
+    const huge = `<p>${'word '.repeat(READER_HTML_CHARS / 5)}</p>`;
+    const calls = harness({ instapaper: { bookmarks: [bookmarkRow()], texts: { 11: huge } } });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(instapaperEnv, NOW);
+
+    expect(payload(restCalls(calls, 'reader_posts', 'POST')[0])).not.toHaveProperty('html');
+    expect(summarizedInputs(summarized)[0]?.html).toBeUndefined();
+  });
+});
+
+describe('runReaderTick — a retried post’s links', () => {
+  it('hands the summariser the stored HTML and canonical URL the retry read selected', async () => {
+    harness({
+      retries: [retryRow({ html: '<p>the stored <a href="https://x.example/">body</a></p>' })],
+    });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      html: '<p>the stored <a href="https://x.example/">body</a></p>',
+      canonicalUrl: 'https://harborline.substack.com/p/earlier',
+    });
+  });
+
+  it('hands over no HTML for a row that has none', async () => {
+    harness({ retries: [retryRow({ html: WIRE_NULL })] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]?.html).toBeUndefined();
+  });
+});
 
 describe('runReaderTick — an Instapaper post retried', () => {
   it('tells the model the site when no publication is linked', async () => {

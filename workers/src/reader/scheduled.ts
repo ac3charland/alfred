@@ -285,14 +285,19 @@ async function readRoster(env: ReaderEnv): Promise<Map<string, string>> {
   return new Map(rows.map((row) => [row.id, row.name]));
 }
 
-/** What the model is shown: the extracted post plus the publication it came from. */
+/**
+ * What the model is shown: the extracted post plus the publication it came from — with its HTML
+ * and own address, so the summariser can number the links the post makes.
+ */
 function toSummaryInput(
   post: {
     title: string;
     author?: string | undefined;
+    canonical_url?: string | undefined;
     received_at: string;
     word_count: number;
     text: string;
+    html?: string | undefined;
   },
   publication: string,
 ): SummaryInput {
@@ -305,6 +310,8 @@ function toSummaryInput(
     receivedAt: post.received_at,
     wordCount: post.word_count,
     text: post.text,
+    html: post.html,
+    canonicalUrl: post.canonical_url,
   };
 }
 
@@ -490,6 +497,8 @@ async function prepareBookmark(
           receivedAt: context.now.toISOString(),
           wordCount: taken.wordCount,
           text: taken.text,
+          html: taken.html,
+          canonicalUrl: taken.canonicalUrl,
         },
         attempts: 0,
       };

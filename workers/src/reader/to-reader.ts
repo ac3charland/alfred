@@ -24,7 +24,7 @@ import { htmlToText, truncateAtCodePointBoundary } from '../comms/email-text';
 import { InstapaperError } from '../instapaper/client';
 import type { InstapaperApi, InstapaperBookmark } from '../instapaper/types';
 import type { SupabaseEnv } from '../supabase';
-import { READER_TEXT_CHARS } from './extract';
+import { READER_HTML_CHARS, READER_TEXT_CHARS } from './extract';
 import { NO_READABLE_BODY } from './intake';
 import { type BookmarkedPost, insertPost } from './store';
 
@@ -217,6 +217,10 @@ export type BookmarkIntake =
       site: string | undefined;
       text: string;
       wordCount: number;
+      /** The stored text view's HTML, when it fit the ceiling — where the article's links are. */
+      html: string | undefined;
+      /** The article's own address, which the summariser never offers back as a link. */
+      canonicalUrl: string | undefined;
       archive: { ok: true } | { ok: false; error: unknown };
     }
   /** Stored as failed — Instapaper could make no text of it — and the archive attempted. */
@@ -254,17 +258,24 @@ export async function intakeBookmark(
     html === undefined ? { text: '', word_count: 0 } : articleText(html);
   const nowIso = now.toISOString();
   const readable = text !== '';
+  const canonicalUrl = articleUrl(bookmark.url);
+  // The text view's HTML is kept under the newsletter rule — only when it produced the text, and
+  // never truncated — so the article's links reach the summariser, now and on a Re-summarise. It
+  // is never uploaded: an article's Send re-saves it by URL.
+  const storedHtml =
+    readable && html !== undefined && html.length <= READER_HTML_CHARS ? html : undefined;
 
   const inserted = await insertPost(env, {
     source: 'instapaper',
     instapaper_bookmark_id: bookmark.bookmarkId,
     title,
-    canonical_url: articleUrl(bookmark.url),
+    canonical_url: canonicalUrl,
     site,
     received_at: nowIso,
     text,
     word_count: wordCount,
     html_extracted: readable,
+    html: storedHtml,
     // An article Instapaper had no text for is filed in the same insert, as the newsletter floor
     // is: its title and link stay in the list, and no model call is spent reaching the same end.
     ...(readable
@@ -275,5 +286,15 @@ export async function intakeBookmark(
 
   const archive = await archiveBookmark(api, bookmark.bookmarkId);
   if (!readable) return { kind: 'filed', archive };
-  return { kind: 'ready', id: inserted.id, title, site, text, wordCount, archive };
+  return {
+    kind: 'ready',
+    id: inserted.id,
+    title,
+    site,
+    text,
+    wordCount,
+    html: storedHtml,
+    canonicalUrl,
+    archive,
+  };
 }

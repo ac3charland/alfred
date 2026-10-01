@@ -62,7 +62,7 @@ describe('fetchRetries', () => {
     const urls = harness([]);
     await fetchRetries(env, NOW, 6);
     expect(query(urls[0])).toContain(
-      'select=id,source,publication_id,site,title,author,canonical_url,received_at,text,' +
+      'select=id,source,publication_id,site,title,author,canonical_url,received_at,text,html,' +
         'word_count,summarize_attempts',
     );
   });
