@@ -37,8 +37,9 @@ import { headerValue, parseAddress } from '../src/comms/email-text.ts';
 import { type GmailMessage, gmailClient } from '../src/comms/gmail-api.ts';
 import { fetchAccessToken } from '../src/comms/gmail-oauth.ts';
 import { instapaperClient, instapaperCredentials } from '../src/instapaper/client.ts';
-import { type ExtractedPost, extractPost } from '../src/reader/extract.ts';
+import { type ExtractedPost, READER_HTML_CHARS, extractPost } from '../src/reader/extract.ts';
 import { READER_FIXTURES } from '../src/reader/fixtures/index.ts';
+import { buildReaderRequest } from '../src/reader/prompt.ts';
 import { summarizePost } from '../src/reader/summarize.ts';
 import {
   NO_FOLDER_ERROR,
@@ -226,6 +227,8 @@ function toSummaryInput(post: ExtractedPost, publication: string): SummaryInput 
     receivedAt: post.received_at,
     wordCount: post.word_count,
     text: post.text,
+    html: post.html,
+    canonicalUrl: post.canonical_url,
   };
 }
 
@@ -242,6 +245,16 @@ function printExtraction(label: string, publication: string, post: ExtractedPost
   console.log(`  ${pad('canonical URL')}${post.canonical_url ?? 'none → mailbox'}`);
   console.log(`  ${pad('word count')}${String(post.word_count)}`);
   console.log(`  ${pad('html_extracted')}${String(post.html_extracted)}`);
+}
+
+/**
+ * The numbered links the model would be offered for this post — the only addresses a Further
+ * reading item can ever be — exactly as the request lists them. Pure, so it prints in a dry run.
+ */
+function printLinks(input: SummaryInput): void {
+  const { links } = buildReaderRequest(input);
+  console.log(`  ${pad('links offered')}${links.length === 0 ? 'none' : String(links.length)}`);
+  for (const link of links) console.log(`    [${String(link.n)}] ${link.url}`);
 }
 
 /** The dollars one call cost at list price, or undefined for a model this file has no price for. */
@@ -270,6 +283,12 @@ function printSummary(model: string, outcome: SummaryOutcome): void {
       if (overview.evidence.length === 0) console.log('    (none)');
       console.log(`  ${pad('argument')}${overview.argument}`);
       console.log(`  ${pad('who should read')}${overview.who_should_read}`);
+      console.log('  further reading');
+      for (const item of overview.further_reading) {
+        console.log(`    - ${item.title} — ${item.note}`);
+        console.log(`      ${item.url}`);
+      }
+      if (overview.further_reading.length === 0) console.log('    (none)');
 
       break;
     }
@@ -418,12 +437,21 @@ async function runInstapaper(options: Options, apiKey: string): Promise<boolean>
       console.log(
         `  ${pad('OUTCOME')}no readable body${html === undefined ? ' (error 1550)' : ''}`,
       );
-    } else if (!options.dryRun) {
-      const outcome = await summarizePost(
-        { publication, title, receivedAt, wordCount, text },
-        { apiKey, model: options.model },
-      );
-      printSummary(options.model, outcome);
+    } else {
+      // The HTML the tick would store beside the text — the same ceiling, the same rule.
+      const input: SummaryInput = {
+        publication,
+        title,
+        receivedAt,
+        wordCount,
+        text,
+        html: html !== undefined && html.length <= READER_HTML_CHARS ? html : undefined,
+        canonicalUrl: articleUrl(bookmark.url),
+      };
+      printLinks(input);
+      if (!options.dryRun) {
+        printSummary(options.model, await summarizePost(input, { apiKey, model: options.model }));
+      }
     }
     console.log('');
   }
@@ -511,6 +539,7 @@ async function main(): Promise<void> {
     const publication = publicationName(candidate.message);
     const post = extractPost(candidate.message, { name: publication });
     printExtraction(candidate.label, publication, post);
+    printLinks(toSummaryInput(post, publication));
 
     const row: ResultRow = {
       label: candidate.label,
