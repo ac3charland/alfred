@@ -4839,6 +4839,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       const wikiFunctions = [
         'append_wiki_sent_ideas(uuid, text[])',
         'append_wiki_sent_picks(uuid, text[], text[])',
+        'append_further_reading_sent(uuid, text, text[])',
         'send_items_to_wiki(uuid[])',
         'search_wiki_pages(text, int)',
       ];
@@ -5202,6 +5203,82 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const furtherAppendResult = await attempt(
+    'append_further_reading_sent appends to the chosen destination only, deduplicated against ' +
+      "that destination's own column in first-occurrence order, and rejects any other " +
+      'destination (ALF-289)',
+    async () => {
+      const { rows: pubRows } = await client.query<{ id: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('append-further@example.com', 'Append Further', 'owner') returning id`,
+      );
+      const publication = pubRows[0]?.id;
+      if (publication === undefined) throw new Error('could not seed a publication');
+      const { rows: postRows } = await client.query<{ id: string }>(
+        `insert into reader_posts (publication_id, account_key, gmail_message_id, title, received_at)
+           values ($1, 'gmail-personal', 'append-further-msg', 'Append Further Post', now())
+           returning id`,
+        [publication],
+      );
+      const post = postRows[0]?.id;
+      if (post === undefined) throw new Error('could not seed a post');
+
+      // As `authenticated`, so a missing grant to the owner's role fails here too.
+      const sent = async (destination: string, urls: string[]): Promise<string> => {
+        const { rows } = await asRole(client, 'authenticated', () =>
+          client.query<{ further_sent_reader: string[]; further_sent_instapaper: string[] }>(
+            `select further_sent_reader, further_sent_instapaper
+               from append_further_reading_sent($1, $2, $3::text[])`,
+            [post, destination, urls],
+          ),
+        );
+        const row = rows[0];
+        if (row === undefined) throw new Error('the append returned no row');
+        return `${row.further_sent_reader.join('|')} / ${row.further_sent_instapaper.join('|')}`;
+      };
+
+      // NOT alphabetical, with a duplicate: only first-occurrence order passes.
+      const first = await sent('reader', [
+        'https://z.example/',
+        'https://a.example/',
+        'https://z.example/',
+      ]);
+      if (first !== 'https://z.example/|https://a.example/ / ')
+        throw new Error(`first append gave ${first}`);
+      // A URL already sent to the Reader is still unsent to Instapaper.
+      const second = await sent('instapaper', ['https://a.example/', 'https://m.example/']);
+      if (
+        second !== 'https://z.example/|https://a.example/ / https://a.example/|https://m.example/'
+      )
+        throw new Error(`second append gave ${second}`);
+      // Re-sending to a destination skips what it holds and keeps the rest in order.
+      const third = await sent('reader', ['https://a.example/', 'https://m.example/']);
+      if (
+        third !==
+        'https://z.example/|https://a.example/|https://m.example/ / https://a.example/|https://m.example/'
+      )
+        throw new Error(`third append gave ${third}`);
+      // An empty array changes nothing.
+      const fourth = await sent('instapaper', []);
+      if (!fourth.endsWith(' / https://a.example/|https://m.example/'))
+        throw new Error(`an empty append gave ${fourth}`);
+
+      let rejected = false;
+      try {
+        await sent('wiki', ['https://x.example/']);
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error('an unknown destination was accepted');
+      const after = await sent('reader', []);
+      if (after !== third) throw new Error(`the rejected call changed the row: ${after}`);
+
+      await client.query(`delete from reader_posts where id = $1`, [post]);
+      await client.query(`delete from reader_publications where id = $1`, [publication]);
+      return 'reader and instapaper kept apart, deduped in order, unknown destination raises';
+    },
+  );
+
   const wikiSearchResult = await attempt(
     'search_wiki_pages ranks a title hit above a body hit and marks matched words with chr(2)/' +
       'chr(3) (ALF-261)',
@@ -5337,6 +5414,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     wikiSendLogsCorrectionResult,
     wikiAppendIdeasResult,
     wikiAppendPicksResult,
+    furtherAppendResult,
     wikiSearchResult,
   ];
 }

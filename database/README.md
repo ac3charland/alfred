@@ -185,6 +185,21 @@ and summarised by the Worker's Reader tick.
 - **`reader_health.instapaper_last_success_at` / `_last_error` / `_last_error_at`** — the To Reader
   leg's own health, apart from the summariser's, read by the Reader header's Instapaper dot.
 
+### `0046_reader_further_reading.sql` — Further reading sends (ALF-289)
+
+- **`reader_posts.further_sent_reader`** / **`further_sent_instapaper`** — the exact URL of every
+  `overview.further_reading` item already sent to the Reader or to Instapaper's Unread, beside
+  0040's `wiki_sent_evidence`. Two columns, so the mark can say where a link went; a link is sent
+  once, and a URL in either array is out of the selection. A re-summarise that drops a link drops
+  its item, and a kept link keeps its mark.
+- **`append_further_reading_sent(p_post, p_destination, p_urls)`** — one atomic UPDATE appending to
+  the destination's column (`reader` or `instapaper`; anything else raises), with
+  `append_wiki_sent_picks`'s rules (only URLs not already present, duplicates collapsed,
+  first-occurrence order). PL/pgSQL rather than SQL, because a SQL function cannot raise.
+- **`reader_posts.html`** — its comment now also covers an Instapaper article, where it holds the
+  HTML of Instapaper's text view (`get_text`), kept so the article's links reach the model and
+  Re-summarise.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it.** `.github/workflows/migrate.yml` runs
