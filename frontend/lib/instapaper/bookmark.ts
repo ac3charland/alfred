@@ -215,8 +215,10 @@ export async function restoreOrResave(
   const restored = await unarchiveBookmark(config, bookmarkId);
   if (restored.kind !== 'gone') return restored;
 
+  // An article's stored HTML is Instapaper's own text view, kept for the summariser's links —
+  // never a body to upload, so a resave drops it either way.
   const byUrl = postWebUrl(post) !== undefined;
-  const params = buildBookmarkParams(byUrl ? { ...post, html: null, text: null } : post);
+  const params = buildBookmarkParams({ ...post, html: null, ...(byUrl ? { text: null } : {}) });
   return params === null ? null : addBookmark(config, params);
 }
 

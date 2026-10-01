@@ -387,6 +387,29 @@ describe('restoreOrResave', () => {
     });
   });
 
+  it.each([
+    ['with a URL', 'https://worksinprogress.co/issue/quiet-cities'],
+    ['without a URL', null],
+  ])(
+    'never uploads the stored text view’s HTML when resaving an article %s',
+    async (_name, canonicalUrl) => {
+      const spy = jest
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          Response.json([{ type: 'error', error_code: 1241 }], { status: 400 }),
+        )
+        .mockResolvedValueOnce(Response.json([{ type: 'bookmark', bookmark_id: 79 }]));
+
+      await restoreOrResave(
+        CONFIG,
+        { ...ARTICLE, canonical_url: canonicalUrl, html: '<h1>Instapaper’s text view</h1>' },
+        42,
+      );
+
+      expect(JSON.stringify(forms(spy)[1]?.[1])).not.toContain('text view');
+    },
+  );
+
   it('is null when the bookmark is gone and there is nothing to save in its place', async () => {
     const spy = jest
       .spyOn(globalThis, 'fetch')
