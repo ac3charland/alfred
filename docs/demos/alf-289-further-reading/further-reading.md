@@ -18,12 +18,12 @@ npm run eval:reader -w workers -- --fixtures --dry-run 2>/dev/null | awk '/^roun
 
 ```output
 roundup
-  publication    Odelia Hart from Tideline
-  title          Slow Links, Fast Takes
-  author         Odelia Hart from Tideline
-  canonical URL  https://open.substack.com/pub/tideline/p/slow-links-fast-takes
-  word count     270
-  html_extracted true
+  publication     Odelia Hart from Tideline
+  title           Slow Links, Fast Takes
+  author          Odelia Hart from Tideline
+  canonical URL   https://open.substack.com/pub/tideline/p/slow-links-fast-takes
+  word count      270
+  html_extracted  true
   links
     [1] https://substack.com/redirect/3d7a91c2-6b04-4e58-a1f3-0c52de9b7e10
     [2] https://substack.com/redirect/b82e4f10-93ac-4d6e-8c17-5a0e61f3d2b9
@@ -80,14 +80,14 @@ roundup
     [6] https://tideline.substack.com/p/the-quiet-berth
     [7] https://substack.com/redirect/c71f20ab-85e3-4d96-b0c4-9e1a3f6d8b57
     [8] https://substack.com/redirect/1fd84c06-2b9e-4a73-85d1-e60c97a3b2f8
-  headline       A link roundup with one item worth the click.
-  gist           Mostly restated releases; the lead link is the substance.
+  headline        A link roundup with one item worth the click.
+  gist            Mostly restated releases; the lead link is the substance.
   novel ideas
     (none — a restatement)
   evidence
     (none)
-  argument       Eight links, one argument.
-  who should readNobody needs the issue; one link is worth it.
+  argument        Eight links, one argument.
+  who should read Nobody needs the issue; one link is worth it.
   further reading
     [1] The quiet berth, revisited — The essay the opening paragraph argues with.
         https://substack.com/redirect/3d7a91c2-6b04-4e58-a1f3-0c52de9b7e10
@@ -95,7 +95,7 @@ roundup
         https://substack.com/redirect/b82e4f10-93ac-4d6e-8c17-5a0e61f3d2b9
     [3] A sponsor-adjacent explainer — The post leans on it for its closing numbers.
         https://substack.com/redirect/c71f20ab-85e3-4d96-b0c4-9e1a3f6d8b57
-  usage          in 900 · out 300 · $0.0048
+  usage           in 900 · out 300 · $0.0048
 
 wrote workers/eval-results/<timestamp>.json
 ```
@@ -198,7 +198,7 @@ Instapaper calls: 1
     content      (none — Instapaper fetches the page)
 ```
 
-**The refusals and the no-ops.** An account with no "To Reader" folder is a 409 with its sentence and no save at all. A URL already sent, beside one the overview never offered, answers 200 with the row unchanged and makes no Instapaper call. A bad body is a 400. And Instapaper rejecting alfred's credentials on the first save answers 502 with that sentence, nothing landed and nothing marked.
+**The refusals and the no-ops.** An account with no "To Reader" folder is a 409 with its sentence and no save at all. A URL already sent, beside one the overview never offered, answers 200 with the row unchanged and makes no Instapaper call. A bad body is a 400. And Instapaper rejecting alfred's credentials on the first save answers 502 with that sentence, nothing landed and nothing marked — and the send stops there: a refusal that is about the account (credentials, Premium, a rate limit) is not retried link by link, so the second link never costs a call.
 
 ```bash
 docs/demos/alf-289-further-reading/with-app.sh no-folder nothing-left refused 2>/dev/null
@@ -259,17 +259,11 @@ POST /api/reader/posts/55555555-5555-4555-8555-555555555589/further-reading
 
 → 502  {"error":"Instapaper rejected alfred's credentials"}
 
-Instapaper calls: 2
+Instapaper calls: 1
   /api/1/bookmarks/add  (signed)
     url          https://substack.com/redirect/3d7a91c2-6b04-4e58-a1f3-0c52de9b7e10
     title        The sim-to-real gap in dexterous manipulation
     description  The paper behind the lead item — per-task numbers for the folding benchmark.
-    folder_id    (none — Unread)
-    content      (none — Instapaper fetches the page)
-  /api/1/bookmarks/add  (signed)
-    url          https://substack.com/redirect/b82e4f10-93ac-4d6e-8c17-5a0e61f3d2b9
-    title        Why most robotics evals don’t transfer
-    description  An essay arguing the suite measures the simulator, not the policy.
     folder_id    (none — Unread)
     content      (none — Instapaper fetches the page)
 ```
