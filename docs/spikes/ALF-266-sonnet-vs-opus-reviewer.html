@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-266 — Sonnet vs. Opus as the adversarial reviewer</title><style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · FINDINGS — what a findings document adds to the house stylesheet ═══ */
+#landed>.side~*+*{margin-top:.75rem}
+.detail aside{margin:0 0 .9rem;padding:.75rem 1rem;background:var(--wash);border-left:3px solid var(--rule)}
+.detail aside>h3:first-child{margin-top:0}
+.detail aside>:last-child{margin-bottom:0}
+/* This document: the cost-vs-catches chart. Series inks validated with the dataviz skill's
+   validate_palette.js against each mode's paper (all six checks pass); shape carries identity too. */
+:root{--c-son:#a8730a;--c-opus:#0088a3}
+@media (prefers-color-scheme:dark){:root{--c-son:#bd840f;--c-opus:#1a99a8}}
+.dg .son{fill:var(--c-son);stroke:var(--paper);stroke-width:2}
+.dg .opus{fill:var(--c-opus);stroke:var(--paper);stroke-width:2}
+.dg .grid{stroke:var(--rule);stroke-width:1}
+.dg .ax{stroke:var(--muted);stroke-width:1}
+.dg .t{font:400 11px var(--f-label);fill:var(--muted)}
+.dg .lab{font:600 11px var(--f-label);fill:var(--ink)}
+.grid-tab td,.grid-tab th{text-align:center}
+.grid-tab td:first-child,.grid-tab th:first-child{text-align:left}
+
+</style>
+</head>
+<body>
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Code · Spike findings</span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>266</span><span class="sep"> — </span><span class="ttl">Sonnet vs. Opus as the adversarial reviewer</span></h1>
+  <p class="change" id="answer">Sonnet reviews for a third of Opus’s cost. Replayed on three past PRs, it missed the bug-fix root cause both times, rated down what it found, and added noise.</p>
+</header>
+
+<section class="sec" id="landed">
+  <h2 class="side">Where we landed</h2>
+  <p><strong>Keep the adversarial reviewer on Opus.</strong> Switching saves about $1 a review. That is real money on small PRs: the original Opus reviews were 8–25% of their sessions’ cost. But most of the saving is Sonnet doing less, not Sonnet being cheaper. It made a third as many requests, and two of its six runs ran no tests. What it gave up was the catch a review exists for. On the bug fix, both Sonnet runs called the fix “correct and complete” while Dispatch still filed work into an archived epic. Every Opus run found that path. One escaped defect like it costs a bug-fix session, which is more than a month of the saving.</p>
+  <p>This is three PRs with two runs per arm: a case study, not a rate. The recall intervals overlap. If the reviewer’s cost needs cutting, pin its effort before changing its model. Next I’d cut one story: turn these three cases into ALF-283’s defect-recall bench, so the next reviewer question is a rerun rather than a spike.</p>
+  <ol class="list">
+    <li><h3>Catches</h3>
+      <p class="pick">Key defects: Opus 71%, Sonnet 61%. Bug-fix root cause: Opus 2/2, Sonnet 0/2.</p>
+      <p class="why">Two blind graders from two model families, scored against what each PR’s author verified. <a href="#catches">§3</a></p></li>
+    <li><h3>Labels</h3>
+      <p class="pick">Four of six Sonnet verdicts read as “ship it”, both bug-fix runs included.</p>
+      <p class="why">Triage acts on severity. Sonnet called the Backlog miss minor; Opus called it major both times. <a href="#beyond">§4</a></p></li>
+    <li><h3>Precision</h3>
+      <p class="pick">Sonnet: two false findings (one major) and 7–10 noise items. Opus: one false sub-claim.</p>
+      <p class="why">False findings checked against the commit, including all 69 frames of a demo GIF. <a href="#beyond">§4</a></p></li>
+    <li><h3>Cost</h3>
+      <p class="pick">$0.44 against $1.47 a review. Sonnet’s lower price explains only 23–38% of the gap.</p>
+      <p class="why">Server cost from <code>get_session</code>, repriced to production’s 5-minute cache writes. <a href="#cost">§5</a></p></li>
+    <li><h3>Bonus</h3>
+      <p class="pick">Both fresh Opus runs found a real major that the original review missed.</p>
+      <p class="why">A mid-week plan revision empties the week’s list. One run reproduced it in a test. <a href="#beyond">§4</a></p></li>
+  </ol>
+</section>
+
+<section id="diagram" aria-label="Cost against catches, per run">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 540 270" role="img" aria-label="Scatter of 12 review runs: Sonnet runs cluster at 36 to 52 cents and catch 25 to 100% of key defects; Opus runs cluster at 1.11 to 2.35 dollars and catch 33 to 100%.">
+      <line class="grid" x1="60" y1="30" x2="500" y2="30"/>
+      <line class="grid" x1="60" y1="80" x2="500" y2="80"/>
+      <line class="grid" x1="60" y1="130" x2="500" y2="130"/>
+      <line class="grid" x1="60" y1="180" x2="500" y2="180"/>
+      <line class="ax" x1="60" y1="230" x2="500" y2="230"/>
+      <text class="t" x="52" y="34" text-anchor="end">100%</text>
+      <text class="t" x="52" y="84" text-anchor="end">75%</text>
+      <text class="t" x="52" y="134" text-anchor="end">50%</text>
+      <text class="t" x="52" y="184" text-anchor="end">25%</text>
+      <text class="t" x="52" y="234" text-anchor="end">0</text>
+      <text class="t" x="60" y="248" text-anchor="middle">$0</text>
+      <text class="t" x="148" y="248" text-anchor="middle">$0.50</text>
+      <text class="t" x="236" y="248" text-anchor="middle">$1.00</text>
+      <text class="t" x="324" y="248" text-anchor="middle">$1.50</text>
+      <text class="t" x="412" y="248" text-anchor="middle">$2.00</text>
+      <text class="t" x="500" y="248" text-anchor="middle">$2.50</text>
+      <text class="t" x="280" y="266" text-anchor="middle">cost per review (5-minute cache rate)</text>
+      <text class="t" x="14" y="130" text-anchor="middle" transform="rotate(-90 14 130)">key defects caught</text>
+      <!-- Sonnet: circles -->
+      <circle class="son" cx="150.6" cy="30" r="5.5"><title>PR #402 · Sonnet run 1 · $0.52 · 2 of 2 key defects</title></circle>
+      <circle class="son" cx="124.1" cy="30" r="5.5"><title>PR #402 · Sonnet run 2 · $0.36 · 2 of 2</title></circle>
+      <circle class="son" cx="133.9" cy="180" r="5.5"><title>PR #408 · Sonnet run 1 · $0.42 · 0.5 of 2 (missed the root cause)</title></circle>
+      <circle class="son" cx="127.4" cy="180" r="5.5"><title>PR #408 · Sonnet run 2 · $0.38 · 0.5 of 2 (missed the root cause)</title></circle>
+      <circle class="son" cx="141.3" cy="163.4" r="5.5"><title>PR #418 · Sonnet run 1 · $0.46 · 1 of 3</title></circle>
+      <circle class="son" cx="144.0" cy="63.4" r="5.5"><title>PR #418 · Sonnet run 2 · $0.48 · 2.5 of 3</title></circle>
+      <!-- Opus: squares -->
+      <rect class="opus" x="289.6" y="24.5" width="11" height="11"><title>PR #402 · Opus run 1 · $1.34 · 2 of 2</title></rect>
+      <rect class="opus" x="269.6" y="24.5" width="11" height="11"><title>PR #402 · Opus run 2 · $1.22 · 2 of 2</title></rect>
+      <rect class="opus" x="266.1" y="74.5" width="11" height="11"><title>PR #408 · Opus run 1 · $1.20 · 1.5 of 2 (caught the root cause)</title></rect>
+      <rect class="opus" x="249.9" y="74.5" width="11" height="11"><title>PR #408 · Opus run 2 · $1.11 · 1.5 of 2 (caught the root cause)</title></rect>
+      <rect class="opus" x="341.0" y="157.9" width="11" height="11"><title>PR #418 · Opus run 1 · $1.63 · 1 of 3</title></rect>
+      <rect class="opus" x="467.7" y="91.1" width="11" height="11"><title>PR #418 · Opus run 2 · $2.35 · 2 of 3</title></rect>
+      <!-- case labels -->
+      <text class="t" x="160" y="34">402</text>
+      <text class="t" x="143" y="184">408</text>
+      <text class="t" x="151" y="167">418</text>
+      <text class="t" x="153" y="67">418</text>
+      <text class="t" x="305" y="34">402</text>
+      <text class="t" x="281" y="84">408</text>
+      <text class="t" x="357" y="167">418</text>
+      <text class="t" x="483" y="100">418</text>
+      <!-- legend -->
+      <circle class="son" cx="384" cy="196" r="5.5"/><text class="lab" x="394" y="200">Sonnet 5.5</text>
+      <rect class="opus" x="378.5" y="208.5" width="11" height="11"/><text class="lab" x="394" y="218">Opus 5.5</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b> Each of the 12 replayed reviews, labelled by PR. Score: 1 per key defect caught, ½ per partial catch. The cost split is clean. The catch gap is concentrated in PR #408, the bug fix.</figcaption>
+  </figure>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>The evidence</h2>
+  <p>Everything below is for whoever builds on this. Acting on the answer needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="experiment">
+  <h2>The experiment</h2>
+  <p>The ticket asked for three things: find PRs where an Opus review caught real issues, have Sonnet review the code as it stood before that review, and compare catches and cost. For consistent prompting, the reviews should come from after the adversarial-review skill was committed. The owner made two design calls before anything ran:</p>
+  <ul>
+    <li><strong>Brief.</strong> Each case reuses its original brief verbatim, rather than one rebuilt on today’s skill.</li>
+    <li><strong>Budget.</strong> Three cases, two runs per arm: 12 sessions. The account’s seven-day usage was at its warning level.</li>
+  </ul>
+  <h3>Arms</h3>
+  <ul>
+    <li><strong>Sonnet 5.5</strong> × 2 per case: the arm under test.</li>
+    <li><strong>Opus 5.5</strong> × 2 per case, fresh: the control. Without it, a Sonnet miss can’t be told from run-to-run luck, because the historical Opus review is one sample from a different setup.</li>
+    <li><strong>The original Opus review</strong> is a reference, not an arm. It produced the ground truth, so it scores near-perfect by construction.</li>
+  </ul>
+  <h3>Held equal</h3>
+  <ul>
+    <li><strong>Code.</strong> Each child session started on the PR head as it was when the original reviewer was spawned. Its <code>origin/main</code> was pinned to that review’s base with <code>git update-ref</code>, because today’s main holds the PR’s fix commits.</li>
+    <li><strong>Prompt.</strong> One shared preamble, then the original brief verbatim, then the PR description as GitHub stored it at review time. The preamble said: review this commit, don’t read the PR on GitHub, fetch nothing but the base, report only, nobody answers questions, send the report to the parent. For #408 the brief withheld the description, so the replay did too.</li>
+    <li><strong>Environment.</strong> The same cloud environment as the originals, with the same tools, so every arm could run the suites.</li>
+    <li><strong>Contamination.</strong> An audit of all 12 transcripts found no GitHub tool calls, no WebFetch and no fetch beyond the base. Two Opus runs fetched the review commit itself, which the preamble allows.</li>
+  </ul>
+  <h3>Not held equal</h3>
+  <ul>
+    <li><strong>Effort.</strong> <code>create_session</code> takes a model but no effort, so each child ran its model’s default. No tool reports the effort that actually ran. The API defaults are medium for Opus 5.5 and high for Sonnet 5.5, so if anything this favours Sonnet. The original reviewers were subagents, and probably inherited their parent session’s effort: xhigh for #402 and #408, high for #418.</li>
+    <li><strong>Session shape.</strong> In production the reviewer is a subagent; each replay was a top-level session. That adds a larger system prompt to both arms equally, and it changes the cache TTL, which <a href="#cost">§5</a> reprices.</li>
+  </ul>
+</section>
+
+<section id="cases">
+  <h2>The cases</h2>
+  <p>The pool was the 22 implementation and bug-fix PRs merged after the review skill landed (PR #386, 2026-09-28) that carry an Adversarial review section. Six were extracted from their session transcripts: #402, #408, #414, #418, #419 and #420. Three were kept. Each has real, author-verified defects, they span the feature, bug and skip-refinement lanes, and their size keeps a review in minutes. #419 and #420 were 1.3–3k code lines. #414 had a single behavioural defect.</p>
+  <div class="scroll"><table>
+    <tr><th>PR</th><th>Ticket · lane</th><th>Implementer</th><th>Code diff</th><th>Key defects the original Opus review found</th></tr>
+    <tr><td>#402</td><td>ALF-299 · feature, no spec</td><td>Sonnet 5.5, xhigh</td><td>15 files, +366/−65</td><td><strong>G1</strong> Backlog / Needs-human-action rows keep a teal ref (major, fixed). <strong>G2</strong> the detail modal’s ref stays teal, a regression this PR introduced (minor, fixed).</td></tr>
+    <tr><td>#408</td><td>ALF-275 · bug fix</td><td>Sonnet 5.5, xhigh</td><td>9 files, +141/−4</td><td><strong>H1</strong> Dispatch still files an item into an archived epic through a stale hint, with no picker involved (major, raised as a new story). <strong>H2</strong> an archived current hint shows as a live chip, and the compact chip can open an empty popover (minor, fixed red-first).</td></tr>
+    <tr><td>#418</td><td>ALF-235 · skip-refinement</td><td>Opus 5.5, high</td><td>12 files, +782/−56</td><td><strong>K2</strong> non-task rows listed under “Planned tasks”, against the agreed “tasks only” (major, fixed). <strong>K3</strong> a planned task re-nested under an unplanned parent vanishes (minor, fixed). <strong>K5</strong> the expanded preview is stuck below <code>md</code> (minor, fixed).</td></tr>
+  </table></div>
+  <p>Each rubric also holds the non-key items the author verified: demo-evidence gaps, test gaps, convention nits. There are 7, 5 and 10 items in all. The original reviews took 7.4, 7.5 and 5.2 minutes. Their input side alone, at 7.6M, 7.7M and 4.2M cache-read tokens, comes to at least $2.41, $2.38 and $1.44. Those sessions cost $11.05, $9.46 and $17.99, so the review was at least 22%, 25% and 8% of each.</p>
+  <aside>
+    <h3>The briefs were not the skill’s brief</h3>
+    <p>The ticket assumed that once the skill was committed, review prompts would be consistent. They aren’t. Every brief in these cases was written by hand per PR, in the skill’s earlier “be adversarial, hunt for…” style with blocker / major / minor / nit labels. Several also name the edge cases to look at. #418’s brief, for example, lists “items reparented or type-changed… non-task items”, which points at K2 and K3. The current skill text (PR #413) tells the brief to make “nothing blocking” a full answer. No case here used it. The prompt is identical across the arms of each case, so the model comparison is fair. Whether the gap changes under today’s brief is open.</p>
+  </aside>
+</section>
+
+<section id="catches">
+  <h2>What each run caught</h2>
+  <p>Two graders scored the twelve reports blind against each case’s rubric, as catch, partial or miss, with a quote for each grade. Reports were relabelled R1–R4 in a seeded random order per case, and the key file sat outside the graders’ folder. Grader A ran on Opus 5.5 and grader B on Fable 5.1. Both checked every major claim and every image claim against the commit. They agreed on every key item but one, H2, where A applied the rubric’s rule: a multi-part item with only some sub-points found is partial. No report named H2’s empty popover, so the reconciled grade is partial for all four. ✓ catch · ½ partial · ✗ miss.</p>
+  <div class="scroll"><table class="grid-tab">
+    <tr><th>Item</th><th>Opus 1</th><th>Opus 2</th><th>Sonnet 1</th><th>Sonnet 2</th></tr>
+    <tr><td><strong>#402 G1</strong> Backlog row teal</td><td>✓ major</td><td>✓ major</td><td>✓ minor</td><td>✓ major/minor</td></tr>
+    <tr><td><strong>#402 G2</strong> modal teal</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>#402 G3 baseline can’t catch a revert</td><td>✓</td><td>✓</td><td>✗</td><td>✗</td></tr>
+    <tr><td>#402 G4 ref markup copied, not extracted</td><td>✓</td><td>✗</td><td>✓</td><td>✗</td></tr>
+    <tr><td>#402 G5 e2e asserts class, not colour</td><td>✓</td><td>✗</td><td>✓</td><td>✗</td></tr>
+    <tr><td>#402 G6 first commit fails typecheck</td><td>✗</td><td>✓</td><td>✗</td><td>✗</td></tr>
+    <tr><td>#402 G7 other fixed-colour refs</td><td>½</td><td>½</td><td>½</td><td>½</td></tr>
+    <tr><td><strong>#408 H1</strong> Dispatch → archived epic</td><td>✓ major</td><td>✓ major</td><td>✗</td><td>✗</td></tr>
+    <tr><td><strong>#408 H2</strong> archived chip state</td><td>½</td><td>½</td><td>½</td><td>½</td></tr>
+    <tr><td>#408 H3 gate guard runs once</td><td>✗</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>#408 H4 “every picker” claim overstated</td><td>✓</td><td>✓</td><td>½</td><td>½</td></tr>
+    <tr><td>#408 H5 fix committed before test</td><td>✗</td><td>✓</td><td>✗</td><td>✗</td></tr>
+    <tr><td>#418 K1 demo gaps</td><td>½</td><td>✓</td><td>½</td><td>½</td></tr>
+    <tr><td><strong>#418 K2</strong> non-task rows listed</td><td>✗</td><td>✓</td><td>½</td><td>½</td></tr>
+    <tr><td><strong>#418 K3</strong> re-nested task vanishes</td><td>✓</td><td>✓</td><td>½</td><td>✓</td></tr>
+    <tr><td>#418 K4 sort / order / subtask tests</td><td>½</td><td>✓</td><td>½</td><td>½</td></tr>
+    <tr><td><strong>#418 K5</strong> expanded state stuck below md</td><td>✗</td><td>✗</td><td>✗</td><td>✓</td></tr>
+    <tr><td>#418 K6–K8 hook half adopted, duplicate list body, duplicate story</td><td>✗</td><td>✗</td><td>✗</td><td>✗</td></tr>
+    <tr><td>#418 K9 tally a11y and plural</td><td>✓</td><td>✗</td><td>✗</td><td>✗</td></tr>
+    <tr><td>#418 K10 batches ordered newest first</td><td>✓</td><td>✗</td><td>✗</td><td>✗</td></tr>
+  </table></div>
+  <p>For #418, “Sonnet 1” is the relaunch: the first Sonnet container stalled in setup before the model ran, and was archived.</p>
+  <h3>Totals</h3>
+  <div class="scroll"><table class="cost">
+    <tr><th></th><th>Opus (6 runs)</th><th>Sonnet (6 runs)</th></tr>
+    <tr><td>Key defects, catch only</td><td class="num">9 / 14 = 64% [39–84%]</td><td class="num">6 / 14 = 43% [21–67%]</td></tr>
+    <tr><td>Key defects, partial = ½</td><td class="num">10 / 14 = 71% [45–88%]</td><td class="num">8.5 / 14 = 61% [36–81%]</td></tr>
+    <tr><td>All rubric items, partial = ½ (grader A · B)</td><td class="num">57% · 61%</td><td class="num">38% · 38%</td></tr>
+    <tr><td>#408’s root cause, H1</td><td class="num">2 / 2 (3 / 3 with the original)</td><td class="num">0 / 2</td></tr>
+  </table></div>
+  <p>Intervals are Wilson 95%. They overlap, and the items aren’t independent: three PRs, each run twice. The H1 split, 3/3 against 0/2, has a Fisher exact p of 0.10. On recall alone, this sample can’t separate the models. <a href="#beyond">§4</a> is where they differ in kind.</p>
+  <p>Run-to-run variance is large in both arms. One Opus run missed K2 and K5, both of which the original found, and the other run caught K2. One Sonnet run caught K5, which both fresh Opus runs missed. A single review round is a sample, not a sweep.</p>
+</section>
+
+<section id="beyond">
+  <h2>Beyond recall: labels, precision, new finds</h2>
+  <h3>Severity and verdicts</h3>
+  <p>The author triages on the reviewer’s labels. The skill asks for a failure scenario before anything counts as blocking. So a correct catch rated minor tends to be declined, while one rated major gets fixed.</p>
+  <ul>
+    <li><strong>#402.</strong> Both Opus runs called the Backlog row <em>major</em>. Sonnet run 1 called it <em>minor</em>, and its verdict was “approve with minor follow-ups. No blockers and no correctness bugs.” The PR description had already scoped the row out, so a minor label would likely have been declined. In production it was labelled major and fixed.</li>
+    <li><strong>#408.</strong> Sonnet: “the fix is correct and complete for the reported bug” and “nothing blocker or major”. Opus led both reports with the Dispatch major.</li>
+    <li><strong>#418.</strong> Sonnet run 1 said “No blockers found.” Sonnet run 2’s only major was false (below).</li>
+  </ul>
+  <p>Four of six Sonnet verdicts read as “ship it”. In two of them, #408’s, a real major remained. No Opus verdict read as “ship it”, and every major Opus raised was real.</p>
+  <h3>False findings</h3>
+  <ul>
+    <li><strong>Sonnet, #418, rated major:</strong> “the GIF never shows the expanded 80vh frame”. False. All 69 frames were extracted with <code>ffmpeg</code>: frames 20–38 show the frame expanded, and 21–22 show “Collapse plan”. The run had sampled about 12 frames. Acting on it would have meant re-recording a correct demo.</li>
+    <li><strong>Sonnet, #402, minor:</strong> “a test that forgot the colour would still type-check”. False, because the prop is required.</li>
+    <li><strong>Opus, #418, inside a correct major:</strong> the sub-claim that the GIF “never shows Collapse plan”. False, for the same frames.</li>
+  </ul>
+  <p>Both graders also marked findings as noise: true, but restating the PR or of trivial value. Grader A counted 10 in the Sonnet reports and grader B 7; neither counted any in the Opus reports. The count of valid findings outside the rubric was a wash: A counted Opus 17 and Sonnet 13, B counted Opus 15 and Sonnet 19.</p>
+  <h3>New valid finds</h3>
+  <ul>
+    <li><strong>Both fresh Opus runs, #418, major:</strong> a mid-week plan revision empties the default view. Re-posting a revised plan adds a new <code>weekly_plans</code> row, and the cohort stays on the original id. The <code>midweek-checkin</code> skill posts exactly such revisions. The picker defaults to the newest row, so the view opens on “Nothing has been created from this plan yet”. ALF-195’s spec names the trap (“re-posting a revised plan appends another archive row”), and the API’s <code>latest</code> already routes around it. One run proved it with a scratch test. The original review missed it.</li>
+    <li><strong>Sonnet, #418, minor:</strong> the expanded state persists across week switches. Plausible, and not on the rubric.</li>
+  </ul>
+  <p>Neither the #418 revision gap nor the remaining #408 Dispatch story is fixed on main as of this spike. That is the owner’s call, not this spike’s.</p>
+</section>
+
+<section id="cost">
+  <h2>Cost</h2>
+  <p>Cost is <code>get_session</code> → <code>usage.cost_usd</code>, read once each child was idle. It reconstructs exactly from the session’s tokens: cache reads at $0.20 per million for both models, cache writes at the 1-hour rate (twice the input price), then input and output. In production, a reviewer subagent writes its cache at the 5-minute rate (1.25×), so the “5-min” column reprices the writes to match.</p>
+  <div class="scroll"><table class="cost">
+    <tr><th>Run</th><th>Requests</th><th>Tests run</th><th>Minutes</th><th>Cache read</th><th>Output</th><th>Server $</th><th>5-min $</th></tr>
+    <tr><td>#402 Sonnet 1</td><td class="num">10</td><td>unit</td><td class="num">4.3</td><td class="num">0.89M</td><td class="num">5.7k</td><td class="num">0.68</td><td class="num">0.52</td></tr>
+    <tr><td>#402 Sonnet 2</td><td class="num">9</td><td>none</td><td class="num">1.5</td><td class="num">0.81M</td><td class="num">5.4k</td><td class="num">0.45</td><td class="num">0.36</td></tr>
+    <tr><td>#408 Sonnet 1</td><td class="num">12</td><td>unit</td><td class="num">4.5</td><td class="num">1.07M</td><td class="num">5.2k</td><td class="num">0.51</td><td class="num">0.42</td></tr>
+    <tr><td>#408 Sonnet 2</td><td class="num">11</td><td>unit</td><td class="num">4.2</td><td class="num">0.99M</td><td class="num">5.6k</td><td class="num">0.46</td><td class="num">0.38</td></tr>
+    <tr><td>#418 Sonnet 1</td><td class="num">12</td><td>unit (via <code>npx jest</code>)</td><td class="num">2.8</td><td class="num">1.14M</td><td class="num">8.3k</td><td class="num">0.55</td><td class="num">0.46</td></tr>
+    <tr><td>#418 Sonnet 2</td><td class="num">13</td><td>none</td><td class="num">1.7</td><td class="num">1.05M</td><td class="num">7.8k</td><td class="num">0.59</td><td class="num">0.48</td></tr>
+    <tr><td>#402 Opus 1</td><td class="num">25</td><td>typecheck, unit</td><td class="num">6.1</td><td class="num">2.83M</td><td class="num">13.5k</td><td class="num">1.64</td><td class="num">1.34</td></tr>
+    <tr><td>#402 Opus 2</td><td class="num">23</td><td>typecheck, unit</td><td class="num">5.7</td><td class="num">2.66M</td><td class="num">12.7k</td><td class="num">1.48</td><td class="num">1.22</td></tr>
+    <tr><td>#408 Opus 1</td><td class="num">26</td><td>unit, mutations</td><td class="num">6.7</td><td class="num">2.70M</td><td class="num">12.1k</td><td class="num">1.45</td><td class="num">1.20</td></tr>
+    <tr><td>#408 Opus 2</td><td class="num">22</td><td>unit, mutations</td><td class="num">4.3</td><td class="num">2.17M</td><td class="num">10.6k</td><td class="num">1.39</td><td class="num">1.11</td></tr>
+    <tr><td>#418 Opus 1</td><td class="num">32</td><td><code>check:fast</code>, mutation</td><td class="num">12.5</td><td class="num">3.78M</td><td class="num">18.8k</td><td class="num">1.93</td><td class="num">1.63</td></tr>
+    <tr><td>#418 Opus 2</td><td class="num">49</td><td>unit, e2e, demo verify</td><td class="num">7.4</td><td class="num">6.54M</td><td class="num">21.8k</td><td class="num">2.71</td><td class="num">2.35</td></tr>
+    <tr><td><strong>Sonnet mean</strong></td><td class="num">11</td><td>4 of 6</td><td class="num">3.2</td><td class="num">0.99M</td><td class="num">6.3k</td><td class="num">0.54</td><td class="num"><strong>0.44</strong></td></tr>
+    <tr><td><strong>Opus mean</strong></td><td class="num">30</td><td>6 of 6</td><td class="num">7.1</td><td class="num">3.45M</td><td class="num">14.9k</td><td class="num">1.77</td><td class="num"><strong>1.47</strong></td></tr>
+  </table></div>
+  <h3>Where the gap comes from</h3>
+  <p>Opus costs $1.03 more per review. Priced at Sonnet’s rates, Opus’s own tokens would cost $1.08, so price explains $0.39 of the gap (38%). Priced at Opus’s rates, Sonnet’s tokens would cost $0.68, so behaviour explains $0.79 (77%) measured that way. Either way, most of the saving is Sonnet reading and running less: 3.5× fewer cache-read tokens, 2.4× less output and a third of the requests. Cache reads cost the same on both models, at $0.20 per million, and a long review is mostly cache reads. That is the same depth that found H1.</p>
+  <h3>Against the originals</h3>
+  <p>The production reviews on #402 and #408 read 7.6M and 7.7M cache tokens, about 2.7× the fresh Opus replays. Their parents ran at xhigh. On #418, with a parent at high, the original read 4.2M, within the replays’ range. That fits subagents inheriting their parent’s effort. If so, today’s reviewer costs more than these replays suggest, and the effort a reviewer runs at is a lever we don’t yet set. <span id="effort-note">Claude Code’s subagent docs confirm the mechanism. A subagent whose definition sets no <code>effort</code> “inherits from session”, and the Agent tool takes no effort argument. A <code>.claude/agents/&lt;name&gt;.md</code> definition can pin <code>effort</code> (<code>low</code> to <code>max</code>) next to <code>model</code>. A reviewer agent definition is how the review’s cost becomes a setting, not a side effect of the implementer’s effort.</span></p>
+  <h3>What a switch would save</h3>
+  <p>About $1 a review at replay volumes, and perhaps $1.5–2 at production’s inherited effort. ALF-283 counted about 45 implementation launches a month, and bug fixes add more, so the saving is roughly $45–90 a month. The bug-fix session behind #408 cost $9.46 on its own. A single escaped root-cause defect, plus the owner’s time to find it, erases about a month of savings. Sonnet missed one in three cases here.</p>
+</section>
+
+<section id="trust">
+  <h2>How much to trust it</h2>
+  <ul>
+    <li><strong>n.</strong> Three PRs and two runs per arm. The recall intervals overlap, and the H1 split’s p is 0.10. The direction of every quality signal agrees, but each is a handful of events.</li>
+    <li><strong>The rubric comes from Opus.</strong> Ground truth is what one Opus review found and the author verified, so it can’t contain a defect Opus systematically misses and Sonnet finds. Two things temper this. The fresh Opus runs also missed rubric items (K2, K5), so the rubric isn’t simply “what Opus sees”. And Sonnet’s one unique catch, K5, is counted.</li>
+    <li><strong>Effort.</strong> Not controlled, and not observable. The defaults favour Sonnet. An effort-matched rerun would need agent definitions that pin effort (<a href="#effort-note">§5</a>).</li>
+    <li><strong>Graders.</strong> Blind, from two model families, quoting each grade, with every major and image claim checked against the commit. They agreed on all key items but one, reconciled by the rubric’s own rule. Grader A is Opus. Grader B, on Fable, gave the Opus reports slightly more credit than A did, not less.</li>
+    <li><strong>Old brief.</strong> Every brief predates the current skill text. A “nothing blocking is a full answer” brief might pull both models’ verdicts toward “ship it”. If it does, Sonnet’s under-labelling would likely get worse, not better.</li>
+  </ul>
+</section>
+
+<section id="alternatives">
+  <h2>Alternatives we’re not taking</h2>
+  <aside><h3>Switch the reviewer to Sonnet</h3><p>It saves about a dollar a review and loses root-cause catches, severity calibration and precision. <a href="#beyond">§4</a> has the evidence.</p></aside>
+  <aside><h3>Two Sonnet reviewers for the price of most of one Opus</h3><p>Two Sonnet runs cost $0.88, against $1.47 for one Opus. On #408 the union of both Sonnet runs still missed H1, and both called the fix complete. Sonnet’s misses here repeat rather than vary, so a second run doesn’t cover the first.</p></aside>
+  <aside><h3>Sonnet first, escalate to Opus when it finds something</h3><p>The failure mode is a confident clean verdict on a PR with a real major. That gives escalation nothing to fire on.</p></aside>
+  <aside><h3>Sonnet for small or low-risk PRs</h3><p>#408 was the smallest case, a 141-line bug fix. It is also where the root cause hid in a path the diff never touched. Diff size didn’t predict where the risk was.</p></aside>
+  <aside><h3>More replays now, to narrow the intervals</h3><p>A pair of runs is cheap, about $2. The expensive part is building each case: extracting the brief, finding the commit and writing the rubric. That is exactly what a defect-recall bench automates. Build it once (ALF-283’s plan), then rerun.</p></aside>
+</section>
+
+<section id="open">
+  <h2>Cost &amp; open questions</h2>
+  <ul>
+    <li><strong>What this spike spent.</strong> $13.85 on the 12 replays, plus one setup that stalled before the model ran. On top of that: two graders, six transcript-extraction subagents, a transcript audit, and this session.</li>
+    <li><strong>What does the reviewer cost in production?</strong> ALF-310’s ledger rows now split tokens by model and by subagent. Reviewer input and cache tokens can be read from them; output can’t (<code>subagent_usage_partial</code>).</li>
+    <li><strong>Does the gap hold at matched effort, or under today’s brief?</strong> That is a bench run, not another hand-built spike.</li>
+    <li><strong>Should a single review round be the default?</strong> Variance between two Opus runs on one PR was as large as the gap between models. That is outside this ticket, but it is a question for the review skill.</li>
+  </ul>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <ol>
+    <li><strong>Original sessions</strong>, read with <code>get_session</code> and <code>list_events</code>. Each brief is the <code>Agent</code> tool_use with <code>model: "opus"</code>, and each report is its hand-back: <code>session_016kbKGZbt7Nq21N1AXFoHpW</code> (#402), <code>session_01JN7YQLi8ynGe5Miz172ivK</code> (#408), <code>session_01MJc7M9VkhWUZh137NontSs</code> (#418). Also extracted, not replayed: #414, #419 and #420.</li>
+    <li><strong>Reviewed commits and bases:</strong> #402 <code>bb16293</code> on <code>44916ac</code>; #408 <code>f954bf4</code> on <code>9372104</code>; #418 <code>65f74f4</code> on <code>9aca132</code>. Each base is the last first-parent main commit reachable from its head.</li>
+    <li><strong>Replay sessions</strong> (tag <code>alf-266-replay</code>). #402: Sonnet <code>session_01JvE6th9VehzzNPH9zaCM3w</code>, <code>session_016GDKEkTWSWN4yQbrm17WZU</code>; Opus <code>session_016ebEVFuQj5MMjdRozg6PTH</code>, <code>session_01ToekYxkmiRZfDc2a3WrFka</code>. #408: Sonnet <code>session_013NbwmZV6X2EWFJJiTFRH9e</code>, <code>session_01Tanf7ZBj9YtF9ZtdW3Q4m9</code>; Opus <code>session_01WAtP9AaD4wY8ubLGG6MA4L</code>, <code>session_01HPK7LT24yjSub9QWaERppA</code>. #418: Sonnet <code>session_01N14op3wUuPkeCu64Y2iYfr</code>, <code>session_01X4DY8fDoZXkRAHHAfuGtJE</code>; Opus <code>session_01UiGkESZkcwChcs6cweFrT7</code>, <code>session_01EqishdvEXZLDXi1YFbk7ue</code>. The stalled setup was <code>session_017UryZrUngbwrnuGpduDCE4</code>.</li>
+    <li><strong>Ground truth:</strong> each merged PR’s Adversarial review section, with its dispositions and fix commits: <a href="https://github.com/ac3charland/alfred/pull/402">ac3charland/alfred#402</a>, <a href="https://github.com/ac3charland/alfred/pull/408">ac3charland/alfred#408</a>, <a href="https://github.com/ac3charland/alfred/pull/418">ac3charland/alfred#418</a>.</li>
+    <li><strong>Commands.</strong> <code>git rev-list --first-parent origin/main</code> (bases); <code>git diff --shortstat</code> (sizes); <code>git show 65f74f4:docs/demos/week-plan-tasks/week-plan-tasks-video-3.gif</code>, then <code>ffmpeg … f%03d.png</code> and a montage (the GIF claim); <code>git show 65f74f4:docs/specs/archive/ALF-195.html</code> (the revision trap); <code>node scripts/validate_palette.js</code> (Fig. 1’s inks).</li>
+    <li><strong>Prices</strong>, from the claude-api skill as cached on 2026-09-25. Opus 5.5: $4 input, $20 output, $0.20 cache read. Sonnet 5.5: $2, $10, $0.20. Cache writes cost 1.25× input at the 5-minute TTL and 2× at the 1-hour TTL. The 12 server totals reconstruct exactly.</li>
+    <li><strong>Read:</strong> <code>.claude/skills/{adversarial-review,llm-evaluation,spike,compounding-learning}/SKILL.md</code>, <code>.claude/skills/llm-evaluation/references/{replay,recording}.md</code>, <code>frontend/lib/code/links.ts</code> (<code>adversarialReviewStep</code>), and <code>docs/spikes/ALF-265-opus-vs-fable-orchestrator.html</code> and <code>ALF-283-evaluating-coding-sessions.html</code> (the defect-recall bench sketch).</li>
+    <li><strong>Subagent effort:</strong> Claude Code docs, <a href="https://code.claude.com/docs/en/sub-agents.md">Subagents</a>: the <code>effort</code> frontmatter field, “Inherits from session” when unset.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
