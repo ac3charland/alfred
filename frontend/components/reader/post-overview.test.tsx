@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 
-import { makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
+import { makeFurtherReading, makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
 import { PostOverview } from './post-overview';
@@ -243,5 +243,66 @@ describe('PostOverview — the wiki connected', () => {
     expect(screen.getByText('Everyone.')).toBeInTheDocument();
     const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
     expect(headings).toEqual(['Novel ideas', 'Evidence', 'The argument', 'Who should read it']);
+  });
+});
+
+describe('PostOverview — Further reading', () => {
+  function renderWithInstapaper(overview: ReaderOverview, writable = false) {
+    const row = post(overview);
+    return renderReader(<PostOverview overview={overview} post={row} writable={writable} />, [row]);
+  }
+
+  it('comes last, after Who should read it, when the post has any', () => {
+    renderWithInstapaper(makeReaderOverview({ further_reading: makeFurtherReading() }));
+
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings).toEqual([
+      'Novel ideas',
+      'Evidence',
+      'The argument',
+      'Who should read it',
+      'Further reading',
+    ]);
+  });
+
+  it('comes last beneath the wiki checklist too, with its own bar', () => {
+    renderReader(
+      <PostOverview
+        overview={makeReaderOverview({ further_reading: makeFurtherReading() })}
+        post={post(makeReaderOverview({ further_reading: makeFurtherReading() }))}
+        writable
+      />,
+      [],
+      undefined,
+      { wikiWritable: true },
+    );
+
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings.at(-1)).toBe('Further reading');
+    expect(headings.at(-2)).toBe('Who should read it');
+  });
+
+  it('renders nothing at all — no heading, no empty line — when the list is empty', () => {
+    renderWithInstapaper(makeReaderOverview({ further_reading: [] }));
+
+    expect(screen.queryByRole('heading', { name: 'Further reading' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('further-reading')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing for a post summarised before the field existed', () => {
+    renderWithInstapaper(makeReaderOverview());
+
+    expect(screen.queryByRole('heading', { name: 'Further reading' })).not.toBeInTheDocument();
+  });
+
+  it('renders nothing for a malformed list, and the rest of the overview as ever', () => {
+    const overview = {
+      ...makeReaderOverview(),
+      further_reading: [{ url: 'javascript:alert(1)', title: 'x', note: 'y' }],
+    };
+    renderWithInstapaper(overview);
+
+    expect(screen.queryByRole('heading', { name: 'Further reading' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Who should read it' })).toBeInTheDocument();
   });
 });

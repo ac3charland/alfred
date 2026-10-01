@@ -1,9 +1,10 @@
 import * as React from 'react';
 
-import { isBullet } from '@/lib/reader/overview';
+import { furtherReadingOf, isBullet } from '@/lib/reader/overview';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 import { SECTION_HEADING_CLASS } from '@/lib/ui/section-heading-class';
 
+import { FurtherReading } from './further-reading';
 import { WikiPicks } from './wiki-picks';
 
 /**
@@ -20,6 +21,11 @@ import { WikiPicks } from './wiki-picks';
  * two, are exactly the plain lists they always were. A bullet that is empty or only whitespace is
  * no bullet, so neither view draws it: a list of nothing else reads as the honest empty line, never as a checklist with
  * nothing to tick ("All sent to wiki").
+ *
+ * Further reading ({@link FurtherReading}) comes last, after Who should read it, with its own
+ * selection and send bar, kept apart from the wiki's. Unlike the bulleted sections it renders
+ * nothing at all when there is nothing in it — an essay that links nothing worth reading is not a
+ * verdict worth a line — and the same holds for a post summarised before the field existed.
  */
 
 const BULLET_LIST_CLASS = 'mt-1 list-disc space-y-1 pl-5 text-sm text-foreground';
@@ -68,6 +74,7 @@ export function PostOverview({ overview, post, writable }: PostOverviewPropertie
   const ideas = overview.novel_ideas.filter((idea) => isBullet(idea));
   const evidence = overview.evidence.filter((item) => isBullet(item));
   const checklist = writable && (ideas.length > 0 || evidence.length > 0);
+  const further = furtherReadingOf(overview);
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-border/60 pt-3">
       {checklist ? (
@@ -102,6 +109,15 @@ export function PostOverview({ overview, post, writable }: PostOverviewPropertie
         <h3 className={SECTION_HEADING_CLASS}>Who should read it</h3>
         <p className={PARAGRAPH_CLASS}>{overview.who_should_read}</p>
       </section>
+
+      {further.length > 0 && (
+        <FurtherReading
+          postId={post.id}
+          items={further}
+          sentReader={post.further_sent_reader}
+          sentInstapaper={post.further_sent_instapaper}
+        />
+      )}
     </div>
   );
 }
