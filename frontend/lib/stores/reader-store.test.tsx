@@ -15,10 +15,12 @@ import {
   ARCHIVE_READ_LIMIT,
   ReaderProvider,
   type ReaderState,
+  partialSendToast,
   readerReducer,
   useActiveCount,
   useArchiveStatus,
   useArchivedPosts,
+  useFurtherReadingSendInFlight,
   useInstapaperConfigured,
   useReaderActions,
   useReaderHealth,
@@ -35,6 +37,7 @@ jest.mock('@/lib/api-client', () => ({
   fetchReaderHealth: jest.fn(),
   patchReaderPost: jest.fn(),
   sendReaderPicksToWiki: jest.fn(),
+  sendReaderFurtherReading: jest.fn(),
   sendReaderPostToInstapaper: jest.fn(),
 }));
 const mockApi = jest.mocked(api);
@@ -94,6 +97,7 @@ function state(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HE
     archiveFull: false,
     healthReconcileStartedAt: null,
     wikiSendsInFlight: [],
+    furtherReadingSendsInFlight: [],
     instapaperConfigured: true,
   };
 }
@@ -1424,6 +1428,221 @@ describe('sendPicksToWiki', () => {
     });
 
     expect(result.current.posts[0]?.wiki_sent_ideas).toEqual(['Idea one']);
+  });
+});
+
+describe('partialSendToast', () => {
+  it('says how many landed and quotes the failure, for several unsent', () => {
+    expect(partialSendToast('instapaper', 1, 3, 'Instapaper is rate-limiting alfred')).toBe(
+      'Sent 1 of 3 to Instapaper — Instapaper is rate-limiting alfred for the rest',
+    );
+  });
+
+  it('drops a failure sentence\'s own "try again": the unsent links are still ticked', () => {
+    expect(partialSendToast('instapaper', 1, 3, "Instapaper didn't answer — try again")).toBe(
+      "Sent 1 of 3 to Instapaper — Instapaper didn't answer for the rest",
+    );
+  });
+
+  it('says "the other" when exactly one is unsent', () => {
+    expect(partialSendToast('reader', 1, 2, "Instapaper didn't answer")).toBe(
+      "Sent 1 of 2 to Reader — Instapaper didn't answer for the other",
+    );
+  });
+
+  it('falls back to a plain sentence when the route named no failure', () => {
+    expect(partialSendToast('reader', 0, 2, undefined)).toBe(
+      "Sent 0 of 2 to Reader — Instapaper didn't answer for the rest",
+    );
+  });
+});
+
+/** A finished post with no Further reading link sent anywhere yet. */
+const unsentFurtherReadingPost = () =>
+  post({
+    id: 'p-1',
+    summary_state: 'done',
+    further_sent_reader: [],
+    further_sent_instapaper: [],
+  });
+
+describe('sendFurtherReading', () => {
+  const URLS = ['https://a.example/1', 'https://a.example/2'];
+
+  it('sets the in-flight flag while pending, clears it after, and replaces the row', async () => {
+    const row = unsentFurtherReadingPost();
+    const sending = deferred<api.SendFurtherReadingResult>();
+    mockApi.sendReaderFurtherReading.mockReturnValue(sending.promise);
+    const { result } = renderHook(
+      () => ({
+        ...useStore(),
+        inFlight: useFurtherReadingSendInFlight('p-1'),
+        other: useFurtherReadingSendInFlight('p-2'),
+      }),
+      { wrapper: makeWrapper([row]) },
+    );
+
+    let send: Promise<unknown> | undefined;
+    act(() => {
+      send = result.current.actions.sendFurtherReading('p-1', 'reader', URLS);
+    });
+    expect(result.current.inFlight).toBe(true);
+    expect(result.current.other).toBe(false);
+    expect(result.current.posts[0]?.further_sent_reader).toEqual([]);
+
+    const saved: ReaderPostListItem = { ...row, further_sent_reader: URLS };
+    await act(async () => {
+      sending.settle({ post: saved, unsent: [] });
+      await send;
+    });
+
+    expect(mockApi.sendReaderFurtherReading).toHaveBeenCalledWith('p-1', {
+      destination: 'reader',
+      urls: URLS,
+    });
+    expect(result.current.inFlight).toBe(false);
+    expect(result.current.posts[0]).toEqual(saved);
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('resolves with the post and the unsent urls', async () => {
+    const row = unsentFurtherReadingPost();
+    const saved: ReaderPostListItem = { ...row, further_sent_reader: URLS };
+    mockApi.sendReaderFurtherReading.mockResolvedValue({ post: saved, unsent: [] });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.sendFurtherReading('p-1', 'reader', URLS),
+      ).resolves.toEqual({ post: saved, unsent: [] });
+    });
+  });
+
+  it('toasts the one-unsent partial wording and still takes the row', async () => {
+    const row = unsentFurtherReadingPost();
+    const saved: ReaderPostListItem = { ...row, further_sent_reader: [URLS[0] ?? ''] };
+    mockApi.sendReaderFurtherReading.mockResolvedValue({
+      post: saved,
+      unsent: [URLS[1] ?? ''],
+      failure: "Instapaper didn't answer",
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.sendFurtherReading('p-1', 'reader', URLS);
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith(
+      "Sent 1 of 2 to Reader — Instapaper didn't answer for the other",
+    );
+    expect(result.current.posts[0]).toEqual(saved);
+  });
+
+  it('toasts the several-unsent partial wording', async () => {
+    const row = unsentFurtherReadingPost();
+    const three = [...URLS, 'https://a.example/3'];
+    mockApi.sendReaderFurtherReading.mockResolvedValue({
+      post: row,
+      unsent: [URLS[1] ?? '', three[2] ?? ''],
+      failure: "Instapaper didn't answer — try again",
+    });
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await result.current.actions.sendFurtherReading('p-1', 'instapaper', three);
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith(
+      "Sent 1 of 3 to Instapaper — Instapaper didn't answer for the rest",
+    );
+  });
+
+  it('toasts the route’s sentence on an ApiError, rethrows, and leaves the row', async () => {
+    const row = unsentFurtherReadingPost();
+    mockApi.sendReaderFurtherReading.mockRejectedValue(
+      new api.ApiError('API POST failed: 409', 409, 'There is no "To Reader" folder'),
+    );
+    const { result } = renderHook(
+      () => ({ ...useStore(), inFlight: useFurtherReadingSendInFlight('p-1') }),
+      {
+        wrapper: makeWrapper([row]),
+      },
+    );
+
+    await act(async () => {
+      await expect(
+        result.current.actions.sendFurtherReading('p-1', 'reader', URLS),
+      ).rejects.toThrow();
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith('There is no "To Reader" folder');
+    expect(result.current.posts[0]).toEqual(row);
+    expect(result.current.inFlight).toBe(false);
+  });
+
+  it('toasts its own line when the failure carried no sentence', async () => {
+    const row = unsentFurtherReadingPost();
+    mockApi.sendReaderFurtherReading.mockRejectedValue(new Error('network down'));
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.sendFurtherReading('p-1', 'reader', URLS),
+      ).rejects.toThrow('network down');
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't send to Instapaper");
+  });
+
+  it('refuses a second send for a post whose first is still in flight, without calling the API', async () => {
+    const row = unsentFurtherReadingPost();
+    const sending = deferred<api.SendFurtherReadingResult>();
+    mockApi.sendReaderFurtherReading.mockReturnValue(sending.promise);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let first: Promise<unknown> | undefined;
+    act(() => {
+      first = result.current.actions.sendFurtherReading('p-1', 'reader', URLS);
+    });
+    await act(async () => {
+      await expect(
+        result.current.actions.sendFurtherReading('p-1', 'instapaper', URLS),
+      ).rejects.toThrow('already in flight');
+    });
+    expect(mockApi.sendReaderFurtherReading).toHaveBeenCalledTimes(1);
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      sending.settle({ post: row, unsent: [] });
+      await first;
+    });
+  });
+
+  it('is not undone by a focus refetch that left before the send landed', async () => {
+    const row = unsentFurtherReadingPost();
+    const sending = deferred<api.SendFurtherReadingResult>();
+    const reading = deferred<ReaderPostListItem[]>();
+    mockApi.sendReaderFurtherReading.mockReturnValue(sending.promise);
+    mockApi.fetchReaderPosts.mockReturnValue(reading.promise);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let send: Promise<unknown> | undefined;
+    act(() => {
+      send = result.current.actions.sendFurtherReading('p-1', 'reader', URLS);
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      sending.settle({ post: { ...row, further_sent_reader: URLS }, unsent: [] });
+      await send;
+    });
+    await act(async () => {
+      reading.settle([row]);
+      await flush();
+    });
+
+    expect(result.current.posts[0]?.further_sent_reader).toEqual(URLS);
   });
 });
 

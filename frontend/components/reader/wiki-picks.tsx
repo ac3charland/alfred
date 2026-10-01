@@ -73,26 +73,29 @@ const HEADING_ROW_TEST_ID: Readonly<Record<SectionKey, string>> = {
  * The heading row, only while the section's controls render: 32px, the Select all button's
  * height, so the heading doesn't jump when the button swaps for "All sent".
  */
-const headingRowClass =
+export const headingRowClass =
   'flex min-h-8 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-sm ' +
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
   'focus-visible:ring-offset-2 focus-visible:ring-offset-background';
-const listClass = 'mt-1 flex flex-col gap-0.5';
+export const listClass = 'mt-1 flex flex-col gap-0.5';
 /** One bullet's row: the tick slot beside the bullet's own `text-sm` text. */
-const rowClass = 'flex items-start gap-2.5 rounded-md px-1.5 py-1 text-sm text-foreground';
+export const rowClass = 'flex items-start gap-2.5 rounded-md px-1.5 py-1 text-sm text-foreground';
 /**
  * The Button atom's centred, single-line chrome reset into a full-width, wrapping row — the whole
  * row is the hit target, so it works on a phone. A disabled row keeps its text at full strength;
  * only its tick box dims, the atoms' 50%.
  */
-const tickRowClass = cn(
+export const tickRowClass = cn(
   rowClass,
   'h-auto w-full justify-start whitespace-normal text-left font-normal',
   'disabled:opacity-100',
 );
-const tickSlotClass = cn(checkboxSizeClass, 'mt-0.5 flex shrink-0 items-center justify-center');
-const statusClass = 'inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground';
-const barClass = cn(
+export const tickSlotClass = cn(
+  checkboxSizeClass,
+  'mt-0.5 flex shrink-0 items-center justify-center',
+);
+export const statusClass = 'inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground';
+export const barClass = cn(
   'mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 px-1.5 pt-1.5',
 );
 /**
@@ -100,14 +103,14 @@ const barClass = cn(
  * counter's `mr-2` and Clear's own `px-2` (narrowing the sm size's `px-3`) put each 16px from the
  * button. Clear's padding would otherwise add to the gap on its side only.
  */
-const counterClass = 'mr-2 text-sm font-semibold text-accent-teal';
-const clearClass = 'px-2';
+export const counterClass = 'mr-2 text-sm font-semibold text-accent-teal';
+export const clearClass = 'px-2';
 
 /**
  * The ARIA checkbox pattern toggles on Space only. A `<button>` also clicks on Enter, so the
  * keydown's default is stopped there — Enter on a bullet does nothing.
  */
-function ignoreEnter(event: React.KeyboardEvent<HTMLButtonElement>) {
+export function ignoreEnter(event: React.KeyboardEvent<HTMLButtonElement>) {
   if (event.key === 'Enter') event.preventDefault();
 }
 

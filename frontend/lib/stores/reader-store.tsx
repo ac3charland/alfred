@@ -55,6 +55,39 @@ function wikiSendFailure(error: unknown): string {
   return (error instanceof api.ApiError ? error.detail : undefined) ?? "Couldn't send to the wiki";
 }
 
+/** Where a Further reading send goes: Instapaper's "To Reader" folder, or its Unread list. */
+export type FurtherReadingDestination = 'reader' | 'instapaper';
+
+const DESTINATION_NAME: Readonly<Record<FurtherReadingDestination, string>> = {
+  reader: 'Reader',
+  instapaper: 'Instapaper',
+};
+
+/**
+ * The toast for a Further reading send that part-landed: how many of the ticked links went, and
+ * the route's own sentence for why the rest did not. The route names the first failure whenever
+ * any link is unsent; the fallback only covers an answer that left it out. A sentence that ends
+ * in its own "— try again" loses it here: the links that did not go are still ticked, so the
+ * retry is in front of the owner already, and the clause would read as a second dash in one line.
+ */
+export function partialSendToast(
+  destination: FurtherReadingDestination,
+  sent: number,
+  total: number,
+  failure: string | undefined,
+): string {
+  const rest = total - sent === 1 ? 'the other' : 'the rest';
+  const why = (failure ?? "Instapaper didn't answer").replace(/\s+—\s+try again$/, '');
+  return `Sent ${String(sent)} of ${String(total)} to ${DESTINATION_NAME[destination]} — ${why} for ${rest}`;
+}
+
+/** What a thrown Further reading send says: the route's sentence when it wrote one. */
+function furtherReadingSendFailure(error: unknown): string {
+  return (
+    (error instanceof api.ApiError ? error.detail : undefined) ?? "Couldn't send to Instapaper"
+  );
+}
+
 /**
  * How many archived posts the archive read asks for. The archive is unbounded — every post ever
  * skimmed — while the app's fetch-everything default assumes a bounded table, so this is a
@@ -101,6 +134,8 @@ export interface ReaderState {
    * still running, and let a second press commit the same post again.
    */
   wikiSendsInFlight: string[];
+  /** The posts with a Further reading send in the air — held here for the same reason. */
+  furtherReadingSendsInFlight: string[];
 }
 
 export interface ReaderActions {
@@ -161,6 +196,21 @@ export interface ReaderActions {
    */
   sendPicksToWiki: (id: string, picks: ReaderPicks) => Promise<ReaderPostListItem>;
   /**
+   * Send ticked Further reading links to the Reader or to Instapaper's Unread: one request for
+   * the whole tick set. Deliberately NOT optimistic, like {@link ReaderActions.sendPicksToWiki} —
+   * it is a call to another system that can part-fail — so the row keeps its marks until the
+   * server answers, then takes the server's row whole and resolves with it and the URLs that did
+   * not land. A send that landed in full is silent; a partial one toasts how many went and why
+   * the rest did not (the component keeps those URLs ticked for a retry); a thrown failure
+   * toasts the route's own sentence and rethrows, so the checklist keeps every tick. One send per
+   * post at a time: a second is refused with a thrown error before anything leaves the browser.
+   */
+  sendFurtherReading: (
+    id: string,
+    destination: FurtherReadingDestination,
+    urls: readonly string[],
+  ) => Promise<{ post: ReaderPostListItem; unsent: string[] }>;
+  /**
    * Re-read the health snapshot and replace it whole. Runs beside `refresh()` on the same
    * return-to-the-foreground signals: the surface is derived against a ticking clock, so a seed
    * frozen at first paint decays into a stall that has since ended — or hides one that started
@@ -199,7 +249,9 @@ type ReaderAction =
   /** A health reconcile attempt was just launched — see {@link ReaderState.healthReconcileStartedAt}. */
   | { type: 'healthReconcileAttempt'; startedAt: string }
   /** A wiki send for `id` has started (`inFlight: true`) or settled either way. */
-  | { type: 'wikiSend'; id: string; inFlight: boolean };
+  | { type: 'wikiSend'; id: string; inFlight: boolean }
+  /** A Further reading send for `id` has started (`inFlight: true`) or settled either way. */
+  | { type: 'furtherReadingSend'; id: string; inFlight: boolean };
 
 /** Pure reducer. The single row list delegates to the shared flat-list reducer. */
 export function readerReducer(state: ReaderState, action: ReaderAction): ReaderState {
@@ -255,6 +307,13 @@ export function readerReducer(state: ReaderState, action: ReaderAction): ReaderS
       const others = state.wikiSendsInFlight.filter((id) => id !== action.id);
       return { ...state, wikiSendsInFlight: action.inFlight ? [...others, action.id] : others };
     }
+    case 'furtherReadingSend': {
+      const others = state.furtherReadingSendsInFlight.filter((id) => id !== action.id);
+      return {
+        ...state,
+        furtherReadingSendsInFlight: action.inFlight ? [...others, action.id] : others,
+      };
+    }
     default: {
       return assertNever(action, 'reader action');
     }
@@ -286,6 +345,7 @@ export function ReaderProvider({
     healthReconcileStartedAt: null,
     instapaperConfigured,
     wikiSendsInFlight: [],
+    furtherReadingSendsInFlight: [],
   });
 
   // Latest state, readable inside the stable action closures so they can capture pre-mutation
@@ -352,6 +412,8 @@ export function ReaderProvider({
    * state's `wikiSendsInFlight` mirrors it for rendering, but lags a render behind a double press.
    */
   const wikiSendsRef = React.useRef(new Set<string>());
+  /** The same synchronous guard for Further reading sends. */
+  const furtherSendsRef = React.useRef(new Set<string>());
 
   /**
    * Re-read the active list and replace it wholesale. `refreshingRef` collapses concurrent
@@ -616,6 +678,39 @@ export function ReaderProvider({
           dispatch({ type: 'wikiSend', id, inFlight: false });
         }
       },
+      async sendFurtherReading(id, destination, urls) {
+        if (furtherSendsRef.current.has(id)) {
+          throw new Error(`A further reading send for post ${id} is already in flight`);
+        }
+        furtherSendsRef.current.add(id);
+        dispatch({ type: 'furtherReadingSend', id, inFlight: true });
+        beginWrite(id);
+        try {
+          const result = await api.sendReaderFurtherReading(id, {
+            destination,
+            urls: [...urls],
+          });
+          dispatch({ type: 'posts', action: { type: 'replace', id, item: result.post } });
+          if (result.unsent.length > 0) {
+            showToastRef.current(
+              partialSendToast(
+                destination,
+                urls.length - result.unsent.length,
+                urls.length,
+                result.failure,
+              ),
+            );
+          }
+          return { post: result.post, unsent: result.unsent };
+        } catch (error) {
+          showToastRef.current(furtherReadingSendFailure(error));
+          throw error;
+        } finally {
+          endWrite(id);
+          furtherSendsRef.current.delete(id);
+          dispatch({ type: 'furtherReadingSend', id, inFlight: false });
+        }
+      },
       markOpened(id) {
         dispatch({
           type: 'posts',
@@ -718,6 +813,12 @@ export function useInstapaperConfigured(): boolean {
 export function useWikiSendInFlight(postId: string): boolean {
   const { wikiSendsInFlight } = useStateValue('useWikiSendInFlight');
   return wikiSendsInFlight.includes(postId);
+}
+
+/** Whether a Further reading send for this post is in the air — every control in it waits. */
+export function useFurtherReadingSendInFlight(postId: string): boolean {
+  const { furtherReadingSendsInFlight } = useStateValue('useFurtherReadingSendInFlight');
+  return furtherReadingSendsInFlight.includes(postId);
 }
 
 /** The Reader mutation actions. Throws outside a ReaderProvider. */

@@ -245,3 +245,64 @@ describe('PostOverview — the wiki connected', () => {
     expect(headings).toEqual(['Novel ideas', 'Evidence', 'The argument', 'Who should read it']);
   });
 });
+
+describe('PostOverview — Further reading', () => {
+  const ITEMS = [
+    { url: 'https://example.com/a', title: 'First piece', note: 'The primary source.' },
+    { url: 'https://example.com/b', title: 'Second piece', note: 'The rebuttal.' },
+  ];
+
+  function renderWith(overview: ReaderOverview, instapaperConfigured = true) {
+    const row = post(overview);
+    return renderReader(
+      <PostOverview overview={overview} post={row} writable={false} />,
+      [row],
+      undefined,
+      { instapaperConfigured },
+    );
+  }
+
+  it('closes the overview with the section, after Who should read it', () => {
+    renderWith({ ...makeReaderOverview(), further_reading: ITEMS });
+
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings).toEqual([
+      'Novel ideas',
+      'Evidence',
+      'The argument',
+      'Who should read it',
+      'Further reading',
+    ]);
+  });
+
+  it('mounts the checklist when Instapaper is configured and the plain list when it is not', () => {
+    const { unmount } = renderWith({ ...makeReaderOverview(), further_reading: ITEMS });
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    unmount();
+
+    renderWith({ ...makeReaderOverview(), further_reading: ITEMS }, false);
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'First piece' })).toHaveAttribute(
+      'href',
+      'https://example.com/a',
+    );
+  });
+
+  it('draws no section for an overview without the key, an empty list, or a malformed one', () => {
+    for (const overview of [
+      makeReaderOverview(),
+      { ...makeReaderOverview(), further_reading: [] },
+      { ...makeReaderOverview(), further_reading: [{ url: 'https://example.com/a' }] },
+    ] as ReaderOverview[]) {
+      const { unmount } = renderWith(overview);
+      expect(screen.queryByRole('heading', { name: 'Further reading' })).not.toBeInTheDocument();
+      expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+        'Novel ideas',
+        'Evidence',
+        'The argument',
+        'Who should read it',
+      ]);
+      unmount();
+    }
+  });
+});

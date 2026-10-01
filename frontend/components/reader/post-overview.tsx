@@ -1,9 +1,10 @@
 import * as React from 'react';
 
-import { isBullet } from '@/lib/reader/overview';
+import { furtherReadingOf, isBullet } from '@/lib/reader/overview';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 import { SECTION_HEADING_CLASS } from '@/lib/ui/section-heading-class';
 
+import { FurtherReading } from './further-reading';
 import { WikiPicks } from './wiki-picks';
 
 /**
@@ -20,6 +21,10 @@ import { WikiPicks } from './wiki-picks';
  * two, are exactly the plain lists they always were. A bullet that is empty or only whitespace is
  * no bullet, so neither view draws it: a list of nothing else reads as the honest empty line, never as a checklist with
  * nothing to tick ("All sent to wiki").
+ *
+ * A fifth section, Further reading, closes the overview when the summary carries a well-formed,
+ * non-empty list of linked articles ({@link FurtherReading}); one written before the prompt asked
+ * for it, or with a malformed list, draws no section at all — no heading over nothing.
  */
 
 const BULLET_LIST_CLASS = 'mt-1 list-disc space-y-1 pl-5 text-sm text-foreground';
@@ -67,6 +72,7 @@ function PlainSection({
 export function PostOverview({ overview, post, writable }: PostOverviewProperties) {
   const ideas = overview.novel_ideas.filter((idea) => isBullet(idea));
   const evidence = overview.evidence.filter((item) => isBullet(item));
+  const furtherReading = furtherReadingOf(overview);
   const checklist = writable && (ideas.length > 0 || evidence.length > 0);
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-border/60 pt-3">
@@ -102,6 +108,15 @@ export function PostOverview({ overview, post, writable }: PostOverviewPropertie
         <h3 className={SECTION_HEADING_CLASS}>Who should read it</h3>
         <p className={PARAGRAPH_CLASS}>{overview.who_should_read}</p>
       </section>
+
+      {furtherReading.length > 0 && (
+        <FurtherReading
+          postId={post.id}
+          items={furtherReading}
+          sentReader={post.further_sent_reader}
+          sentInstapaper={post.further_sent_instapaper}
+        />
+      )}
     </div>
   );
 }
