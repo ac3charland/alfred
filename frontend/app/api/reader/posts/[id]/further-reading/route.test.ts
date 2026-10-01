@@ -252,7 +252,7 @@ describe('POST /api/reader/posts/[id]/further-reading — saving', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(await response.json()).toMatchObject({
       unsent: [THIRD],
-      failure: "Instapaper didn't answer",
+      failure: 'the send ran out of time',
     });
   });
 });

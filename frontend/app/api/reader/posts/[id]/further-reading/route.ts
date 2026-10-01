@@ -80,8 +80,12 @@ const PARTIAL_PHRASES: Record<InstapaperRefusal | 'unavailable', string> = {
   unavailable: "Instapaper didn't answer",
 };
 
+/** Links left only because the time budget ran out, with no save failing. */
+const OUT_OF_TIME = 'the send ran out of time';
+
 function partialPhrase(outcome: Exclude<AddBookmarkOutcome, { kind: 'saved' }> | undefined) {
-  return PARTIAL_PHRASES[outcome?.kind === 'refused' ? outcome.refusal : 'unavailable'];
+  if (outcome === undefined) return OUT_OF_TIME;
+  return PARTIAL_PHRASES[outcome.kind === 'refused' ? outcome.refusal : 'unavailable'];
 }
 
 /** The requested links that may go: in the overview, not yet sent anywhere, each once, in request order. */
