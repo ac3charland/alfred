@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import {
   INGEST_API_KEY,
   LEDGER_API_KEY,
@@ -11,8 +14,9 @@ import { expect, test } from './support/fixtures';
 
 /**
  * The session-ledger routes through the whole stack: the backfill reads the ledger inputs, then
- * upserts rows, keyed with the ledger key and carrying no cookie. The ingest key is refused on
- * both — the backfill session reads untrusted text, so its key reaches nothing else.
+ * upserts rows, and a session's recording hook writes its own row, all keyed with the ledger key
+ * and carrying no cookie. The ingest key is refused on every one — a session reads untrusted
+ * text, so its key reaches nothing else.
  */
 
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -156,4 +160,92 @@ test('refuses the ingest key on both ledger routes', async ({ request, seed }) =
 
   expect(read.status()).toBe(401);
   expect(write.status()).toBe(401);
+});
+
+/**
+ * The hook's stop body exactly as the hook builds it — the fixture the hook's own contract test
+ * produces. Resolved against the Playwright working directory (frontend/).
+ */
+function recordedStop(): Record<string, unknown> {
+  const file = path.join(
+    process.cwd(),
+    '..',
+    'tools/session-ledger/src/hook/__fixtures__/recorded-row.json',
+  );
+  return JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+}
+
+test('records a session through the hook route; a backfill re-run keeps what it recorded', async ({
+  request,
+  seed,
+}) => {
+  await seed({});
+  const stop = recordedStop();
+  const sessionId = stop['session_id'] as string;
+
+  const start = await request.post('/api/code/sessions/record', {
+    headers: ledgerKey,
+    data: {
+      event: 'session-start',
+      session_id: sessionId,
+      repo: 'ac3charland/alfred',
+      session_created_at: '2026-10-03T09:12:40Z',
+      base_sha: 'head-at-session-start',
+      builder_sha: null,
+      warnings: [],
+    },
+  });
+  expect(await start.json()).toEqual({ inserted: true });
+
+  const recorded = await request.post('/api/code/sessions/record', {
+    headers: ledgerKey,
+    data: stop,
+  });
+  expect(await recorded.json()).toEqual({ inserted: false });
+
+  const refused = await request.post('/api/code/sessions/record', {
+    headers: { authorization: `Bearer ${INGEST_API_KEY}` },
+    data: stop,
+  });
+  expect(refused.status()).toBe(401);
+  const withCost = await request.post('/api/code/sessions/record', {
+    headers: ledgerKey,
+    data: { ...stop, cost_usd: 1 },
+  });
+  expect(withCost.status()).toBe(400);
+
+  const rerun = await request.post('/api/code/sessions', {
+    headers: ledgerKey,
+    data: {
+      rows: [
+        row({
+          session_id: sessionId,
+          prompt: 'a rebuilt guess',
+          prompt_source: 'reconstructed',
+          base_sha: 'main-from-history',
+          output_tokens: 999_999,
+          cost_usd: 9.75,
+          pr_state: 'merged',
+          warnings: ['builder_changed_near_start'],
+        }),
+      ],
+    },
+  });
+  expect(await rerun.json()).toEqual({ upserted: 1, kept_recorded: 1 });
+
+  const stateResponse = await request.get(`${MOCK_URL}/__mock__/state`);
+  const state = (await stateResponse.json()) as { codeSessions: Record<string, unknown>[] };
+  expect(state.codeSessions).toHaveLength(1);
+  expect(state.codeSessions[0]).toMatchObject({
+    prompt: stop['prompt'],
+    prompt_source: 'recorded',
+    skills: stop['skills'],
+    base_sha: 'head-at-session-start',
+    output_tokens: stop['output_tokens'],
+    usage_by_model: stop['usage_by_model'],
+    subagent_count: stop['subagent_count'],
+    cost_usd: null,
+    pr_state: 'merged',
+    warnings: ['builder_changed_near_start', 'price_unknown', 'subagents_unreadable'],
+  });
 });

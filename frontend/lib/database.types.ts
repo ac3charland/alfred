@@ -194,6 +194,7 @@ export type Database = {
           pr_state: string | null
           prompt: string | null
           prompt_source: string | null
+          recorded_at: string | null
           ref: string | null
           refreshed_at: string
           repo: string
@@ -205,7 +206,9 @@ export type Database = {
           spec_blob_sha: string | null
           spec_path: string | null
           status: string | null
+          subagent_count: number | null
           title: string | null
+          usage_by_model: Json | null
           warnings: string[]
         }
         Insert: {
@@ -228,6 +231,7 @@ export type Database = {
           pr_state?: string | null
           prompt?: string | null
           prompt_source?: string | null
+          recorded_at?: string | null
           ref?: string | null
           refreshed_at?: string
           repo: string
@@ -239,7 +243,9 @@ export type Database = {
           spec_blob_sha?: string | null
           spec_path?: string | null
           status?: string | null
+          subagent_count?: number | null
           title?: string | null
+          usage_by_model?: Json | null
           warnings?: string[]
         }
         Update: {
@@ -262,6 +268,7 @@ export type Database = {
           pr_state?: string | null
           prompt?: string | null
           prompt_source?: string | null
+          recorded_at?: string | null
           ref?: string | null
           refreshed_at?: string
           repo?: string
@@ -273,7 +280,9 @@ export type Database = {
           spec_blob_sha?: string | null
           spec_path?: string | null
           status?: string | null
+          subagent_count?: number | null
           title?: string | null
+          usage_by_model?: Json | null
           warnings?: string[]
         }
         Relationships: []
@@ -990,6 +999,30 @@ export type Database = {
           },
         ]
       }
+      model_price_history: {
+        Row: {
+          effective_from: string
+          fetched: string[]
+          fetched_at: string
+          rates: Json
+          source: string
+        }
+        Insert: {
+          effective_from: string
+          fetched?: string[]
+          fetched_at: string
+          rates: Json
+          source: string
+        }
+        Update: {
+          effective_from?: string
+          fetched?: string[]
+          fetched_at?: string
+          rates?: Json
+          source?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           color: string | null
@@ -1691,6 +1724,14 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      append_model_prices: {
+        Args: { p_rates: Json; p_source: string }
+        Returns: {
+          appended: boolean
+          changed: string[]
+          repriced: number
+        }[]
+      }
       append_wiki_sent_ideas: {
         Args: { p_ideas: string[]; p_post: string }
         Returns: {
@@ -1801,6 +1842,20 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      code_session_cost: {
+        Args: { p_at: string; p_usage: Json }
+        Returns: number
+      }
+      code_session_hook_warnings: { Args: never; Returns: string[] }
+      code_session_priced_warnings: {
+        Args: { p_unknown: boolean; p_warnings: string[] }
+        Returns: string[]
+      }
+      code_session_recorded_cost: {
+        Args: { p_at: string; p_usage: Json; p_warnings: string[] }
+        Returns: number
+      }
+      code_session_stop_warnings: { Args: never; Returns: string[] }
       comm_canonical_handle: { Args: { p_handle: string }; Returns: string }
       comm_canonicalise_handles: { Args: never; Returns: number }
       comm_create_inbox_item: {
@@ -2041,6 +2096,7 @@ export type Database = {
           title: string
         }[]
       }
+      model_rates: { Args: { p_at: string; p_model: string }; Returns: Json }
       move_code_priority: {
         Args: { p_ref: string; p_to_top: boolean }
         Returns: {
@@ -2107,6 +2163,12 @@ export type Database = {
       reader_sweep_text: {
         Args: { p_days?: number; p_limit?: number }
         Returns: number
+      }
+      record_code_session: {
+        Args: { p_row: Json }
+        Returns: {
+          inserted: boolean
+        }[]
       }
       respace_code_priorities: { Args: never; Returns: undefined }
       search_wiki_pages: {

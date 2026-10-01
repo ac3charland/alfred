@@ -156,7 +156,7 @@ Source: Anthropic, "Structured outputs", platform.claude.com.
 | **Stream the response** | SDK: `client.messages.stream({...}).on("text", cb)` or `for await (const event of stream)`; fetch: `"stream": true` in body, parse SSE lines | SSE event flow: `message_start` → `content_block_start` → N×`content_block_delta` → `content_block_stop` → `message_delta` (has final `stop_reason`) → `message_stop`. For tool use in streams, `input_json_delta` events carry partial JSON — accumulate and parse at `content_block_stop`. |
 | **Use the SDK with full TypeScript types** | `import Anthropic from "@anthropic-ai/sdk"` — all params and responses are typed via `Anthropic.MessageCreateParams`, `Anthropic.Message`, `Anthropic.ToolUseBlock`, etc. | The SDK auto-sends `anthropic-version: 2023-06-01`. To override, pass `headers` in the request options — but this may cause type mismatches. |
 | **Prompt for text cleanup (no tools)** | `system` field for instructions + single `user` message with the raw voice text; read `response.content[0].text` | Keep `max_tokens` proportional to expected output. For short cleanups, 512–1024 is sufficient. `temperature`/`top_p`/`top_k` are removed on current models and return a 400 — steer with the prompt. |
-| **Pick a model** | `claude-haiku-4-5` for high-volume, latency-sensitive classification; `claude-sonnet-5` for the speed/quality balance; `claude-opus-5` for complex multi-step reasoning | See Version Gotchas for exact IDs and prices. Never hard-code the id in a Worker — make it a `[vars]` entry so changing it is a deploy flag. At alfred's volumes every tier is inside noise, so pick by *fit* (does it support the feature you need?), not by price. |
+| **Pick a model** | `claude-haiku-4-5` for high-volume, latency-sensitive classification; `claude-sonnet-5` for the speed/quality balance; `claude-opus-5` for complex multi-step reasoning | See Version Gotchas for exact IDs. Never hard-code the id in a Worker — make it a `[vars]` entry so changing it is a deploy flag. At alfred's volumes every tier is inside noise, so pick by *fit* (does it support the feature you need?), not by price. |
 
 Source: Anthropic platform docs (platform.claude.com), fetched June 2026.
 
@@ -270,13 +270,18 @@ pinned snapshots despite lacking a date suffix. Do not append a date: `claude-so
 is correct; `claude-sonnet-4-6-20250101` does not exist.
 
 **Current models:**
-- `claude-opus-5` — complex multi-step reasoning, 1M context, 128k output, $5/$25 per MTok
-- `claude-sonnet-5` — speed/quality balance, 1M context, 128k output, $3/$15
+- `claude-opus-5` — complex multi-step reasoning, 1M context, 128k output
+- `claude-sonnet-5` — speed/quality balance, 1M context, 128k output
 - `claude-haiku-4-5` (alias) or `claude-haiku-4-5-20251001` (pinned) — fastest, 200k context,
-  64k output, $1/$5. Supports structured outputs; rejects `effort`.
+  64k output. Supports structured outputs; rejects `effort`.
 
-Model ids and prices move faster than this file. Look them up against the bundled `claude-api`
-skill (or the Models API) rather than from memory before writing one into code.
+Model ids move faster than this file. Look them up against the bundled `claude-api` skill (or the
+Models API) rather than from memory before writing one into code.
+
+**Prices live in the database, not here.** `model_price_history` holds Anthropic's published
+per-model rates, refreshed daily by the Worker from the pricing page; read them with
+`model_rates(model, at)` or price a usage with `code_session_cost(usage_by_model, at)` rather than
+hard-coding a rate (see the llm-evaluation skill's recording reference).
 
 **`temperature`/`top_p`/`top_k` removed on the current Opus/Sonnet line.** Agents trained
 on older patterns will include these; any value other than the default returns 400.

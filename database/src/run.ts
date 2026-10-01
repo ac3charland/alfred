@@ -15,6 +15,7 @@ import {
   migrationsChangedSinceTrunk,
 } from './gen-types.ts';
 import { applyMigrations, bootstrapSupabase } from './migrate.ts';
+import { runSessionLedgerAssertions } from './session-ledger-assertions.ts';
 
 const { Client } = pg;
 
@@ -88,6 +89,7 @@ async function main(): Promise<number> {
     // must start from an empty — or deliberately half-migrated — one).
     const results = [
       ...(await runAssertions(client)),
+      ...(await runSessionLedgerAssertions(client)),
       typesResult,
       freshnessResult,
       ...(await runDeployAssertions(cluster)),

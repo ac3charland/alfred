@@ -17,8 +17,8 @@
  * `scheduled` is fired by the cron triggers in wrangler.toml, and dispatches on WHICH schedule
  * fired: the frequent one runs the Inbox classifier and then the comms judge pass, the poll one
  * reads Gmail, the reader one runs the newsletter tick, and the daily one runs the comms
- * retention sweep, the reader's own text sweep, and then the wiki sync as the snapshot's safety
- * net. Every handler stays thin and delegates.
+ * retention sweep, the reader's own text sweep, the model price refresh, and then the wiki sync
+ * as the snapshot's safety net. Every handler stays thin and delegates.
  */
 import { handleIngest } from './comms/ingest';
 import {
@@ -32,6 +32,7 @@ import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
 import { instapaperCredentials } from './instapaper/client';
+import { type PriceRefreshSummary, runPriceRefresh } from './pricing/refresh';
 import { READER_DEFAULT_DAILY_CAP } from './reader/config';
 import {
   type ReaderRetentionSummary,
@@ -146,16 +147,18 @@ export const POLL_CRON = '*/3 * * * *';
 
 /**
  * The daily housekeeping run — the comms message sweep, then the Reader's 90-day text sweep, then
- * the wiki snapshot's safety-net sync, which repairs whatever a missed push webhook left stale.
- * Housekeeping rather than triage, so it runs alone, overnight, and never drags a model call
- * along with it. Each unit is isolated in its own try/catch (the two sweeps inside their
- * wrappers, the sync in `runWikiSync`), so no unit's failure skips the ones after it; the sync
- * runs last so nothing waits on GitHub.
+ * the model price refresh, then the wiki snapshot's safety-net sync, which repairs whatever a
+ * missed push webhook left stale. Housekeeping rather than triage, so it runs alone, overnight,
+ * and never drags a model call along with it. Each unit is isolated in its own try/catch (the
+ * sweeps and the refresh inside their wrappers, the sync in `runWikiSync`), so no unit's failure
+ * skips the ones after it; the sync runs last so nothing waits on GitHub.
  *
  * Budget: 50 subrequests per invocation. The comms sweep spends 1, the reader sweep at most 40
- * (its `MAX_BATCHES`), and the wiki sync at most 6 (`WIKI_SYNC_SUBREQUEST_CEILING`) — 47. CPU is
- * dominated by the sync's page parsing, capped at ~6ms by `WIKI_SYNC_PAGE_CAP`; the sweeps are
- * database-side and cost next to none. These strings must match wrangler.toml's `crons`: the
+ * (its `MAX_BATCHES`), the price refresh 3 (the pricing page, the latest history read and the
+ * append) and the wiki sync at most 6 (`WIKI_SYNC_SUBREQUEST_CEILING`) — 50, exactly the ceiling,
+ * so nothing more may join this run. CPU is dominated by the sync's page parsing, capped at ~6ms
+ * by `WIKI_SYNC_PAGE_CAP`; the sweeps are database-side and cost next to none, and the refresh
+ * parses one small table. These strings must match wrangler.toml's `crons`: the
  * runtime hands the handler the expression it fired, and that is all it has to dispatch on.
  */
 export const RETENTION_CRON = '17 9 * * *';
@@ -245,10 +248,11 @@ export default {
     const now = new Date();
 
     if (event.cron === RETENTION_CRON) {
-      // Three isolated units on one schedule: each owns its own try/catch, so no failure skips
+      // Four isolated units on one schedule: each owns its own try/catch, so no failure skips
       // the units after it. The wiki sync goes last: it is the only one that waits on GitHub.
       logRetention(await runCommsRetention(env, now));
       logReaderRetention(await runReaderRetention(env, now));
+      logPriceRefresh(await runPriceRefresh(env, now));
       await runWikiSync(env, now);
       return;
     }
@@ -359,6 +363,50 @@ function logReaderTick(summary: ReaderTickSummary): void {
       `${String(leg.archived)} archived, ${String(leg.restored)} restored`,
   );
   for (const failure of leg.failures) console.error(`reader: instapaper: ${failure}`);
+}
+
+/** `repriced 1 session` / `repriced 212 sessions`, singular like the reader line's `1 post`. */
+const repricedPhrase = (count: number): string =>
+  `repriced ${String(count)} ${count === 1 ? 'session' : 'sessions'}`;
+
+/** How many changed model ids the price line names before it counts the rest. */
+const PRICE_LINE_IDS = 3;
+
+/**
+ * The price refresh as exactly ONE `model prices:` line, whatever happened, so a day's outcome is
+ * one grep in `wrangler tail`. A rejected page is the quiet failure this line exists for: the
+ * history kept its last good table and nothing else would say the page changed shape. A refresh
+ * that could not finish is an error line, like every other unit's failure.
+ */
+function logPriceRefresh(summary: PriceRefreshSummary): void {
+  switch (summary.outcome) {
+    case 'appended': {
+      const ids = summary.changed.slice(0, PRICE_LINE_IDS);
+      const more = summary.changed.length - ids.length;
+      const named = more > 0 ? [...ids, `+${String(more)} more`] : ids;
+      console.log(
+        `model prices: appended · ${String(summary.models)} models, ` +
+          `${String(summary.changed.length)} changed (${named.join(', ')}) · ${repricedPhrase(summary.repriced)}`,
+      );
+      return;
+    }
+    case 'unchanged': {
+      console.log(
+        `model prices: unchanged · ${String(summary.models)} models · ${repricedPhrase(summary.repriced)}`,
+      );
+      return;
+    }
+    case 'rejected': {
+      console.log(
+        `model prices: rejected (${summary.reason}) · kept ${summary.kept ?? 'no'} table`,
+      );
+      return;
+    }
+    case 'failed': {
+      console.error(`model prices: failed (${summary.error})`);
+      return;
+    }
+  }
 }
 
 /**

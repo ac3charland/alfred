@@ -1,8 +1,8 @@
 # Backfilling `code_sessions`
 
-The one-time seed of the ledger from history, and the safe re-run that refreshes it (cost of a
-still-running session, PR states, warnings). A re-run never overwrites a `recorded` prompt: the
-upsert RPC keeps it.
+The one-time seed of the ledger from history, and the safe re-run that refreshes it (PR states,
+lanes, warnings, and cost for sessions that didn't record themselves). A re-run never overwrites
+what a session recorded (see [recording.md](./recording.md)): the upsert RPC keeps it.
 
 ## Contents
 
@@ -102,7 +102,8 @@ the push result. `report <rows>` prints the same report without pushing.
 
 ## Warning codes
 
-Every null in a row names its reason here.
+Every null in a row names its reason here or, for the recording codes, in
+[recording.md](./recording.md#warning-codes).
 
 | Code | Meaning |
 | --- | --- |

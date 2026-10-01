@@ -2,12 +2,13 @@
 name: llm-evaluation
 description: >
   Covers evaluating Claude Code coding sessions — how models, effort levels, launch prompts and
-  subagent setups perform: the code_sessions ledger, experiment design, and seeding the ledger
-  with tools/session-ledger. Use when asking which model or effort to default to, what a lane
-  costs, or whether a prompt or review change helped. Trigger on: "evaluate models", "model
-  performance", "LLM eval", "LLM experiment", "session cost", "effort level", "A/B the prompt",
-  "session ledger", "code_sessions", "backfill the ledger". Not for the Worker's LLM features
-  (classifier, comms, reader): use their eval:* scripts.
+  subagent setups perform: the code_sessions ledger, the hook that records sessions into it, their
+  pricing, experiment design, and backfilling with tools/session-ledger. Use when choosing a model
+  or effort default, costing a lane, judging a prompt or review change, or when a session's row is
+  missing. Trigger on: "evaluate models", "LLM eval", "session cost", "effort level", "A/B the
+  prompt", "session ledger", "code_sessions", "backfill the ledger", "recording hook",
+  "model_price_history". Not for the Worker's LLM features (classifier, comms, reader): use their
+  eval:* scripts.
 ---
 
 # LLM evaluation — measuring coding sessions
@@ -25,9 +26,11 @@ description: >
 **Bundled resources**
 
 - **references/**
+  - [recording.md](./references/recording.md) — the hook every cloud session records itself with:
+    what it writes when, who owns each column, prices, disabling and debugging it, its warning codes
   - [backfill.md](./references/backfill.md) — the run procedure that (re)seeds `code_sessions`
     from history: collecting session records with subagents, verifying them, `build`, `push`,
-    `report`, and every warning code
+    `report`, and its warning codes
 
 The evidence, power simulations and sources behind this skill are in the ALF-283 spike,
 `docs/spikes/ALF-283-evaluating-coding-sessions.html`. Read it before proposing a new instrument.
@@ -40,20 +43,23 @@ randomised trial developers felt 20% faster and measured 19% slower.
 
 ## The data: `code_sessions`
 
-One row per Claude Code session that worked on this repo (migration `0049_code_sessions.sql`):
+One row per Claude Code session that worked on this repo (migrations `0049`, `0050`). Cloud
+sessions write their own row as they run ([recording.md](./references/recording.md)); the backfill
+adds history and everything after the session (PR outcomes):
 
 | Columns | What they are |
 | --- | --- |
 | `configured_model`, `model`, `served_model`, `effort_level` | what was picked, and what actually served the last turn (a fallback shows as a mismatch) |
-| `cost_usd`, `*_tokens` | API-equivalent cost and tokens from the session record; whether they include subagents is unconfirmed |
+| `cost_usd`, `*_tokens` | API-equivalent cost and tokens. Recorded rows: whole-session totals, subagents included as far as their transcripts show (`subagent_usage_partial` when not; no cost then), priced by alfred from `model_price_history`. Backfill-only rows (`recorded_at` null): the session record's, whose subagent coverage is unconfirmed |
+| `usage_by_model`, `subagent_count`, `recorded_at` | recorded rows only: tokens per model split main thread vs subagents, and the last hook write |
 | `launch_lane`, `ref` | which launch prompt started it, inferred from the PR's `alfred` block |
 | `pr_state`, `pr_*_at`, `human_commits_after_open` | the outcome: merged or not, and owner rework after the PR opened |
 | `prompt`, `prompt_source`, `builder_sha`, `spec_*`, `skills` | the launch prompt, spec and skills as of `base_sha` (main at session start); `builder_sha` groups rows by prompt version |
 | `warnings` | why any value above is null — filter on them rather than trusting a null |
 | `session_record` | the raw record, so a new metric can be derived in SQL without refetching |
 
-`prompt_source = 'reconstructed'` means rebuilt from history with today's ticket text: treat it as
-"very likely", never as observed. Query the live table through `npm run psql -w database -- -c
+`prompt_source = 'recorded'` is the first message exactly as sent; `'reconstructed'` means rebuilt
+from history with today's ticket text: treat it as "very likely", never as observed. Query the live table through `npm run psql -w database -- -c
 "<sql>"` (see the supabase skill when Postgres egress is blocked), or run `report` over the NDJSON
 a backfill wrote to the scratchpad.
 
@@ -62,7 +68,7 @@ a backfill wrote to the scratchpad.
 | Question | Instrument | Status |
 | --- | --- | --- |
 | Effort or model default for a lane | the ledger: cost per lane, rework as the guardrail | ledger exists |
-| Did a launch-prompt instruction help | randomised arms by ticket-ref hash in `links.ts`, recorded at launch | needs launch recording |
+| Did a launch-prompt instruction help | randomised arms by ticket-ref hash in `links.ts`, recorded at launch | prompts recorded; arms not built |
 | Which reviewer model or brief | an offline defect-recall bench (real escaped bugs + surviving Stryker mutants) on `claude plugin eval` | not built |
 | Epic orchestration | a structured case review of each epic session | manual |
 | A high-stakes model-default change the ledger can't bound | a ticket-replay bench (Harbor) | reserved: costly |

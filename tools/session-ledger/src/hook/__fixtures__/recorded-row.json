@@ -1,0 +1,48 @@
+{
+  "event": "stop",
+  "session_id": "session_01FixtureRecorded",
+  "repo": "ac3charland/alfred",
+  "session_created_at": "2026-10-03T09:12:40.123Z",
+  "prompt": "ALF-310: Create hooks to log session metrics\n\nYou are implementing the ticket ALF-310. Read .claude/skills/implement-spec/SKILL.md first, then .claude/skills/adversarial-review/SKILL.md.",
+  "skills": [
+    {
+      "path": ".claude/skills/implement-spec/SKILL.md",
+      "blob_sha": "f491924117d1642d0b376ed983c842c4bf5f885c"
+    },
+    { "path": ".claude/skills/adversarial-review/SKILL.md", "blob_sha": null }
+  ],
+  "ref": "ALF-310",
+  "model": "claude-opus-5-5",
+  "served_model": "claude-opus-5-5",
+  "effort_level": "high",
+  "input_tokens": 42,
+  "output_tokens": 850,
+  "cache_read_tokens": 5900,
+  "cache_write_tokens": 2400,
+  "subagent_count": 2,
+  "usage_by_model": {
+    "main": {
+      "claude-opus-5-5": {
+        "requests": 2,
+        "input": 30,
+        "output": 700,
+        "cache_read": 5000,
+        "cache_write_5m": 1200,
+        "cache_write_1h": 800,
+        "web_search": 1
+      }
+    },
+    "subagents": {
+      "claude-haiku-4-5-20251001": {
+        "requests": 1,
+        "input": 12,
+        "output": 150,
+        "cache_read": 900,
+        "cache_write_5m": 400,
+        "cache_write_1h": 0,
+        "web_search": 0
+      }
+    }
+  },
+  "warnings": ["subagents_unreadable"]
+}

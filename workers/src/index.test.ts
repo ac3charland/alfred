@@ -5,6 +5,7 @@ import * as commsScheduled from './comms/scheduled';
 import { spyOnFetch } from './fetch-stub';
 import { hmacSha256Hex } from './hmac';
 import worker, { type Env, POLL_CRON, READER_CRON, RETENTION_CRON, TICK_CRON } from './index';
+import * as pricingRefresh from './pricing/refresh';
 import * as readerScheduled from './reader/scheduled';
 import * as wikiSync from './wiki/sync';
 
@@ -735,6 +736,31 @@ describe('worker.fetch', () => {
   });
 });
 
+/** Console output of one daily run, split the way the assertions want it. */
+function captureConsole(): { logged: string[]; errors: string[] } {
+  const logged: string[] = [];
+  const errors: string[] = [];
+  jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+    logged.push(args.map(String).join(' '));
+  });
+  jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    errors.push(args.map(String).join(' '));
+  });
+  return { logged, errors };
+}
+
+const priceLines = (output: { logged: string[]; errors: string[] }): string[] =>
+  [...output.logged, ...output.errors].filter((line) => line.startsWith('model prices:'));
+
+const retentionUnits = () => ({
+  comms: jest
+    .spyOn(commsScheduled, 'runCommsRetention')
+    .mockResolvedValue({ deleted: 1, failures: [] }),
+  reader: jest
+    .spyOn(readerScheduled, 'runReaderRetention')
+    .mockResolvedValue({ swept: 1, failures: [] }),
+});
+
 describe('worker.scheduled', () => {
   /**
    * A cron invocation carries no request — only which schedule fired, plus `env` and the
@@ -759,11 +785,23 @@ describe('worker.scheduled', () => {
   };
   const WIKI_LINE = 'wiki sync: 3 changed, 1 removed, 0 pending at abcdef1';
 
+  /** What the daily run's price refresh reports unless a test says otherwise. */
+  const unchangedPrices: pricingRefresh.PriceRefreshSummary = {
+    outcome: 'unchanged',
+    models: 19,
+    repriced: 0,
+  };
+  const PRICE_LINE = 'model prices: unchanged · 19 models · repriced 0 sessions';
+
   // The sync is its own module with its own suite; here it is only a unit the dispatch must
   // call, in order. Stubbed for every test so no schedule reaches GitHub by accident.
+  // The price refresh likewise has its own suite; it is stubbed so no schedule reaches Anthropic's
+  // pricing page by accident.
   let sync: jest.SpiedFunction<typeof wikiSync.syncWiki>;
+  let prices: jest.SpiedFunction<typeof pricingRefresh.runPriceRefresh>;
   beforeEach(() => {
     sync = jest.spyOn(wikiSync, 'syncWiki').mockResolvedValue(syncedSummary);
+    prices = jest.spyOn(pricingRefresh, 'runPriceRefresh').mockResolvedValue(unchangedPrices);
   });
 
   it('runs a classifier sweep, and resolves only once the sweep has finished', async () => {
@@ -886,7 +924,7 @@ describe('worker.scheduled', () => {
     expect(warned.join('\n')).toContain('7 * * * *');
   });
 
-  it('runs only the retention sweep on the daily cron', async () => {
+  it('runs only housekeeping on the daily cron', async () => {
     // Housekeeping is not triage: the daily schedule must not drag a model call along with it.
     const fetchSpy = spyOnFetch().mockResolvedValue(Response.json([]));
     const judge = jest.spyOn(commsScheduled, 'runCommsJudge');
@@ -902,11 +940,30 @@ describe('worker.scheduled', () => {
 
     expect(retention).toHaveBeenCalledTimes(1);
     expect(readerRetention).toHaveBeenCalledTimes(1);
+    expect(prices).toHaveBeenCalledTimes(1);
+    expect(prices.mock.calls[0]?.[0]).toBe(env);
     expect(sync).toHaveBeenCalledTimes(1);
     expect(sync.mock.calls[0]?.[0]).toBe(env);
     expect(judge).not.toHaveBeenCalled();
     expect(poll).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('runs the price refresh after both retention sweeps and before the wiki sync', async () => {
+    const retention = jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: 0, failures: [] });
+    const readerRetention = jest
+      .spyOn(readerScheduled, 'runReaderRetention')
+      .mockResolvedValue({ swept: 0, failures: [] });
+    jest.spyOn(console, 'log').mockImplementation(discard);
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    const [priceOrder = 0] = prices.mock.invocationCallOrder;
+    expect(priceOrder).toBeGreaterThan(retention.mock.invocationCallOrder[0] ?? Infinity);
+    expect(priceOrder).toBeGreaterThan(readerRetention.mock.invocationCallOrder[0] ?? Infinity);
+    expect(priceOrder).toBeLessThan(sync.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('runs the wiki sync AFTER both retention sweeps, as the snapshot safety net', async () => {
@@ -957,6 +1014,161 @@ describe('worker.scheduled', () => {
     expect(errors).toEqual(['wiki sync: threw: Supabase upsert wiki_sync failed: 503']);
   });
 
+  describe('the daily price refresh', () => {
+    it('logs an appended table with its count, what changed and how many sessions were re-priced', async () => {
+      retentionUnits();
+      prices.mockResolvedValue({
+        outcome: 'appended',
+        models: 19,
+        changed: ['claude-opus-5-5'],
+        repriced: 212,
+      });
+      const output = captureConsole();
+
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+      expect(priceLines(output)).toEqual([
+        'model prices: appended · 19 models, 1 changed (claude-opus-5-5) · repriced 212 sessions',
+      ]);
+      expect(output.errors).toEqual([]);
+    });
+
+    it('lists a few changed models by id and counts the rest', async () => {
+      retentionUnits();
+      const changed = ['a', 'b', 'c', 'd', 'e'];
+      prices.mockResolvedValue({ outcome: 'appended', models: 19, changed, repriced: 1 });
+      const output = captureConsole();
+
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+      expect(priceLines(output)).toEqual([
+        'model prices: appended · 19 models, 5 changed (a, b, c, +2 more) · repriced 1 session',
+      ]);
+    });
+
+    it('logs an unchanged table', async () => {
+      retentionUnits();
+      const output = captureConsole();
+
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+      expect(priceLines(output)).toEqual([PRICE_LINE]);
+      expect(output.errors).toEqual([]);
+    });
+
+    it('logs a rejected page with the reason and the table it kept', async () => {
+      retentionUnits();
+      prices.mockResolvedValue({
+        outcome: 'rejected',
+        reason: 'ordering violated: Claude Opus 6',
+        kept: '2026-10-02',
+      });
+      const output = captureConsole();
+
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+      expect(priceLines(output)).toEqual([
+        'model prices: rejected (ordering violated: Claude Opus 6) · kept 2026-10-02 table',
+      ]);
+    });
+
+    it('says so when a rejected page has no earlier table to keep', async () => {
+      retentionUnits();
+      prices.mockResolvedValue({
+        outcome: 'rejected',
+        reason: 'header not found',
+        kept: undefined,
+      });
+      const output = captureConsole();
+
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+      expect(priceLines(output)).toEqual([
+        'model prices: rejected (header not found) · kept no table',
+      ]);
+    });
+
+    it('logs a failed refresh as an error line, and every other unit still runs', async () => {
+      const units = retentionUnits();
+      prices.mockResolvedValue({ outcome: 'failed', error: 'page 503' });
+      const output = captureConsole();
+
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+      expect(output.errors).toEqual(['model prices: failed (page 503)']);
+      expect(output.logged).toEqual([
+        'comms retention: 1 messages deleted',
+        'reader retention: 1 post swept',
+        WIKI_LINE,
+      ]);
+      expect(units.comms).toHaveBeenCalledTimes(1);
+      expect(units.reader).toHaveBeenCalledTimes(1);
+      expect(sync).toHaveBeenCalledTimes(1);
+    });
+
+    it('survives the real refresh meeting a pricing page that is down', async () => {
+      // No stubbed unit here: the refresh itself runs and its page fetch fails.
+      prices.mockRestore();
+      retentionUnits();
+      const spy = spyOnFetch().mockResolvedValue(new Response('unavailable', { status: 503 }));
+      const output = captureConsole();
+
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(output.errors).toEqual(['model prices: failed (page 503)']);
+      expect(sync).toHaveBeenCalledTimes(1);
+    });
+
+    it('still refreshes the prices when both retention sweeps failed', async () => {
+      jest
+        .spyOn(commsScheduled, 'runCommsRetention')
+        .mockResolvedValue({ deleted: undefined, failures: ['comms retention: 500 upstream'] });
+      jest.spyOn(readerScheduled, 'runReaderRetention').mockResolvedValue({
+        swept: undefined,
+        failures: ['reader retention: permission denied'],
+      });
+      const output = captureConsole();
+
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+      expect(prices).toHaveBeenCalledTimes(1);
+      expect(priceLines(output)).toEqual([PRICE_LINE]);
+    });
+
+    it('prints exactly one price line per run, and none on the other schedules', async () => {
+      retentionUnits();
+      const output = captureConsole();
+      await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+      expect(priceLines(output)).toHaveLength(1);
+
+      spyOnFetch().mockResolvedValue(Response.json([]));
+      jest
+        .spyOn(commsScheduled, 'runCommsJudge')
+        .mockResolvedValue({ gmail: undefined, sweep: undefined, failures: [] });
+      jest
+        .spyOn(commsScheduled, 'runCommsPoll')
+        .mockResolvedValue({ gmail: undefined, sweep: undefined, failures: [] });
+      jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
+        discovered: 0,
+        intake: 0,
+        summarized: 0,
+        refused: 0,
+        countedFailures: 0,
+        uncountedFailures: 0,
+        skippedForCap: 0,
+        skippedForBudget: 0,
+        failures: [],
+      });
+      prices.mockClear();
+      for (const cron of [TICK_CRON, POLL_CRON, READER_CRON]) {
+        await worker.scheduled(controllerFor(cron), env, ctx);
+      }
+
+      expect(prices).not.toHaveBeenCalled();
+    });
+  });
+
   it('logs a recorded wiki sync failure as an error line', async () => {
     jest.spyOn(commsScheduled, 'runCommsRetention').mockResolvedValue({ deleted: 4, failures: [] });
     jest.spyOn(readerScheduled, 'runReaderRetention').mockResolvedValue({ swept: 0, failures: [] });
@@ -975,6 +1187,7 @@ describe('worker.scheduled', () => {
     expect(logged).toEqual([
       'comms retention: 4 messages deleted',
       'reader retention: 0 posts swept',
+      PRICE_LINE,
     ]);
     expect(errors).toEqual([
       'wiki sync: failed (recorded in wiki_sync): GitHub GraphQL tree returned errors: rate limit',
@@ -1184,6 +1397,7 @@ describe('worker.scheduled', () => {
       'comms retention: 12 messages deleted',
       // Singular: one post, like the comms gmail-poll line's 'account' / 'accounts' split.
       'reader retention: 1 post swept',
+      PRICE_LINE,
       WIKI_LINE,
     ]);
   });
@@ -1210,6 +1424,7 @@ describe('worker.scheduled', () => {
     expect(logged).toEqual([
       'comms retention: 12 messages deleted',
       'reader retention: did not run',
+      PRICE_LINE,
       WIKI_LINE,
     ]);
     expect(errors).toEqual(['reader: reader retention: permission denied']);
@@ -1239,6 +1454,7 @@ describe('worker.scheduled', () => {
     expect(logged).toEqual([
       'comms retention: 12 messages deleted',
       'reader retention: 2 posts swept',
+      PRICE_LINE,
       WIKI_LINE,
     ]);
     expect(errors).toEqual(['reader: reader retention: permission denied']);
