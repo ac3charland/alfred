@@ -26,11 +26,12 @@ export const READER_LEASE_STALE_MS = 15 * 60_000;
 /**
  * The columns a retry needs: enough to build the model's input and to CAS the attempt count. The
  * source and site are what name an Instapaper article's publication for the model when nothing
- * links it to a roster row.
+ * links it to a roster row. The HTML rides the same read: the model's input is rebuilt from it
+ * with its links numbered, so a retry offers the same Further reading candidates as a first try.
  */
 const RETRY_COLUMNS =
   'id,source,publication_id,site,title,author,canonical_url,received_at,text,word_count,' +
-  'summarize_attempts';
+  'html,summarize_attempts';
 
 /** A pending post as PostgREST returns it — JSON nulls, not `undefined`. */
 interface WireRetryRow {
@@ -44,6 +45,7 @@ interface WireRetryRow {
   received_at: string;
   text: string | null;
   word_count: number;
+  html: string | null;
   summarize_attempts: number;
 }
 
@@ -62,6 +64,8 @@ export interface RetryRow {
   /** Absent once a retention sweep has nulled it; the tick treats that as nothing to summarise. */
   text?: string | undefined;
   word_count: number;
+  /** The stored HTML, when the row kept one; the model's input is rebuilt from it with numbered links. */
+  html?: string | undefined;
   /** The count as READ, which is what the terminal patch compare-and-sets against. */
   summarize_attempts: number;
 }
@@ -113,6 +117,7 @@ export async function fetchRetries(
     received_at: row.received_at,
     text: row.text ?? undefined,
     word_count: row.word_count,
+    html: row.html ?? undefined,
     summarize_attempts: row.summarize_attempts,
   }));
 }

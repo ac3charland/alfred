@@ -9,10 +9,10 @@
  *   npm run eval:reader -w workers -- --query "from:substack.com newer_than:14d" --limit 5
  *   npm run eval:reader -w workers -- --ids 18f3a…,18f3b…
  *   npm run eval:reader -w workers -- --fixtures            # replay the committed set, still billed
- *   npm run eval:reader -w workers -- --fixtures --dry-run  # extraction only: no key, no bill, no file
+ *   npm run eval:reader -w workers -- --fixtures --dry-run  # extraction and numbered links only: no key, no bill, no file
  *   npm run eval:reader -w workers -- --query … --model claude-opus-5
  *   npm run eval:reader -w workers -- --instapaper --limit 1   # the To Reader folder, oldest first
- *   npm run eval:reader -w workers -- --instapaper --dry-run   # its text only: no key, no bill
+ *   npm run eval:reader -w workers -- --instapaper --dry-run   # its text and links only: no key, no bill
  *
  * `--instapaper` reads the Instapaper folder the Reader's To Reader leg takes articles from, with
  * the four `INSTAPAPER_*` values from `.dev.vars` or the environment, and prints what the tick
@@ -37,8 +37,9 @@ import { headerValue, parseAddress } from '../src/comms/email-text.ts';
 import { type GmailMessage, gmailClient } from '../src/comms/gmail-api.ts';
 import { fetchAccessToken } from '../src/comms/gmail-oauth.ts';
 import { instapaperClient, instapaperCredentials } from '../src/instapaper/client.ts';
-import { type ExtractedPost, extractPost } from '../src/reader/extract.ts';
+import { type ExtractedPost, READER_HTML_CHARS, extractPost } from '../src/reader/extract.ts';
 import { READER_FIXTURES } from '../src/reader/fixtures/index.ts';
+import { buildReaderRequest } from '../src/reader/prompt.ts';
 import { summarizePost } from '../src/reader/summarize.ts';
 import {
   NO_FOLDER_ERROR,
@@ -226,11 +227,24 @@ function toSummaryInput(post: ExtractedPost, publication: string): SummaryInput 
     receivedAt: post.received_at,
     wordCount: post.word_count,
     text: post.text,
+    html: post.html,
+    canonicalUrl: post.canonical_url,
   };
 }
 
 function pad(label: string): string {
   return label.padEnd(15);
+}
+
+/**
+ * The links the model is offered, numbered exactly as its input numbers them. Printing them with
+ * no model call is what proves the numbering — the prompt builder is the code path the tick takes.
+ */
+function printLinks(input: SummaryInput): void {
+  const { links } = buildReaderRequest(input);
+  console.log('  links');
+  for (const link of links) console.log(`    [${String(link.n)}] ${link.url}`);
+  if (links.length === 0) console.log('    (none)');
 }
 
 /** The extraction block — the whole of a `--dry-run`, and the header of a billed post. */
@@ -242,6 +256,7 @@ function printExtraction(label: string, publication: string, post: ExtractedPost
   console.log(`  ${pad('canonical URL')}${post.canonical_url ?? 'none → mailbox'}`);
   console.log(`  ${pad('word count')}${String(post.word_count)}`);
   console.log(`  ${pad('html_extracted')}${String(post.html_extracted)}`);
+  printLinks(toSummaryInput(post, publication));
 }
 
 /** The dollars one call cost at list price, or undefined for a model this file has no price for. */
@@ -270,6 +285,12 @@ function printSummary(model: string, outcome: SummaryOutcome): void {
       if (overview.evidence.length === 0) console.log('    (none)');
       console.log(`  ${pad('argument')}${overview.argument}`);
       console.log(`  ${pad('who should read')}${overview.who_should_read}`);
+      console.log('  further reading');
+      for (const [index, item] of (overview.further_reading ?? []).entries()) {
+        console.log(`    [${String(index + 1)}] ${item.title} — ${item.note}`);
+        console.log(`        ${item.url}`);
+      }
+      if ((overview.further_reading ?? []).length === 0) console.log('    (none)');
 
       break;
     }
@@ -418,12 +439,21 @@ async function runInstapaper(options: Options, apiKey: string): Promise<boolean>
       console.log(
         `  ${pad('OUTCOME')}no readable body${html === undefined ? ' (error 1550)' : ''}`,
       );
-    } else if (!options.dryRun) {
-      const outcome = await summarizePost(
-        { publication, title, receivedAt, wordCount, text },
-        { apiKey, model: options.model },
-      );
-      printSummary(options.model, outcome);
+    } else {
+      const input: SummaryInput = {
+        publication,
+        title,
+        receivedAt,
+        wordCount,
+        text,
+        // Stored under the same ceiling the tick applies, and offered the same way.
+        html: html !== undefined && html.length <= READER_HTML_CHARS ? html : undefined,
+        canonicalUrl: articleUrl(bookmark.url),
+      };
+      printLinks(input);
+      if (!options.dryRun) {
+        printSummary(options.model, await summarizePost(input, { apiKey, model: options.model }));
+      }
     }
     console.log('');
   }

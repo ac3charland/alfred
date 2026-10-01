@@ -15,6 +15,11 @@
  * itself. The Reader's Send verb moves that same bookmark back to Unread. This file's only other
  * write to Instapaper is none: the folder is found by its exact title and never created.
  *
+ * The article's HTML is stored beside its text (under the same ceiling a newsletter's is) and
+ * handed to the summariser, which rebuilds the model's input from it with numbered links — the
+ * stored text is a plain strip and cannot say where the links were. The Reader's Send verb never
+ * re-sends that HTML for an article: it saves by URL, since Instapaper parses the page itself.
+ *
  * Everything here that decides is pure — the site, the title, the order, the plan for one
  * bookmark — and `intakeBookmark` is the one piece that talks to Instapaper and the database, in
  * the same order a newsletter's intake keeps: read, INSERT (the claim and the floor), then the
@@ -24,7 +29,7 @@ import { htmlToText, truncateAtCodePointBoundary } from '../comms/email-text';
 import { InstapaperError } from '../instapaper/client';
 import type { InstapaperApi, InstapaperBookmark } from '../instapaper/types';
 import type { SupabaseEnv } from '../supabase';
-import { READER_TEXT_CHARS } from './extract';
+import { READER_HTML_CHARS, READER_TEXT_CHARS } from './extract';
 import { NO_READABLE_BODY } from './intake';
 import { type BookmarkedPost, insertPost } from './store';
 
@@ -217,6 +222,10 @@ export type BookmarkIntake =
       site: string | undefined;
       text: string;
       wordCount: number;
+      /** The article's HTML as stored, absent when it was over the ceiling; the model's links come from it. */
+      html: string | undefined;
+      /** The article's own URL, so its link to itself is not offered as further reading. */
+      canonicalUrl: string | undefined;
       archive: { ok: true } | { ok: false; error: unknown };
     }
   /** Stored as failed — Instapaper could make no text of it — and the archive attempted. */
@@ -254,17 +263,24 @@ export async function intakeBookmark(
     html === undefined ? { text: '', word_count: 0 } : articleText(html);
   const nowIso = now.toISOString();
   const readable = text !== '';
+  // Kept only when it fits the same ceiling a newsletter's does, and only beside readable text, so
+  // a row holding markup always holds a body too — which the retention sweep's predicate relies on.
+  const storedHtml =
+    readable && html !== undefined && html.length <= READER_HTML_CHARS ? html : undefined;
+  const canonicalUrl = articleUrl(bookmark.url);
 
   const inserted = await insertPost(env, {
     source: 'instapaper',
     instapaper_bookmark_id: bookmark.bookmarkId,
     title,
-    canonical_url: articleUrl(bookmark.url),
+    canonical_url: canonicalUrl,
     site,
     received_at: nowIso,
     text,
     word_count: wordCount,
     html_extracted: readable,
+    // Omitted rather than nulled when there is none: an insert leaves an absent column at null.
+    ...(storedHtml === undefined ? {} : { html: storedHtml }),
     // An article Instapaper had no text for is filed in the same insert, as the newsletter floor
     // is: its title and link stay in the list, and no model call is spent reaching the same end.
     ...(readable
@@ -275,5 +291,15 @@ export async function intakeBookmark(
 
   const archive = await archiveBookmark(api, bookmark.bookmarkId);
   if (!readable) return { kind: 'filed', archive };
-  return { kind: 'ready', id: inserted.id, title, site, text, wordCount, archive };
+  return {
+    kind: 'ready',
+    id: inserted.id,
+    title,
+    site,
+    text,
+    wordCount,
+    html: storedHtml,
+    canonicalUrl,
+    archive,
+  };
 }

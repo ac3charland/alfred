@@ -14,9 +14,19 @@ function post(overrides: Partial<SummaryInput> = {}): SummaryInput {
   };
 }
 
+/** What closes the user turn of a post that offers no links. */
+const NONE_BLOCK = '\n\n--- links ---\nnone';
+
+/** The post text as sent: between the text marker and the links block. */
+function sentText(user: string): string {
+  const marker = '--- post text ---\n';
+  const start = user.indexOf(marker) + marker.length;
+  return user.slice(start, user.indexOf('\n\n--- links ---\n', start));
+}
+
 describe('READER_PROMPT_VERSION', () => {
-  it('is 1 — the wording this module ships with', () => {
-    expect(READER_PROMPT_VERSION).toBe(1);
+  it('is 2 — the wording that added further reading', () => {
+    expect(READER_PROMPT_VERSION).toBe(2);
   });
 });
 
@@ -81,6 +91,46 @@ describe('buildReaderRequest — the system prompt', () => {
   });
 });
 
+describe('buildReaderRequest — the further_reading instructions', () => {
+  const { system } = buildReaderRequest(post());
+
+  it('tests inclusion on the argument resting on the piece, or on a roundup item worth reading', () => {
+    expect(system).toMatch(/argument rests on that piece or engages it at length/);
+    expect(system).toMatch(/builds on it, rebuts it, or quotes substantially from it/);
+    expect(system).toMatch(/link roundup and that item looks genuinely worth reading in full/);
+  });
+
+  it('is selective in a roundup — the few items, never the list', () => {
+    expect(system).toMatch(/pick the few items with real substance, not the list/);
+    expect(system).not.toMatch(/whole list|every link|all the links|every item/i);
+  });
+
+  it('names what to leave out', () => {
+    expect(system).toMatch(/passing citations/);
+    expect(system).toMatch(/single fact or number/);
+    expect(system).toMatch(/definitions and reference pages, homepages and product pages/);
+    expect(system).toMatch(/own earlier posts unless the argument depends on them/);
+    expect(system).toMatch(/chrome \(subscribe, share, comments, the app/);
+    expect(system).toMatch(/sponsors and ads/);
+  });
+
+  it('refers to links by number only and describes title and note', () => {
+    expect(system).toMatch(/only by its number from the links block\. Never write a URL/);
+    expect(system).toMatch(/title names the linked piece itself, not the anchor text/);
+    expect(system).toMatch(/note is at most about 20 words/);
+  });
+
+  it('makes empty the common answer, and the only one when the block says none', () => {
+    expect(system).toMatch(/most posts warrant none or a few/);
+    expect(system).toMatch(/empty list is the right answer when nothing qualifies/);
+    expect(system).toMatch(/ALWAYS the answer when the links block says "none"/);
+  });
+
+  it('lists the field among the Fields', () => {
+    expect(system).toMatch(/- overview\.further_reading:/);
+  });
+});
+
 describe('buildReaderRequest — the user turn', () => {
   it('opens with the metadata block, then the post text', () => {
     const { user } = buildReaderRequest(post());
@@ -116,22 +166,87 @@ describe('buildReaderRequest — the user turn', () => {
 
     const { user } = buildReaderRequest(post({ text: body }));
 
-    const marker = '--- post text ---\n';
-    const sent = user.slice(user.indexOf(marker) + marker.length);
-    expect(sent).toHaveLength(READER_MODEL_INPUT_CHARS);
+    const sent = sentText(user);
+    expect(sent).toHaveLength(READER_MODEL_INPUT_CHARS - NONE_BLOCK.length);
+    expect(user.endsWith(`${'a'.repeat(10)}${NONE_BLOCK}`)).toBe(true);
   });
 
   it('truncates on a code-point boundary, never mid-surrogate-pair', () => {
     // An astral character is two code units, so a pair straddles the cap exactly.
-    const body = `${'a'.repeat(READER_MODEL_INPUT_CHARS - 1)}😀tail`;
+    const body = `${'a'.repeat(READER_MODEL_INPUT_CHARS - NONE_BLOCK.length - 1)}😀tail`;
 
     const { user } = buildReaderRequest(post({ text: body }));
 
-    const marker = '--- post text ---\n';
-    const sent = user.slice(user.indexOf(marker) + marker.length);
-    expect(sent).toHaveLength(READER_MODEL_INPUT_CHARS - 1);
+    const sent = sentText(user);
+    expect(sent).toHaveLength(READER_MODEL_INPUT_CHARS - NONE_BLOCK.length - 1);
     expect(sent).not.toContain('\uD83D');
     expect(/^a+$/u.test(sent)).toBe(true);
+  });
+});
+
+describe('buildReaderRequest — numbered links', () => {
+  const html =
+    '<p>See <a href="https://a.example/one">the first piece</a> and ' +
+    '<a href="https://b.example/two">the second</a>, plus ' +
+    '<a href="https://a.example/one">the first again</a>.</p>' +
+    '<a href="https://self.example/p/x?utm=1">this post</a>';
+
+  it('puts [n] markers in the text and lists the links in number order', () => {
+    const { user, links } = buildReaderRequest(
+      post({ html, text: 'stored text', canonicalUrl: 'https://self.example/p/x' }),
+    );
+
+    expect(user).toContain('the first piece [1]');
+    expect(user).toContain('the second [2]');
+    expect(user).toContain('the first again [1]');
+    expect(user).not.toContain('this post [');
+    expect(user).not.toContain('stored text');
+    expect(
+      user.endsWith('\n\n--- links ---\n[1] https://a.example/one\n[2] https://b.example/two'),
+    ).toBe(true);
+    expect(links).toEqual([
+      { n: 1, url: 'https://a.example/one' },
+      { n: 2, url: 'https://b.example/two' },
+    ]);
+  });
+
+  it('writes none for a post without HTML, and uses its stored text', () => {
+    const { user, links } = buildReaderRequest(post());
+    expect(user.endsWith('--- links ---\nnone')).toBe(true);
+    expect(user).toContain('Prices fell twelve-fold.');
+    expect(links).toEqual([]);
+  });
+
+  it('writes none for HTML that offers no link', () => {
+    const { user } = buildReaderRequest(post({ html: '<p>No anchors at all.</p>' }));
+    expect(user).toContain('No anchors at all.');
+    expect(user.endsWith('--- links ---\nnone')).toBe(true);
+  });
+
+  it('holds the links block to a quarter of the cap, whole-line, and gives the text the rest', () => {
+    const anchors = Array.from(
+      { length: 150 },
+      (_, index) =>
+        `<a href="https://a.example/${String(index + 1)}/${'x'.repeat(980)}">link ${String(index + 1)}</a> `,
+    ).join('');
+    const filler = `<p>${'word '.repeat(60_000)}</p>`;
+    const { user, links } = buildReaderRequest(post({ html: `${anchors}${filler}` }));
+
+    const block = user.slice(user.indexOf('\n\n--- links ---\n'));
+    const lines = block.split('\n').slice(3);
+    expect(links.length).toBeGreaterThan(0);
+    expect(links.length).toBeLessThan(150);
+    expect(lines).toHaveLength(links.length);
+    for (const [index, line] of lines.entries()) {
+      expect(line).toBe(`[${String(index + 1)}] ${links[index]?.url ?? ''}`);
+      expect(line.endsWith('x'.repeat(980))).toBe(true);
+    }
+    expect(block.length).toBeLessThanOrEqual(READER_MODEL_INPUT_CHARS / 4);
+    const afterMeta = user.slice(
+      user.indexOf('--- post text ---\n') + '--- post text ---\n'.length,
+    );
+    expect(afterMeta.length).toBeLessThanOrEqual(READER_MODEL_INPUT_CHARS);
+    expect(afterMeta.length).toBeGreaterThan(READER_MODEL_INPUT_CHARS - 10);
   });
 });
 

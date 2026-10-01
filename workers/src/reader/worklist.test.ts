@@ -63,7 +63,7 @@ describe('fetchRetries', () => {
     await fetchRetries(env, NOW, 6);
     expect(query(urls[0])).toContain(
       'select=id,source,publication_id,site,title,author,canonical_url,received_at,text,' +
-        'word_count,summarize_attempts',
+        'word_count,html,summarize_attempts',
     );
   });
 
@@ -80,6 +80,7 @@ describe('fetchRetries', () => {
         received_at: '2026-09-16T11:06:40.000Z',
         text: WIRE_NULL,
         word_count: 0,
+        html: WIRE_NULL,
         summarize_attempts: 1,
       },
     ]);
@@ -96,6 +97,7 @@ describe('fetchRetries', () => {
         received_at: '2026-09-16T11:06:40.000Z',
         text: undefined,
         word_count: 0,
+        html: undefined,
         summarize_attempts: 1,
       },
     ]);
@@ -114,6 +116,7 @@ describe('fetchRetries', () => {
         received_at: '2026-09-28T11:45:00.000Z',
         text: 'The article.',
         word_count: 2,
+        html: '<p>The article.</p>',
         summarize_attempts: 0,
       },
     ]);
@@ -123,6 +126,7 @@ describe('fetchRetries', () => {
         source: 'instapaper',
         publication_id: undefined,
         site: 'worksinprogress.co',
+        html: '<p>The article.</p>',
       }),
     ]);
   });

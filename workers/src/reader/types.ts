@@ -39,6 +39,28 @@ export interface ReaderOverview {
   evidence: string[];
   argument: string;
   who_should_read: string;
+  /**
+   * The linked articles worth reading in full. Optional because summaries written under prompt
+   * version 1 lack it, and the stored jsonb is read back as this type.
+   */
+  further_reading?: ReaderFurtherReading[] | undefined;
+}
+
+/** One Further reading item as stored: the link's exact URL, the linked piece's title, and what the post uses it for. */
+export interface ReaderFurtherReading {
+  url: string;
+  title: string;
+  note: string;
+}
+
+/**
+ * One Further reading pick as the model returns it, before normalisation: it names the link by
+ * its number in the numbered links block, never by URL, so a URL it invented cannot reach storage.
+ */
+export interface ReaderFurtherReadingPick {
+  link: number;
+  title: string;
+  note: string;
 }
 
 /** One roster row: a publication the worklist view matches inbound mail against. */
@@ -179,6 +201,13 @@ export interface SummaryInput {
   receivedAt: string; // ISO, for the metadata block
   wordCount: number;
   text: string; // text already capped at READER_TEXT_CHARS; the summariser applies READER_MODEL_INPUT_CHARS
+  /**
+   * The post's stored HTML, when it has one. The model's input is rebuilt from it with a numbered
+   * marker after each link worth offering, which the stored `text` (a plain strip) cannot carry.
+   */
+  html?: string | undefined;
+  /** The post's own address, so its link to itself is not offered as further reading. */
+  canonicalUrl?: string | undefined;
 }
 
 export interface SummaryConfig {

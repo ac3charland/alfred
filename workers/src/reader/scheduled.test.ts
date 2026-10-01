@@ -1,6 +1,7 @@
 import type { GmailMessage } from '../comms/gmail-api';
 import { type FetchInit, type FetchInput, spyOnFetch } from '../fetch-stub';
 import { READER_DEFAULT_DAILY_CAP } from './config';
+import { READER_HTML_CHARS } from './extract';
 import { ESSAY_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE, READ_IN_APP_MESSAGE } from './fixtures';
 import * as retention from './retention';
 import { READER_TICK_BUDGET_MS, runReaderRetention, runReaderTick } from './scheduled';
@@ -603,6 +604,43 @@ describe('runReaderTick — the insert', () => {
   });
 });
 
+describe('runReaderTick — the HTML the model’s links come from', () => {
+  it('hands the summariser a fresh newsletter’s HTML and its canonical URL', async () => {
+    harness({ fresh: [worklistRow()], messages: [ESSAY_MESSAGE] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    const [input] = summarizedInputs(summarized);
+    expect(input?.html).toContain('published their');
+    expect(input?.html).toContain('berth-occupancy telemetry');
+    expect(input?.canonicalUrl).toBe('https://open.substack.com/pub/harborline/p/the-grain-ledger');
+  });
+
+  it('hands the summariser a retried row’s stored HTML and canonical URL', async () => {
+    harness({
+      retries: [retryRow({ html: '<p>stored <a href="https://a.example/x">link</a></p>' })],
+    });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      html: '<p>stored <a href="https://a.example/x">link</a></p>',
+      canonicalUrl: 'https://harborline.substack.com/p/earlier',
+    });
+  });
+
+  it('leaves html unset for a retried row that kept none', async () => {
+    harness({ retries: [retryRow({ html: WIRE_NULL })] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]?.html).toBeUndefined();
+  });
+});
+
 describe('runReaderTick — the ceiling', () => {
   it('summarises exactly one more post at 29 calls of 30, and leaves the next unleased', async () => {
     const calls = harness({
@@ -731,7 +769,7 @@ describe('runReaderTick — the terminal patch', () => {
       gist: SUMMARY.gist,
       overview: SUMMARY.overview,
       model: 'claude-sonnet-5',
-      prompt_version: 1,
+      prompt_version: 2,
       summary_state: 'done',
       summarized_at: NOW_ISO,
       model_called_at: NOW_ISO,
@@ -1387,6 +1425,7 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
       text: 'Cities Are Getting Quieter\nStreet noise fell in six downtowns.',
       word_count: 10,
       html_extracted: true,
+      html: ARTICLE_HTML,
       summary_state: 'pending',
       summarizing_since: NOW_ISO,
     });
@@ -1413,13 +1452,16 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
         receivedAt: NOW_ISO,
         wordCount: 10,
         text: 'Cities Are Getting Quieter\nStreet noise fell in six downtowns.',
+        // The model's links are numbered from the HTML, minus the article's own address.
+        html: ARTICLE_HTML,
+        canonicalUrl: 'https://www.worksinprogress.co/issue/quiet-cities',
       },
     ]);
     // The same terminal patch a newsletter gets, `model_called_at` included — which is what makes
     // an article count against the daily ceiling.
     expect(payload(restCalls(calls, 'reader_posts', 'PATCH')[0])).toMatchObject({
       summary_state: 'done',
-      prompt_version: 1,
+      prompt_version: 2,
       model_called_at: NOW_ISO,
     });
     expect(summary).toMatchObject({ intake: 0, summarized: 1 });
@@ -1431,6 +1473,29 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
       failures: [],
     });
     expect(healthWrites(calls).at(-1)).toMatchObject({ instapaper_last_success_at: NOW_ISO });
+  });
+
+  it('omits the article’s HTML from the insert, and the model call, when it is over the ceiling', async () => {
+    const huge = `<p>${'word '.repeat(READER_HTML_CHARS / 5 + 10)}</p>`;
+    const calls = harness({ instapaper: { bookmarks: [bookmarkRow()], texts: { 11: huge } } });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(instapaperEnv, NOW);
+
+    const inserted = payload(restCalls(calls, 'reader_posts', 'POST')[0]);
+    expect(inserted).not.toHaveProperty('html');
+    expect(inserted['html_extracted']).toBe(true);
+    expect(summarizedInputs(summarized)[0]?.html).toBeUndefined();
+  });
+
+  it('keeps an article’s HTML that sits exactly on the ceiling', async () => {
+    const onCeiling = `<p>${'a'.repeat(READER_HTML_CHARS - '<p></p>'.length)}</p>`;
+    const calls = harness({ instapaper: { bookmarks: [bookmarkRow()], texts: { 11: onCeiling } } });
+    mockSummarize(DONE);
+
+    await runReaderTick(instapaperEnv, NOW);
+
+    expect(payload(restCalls(calls, 'reader_posts', 'POST')[0])['html']).toBe(onCeiling);
   });
 
   it('files a bookmark Instapaper has no text for (1550) as failed, with no model call, and archives it', async () => {

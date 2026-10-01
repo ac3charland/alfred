@@ -84,7 +84,8 @@ export interface ExtractedPost {
 }
 
 /** `<a … href="…" …>text</a>`, href quoted either way or bare, text non-greedy across newlines. */
-const ANCHOR = /<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))[^>]*>([\S\s]*?)<\/a>/gi;
+export const ANCHOR =
+  /<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))[^>]*>([\S\s]*?)<\/a>/gi;
 
 /** `<title>…</title>`, the fallback source for a post whose subject line was empty. */
 const HTML_TITLE = /<title[^>]*>([\S\s]*?)<\/title>/i;
@@ -142,7 +143,7 @@ const EPOCH = new Date(0).toISOString();
  * that export list to save six lines here would be an edit to another module's surface made for
  * this one's convenience.
  */
-function decodeEntities(text: string): string {
+export function decodeEntities(text: string): string {
   return text.replaceAll(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
     const named = NAMED_ENTITIES[entity.toLowerCase()];
     if (named !== undefined) return named;
@@ -156,7 +157,7 @@ function decodeEntities(text: string): string {
 }
 
 /** Runs of whitespace to one space, ends trimmed. What a title and an anchor's text go through. */
-function collapse(text: string): string {
+export function collapse(text: string): string {
   return text.replaceAll(/\s+/g, ' ').trim();
 }
 

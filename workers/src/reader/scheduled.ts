@@ -119,6 +119,9 @@ import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
  * to upsert it simply takes that slot back and the per-tick count is 8 again. A bookmark
  * Instapaper has no text for costs 3: `get_text`, an insert filed as failed, `archive`.
  *
+ * The post's HTML rides the reads and writes already counted — the intake's own parse, the insert,
+ * and two more columns on the pending-retry read — so Further reading adds no fetch.
+ *
  * Adding one more fetch per post means dropping this limit to five; adding two means four.
  */
 export const READER_TICK_LIMIT = 6;
@@ -293,6 +296,8 @@ function toSummaryInput(
     received_at: string;
     word_count: number;
     text: string;
+    html?: string | undefined;
+    canonical_url?: string | undefined;
   },
   publication: string,
 ): SummaryInput {
@@ -305,6 +310,9 @@ function toSummaryInput(
     receivedAt: post.received_at,
     wordCount: post.word_count,
     text: post.text,
+    // Optional with `| undefined`, so these are set straight through.
+    html: post.html,
+    canonicalUrl: post.canonical_url,
   };
 }
 
@@ -490,6 +498,8 @@ async function prepareBookmark(
           receivedAt: context.now.toISOString(),
           wordCount: taken.wordCount,
           text: taken.text,
+          html: taken.html,
+          canonicalUrl: taken.canonicalUrl,
         },
         attempts: 0,
       };

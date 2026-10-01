@@ -1,14 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { READER_MODEL_INPUT_CHARS, buildReaderRequest } from './prompt';
-import { READER_SUMMARY_SCHEMA } from './schema';
+import { READER_SUMMARY_SCHEMA, type RawReaderSummary } from './schema';
 import {
   READER_MAX_RETRIES,
   READER_MAX_TOKENS,
   READER_REQUEST_TIMEOUT_MS,
   summarizePost,
 } from './summarize';
-import type { ReaderSummary, SummaryConfig, SummaryInput } from './types';
+import type { SummaryConfig, SummaryInput } from './types';
 
 const config: SummaryConfig = { apiKey: 'sk-ant-test-key', model: 'claude-sonnet-5' };
 
@@ -24,7 +24,7 @@ const post: SummaryInput = {
   text: 'Prices fell twelve-fold. Latency barely moved.',
 };
 
-function validSummary(): ReaderSummary {
+function validSummary(): RawReaderSummary {
   return {
     headline: 'Why the new inference cost curve changes hosting decisions',
     gist: 'Argues the bottleneck moved from price to latency.',
@@ -33,6 +33,7 @@ function validSummary(): ReaderSummary {
       evidence: ['A 12× price drop against a 1.4× latency improvement.'],
       argument: 'Prices fell; latency did not; the hosting decision inverted.',
       who_should_read: 'Anyone choosing between hosted and self-run inference.',
+      further_reading: [],
     },
   };
 }
@@ -121,6 +122,7 @@ describe('summarizePost — the request', () => {
     expect(typeof content).toBe('string');
     const sent = typeof content === 'string' ? content : '';
     expect(sent.split('--- post text ---\n', 2)[1]).toHaveLength(READER_MODEL_INPUT_CHARS);
+    expect(sent.endsWith('--- links ---\nnone')).toBe(true);
   });
 
   it('builds the client with the reader timeout and one retry', async () => {
@@ -144,6 +146,55 @@ describe('summarizePost — reading a response', () => {
     mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'));
 
     await expect(summarizePost(post, config)).resolves.toEqual({ kind: 'done', summary });
+  });
+
+  it('stores a valid further-reading pick as its URL and drops a number it never offered', async () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [
+      { link: 99, title: 'Invented', note: 'Not in the links block.' },
+      { link: 2, title: ' The second piece ', note: ' Rebutted at length. ' },
+    ];
+    const spy = mockCreate().mockResolvedValue(
+      fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'),
+    );
+    const html =
+      '<a href="https://a.example/one">first</a> <a href="https://b.example/two">second</a>';
+
+    const outcome = await summarizePost({ ...post, html }, config);
+
+    expect(outcome.kind).toBe('done');
+    if (outcome.kind !== 'done') throw new Error('expected done');
+    expect(outcome.summary.overview.further_reading).toEqual([
+      { url: 'https://b.example/two', title: 'The second piece', note: 'Rebutted at length.' },
+    ]);
+    const content = sentParams(spy).messages[0]?.content;
+    expect(content).toContain('[2] https://b.example/two');
+  });
+
+  it('stores no further reading for a post that offered no links, whatever the model picked', async () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [{ link: 1, title: 'Made up', note: 'n' }];
+    mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'));
+
+    const outcome = await summarizePost(post, config);
+
+    expect(outcome.kind).toBe('done');
+    if (outcome.kind !== 'done') throw new Error('expected done');
+    expect(outcome.summary.overview.further_reading).toEqual([]);
+  });
+
+  it('maps an answer without further_reading to a counted schema failure', async () => {
+    const summary = validSummary();
+    const { further_reading: dropped, ...overview } = summary.overview;
+    expect(dropped).toEqual([]);
+    mockCreate().mockResolvedValue(
+      fakeMessage(textContent(JSON.stringify({ ...summary, overview })), 'end_turn'),
+    );
+
+    await expect(summarizePost(post, config)).resolves.toEqual({
+      kind: 'counted',
+      error: 'schema',
+    });
   });
 
   it('trims each bullet list to six on the way out', async () => {
