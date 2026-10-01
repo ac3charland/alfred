@@ -175,5 +175,11 @@ export async function summarizePost(
     return { kind: 'counted', error: 'schema', ...usageFields(usage) };
   }
 
-  return { kind: 'done', summary: normalizeReaderSummary(parsed), ...usageFields(usage) };
+  // Picks are mapped onto the links the request actually listed, so a number the model invented
+  // — or one cut from the input by the cap — never reaches the database as a URL.
+  return {
+    kind: 'done',
+    summary: normalizeReaderSummary(parsed, request.links),
+    ...usageFields(usage),
+  };
 }

@@ -33,12 +33,34 @@ import type { SupabaseEnv } from '../supabase';
  */
 export type ReaderSummaryState = 'pending' | 'done' | 'refused' | 'failed';
 
+/** One Further reading item as stored: a link the post makes, named and explained by the model. */
+export interface ReaderFurtherReading {
+  /** The href exactly as the post carries it — often an opaque Substack redirect wrapper. */
+  url: string;
+  /** The linked piece's name, since the anchor text is often "this" or "here". */
+  title: string;
+  /** What the post uses it for — the reason to open it. */
+  note: string;
+}
+
 /** The shape `reader_posts.overview` holds for a `done` post — the model's structured take. */
 export interface ReaderOverview {
   novel_ideas: string[];
   evidence: string[];
   argument: string;
   who_should_read: string;
+  /** Absent on every post summarised before the prompt asked for it. */
+  further_reading?: ReaderFurtherReading[] | undefined;
+}
+
+/**
+ * One Further reading pick as the model writes it: a number from the links block, never a URL,
+ * so that every stored URL is one the post really contains. Worker-only.
+ */
+export interface ReaderFurtherReadingPick {
+  link: number;
+  title: string;
+  note: string;
 }
 
 /** One roster row: a publication the worklist view matches inbound mail against. */
@@ -179,6 +201,10 @@ export interface SummaryInput {
   receivedAt: string; // ISO, for the metadata block
   wordCount: number;
   text: string; // text already capped at READER_TEXT_CHARS; the summariser applies READER_MODEL_INPUT_CHARS
+  /** The stored HTML the text came from, when there is one — the only place the post's links are. */
+  html?: string | undefined;
+  /** The post's own address, which is never offered back to the model as a link. */
+  canonicalUrl?: string | undefined;
 }
 
 export interface SummaryConfig {
@@ -186,10 +212,20 @@ export interface SummaryConfig {
   model: string;
 }
 
+/** The model's answer as the guard accepts it: further reading still as link numbers. */
 export interface ReaderSummary {
   headline: string;
   gist: string;
-  overview: ReaderOverview;
+  overview: Omit<ReaderOverview, 'further_reading'> & {
+    further_reading: ReaderFurtherReadingPick[];
+  };
+}
+
+/** A summary ready to store: trimmed, and its further reading mapped to the post's own URLs. */
+export interface StoredReaderSummary {
+  headline: string;
+  gist: string;
+  overview: ReaderOverview & { further_reading: ReaderFurtherReading[] };
 }
 
 export interface SummaryUsage {
@@ -198,7 +234,7 @@ export interface SummaryUsage {
 }
 
 export type SummaryOutcome =
-  | { kind: 'done'; summary: ReaderSummary; usage?: SummaryUsage }
+  | { kind: 'done'; summary: StoredReaderSummary; usage?: SummaryUsage }
   /**
    * `explanation` carries the API's own `stop_details.explanation` when it supplied one — absent
    * when the response carried no explanation for the category, which the SDK types as possible.

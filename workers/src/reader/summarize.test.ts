@@ -33,6 +33,7 @@ function validSummary(): ReaderSummary {
       evidence: ['A 12× price drop against a 1.4× latency improvement.'],
       argument: 'Prices fell; latency did not; the hosting decision inverted.',
       who_should_read: 'Anyone choosing between hosted and self-run inference.',
+      further_reading: [],
     },
   };
 }
@@ -120,7 +121,8 @@ describe('summarizePost — the request', () => {
     const content = sentParams(spy).messages[0]?.content;
     expect(typeof content).toBe('string');
     const sent = typeof content === 'string' ? content : '';
-    expect(sent.split('--- post text ---\n', 2)[1]).toHaveLength(READER_MODEL_INPUT_CHARS);
+    const text = sent.split('--- post text ---\n', 2)[1]?.split('\n\n--- links ---\n', 2)[0];
+    expect(text).toHaveLength(READER_MODEL_INPUT_CHARS);
   });
 
   it('builds the client with the reader timeout and one retry', async () => {
@@ -144,6 +146,44 @@ describe('summarizePost — reading a response', () => {
     mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'));
 
     await expect(summarizePost(post, config)).resolves.toEqual({ kind: 'done', summary });
+  });
+
+  it('stores further reading as the post’s own URLs, dropping a link number it never offered', async () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [
+      { link: 7, title: 'An invented source', note: 'The model made this number up.' },
+      { link: 1, title: 'The pricing essay', note: 'The argument it rebuts.' },
+    ];
+    mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'));
+
+    const outcome = await summarizePost(
+      {
+        ...post,
+        html: '<p>As <a href="https://example.com/pricing">this essay</a> argues, prices fell.</p>',
+      },
+      config,
+    );
+
+    expect(outcome.kind).toBe('done');
+    if (outcome.kind !== 'done') throw new Error('expected done');
+    expect(outcome.summary.overview.further_reading).toEqual([
+      {
+        url: 'https://example.com/pricing',
+        title: 'The pricing essay',
+        note: 'The argument it rebuts.',
+      },
+    ]);
+  });
+
+  it('stores no further reading for a post without HTML, whatever the model picked', async () => {
+    const summary = validSummary();
+    summary.overview.further_reading = [{ link: 1, title: 'Anything', note: 'Anything.' }];
+    mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'));
+
+    const outcome = await summarizePost(post, config);
+
+    if (outcome.kind !== 'done') throw new Error('expected done');
+    expect(outcome.summary.overview.further_reading).toEqual([]);
   });
 
   it('trims each bullet list to six on the way out', async () => {
