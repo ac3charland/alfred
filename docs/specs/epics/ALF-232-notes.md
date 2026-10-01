@@ -274,3 +274,15 @@ what a reader who wasn't here needs.
   folding comms' `AccountDot` onto the new `StatusDot`.
 - **The paywalled-teaser marker from Story 1's handoff was not built** — nothing detects the cut,
   and `headline` is still stored and unrendered.
+
+## Further reading build notes (ALF-289)
+
+- **Unconfirmed: does `bookmarks/add` resolve a `substack.com/redirect/<uuid>` wrapper?** The
+  send leaves `resolve_final_url` at Instapaper's default, which the API documents as following
+  redirects, but the build had no Instapaper credentials to try it against. To confirm, send one
+  Further reading item from a real Substack post to Instapaper and read the saved bookmark's `url`
+  (`npm run eval:reader -w workers -- --instapaper --dry-run` lists To Reader with each URL). If
+  it is still the wrapper, an article sent to the Reader shows `substack.com` as its eyebrow
+  (`siteOf` reads that URL), and the fix is resolving in the send route, not in the Worker.
+- **The partial-send toast's cause is a phrase the route writes** (`failure` beside `post` and
+  `unsent` in the 200 body), because the store cannot rebuild it from `unsent` alone.
