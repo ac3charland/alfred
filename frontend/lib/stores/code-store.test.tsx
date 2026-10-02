@@ -3942,6 +3942,35 @@ describe('code-store', () => {
       expect(findStoryState(result.current.board)).toBe('done');
     });
 
+    it('launches the spec-reading implementation prompt for a story the refetch moved to Ready for Dev (ALF-317)', async () => {
+      // The refinement PR merged while this tab's realtime socket was down, so the move (and the
+      // spec_path the same Worker write recorded) reaches the store only through the refetch.
+      jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+      mockUpdateCodeState.mockResolvedValue(makeSavedSidecar({ factory_state: 'in_development' }));
+      mockListCode.mockResolvedValue([
+        makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+          spec_path: 'docs/specs/ALF-42.md',
+        }),
+      ]);
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      await act(async () => {
+        await result.current.actions.refreshStatuses();
+      });
+      await act(async () => {
+        await result.current.actions.openClaudeSession('ALF-42', 'implementation');
+      });
+
+      const prompt = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+      expect(prompt).toContain('Implement the merged spec committed at `docs/specs/ALF-42.md`');
+      expect(prompt).not.toContain('SKIP-REFINEMENT');
+    });
+
     it('swallows a failed fetch and leaves the seeded status intact', async () => {
       mockListCode.mockRejectedValue(new Error('network down'));
       const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
