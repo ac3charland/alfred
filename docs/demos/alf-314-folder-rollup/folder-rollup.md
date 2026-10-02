@@ -19,3 +19,11 @@ After: the folder rolls the subtree up, so Plan the offsite ranks as its High su
 The By-Priority screen, unchanged, ranks the same three tasks the same way — the folder now mirrors it. Both (and the Today view, and a folder's Due-date sort, which rolls up the soonest active due date) go through one shared ranking, rankNodes in frontend/lib/priority.ts.
 
 ![](folder-rollup-image-3.png)
+
+The same rollup applies to a folder's Due-date sort, which leads with the soonest deadline in each task's active subtree. Before: Plan the offsite has no date of its own, so it sinks below Renew the domain (Oct 20), even though its subtask Book the venue is due sooner.
+
+![](folder-rollup-image-4.png)
+
+After: Plan the offsite ranks by Book the venue's Oct 9 and leads the folder — the same urgency rollup the Today view applies.
+
+![](folder-rollup-image-5.png)
