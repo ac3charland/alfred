@@ -33,3 +33,7 @@ environment=RealPlay
 **5. New-project dialog.** The environment can also be named when the project is created; it's optional, and blank means none.
 
 ![](cloud-environment-image-4.png)
+
+**6. Board story snapshots.** The new header line moves the Board stories down by one row (28px). Snapshot diff for `Code/Board — With description` (old · diff · new); the five Board baselines are re-approved in this PR.
+
+![](cloud-environment-image-5.png)
