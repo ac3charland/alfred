@@ -49,20 +49,32 @@ export function projectOptions(
  * The epic rows: name left, ref right in mono — the project list's sibling. An epic with no ref
  * yet (one created before its first story numbered it) renders the name alone rather than an
  * empty second column.
+ *
+ * Pass `selectedId` and that epic is hoisted to the very top — above the clear entry — so the
+ * current choice is the first thing the picker shows, not something to scroll to in a long
+ * project. The rest keep their order. A `selectedId` not among `epics` (an archived hint the
+ * caller filtered out) hoists nothing.
  */
-export function epicOptions(epics: readonly Epic[], clearLabel?: string): PickerChipOption[] {
-  return [
-    ...clearEntry(clearLabel),
-    ...epics.map((e) => ({
-      value: e.id,
-      label: (
-        <>
-          <span className="truncate">{e.name}</span>
-          {e.ref !== '' && (
-            <span className="shrink-0 font-mono text-xs text-muted-foreground/70">{e.ref}</span>
-          )}
-        </>
-      ),
-    })),
-  ];
+export function epicOptions(
+  epics: readonly Epic[],
+  clearLabel?: string,
+  selectedId?: string | null,
+): PickerChipOption[] {
+  const selected = epics.find((e) => e.id === selectedId);
+  const ordered =
+    selected === undefined ? epics : [selected, ...epics.filter((e) => e !== selected)];
+  const rows = ordered.map((e) => ({
+    value: e.id,
+    label: (
+      <>
+        <span className="truncate">{e.name}</span>
+        {e.ref !== '' && (
+          <span className="shrink-0 font-mono text-xs text-muted-foreground/70">{e.ref}</span>
+        )}
+      </>
+    ),
+  }));
+  return selected === undefined
+    ? [...clearEntry(clearLabel), ...rows]
+    : [...rows.slice(0, 1), ...clearEntry(clearLabel), ...rows.slice(1)];
 }

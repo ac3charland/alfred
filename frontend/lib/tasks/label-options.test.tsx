@@ -104,4 +104,38 @@ describe('epicOptions', () => {
   it('leads with the clear entry when one is named', () => {
     expect(epicOptions([TRIAGE], 'No epic')[0]).toEqual({ value: null, label: 'No epic' });
   });
+
+  describe('with a selected epic', () => {
+    const SECOND: Epic = { ...TRIAGE, id: 'e2', name: 'LLM processing', ref: 'ALF-158' };
+    const THIRD: Epic = { ...TRIAGE, id: 'e3', name: 'Habits', ref: 'ALF-200' };
+
+    it('hoists the selected epic to the top, keeping the rest in order', () => {
+      const options = epicOptions([TRIAGE, SECOND, THIRD], undefined, 'e2');
+
+      expect(options.map((o) => o.value)).toEqual(['e2', 'e1', 'e3']);
+    });
+
+    it('puts the selected epic above the clear entry', () => {
+      const options = epicOptions([TRIAGE, SECOND], 'No epic', 'e2');
+
+      expect(options.map((o) => o.value)).toEqual(['e2', null, 'e1']);
+    });
+
+    it('leaves the order alone when nothing is selected', () => {
+      expect(epicOptions([TRIAGE, SECOND], 'No epic', null).map((o) => o.value)).toEqual([
+        null,
+        'e1',
+        'e2',
+      ]);
+    });
+
+    it('leaves the order alone when the selected epic is not in the list', () => {
+      // An archived hint is filtered out of the list upstream; there is nothing to hoist.
+      expect(epicOptions([TRIAGE, SECOND], 'No epic', 'gone').map((o) => o.value)).toEqual([
+        null,
+        'e1',
+        'e2',
+      ]);
+    });
+  });
 });

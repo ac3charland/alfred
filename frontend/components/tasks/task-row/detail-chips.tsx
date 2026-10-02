@@ -271,7 +271,11 @@ export function IntendedEpicChip({
         value={epicId}
         // The badge still shows an archived hint, which the list no longer offers — so give it the
         // clear entry, or a project with no active epic left opens an empty popover.
-        options={epicOptions(epicsForProject, epic.archived_at === null ? undefined : 'No epic')}
+        options={epicOptions(
+          epicsForProject,
+          epic.archived_at === null ? undefined : 'No epic',
+          epicId,
+        )}
         onSelect={onSelect}
       />
     );
@@ -305,7 +309,7 @@ export function IntendedEpicChip({
     <PickerChip
       trigger={trigger}
       value={epic?.id ?? null}
-      options={epicOptions(epicsForProject, 'No epic')}
+      options={epicOptions(epicsForProject, 'No epic', epic?.id ?? null)}
       onSelect={onSelect}
     />
   );
