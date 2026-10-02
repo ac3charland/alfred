@@ -103,6 +103,7 @@ beforeEach(() => {
 const PROJECT_A: Project = {
   color: null,
   description: null,
+  cloud_environment: null,
   exclude_from_pr_ratio: false,
   id: 'p1',
   name: 'Alfred',
@@ -2906,6 +2907,64 @@ describe('code-store', () => {
           await expect(result.current.updateProjectColor('missing', 'blue')).rejects.toThrow(
             /not found/i,
           );
+        });
+        expect(mockUpdateProject).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('updateProjectCloudEnvironment (board header inline edit)', () => {
+      it('optimistically sets the environment, then reconciles with the saved row', async () => {
+        mockUpdateProject.mockResolvedValue({ ...PROJECT_A, cloud_environment: 'alfred-saved' });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateProjectCloudEnvironment('p1', 'alfred');
+        });
+
+        expect(mockUpdateProject).toHaveBeenCalledWith('p1', { cloud_environment: 'alfred' });
+        expect(result.current.board.project?.cloud_environment).toBe('alfred-saved');
+      });
+
+      it('applies the environment before the request resolves', () => {
+        mockUpdateProject.mockReturnValue(new Promise<Project>(() => {}));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        act(() => {
+          void result.current.actions.updateProjectCloudEnvironment('p1', 'alfred');
+        });
+
+        expect(result.current.board.project?.cloud_environment).toBe('alfred');
+      });
+
+      it('restores the previous environment and toasts on failure', async () => {
+        mockUpdateProject.mockRejectedValue(new Error('patch failed'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [{ ...PROJECT_A, cloud_environment: 'alfred' }] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.updateProjectCloudEnvironment('p1', null),
+          ).rejects.toThrow('patch failed');
+        });
+
+        expect(result.current.board.project?.cloud_environment).toBe('alfred');
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't save the cloud environment");
+      });
+
+      it('throws when the project is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.updateProjectCloudEnvironment('missing', 'alfred'),
+          ).rejects.toThrow(/not found/i);
         });
         expect(mockUpdateProject).not.toHaveBeenCalled();
       });

@@ -1,4 +1,5 @@
 import {
+  CLOUD_ENVIRONMENT_MAX,
   convertCodeEpicSchema,
   createCodeSchema,
   createFolderSchema,
@@ -348,6 +349,25 @@ describe('updateFolderSchema', () => {
 });
 
 describe('updateProjectSchema', () => {
+  it.each([
+    ['RealPlay', 'RealPlay'],
+    ['  env_01AbC  ', 'env_01AbC'],
+    ['', null],
+    [' '.repeat(3), null],
+    [null, null],
+  ])('normalises the cloud environment %p to %p', (input, expected) => {
+    const result = updateProjectSchema.safeParse({ cloud_environment: input });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toStrictEqual({ cloud_environment: expected });
+  });
+
+  it.each([3, true, 'x'.repeat(CLOUD_ENVIRONMENT_MAX + 1)])(
+    'rejects the cloud environment %p',
+    (environment) => {
+      expect(updateProjectSchema.safeParse({ cloud_environment: environment }).success).toBe(false);
+    },
+  );
+
   it('rejects an empty body — a PATCH must change something', () => {
     expect(updateProjectSchema.safeParse({}).success).toBe(false);
   });
@@ -445,6 +465,19 @@ describe('listItemsQuerySchema', () => {
 
 describe('createProjectSchema', () => {
   const base = { name: 'Alfred', github_url: 'https://github.com/o/r' };
+
+  it('takes an optional cloud environment, trimmed, with blank meaning none', () => {
+    const named = createProjectSchema.safeParse({
+      ...base,
+      key: 'ALF',
+      cloud_environment: ' alfred ',
+    });
+    expect(named.success && named.data.cloud_environment).toBe('alfred');
+    const blank = createProjectSchema.safeParse({ ...base, key: 'ALF', cloud_environment: ' ' });
+    expect(blank.success && blank.data.cloud_environment).toBeNull();
+    const absent = createProjectSchema.safeParse({ ...base, key: 'ALF' });
+    expect(absent.success && absent.data.cloud_environment).toBeUndefined();
+  });
 
   it('accepts a 3-char key: uppercase letter then two upper-alnum', () => {
     expect(createProjectSchema.safeParse({ ...base, key: 'AL1' }).success).toBe(true);

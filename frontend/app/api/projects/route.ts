@@ -25,7 +25,7 @@ export const GET = withSession(async () => {
 // POST /api/projects — create a project
 //
 // The body carries a GitHub URL + a 3-char key; the route derives repo_owner/repo_name
-// from the URL (storing the URL too) and inserts. Key uniqueness is enforced by the DB
+// from the URL (storing the URL too) and inserts, with the optional cloud environment (ALF-279). Key uniqueness is enforced by the DB
 // `unique` constraint, which surfaces here as a 409 (via mapSupabaseError).
 // ---------------------------------------------------------------------------
 
@@ -35,7 +35,7 @@ export const POST = withSession(async (session, request) => {
   const input = await parseRequestBody(request, createProjectSchema);
   if (input instanceof Response) return input;
 
-  const { name, github_url, key } = input;
+  const { name, github_url, key, cloud_environment } = input;
 
   const repo = parseGithubRepo(github_url);
   if (repo === null) {
@@ -48,6 +48,7 @@ export const POST = withSession(async (session, request) => {
     repo_owner: repo.owner,
     repo_name: repo.name,
     github_url,
+    ...(cloud_environment === undefined ? {} : { cloud_environment }),
   };
 
   const { data, error } = await supabase.from('projects').insert(insert).select().single();

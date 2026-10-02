@@ -302,6 +302,8 @@ export function makeOptimisticProject(input: CreateProjectInput): Project {
     color: null,
     // Counted on the PR ratio, like every project, until the owner excludes it.
     exclude_from_pr_ratio: false,
+    // The optional environment the new-project dialog names; none until the owner sets one.
+    cloud_environment: input.cloud_environment ?? null,
   };
 }
 

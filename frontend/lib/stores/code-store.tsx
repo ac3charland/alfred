@@ -295,6 +295,14 @@ export interface CodeActions {
    */
   updateProjectPrRatioExclusion: (projectId: string, excluded: boolean) => Promise<void>;
   /**
+   * Set the Claude Code cloud environment (name or id) the project's launch links preselect, from
+   * the board header (ALF-279). `null` clears it. Optimistic, rolled back with a toast on failure.
+   */
+  updateProjectCloudEnvironment: (
+    projectId: string,
+    cloudEnvironment: string | null,
+  ) => Promise<void>;
+  /**
    * The gate from within the Code view: admit an item already known here to the
    * factory. Inserts an optimistic story card and reconciles with the allocated ref.
    */
@@ -751,6 +759,39 @@ export function CodeProvider({
   }, [showToast]);
 
   const actions = React.useMemo<CodeActions>(() => {
+    /**
+     * The optimistic write behind every project-settings field the owner edits in place: apply
+     * `patch` at once, send it as the PATCH body, then settle on the saved row's `fields` — or
+     * roll back to the previous row's and toast `failure`. Throws when the project isn't loaded.
+     */
+    async function patchProjectSettings(
+      projectId: string,
+      patch: Partial<Project> & api.UpdateProjectInput,
+      fields: (project: Project) => Partial<Project>,
+      failure: string,
+    ): Promise<void> {
+      const previous = stateRef.current.projects.find((p) => p.id === projectId);
+      if (previous === undefined) {
+        throw new Error(`Project ${projectId} not found in the code store`);
+      }
+      const rollback = fields(previous);
+      await runOptimisticMutation({
+        optimistic: () => {
+          dispatch({ type: 'patchProject', id: projectId, patch });
+        },
+        apiCall: () => api.updateProject(projectId, patch),
+        reconcile: (saved) => {
+          dispatch({ type: 'patchProject', id: projectId, patch: fields(saved) });
+        },
+        rollback: () => {
+          dispatch({ type: 'patchProject', id: projectId, patch: rollback });
+        },
+        onError: () => {
+          showToastRef.current(failure);
+        },
+      });
+    }
+
     // ── Priority writes (ALF-250) — see `priorityBookRef` ──────────────────────────────────
 
     /** Queue a priority write the screen already shows, and (re)arm the sync. */
@@ -1010,84 +1051,36 @@ export function CodeProvider({
         }
       },
       async updateProjectDescription(projectId, description) {
-        const previous = stateRef.current.projects.find((p) => p.id === projectId);
-        if (previous === undefined) {
-          throw new Error(`Project ${projectId} not found in the code store`);
-        }
-        const rollback: Partial<Project> = { description: previous.description };
-        await runOptimisticMutation({
-          optimistic: () => {
-            dispatch({ type: 'patchProject', id: projectId, patch: { description } });
-          },
-          apiCall: () => api.updateProject(projectId, { description }),
-          reconcile: (saved) => {
-            dispatch({
-              type: 'patchProject',
-              id: projectId,
-              patch: { description: saved.description },
-            });
-          },
-          rollback: () => {
-            dispatch({ type: 'patchProject', id: projectId, patch: rollback });
-          },
-          onError: () => {
-            showToastRef.current("Couldn't save the project description");
-          },
-        });
+        await patchProjectSettings(
+          projectId,
+          { description },
+          (project) => ({ description: project.description }),
+          "Couldn't save the project description",
+        );
       },
       async updateProjectColor(projectId, color) {
-        const previous = stateRef.current.projects.find((p) => p.id === projectId);
-        if (previous === undefined) {
-          throw new Error(`Project ${projectId} not found in the code store`);
-        }
-        const rollback: Partial<Project> = { color: previous.color };
-        await runOptimisticMutation({
-          optimistic: () => {
-            dispatch({ type: 'patchProject', id: projectId, patch: { color } });
-          },
-          apiCall: () => api.updateProject(projectId, { color }),
-          reconcile: (saved) => {
-            dispatch({ type: 'patchProject', id: projectId, patch: { color: saved.color } });
-          },
-          rollback: () => {
-            dispatch({ type: 'patchProject', id: projectId, patch: rollback });
-          },
-          onError: () => {
-            showToastRef.current("Couldn't save the project color");
-          },
-        });
+        await patchProjectSettings(
+          projectId,
+          { color },
+          (project) => ({ color: project.color }),
+          "Couldn't save the project color",
+        );
       },
       async updateProjectPrRatioExclusion(projectId, excluded) {
-        const previous = stateRef.current.projects.find((p) => p.id === projectId);
-        if (previous === undefined) {
-          throw new Error(`Project ${projectId} not found in the code store`);
-        }
-        const rollback: Partial<Project> = {
-          exclude_from_pr_ratio: previous.exclude_from_pr_ratio,
-        };
-        await runOptimisticMutation({
-          optimistic: () => {
-            dispatch({
-              type: 'patchProject',
-              id: projectId,
-              patch: { exclude_from_pr_ratio: excluded },
-            });
-          },
-          apiCall: () => api.updateProject(projectId, { exclude_from_pr_ratio: excluded }),
-          reconcile: (saved) => {
-            dispatch({
-              type: 'patchProject',
-              id: projectId,
-              patch: { exclude_from_pr_ratio: saved.exclude_from_pr_ratio },
-            });
-          },
-          rollback: () => {
-            dispatch({ type: 'patchProject', id: projectId, patch: rollback });
-          },
-          onError: () => {
-            showToastRef.current("Couldn't save the PR ratio exclusion");
-          },
-        });
+        await patchProjectSettings(
+          projectId,
+          { exclude_from_pr_ratio: excluded },
+          (project) => ({ exclude_from_pr_ratio: project.exclude_from_pr_ratio }),
+          "Couldn't save the PR ratio exclusion",
+        );
+      },
+      async updateProjectCloudEnvironment(projectId, cloudEnvironment) {
+        await patchProjectSettings(
+          projectId,
+          { cloud_environment: cloudEnvironment },
+          (project) => ({ cloud_environment: project.cloud_environment }),
+          "Couldn't save the cloud environment",
+        );
       },
       async createEpic(projectId, name) {
         const optimistic = makeOptimisticEpic(projectId, name);

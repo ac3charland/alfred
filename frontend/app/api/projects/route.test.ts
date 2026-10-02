@@ -169,6 +169,28 @@ describe('POST /api/projects', () => {
     );
   });
 
+  it('persists a cloud environment, trimmed', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_PROJECT, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(postRequest({ ...VALID_BODY, cloud_environment: ' RealPlay ' }), STUB_CONTEXT);
+
+    expect(mockSupabase._chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ cloud_environment: 'RealPlay' }),
+    );
+  });
+
+  it('inserts no cloud environment when the body names none', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_PROJECT, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(postRequest(VALID_BODY), STUB_CONTEXT);
+
+    expect(mockSupabase._chain.insert).toHaveBeenCalledWith(
+      expect.not.objectContaining({ cloud_environment: expect.anything() as unknown }),
+    );
+  });
+
   it('returns 409 on a unique-constraint violation (duplicate key)', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, {
       data: undefined,
