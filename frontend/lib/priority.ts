@@ -2,7 +2,7 @@ import { ChevronsDown, ChevronsUp, Equal, type LucideIcon } from 'lucide-react';
 
 import type { BadgeProperties } from '@/components/atoms/badge';
 import { stableSorted } from '@/lib/sort';
-import { buildTree } from '@/lib/tree';
+import { type ItemNode, buildTree } from '@/lib/tree';
 import type { Item, ItemPriority } from '@/lib/types';
 
 /**
@@ -161,9 +161,10 @@ export function rankNodes<T extends PriorityNode>(
 /**
  * Rank the top-level (parentless) tasks of a flat item list for the By-Priority view (ALF-37):
  * High → Medium → Low → unprioritised by each task's {@link effectiveKey}, earlier due date first
- * within a level. Completed tasks are dropped unless `showCompleted`.
+ * within a level. Completed tasks are dropped unless `showCompleted`. Each returned task carries its
+ * full built subtree (completed subtasks included), so a row can render it.
  */
-export function rankByPriority(items: readonly Item[], showCompleted: boolean): Item[] {
+export function rankByPriority(items: readonly Item[], showCompleted: boolean): ItemNode[] {
   const top = buildTree([...items]).filter((node) => node.parent_id === null);
   const visible = showCompleted ? top : top.filter((node) => node.status === 'active');
   return rankNodes(visible, compareKey);

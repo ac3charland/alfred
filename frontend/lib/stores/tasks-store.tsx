@@ -1337,15 +1337,7 @@ export function useFolderBadgeCounts(): Record<string, FolderBadgeCounts> {
  */
 export function useTasksByPriority({ showCompleted }: { showCompleted: boolean }): ItemNode[] {
   const items = useTasks();
-  return React.useMemo(() => {
-    // Rank the top-level tasks (flat), then re-attach each one's built subtree so the row can
-    // render it. buildTree assembles every root; we keep only the ranked ones, in rank order.
-    const ranked = rankByPriority(items, showCompleted);
-    const byId = new Map(buildTree(items).map((node) => [node.id, node] as const));
-    return ranked
-      .map((task) => byId.get(task.id))
-      .filter((node): node is ItemNode => node !== undefined);
-  }, [items, showCompleted]);
+  return React.useMemo(() => rankByPriority(items, showCompleted), [items, showCompleted]);
 }
 
 /**
