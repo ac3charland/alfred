@@ -4988,6 +4988,28 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
       expect(screen.queryByRole('menuitem', { name: /retired work/i })).not.toBeInTheDocument();
     });
 
+    it('leads with the current epic, ahead of “No epic” and its siblings', async () => {
+      const LATER_EPIC: Epic = {
+        ...EPIC,
+        id: 'e5',
+        name: 'Later work',
+        ref_number: 150,
+        ref: 'ALF-150',
+      };
+      const user = userEvent.setup();
+      renderTasks(
+        [{ ...CODE_ROOT, intended_project_id: PROJECT.id, intended_epic_id: LATER_EPIC.id }],
+        { ...seeds, epics: [EPIC, LATER_EPIC] },
+      );
+      await openLabelSubmenu(user, /^epic/i, 'No epic');
+
+      const names = screen
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent)
+        .filter((text) => ['Later workALF-150', 'No epic', 'Inbox triageALF-140'].includes(text));
+      expect(names).toEqual(['Later workALF-150', 'No epic', 'Inbox triageALF-140']);
+    });
+
     it('writes the picked epic, ticking the current one', async () => {
       mockUpdateItem.mockResolvedValue({
         ...CODE_ROOT,
