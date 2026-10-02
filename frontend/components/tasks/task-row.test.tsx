@@ -2817,6 +2817,7 @@ describe('TaskRow — classification & type-gating', () => {
     const PROJECT: Project = {
       color: null,
       description: null,
+      cloud_environment: null,
       exclude_from_pr_ratio: false,
       id: 'p1',
       name: 'Alfred',
@@ -3559,6 +3560,7 @@ describe('TaskRow — epic construction (ALF-129)', () => {
   const PROJECT: Project = {
     color: null,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id: 'p1',
     name: 'Alfred',
@@ -4568,6 +4570,7 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
   const PROJECT: Project = {
     color: null,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id: 'p1',
     name: 'Alfred',
@@ -5040,6 +5043,7 @@ describe('TaskRow — label chips & per-type detail fields (ALF-170)', () => {
   const PROJECT: Project = {
     color: null,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id: 'p1',
     name: 'Alfred',
@@ -5456,6 +5460,7 @@ describe('dispatch-ready pip', () => {
   const PROJECT: Project = {
     color: null,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id: 'p1',
     name: 'Alfred',

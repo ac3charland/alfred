@@ -12,6 +12,7 @@ import { taskListContainerClass } from './task-row.styles';
 const STORY_PROJECT: Project = {
   color: null,
   description: null,
+  cloud_environment: null,
   exclude_from_pr_ratio: false,
   id: 'project-alf',
   name: 'Alfred',

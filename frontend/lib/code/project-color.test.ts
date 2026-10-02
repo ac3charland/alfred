@@ -16,6 +16,7 @@ function makeProject(id: string, color: string | null = null): Project {
   return {
     color,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id,
     name: id,

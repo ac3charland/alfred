@@ -16,6 +16,7 @@ function makeProject(id: string, name: string, repoName: string, createdAt: stri
   return {
     color: null,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id,
     name,
