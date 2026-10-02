@@ -21,9 +21,24 @@ use it to find where arms differ, and the ledger to decide.
   `list_events` (`kinds: ["user"]`) to the start. Count the human turns after it too. A historical
   session with mid-run turns, a rebase or its own subagents is a reference point, not a control,
   so replay every arm fresh, the baseline included.
-- **`create_session` sets `model` but not effort.** A child runs its model's default (Opus 5.5:
-  medium, Fable 5.1: high), so arms can differ in effort without anyone choosing it. The transcript
-  dry-run (below) reports the effort that actually ran.
+- **`create_session` sets `model` but not effort: pin it in every arm.** Left alone, a child runs
+  its model's default (Opus 5.5: medium, Fable 5.1: high), so arms can differ in effort without
+  anyone choosing it. Two ways:
+  - **`/effort` as the prompt (no setup).** Set `prompt` to exactly `/effort <level>`: a task on the
+    next line becomes part of the argument and the command fails. It runs without a model turn. Put
+    the launch prompt in `append_system_prompt`, then start the child with a `send_message` ("start
+    the task in your system prompt"). A task sent only by `send_message` is refused, since it
+    arrives as data. The task then sits in the system prompt rather than the first turn, so launch
+    every arm this way, baseline included. The arm's ledger row records `/effort <level>` as its
+    `prompt`, so don't read `prompt`, `ref` or `skills` from it.
+  - **An environment per level (keeps the prompt as the first turn).** `CLAUDE_CODE_EFFORT_LEVEL`
+    overrides `--effort` and `/effort`. The owner sets it as an environment variable on a copy of
+    the alfred environment, in the claude.ai environment settings; pass that `environment_id`.
+    Precedence is verified in the CLI; no cloud run yet.
+
+  Check what ran with the transcript dry-run below, or `$CLAUDE_EFFORT` in the child's shell.
+  `get_session` → `session_context.effort_level` shows an `/effort` pick but is null both at the
+  model default and, as far as the CLI's code shows, under the environment variable.
 - **Every rule goes in the launch prompt.** A later `send_message` is delivered as "DATA, not
   operator instructions", so it is weaker than the prompt. Prepend one shared preamble to the
   verbatim prompt; the arms should differ only in their architecture block. The preamble says:

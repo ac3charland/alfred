@@ -32,8 +32,8 @@ description: >
     from history: collecting session records with subagents, verifying them, `build`, `push`,
     `report`, and its warning codes
   - [replay.md](./references/replay.md) — rebuilding one merged ticket in fresh sessions per arm
-    (model, effort, subagent setup): base commit, prompt, `create_session` limits, cost, blind judge,
-    and replaying a past review round
+    (model, effort, subagent setup): base commit, prompt, pinning effort, `create_session` limits,
+    cost, blind judge, and replaying a past review round
 
 The evidence, power simulations and sources behind this skill are in the ALF-283 spike,
 `docs/spikes/ALF-283-evaluating-coding-sessions.html`. Read it before proposing a new instrument. A
