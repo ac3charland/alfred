@@ -18,6 +18,7 @@ import {
  */
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
+    cloud_environment: null,
     color: null,
     description: null,
     exclude_from_pr_ratio: false,
@@ -913,6 +914,53 @@ describe('the adversarial-review step', () => {
       '';
     expect(prompt).not.toMatch(/adversarial review/i);
     expect(prompt).not.toContain('.claude/skills/adversarial-review/SKILL.md');
+  });
+});
+
+describe('the cloud environment param', () => {
+  const STORY_BUILDERS = [
+    ['buildRefinementUrl', buildRefinementUrl],
+    ['buildImplementationUrl', buildImplementationUrl],
+    ['buildDevelopmentUrl', buildDevelopmentUrl],
+    ['buildBypassUrl', buildBypassUrl],
+    ['buildSpikeUrl', buildSpikeUrl],
+    ['buildBugUrl', buildBugUrl],
+  ] as const;
+  const EPIC_BUILDERS = [
+    ['buildEpicRefinementUrl', buildEpicRefinementUrl],
+    ['buildEpicImplementationUrl', buildEpicImplementationUrl],
+  ] as const;
+  const story = makeStory({ spec_path: 'docs/specs/ALF-42.html' });
+  const epic = makeEpic({ spec_path: 'docs/specs/epics/ALF-12.html' });
+
+  it.each(STORY_BUILDERS)('%s preselects the project’s environment', (_name, build) => {
+    const url = build(makeProject({ cloud_environment: 'RealPlay' }), story);
+    expect(new URL(url).searchParams.get('environment')).toBe('RealPlay');
+  });
+
+  it.each(EPIC_BUILDERS)('%s preselects the project’s environment', (_name, build) => {
+    const url = build(makeProject({ cloud_environment: 'env_01AbC' }), epic);
+    expect(new URL(url).searchParams.get('environment')).toBe('env_01AbC');
+  });
+
+  it.each(STORY_BUILDERS)('%s omits the param when the project names none', (_name, build) => {
+    expect(new URL(build(makeProject(), story)).searchParams.has('environment')).toBe(false);
+  });
+
+  it.each(EPIC_BUILDERS)('%s omits the param when the project names none', (_name, build) => {
+    expect(new URL(build(makeProject(), epic)).searchParams.has('environment')).toBe(false);
+  });
+
+  it('URL-encodes an environment name with spaces and symbols', () => {
+    const url = buildRefinementUrl(makeProject({ cloud_environment: 'Real Play & Co' }), story);
+    expect(url).toContain('environment=Real+Play+%26+Co');
+    expect(new URL(url).searchParams.get('environment')).toBe('Real Play & Co');
+  });
+
+  it('keeps the prompt round-tripping when an environment is set', () => {
+    const url = buildRefinementUrl(makeProject({ cloud_environment: 'alfred' }), story);
+    expect(promptFromLaunchUrl(url)).toBe(parse(url).prompt);
+    expect(parse(url).repo).toBe('ac3charland/alfred');
   });
 });
 

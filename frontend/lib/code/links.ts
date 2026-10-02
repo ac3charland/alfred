@@ -18,6 +18,8 @@
  *   browser when the app is absent.
  * - The web docs state NO character cap, but the desktop app reportedly truncates ~14k, so
  *   prompts REFERENCE the committed spec file and never inline the whole spec/notes.
+ * - `environment` preselects a cloud environment by name or id (the project's `cloud_environment`,
+ *   ALF-279), so each repo opens in the environment configured for it.
  * - No branch/`ref` URL param is documented (the session UI has a branch selector instead).
  */
 import type { CodeStory, Epic, Project } from '@/lib/types';
@@ -227,12 +229,19 @@ function adversarialReviewStep(): string {
   return `Once the PR is open, run ONE round of adversarial review: spawn a subagent with its model set to Opus (e.g. the Agent tool's \`model: "opus"\` — left unset, it typically inherits yours), whatever model you are yourself, to review the PR antagonistically — briefed without your reasoning, and report-only (no edits, commits, or pushes). Run it in the foreground and wait for its report; that wait is your own work, not a check-in. Fix the in-scope findings you verify as legitimate and push; raise real but out-of-scope ones with me rather than widening the diff. Then add an "Adversarial review" section to the PR description listing each finding and what you did with it (fixed, declined and why, or raised with me), leaving the alfred block intact. Follow the adversarial-review skill at \`${ADVERSARIAL_REVIEW_SKILL_PATH}\` where present — it owns how to brief the reviewer and triage its findings. If the ticket context below says otherwise (more rounds, or none), follow it.`;
 }
 
-/** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */
+/**
+ * Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt, plus the project's
+ * cloud environment (name or id, ALF-279) when it names one — omitted otherwise, so claude.ai/code
+ * keeps its own pick rather than receiving an empty value.
+ */
 function buildUrl(project: Project, prompt: string): string {
   const parameters = new URLSearchParams({
     repo: `${project.repo_owner}/${project.repo_name}`,
     q: prompt,
   });
+  if (project.cloud_environment !== null) {
+    parameters.set('environment', project.cloud_environment);
+  }
   return `${CLAUDE_CODE_WEB_URL}?${parameters.toString()}`;
 }
 
