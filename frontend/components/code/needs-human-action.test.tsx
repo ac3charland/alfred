@@ -38,6 +38,14 @@ const PROJECT: Project = {
   created_at: '2025-01-01T00:00:00Z',
 };
 
+const PROJECT_2: Project = {
+  ...PROJECT,
+  id: 'p2',
+  key: 'RLP',
+  name: 'Relay',
+  repo_name: 'relay',
+};
+
 const EPIC: Epic = {
   id: 'e1',
   project_id: 'p1',
@@ -121,12 +129,57 @@ function rowOrder(): string[] {
     .map((button) => /Move (\S+) up/.exec(button.getAttribute('aria-label') ?? '')?.[1] ?? '');
 }
 
-function renderView(stories: CodeStory[]) {
+const EPIC_2: Epic = { ...EPIC, id: 'e2', project_id: 'p2', ref: 'RLP-1' };
+
+function renderView(stories: CodeStory[], seed: { projects?: Project[]; epics?: Epic[] } = {}) {
   return renderWithProviders(<NeedsHumanAction />, {
-    projects: [PROJECT],
-    epics: [EPIC],
+    projects: seed.projects ?? [PROJECT],
+    epics: seed.epics ?? [EPIC],
     stories,
   });
+}
+
+/** A Relay story, so the project filter has a second project to tell apart. */
+function relayStory(itemId: string, overrides: Partial<CodeStory> = {}): CodeStory {
+  return makeStory(itemId, {
+    project_id: 'p2',
+    epic_id: 'e2',
+    ref: `RLP-${itemId}`,
+    project_key: 'RLP',
+    project_name: 'Relay',
+    repo_name: 'relay',
+    epic_ref: 'RLP-1',
+    ...overrides,
+  });
+}
+
+/** Two projects, one story per human-review state, interleaved in the global ranking. */
+function seedTwoProjects() {
+  return renderView(
+    [
+      makeStory('a', { priority: 10, factory_state: 'in_refinement' }),
+      relayStory('b', { priority: 20, factory_state: 'ready_for_dev' }),
+      makeStory('c', { priority: 30, factory_state: 'ready_for_review' }),
+      relayStory('d', { priority: 40, factory_state: 'in_refinement' }),
+    ],
+    { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
+  );
+}
+
+/**
+ * Open the named filter menu and toggle its `nth` option (1-based menu position), then close it.
+ * Radix portals set pointer-events:none on the body, so the menu is driven by keyboard; and while
+ * it's open the rows are aria-hidden, so it must be closed before reading them.
+ */
+async function toggleOption(
+  user: ReturnType<typeof userEvent.setup>,
+  menu: RegExp,
+  nth: number,
+): Promise<void> {
+  await user.click(screen.getByRole('button', { name: menu }));
+  await screen.findByRole('menu');
+  await user.keyboard(`${'[ArrowDown]'.repeat(nth)}[Enter]`);
+  await user.keyboard('[Escape]');
 }
 
 describe('NeedsHumanAction', () => {
@@ -134,10 +187,12 @@ describe('NeedsHumanAction', () => {
     mockReorderCode.mockReset();
   });
 
-  it('renders its own header and no Filter by status control', () => {
+  it('renders its own header with a Filter by status and a Filter by project control', () => {
     renderView([makeStory('a')]);
     expect(screen.getByRole('heading', { name: 'Needs human action' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /filter by status/i })).not.toBeInTheDocument();
+    // Both rest at their defaults, so neither trigger carries a count.
+    expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Filter by project' })).toBeInTheDocument();
   });
 
   it('wears the Code teal on its heading glyph, not the Tasks accent (ALF-219)', () => {
@@ -183,5 +238,138 @@ describe('NeedsHumanAction', () => {
     renderView([makeStory('a', { factory_state: 'in_development' })]);
     expect(screen.getByText(/Nothing needs your attention right now/)).toBeInTheDocument();
     expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  describe('filter by status (ALF-316)', () => {
+    it('offers only the three human-review states, all checked at rest', async () => {
+      const user = userEvent.setup();
+      seedTwoProjects();
+
+      await user.click(screen.getByRole('button', { name: 'Filter by status' }));
+      await screen.findByRole('menu');
+
+      // The view's scope IS these three states — offering `done` or `in_development` here would
+      // let the filter widen the queue beyond what needs a human.
+      expect(screen.getAllByRole('menuitemcheckbox').map((item) => item.textContent)).toEqual([
+        'In Refinement',
+        'Ready for Dev',
+        'Ready for Review',
+      ]);
+      for (const item of screen.getAllByRole('menuitemcheckbox')) {
+        expect(item).toHaveAttribute('aria-checked', 'true');
+      }
+    });
+
+    it('hides a state when it is unchecked and shows a count on the trigger', async () => {
+      const user = userEvent.setup();
+      seedTwoProjects();
+      expect(rowOrder()).toEqual(['ALF-a', 'RLP-b', 'ALF-c', 'RLP-d']);
+
+      // Uncheck "In Refinement" (the 1st option) — its two stories drop out.
+      await toggleOption(user, /filter by status/i, 1);
+
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['RLP-b', 'ALF-c']);
+      });
+      expect(screen.getByRole('button', { name: 'Filter by status (2)' })).toBeInTheDocument();
+    });
+
+    it('blames the filters, not the queue, when they hide every waiting story', async () => {
+      const user = userEvent.setup();
+      seedTwoProjects();
+
+      await toggleOption(user, /filter by status/i, 1);
+      await toggleOption(user, /filter by status/i, 2);
+      await toggleOption(user, /filter by status/i, 3);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+      });
+      // Stories ARE waiting — claiming "nothing needs your attention" would hide them.
+      expect(screen.getByText(/No stories match these filters/)).toBeInTheDocument();
+      expect(screen.queryByText(/Nothing needs your attention/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('filter by project (ALF-316)', () => {
+    it('lists every project in creation order, none checked at rest', async () => {
+      const user = userEvent.setup();
+      seedTwoProjects();
+
+      await user.click(screen.getByRole('button', { name: 'Filter by project' }));
+      await screen.findByRole('menu');
+
+      expect(screen.getAllByRole('menuitemcheckbox').map((item) => item.textContent)).toEqual([
+        'Alfred',
+        'Relay',
+      ]);
+      for (const item of screen.getAllByRole('menuitemcheckbox')) {
+        expect(item).toHaveAttribute('aria-checked', 'false');
+      }
+    });
+
+    it('narrows to just the checked project and shows a count on the trigger', async () => {
+      const user = userEvent.setup();
+      seedTwoProjects();
+
+      await toggleOption(user, /filter by project/i, 2);
+
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['RLP-b', 'RLP-d']);
+      });
+      expect(screen.getByRole('button', { name: 'Filter by project (1)' })).toBeInTheDocument();
+    });
+
+    it('returns to every project when the only checked project is unchecked', async () => {
+      const user = userEvent.setup();
+      seedTwoProjects();
+
+      await toggleOption(user, /filter by project/i, 2);
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['RLP-b', 'RLP-d']);
+      });
+
+      await toggleOption(user, /filter by project/i, 2);
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['ALF-a', 'RLP-b', 'ALF-c', 'RLP-d']);
+      });
+      expect(screen.getByRole('button', { name: 'Filter by project' })).toBeInTheDocument();
+    });
+
+    it('combines with the status filter', async () => {
+      const user = userEvent.setup();
+      seedTwoProjects();
+
+      // Relay only, then drop In Refinement: just Relay's Ready for Dev story is left.
+      await toggleOption(user, /filter by project/i, 2);
+      await toggleOption(user, /filter by status/i, 1);
+
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['RLP-b']);
+      });
+    });
+
+    it('omits the project control when there are no projects to filter', () => {
+      renderView([], { projects: [], epics: [] });
+      expect(screen.queryByRole('button', { name: /filter by project/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /filter by status/i })).toBeInTheDocument();
+    });
+
+    it('swaps with the VISIBLE neighbour, skipping a story the project filter hides', async () => {
+      const user = userEvent.setup();
+      mockReorderCode.mockResolvedValue([makeSidecar('a', 30), makeSidecar('c', 10)]);
+      seedTwoProjects();
+
+      await toggleOption(user, /filter by project/i, 1);
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['ALF-a', 'ALF-c']);
+      });
+
+      // ALF-c's visible upper neighbour is ALF-a — the hidden RLP-b between them is skipped.
+      await user.click(screen.getByRole('button', { name: 'Move ALF-c up' }));
+      await waitFor(() => {
+        expect(mockReorderCode).toHaveBeenCalledWith('ALF-c', 'ALF-a');
+      });
+    });
   });
 });
