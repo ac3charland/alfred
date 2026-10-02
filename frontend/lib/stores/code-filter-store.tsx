@@ -15,11 +15,12 @@ import type { CodeFactoryState } from '@/lib/types';
  * (Backlog → a board → Backlog). Lifting it here — into a provider mounted once in the shell
  * layout, above the view router — keeps each view's selection alive across those SPA switches.
  *
- * Selections are keyed per view: the Backlog under `'backlog'`, each board under its project id
- * (route-guaranteed never to be the literal `'backlog'`). The two selections are separate maps,
- * so a view can narrow one without touching the other. A key absent from a map means the view is
- * still at its own default; the default is owned by the caller (`useStatusFilter` /
- * `useProjectFilter`) and never stored here, so a first read falls through to it.
+ * Selections are keyed per view: the Backlog under `'backlog'`, Needs human action under
+ * `'needs-human-action'`, each board under its project id (a UUID, so never either literal). The
+ * two selections are separate maps, so a view can narrow one without touching the other. A key
+ * absent from a map means the view is still at its own default; the default is owned by the caller
+ * (`useStatusFilter` / `useProjectFilter`) and never stored here, so a first read falls through to
+ * it.
  *
  * Like the other coordination stores (ExpansionProvider / ActiveEditorProvider) it is seeded
  * with NO server data (the filter is ephemeral session UI, not DB-backed), and splits state +

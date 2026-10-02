@@ -21,16 +21,16 @@ export interface StatusFilter extends Pick<
 }
 
 /**
- * A "Filter by status" multi-select over factory states, seeded from `defaultStatuses` (the
- * resting selection). Both Code views hold their status filter through this hook: the Backlog
- * defaults to the outstanding states, the board to every happy-path lane. Pass a **referentially
- * stable** default (a module constant) so the initial selection and the `isFiltering` compare stay
- * steady across renders.
+ * A "Filter by status" multi-select over factory states, seeded from `defaultStatuses` (the resting
+ * selection). Every filtered Code view holds its status filter through this hook: the Backlog
+ * defaults to the outstanding states, Needs human action to its three human-review states, the
+ * board to every happy-path lane. Pass a **referentially stable** default (a module constant) so
+ * the initial selection and the `isFiltering` compare stay steady across renders.
  *
  * The selection is held in the layout-mounted `CodeFilterProvider`, keyed by `key` (the Backlog
- * passes `'backlog'`, a board its project id), so it **survives SPA navigation** between the
- * views — leaving a view and returning restores its filter rather than resetting it to the
- * default. Keep `key` stable per view.
+ * passes `'backlog'`, Needs human action `'needs-human-action'`, a board its project id), so it
+ * **survives SPA navigation** between the views — leaving a view and returning restores its filter
+ * rather than resetting it to the default. Keep `key` stable per view.
  */
 export function useStatusFilter(
   key: string,
