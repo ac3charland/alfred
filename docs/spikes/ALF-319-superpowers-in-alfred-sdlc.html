@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-319 — Incorporating Jesse Vincent’s Superpowers into the alfred SDLC</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · FINDINGS — what a findings document adds to the house stylesheet ═══ */
+#landed>.side~*+*{margin-top:.75rem}
+.detail aside{margin:0 0 .9rem;padding:.75rem 1rem;background:var(--wash);border-left:3px solid var(--rule)}
+.detail aside>h3:first-child{margin-top:0}
+.detail aside>:last-child{margin-bottom:0}
+
+</style>
+</head>
+<body>
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>alfred · Spike findings</span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>319</span><span class="sep"> — </span><span class="ttl">Incorporating Jesse Vincent’s Superpowers into the alfred SDLC</span></h1>
+  <p class="change" id="answer">Don’t install Superpowers. Repo settings can’t load it in cloud sessions, it duplicates most of alfred’s SDLC, and it fights the PR contract. Adapt three of its ideas instead.</p>
+</header>
+
+<section class="sec" id="landed">
+  <h2 class="side">Where we landed</h2>
+  <p>Superpowers is a whole methodology for one human working in one interactive session: brainstorm, spec, plan, execute, then pick how to merge. alfred already splits that same arc into separate phases that the orchestrator routes and that end in PRs. Bolting the plugin on would give every session two competing processes. Three ideas are worth porting into alfred’s existing skills, each as its own story: (1) adapt <code>systematic-debugging</code> into a technique skill that the bug skill points at; (2) give <code>implement-epic</code> the on-disk progress ledger that <code>subagent-driven-development</code> uses to survive compaction; (3) add writing-plans’ <em>Review Focus</em> idea to the refinement spec’s acceptance criteria. If you’d rather have evidence than this argument, §7 sets out an A/B test that would prove me wrong.</p>
+  <ol class="list">
+    <li><h3>Loading</h3>
+      <p class="pick">Plugins enabled in repo settings never load in cloud sessions, which are alfred’s only launch surface.</p>
+      <p class="why">Cloud docs, and this container: <code>frontend-design</code> is enabled in settings yet isn’t installed — <a href="#loading">§2</a></p></li>
+    <li><h3>Workaround</h3>
+      <p class="pick">A setup-script install does work, but it sits outside git, the session ledger and any per-repo control.</p>
+      <p class="why">Tested here: 15 skills plus the bootstrap loaded in a fresh process — <a href="#loading">§2</a></p></li>
+    <li><h3>Overlap</h3>
+      <p class="pick">13 of its 15 skills mirror something alfred already has. Two of them conflict with it outright.</p>
+      <p class="why">Skill-by-skill map — <a href="#map">§3</a></p></li>
+    <li><h3>Collisions</h3>
+      <p class="pick">It brings its own doc paths, approval gates and merge menu, which cut across the <code>alfred</code> block.</p>
+      <p class="why">Static analysis; a live probe was blocked — <a href="#collide">§4</a></p></li>
+    <li><h3>Worth taking</h3>
+      <p class="pick">Its debugging technique, the compaction ledger and Review Focus.</p>
+      <p class="why">alfred has nothing equivalent to any of them — <a href="#take">§5</a></p></li>
+  </ol>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>The evidence</h2>
+  <p>Everything below is for whoever builds on this. Acting on the answer needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="what">
+  <h2>What Superpowers is</h2>
+  <p><a href="https://github.com/obra/superpowers">obra/superpowers</a> is an MIT-licensed Claude Code plugin from Jesse Vincent and Prime Radiant. Upstream head is <strong>v6.4.2</strong> (2026-09-25). The official marketplace pins <strong>v6.4.1</strong> (sha <code>5bf4e78</code>), which shows it lags upstream by about a week. The plugin is two things:</p>
+  <ul>
+    <li><strong>15 skills</strong>: brainstorming, writing-plans, executing-plans, subagent-driven-development, dispatching-parallel-agents, test-driven-development, systematic-debugging, verification-before-completion, requesting-code-review, receiving-code-review, using-git-worktrees, finishing-a-development-branch, writing-skills, using-superpowers and diagnosing-superpowers.</li>
+    <li><strong>A SessionStart hook</strong> (<code>hooks/session-start</code>, on <code>startup|clear|compact</code>). It injects the full <code>using-superpowers</code> skill, wrapped in <code>&lt;EXTREMELY_IMPORTANT&gt;You have superpowers.</code> That skill says: “If you think there is even a 1% chance a skill might apply … you ABSOLUTELY MUST invoke the skill”, and it must do so “BEFORE any response or action — including clarifying questions, exploring the codebase”. This bootstrap is the engine of the whole plugin. Without it, the skills are just a library.</li>
+  </ul>
+  <p>The intended flow (README, “The Basic Workflow”) runs: brainstorming → using-git-worktrees → writing-plans → subagent-driven-development or executing-plans → test-driven-development throughout → requesting-code-review → finishing-a-development-branch. A human approves at each gate. Spec and plan documents land in <code>docs/superpowers/specs/</code> and <code>docs/superpowers/plans/</code>.</p>
+  <p><strong>It changes fast.</strong> There were 30 releases between 2025-11-24 (v3.5.1) and 2026-09-25 (v6.4.2), crossing three major versions (v4.0.0 in Dec, v5.0.0 in Mar, v6.0.0 in Jun). Skill bodies are large: subagent-driven-development is about 4.8k words, writing-skills 3.8k, executing-plans 3.2k and brainstorming 2.6k.</p>
+  <p>Background: the ticket very likely traces to the Cognitive Revolution interview in <code>docs/communication-firewall/cognitive-revolution-transcript.md</code>. There, Steve Newman says Superpowers is “the only thing I’ve really installed” and that he runs <code>/systematic-debugging</code> by name. His setup is a single developer in a local terminal, with no orchestrator, no PR contract and no CI-enforced block. That is exactly the context where a whole bundled methodology earns its keep, and it is not alfred’s context.</p>
+</section>
+
+<section id="loading">
+  <h2>Can it even load in an alfred session?</h2>
+  <p>alfred launches every SDLC session as a <code>claude.ai/code?repo=…&amp;q=…</code> link (<code>frontend/lib/code/links.ts</code>, <code>buildUrl</code>). Every session is therefore a <strong>cloud session</strong> on a fresh clone. Claude Code’s cloud-environment docs, under “What carries over from your setup”, are explicit:</p>
+  <blockquote>Plugins and marketplaces declared in your repo’s <code>.claude/settings.json</code> — <strong>No</strong> — A cloud session doesn’t install the plugins a repository turns on under <code>enabledPlugins</code>, including ones from the marketplaces it lists under <code>extraKnownMarketplaces</code>.</blockquote>
+  <p><strong>Observed in this very session, which agrees with the docs.</strong> alfred’s <code>.claude/settings.json</code> enables <code>frontend-design@claude-plugins-official</code>. Even so, <code>~/.claude/plugins/installed_plugins.json</code> was <code>{"version":2,"plugins":{}}</code> at session start, and no <code>frontend-design</code> skill appeared in the session’s skill list. <em>Side finding:</em> that <code>enabledPlugins</code> entry only does anything in local sessions. Every alfred-launched session silently ignores it.</p>
+  <h3>The route that does work: install from the environment</h3>
+  <p>The same docs say repo files under <code>.claude/skills/</code> are carried over, and so are skills enabled on claude.ai. Plugins can also be installed by the environment’s setup script before Claude starts. I tested the CLI side in this container:</p>
+  <pre>$ claude plugin install superpowers@claude-plugins-official
+√ Successfully installed plugin: superpowers@claude-plugins-official (scope: user)
+$ claude plugin list
+  &gt; superpowers@claude-plugins-official   Version: 6.4.1   Scope: user   Status: √ enabled
+$ claude -p "…list skills starting with 'superpowers:' … did your context include 'You have superpowers'?" --max-turns 1
+superpowers:brainstorming, …, superpowers:writing-skills   (all 15)
+YES</pre>
+  <p>So a setup-script line would put the full plugin, bootstrap hook included, into every new session. It is technically viable. Its costs are structural:</p>
+  <ul>
+    <li><strong>It lives outside git.</strong> The environment’s setup script is per-environment configuration in the claude.ai UI. It isn’t reviewed, versioned or visible in the repo, and it applies to <em>every</em> repo that uses that environment.</li>
+    <li><strong>It is invisible to the session ledger.</strong> <code>code_sessions.skills</code> is derived from <code>.claude/skills/*/SKILL.md</code> paths as of <code>base_sha</code> (<code>tools/session-ledger/src/replay.ts</code>, <code>SKILL_PATH_RE</code>; llm-evaluation skill). A plugin version that changes under you would confound every model or prompt comparison the ledger exists to make.</li>
+    <li><strong>It follows the marketplace’s pin</strong>, not yours, unless the script pins a git sha itself.</li>
+  </ul>
+</section>
+
+<section id="map">
+  <h2>Skill-by-skill map against alfred</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Superpowers skill</th><th>alfred counterpart</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>brainstorming</td><td>refinement, spike, the bypass prompt. The orchestrator routes by ticket type (<code>Spike:</code>, <code>Bug:</code>, skip-refinement), which is the same three-path split (spike / bounded / architectural) made one level up.</td><td>Skip. One small borrow: the bounded path’s “present a short design, then STOP for an explicit yes” would sharpen the bypass prompt’s vague “once the plan is settled”.</td></tr>
+      <tr><td>writing-plans</td><td>The refinement spec’s <code>#detail</code>, and implement-spec</td><td><strong>Adapt one idea</strong>: Review Focus (§5.3)</td></tr>
+      <tr><td>executing-plans</td><td>implement-spec</td><td>Skip</td></tr>
+      <tr><td>subagent-driven-development</td><td>implement-epic</td><td><strong>Adapt</strong>: the ledger (§5.2). Per-slice review stays an open question.</td></tr>
+      <tr><td>dispatching-parallel-agents</td><td>implement-epic’s slicing rules (disjoint files, foundations first)</td><td>Skip. alfred’s version is more specific.</td></tr>
+      <tr><td>test-driven-development</td><td>CLAUDE.md “Red/Green TDD”, the bug skill’s “pin it red”, and the <code>check:fast</code> / <code>check:slow</code> hooks</td><td>Skip</td></tr>
+      <tr><td>systematic-debugging</td><td>The bug skill, which has the <em>process</em> (reproduce → red → root cause) but no <em>technique</em></td><td><strong>Take, adapted</strong> (§5.1)</td></tr>
+      <tr><td>verification-before-completion</td><td>The hooks enforce it mechanically. implement-epic already says “A green subagent report is not a green repo”.</td><td>Skip</td></tr>
+      <tr><td>requesting-code-review</td><td>adversarial-review: an Opus subagent, briefed cold, demo doc first</td><td>Skip. alfred’s is stricter.</td></tr>
+      <tr><td>receiving-code-review</td><td>adversarial-review’s triage (“decline only with evidence”), plus the harness’s PR-event rules</td><td>Skip</td></tr>
+      <tr><td>using-git-worktrees</td><td>None. A cloud session is one fresh clone on one branch.</td><td>Skip. <strong>Conflicts.</strong></td></tr>
+      <tr><td>finishing-a-development-branch</td><td>CLAUDE.md’s end-of-workflow steps (always a PR) and batch-commits</td><td>Skip. <strong>Conflicts</strong>: it offers “merge locally”, “keep” and “discard”.</td></tr>
+      <tr><td>writing-skills</td><td>skill-creator (evals, trigger optimisation), skill-lint, compounding-learning</td><td>Skip for now. Its baseline-first “pressure scenario” testing is a good idea for SDLC skills, but it’s a different story.</td></tr>
+      <tr><td>using-superpowers</td><td>None (it is the plugin’s bootstrap)</td><td>Only meaningful with the plugin</td></tr>
+      <tr><td>diagnosing-superpowers</td><td>llm-evaluation and the session ledger</td><td>Only meaningful with the plugin</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="collide">
+  <h2>Where the plugin would collide with the PR contract</h2>
+  <p>These come from reading the skills against alfred’s launch prompts and SDLC skills. <strong>None was observed live.</strong> I tried to run alfred’s bypass and bug launch prompts headless in throwaway worktrees with the plugin installed, but the session’s permission classifier blocked spawning nested agent sessions. Treat this section as the hypotheses that the §7 experiment would test.</p>
+  <ul>
+    <li><strong>Two documents, two homes.</strong> On architectural work, brainstorming’s HARD-GATE requires a design approved in chat and then a spec at <code>docs/superpowers/specs/YYYY-MM-DD-*-design.md</code>, followed by a plan at <code>docs/superpowers/plans/</code>. alfred’s refinement requires <code>docs/specs/&lt;REF&gt;.html</code> from the template, with the <code>spec-path</code> block checked by <code>alfred-frontmatter</code>. In an implementation session, writing-plans would also commit a plan document that nothing archives.</li>
+    <li><strong>Gates that look for a human who has gone.</strong> writing-plans ends by asking the human to choose “Subagent-driven” or “Native” execution. finishing-a-development-branch presents a menu of options. alfred’s prompts already define the gate (“ASK ME HERE” only when scope is unclear) and the ending (open a PR, adversarial review, stop).</li>
+    <li><strong>Ask or decide?</strong> subagent-driven-development says “Rulings, not stalls … A running plan does not wait on a human”, with a ledger of rulings. implement-epic says “Stop and ask the human in the tab”. Both are defensible, but loading both leaves the model to arbitrate.</li>
+    <li><strong>Who wins on priority.</strong> using-superpowers says “User instructions (CLAUDE.md, AGENTS.md …) take precedence over skills”. alfred’s CLAUDE.md says nothing about Superpowers, though, so every conflict above would be settled by the model’s judgment in each session. The 1% rule and the <code>EXTREMELY_IMPORTANT</code> framing push that judgment toward the plugin. alfred’s own SDLC skills load because the prompt names a path, not because of a louder bootstrap.</li>
+    <li><strong>Context cost.</strong> The bootstrap is about 3.2 KB (roughly 800 tokens) on every startup and compaction, before any 2.6k–4.8k-word process skill is invoked.</li>
+  </ul>
+</section>
+
+<section id="take">
+  <h2>What’s worth taking, and the shape of each port</h2>
+  <p>All three are adaptations into alfred’s skill library. They follow CLAUDE.md’s rules for editing skills: read skill-creator for a new skill and compounding-learning for an update, then pass skill-lint. Where text is copied rather than paraphrased, keep the MIT copyright notice (Jesse Vincent, 2025) in the skill folder.</p>
+
+  <h3>5.1 A debugging technique skill (highest value)</h3>
+  <p>The bug skill says <em>what</em> must be true: the bug is reproduced, a test is red, the cause is fixed. It says nothing about <em>how</em> to find a root cause once the obvious first read fails. systematic-debugging fills exactly that gap:</p>
+  <ul>
+    <li>Instrumentation at component boundaries for multi-layer systems. This matters for alfred, whose path runs browser → Next.js route → Supabase → Worker → daemon.</li>
+    <li>A single written hypothesis, tested with the smallest possible change, one variable at a time.</li>
+    <li>“If 3+ fixes failed: question the architecture”, a stop rule alfred lacks.</li>
+    <li>The <code>root-cause-tracing.md</code> backward-tracing reference.</li>
+  </ul>
+  <p>Shape: a new <code>.claude/skills/systematic-debugging/</code> (or a name in alfred’s style), cut to the technique. Drop the process parts the bug skill already owns, and drop <code>condition-based-waiting</code>, because the playwright, storybook and supabase skills already carry alfred’s flake guidance. Adapting <code>find-polluter.sh</code> to Jest is optional. The bug skill’s step 1 and step 3 link to the new skill. It also fits the CI-red handling in implementation sessions, where “flake is not a root cause” already sets the expectation. A replay of a past <code>Bug:</code> ticket with and without the skill (llm-evaluation’s replay procedure) is the natural acceptance test.</p>
+
+  <h3>5.2 A progress ledger for implement-epic</h3>
+  <p>subagent-driven-development’s Setup calls this “the single most expensive failure observed”: a controller loses its place after compaction and re-dispatches tasks it had already finished. implement-epic is the one alfred lane long enough to compact mid-run, and it has no ledger. <code>grep -i "ledger\|compact"</code> on its SKILL.md finds nothing. Shape: a git-ignored progress file whose first line names the epic spec, with one <code>Slice N: complete &lt;sha&gt;</code> line per integrated slice and a rule to trust the ledger and <code>git log</code> over memory after compaction. The SDD loop also reviews every task for spec compliance. Whether implement-epic should add that, given that the epic lane is “deliberately left out” of adversarial review for now (<code>links.ts</code>, <code>adversarialReviewStep</code>), is a separate cost question. It isn’t part of this port.</p>
+
+  <h3>5.3 Review Focus in refinement specs</h3>
+  <p>writing-plans asks the plan’s author to list the “five input classes or failure modes the spec implies but no task’s tests exercise”, then add a test for each to the task that owns it. It names the right worry: “the spec’s silence on an input is not permission for that input to break the program”. In alfred, this belongs in the refinement spec’s acceptance criteria, as a short traced list of edge inputs each pinned by an <code>impl</code> criterion. It doesn’t belong in a separate plan document. Shape: one optional subsection in <code>.claude/skills/refinement/assets/spec-template.html</code>’s detail and one rule line in the refinement skill. It’s the smallest of the three; drop it if the spec template’s budget can’t absorb it.</p>
+</section>
+
+<section id="alternatives">
+  <h2>Alternatives we’re not taking</h2>
+  <aside><h3>Install the plugin via the environment setup script</h3><p>It works (§2), and it is the only way to get the bootstrap. It’s ruled out as a default because it sits outside git and the ledger, applies to every repo in the environment, and adds a second process that fights the PR contract (§4). It stays the right vehicle for the <em>experiment</em> in §7.</p></aside>
+  <aside><h3>Enable it in <code>.claude/settings.json</code></h3><p>It does nothing in cloud sessions, per the docs and per observation (§2). It would only affect local sessions, which alfred doesn’t launch.</p></aside>
+  <aside><h3>Vendor all 15 skills into <code>.claude/skills/</code></h3><p>This would load in cloud sessions, minus the hook. But it doubles the SDLC skill set with rival descriptions that trigger on the same phrases (“implement the spec”, “fix the bug”). It would also import a release cadence of about three per month, and the composable-shared-skills spike already showed that copies rot. Without the bootstrap it also loses the thing that makes Superpowers Superpowers.</p></aside>
+  <aside><h3>Enable it as a claude.ai skill</h3><p>“Cloud sessions automatically load skills you enable on claude.ai.” This is per-user and spans every repo, with no hook. It has the same invisibility to git and the ledger as the setup script, and less of the plugin.</p></aside>
+  <aside><h3>Do nothing</h3><p>This leaves the debugging technique on the table, and that’s the one piece with clear marginal value. It’s also the piece Newman reaches for by name.</p></aside>
+</section>
+
+<section id="cost">
+  <h2>Cost &amp; open questions</h2>
+  <ul>
+    <li><strong>Effort.</strong> Each port is one small, docs-only story under <code>.claude/skills/</code>, with no app code. Ports 5.1 and 5.2 deserve a replay-based check through llm-evaluation, not just a lint pass.</li>
+    <li><strong>Unverified: real behaviour under the plugin.</strong> §4 is reasoning only. To falsify it, create a second cloud environment whose setup script runs <code>claude plugin install superpowers@claude-plugins-official</code> (ideally pinned to a sha), then replay three to five past tickets per lane (bug, bypass, implementation) in both environments. Compare cost, turns, PR-contract violations (block, <code>spec-path</code>, archive, stray <code>docs/superpowers/</code> files) and adversarial-review findings. Since the ledger can’t see the plugin, tag those sessions by environment. If the plugin lane wins clearly, this recommendation is wrong and should be revisited.</li>
+    <li><strong>The inert <code>frontend-design</code> entry.</strong> Should it stay (for local sessions) or go, now that it’s known not to load in alfred’s cloud sessions? Whoever added it may believe it’s active.</li>
+    <li><strong>Telemetry.</strong> If the full plugin were ever installed, brainstorming’s optional visual companion loads a logo from Prime Radiant’s site that reports the plugin version (opt out with <code>SUPERPOWERS_DISABLE_TELEMETRY</code> or <code>DISABLE_TELEMETRY</code>). None of the ports carry it.</li>
+  </ul>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <ol>
+    <li><a href="https://github.com/obra/superpowers">github.com/obra/superpowers</a>, cloned at <code>8ca22db</code> (v6.4.2): <code>README.md</code>, <code>RELEASE-NOTES.md</code>, <code>hooks/hooks.json</code>, <code>hooks/session-start</code>, <code>.claude-plugin/plugin.json</code>, <code>LICENSE</code>, and every <code>skills/*/SKILL.md</code> (read in full: using-superpowers, brainstorming, writing-plans, subagent-driven-development to its task loop, systematic-debugging; the others skimmed), plus <code>skills/using-superpowers/references/claude-code-tools.md</code>.</li>
+    <li><a href="https://code.claude.com/docs/en/cloud-environments">Configure cloud environments</a>, “What carries over from your setup” (plugins: No; repo <code>.claude/skills/</code>: Yes; claude.ai skills auto-load).</li>
+    <li><a href="https://code.claude.com/docs/en/settings">Settings files and precedence</a>, “Settings in cloud sessions”. Also <a href="https://code.claude.com/docs/en/claude-code-on-the-web">Use Claude Code in the cloud</a> (<code>/plugin</code> is unavailable in cloud sessions).</li>
+    <li>This container: <code>~/.claude/plugins/installed_plugins.json</code> (empty at start), <code>~/.claude/plugins/marketplaces/claude-plugins-official/.claude-plugin/marketplace.json</code> (the superpowers entry pins <code>5bf4e78</code>), <code>claude plugin install</code> / <code>claude plugin list</code> / <code>claude -p … --max-turns 1</code> on Claude Code 2.1.287. The headless launch-prompt probes were blocked by the permission classifier.</li>
+    <li>alfred: <code>frontend/lib/code/links.ts</code> (every launch prompt, <code>buildUrl</code>, <code>adversarialReviewStep</code>), <code>.claude/settings.json</code>, <code>.claude/skills/{refinement,implement-spec,bug,spike,implement-epic,adversarial-review,skill-creator,llm-evaluation}/SKILL.md</code>, <code>tools/session-ledger/src/replay.ts</code>, <code>CLAUDE.md</code>.</li>
+    <li><code>docs/spikes/composable-shared-skills.html</code> (copied skills rot; plugin route noted but not verified for cloud).</li>
+    <li><code>docs/communication-firewall/cognitive-revolution-transcript.md</code> (Steve Newman on Superpowers and <code>/systematic-debugging</code>).</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
