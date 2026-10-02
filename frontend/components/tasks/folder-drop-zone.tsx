@@ -23,12 +23,13 @@ interface FolderDropZoneProperties {
  * The zone stays registered during a FOLDER drag (a disabled droppable drops out of collision
  * detection and lets a stale target win the drop — see the dnd-kit skill), but it doesn't
  * highlight: that drag reorders the list through the gap strips, and "file it here" is not on
- * offer.
+ * offer. Nor during a SUBTASK drag: a subtask only moves between/inside other subtasks
+ * (ALF-315), so `resolveFolderDrop` refuses the drop and the zone mustn't promise it.
  */
 export function FolderDropZone({ id, children }: FolderDropZoneProperties) {
   const { setNodeRef, isOver } = useDroppable({ id });
-  const { activeDragFolderId } = useTaskDrag();
-  const active = isOver && activeDragFolderId === null;
+  const { activeDragFolderId, activeDragIsChild } = useTaskDrag();
+  const active = isOver && activeDragFolderId === null && !activeDragIsChild;
   return (
     <div
       ref={setNodeRef}

@@ -165,4 +165,48 @@ test.describe('drag a task to a folder', () => {
       page.getByRole('list', { name: 'Tasks' }).getByText('Ship the widget'),
     ).toBeHidden();
   });
+
+  test('a subtask is not draggable onto a folder — it stays in its parent (ALF-315)', async ({
+    page,
+    seed,
+  }) => {
+    // A subtask only moves between/inside other subtasks. Before the fix a drop onto a sidebar
+    // folder filed it there, tearing it out of its parent's tree.
+    const home = makeFolder('Home', { id: '33333333-3333-4333-8333-333333333333' });
+    const work = makeFolder('Work', { id: '44444444-4444-4444-8444-444444444444' });
+    const parent = makeItem('Parent', { item_type: 'task', folder_id: home.id });
+    const child = makeItem('Nested child', {
+      item_type: 'task',
+      folder_id: home.id,
+      parent_id: parent.id,
+    });
+    await seed({ folders: [home, work], items: [parent, child] });
+    await page.goto(`/folders/${home.id}`);
+
+    const list = page.getByRole('list', { name: 'Tasks', exact: true });
+    await page.getByRole('button', { name: 'Expand subtasks' }).click();
+    const source = list.getByText('Nested child');
+    await expect(source).toBeVisible();
+    const workFolder = page.getByRole('link', { name: 'Work' });
+
+    // The subtask still lifts (it can be reordered / re-nested), but gliding it over a folder
+    // never lights the folder up. Asserted WHILE the pointer is down — `data-drop-over` only
+    // exists mid-drag.
+    await pickUp(page, source);
+    const to = await boxOf(workFolder);
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+    await expect(page.locator('[data-drop-over="true"]')).toHaveCount(0);
+    await page.mouse.up();
+
+    // Reload so the rest reads the saved rows, not an optimistic patch: still nested under
+    // Parent in Home, and never filed into Work.
+    await page.reload();
+    await page.getByRole('button', { name: 'Expand subtasks' }).click();
+    await expect(
+      page.getByRole('listitem').filter({ hasText: 'Parent' }).getByText('Nested child'),
+    ).toBeVisible();
+    await workFolder.click();
+    await expect(list.getByText('Parent')).toBeHidden();
+    await expect(list.getByText('Nested child')).toBeHidden();
+  });
 });
