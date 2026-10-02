@@ -205,7 +205,10 @@ test.describe('drag a task to a folder', () => {
     await expect(
       page.getByRole('listitem').filter({ hasText: 'Parent' }).getByText('Nested child'),
     ).toBeVisible();
+    // Wait for Work's own (empty) view first, so the hidden checks can't pass in the gap between
+    // Home's list unmounting and Work's mounting.
     await workFolder.click();
+    await expect(page.getByText('No tasks in Work')).toBeVisible();
     await expect(list.getByText('Parent')).toBeHidden();
     await expect(list.getByText('Nested child')).toBeHidden();
   });
