@@ -513,8 +513,12 @@ Both links are plain `https://claude.ai/code?...` URLs with a `repo` and a URL-e
 human reviews and hits enter (keeps us ToS-clean, §1).
 
 ```
-https://claude.ai/code?repo=<owner>/<name>&prompt=<urlencoded prompt>
+https://claude.ai/code?repo=<owner>/<name>&prompt=<urlencoded prompt>[&environment=<name or id>]
 ```
+
+`environment` preselects the project's Claude Code cloud environment (`projects.cloud_environment`,
+ALF-279 — set on the board header or in the new-project dialog), so each repo opens with its own
+network policy, setup script and secrets. Omitted when the project names none.
 
 Build them with pure helpers in `frontend/lib/code/links.ts`:
 `buildRefinementUrl(project, story)` and `buildImplementationUrl(project, story)` — derived entirely
