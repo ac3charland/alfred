@@ -149,6 +149,7 @@ type Story = StoryObj<typeof meta>;
  * The cross-project "Needs human action" queue: every story in a human-review state
  * (In Refinement / Ready for Dev / Ready for Review) ranked by global priority, each row with the
  * same reorder chevrons as the Backlog. The `needs_refinement` and `in_development` stories in the
- * seed are filtered out — only the states that need a human show.
+ * seed are filtered out — only the states that need a human show. The header carries the
+ * "Filter by status" and "Filter by project" dropdowns (ALF-316), both at rest.
  */
 export const Seeded: Story = {};

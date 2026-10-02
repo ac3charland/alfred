@@ -89,7 +89,7 @@ const codeItems = [
   }),
 ];
 
-test('lists only the human-review stories, ranked by priority, with no filter control', async ({
+test('lists only the human-review stories, ranked by priority, filters at rest', async ({
   page,
   seed,
 }) => {
@@ -97,8 +97,9 @@ test('lists only the human-review stories, ranked by priority, with no filter co
   await page.goto('/code/needs-human-action');
 
   await expect(page.getByRole('heading', { name: 'Needs human action' })).toBeVisible();
-  // The view IS the filter, so there is no "Filter by status" dropdown here.
-  await expect(page.getByRole('button', { name: /filter by status/i })).toHaveCount(0);
+  // Both filters rest at their defaults (ALF-316), so neither trigger carries a count.
+  await expect(page.getByRole('button', { name: 'Filter by status' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Filter by project' })).toBeVisible();
 
   const rows = page.getByRole('listitem');
   await expect(rows).toHaveCount(3);
@@ -143,4 +144,113 @@ test('navigates to the view from the sidebar link', async ({ page, seed }) => {
   await expect(page).toHaveURL('/code/needs-human-action');
   await expect(page.getByRole('heading', { name: 'Needs human action' })).toBeVisible();
   await expect(page.getByRole('listitem')).toHaveCount(3);
+});
+
+/**
+ * A second project whose human-review story ranks BETWEEN two Alfred ones (ALF-316), so the
+ * project filter has something to hide in the middle of the queue.
+ */
+function seedTwoProjects() {
+  const project2 = makeProject('Relay', { id: 'p2', key: 'RLP' });
+  const epic2 = makeEpic('Routing', { id: 'e2', project_id: 'p2', ref_number: 1, ref: 'RLP-1' });
+  return {
+    projects: [project, project2],
+    epics: [epic, epic2],
+    items: [...items, makeItem('Approve the digest spec', { id: 'i7', item_type: 'code' })],
+    codeItems: [
+      ...codeItems,
+      makeCodeStory({
+        item_id: 'i7',
+        project_id: 'p2',
+        epic_id: 'e2',
+        ref_number: 2,
+        ref: 'RLP-2',
+        priority: 1.5,
+        factory_state: 'in_refinement',
+      }),
+    ],
+  };
+}
+
+test('narrows the queue by status and by project (ALF-316)', async ({ page, seed }) => {
+  await seed(seedTwoProjects());
+  await page.goto('/code/needs-human-action');
+
+  const rows = page.getByRole('listitem');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(1)).toContainText('RLP-2');
+
+  // The status menu offers only the three human-review states, all checked at rest.
+  await page.getByRole('button', { name: /filter by status/i }).click();
+  await expect(page.getByRole('menuitemcheckbox')).toHaveText([
+    'In Refinement',
+    'Ready for Dev',
+    'Ready for Review',
+  ]);
+  for (const option of await page.getByRole('menuitemcheckbox').all()) {
+    await expect(option).toHaveAttribute('aria-checked', 'true');
+  }
+  // Uncheck In Refinement; close the menu (Escape) before reading the rows it aria-hides.
+  await page.getByRole('menuitemcheckbox', { name: 'In Refinement' }).click();
+  await page.keyboard.press('Escape');
+
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('ALF-4');
+  await expect(rows.nth(1)).toContainText('ALF-5');
+  await expect(page.getByRole('button', { name: /filter by status/i })).toContainText('(2)');
+
+  // Restore it, then pick out Relay: only its spec-in-review story is left.
+  await page.getByRole('button', { name: /filter by status/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'In Refinement' }).click();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /filter by project/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
+  await page.keyboard.press('Escape');
+
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0)).toContainText('RLP-2');
+  await expect(page.getByRole('button', { name: /filter by project/i })).toContainText('(1)');
+
+  // Filtering out the last story says so, rather than claiming nothing needs attention.
+  await page.getByRole('button', { name: /filter by status/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'In Refinement' }).click();
+  await page.keyboard.press('Escape');
+  await expect(rows).toHaveCount(0);
+  await expect(page.getByText(/No stories match these filters/)).toBeVisible();
+});
+
+test('keeps its own filters across SPA navigation, apart from the Backlog (ALF-316)', async ({
+  page,
+  seed,
+}) => {
+  await seed(seedTwoProjects());
+  await page.goto('/code/needs-human-action');
+
+  const rows = page.getByRole('listitem');
+  // Narrow both filters: Relay only, and Ready for Review unchecked.
+  await page.getByRole('button', { name: /filter by project/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /filter by status/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Ready for Review' }).click();
+  await page.keyboard.press('Escape');
+  await expect(rows).toHaveCount(1);
+
+  // The Backlog keeps its own selections — neither pick here narrows it: no counts on its
+  // triggers, and all six outstanding stories (Ready for Review included) still listed.
+  const projectNav = page.getByRole('navigation', { name: 'Projects' });
+  await projectNav.getByRole('link', { name: 'Backlog' }).click();
+  await expect(page).toHaveURL('/code/backlog');
+  await expect(page.getByRole('button', { name: /filter by project/i })).not.toContainText('(');
+  await expect(page.getByRole('button', { name: /filter by status/i })).not.toContainText('(');
+  await expect(rows).toHaveCount(6);
+  await expect(page.getByRole('listitem').filter({ hasText: 'ALF-5' })).toHaveCount(1);
+
+  // Back on this view, both picks survived the round-trip.
+  await projectNav.getByRole('link', { name: 'Needs human action' }).click();
+  await expect(page).toHaveURL('/code/needs-human-action');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0)).toContainText('RLP-2');
+  await expect(page.getByRole('button', { name: /filter by project/i })).toContainText('(1)');
+  await expect(page.getByRole('button', { name: /filter by status/i })).toContainText('(2)');
 });

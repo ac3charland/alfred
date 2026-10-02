@@ -17,11 +17,11 @@ export interface ProjectFilter extends Pick<KeyedFilter<string>, 'toggle' | 'isF
 const NO_PROJECTS: readonly string[] = [];
 
 /**
- * A "Filter by project" multi-select for the Backlog, resting at **nothing selected** — which the
- * Backlog reads as "every project", so the list starts cross-project and each tap *includes* one
- * more project rather than excluding it (ALF-201: narrowing to one project is one tap, not one tap
- * per project you don't want). A project created later needs no special handling: it simply isn't
- * in the selection until the owner picks it.
+ * A "Filter by project" multi-select for the Backlog and Needs human action, resting at **nothing
+ * selected** — which each view reads as "every project", so the list starts cross-project and each
+ * tap *includes* one more project rather than excluding it (ALF-201: narrowing to one project is
+ * one tap, not one tap per project you don't want). A project created later needs no special
+ * handling: it simply isn't in the selection until the owner picks it.
  *
  * Like `useStatusFilter`, the selection lives in the layout-mounted `CodeFilterProvider` keyed by
  * `key`, so it survives SPA navigation away from the view and back.
