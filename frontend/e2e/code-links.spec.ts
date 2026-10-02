@@ -657,3 +657,56 @@ test('the detail modal marks an existing story dev-ready without opening a tab',
   // The whole point of the mark: the judgement is recorded with nothing launched.
   expect(await getOpenedUrls(page)).toHaveLength(0);
 });
+
+test('the board header sets the project’s cloud environment, and launches preselect it', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('RealPlay', {
+    id: PROJECT_ID,
+    key: 'RLP',
+    repo_owner: 'ac3charland',
+    repo_name: 'realplay',
+  });
+  const epic = makeEpic('Onboarding', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'RLP-1',
+  });
+  const item = makeItem('Draft the onboarding spec', { id: ITEM_ID, item_type: 'code' });
+  const story = makeCodeStory({
+    item_id: ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 2,
+    ref: 'RLP-2',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+  await stubWindowOpen(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  await page.getByRole('button', { name: 'Set cloud environment…' }).click();
+  await page.getByRole('textbox', { name: 'Edit cloud environment' }).fill('RealPlay');
+  await page.getByRole('button', { name: /^save$/i }).click();
+  await expect(page.getByRole('button', { name: 'RealPlay', exact: true })).toBeVisible();
+
+  // The setting survives a reload — it was saved, not just applied optimistically.
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'RealPlay', exact: true })).toBeVisible();
+
+  await page
+    .getByRole('region', { name: 'Needs Refinement' })
+    .getByRole('button', { name: /refine in claude code/i })
+    .click();
+
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
+  const opened = await getOpenedUrls(page);
+  const url = new URL(opened[0] ?? '');
+  expect(url.searchParams.get('repo')).toBe('ac3charland/realplay');
+  expect(url.searchParams.get('environment')).toBe('RealPlay');
+});
