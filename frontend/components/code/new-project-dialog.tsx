@@ -154,7 +154,7 @@ function NewProjectForm({
             onChange={(event_) => {
               setCloudEnvironment(event_.target.value);
             }}
-            placeholder="Default"
+            placeholder="None: claude.ai picks"
             className="px-3 py-2"
             aria-describedby="new-project-environment-help"
           />
