@@ -1025,6 +1025,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          cloud_environment: string | null
           color: string | null
           created_at: string
           description: string | null
@@ -1038,6 +1039,7 @@ export type Database = {
           repo_owner: string
         }
         Insert: {
+          cloud_environment?: string | null
           color?: string | null
           created_at?: string
           description?: string | null
@@ -1051,6 +1053,7 @@ export type Database = {
           repo_owner: string
         }
         Update: {
+          cloud_environment?: string | null
           color?: string | null
           created_at?: string
           description?: string | null

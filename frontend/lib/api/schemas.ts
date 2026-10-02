@@ -479,6 +479,23 @@ const projectKey = z.string().regex(/^[A-Z][A-Z0-9]{2}$/, {
   message: 'Key must be exactly 3 characters: an uppercase letter then two letters or digits',
 });
 
+/** The cloud-environment cap, shared with the inputs that author it (ALF-279). */
+export const CLOUD_ENVIRONMENT_MAX = 100;
+
+/**
+ * A project's Claude Code cloud environment — its name or `env_…` id, which every launch link
+ * preselects via `environment` (ALF-279). Trimmed and single-line, and a blank value clears it to `null` so a
+ * launch link never carries an empty `environment=`.
+ */
+const cloudEnvironment = z
+  .string()
+  .trim()
+  .max(CLOUD_ENVIRONMENT_MAX)
+  // One line: the board edits it in a textarea, where Enter types a newline into the name.
+  .regex(/^[^\t\n\r]*$/, { message: 'A cloud environment is a single line' })
+  .nullable()
+  .transform((value) => (value === '' ? null : value));
+
 /**
  * Body for POST /api/projects. The route derives `repo_owner`/`repo_name` from the
  * GitHub URL (the `lib/code/github` parser) and persists the URL too. `key` is validated
@@ -488,13 +505,15 @@ export const createProjectSchema = z.object({
   name: z.string().min(1),
   github_url: z.url(),
   key: projectKey,
+  cloud_environment: cloudEnvironment.optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 /**
- * Body for PATCH /api/projects/[id] — the description (ALF-179), the colour (ALF-188) and the
- * exclusion from the Dashboard PR ratio (ALF-276), and nothing else. `name`, `key`, `github_url`
+ * Body for PATCH /api/projects/[id] — the description (ALF-179), the colour (ALF-188), the
+ * exclusion from the Dashboard PR ratio (ALF-276) and the cloud environment (ALF-279), and nothing
+ * else. `name`, `key`, `github_url`
  * and the repo fields stay immutable: `key` is carried by every ref, branch name and PR
  * frontmatter, so renaming a project is a real feature with its own consequences rather than a
  * side effect of adding a text column. An object schema STRIPS unknown keys, so a body naming any
@@ -509,6 +528,7 @@ export const updateProjectSchema = z
     description: entityDescription.optional(),
     color: z.enum(PROJECT_COLORS).nullable().optional(),
     exclude_from_pr_ratio: z.boolean().optional(),
+    cloud_environment: cloudEnvironment.optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: 'No fields to update',

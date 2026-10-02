@@ -464,6 +464,17 @@ describe('makeOptimisticProject', () => {
     expect(project.repo_owner).toBe('');
     expect(project.repo_name).toBe('');
     expect(project.ref_seq).toBe(0);
+    expect(project.cloud_environment).toBeNull();
+  });
+
+  it('carries the dialog’s cloud environment, when it names one', () => {
+    const project = makeOptimisticProject({
+      name: 'RealPlay',
+      key: 'RLP',
+      github_url: 'https://github.com/ac3charland/realplay',
+      cloud_environment: 'RealPlay',
+    });
+    expect(project.cloud_environment).toBe('RealPlay');
   });
 });
 
@@ -486,6 +497,7 @@ describe('makeOptimisticStory', () => {
     color: null,
     description: null,
     exclude_from_pr_ratio: false,
+    cloud_environment: null,
     id: 'p-1',
     name: 'Alfred',
     key: 'ALF',

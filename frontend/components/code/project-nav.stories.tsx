@@ -16,6 +16,7 @@ const PROJECTS: Project[] = [
 ].map(([name, key, repo], index) => ({
   color: null,
   description: null,
+  cloud_environment: null,
   exclude_from_pr_ratio: false,
   id: `pp${String(index + 1)}`,
   name: name ?? '',

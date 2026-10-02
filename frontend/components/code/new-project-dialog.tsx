@@ -7,6 +7,7 @@ import { DialogDescription, DialogTitle, FormDialog } from '@/components/atoms/d
 import { FieldLabel } from '@/components/atoms/field-label';
 import { TextField } from '@/components/atoms/text-field';
 import type { CreateProjectInput } from '@/lib/api-client';
+import { CLOUD_ENVIRONMENT_MAX } from '@/lib/api/schemas';
 import { parseGithubRepo } from '@/lib/code/github';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import type { Project } from '@/lib/types';
@@ -43,6 +44,7 @@ function NewProjectForm({
   const [name, setName] = React.useState('');
   const [githubUrl, setGithubUrl] = React.useState('');
   const [key, setKey] = React.useState('');
+  const [cloudEnvironment, setCloudEnvironment] = React.useState('');
   const nameRef = React.useRef<HTMLInputElement>(null);
 
   // Focus the first field on mount (Radix preventDefault'd its own autofocus).
@@ -62,6 +64,8 @@ function NewProjectForm({
         name: name.trim(),
         github_url: githubUrl.trim(),
         key,
+        // Blank means none: leave the key out, so the body names only what the owner typed.
+        ...(cloudEnvironment.trim() === '' ? {} : { cloud_environment: cloudEnvironment.trim() }),
       }),
     onSuccess: (project) => {
       onCreated(project);
@@ -141,6 +145,24 @@ function NewProjectForm({
           </p>
         </div>
 
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel htmlFor="new-project-environment">Cloud environment (optional)</FieldLabel>
+          <TextField
+            id="new-project-environment"
+            value={cloudEnvironment}
+            maxLength={CLOUD_ENVIRONMENT_MAX}
+            onChange={(event_) => {
+              setCloudEnvironment(event_.target.value);
+            }}
+            placeholder="None: claude.ai picks"
+            className="px-3 py-2"
+            aria-describedby="new-project-environment-help"
+          />
+          <p id="new-project-environment-help" className="text-xs text-muted-foreground">
+            The Claude Code environment (name or ID) its sessions open in.
+          </p>
+        </div>
+
         {error !== null && <p className="text-xs text-destructive">{error}</p>}
       </div>
 
@@ -172,7 +194,8 @@ function NewProjectForm({
 
 /**
  * The New-project sub-dialog: Name + GitHub link + a 3-char uppercase Ticket key
- * with a live "Refs will look like ALF-12" preview. On submit it parses the URL into
+ * with a live "Refs will look like ALF-12" preview, plus an optional cloud environment its launch
+ * links preselect (ALF-279). On submit it parses the URL into
  * repo_owner/repo_name (server-side, but validated here too), creates the project via the
  * injected callback, and hands the row back so the caller can select/route to it.
  */

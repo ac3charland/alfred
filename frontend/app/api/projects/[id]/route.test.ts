@@ -27,6 +27,7 @@ const TEST_PROJECT = {
   description: 'My capture-first task system.',
   color: null,
   exclude_from_pr_ratio: false,
+  cloud_environment: null,
 };
 
 interface MockResult {
@@ -223,6 +224,33 @@ describe('PATCH /api/projects/[id]', () => {
       expect(mockSupabase.from).not.toHaveBeenCalled();
     },
   );
+
+  it('persists a cloud environment, and clears a blank one to null', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, {
+      data: { ...TEST_PROJECT, cloud_environment: 'RealPlay' },
+      error: undefined,
+    });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(patchRequest({ cloud_environment: 'RealPlay' }), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ cloud_environment: 'RealPlay' });
+    expect(await response.json()).toMatchObject({ cloud_environment: 'RealPlay' });
+
+    await PATCH(patchRequest({ cloud_environment: '  ' }), routeContext);
+    expect(mockSupabase._chain.update).toHaveBeenLastCalledWith({ cloud_environment: null });
+  });
+
+  it('returns 400 for a non-string cloud environment, before any Supabase call', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(patchRequest({ cloud_environment: 7 }), routeContext);
+
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+  });
 
   it('returns 400 for a description over 500 characters, rather than a Postgres CHECK 500', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });

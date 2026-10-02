@@ -99,6 +99,7 @@ const PROJECT: Project = {
   created_at: '2025-01-01T00:00:00Z',
   color: null,
   description: null,
+  cloud_environment: null,
   exclude_from_pr_ratio: false,
 };
 
@@ -166,6 +167,8 @@ function makeStory(itemId: string, epicId: string, overrides: Partial<CodeStory>
 const descriptionPlaceholder = () =>
   screen.getByRole('button', { name: 'Add project description…' });
 const descriptionEditor = () => screen.getByRole('textbox', { name: 'Edit project description' });
+/** The cloud environment line's open editor (ALF-279). */
+const environmentEditor = () => screen.getByRole('textbox', { name: 'Edit cloud environment' });
 
 /** Open the board toolbar's mobile ⋯ filter menu. */
 async function openFilterMenu(user: ReturnType<typeof userEvent.setup>) {
@@ -822,6 +825,52 @@ describe('Board', () => {
 
       expect(screen.queryByRole('heading')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /^project color/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the cloud environment line', () => {
+    it('labels the line and invites setting one when the project names none', () => {
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      expect(screen.getByText('Cloud environment')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Set cloud environment…' })).toBeInTheDocument();
+    });
+
+    it('shows the environment the project names', () => {
+      renderBoard({
+        projects: [{ ...PROJECT, cloud_environment: 'RealPlay' }],
+        epics: [makeEpic('e1')],
+      });
+
+      expect(screen.getByRole('button', { name: 'RealPlay' })).toBeInTheDocument();
+    });
+
+    it('saves the trimmed environment through the store', async () => {
+      mockUpdateProject.mockResolvedValue({ ...PROJECT, cloud_environment: 'alfred' });
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'Set cloud environment…' }));
+      await user.type(environmentEditor(), '  alfred  ');
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(mockUpdateProject).toHaveBeenCalledWith('p1', { cloud_environment: 'alfred' });
+      expect(await screen.findByRole('button', { name: 'alfred' })).toBeInTheDocument();
+    });
+
+    it('clears the environment to null when emptied', async () => {
+      mockUpdateProject.mockResolvedValue(PROJECT);
+      const user = userEvent.setup();
+      renderBoard({
+        projects: [{ ...PROJECT, cloud_environment: 'alfred' }],
+        epics: [makeEpic('e1')],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'alfred' }));
+      await user.clear(environmentEditor());
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(mockUpdateProject).toHaveBeenCalledWith('p1', { cloud_environment: null });
     });
   });
 

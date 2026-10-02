@@ -33,6 +33,7 @@ jest.mock('@/lib/clipboard', () => ({
 const PROJECT: Project = {
   color: null,
   description: null,
+  cloud_environment: null,
   exclude_from_pr_ratio: false,
   id: 'p1',
   name: 'Alfred',

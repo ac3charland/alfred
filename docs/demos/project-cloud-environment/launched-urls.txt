@@ -1,0 +1,6 @@
+RLP-2, launched before an environment was set:
+  repo=ac3charland/realplay
+  environment=(absent)
+RLP-3, launched after setting RealPlay:
+  repo=ac3charland/realplay
+  environment=RealPlay

@@ -129,6 +129,7 @@ test('Dispatch on a labelled code row → it leaves the inbox and lands on the b
       {
         color: null,
         description: null,
+        cloud_environment: null,
         exclude_from_pr_ratio: false,
         id: projectId,
         name: 'Alfred',
@@ -202,6 +203,7 @@ test('the "Created …" toast is clickable and deep-links to the new story (ALF-
       {
         color: null,
         description: null,
+        cloud_environment: null,
         exclude_from_pr_ratio: false,
         id: projectId,
         name: 'Alfred',

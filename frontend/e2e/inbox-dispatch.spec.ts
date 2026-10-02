@@ -93,6 +93,7 @@ const ALFRED_PROJECT = {
   description: null,
   color: null,
   exclude_from_pr_ratio: false,
+  cloud_environment: null,
 };
 const TRIAGE_EPIC = {
   id: EPIC_ID,

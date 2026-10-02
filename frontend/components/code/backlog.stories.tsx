@@ -11,6 +11,7 @@ const PROJECTS: Project[] = [
   {
     color: null,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id: 'p1',
     name: 'Alfred',
@@ -24,6 +25,7 @@ const PROJECTS: Project[] = [
   {
     color: null,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id: 'p2',
     name: 'Relay',
@@ -136,6 +138,7 @@ const PALETTE = PALETTE_SEED.map(([name, key, repo, factoryState, title], index)
   const project: Project = {
     color: null,
     description: null,
+    cloud_environment: null,
     exclude_from_pr_ratio: false,
     id: `pp${String(index + 1)}`,
     name,

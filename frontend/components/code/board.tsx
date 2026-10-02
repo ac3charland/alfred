@@ -9,7 +9,7 @@ import { BoardToolbar } from '@/components/code/board/board-toolbar';
 import { EpicBlock, type OpenSessionHandler } from '@/components/code/board/epic-block';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
 import { StoryDetailModal } from '@/components/code/story-detail-modal';
-import { ENTITY_DESCRIPTION_MAX } from '@/lib/api/schemas';
+import { CLOUD_ENVIRONMENT_MAX, ENTITY_DESCRIPTION_MAX } from '@/lib/api/schemas';
 import {
   isProjectColor,
   projectColorFor,
@@ -57,8 +57,13 @@ export interface BoardProperties {
  */
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);
-  const { openClaudeSession, createEpic, updateProjectDescription, updateProjectColor } =
-    useCodeActions();
+  const {
+    openClaudeSession,
+    createEpic,
+    updateProjectDescription,
+    updateProjectColor,
+    updateProjectCloudEnvironment,
+  } = useCodeActions();
   // Creation-ordered, not `project` alone: the slot colour is the project's position in it.
   const projects = useProjects();
   // A `?story=<ref>` deep-link (e.g. from a Backlog row) opens that story's modal — see below.
@@ -219,6 +224,21 @@ export function Board({ projectId }: BoardProperties) {
             editLabel="Edit project description"
             maxLength={ENTITY_DESCRIPTION_MAX}
             onSave={(description) => updateProjectDescription(projectId, description)}
+          />
+        </div>
+
+        {/* The Claude Code cloud environment every launch link from this board preselects
+            (ALF-279) — so each repo opens with its own network policy, setup script and secrets.
+            Labelled, because a bare environment name reads as stray prose. */}
+        <div className="flex max-w-2xl items-center gap-2 text-sm">
+          <span className="shrink-0 text-muted-foreground/70">Cloud environment</span>
+          <InlineNoteField
+            value={project.cloud_environment}
+            emptyLabel="Set cloud environment…"
+            placeholder="Environment name or ID…"
+            editLabel="Edit cloud environment"
+            maxLength={CLOUD_ENVIRONMENT_MAX}
+            onSave={(environment) => updateProjectCloudEnvironment(projectId, environment)}
           />
         </div>
       </div>

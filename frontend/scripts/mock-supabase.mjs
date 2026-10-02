@@ -897,6 +897,8 @@ function newProject(input) {
     color: input.color ?? null,
     // Dropped from the Dashboard PR ratio when true (migration 0042).
     exclude_from_pr_ratio: input.exclude_from_pr_ratio ?? false,
+    // The Claude Code cloud environment launch links preselect (migration 0051).
+    cloud_environment: input.cloud_environment ?? null,
   };
 }
 

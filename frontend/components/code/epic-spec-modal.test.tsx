@@ -18,6 +18,7 @@ jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
 const PROJECT: Project = {
   color: null,
   description: null,
+  cloud_environment: null,
   exclude_from_pr_ratio: false,
   id: 'p1',
   name: 'Alfred',

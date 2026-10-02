@@ -8,8 +8,8 @@ import { toUpdatePayload } from '@/lib/api/updates';
 import type { ProjectUpdate } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
-// PATCH /api/projects/[id] — the project's description (ALF-179), colour (ALF-188) and
-// exclusion from the Dashboard PR ratio (ALF-276)
+// PATCH /api/projects/[id] — the project's description (ALF-179), colour (ALF-188),
+// exclusion from the Dashboard PR ratio (ALF-276) and cloud environment (ALF-279)
 //
 // The only editable fields a project has. `name`, `key`, `github_url` and the repo fields stay
 // immutable: `key` is carried by every ref, branch name and PR frontmatter, so a rename is a
@@ -32,6 +32,7 @@ export const PATCH = withSession(
       'description',
       'color',
       'exclude_from_pr_ratio',
+      'cloud_environment',
     ]);
 
     const { data, error } = await supabase
