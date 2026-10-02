@@ -384,7 +384,7 @@ export function TaskRowMenu({
             <DropdownMenuSelectSub
               label="Epic…"
               value={node.intended_epic_id}
-              options={epicOptions(epicsForProject, 'No epic')}
+              options={epicOptions(epicsForProject, 'No epic', node.intended_epic_id)}
               disabled={node.intended_project_id === null}
               hint={EPIC_NEEDS_PROJECT_HINT}
               onSelect={editing.onSetEpic}

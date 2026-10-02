@@ -65,6 +65,14 @@ const ARCHIVED_EPIC: Epic = {
   archived_at: '2025-06-01T10:00:00Z',
 };
 
+/** The given popover entries' text, in the order they sit in the document. */
+function pickerEntries(wanted: string[]): string[] {
+  return screen
+    .getAllByRole('button')
+    .map((button) => button.textContent)
+    .filter((text) => wanted.includes(text));
+}
+
 describe('detail chips (ALF-67)', () => {
   describe('RepeatChip', () => {
     const dailyRule: RecurrenceRule = { freq: 'daily', interval: 1, end: { type: 'never' } };
@@ -270,6 +278,37 @@ describe('the label chips (ALF-170)', () => {
       await user.click(chip);
       await user.click(await screen.findByRole('button', { name: /LLM processing/ }));
       expect(onSelect).toHaveBeenCalledWith('e2');
+    });
+
+    it('compact: lists the current epic first, ahead of its siblings', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <IntendedEpicChip projectId="p1" epicId="e2" size="compact" onSelect={jest.fn()} />,
+        { projects: PROJECTS, epics: EPICS },
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Epic: ALF-158' }));
+      await screen.findByRole('button', { name: /Inbox triage/ });
+      expect(pickerEntries(['LLM processingALF-158', 'Inbox triageALF-104'])).toEqual([
+        'LLM processingALF-158',
+        'Inbox triageALF-104',
+      ]);
+    });
+
+    it('comfortable: lists the current epic first, ahead of "No epic" and its siblings', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<IntendedEpicChip projectId="p1" epicId="e2" onSelect={jest.fn()} />, {
+        projects: PROJECTS,
+        epics: EPICS,
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Epic' }));
+      await screen.findByRole('button', { name: 'No epic' });
+      expect(pickerEntries(['LLM processingALF-158', 'No epic', 'Inbox triageALF-104'])).toEqual([
+        'LLM processingALF-158',
+        'No epic',
+        'Inbox triageALF-104',
+      ]);
     });
 
     it('compact: renders the ref-only pill when set, and inert as a span', () => {
