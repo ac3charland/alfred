@@ -113,7 +113,8 @@ const pointerWithinVisible: CollisionDetection = (args) => {
  *
  * - Drop a task ONTO another task → re-parent it: the dropped task (and its whole subtree)
  *   becomes a child of the target, routed through the optimistic `reparentTask` action.
- * - Drop a task onto a sidebar folder (or Inbox) → file it there via `moveTask`.
+ * - Drop a top-level task onto a sidebar folder (or Inbox) → file it there via `moveTask`. A
+ *   subtask only moves between/inside other subtasks, so its folder drop is refused (ALF-315).
  * - Drop a child task onto the list's top/bottom edge → pull it out to a top-level task
  *   (`reparentTask(id, null)`).
  * - Drag a sidebar folder into a gap between two folders → move it there (`reorderFolder`).
@@ -269,8 +270,9 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // A folder/Inbox target files the subtree; a list edge promotes the child to a
-    // top-level task; any other id is a task → re-parent.
+    // A folder/Inbox target files a top-level task's subtree (a subtask's folder drop is refused
+    // by resolveFolderDrop — ALF-315); a list edge promotes the child to a top-level task; any
+    // other id is a task → re-parent.
     const isFolderTarget = overId === INBOX_DROP_ID || folders.some((f) => f.id === overId);
     if (isFolderTarget) {
       const move = resolveFolderDrop(draggedId, overId, dragged);

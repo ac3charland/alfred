@@ -6,10 +6,21 @@ const DISPATCHED_AT = '2026-08-01T10:00:00Z';
 const inboxItem = (folderId: string | null = null) => ({
   folder_id: folderId,
   dispatched_at: null,
+  parent_id: null,
 });
 
 /** An item a human has dispatched into `folderId`. */
-const filedIn = (folderId: string) => ({ folder_id: folderId, dispatched_at: DISPATCHED_AT });
+const filedIn = (folderId: string) => ({
+  folder_id: folderId,
+  dispatched_at: DISPATCHED_AT,
+  parent_id: null,
+});
+
+/** A subtask of `parentId`, living (with its parent) in `folderId`. */
+const subtaskIn = (folderId: string, parentId = 'p1') => ({
+  ...filedIn(folderId),
+  parent_id: parentId,
+});
 
 describe('resolveFolderDrop', () => {
   it('no-ops when the task was dropped on nothing (over = null)', () => {
@@ -55,5 +66,15 @@ describe('resolveFolderDrop', () => {
 
   it('no-ops when a labelled inbox task is dropped onto the Inbox it still lives in', () => {
     expect(resolveFolderDrop('t1', INBOX_DROP_ID, inboxItem('f1'))).toBeNull();
+  });
+
+  it('no-ops when a subtask is dropped onto a different folder (ALF-315)', () => {
+    // A subtask only moves between/inside other subtasks — filing it would tear it out of its
+    // parent's tree, so the folder drop is refused.
+    expect(resolveFolderDrop('t1', 'f2', subtaskIn('f1'))).toBeNull();
+  });
+
+  it('no-ops when a subtask is dropped onto the Inbox (ALF-315)', () => {
+    expect(resolveFolderDrop('t1', INBOX_DROP_ID, subtaskIn('f1'))).toBeNull();
   });
 });
