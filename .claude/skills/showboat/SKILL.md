@@ -309,7 +309,8 @@ Run it with `node --import tsx/esm frontend/e2e/capture-tz.ts` (tsx is already a
 dev dep). Build Storybook first, serve it on 6006, take the shot, then kill the
 server. Do this **twice** when you need before/after screenshots for a bug:
 
-1. Temporarily revert the fix in the source file.
+1. Temporarily revert the fix in the source file. Once the fix is committed, `git stash` reverts
+   nothing — `git checkout origin/main -- <files>`, then `git checkout HEAD -- <files>` to restore.
 2. `npm run storybook:build -w frontend` → serve → shoot → embed "before" image.
 3. Restore the fix.
 4. `npm run storybook:build -w frontend` → serve → shoot → embed "after" image.
