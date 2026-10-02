@@ -1,7 +1,6 @@
 import { CalendarClock, ListOrdered, type LucideIcon } from 'lucide-react';
 
-import { type PriorityKey, compareKey, compareKeyByDue, ownKey } from '@/lib/priority';
-import { stableSorted } from '@/lib/sort';
+import { type KeyComparator, compareKey, compareKeyByDue, rankNodes } from '@/lib/priority';
 import type { Item } from '@/lib/types';
 
 /**
@@ -37,29 +36,21 @@ export function taskSortOption(mode: TaskSortMode): TaskSortOption {
   return OPTIONS[mode];
 }
 
-const COMPARATORS: Record<TaskSortMode, (a: PriorityKey, b: PriorityKey) => number> = {
+const COMPARATORS: Record<TaskSortMode, KeyComparator> = {
   priority: compareKey,
   due: compareKeyByDue,
 };
 
 /**
  * Order the **top-level** nodes it's handed by `mode`, returning a new array. Each node is ranked
- * by its **own** key — no rollup from its subtree — with `created_at` (oldest first) as the final
- * stable tiebreak. Children are left **exactly as received**: a subtask group keeps the
- * `sort_order` order `buildTree` applied (creation order by default, the manual order once
- * dragged), so neither mode reorders a subtask list.
- *
- * Pure and framework-free, so the Folder view's selector and a test can share one ordering.
+ * by its subtree's best key (`effectiveKey`) — the same rollup the By-Priority and Today views use
+ * — so a parent hiding a High or soon-due active subtask floats up. Children are left **exactly as
+ * received**: a subtask group keeps the `sort_order` order `buildTree` applied, so neither mode
+ * reorders a subtask list.
  */
 export function sortNodesBy<T extends Item & { children: T[] }>(
   nodes: readonly T[],
   mode: TaskSortMode,
 ): T[] {
-  const compare = COMPARATORS[mode];
-  return stableSorted(
-    nodes,
-    (a, b) =>
-      compare(ownKey(a), ownKey(b)) ||
-      (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0),
-  );
+  return rankNodes(nodes, COMPARATORS[mode]);
 }

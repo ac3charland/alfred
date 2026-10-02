@@ -2,6 +2,7 @@ import { ChevronsDown, ChevronsUp, Equal, type LucideIcon } from 'lucide-react';
 
 import type { BadgeProperties } from '@/components/atoms/badge';
 import { stableSorted } from '@/lib/sort';
+import { type ItemNode, buildTree } from '@/lib/tree';
 import type { Item, ItemPriority } from '@/lib/types';
 
 /**
@@ -100,12 +101,6 @@ export function ownKey(i: Item): PriorityKey {
   return { rank: priorityRank(i.priority), due: i.due_date ? Date.parse(i.due_date) : Infinity };
 }
 
-/** The more important / urgent of two keys: higher level wins, then the earlier due date. */
-export function bestKey(a: PriorityKey, b: PriorityKey): PriorityKey {
-  if (a.rank !== b.rank) return a.rank < b.rank ? a : b;
-  return a.due <= b.due ? a : b;
-}
-
 /** Sort comparator: rank ascending, then due ascending. */
 export function compareKey(a: PriorityKey, b: PriorityKey): number {
   return a.rank - b.rank || a.due - b.due;
@@ -122,43 +117,55 @@ export function compareKeyByDue(a: PriorityKey, b: PriorityKey): number {
   return a.rank - b.rank;
 }
 
-/** The more URGENT of two keys: the earlier due date wins, then the higher level. */
-export function bestKeyByDue(a: PriorityKey, b: PriorityKey): PriorityKey {
-  return compareKeyByDue(a, b) <= 0 ? a : b;
+/** A task with its subtree attached — the shape `buildTree` produces. */
+export interface PriorityNode extends Item {
+  children: readonly PriorityNode[];
+}
+
+/** A key ordering — {@link compareKey} (importance first) or {@link compareKeyByDue} (urgency first). */
+export type KeyComparator = (a: PriorityKey, b: PriorityKey) => number;
+
+/**
+ * A task's **effective key**: the best key — first under `compare` — across the task itself and
+ * its *active* descendants, at any depth. So a Low parent hiding a High (or overdue) active subtask
+ * ranks as that subtask would; a completed subtask (and its subtree) no longer counts. The row's
+ * badge still shows the task's OWN priority — the rollup affects ordering only.
+ */
+export function effectiveKey(node: PriorityNode, compare: KeyComparator = compareKey): PriorityKey {
+  let key = ownKey(node);
+  for (const child of node.children) {
+    if (child.status !== 'active') continue;
+    const childKey = effectiveKey(child, compare);
+    if (compare(childKey, key) < 0) key = childKey;
+  }
+  return key;
+}
+
+/**
+ * The one task ranking every view shares: order `nodes` by their {@link effectiveKey} under
+ * `compare`, `created_at` (oldest first) as the final stable tiebreak. Returns a new array; each
+ * node's children are left exactly as received (a subtask group keeps its `sort_order` order).
+ */
+export function rankNodes<T extends PriorityNode>(
+  nodes: readonly T[],
+  compare: KeyComparator = compareKey,
+): T[] {
+  const keyed = nodes.map((node) => ({ node, key: effectiveKey(node, compare) }));
+  return stableSorted(
+    keyed,
+    (a, b) =>
+      compare(a.key, b.key) || Date.parse(a.node.created_at) - Date.parse(b.node.created_at),
+  ).map(({ node }) => node);
 }
 
 /**
  * Rank the top-level (parentless) tasks of a flat item list for the By-Priority view (ALF-37):
- * High → Medium → Low → unprioritised, earlier due date first within a level, `created_at` as
- * the final stable tiebreak. Completed tasks are dropped unless `showCompleted`.
- *
- * Each task is ranked by its **effective key** — the best (most important, then most urgent) of
- * the task itself and its *active* descendants (recursively). So a Low-priority parent hiding a
- * High-priority, overdue active subtask floats up; a completed subtask's urgency is moot. Pure
- * and framework-free so the `useTasksByPriority` hook and the demo can share one ranking.
+ * High → Medium → Low → unprioritised by each task's {@link effectiveKey}, earlier due date first
+ * within a level. Completed tasks are dropped unless `showCompleted`. Each returned task carries its
+ * full built subtree (completed subtasks included), so a row can render it.
  */
-export function rankByPriority(items: readonly Item[], showCompleted: boolean): Item[] {
-  // Index children so a task's key can roll up over its subtree.
-  const childrenOf = new Map<string, Item[]>();
-  for (const i of items) {
-    if (i.parent_id === null) continue;
-    const list = childrenOf.get(i.parent_id) ?? [];
-    list.push(i);
-    childrenOf.set(i.parent_id, list);
-  }
-  const effectiveKey = (node: Item): PriorityKey => {
-    let key = ownKey(node);
-    for (const child of childrenOf.get(node.id) ?? []) {
-      if (child.status === 'active') key = bestKey(key, effectiveKey(child));
-    }
-    return key;
-  };
-  const top = items.filter((i) => i.parent_id === null);
-  const visible = showCompleted ? top : top.filter((i) => i.status === 'active');
-  return stableSorted(
-    visible,
-    (a, b) =>
-      compareKey(effectiveKey(a), effectiveKey(b)) ||
-      Date.parse(a.created_at) - Date.parse(b.created_at),
-  );
+export function rankByPriority(items: readonly Item[], showCompleted: boolean): ItemNode[] {
+  const top = buildTree([...items]).filter((node) => node.parent_id === null);
+  const visible = showCompleted ? top : top.filter((node) => node.status === 'active');
+  return rankNodes(visible, compareKey);
 }
