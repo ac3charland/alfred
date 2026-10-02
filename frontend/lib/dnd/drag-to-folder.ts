@@ -25,8 +25,9 @@ export interface FolderMove {
 
 /**
  * Resolve a drag-to-folder drop into the move it should trigger, or `null` for a no-op
- * (dropped on nothing, or onto where the task already LIVES — its resident folder, not its
- * `folder_id` label: an Inbox item labelled with a folder still has to be filed into it).
+ * (dropped on nothing; a subtask, which only moves between/inside other subtasks — ALF-315;
+ * or onto where the task already LIVES — its resident folder, not its `folder_id` label: an
+ * Inbox item labelled with a folder still has to be filed into it).
  *
  * @param itemId  the dragged task's id (`active.id`)
  * @param overId  the drop target's id (`over.id`), or `null` if dropped on nothing
@@ -35,9 +36,10 @@ export interface FolderMove {
 export function resolveFolderDrop(
   itemId: string,
   overId: string | null,
-  item: Pick<Item, 'folder_id' | 'dispatched_at'>,
+  item: Pick<Item, 'folder_id' | 'dispatched_at' | 'parent_id'>,
 ): FolderMove | null {
   if (overId === null) return null;
+  if (item.parent_id !== null) return null;
   const folderId = overId === INBOX_DROP_ID ? null : overId;
   if (folderId === residentFolderId(item)) return null;
   return { itemId, folderId };
