@@ -1,7 +1,8 @@
 import {
   type TaskPriority,
-  bestKey,
   compareKey,
+  compareKeyByDue,
+  effectiveKey,
   isPriorityLevel,
   ownKey,
   priorityOption,
@@ -9,6 +10,7 @@ import {
   rankByPriority,
 } from '@/lib/priority';
 import { stableSorted } from '@/lib/sort';
+import type { ItemNode } from '@/lib/tree';
 import type { Item } from '@/lib/types';
 
 /** A minimal item carrying only the fields the priority key reads. */
@@ -96,19 +98,39 @@ describe('ownKey', () => {
   });
 });
 
-describe('bestKey', () => {
-  it('picks the higher priority level regardless of due date', () => {
-    const high = ownKey(item('high', null)); // no due date
-    const low = ownKey(item('low', '2026-01-01')); // earlier due, lower level
-    expect(bestKey(high, low)).toBe(high);
-    expect(bestKey(low, high)).toBe(high);
+/** A one-level tree: `own` with each of `children` as a leaf subtask. */
+function parent(own: Item, ...children: Item[]): ItemNode {
+  return { ...own, children: children.map((child) => ({ ...child, children: [] })) };
+}
+
+describe('effectiveKey', () => {
+  it('under compareKey, takes the higher level over an earlier due date', () => {
+    const node = parent(
+      item('low', '2026-01-01'),
+      item('high', null),
+      item('medium', '2026-02-01'),
+    );
+    expect(effectiveKey(node, compareKey)).toStrictEqual(ownKey(item('high', null)));
   });
 
-  it('within the same level, picks the earlier due date', () => {
-    const earlier = ownKey(item('medium', '2026-06-01'));
-    const later = ownKey(item('medium', '2026-06-30'));
-    expect(bestKey(earlier, later)).toBe(earlier);
-    expect(bestKey(later, earlier)).toBe(earlier);
+  it('under compareKey, takes the earlier due date within the best level', () => {
+    const node = parent(item('medium', '2026-06-30'), item('medium', '2026-06-01'));
+    expect(effectiveKey(node, compareKey).due).toBe(Date.parse('2026-06-01'));
+  });
+
+  it('under compareKeyByDue, takes the earlier due date over a higher level', () => {
+    const node = parent(item('high', '2026-03-01'), item('low', '2026-02-01'));
+    expect(effectiveKey(node, compareKeyByDue)).toStrictEqual(ownKey(item('low', '2026-02-01')));
+  });
+
+  it('keeps its own key when it outranks every child', () => {
+    const node = parent(item('high', '2026-01-01'), item('low', '2026-06-01'));
+    expect(effectiveKey(node)).toStrictEqual(ownKey(item('high', '2026-01-01')));
+  });
+
+  it('skips a completed child', () => {
+    const node = parent(item('low', null), { ...item('high', null), status: 'completed' });
+    expect(effectiveKey(node).rank).toBe(2);
   });
 });
 

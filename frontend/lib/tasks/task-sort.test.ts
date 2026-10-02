@@ -91,11 +91,35 @@ describe('sortNodesBy, in priority mode', () => {
     expect(sorted[0]?.children.map((child) => child.id)).toStrictEqual(['c-low', 'c-high']);
   });
 
-  it('ranks by each node OWN priority (no subtree rollup) — a Low parent stays below Medium', () => {
+  it('rolls an active High subtask up, so its Low parent outranks a Medium task', () => {
     const tree = [
       node('medium', { priority: 'medium' }),
       node('low-parent', { priority: 'low' }, [
         node('child', { priority: 'high', parent_id: 'low-parent' }),
+      ]),
+    ];
+
+    expect(sortNodesBy(tree, 'priority').map((n) => n.id)).toStrictEqual(['low-parent', 'medium']);
+  });
+
+  it('rolls up from any depth, not just direct children', () => {
+    const tree = [
+      node('medium', { priority: 'medium' }),
+      node('parent', {}, [
+        node('child', { parent_id: 'parent' }, [
+          node('grandchild', { priority: 'high', parent_id: 'child' }),
+        ]),
+      ]),
+    ];
+
+    expect(sortNodesBy(tree, 'priority').map((n) => n.id)).toStrictEqual(['parent', 'medium']);
+  });
+
+  it('does NOT let a completed subtask lift its parent', () => {
+    const tree = [
+      node('medium', { priority: 'medium' }),
+      node('low-parent', { priority: 'low' }, [
+        node('done', { priority: 'high', status: 'completed', parent_id: 'low-parent' }),
       ]),
     ];
 
@@ -150,6 +174,17 @@ describe('sortNodesBy, in due-date mode', () => {
     ];
 
     expect(sortNodesBy(tree, 'due').map((n) => n.id)).toStrictEqual(['older', 'newer']);
+  });
+
+  it('rolls an active subtask due sooner up, so its undated parent outranks a dated task', () => {
+    const tree = [
+      node('dated', { due_date: '2026-03-01' }),
+      node('undated-parent', {}, [
+        node('child', { due_date: '2026-02-01', parent_id: 'undated-parent' }),
+      ]),
+    ];
+
+    expect(sortNodesBy(tree, 'due').map((n) => n.id)).toStrictEqual(['undated-parent', 'dated']);
   });
 
   it('leaves every subtask group exactly as received', () => {
