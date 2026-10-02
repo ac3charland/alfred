@@ -361,7 +361,7 @@ describe('updateProjectSchema', () => {
     if (result.success) expect(result.data).toStrictEqual({ cloud_environment: expected });
   });
 
-  it.each([3, true, 'x'.repeat(CLOUD_ENVIRONMENT_MAX + 1)])(
+  it.each([3, true, 'x'.repeat(CLOUD_ENVIRONMENT_MAX + 1), 'Real\nPlay', 'Real\tPlay'])(
     'rejects the cloud environment %p',
     (environment) => {
       expect(updateProjectSchema.safeParse({ cloud_environment: environment }).success).toBe(false);

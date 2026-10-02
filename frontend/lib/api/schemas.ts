@@ -484,13 +484,15 @@ export const CLOUD_ENVIRONMENT_MAX = 100;
 
 /**
  * A project's Claude Code cloud environment — its name or `env_…` id, which every launch link
- * preselects via `environment` (ALF-279). Trimmed, and a blank value clears it to `null` so a
+ * preselects via `environment` (ALF-279). Trimmed and single-line, and a blank value clears it to `null` so a
  * launch link never carries an empty `environment=`.
  */
 const cloudEnvironment = z
   .string()
   .trim()
   .max(CLOUD_ENVIRONMENT_MAX)
+  // One line: the board edits it in a textarea, where Enter types a newline into the name.
+  .regex(/^[^\t\n\r]*$/, { message: 'A cloud environment is a single line' })
   .nullable()
   .transform((value) => (value === '' ? null : value));
 
