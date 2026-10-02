@@ -349,6 +349,26 @@ describe('NeedsHumanAction', () => {
       });
     });
 
+    it('blames the filters when the picked project has nothing waiting but others do', async () => {
+      const user = userEvent.setup();
+      // Relay's only story is mid-development, so picking Relay alone empties the queue.
+      renderView(
+        [
+          makeStory('a', { priority: 10, factory_state: 'in_refinement' }),
+          relayStory('b', { priority: 20, factory_state: 'in_development' }),
+        ],
+        { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
+      );
+
+      await toggleOption(user, /filter by project/i, 2);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+      });
+      expect(screen.getByText(/No stories match these filters/)).toBeInTheDocument();
+      expect(screen.queryByText(/Nothing needs your attention/)).not.toBeInTheDocument();
+    });
+
     it('omits the project control when there are no projects to filter', () => {
       renderView([], { projects: [], epics: [] });
       expect(screen.queryByRole('button', { name: /filter by project/i })).not.toBeInTheDocument();

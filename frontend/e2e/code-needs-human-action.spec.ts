@@ -227,22 +227,30 @@ test('keeps its own filters across SPA navigation, apart from the Backlog (ALF-3
   await page.goto('/code/needs-human-action');
 
   const rows = page.getByRole('listitem');
+  // Narrow both filters: Relay only, and Ready for Review unchecked.
   await page.getByRole('button', { name: /filter by project/i }).click();
   await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
   await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /filter by status/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Ready for Review' }).click();
+  await page.keyboard.press('Escape');
   await expect(rows).toHaveCount(1);
 
-  // The Backlog keeps its own selection — this view's Relay pick doesn't narrow it.
+  // The Backlog keeps its own selections — neither pick here narrows it: no counts on its
+  // triggers, and all six outstanding stories (Ready for Review included) still listed.
   const projectNav = page.getByRole('navigation', { name: 'Projects' });
   await projectNav.getByRole('link', { name: 'Backlog' }).click();
   await expect(page).toHaveURL('/code/backlog');
   await expect(page.getByRole('button', { name: /filter by project/i })).not.toContainText('(');
+  await expect(page.getByRole('button', { name: /filter by status/i })).not.toContainText('(');
   await expect(rows).toHaveCount(6);
+  await expect(page.getByRole('listitem').filter({ hasText: 'ALF-5' })).toHaveCount(1);
 
-  // Back on this view, the Relay pick survived the round-trip.
+  // Back on this view, both picks survived the round-trip.
   await projectNav.getByRole('link', { name: 'Needs human action' }).click();
   await expect(page).toHaveURL('/code/needs-human-action');
   await expect(rows).toHaveCount(1);
   await expect(rows.nth(0)).toContainText('RLP-2');
   await expect(page.getByRole('button', { name: /filter by project/i })).toContainText('(1)');
+  await expect(page.getByRole('button', { name: /filter by status/i })).toContainText('(2)');
 });
