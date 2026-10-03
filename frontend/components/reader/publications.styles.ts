@@ -25,3 +25,10 @@ export const PAUSED_CARD = 'opacity-55';
 /** The candidates section's small-caps label above its list. */
 export const PUBLICATION_CAPTION =
   'text-xs font-medium uppercase tracking-wide text-muted-foreground/70';
+
+/**
+ * The kind chip: the provenance chip's muted pill, with room for its caret, taking the Reader's
+ * green while its picker is open (Radix marks the trigger `data-state="open"`).
+ */
+export const KIND_CHIP =
+  'inline-flex items-center gap-1 data-[state=open]:border-accent-green/60 data-[state=open]:text-accent-green';

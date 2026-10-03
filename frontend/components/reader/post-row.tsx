@@ -10,7 +10,7 @@ import { formatPostDate, formatReadMinutes } from '@/components/reader/reader-fo
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { readerHotkeyAction } from '@/lib/reader/hotkeys';
 import { postOpenLink } from '@/lib/reader/open-link';
-import { isReaderOverview } from '@/lib/reader/overview';
+import { type PostOverviewOf, overviewOf, summaryKindOf } from '@/lib/reader/overview';
 import { researchPhase, researchRetryable } from '@/lib/reader/research';
 import { sendUnavailable } from '@/lib/reader/send';
 import { VIA_INSTAPAPER, isInstapaperPost, postEyebrow } from '@/lib/reader/source';
@@ -22,6 +22,7 @@ import type { ReaderPostListItem, ReaderSummaryState } from '@/lib/types';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
+import { AlertFindings, NOTHING_NOTABLE_LINE } from './alert-findings';
 import { PostMarkers } from './post-markers';
 import { PostOverview } from './post-overview';
 import {
@@ -44,6 +45,7 @@ import {
   verbRowClass,
 } from './post-row.styles';
 import { researchLine } from './research-line';
+import { RoundupOverview } from './roundup-overview';
 
 /**
  * One row of the reading list: publication, arrival, title, gist — and once opened, the
@@ -165,16 +167,35 @@ function gistLineClass(post: ReaderPostListItem, state: ReaderSummaryState): str
 }
 
 /**
- * Where the summary came from: the model, the prompt version it was written under, and when.
- * Stored since the first tick and drawn here because a re-summarised row has to visibly change
- * version — otherwise "I re-ran it" and "nothing happened" look the same.
+ * Where the summary came from: the model, the prompt it was written under, and when. Stored since
+ * the first tick and drawn here because a re-summarised row has to visibly change version —
+ * otherwise "I re-ran it" and "nothing happened" look the same. A roundup's or an Alerts post's
+ * version is named with its kind ("roundup prompt v1"): each kind's prompt is versioned apart, so
+ * the number alone would not say which prompt. An essay's reads as it always has.
  */
 function summaryStamp(post: ReaderPostListItem, now: Date): string | null {
   const parts: string[] = [];
   if (post.model !== null) parts.push(post.model);
-  if (post.prompt_version !== null) parts.push(`prompt v${String(post.prompt_version)}`);
+  if (post.prompt_version !== null) {
+    const kind = summaryKindOf(post);
+    const prompt = kind === 'essay' ? 'prompt' : `${kind} prompt`;
+    parts.push(`${prompt} v${String(post.prompt_version)}`);
+  }
   if (post.summarized_at !== null) parts.push(formatPostDate(post.summarized_at, now));
   return parts.length === 0 ? null : parts.join(' · ');
+}
+
+/**
+ * What an Alerts row reads in the gist's place: its findings, or — for a post the tick filed
+ * because it found none — that it was filed. An overview that fails the Alerts guard reads
+ * nothing, as a failing essay overview leaves only its gist.
+ */
+function AlertsLine({ read }: { read: PostOverviewOf }) {
+  if (read.kind !== 'alerts') return null;
+  if (read.overview.findings.length === 0) {
+    return <p className={placeholderGistClass}>{NOTHING_NOTABLE_LINE}</p>;
+  }
+  return <AlertFindings findings={read.overview.findings} />;
 }
 
 export function PostRow({
@@ -285,14 +306,20 @@ export function PostRow({
   // being replaced, and pulling it out from under the owner mid-run would be the same blanking
   // the pending gist avoids.
   const keepsSummary = state === 'done' || (state === 'pending' && post.gist !== null);
-  const overview = keepsSummary && isReaderOverview(post.overview) ? post.overview : undefined;
+  // Read by the kind the summary was written under, never the publication's current one.
+  const read: PostOverviewOf = keepsSummary ? overviewOf(post) : { kind: 'none' };
+  // An Alerts row draws its findings in the gist's place and has nothing to send — there is
+  // nothing to read later in a sale notice.
+  const alertsRow = keepsSummary && summaryKindOf(post) === 'alerts';
+  const sendable = !alertsRow;
   const dimmed = state === 'failed' || state === 'refused' || noReport;
 
   const retryable = (state === 'failed' || state === 'refused') && canResummarize(post);
   const stamp = state === 'done' ? summaryStamp(post, now) : null;
   const rerunnable = state === 'done' && canResummarize(post);
   const hasFooter = stamp !== null || rerunnable;
-  const hasOverview = overview !== undefined;
+  // An Alerts post has no sections: its panel is the footer alone.
+  const hasOverview = read.kind === 'essay' || read.kind === 'roundup';
   /**
    * Whether there is anything to disclose at all. The panel holds the overview AND the summary's
    * stamp with its re-run verb, so a done row whose overview failed the guard still has one —
@@ -332,7 +359,7 @@ export function PostRow({
       const action = readerHotkeyAction(event);
       switch (action) {
         case 'send': {
-          if (unavailable !== undefined) break;
+          if (!sendable || unavailable !== undefined) break;
           event.preventDefault();
           beginSend();
           break;
@@ -371,6 +398,7 @@ export function PostRow({
   }, [
     selected,
     hasPanel,
+    sendable,
     unavailable,
     href,
     beginSend,
@@ -445,15 +473,19 @@ export function PostRow({
                 <PostMarkers state={state} phase={phase} sent={post.instapaper_sent_at !== null} />
               </div>
               <p className={titleClass}>{post.title}</p>
-              <p className={awaitingReport ? placeholderGistClass : gistLineClass(post, state)}>
-                {researchLine(post, phase) ?? gistOrPlaceholder(post, state, now)}
-              </p>
+              {alertsRow ? (
+                <AlertsLine read={read} />
+              ) : (
+                <p className={awaitingReport ? placeholderGistClass : gistLineClass(post, state)}>
+                  {researchLine(post, phase) ?? gistOrPlaceholder(post, state, now)}
+                </p>
+              )}
             </ClickableCard>
 
             <div className={verbRowClass} data-testid="reader-row-verbs">
               {/* A post with no report has nothing to send and — unlike one still being written —
                   no report coming, so Retry research stands in Send's place. */}
-              {!noReport && (
+              {!noReport && sendable && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -542,12 +574,20 @@ export function PostRow({
             {hasPanel && (
               <div id={panelId}>
                 <AnimatedHeightCollapse open={panelOpen} testId="reader-row-overview">
-                  {overview !== undefined && (
+                  {read.kind === 'essay' && (
                     <PostOverview
                       key={openings}
-                      overview={overview}
+                      overview={read.overview}
                       post={post}
                       writable={writable}
+                      instapaperConfigured={instapaperConfigured}
+                    />
+                  )}
+                  {read.kind === 'roundup' && (
+                    <RoundupOverview
+                      key={openings}
+                      overview={read.overview}
+                      post={post}
                       instapaperConfigured={instapaperConfigured}
                     />
                   )}

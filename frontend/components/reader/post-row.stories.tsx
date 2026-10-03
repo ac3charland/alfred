@@ -5,11 +5,14 @@ import { expect, userEvent, within } from 'storybook/test';
 import { ToastViewport } from '@/components/shell/toast-viewport';
 import {
   NO_READER_HEALTH,
+  type StoredReaderOverview,
+  makeAlertsOverview,
   makeFurtherReading,
   makeReaderArticle,
   makeReaderOverview,
   makeReaderPost,
   makeResearchPost,
+  makeRoundupOverview,
 } from '@/lib/reader/fixtures';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider, useReaderPosts } from '@/lib/stores/reader-store';
@@ -17,7 +20,6 @@ import { ToastProvider } from '@/lib/stores/toast-store';
 import type {
   FurtherReadingSendResult,
   ReaderFurtherReading,
-  ReaderOverview,
   ReaderPostListItem,
 } from '@/lib/types';
 
@@ -46,6 +48,11 @@ import { PostRow } from './post-row';
  * pieces: the checklist being picked from, after two sends (one into the Reader, one to
  * Instapaper), after a send that saved one link of two (the toast under the row, the failed
  * link still ticked), and on a deployment without Instapaper, where it is a plain list of links.
+ *
+ * The `Roundup…` and `Alerts…` stories are the two other summary kinds: a roundup with its panel
+ * open (Highlights, then its Links checklist), an Alerts post with its tagged findings in the
+ * gist's place and no Send, one carrying a security notice, and an Alerts post the tick filed for
+ * finding nothing, as it reads in the archive.
  */
 
 const NOW = new Date(2026, 8, 18, 9, 0);
@@ -53,7 +60,7 @@ const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
 
 function post(
   overrides: Partial<Omit<ReaderPostListItem, 'overview'>> & {
-    overview?: ReaderOverview | null;
+    overview?: StoredReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
   const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
@@ -947,4 +954,105 @@ export const ResearchDoneExpanded: Story = {
       SESSION_URL,
     );
   },
+};
+
+/** A roundup with its panel open: Highlights, then Links — the send checklist under its own heading. */
+export const RoundupExpanded: Story = {
+  args: {
+    post: post({
+      id: 'p-roundup',
+      author: 'Jack Clark',
+      title: 'Import AI 418: robot dexterity, eval saturation, and a chip export rule',
+      received_at: '2026-09-17T06:00:00.000Z',
+      word_count: 2070,
+      canonical_url: 'https://importai.substack.com/p/import-ai-418',
+      summary_state: 'done',
+      summary_kind: 'roundup',
+      gist:
+        'A week of eval news and one policy change. Worth opening for the dexterity benchmark’s ' +
+        'sim-to-real gap and the export rule’s actual text; the model releases are ones you’ve seen.',
+      overview: makeRoundupOverview(),
+      model: 'claude-sonnet-5',
+      prompt_version: 1,
+      summarized_at: '2026-09-17T06:05:00.000Z',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Overview' }));
+    await expect(await canvas.findByRole('heading', { name: 'Links' })).toBeVisible();
+  },
+};
+
+/** An Alerts post with findings: one tagged line each in the gist's place, and no Send. */
+export const AlertsNotable: Story = {
+  args: {
+    post: post({
+      id: 'p-alerts',
+      author: 'Patagonia',
+      title: 'Worn Wear fall event',
+      received_at: '2026-09-18T08:00:00.000Z',
+      word_count: 410,
+      canonical_url: 'https://www.patagonia.com/wornwear',
+      summary_state: 'done',
+      summary_kind: 'alerts',
+      gist: 'A members-only sale on used outerwear, and a trade-in bonus until Oct 12.',
+      overview: makeAlertsOverview(),
+      model: 'claude-sonnet-5',
+      prompt_version: 1,
+      summarized_at: '2026-09-18T08:05:00.000Z',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** An Alerts post with a security notice — the one finding that wears the destructive tone. */
+export const AlertsSecurity: Story = {
+  args: {
+    post: post({
+      id: 'p-alerts-security',
+      author: 'Acme Bank',
+      title: 'Important information about your account',
+      received_at: '2026-09-18T07:00:00.000Z',
+      word_count: 180,
+      summary_state: 'done',
+      summary_kind: 'alerts',
+      gist: 'A new-device sign-in from Lisbon.',
+      overview: makeAlertsOverview([
+        {
+          category: 'security',
+          detail: 'New device sign-in from Lisbon on Oct 2 — if not you, reset now.',
+          deadline: null,
+        },
+      ]),
+      model: 'claude-sonnet-5',
+      prompt_version: 1,
+      summarized_at: '2026-09-18T07:05:00.000Z',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** An Alerts post the tick filed for finding nothing, as the archive shows it. */
+export const AlertsFiledInArchive: Story = {
+  args: {
+    variant: 'archive',
+    post: post({
+      id: 'p-alerts-filed',
+      author: 'Amazon.com',
+      title: 'Recommended for you: kitchen picks',
+      received_at: '2026-09-18T06:00:00.000Z',
+      word_count: 150,
+      summary_state: 'done',
+      summary_kind: 'alerts',
+      gist: 'Nothing notable',
+      overview: makeAlertsOverview([]),
+      model: 'claude-sonnet-5',
+      prompt_version: 1,
+      summarized_at: '2026-09-18T06:05:00.000Z',
+      archived_at: '2026-09-18T06:05:00.000Z',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };

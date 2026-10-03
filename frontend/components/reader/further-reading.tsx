@@ -65,9 +65,11 @@ export interface FurtherReadingProperties {
   sentInstapaper: readonly string[];
   /** Whether this deployment can send to Instapaper at all. */
   instapaperConfigured: boolean;
+  /** The section's heading — "Links" on a roundup, whose picks are the issue's own links. */
+  heading?: string;
 }
 
-const HEADING = 'Further reading';
+const DEFAULT_HEADING = 'Further reading';
 const linkClass =
   'rounded-sm font-medium text-foreground underline underline-offset-2 hover:no-underline ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -123,6 +125,7 @@ function FurtherReadingChecklist({
   items,
   sentReader,
   sentInstapaper,
+  heading = DEFAULT_HEADING,
 }: Omit<FurtherReadingProperties, 'instapaperConfigured'>) {
   const { sendFurtherReading } = useReaderActions();
   const inFlight = useFurtherReadingSendInFlight(postId);
@@ -211,7 +214,7 @@ function FurtherReadingChecklist({
         data-heading-row=""
         tabIndex={-1}
       >
-        <h3 className={SECTION_HEADING_CLASS}>{HEADING}</h3>
+        <h3 className={SECTION_HEADING_CLASS}>{heading}</h3>
         {unsent.length === 0 ? (
           <span className={statusClass}>
             <Check
@@ -227,7 +230,7 @@ function FurtherReadingChecklist({
             variant="ghost"
             size="sm"
             disabled={busy}
-            aria-label={`${allTicked ? 'Deselect all' : 'Select all'} ${HEADING}`}
+            aria-label={`${allTicked ? 'Deselect all' : 'Select all'} ${heading}`}
             onClick={() => {
               setSelected(allTicked ? new Set() : new Set(unsent));
             }}
@@ -349,10 +352,16 @@ function FurtherReadingChecklist({
 }
 
 /** No Instapaper to send to: the links, plainly — each title is the link, the note follows. */
-function FurtherReadingLinks({ items }: { items: readonly ReaderFurtherReading[] }) {
+function FurtherReadingLinks({
+  items,
+  heading = DEFAULT_HEADING,
+}: {
+  items: readonly ReaderFurtherReading[];
+  heading?: string | undefined;
+}) {
   return (
     <section>
-      <h3 className={SECTION_HEADING_CLASS}>{HEADING}</h3>
+      <h3 className={SECTION_HEADING_CLASS}>{heading}</h3>
       <ul className={plainBulletListClass}>
         {items.map((item, index) => (
           <li key={`${String(index)}:${item.url}`}>
@@ -371,6 +380,6 @@ export function FurtherReading({ instapaperConfigured, ...properties }: FurtherR
   return instapaperConfigured ? (
     <FurtherReadingChecklist {...properties} />
   ) : (
-    <FurtherReadingLinks items={properties.items} />
+    <FurtherReadingLinks items={properties.items} heading={properties.heading} />
   );
 }

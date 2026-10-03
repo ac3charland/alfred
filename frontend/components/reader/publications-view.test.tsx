@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -182,6 +182,7 @@ describe('PublicationsView', () => {
       enabled: true,
       source: 'owner',
       notes: null,
+      summary_kind: 'alerts',
       first_seen_at: '2026-09-17T00:00:00.000Z',
       created_at: '2026-09-17T00:00:00.000Z',
     });
@@ -190,12 +191,108 @@ describe('PublicationsView', () => {
       readerSettings: { candidates: [candidate] },
     });
 
-    await user.click(screen.getByRole('button', { name: /add/i }));
+    await user.click(screen.getByRole('button', { name: /add ben's bites as/i }));
+    await user.click(screen.getByRole('menuitem', { name: /alerts/i }));
 
-    // Promoted with the name the candidate row showed, so the roster card reads the same.
-    expect(mockCreate).toHaveBeenCalledWith({ handle: candidate.handle, name: "Ben's Bites" });
+    // Promoted with the name the candidate row showed, so the roster card reads the same, and
+    // with the kind picked, so its first summary already asks the right question.
+    expect(mockCreate).toHaveBeenCalledWith({
+      handle: candidate.handle,
+      name: "Ben's Bites",
+      summary_kind: 'alerts',
+    });
     await screen.findByText('No candidates.');
     expect(screen.getByText("Ben's Bites")).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: "Summary type for Ben's Bites: Alerts" }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers every kind, each with what it asks, on a candidate’s Add as', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { candidates: [makeReaderCandidate('store-news@amazon.com')] },
+    });
+
+    await user.click(screen.getByRole('button', { name: /add store-news@amazon\.com as/i }));
+
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'EssayWhat’s new, the evidence, the argument',
+      'RoundupHighlights, and the links worth reading',
+      'AlertsOnly sales, security, actions, changes — else archived',
+    ]);
+  });
+
+  it('shows each card’s kind on its chip, Essay by default', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: {
+        publications: [
+          makeReaderPublicationListItem('Import AI', { summary_kind: 'roundup' }),
+          makeReaderPublicationListItem('Second Thoughts'),
+        ],
+      },
+    });
+
+    expect(
+      screen.getByRole('button', { name: 'Summary type for Import AI: Roundup' }),
+    ).toHaveTextContent('Roundup');
+    expect(
+      screen.getByRole('button', { name: 'Summary type for Second Thoughts: Essay' }),
+    ).toHaveTextContent('Essay');
+  });
+
+  it('changes a card’s kind in one pick, before the write settles', async () => {
+    const publication = makeReaderPublicationListItem('Import AI', { id: 'pub-1' });
+    const mockUpdate = jest.mocked(apiClient.updateReaderPublication);
+    const updated = deferred<ReaderPublication>();
+    mockUpdate.mockReturnValue(updated.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: [publication] },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Summary type for Import AI: Essay' }));
+    await user.click(screen.getByRole('button', { name: /^Roundup/ }));
+
+    expect(mockUpdate).toHaveBeenCalledWith('pub-1', { summary_kind: 'roundup' });
+    expect(
+      screen.getByRole('button', { name: 'Summary type for Import AI: Roundup' }),
+    ).toBeInTheDocument();
+    await act(async () => {
+      updated.settle({ ...publication, summary_kind: 'roundup' });
+      await updated.promise;
+    });
+  });
+
+  it('rolls a card’s kind back when the write fails', async () => {
+    const publication = makeReaderPublicationListItem('Import AI', { id: 'pub-1' });
+    jest.mocked(apiClient.updateReaderPublication).mockRejectedValue(new Error('boom'));
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: [publication] },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Summary type for Import AI: Essay' }));
+    await user.click(screen.getByRole('button', { name: /^Alerts/ }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Summary type for Import AI: Essay' }),
+    ).toBeInTheDocument();
+  });
+
+  it('writes nothing when the kind it already has is picked', async () => {
+    const mockUpdate = jest.mocked(apiClient.updateReaderPublication);
+    mockUpdate.mockClear();
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: [makeReaderPublicationListItem('Import AI')] },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Summary type for Import AI: Essay' }));
+    await user.click(screen.getByRole('button', { name: /^Essay/ }));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('disables Add for a handle while its promotion is still in flight', async () => {
@@ -208,8 +305,9 @@ describe('PublicationsView', () => {
       readerSettings: { candidates: [candidate] },
     });
 
-    const button = screen.getByRole('button', { name: /add/i });
+    const button = screen.getByRole('button', { name: /add ben's bites as/i });
     await user.click(button);
+    await user.click(screen.getByRole('menuitem', { name: /essay/i }));
 
     expect(button).toBeDisabled();
 
@@ -221,6 +319,7 @@ describe('PublicationsView', () => {
       enabled: true,
       source: 'owner',
       notes: null,
+      summary_kind: 'essay',
       first_seen_at: '2026-09-17T00:00:00.000Z',
       created_at: '2026-09-17T00:00:00.000Z',
     });
