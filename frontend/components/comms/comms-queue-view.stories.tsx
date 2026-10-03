@@ -276,6 +276,51 @@ function shelfRows(count: number): CommMessage[] {
 }
 
 /**
+ * Real conversations on the shelf: a four-message email thread with one refused reply, and one
+ * iMessage chat whose two bursts are more than six hours apart — so it is two conversations, not
+ * one — ahead of the single-message receipts.
+ */
+const SHELF_CONVERSATIONS: CommMessage[] = [
+  ...[
+    {
+      at: todayAt(11, 40),
+      from: 'Dana Whitfield',
+      subject: 'Re: Saturday potluck — final headcount',
+    },
+    { at: todayAt(10, 31), from: 'Ana Ruiz', subject: 'Re: Saturday potluck', refused: true },
+    { at: todayAt(8, 12), from: 'Lee Park', subject: 'Re: Saturday potluck — count me in, +1' },
+    { at: ago(DAY), from: 'Dana Whitfield', subject: "Saturday potluck — who's in?" },
+  ].map(({ at, from, subject, refused }, index) =>
+    makeCommMessage(PERSONAL.id, {
+      id: `potluck-${String(index)}`,
+      thread_key: 'potluck',
+      tier: 'fyi',
+      judged_by: refused === true ? 'refusal' : 'model',
+      sender_handle: `${from.split(' ', 1)[0]?.toLowerCase() ?? 'x'}@example.com`,
+      sender_name: from,
+      subject,
+      received_at: at,
+    }),
+  ),
+  ...[
+    { at: todayAt(11, 47), body: 'Dad says the gutters are done 🎉' },
+    { at: todayAt(11, 45), body: 'He only fell off the ladder once' },
+    { at: ago(14 * HOUR), body: 'Night night' },
+    { at: ago(15 * HOUR), body: 'Did you see the photos from the lake?' },
+  ].map(({ at, body }, index) =>
+    makeCommMessage('acct-imessage', {
+      id: `tomas-${String(index)}`,
+      thread_key: 'chat-tomas',
+      tier: 'fyi',
+      judged_by: 'model',
+      sender_handle: '+15550102233',
+      body,
+      received_at: at,
+    }),
+  ),
+];
+
+/**
  * A week of iMessage history the owner had already answered before alfred ever saw it: inbound,
  * never judged, and cleared by the outbound reply that arrived in the same backfill.
  */
@@ -445,5 +490,32 @@ export const RecoversAfterTimeAway: Story = {
     await canvas.findByLabelText('RealPlay · live');
     await canvas.findByLabelText('WorkMail · live');
     await canvas.findByLabelText('iMessage · live');
+  },
+};
+
+/**
+ * The shelf opened, drawn as conversations: the potluck thread is one row of four with its
+ * refused reply rolled up onto it, the chat with Tomas is two rows (its bursts are more than six
+ * hours apart), and a one-message conversation is an ordinary row. The thread is opened, so its
+ * messages show beneath it as full rows, newest first.
+ */
+export const ShelfOpen: Story = {
+  parameters: {
+    store: {
+      comms: {
+        accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
+        messages: [...SHELF_CONVERSATIONS, ...shelfRows(4)],
+        verdicts: VERDICTS,
+        health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
+      },
+      commsSettings: { people: ROSTER },
+    },
+    visualTest: { target: '[data-testid="comms-frame"]' },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: /FYI · 12 messages/ }));
+    await userEvent.click(await canvas.findByRole('button', { name: /4 messages/ }));
+    await canvas.findByRole('button', { expanded: true, name: /4 messages/ });
   },
 };
