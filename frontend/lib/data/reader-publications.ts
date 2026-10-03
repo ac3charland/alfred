@@ -111,7 +111,9 @@ export async function getReaderSettingsSeed(
  * NOT how discovery derives a domain for an auto row (`workers/src/reader/discovery.ts` builds a
  * Substack-specific `<publication>.substack.com`, stripping any `+section` tag first) — the two
  * derivations differ on purpose, since a hand-typed handle carries no such convention to parse.
- * Always `source: 'owner'`: this route is never how an auto row is created.
+ * Always `source: 'owner'`: this route is never how an auto row is created. The kind is the
+ * caller's choice — the candidates' "Add as" asks for one, so a promo sender is never read as an
+ * essay on the next tick before the owner can change it.
  */
 export async function createReaderPublication(
   supabase: SupabaseClient<Database>,
@@ -130,13 +132,15 @@ export async function createReaderPublication(
       domain,
       source: 'owner',
       enabled: true,
+      // Absent, the column's own default — essay — applies.
+      ...(input.summary_kind === undefined ? {} : { summary_kind: input.summary_kind }),
     })
     .select()
     .single();
 }
 
 /**
- * Pause, resume, rename or annotate a publication. The handle is never a field here — it is what
+ * Pause, resume, rename, annotate or re-kind a publication. The handle is never a field here — it is what
  * every post is matched against, so changing it would orphan a publication's history rather than
  * rename it.
  *
@@ -148,7 +152,12 @@ export async function updateReaderPublication(
   id: string,
   patch: UpdateReaderPublicationInput,
 ): Promise<{ data: ReaderPublication | null; error: PostgrestError | null }> {
-  const updates = toUpdatePayload<ReaderPublicationUpdate>(patch, ['enabled', 'name', 'notes']);
+  const updates = toUpdatePayload<ReaderPublicationUpdate>(patch, [
+    'enabled',
+    'name',
+    'notes',
+    'summary_kind',
+  ]);
 
   return supabase.from('reader_publications').update(updates).eq('id', id).select().maybeSingle();
 }

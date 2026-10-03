@@ -42,6 +42,21 @@ describe('createReaderPublicationSchema', () => {
 
     expect(parsed.data).toEqual({ handle: 'news@example.com', name: 'Example Weekly' });
   });
+
+  it('leaves an absent kind absent — the column defaults it — and keeps a chosen one', () => {
+    expect(createReaderPublicationSchema.parse({ handle: 'a@b.c' })).not.toHaveProperty(
+      'summary_kind',
+    );
+    expect(
+      createReaderPublicationSchema.parse({ handle: 'a@b.c', summary_kind: 'alerts' }).summary_kind,
+    ).toBe('alerts');
+  });
+
+  it('rejects a kind the column does not allow', () => {
+    expect(
+      createReaderPublicationSchema.safeParse({ handle: 'a@b.c', summary_kind: 'promo' }).success,
+    ).toBe(false);
+  });
 });
 
 describe('updateReaderPublicationSchema', () => {
@@ -50,6 +65,7 @@ describe('updateReaderPublicationSchema', () => {
     ['a rename', { name: 'Renamed' }],
     ['a note', { notes: 'why this one is on the roster' }],
     ['a cleared note', { notes: null }],
+    ['a kind change', { summary_kind: 'roundup' }],
   ])('accepts %s on its own', (_name, body) => {
     expect(updateReaderPublicationSchema.safeParse(body).success).toBe(true);
   });
@@ -60,6 +76,10 @@ describe('updateReaderPublicationSchema', () => {
 
   it('rejects a blank rename rather than letting a card lose its name', () => {
     expect(updateReaderPublicationSchema.safeParse({ name: '  ' }).success).toBe(false);
+  });
+
+  it('rejects a kind the column does not allow', () => {
+    expect(updateReaderPublicationSchema.safeParse({ summary_kind: 'promo' }).success).toBe(false);
   });
 });
 

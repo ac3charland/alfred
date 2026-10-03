@@ -16,6 +16,7 @@ import {
   deliverResearchReport,
   getReaderHealthSeed,
   getReaderHealthSnapshot,
+  getReaderPostForFurtherReading,
   getReaderPostForResearch,
   getReaderPostForSend,
   getReaderPostForWiki,
@@ -432,6 +433,23 @@ describe('getReaderPostResummarizeState', () => {
   });
 });
 
+describe('getReaderPostForFurtherReading', () => {
+  it('reads the overview with the kind it was written under, and both sent lists', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await getReaderPostForFurtherReading(supabase as never, POST_ID);
+
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    const [columns] = supabase.table('reader_posts').select.mock.calls[0] as [string];
+    expect(columns.split(',')).toStrictEqual([
+      'overview',
+      'summary_kind',
+      'further_sent_reader',
+      'further_sent_instapaper',
+    ]);
+  });
+});
+
 describe('getReaderPostForWiki', () => {
   it('reads exactly what a send needs, the body included, for the row asked for', async () => {
     const stored = makeReaderPost(PUBLICATION.id, { id: POST_ID, text: 'The body.' });
@@ -451,6 +469,7 @@ describe('getReaderPostForWiki', () => {
       'received_at',
       'text',
       'overview',
+      'summary_kind',
       'wiki_sent_ideas',
       'wiki_sent_evidence',
     ]);

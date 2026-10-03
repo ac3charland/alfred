@@ -81,6 +81,27 @@ describe('POST /api/reader/publications', () => {
     });
   });
 
+  it('puts a sender on the roster with the kind it was added as', async () => {
+    const saved = makeReaderPublication('Amazon', { summary_kind: 'alerts' });
+    const supabase = signedIn({ reader_publications: { single: { data: saved } } });
+
+    const response = await POST(
+      post({ handle: 'store-news@amazon.com', summary_kind: 'alerts' }),
+      STUB_CONTEXT,
+    );
+
+    expect(response.status).toBe(201);
+    expect(supabase.table('reader_publications').insert).toHaveBeenCalledWith(
+      expect.objectContaining({ summary_kind: 'alerts' }),
+    );
+  });
+
+  it('400s on a kind the roster does not allow', async () => {
+    signedIn();
+    const response = await POST(post({ handle: 'a@b.c', summary_kind: 'promo' }), STUB_CONTEXT);
+    expect(response.status).toBe(400);
+  });
+
   it('keeps a supplied name rather than deriving one', async () => {
     const saved = makeReaderPublication('Weekly News');
     const supabase = signedIn({ reader_publications: { single: { data: saved } } });

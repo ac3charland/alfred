@@ -1,7 +1,7 @@
 import type { Json } from '@/lib/database.types';
 import { makeFurtherReading, makeReaderOverview } from '@/lib/reader/fixtures';
 
-import { furtherReadingOf, isReaderOverview } from './overview';
+import { furtherReadingOf, isReaderOverview, overviewOf, postFurtherReading } from './overview';
 
 /**
  * `ReaderOverview` (a plain interface) is not structurally `Json` (see `overview.ts`'s own
@@ -88,6 +88,132 @@ describe('furtherReadingOf', () => {
   it('hides the whole list when any one item is malformed', () => {
     expect(
       furtherReadingOf([...makeFurtherReading(), { url: 'ftp://x', title: 't', note: 'n' }]),
+    ).toEqual([]);
+  });
+});
+
+describe('overviewOf — reading a stored overview by the kind it was written under', () => {
+  const roundup = { highlights: ['A 7B model matches last year’s frontier.'], further_reading: [] };
+  const alerts = {
+    findings: [
+      { category: 'sale', detail: '40% off used outerwear.' },
+      { category: 'action', detail: 'Book a trade-in.', deadline: 'Oct 12' },
+    ],
+  };
+
+  it('reads a null kind as an essay — every summary written before kinds existed', () => {
+    const overview = makeReaderOverview();
+
+    expect(overviewOf({ summary_kind: null, overview: asJson(overview) })).toEqual({
+      kind: 'essay',
+      overview,
+    });
+  });
+
+  it('reads an essay by the essay guard', () => {
+    expect(overviewOf({ summary_kind: 'essay', overview: asJson(makeReaderOverview()) }).kind).toBe(
+      'essay',
+    );
+  });
+
+  it('reads a roundup, keeping only well-formed links', () => {
+    const links = makeFurtherReading();
+
+    expect(
+      overviewOf({
+        summary_kind: 'roundup',
+        overview: asJson({ ...roundup, further_reading: links }),
+      }),
+    ).toEqual({ kind: 'roundup', overview: { ...roundup, further_reading: links } });
+    expect(
+      overviewOf({
+        summary_kind: 'roundup',
+        overview: asJson({ ...roundup, further_reading: [{ url: 'javascript:alert(1)' }] }),
+      }),
+    ).toEqual({ kind: 'roundup', overview: { ...roundup, further_reading: [] } });
+  });
+
+  it('reads Alerts findings, a missing deadline as null', () => {
+    expect(overviewOf({ summary_kind: 'alerts', overview: asJson(alerts) })).toEqual({
+      kind: 'alerts',
+      overview: {
+        findings: [
+          { category: 'sale', detail: '40% off used outerwear.', deadline: null },
+          { category: 'action', detail: 'Book a trade-in.', deadline: 'Oct 12' },
+        ],
+      },
+    });
+  });
+
+  it('reads an empty findings list as Alerts with nothing notable, not as malformed', () => {
+    expect(overviewOf({ summary_kind: 'alerts', overview: asJson({ findings: [] }) })).toEqual({
+      kind: 'alerts',
+      overview: { findings: [] },
+    });
+  });
+
+  it('dispatches on the stored kind, never the shape: another kind’s overview is none', () => {
+    expect(overviewOf({ summary_kind: 'roundup', overview: asJson(makeReaderOverview()) })).toEqual(
+      { kind: 'none' },
+    );
+    expect(overviewOf({ summary_kind: 'essay', overview: asJson(roundup) })).toEqual({
+      kind: 'none',
+    });
+    expect(overviewOf({ summary_kind: 'alerts', overview: asJson(roundup) })).toEqual({
+      kind: 'none',
+    });
+  });
+
+  it('reads a malformed overview of any kind as none', () => {
+    expect(overviewOf({ summary_kind: 'essay', overview: null })).toEqual({ kind: 'none' });
+    expect(
+      overviewOf({
+        summary_kind: 'roundup',
+        overview: asJson({ highlights: [1], further_reading: [] }),
+      }),
+    ).toEqual({ kind: 'none' });
+    expect(
+      overviewOf({
+        summary_kind: 'alerts',
+        overview: asJson({ findings: [{ category: 'promo', detail: 'x' }] }),
+      }),
+    ).toEqual({ kind: 'none' });
+    expect(
+      overviewOf({
+        summary_kind: 'alerts',
+        overview: asJson({ findings: [{ category: 'sale', detail: 'x', deadline: 3 }] }),
+      }),
+    ).toEqual({ kind: 'none' });
+  });
+});
+
+describe('postFurtherReading — the sendable links, whatever the kind', () => {
+  it('reads an essay’s Further reading and a roundup’s Links alike', () => {
+    const links = makeFurtherReading();
+
+    expect(
+      postFurtherReading({
+        summary_kind: null,
+        overview: asJson(makeReaderOverview({ further_reading: links })),
+      }),
+    ).toEqual(links);
+    expect(
+      postFurtherReading({
+        summary_kind: 'roundup',
+        overview: asJson({ highlights: [], further_reading: links }),
+      }),
+    ).toEqual(links);
+  });
+
+  it('has none for an Alerts post or an overview that fails its kind', () => {
+    expect(
+      postFurtherReading({ summary_kind: 'alerts', overview: asJson({ findings: [] }) }),
+    ).toEqual([]);
+    expect(
+      postFurtherReading({
+        summary_kind: 'essay',
+        overview: asJson({ highlights: [], further_reading: makeFurtherReading() }),
+      }),
     ).toEqual([]);
   });
 });

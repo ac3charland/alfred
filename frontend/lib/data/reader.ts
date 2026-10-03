@@ -69,6 +69,7 @@ export const READER_POST_LIST_COLUMNS = [
   'summarize_attempts',
   'summarized_at',
   'summarizing_since',
+  'summary_kind',
   'summary_state',
   'text_swept_at',
   'title',
@@ -220,6 +221,8 @@ export async function getReaderPostListItem(
 export interface ReaderPostWikiRow extends ReaderPostForWiki {
   /** The structured take, whose `novel_ideas` and `evidence` bound what a send may name. */
   overview: Json | null;
+  /** The kind the overview was written under; only an essay's has bullets to send. */
+  summary_kind: string | null;
   /** The exact text of every Novel-ideas bullet already sent. */
   wiki_sent_ideas: string[];
   /** The exact text of every Evidence bullet already sent. */
@@ -239,7 +242,7 @@ export async function getReaderPostForWiki(
   return supabase
     .from('reader_posts')
     .select(
-      'id,title,author,canonical_url,source,received_at,text,overview,wiki_sent_ideas,wiki_sent_evidence',
+      'id,title,author,canonical_url,source,received_at,text,overview,summary_kind,wiki_sent_ideas,wiki_sent_evidence',
     )
     .eq('id', id)
     .maybeSingle();
@@ -270,6 +273,8 @@ export async function appendWikiSentPicks(
 /** What a Further reading send reads: the overview whose list bounds it, and both sent lists. */
 export interface ReaderPostFurtherRow {
   overview: Json | null;
+  /** The kind the overview was written under — an essay's Further reading or a roundup's Links. */
+  summary_kind: string | null;
   further_sent_reader: string[];
   further_sent_instapaper: string[];
 }
@@ -281,7 +286,7 @@ export async function getReaderPostForFurtherReading(
 ): Promise<{ data: ReaderPostFurtherRow | null; error: PostgrestError | null }> {
   return supabase
     .from('reader_posts')
-    .select('overview,further_sent_reader,further_sent_instapaper')
+    .select('overview,summary_kind,further_sent_reader,further_sent_instapaper')
     .eq('id', id)
     .maybeSingle();
 }

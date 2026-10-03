@@ -9,7 +9,7 @@ import {
   makeReaderPublicationListItem,
   resetReaderFixtureClock,
 } from '@/lib/reader/fixtures';
-import type { ReaderCandidate, ReaderPublicationListItem } from '@/lib/types';
+import type { ReaderCandidate, ReaderPublication, ReaderPublicationListItem } from '@/lib/types';
 
 import {
   ReaderSettingsProvider,
@@ -60,6 +60,15 @@ function makeWrapper(
       </ReaderSettingsProvider>
     );
   };
+}
+
+/** A promise the test settles by hand, so a write can be held in flight. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }
 
 function useStore() {
@@ -192,6 +201,60 @@ describe('ReaderSettingsProvider', () => {
     });
   });
 
+  describe('setKind', () => {
+    it('changes the kind at once and reconciles with the stored row', async () => {
+      mockUpdateReaderPublication.mockResolvedValue(
+        makeReaderPublication('Second Thoughts', { id: PUBLICATION.id, summary_kind: 'roundup' }),
+      );
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([PUBLICATION]) });
+
+      await act(async () => {
+        await result.current.actions.setKind(PUBLICATION.id, 'roundup');
+      });
+
+      expect(mockUpdateReaderPublication).toHaveBeenCalledWith(PUBLICATION.id, {
+        summary_kind: 'roundup',
+      });
+      expect(result.current.publications[0]).toMatchObject({
+        summary_kind: 'roundup',
+        last_post_at: PUBLICATION.last_post_at,
+      });
+    });
+
+    it('shows the new kind before the write settles', async () => {
+      const { promise, resolve } = deferred<ReaderPublication>();
+      mockUpdateReaderPublication.mockReturnValue(promise);
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([PUBLICATION]) });
+
+      let pending: Promise<unknown> = Promise.resolve();
+      act(() => {
+        pending = result.current.actions.setKind(PUBLICATION.id, 'alerts');
+      });
+
+      expect(result.current.publications[0]?.summary_kind).toBe('alerts');
+      await act(async () => {
+        resolve(
+          makeReaderPublication('Second Thoughts', { id: PUBLICATION.id, summary_kind: 'alerts' }),
+        );
+        await pending;
+      });
+    });
+
+    it('rolls back and toasts when the write fails', async () => {
+      mockUpdateReaderPublication.mockRejectedValue(new Error('boom'));
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([PUBLICATION]) });
+
+      await act(async () => {
+        await expect(result.current.actions.setKind(PUBLICATION.id, 'alerts')).rejects.toThrow(
+          'boom',
+        );
+      });
+
+      expect(result.current.publications[0]?.summary_kind).toBe('essay');
+      expect(mockShowToast).toHaveBeenCalledWith("Couldn't update that publication");
+    });
+  });
+
   describe('rename and setNotes', () => {
     it('persist the returned row and keep last_post_at, which the write never carries', async () => {
       mockUpdateReaderPublication.mockResolvedValue(
@@ -255,14 +318,16 @@ describe('ReaderSettingsProvider', () => {
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], [CANDIDATE]) });
 
       await act(async () => {
-        await result.current.actions.addCandidate(CANDIDATE.handle);
+        await result.current.actions.addCandidate(CANDIDATE.handle, 'alerts');
       });
 
       // The display name the candidate row showed rides along, so the card it becomes reads the
-      // same rather than falling back to the handle's local part.
+      // same rather than falling back to the handle's local part — and so does the kind it was
+      // added as, so its first summary is already asked the right question.
       expect(mockCreateReaderPublication).toHaveBeenCalledWith({
         handle: CANDIDATE.handle,
         name: CANDIDATE.name,
+        summary_kind: 'alerts',
       });
       expect(result.current.publications).toEqual([{ ...saved, last_post_at: null }]);
       expect(result.current.candidates).toEqual([]);
@@ -280,10 +345,13 @@ describe('ReaderSettingsProvider', () => {
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], [nameless]) });
 
       await act(async () => {
-        await result.current.actions.addCandidate(nameless.handle);
+        await result.current.actions.addCandidate(nameless.handle, 'essay');
       });
 
-      expect(mockCreateReaderPublication).toHaveBeenCalledWith({ handle: nameless.handle });
+      expect(mockCreateReaderPublication).toHaveBeenCalledWith({
+        handle: nameless.handle,
+        summary_kind: 'essay',
+      });
     });
 
     it('keeps the roster in name order after a promotion appends to it', async () => {
@@ -302,7 +370,7 @@ describe('ReaderSettingsProvider', () => {
       });
 
       await act(async () => {
-        await result.current.actions.addCandidate(CANDIDATE.handle);
+        await result.current.actions.addCandidate(CANDIDATE.handle, 'essay');
       });
 
       expect(result.current.publications.map((row) => row.name)).toEqual([
@@ -324,7 +392,9 @@ describe('ReaderSettingsProvider', () => {
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], [CANDIDATE]) });
 
       await act(async () => {
-        await expect(result.current.actions.addCandidate(CANDIDATE.handle)).rejects.toThrow();
+        await expect(
+          result.current.actions.addCandidate(CANDIDATE.handle, 'essay'),
+        ).rejects.toThrow();
       });
 
       expect(mockShowToast).toHaveBeenCalledWith('That sender is already a publication');
@@ -344,7 +414,9 @@ describe('ReaderSettingsProvider', () => {
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], [CANDIDATE]) });
 
       await act(async () => {
-        await expect(result.current.actions.addCandidate(CANDIDATE.handle)).rejects.toThrow();
+        await expect(
+          result.current.actions.addCandidate(CANDIDATE.handle, 'essay'),
+        ).rejects.toThrow();
       });
 
       // The 409 toast is still the only message shown — a failed background refresh gets no
@@ -360,7 +432,9 @@ describe('ReaderSettingsProvider', () => {
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], [CANDIDATE]) });
 
       await act(async () => {
-        await expect(result.current.actions.addCandidate(CANDIDATE.handle)).rejects.toThrow();
+        await expect(
+          result.current.actions.addCandidate(CANDIDATE.handle, 'essay'),
+        ).rejects.toThrow();
       });
 
       expect(mockShowToast).toHaveBeenCalledWith("Couldn't add that publication");
@@ -369,9 +443,9 @@ describe('ReaderSettingsProvider', () => {
     it('rejects promoting a candidate the store does not hold', async () => {
       const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([], []) });
 
-      await expect(result.current.actions.addCandidate('gone@example.com')).rejects.toThrow(
-        'No candidate gone@example.com',
-      );
+      await expect(
+        result.current.actions.addCandidate('gone@example.com', 'essay'),
+      ).rejects.toThrow('No candidate gone@example.com');
     });
   });
 
