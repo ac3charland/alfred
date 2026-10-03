@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
-import { Calendar } from '@/components/atoms/calendar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,9 +24,10 @@ import { DropdownMenuSelectSub } from '@/components/atoms/dropdown-menu-select-s
 import { IconButton } from '@/components/atoms/icon-button';
 import type { PickerChipOption } from '@/components/atoms/picker-chip';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/atoms/popover';
+import { DueDatePicker } from '@/components/tasks/due-date-picker';
 import type { RowMetaEditing } from '@/components/tasks/task-row/row-meta-cluster';
 import { activeEpicsForProject } from '@/lib/code/epics';
-import { addDays, todayISODate } from '@/lib/date-utils';
+import { addDays, normalizeDueTime, todayISODate } from '@/lib/date-utils';
 import { PRIORITY_OPTIONS, isPriorityLevel } from '@/lib/priority';
 import { useEpics, useProjects } from '@/lib/stores/code-store';
 import { useResearchConfigured } from '@/lib/stores/research-config';
@@ -497,10 +497,11 @@ export function TaskRowMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* The "Custom…" calendar, anchored to the ⋯ button the menu just closed over. */}
+      {/* The "Custom…" due-date picker, anchored to the ⋯ button the menu just closed over. */}
       <PopoverContent align="end">
-        <Calendar
-          selected={currentDue}
+        <DueDatePicker
+          dueDate={currentDue}
+          dueTime={normalizeDueTime(node.due_time)}
           onSelect={(iso) => {
             editing.onSelectDueDate(iso);
             setCalendarOpen(false);
@@ -509,6 +510,7 @@ export function TaskRowMenu({
             editing.onClearDueDate();
             setCalendarOpen(false);
           }}
+          onSetTime={editing.onSetDueTime}
         />
       </PopoverContent>
     </Popover>

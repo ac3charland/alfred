@@ -878,6 +878,7 @@ export type Database = {
           created_at: string
           dispatched_at: string | null
           due_date: string | null
+          due_time: string | null
           folder_id: string | null
           id: string
           intended_epic_id: string | null
@@ -907,6 +908,7 @@ export type Database = {
           created_at?: string
           dispatched_at?: string | null
           due_date?: string | null
+          due_time?: string | null
           folder_id?: string | null
           id?: string
           intended_epic_id?: string | null
@@ -936,6 +938,7 @@ export type Database = {
           created_at?: string
           dispatched_at?: string | null
           due_date?: string | null
+          due_time?: string | null
           folder_id?: string | null
           id?: string
           intended_epic_id?: string | null
@@ -1436,6 +1439,7 @@ export type Database = {
           created_at: string | null
           dispatched_at: string | null
           due_date: string | null
+          due_time: string | null
           folder_id: string | null
           id: string | null
           intended_epic_id: string | null
@@ -1465,6 +1469,7 @@ export type Database = {
           created_at?: string | null
           dispatched_at?: string | null
           due_date?: string | null
+          due_time?: string | null
           folder_id?: string | null
           id?: string | null
           intended_epic_id?: string | null
@@ -1494,6 +1499,7 @@ export type Database = {
           created_at?: string | null
           dispatched_at?: string | null
           due_date?: string | null
+          due_time?: string | null
           folder_id?: string | null
           id?: string | null
           intended_epic_id?: string | null
@@ -1915,6 +1921,7 @@ export type Database = {
           created_at: string
           dispatched_at: string | null
           due_date: string | null
+          due_time: string | null
           folder_id: string | null
           id: string
           intended_epic_id: string | null
@@ -2017,6 +2024,7 @@ export type Database = {
           created_at: string
           dispatched_at: string | null
           due_date: string | null
+          due_time: string | null
           folder_id: string | null
           id: string
           intended_epic_id: string | null

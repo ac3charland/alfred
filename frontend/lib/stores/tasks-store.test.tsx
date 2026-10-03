@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
-import { pinClock } from '@/lib/pin-clock';
+import { pinClock, setClockNow } from '@/lib/pin-clock';
 import { makeResearchPost } from '@/lib/reader/fixtures';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { ResearchConfigProvider } from '@/lib/stores/research-config';
@@ -82,6 +82,7 @@ const BASE: Item = {
   created_at: '2025-01-01T10:00:00Z',
   raw_capture: null,
   due_date: null,
+  due_time: null,
   status: 'active',
   completed_at: null,
   folder_id: null,
@@ -625,6 +626,21 @@ describe('completeTask with recurrence', () => {
     expect(active[0]?.occurrence_index).toBe(2);
     // The completed original is kept (Completed view history).
     expect(result.current.tasks.find((t) => t.id === 'r-1')?.status).toBe('completed');
+  });
+
+  it("carries a timed task's time onto the optimistic next occurrence", () => {
+    mockCompleteTask.mockReturnValue(new Promise<apiClient.CompleteTaskResult>(() => {}));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([{ ...recurring, due_time: '15:00:00' }]),
+    });
+
+    act(() => {
+      void result.current.actions.completeTask('r-1');
+    });
+
+    const active = result.current.tasks.find((t) => t.status === 'active');
+    expect(active?.due_date).toBe('2026-06-02');
+    expect(active?.due_time).toBe('15:00:00');
   });
 
   it('replaces the optimistic occurrence with the authoritative server row', async () => {
@@ -1171,6 +1187,7 @@ describe('classifyItem sends one coherent write', () => {
     expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
       item_type: 'code',
       due_date: null,
+      due_time: null,
       recurrence: null,
     });
   });
@@ -1229,6 +1246,21 @@ describe('classifyItem sends one coherent write', () => {
     expect(result.current.tasks[0]?.item_type).toBe('code');
     expect(result.current.tasks[0]?.due_date).toBeNull();
   });
+
+  it("clears a timed task's time with its date, optimistically", () => {
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({ id: 'item-1', item_type: 'task', due_date: '2026-08-14', due_time: '15:00:00' }),
+      ]),
+    });
+
+    act(() => {
+      void result.current.actions.classifyItem('item-1', 'code');
+    });
+
+    expect(result.current.tasks[0]?.due_time).toBeNull();
+  });
 });
 
 describe('classifying as knowledge', () => {
@@ -1236,6 +1268,7 @@ describe('classifying as knowledge', () => {
   const KNOWLEDGE_CLEARS = {
     item_type: 'knowledge',
     due_date: null,
+    due_time: null,
     recurrence: null,
     intended_project_id: null,
     intended_epic_id: null,
@@ -1354,6 +1387,7 @@ describe('classifying as research', () => {
   const RESEARCH_CLEARS = {
     item_type: 'research',
     due_date: null,
+    due_time: null,
     recurrence: null,
     intended_project_id: null,
     intended_epic_id: null,
@@ -1498,6 +1532,7 @@ describe('bulkClassify sends each row its own clear-set', () => {
     expect(mockUpdateItem).toHaveBeenCalledWith('was-task', {
       item_type: 'code',
       due_date: null,
+      due_time: null,
       recurrence: null,
     });
     expect(mockUpdateItem).toHaveBeenCalledWith('was-unclassified', { item_type: 'code' });
@@ -3098,6 +3133,36 @@ describe('useFolderBadgeCounts', () => {
     });
 
     expect(result.current.counts['f1']).toEqual({ attention: 1, overdue: 0 });
+  });
+
+  describe('a timed task due today', () => {
+    beforeEach(() => {
+      // Only the interval timer is faked: the pinned clock still answers "what time is it".
+      jest.useFakeTimers({ doNotFake: ['Date'] });
+      setClockNow(new Date(2026, 9, 3, 14, 59, 30).toISOString());
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('moves from the amber attention count to the red overdue count at its minute', () => {
+      const items = [
+        item({ id: 'a', folder_id: 'f1', due_date: '2026-10-03', due_time: '15:00:00' }),
+        item({ id: 'b', folder_id: 'f1', due_date: '2026-10-03' }),
+      ];
+      const { result } = renderHook(useFolderBadgeCounts, { wrapper: makeWrapper(items) });
+
+      expect(result.current['f1']).toEqual({ attention: 2, overdue: 0 });
+
+      act(() => {
+        setClockNow(new Date(2026, 9, 3, 15, 0, 1).toISOString());
+        jest.advanceTimersByTime(1000);
+      });
+
+      // No reload: the minute clock re-derives the tally. The untimed task stays amber all day.
+      expect(result.current['f1']).toEqual({ attention: 1, overdue: 1 });
+    });
   });
 
   it('ignores an undispatched item, even one already carrying that folder', () => {

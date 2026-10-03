@@ -107,7 +107,7 @@ describe('fetchEligibleItems', () => {
     expect(parsed.searchParams.get('classified_at')).toBe('is.null');
     expect(parsed.searchParams.get('classify_attempts')).toBe('lt.3');
     expect(parsed.searchParams.get('select')).toBe(
-      'id,title,notes,raw_capture,source_url,item_type,priority,due_date,folder_id,intended_project_id,intended_epic_id,classify_attempts',
+      'id,title,notes,raw_capture,source_url,item_type,priority,due_date,due_time,folder_id,intended_project_id,intended_epic_id,classify_attempts',
     );
     expect(parsed.searchParams.get('order')).toBe('created_at.asc');
     expect(parsed.searchParams.get('limit')).toBe('25');
@@ -129,6 +129,7 @@ describe('fetchEligibleItems', () => {
         "item_type": "unclassified",
         "priority": null,
         "due_date": null,
+        "due_time": null,
         "folder_id": null,
         "intended_project_id": null,
         "intended_epic_id": null,
@@ -149,12 +150,39 @@ describe('fetchEligibleItems', () => {
         item_type: 'unclassified',
         priority: undefined,
         due_date: undefined,
+        due_time: undefined,
         folder_id: undefined,
         intended_project_id: undefined,
         intended_epic_id: undefined,
         classify_attempts: 0,
       },
     ]);
+  });
+
+  it('normalises the HH:MM:SS time PostgREST returns to HH:MM', async () => {
+    const body = `[
+      {
+        "id": "item-1",
+        "title": "Dentist",
+        "notes": null,
+        "raw_capture": null,
+        "source_url": null,
+        "item_type": "task",
+        "priority": null,
+        "due_date": "2026-10-04T00:00:00+00:00",
+        "due_time": "15:00:00",
+        "folder_id": null,
+        "intended_project_id": null,
+        "intended_epic_id": null,
+        "classify_attempts": 0
+      }
+    ]`;
+    mockFetch(new Response(body, { status: 200 }));
+
+    const items = await fetchEligibleItems(env, { limit: 10, attemptCeiling: 3 });
+
+    expect(items[0]?.due_date).toBe('2026-10-04T00:00:00+00:00');
+    expect(items[0]?.due_time).toBe('15:00');
   });
 
   it('returns an empty array when nothing is eligible', async () => {

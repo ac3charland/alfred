@@ -14,6 +14,7 @@ function row(overrides: Partial<Item> & Pick<Item, 'id' | 'title'>): Item {
     created_at: '2026-09-05T21:04:02.118Z',
     raw_capture: null,
     due_date: null,
+    due_time: null,
     status: 'active',
     completed_at: null,
     folder_id: null,

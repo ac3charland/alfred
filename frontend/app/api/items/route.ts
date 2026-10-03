@@ -58,6 +58,7 @@ export async function POST(request: Request): Promise<Response> {
             ? 'code'
             : 'task',
       due_date: input.due_date ?? null,
+      due_time: input.due_time ?? null,
       folder_id: input.folder_id ?? null,
       parent_id: input.parent_id ?? null,
       // A row with a parent_id is forced to `task`, which may never carry an intended project

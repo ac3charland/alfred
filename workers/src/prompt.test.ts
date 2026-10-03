@@ -33,6 +33,7 @@ function makeItem(overrides: Partial<SweepItem> = {}): SweepItem {
     item_type: 'unclassified',
     priority: undefined,
     due_date: undefined,
+    due_time: undefined,
     folder_id: undefined,
     intended_project_id: undefined,
     intended_epic_id: undefined,
@@ -68,7 +69,7 @@ function requestFor(overrides: {
 
 describe('constants', () => {
   it('pins the prompt version and the example limit', () => {
-    expect(PROMPT_VERSION).toBe(4);
+    expect(PROMPT_VERSION).toBe(5);
     expect(EXAMPLE_LIMIT).toBe(12);
   });
 });
@@ -82,6 +83,7 @@ describe('buildSchema', () => {
         'item_type',
         'priority',
         'due_date',
+        'due_time',
         'folder_id',
         'intended_project_id',
         'intended_epic_id',
@@ -92,11 +94,24 @@ describe('buildSchema', () => {
         },
         priority: { anyOf: [{ enum: ['high', 'medium', 'low'] }, { type: 'null' }] },
         due_date: { anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }] },
+        due_time: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         folder_id: { anyOf: [{ enum: ['folder-health', 'folder-errands'] }, { type: 'null' }] },
         intended_project_id: { anyOf: [{ enum: ['project-alf'] }, { type: 'null' }] },
         intended_epic_id: { anyOf: [{ enum: ['epic-classifier'] }, { type: 'null' }] },
       },
     });
+  });
+
+  it('offers due_time as a nullable plain string, validated in code rather than by a format', () => {
+    const schema = buildSchema(WORLD);
+    const properties = schema['properties'] as Record<string, unknown>;
+    expect(properties['due_time']).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(schema['required']).toContain('due_time');
+  });
+
+  it('keeps due_time unchanged whether or not the type is pinned', () => {
+    const pinned = buildSchema(WORLD, 'task')['properties'] as Record<string, unknown>;
+    expect(pinned['due_time']).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
   });
 
   it('collapses an empty id list to a bare null type, never an empty enum', () => {
@@ -261,6 +276,40 @@ describe('the abstention rules', () => {
     expect(system).toContain('Never invent either');
     expect(system).toContain('Never rewrite, tidy, or summarise the captured text');
     expect(system).toContain('writing metadata only');
+  });
+});
+
+describe('the due_time rule', () => {
+  it('names all seven fields the schema defines', () => {
+    const { system } = requestFor({});
+    expect(system).toContain(
+      'item_type, priority, due_date, due_time, folder_id, intended_project_id, and intended_epic_id',
+    );
+  });
+
+  it('answers only for a stated clock time, with the phrasings that count', () => {
+    const { system } = requestFor({});
+    expect(system).toContain('due_time: answer only when the text states a clock time');
+    for (const phrase of ['“at 3”', '“3pm”', '“15:30”', '“noon”']) {
+      expect(system).toContain(phrase);
+    }
+  });
+
+  it('never infers a time from a part of day', () => {
+    const { system } = requestFor({});
+    expect(system).toContain('“tonight”');
+    expect(system).toContain('“this afternoon”');
+    expect(system).toContain('Never infer a time from a part of day');
+  });
+
+  it('dates a time that names no day to today, and never gives a time without a due_date', () => {
+    const { system } = requestFor({});
+    expect(system).toContain('names no day, due_date is today');
+    expect(system).toContain('Never answer due_time without a due_date');
+  });
+
+  it('asks for the time as 24-hour HH:MM', () => {
+    expect(requestFor({}).system).toContain('24-hour HH:MM');
   });
 });
 

@@ -17,6 +17,7 @@ function task(id: string, overrides: Partial<Item> = {}): Item {
     item_type: 'task',
     created_at: '2026-01-01T00:00:00Z',
     due_date: null,
+    due_time: null,
     status: 'active',
     completed_at: null,
     folder_id: null,
@@ -164,6 +165,36 @@ describe('sortNodesBy, in due-date mode', () => {
       'medium',
       'low',
       'none',
+    ]);
+  });
+
+  it('orders a same-day group by time, the untimed task last, before priority', () => {
+    const tree = [
+      node('untimed-high', { due_date: '2026-02-01', priority: 'high' }),
+      node('evening-low', { due_date: '2026-02-01', due_time: '17:30:00', priority: 'low' }),
+      node('morning', { due_date: '2026-02-01', due_time: '09:00:00' }),
+      node('next-day-midnight', { due_date: '2026-02-02', due_time: '00:00:00' }),
+    ];
+
+    expect(sortNodesBy(tree, 'due').map((n) => n.id)).toStrictEqual([
+      'morning',
+      'evening-low',
+      'untimed-high',
+      'next-day-midnight',
+    ]);
+  });
+
+  it('keeps level first in priority mode, with the time only refining a same-level tie', () => {
+    const tree = [
+      node('low-morning', { due_date: '2026-02-01', due_time: '09:00:00', priority: 'low' }),
+      node('high-untimed', { due_date: '2026-02-01', priority: 'high' }),
+      node('high-evening', { due_date: '2026-02-01', due_time: '18:00:00', priority: 'high' }),
+    ];
+
+    expect(sortNodesBy(tree, 'priority').map((n) => n.id)).toStrictEqual([
+      'high-evening',
+      'high-untimed',
+      'low-morning',
     ]);
   });
 

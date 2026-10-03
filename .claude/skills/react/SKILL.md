@@ -173,6 +173,9 @@ Does a deep subtree need shared data without prop drilling?
 **Auto-fitting a textarea**
 - Resetting `style.height = 'auto'` to re-measure `scrollHeight` collapses the box mid-measure, shortening the document so the browser clamps the page's scroll and jumps a scrolled page by the collapse size. Pin the wrapper to its current `offsetHeight` across the measure and release it after. Also re-fit on window `resize`: re-wrapping changes the height with no value change. (`CaptureBox.fitTextareaToContent`)
 
+**Hydration**
+- React keeps **server-rendered attributes** through hydration: a mismatched `className` or `aria-*` is not patched, and the client's tree already agrees with itself, so nothing re-renders it. A value derived from the clock or the zone (a due chip's red/amber band — the server runs in UTC) sticks wrong until it changes again. Render the server-reproducible value until `useHydrated()` flips, then the real one: `lateness(now, hydrated)` in `lib/date-utils` judges a timed deadline by its day until then.
+
 **Blur-based auto-save**
 - A removed element never fires `blur`, so an `onBlur` auto-save silently drops the draft whenever the surface is dismissed by *unmounting* it (Escape, an outside pointer press, a "collapse all"). Pair the blur commit with an unmount commit: `const latest = useRef(commit); useEffect(() => { latest.current = commit; }); useEffect(() => () => { latest.current(); }, []);`. The commit must no-op when the draft matches the stored value, so the two paths can't both fire.
 

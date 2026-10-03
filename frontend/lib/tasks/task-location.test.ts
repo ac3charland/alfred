@@ -15,6 +15,7 @@ function makeItem(overrides: Partial<Item> = {}): Item {
     item_type: 'task',
     created_at: '2026-01-01T00:00:00Z',
     due_date: null,
+    due_time: null,
     status: overrides.status ?? 'active',
     completed_at: null,
     folder_id: overrides.folder_id ?? null,

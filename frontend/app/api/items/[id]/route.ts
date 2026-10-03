@@ -70,6 +70,7 @@ export const PATCH = withSession(
       'notes',
       'source_url',
       'due_date',
+      'due_time',
       'folder_id',
       'parent_id',
       'item_type',

@@ -1,6 +1,7 @@
 import { ChevronsDown, ChevronsUp, Equal, type LucideIcon } from 'lucide-react';
 
 import type { BadgeProperties } from '@/components/atoms/badge';
+import { dueMoment, normalizeDueTime } from '@/lib/date-utils';
 import { stableSorted } from '@/lib/sort';
 import { type ItemNode, buildTree } from '@/lib/tree';
 import type { Item, ItemPriority } from '@/lib/types';
@@ -90,7 +91,8 @@ export function priorityRank(p: TaskPriority | null | undefined): number {
 
 /**
  * A task's importance/urgency, compared lexicographically: level first (lower rank wins),
- * then due (earlier = more urgent; no due date sorts last via `Infinity`).
+ * then due (earlier = more urgent; no due date sorts last via `Infinity`). `due` is the moment the
+ * task falls due ({@link dueMoment}), so same-day tasks run by time with an untimed one last.
  */
 export interface PriorityKey {
   rank: number;
@@ -98,7 +100,10 @@ export interface PriorityKey {
 }
 
 export function ownKey(i: Item): PriorityKey {
-  return { rank: priorityRank(i.priority), due: i.due_date ? Date.parse(i.due_date) : Infinity };
+  return {
+    rank: priorityRank(i.priority),
+    due: i.due_date ? dueMoment(i.due_date, normalizeDueTime(i.due_time)).getTime() : Infinity,
+  };
 }
 
 /** Sort comparator: rank ascending, then due ascending. */
