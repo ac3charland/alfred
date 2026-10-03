@@ -146,4 +146,5 @@ except `scripts/**` (the narrowing the first instance already proposed), and add
 enumerated hygiene-file allow-list from the second.
 
 **Workaround used meanwhile:** `docs/demos/alf-329-skill-suggestions/skill-suggestions.md`, a
-two-block demo (the ledger path is ignored; the template carries Review focus).
+three-block demo (the ledger path is ignored; the template carries Review focus; the bug skill
+links the debugging skill).
