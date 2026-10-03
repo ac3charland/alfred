@@ -703,3 +703,48 @@ describe('POST /api/items', () => {
     expect(response.status).toBe(400);
   });
 });
+
+async function postDue(body: Record<string, unknown>) {
+  const chain = makeQueryChain({ data: TEST_ITEM, error: undefined });
+  const mockSupabase = {
+    auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+    from: jest.fn().mockReturnValue(chain),
+  };
+  mockCreateClient.mockResolvedValue(mockSupabase as never);
+  const response = await POST(
+    makeRequest('http://localhost/api/items', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  );
+  return { response, chain };
+}
+
+describe('POST /api/items — due_time', () => {
+  it('inserts the time beside its date', async () => {
+    const { chain } = await postDue({
+      title: 'Dentist',
+      due_date: '2026-10-04',
+      due_time: '15:00',
+    });
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ due_date: '2026-10-04', due_time: '15:00' }),
+    );
+  });
+
+  it('inserts a null time when none is given', async () => {
+    const { chain } = await postDue({ title: 'Dentist' });
+    expect(chain.insert).toHaveBeenCalledWith(expect.objectContaining({ due_time: null }));
+  });
+
+  it.each([
+    ['a time with no date', { title: 'x', due_time: '15:00' }],
+    ['a time with a null date', { title: 'x', due_date: null, due_time: '15:00' }],
+    ['a malformed time', { title: 'x', due_date: '2026-10-04', due_time: '3pm' }],
+  ])('rejects %s with 400', async (_label, body) => {
+    const { response, chain } = await postDue(body);
+    expect(response.status).toBe(400);
+    expect(chain.insert).not.toHaveBeenCalled();
+  });
+});
