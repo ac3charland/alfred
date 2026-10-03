@@ -38,7 +38,10 @@ export interface WikiWebProperties {
   /** The concepts and entities, in index order — the order the keyboard walks. */
   nodes: readonly WikiWebNode[];
   edges: readonly WikiWebEdge[];
-  /** The day's concept: pulled to the middle and lit at rest. `null` for none. */
+  /**
+   * The day's concept: pulled to the middle and lit at rest, and an ordinary dot while another
+   * node is lit. `null` for none.
+   */
   focusPath: string | null;
   /** The id of the heading that names the web. */
   labelledBy?: string | undefined;
@@ -83,7 +86,7 @@ function keyTarget(key: string, index: number, count: number): number | undefine
  * the stage — fits every dot as the web settles, until the reader zooms or pans; a Fit button
  * then hands it back. Dots and names keep their screen size at every zoom, so zooming spreads
  * the web out rather than blowing it up. Hovering a node, or reaching it from the keyboard,
- * lights its neighbourhood and names it; from 1:1 up, every node on the stage is named where
+ * lights its neighbourhood and names it, and the day's concept steps back to an ordinary dot; from 1:1 up, every node on the stage is named where
  * names don't collide. A click opens the page; the gestures are in `use-wiki-web-gestures.ts`.
  *
  * The web is one tab stop: arrow keys, Home and End walk the nodes in index order.
@@ -259,8 +262,8 @@ interface WikiWebDotProperties {
 /**
  * A node on the web: an element the stage places at the dot's centre, holding the page's link —
  * the dot, its name and, for a screen reader, the full title and kind. The stage moves it by
- * writing its transform and lights it by writing its `data-state`, so this renders only when
- * what it shows changes.
+ * writing its transform and lights it by writing its `data-state` and `data-featured`, so this
+ * renders only when what it shows changes.
  */
 const WikiWebDot = React.memo(function WikiWebDot({
   node,

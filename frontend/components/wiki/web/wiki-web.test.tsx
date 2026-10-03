@@ -312,6 +312,7 @@ describe('WikiWeb — the focus at rest', () => {
     renderWeb();
 
     expect(nodeElement(FOCUS).dataset['focus']).toBe('true');
+    expect(nodeElement(FOCUS).dataset['featured']).toBe('true');
     const neighbours = neighboursOf(FOCUS);
     expect(neighbours).toHaveLength(6);
     for (const path of neighbours) expect(stateOf(path)).toBe('neighbour');
@@ -358,10 +359,6 @@ describe('WikiWeb — hover', () => {
       expect(nameShown(path)).toBe(true);
     }
     expect(stateOf('wiki/concepts/zettelkasten.md')).toBe('dim');
-    // The day's concept keeps its halo and its name, undimmed.
-    expect(nodeElement(FOCUS).dataset['focus']).toBe('true');
-    expect(stateOf(FOCUS)).toBe('rest');
-    expect(nameShown(FOCUS)).toBe(true);
     expect(nameShown('wiki/entities/robert-bjork.md')).toBe(false);
 
     await user.unhover(linkOf(MEDINA));
@@ -369,6 +366,47 @@ describe('WikiWeb — hover', () => {
     expect(stateOf(MEDINA)).toBe('rest');
     expect(stateOf('wiki/concepts/zettelkasten.md')).toBe('rest');
     expect(nameShown('wiki/entities/robert-bjork.md')).toBe(true);
+  });
+
+  it("hides the day's concept while another node is hovered, and brings it back after", async () => {
+    const user = userEvent.setup();
+    renderWeb();
+    expect(neighboursOf(MEDINA)).not.toContain(FOCUS);
+
+    await user.hover(linkOf(MEDINA));
+
+    expect(nodeElement(FOCUS).dataset['featured']).toBeUndefined();
+    expect(stateOf(FOCUS)).toBe('dim');
+    expect(nameShown(FOCUS)).toBe(false);
+
+    await user.unhover(linkOf(MEDINA));
+
+    expect(nodeElement(FOCUS).dataset['featured']).toBe('true');
+    expect(stateOf(FOCUS)).toBe('rest');
+    expect(nameShown(FOCUS)).toBe(true);
+  });
+
+  it("shows the day's concept as an ordinary neighbour of a hovered node it links to", async () => {
+    const user = userEvent.setup();
+    renderWeb();
+    const [neighbour = ''] = neighboursOf(FOCUS);
+
+    await user.hover(linkOf(neighbour));
+
+    expect(nodeElement(FOCUS).dataset['featured']).toBeUndefined();
+    expect(stateOf(FOCUS)).toBe('neighbour');
+    expect(nameShown(FOCUS)).toBe(true);
+  });
+
+  it("keeps the day's concept marked while it is the node hovered", async () => {
+    const user = userEvent.setup();
+    renderWeb();
+
+    await user.hover(linkOf(FOCUS));
+
+    expect(nodeElement(FOCUS).dataset['featured']).toBe('true');
+    expect(stateOf(FOCUS)).toBe('lit');
+    expect(nameShown(FOCUS)).toBe(true);
   });
 });
 
@@ -519,6 +557,25 @@ describe('WikiWeb — the keyboard', () => {
     // The tab stop follows the keyboard, so Tab back in returns to where it left.
     expect(linkOf(order[0] ?? '')).toHaveAttribute('tabindex', '0');
     expect(linkOf(FOCUS)).toHaveAttribute('tabindex', '-1');
+  });
+
+  it("hides the day's concept while the keyboard is on another node", async () => {
+    const user = userEvent.setup();
+    renderWeb();
+    await user.tab();
+    expect(nodeElement(FOCUS).dataset['featured']).toBe('true');
+
+    await user.keyboard('{End}');
+
+    expect(neighboursOf(SAMPLE.nodes.at(-1)?.path ?? '')).not.toContain(FOCUS);
+    expect(nodeElement(FOCUS).dataset['featured']).toBeUndefined();
+    expect(stateOf(FOCUS)).toBe('dim');
+    expect(nameShown(FOCUS)).toBe(false);
+
+    await user.tab();
+
+    expect(nodeElement(FOCUS).dataset['featured']).toBe('true');
+    expect(nameShown(FOCUS)).toBe(true);
   });
 
   it('lights whichever of the pointer and the keyboard moved last', async () => {

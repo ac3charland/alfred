@@ -15,11 +15,10 @@ const node = (id: string, x: number, y: number, extra: Partial<LabelNode> = {}):
   ...extra,
 });
 
-/** `placeLabels` with the quiet defaults: nothing focused or lit, zoomed out, on the stage. */
+/** `placeLabels` with the quiet defaults: nothing lit, zoomed out, on the stage. */
 function place(
   nodes: readonly LabelNode[],
   options: {
-    focusId?: string;
     litId?: string;
     neighbours?: readonly string[];
     scale?: number;
@@ -28,7 +27,6 @@ function place(
 ): Map<string, LabelPlacement> {
   return placeLabels({
     nodes,
-    focusId: options.focusId ?? null,
     litId: options.litId ?? null,
     neighbours: new Set(options.neighbours),
     scale: options.scale ?? 0.5,
@@ -79,7 +77,7 @@ describe('truncateName', () => {
 });
 
 describe('placeLabels: which names show', () => {
-  // A focus with three neighbours, and two dots that have nothing to do with it, well apart.
+  // The day's concept with three neighbours, and two dots that have nothing to do with it.
   const web = [
     node('focus', 400, 200),
     node('n1', 300, 120),
@@ -89,9 +87,8 @@ describe('placeLabels: which names show', () => {
     node('far2', 700, 340),
   ];
 
-  it('names only the focus and its neighbours at rest, zoomed out', () => {
+  it('names only the lit dot and its neighbours, zoomed out', () => {
     const placements = place(web, {
-      focusId: 'focus',
       litId: 'focus',
       neighbours: ['n1', 'n2', 'n3'],
     });
@@ -99,19 +96,16 @@ describe('placeLabels: which names show', () => {
     expect(shown(placements)).toStrictEqual(new Set(['focus', 'n1', 'n2', 'n3']));
   });
 
-  it('names the focus, the hovered dot and the hovered dot’s neighbours when another dot is lit', () => {
+  it('names neither the day’s concept nor its neighbours when another dot is lit', () => {
     const placements = place(web, {
-      focusId: 'focus',
       litId: 'far1',
       neighbours: ['far2'],
     });
 
-    expect(shown(placements)).toStrictEqual(new Set(['far1', 'far2', 'focus']));
-    // The focus's own neighbours are not the lit ones now, so they lose their names.
-    expect(placements.has('n1')).toBe(false);
+    expect(shown(placements)).toStrictEqual(new Set(['far1', 'far2']));
   });
 
-  it('names nothing when nothing is focused or lit and the view is zoomed out', () => {
+  it('names nothing when nothing is lit and the view is zoomed out', () => {
     expect(place(web).size).toBe(0);
   });
 
@@ -141,9 +135,8 @@ describe('placeLabels: which names show', () => {
     expect(shown(place(dots, { scale: 1 }))).toStrictEqual(new Set(['corner', 'opposite']));
   });
 
-  it('keeps the focus’s and lit dots’ names alongside all the others when zoomed in', () => {
+  it('keeps the lit dots’ names alongside all the others when zoomed in', () => {
     const placements = place(web, {
-      focusId: 'focus',
       litId: 'focus',
       neighbours: ['n1', 'n2', 'n3'],
       scale: 1.5,
@@ -152,13 +145,12 @@ describe('placeLabels: which names show', () => {
     expect(shown(placements)).toStrictEqual(new Set(['far1', 'far2', 'focus', 'n1', 'n2', 'n3']));
   });
 
-  it('shows nothing for an empty web, and shrugs off a focus or lit dot it does not hold', () => {
+  it('shows nothing for an empty web, and shrugs off a lit dot it does not hold', () => {
     expect(place([]).size).toBe(0);
     expect(
       shown(
         place([node('a', 100, 100)], {
-          focusId: 'gone',
-          litId: 'also-gone',
+          litId: 'gone',
           neighbours: ['not-here'],
         }),
       ),
@@ -176,15 +168,6 @@ describe('placeLabels: where a name sits', () => {
     expect(box.right).toBeCloseTo(300 + 45, 9);
     expect(box.top).toBeCloseTo(150 + 9 + GAP, 9);
     expect(box.bottom - box.top).toBe(LINE);
-  });
-
-  it('gives the focus’s name the same place, centred under its dot', () => {
-    const dot = node('focus', 400, 200, { radius: 7, width: 100 });
-
-    const box = boxOf(dot, place([dot], { focusId: 'focus', litId: 'focus' }).get('focus'));
-
-    expect(box.left).toBeCloseTo(350, 9);
-    expect(box.top).toBeCloseTo(200 + 7 + GAP, 9);
   });
 
   describe('a neighbour of the lit dot', () => {
@@ -265,18 +248,6 @@ describe('placeLabels: where a name sits', () => {
       const box = boxOf(dot, place([dot], { litId: 'lit', neighbours: ['lit'] }).get('lit'));
 
       expect(box.left).toBeCloseTo(370, 9);
-      expect(box.top).toBeCloseTo(200 + 5 + GAP, 9);
-    });
-
-    it('sits the focus’s name under it, not outward, when it is a neighbour of the lit dot', () => {
-      const focus = node('focus', 520, 200, { width: 60 });
-
-      const box = boxOf(
-        focus,
-        place([lit, focus], { focusId: 'focus', litId: 'lit', neighbours: ['focus'] }).get('focus'),
-      );
-
-      expect(box.left).toBeCloseTo(490, 9);
       expect(box.top).toBeCloseTo(200 + 5 + GAP, 9);
     });
   });
@@ -429,20 +400,6 @@ describe('placeLabels: culling overlaps', () => {
     const placements = place(dots, { ...zoomedIn, litId: 'lit' });
 
     expect(shown(placements)).toStrictEqual(new Set(['lit']));
-  });
-
-  it('never hides the focus’s name, however busy or important what overlaps it', () => {
-    const dots = [
-      node('focus', 400, 200, { degree: 0 }),
-      node('lit', 410, 200, { degree: 40 }),
-      node('other', 390, 205, { degree: 99 }),
-    ];
-
-    const placements = place(dots, { ...zoomedIn, focusId: 'focus', litId: 'lit' });
-
-    expect(placements.has('focus')).toBe(true);
-    expect(placements.has('lit')).toBe(false);
-    expect(placements.has('other')).toBe(false);
   });
 
   it('gives the same names whatever order the dots come in', () => {

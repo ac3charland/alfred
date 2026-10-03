@@ -28,8 +28,13 @@ export interface WikiWebScene {
  * How a dot or an edge is lit, written to its `data-state`:
  * - `lit` — the node under the pointer or keyboard, or an edge touching it;
  * - `neighbour` — a node linked to the lit one (or to the focus, at rest);
- * - `dim` — everything else while a node is lit by the pointer or keyboard, bar the focus;
- * - `rest` — everything else (the focus's own look is its `data-focus`).
+ * - `dim` — everything else while a node is lit by the pointer or keyboard;
+ * - `rest` — everything else.
+ *
+ * The focus is marked `data-focus` for good; its own look is `data-featured`, which the stage
+ * writes only while no other node is lit: at rest, or while the focus is the node lit. Lighting
+ * another node takes it away, so the day's concept is then an ordinary dot — dimmed, or lit as a
+ * neighbour.
  */
 export type WikiWebLight = 'lit' | 'neighbour' | 'dim' | 'rest';
 
@@ -151,6 +156,8 @@ export function createWikiWebStage(): WikiWebStage {
   let keyboard: string | null = null;
   // Which of the two reached a node last: it wins while both are on one.
   let latest: 'hover' | 'keyboard' = 'hover';
+  // Whether the focus shows as the day's concept, as last written: its name's font follows it.
+  let featuring = false;
 
   const setTaken = (next: boolean) => {
     if (taken === next) return;
@@ -172,9 +179,20 @@ export function createWikiWebStage(): WikiWebStage {
     const active = hovered !== null || keyboard !== null;
     if (active && id === lit) return 'lit';
     if (lit !== null && around.get(lit)?.has(id)) return 'neighbour';
-    // The day's concept is never dimmed: it keeps its halo and name whatever else is lit.
-    if (id === scene?.focusId) return 'rest';
     return active ? 'dim' : 'rest';
+  };
+
+  /** Whether the focus shows as the day's concept: only while no other node is lit. */
+  const featured = (): boolean => {
+    const focusId = scene?.focusId ?? null;
+    return focusId !== null && litId() === focusId;
+  };
+
+  /** Write a node's light, and whether it shows as the day's concept. */
+  const lightNode = (id: string, element: HTMLElement) => {
+    element.dataset['state'] = lightOf(id);
+    if (id === scene?.focusId && featured()) element.dataset['featured'] = 'true';
+    else delete element.dataset['featured'];
   };
 
   const edgeLightOf = ({ a, b }: WikiWebEdge): WikiWebLight => {
@@ -251,7 +269,6 @@ export function createWikiWebStage(): WikiWebStage {
             ]
           : [];
       }),
-      focusId: scene.focusId,
       litId: lit,
       neighbours: lit === null ? NO_NEIGHBOURS : (around.get(lit) ?? NO_NEIGHBOURS),
       scale: view.scale,
@@ -280,7 +297,12 @@ export function createWikiWebStage(): WikiWebStage {
   /** Write every node's and edge's light, then the names, which follow it. */
   const applyLight = () => {
     if (!scene) return;
-    for (const [id, element] of nodeElements) element.dataset['state'] = lightOf(id);
+    // The focus's name is larger and bolder while it is featured, so it is measured again.
+    if (featured() !== featuring) {
+      featuring = featured();
+      if (scene.focusId !== null) nameWidths.delete(scene.focusId);
+    }
+    for (const [id, element] of nodeElements) lightNode(id, element);
     for (const edge of scene.edges) {
       const element = edgeElements.get(edgeKey(edge));
       if (element) element.dataset['state'] = edgeLightOf(edge);
@@ -413,7 +435,7 @@ export function createWikiWebStage(): WikiWebStage {
         return;
       }
       nodeElements.set(id, element);
-      element.dataset['state'] = lightOf(id);
+      lightNode(id, element);
       placeNode(id, element);
     },
     setName: (id, element) => {
