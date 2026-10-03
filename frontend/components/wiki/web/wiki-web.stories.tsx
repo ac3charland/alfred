@@ -87,9 +87,9 @@ export const OneNode: Story = {
 };
 
 /**
- * Hovering John Medina lights his neighbourhood and dims the rest; the day's concept keeps its
- * halo and name. The web lights from pointer events, not CSS `:hover`, so the play function's
- * hover is enough. Declared last: nothing after it should inherit a pointer left on a node.
+ * Hovering John Medina lights his neighbourhood and dims the rest, the day's concept with it: its
+ * halo and name step back until the pointer leaves. The web lights from pointer events, not CSS
+ * `:hover`, so the play function's hover is enough. Declared last: nothing after it should inherit a pointer left on a node.
  */
 export const Hovering: Story = {
   play: async ({ canvasElement }) => {

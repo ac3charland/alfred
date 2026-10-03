@@ -48,10 +48,10 @@ export interface LabelPlacement {
 const SIDEWAYS = 0.35;
 
 /**
- * A name's importance, most first: the focus's, then the lit dot's, then the lit dot's
- * neighbours', then every other name. A dot that is several of these takes the first.
+ * A name's importance, most first: the lit dot's, then the lit dot's neighbours', then every
+ * other name. A dot that is several of these takes the first.
  */
-const ROLE = { focus: 0, lit: 1, neighbour: 2, other: 3 } as const;
+const ROLE = { lit: 0, neighbour: 1, other: 2 } as const;
 type Role = (typeof ROLE)[keyof typeof ROLE];
 
 interface Box {
@@ -127,25 +127,25 @@ function byImportance(a: { node: LabelNode; role: Role }, b: { node: LabelNode; 
  * that SHOWS; a dot absent from it has no name on screen.
  *
  * `litId` is the dot whose neighbourhood is lit — the hovered or keyboard-focused dot, or the
- * focus at rest; the caller decides — and `neighbours` its neighbours' ids. The candidates are
- * the focus, the lit dot, the lit dot's neighbours and, once `scale` reaches `allNamesScale`,
- * every dot whose centre is on the stage. A neighbour's name is set outward from the lit dot
- * ({@link outward}); every other name centres under its dot. A name that would cross the
+ * day's concept at rest; the caller decides — and `neighbours` its neighbours' ids. The day's
+ * concept has no place of its own here: while another dot is lit it is named only as any other
+ * dot would be. The candidates are the lit dot, its neighbours and, once `scale` reaches
+ * `allNamesScale`, every dot whose centre is on the stage. A neighbour's name is set outward
+ * from the lit dot ({@link outward}); every other name centres under its dot. A name that would cross the
  * stage's left or right side is kept inside ({@link kept}).
  *
  * Names are placed greedily, most important first — by role, then most links, then id, so the
  * outcome never depends on the order the dots come in — and a name whose box overlaps one already
- * placed is hidden. The focus is placed first, so its name is never the one hidden.
+ * placed is hidden. The lit dot is placed first, so its name is never the one hidden.
  */
 export function placeLabels(input: {
   nodes: readonly LabelNode[];
-  focusId: string | null;
   litId: string | null;
   neighbours: ReadonlySet<string>;
   scale: number;
   stage: { width: number; height: number };
 }): Map<string, LabelPlacement> {
-  const { nodes, focusId, litId, neighbours, scale, stage } = input;
+  const { nodes, litId, neighbours, scale, stage } = input;
   const lit = litId === null ? undefined : nodes.find((node) => node.id === litId);
   const everyone = scale >= WIKI_WEB_FORCES.allNamesScale;
   const onStage = (node: LabelNode) =>
@@ -157,7 +157,6 @@ export function placeLabels(input: {
   });
 
   function roleOf(node: LabelNode): Role | undefined {
-    if (node.id === focusId) return ROLE.focus;
     if (node.id === litId) return ROLE.lit;
     if (neighbours.has(node.id)) return ROLE.neighbour;
     return everyone && onStage(node) ? ROLE.other : undefined;

@@ -2,8 +2,9 @@ import { cn } from '@/lib/utils';
 
 /**
  * The web's look, in one place. The stage writes each node's and edge's light as `data-state`
- * (`lit` · `neighbour` · `dim` · `rest`) and whether a name shows as `data-shown`; React writes
- * `data-kind` and `data-focus`. Every class below keys off those attributes, so a hover restyles
+ * (`lit` · `neighbour` · `dim` · `rest`), whether the day's concept is featured — no other node
+ * lit — as `data-featured`, and whether a name shows as `data-shown`; React writes `data-kind`
+ * and `data-focus`. Every class below keys off those attributes, so a hover restyles
  * the web without React rendering anything. Changes are instant — no transition — since a
  * hundred dots fading at once stutters.
  *
@@ -43,7 +44,7 @@ export const edgeClass = cn(
 export const nodeClass = cn(
   'group/node absolute left-0 top-0',
   'data-[state=dim]:opacity-30',
-  'data-[state=neighbour]:z-[5] data-[focus=true]:z-10 data-[state=lit]:z-20',
+  'data-[state=neighbour]:z-[5] data-[featured=true]:z-10 data-[state=lit]:z-20',
 );
 
 /** The node's link: a 24 px round hit area centred on the dot, bigger than the smallest dots. */
@@ -58,8 +59,8 @@ const dotBaseClass = cn(
   // A lit node: a foreground ring at half strength, 5 px out.
   'group-data-[state=lit]/node:outline group-data-[state=lit]/node:outline-offset-[5px]',
   'group-data-[state=lit]/node:outline-foreground/50',
-  // The day's concept: a violet halo, lit or not.
-  'group-data-[focus=true]/node:shadow-[0_0_0_4px_rgba(167,139,250,0.22),0_0_14px_3px_rgba(167,139,250,0.5)]',
+  // The day's concept: a violet halo while it is featured — at rest, or itself lit.
+  'group-data-[featured=true]/node:shadow-[0_0_0_4px_rgba(167,139,250,0.22),0_0_14px_3px_rgba(167,139,250,0.5)]',
   // The keyboard's ring, round the dot rather than the hit area.
   'group-focus-visible/link:ring-2 group-focus-visible/link:ring-ring',
   'group-focus-visible/link:ring-offset-2 group-focus-visible/link:ring-offset-surface',
@@ -71,31 +72,33 @@ export const dotClass = {
     dotBaseClass,
     'bg-muted-foreground',
     'group-data-[state=neighbour]/node:bg-accent-violet',
-    'group-data-[focus=true]/node:bg-accent-violet',
+    'group-data-[featured=true]/node:bg-accent-violet',
     'group-data-[state=lit]/node:bg-foreground',
   ),
   entity: cn(
     dotBaseClass,
     'border-[1.5px] border-muted-foreground bg-surface',
     'group-data-[state=neighbour]/node:border-accent-violet',
-    'group-data-[focus=true]/node:border-accent-violet',
+    'group-data-[featured=true]/node:border-accent-violet',
     'group-data-[state=lit]/node:border-foreground',
   ),
 } as const;
 
 /**
  * A node's name, placed by the stage from the dot's centre. Names are drawn over edges with a
- * surface-coloured halo so they stay legible; the focus's is larger and bold, the lit node's
- * brighter. Hidden names keep their layout, so they can be measured.
+ * surface-coloured halo so they stay legible; the featured focus's is larger and bold, the lit
+ * node's brighter. Hidden names keep their layout, so they can be measured.
  */
 export const nameClass = cn(
   'absolute left-1/2 top-1/2 whitespace-nowrap text-xs leading-4 text-muted-foreground',
   // A halo of stacked surface-coloured shadows: it rings each glyph without touching its fill.
   '[text-shadow:0_0_2px_var(--color-surface),0_0_3px_var(--color-surface),0_0_3px_var(--color-surface)]',
   'data-[shown=false]:invisible',
-  'group-data-[state=lit]/node:font-medium group-data-[state=lit]/node:text-foreground',
-  'group-data-[focus=true]/node:text-[13px] group-data-[focus=true]/node:font-semibold',
-  'group-data-[focus=true]/node:text-foreground',
+  'group-data-[state=lit]/node:text-foreground',
+  // The lit node's medium weight, bar the featured focus's: lit and featured at once, it stays bold.
+  'group-[[data-state=lit]:not([data-featured])]/node:font-medium',
+  'group-data-[featured=true]/node:text-[13px] group-data-[featured=true]/node:font-semibold',
+  'group-data-[featured=true]/node:text-foreground',
 );
 
 /** Where the Fit button sits: over the stage's top-right corner. */
