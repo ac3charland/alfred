@@ -1,12 +1,21 @@
 import type { NumberedLink } from './links';
 import {
+  READER_ALERTS_SCHEMA,
   READER_MAX_BULLETS,
+  READER_MAX_FINDINGS,
   READER_MAX_FURTHER_READING,
+  READER_ROUNDUP_SCHEMA,
   READER_SUMMARY_SCHEMA,
   isReaderSummary,
   normalizeReaderSummary,
+  readReaderSummary,
 } from './schema';
-import type { ReaderFurtherReadingPick, ReaderSummary } from './types';
+import type {
+  ReaderAlertsSummary,
+  ReaderFurtherReadingPick,
+  ReaderRoundupSummary,
+  ReaderSummary,
+} from './types';
 
 /** A post's numbered links, `https://example.com/<n>` for each number up to `count`. */
 function numbered(count: number): NumberedLink[] {
@@ -40,6 +49,9 @@ function validSummary(): ReaderSummary {
 function without(source: object, key: string): Record<string, unknown> {
   return Object.fromEntries(Object.entries(source).filter(([name]) => name !== key));
 }
+
+/** The schema's explicit "no deadline stated". This package bans writing the literal. */
+const NO_DEADLINE = JSON.parse('null') as null;
 
 /** `JSON.parse` typed honestly, so the guard is fed `unknown` rather than `any`. */
 function parseJson(text: string): unknown {
@@ -206,7 +218,7 @@ describe('normalizeReaderSummary', () => {
 
   it('leaves a short list, the strings and the headline untouched', () => {
     const summary = validSummary();
-    expect(normalizeReaderSummary(summary, [])).toEqual(summary);
+    expect(normalizeReaderSummary(summary, [])).toEqual({ kind: 'essay', ...summary });
   });
 
   it('returns a fresh object rather than mutating the parsed body', () => {
@@ -294,5 +306,230 @@ describe('normalizeReaderSummary — further reading', () => {
     expect(normalizeReaderSummary(summary, numbered(2)).overview.further_reading).toEqual([
       { url: 'https://example.com/2', title: 'The paper', note: 'Its numbers.' },
     ]);
+  });
+});
+
+/** A well-formed roundup answer. */
+function validRoundup(): ReaderRoundupSummary {
+  return {
+    headline: 'Robot dexterity, eval saturation, and a chip export rule',
+    gist: 'A week of eval news and one policy change; worth opening for the dexterity benchmark.',
+    overview: {
+      highlights: ['Folding policies at 95% in simulation land at 55–60% on hardware.'],
+      links: [pick(2, 'DexBench: sim-to-real for folding')],
+    },
+  };
+}
+
+/** A well-formed Alerts answer with one finding. */
+function validAlerts(): ReaderAlertsSummary {
+  return {
+    headline: 'Worn Wear fall event',
+    gist: '40% off used outerwear for members.',
+    overview: {
+      findings: [
+        {
+          category: 'sale',
+          detail: '40% off used outerwear, members only.',
+          deadline: NO_DEADLINE,
+        },
+      ],
+    },
+  };
+}
+
+describe('READER_ROUNDUP_SCHEMA', () => {
+  it('requires every key, forbids extras, and asks for highlights and numbered links', () => {
+    expect(READER_ROUNDUP_SCHEMA.additionalProperties).toBe(false);
+    expect(READER_ROUNDUP_SCHEMA.required).toEqual(['headline', 'gist', 'overview']);
+    const overview = READER_ROUNDUP_SCHEMA.properties.overview;
+    expect(overview.additionalProperties).toBe(false);
+    expect(overview.required).toEqual(['highlights', 'links']);
+    expect(overview.properties.highlights).toMatchObject({
+      type: 'array',
+      items: { type: 'string' },
+    });
+    // The same pick shape the essay's Further reading uses, so one mapping serves both.
+    expect(overview.properties.links.items).toEqual(
+      READER_SUMMARY_SCHEMA.properties.overview.properties.further_reading.items,
+    );
+  });
+});
+
+describe('READER_ALERTS_SCHEMA', () => {
+  it('requires every key, forbids extras, and constrains the category to the four', () => {
+    expect(READER_ALERTS_SCHEMA.additionalProperties).toBe(false);
+    expect(READER_ALERTS_SCHEMA.required).toEqual(['headline', 'gist', 'overview']);
+    const overview = READER_ALERTS_SCHEMA.properties.overview;
+    expect(overview.additionalProperties).toBe(false);
+    expect(overview.required).toEqual(['findings']);
+    const finding = overview.properties.findings.items;
+    expect(finding.additionalProperties).toBe(false);
+    expect(finding.required).toEqual(['category', 'detail', 'deadline']);
+    expect(finding.properties.category.enum).toEqual(['sale', 'security', 'action', 'change']);
+    // Abstention is a value the model can emit: an explicit null branch, never an omitted key.
+    expect(finding.properties.deadline.anyOf).toEqual([{ type: 'string' }, { type: 'null' }]);
+  });
+});
+
+describe('the roundup and Alerts schemas carry no grammar-rejected keyword', () => {
+  it.each([
+    ['roundup', READER_ROUNDUP_SCHEMA],
+    ['alerts', READER_ALERTS_SCHEMA],
+  ])('%s has no maxItems or maxLength anywhere', (_kind, schema) => {
+    const text = JSON.stringify(schema);
+    expect(text).not.toContain('maxItems');
+    expect(text).not.toContain('maxLength');
+  });
+});
+
+describe('readReaderSummary — essay', () => {
+  it('reads an essay answer and tags it essay', () => {
+    const stored = readReaderSummary('essay', validSummary(), []);
+
+    expect(stored?.kind).toBe('essay');
+    expect(stored?.gist).toBe(validSummary().gist);
+  });
+
+  it('refuses an answer in another kind’s shape', () => {
+    expect(readReaderSummary('essay', validRoundup(), [])).toBeUndefined();
+  });
+});
+
+describe('readReaderSummary — roundup', () => {
+  it('reads a roundup answer, mapping its links to further_reading through the post’s numbers', () => {
+    const stored = readReaderSummary('roundup', validRoundup(), numbered(3));
+
+    expect(stored).toEqual({
+      kind: 'roundup',
+      headline: validRoundup().headline,
+      gist: validRoundup().gist,
+      overview: {
+        highlights: ['Folding policies at 95% in simulation land at 55–60% on hardware.'],
+        further_reading: [
+          {
+            url: 'https://example.com/2',
+            title: 'DexBench: sim-to-real for folding',
+            note: 'Why link 2 matters.',
+          },
+        ],
+      },
+    });
+  });
+
+  it('caps highlights at six after dropping blank ones', () => {
+    const answer = validRoundup();
+    answer.overview.highlights = ['  ', ...Array.from({ length: 8 }, (_, i) => `h${String(i)}`)];
+
+    const stored = readReaderSummary('roundup', answer, []);
+
+    expect(stored?.kind === 'roundup' && stored.overview.highlights).toEqual([
+      'h0',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+    ]);
+    expect(READER_MAX_BULLETS).toBe(6);
+  });
+
+  it('drops unknown link numbers, dedupes, keeps link order and caps the links', () => {
+    const answer = validRoundup();
+    answer.overview.links = [
+      pick(99),
+      ...Array.from({ length: 12 }, (_, i) => pick(12 - i)),
+      pick(3, 'Again'),
+    ];
+
+    const stored = readReaderSummary('roundup', answer, numbered(12));
+
+    const urls =
+      stored?.kind === 'roundup' ? stored.overview.further_reading.map((i) => i.url) : [];
+    expect(urls).toHaveLength(READER_MAX_FURTHER_READING);
+    expect(urls[0]).toBe('https://example.com/1');
+    expect(urls).not.toContain('https://example.com/99');
+    expect(new Set(urls).size).toBe(urls.length);
+  });
+
+  it('refuses a roundup answer missing its links, or with a non-string highlight', () => {
+    const missing = { ...validRoundup(), overview: { highlights: [] } };
+    const badHighlight = { ...validRoundup(), overview: { highlights: [3], links: [] } };
+
+    expect(readReaderSummary('roundup', missing, [])).toBeUndefined();
+    expect(readReaderSummary('roundup', badHighlight, [])).toBeUndefined();
+    expect(readReaderSummary('roundup', validSummary(), [])).toBeUndefined();
+  });
+});
+
+describe('readReaderSummary — alerts', () => {
+  it('reads an Alerts answer, omitting a null deadline and keeping a stated one', () => {
+    const answer = validAlerts();
+    answer.overview.findings.push({
+      category: 'action',
+      detail: ' Trade-in credit doubles if you book. ',
+      deadline: 'Oct 12',
+    });
+
+    expect(readReaderSummary('alerts', answer, numbered(3))).toEqual({
+      kind: 'alerts',
+      headline: 'Worn Wear fall event',
+      gist: '40% off used outerwear for members.',
+      overview: {
+        findings: [
+          { category: 'sale', detail: '40% off used outerwear, members only.' },
+          {
+            category: 'action',
+            detail: 'Trade-in credit doubles if you book.',
+            deadline: 'Oct 12',
+          },
+        ],
+      },
+    });
+  });
+
+  it('reads an empty findings list as nothing notable, not a failure', () => {
+    const answer = { ...validAlerts(), overview: { findings: [] } };
+
+    const stored = readReaderSummary('alerts', answer, []);
+
+    expect(stored?.kind === 'alerts' && stored.overview.findings).toEqual([]);
+  });
+
+  it(`drops blank details and caps the findings at ${String(READER_MAX_FINDINGS)}`, () => {
+    const answer = validAlerts();
+    answer.overview.findings = [
+      { category: 'sale', detail: ' '.repeat(3), deadline: NO_DEADLINE },
+      ...Array.from({ length: 7 }, (_, i) => ({
+        category: 'change' as const,
+        detail: `change ${String(i)}`,
+        deadline: '  ',
+      })),
+    ];
+
+    const stored = readReaderSummary('alerts', answer, []);
+    const findings = stored?.kind === 'alerts' ? stored.overview.findings : [];
+
+    expect(READER_MAX_FINDINGS).toBe(5);
+    expect(findings).toHaveLength(5);
+    expect(findings[0]).toEqual({ category: 'change', detail: 'change 0' });
+  });
+
+  it('refuses an unknown category, a non-string detail, a numeric deadline, or another kind’s shape', () => {
+    const finding = validAlerts().overview.findings[0];
+    const withFinding = (value: unknown) => ({ ...validAlerts(), overview: { findings: [value] } });
+
+    expect(
+      readReaderSummary('alerts', withFinding({ ...finding, category: 'promo' }), []),
+    ).toBeUndefined();
+    expect(readReaderSummary('alerts', withFinding({ ...finding, detail: 4 }), [])).toBeUndefined();
+    expect(
+      readReaderSummary('alerts', withFinding({ ...finding, deadline: 12 }), []),
+    ).toBeUndefined();
+    expect(
+      readReaderSummary('alerts', withFinding(without(finding ?? {}, 'deadline')), []),
+    ).toBeUndefined();
+    expect(readReaderSummary('alerts', validSummary(), [])).toBeUndefined();
+    expect(readReaderSummary('alerts', parseJson('null'), [])).toBeUndefined();
   });
 });
