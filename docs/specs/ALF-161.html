@@ -153,7 +153,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
 .switch legend{float:left;padding:0;color:var(--ink)}
 .switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
-#p1:has([value=a]:checked) [data-opt=b],#p1:has([value=b]:checked) [data-opt=a],
 #p2:has([value=a]:checked) [data-opt=b],#p2:has([value=b]:checked) [data-opt=a]{display:none}
 
 /* alfred's tokens, from source: colours from frontend/app/globals.css; the popover surface from
@@ -177,7 +176,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .duo>.app{flex:1 1 17.5rem;min-width:0}
 .app .k-stage{position:relative;padding:16px 12px 18px}
 .app .k-stage.tall{min-height:470px}
-.app .k-stage.taller{min-height:540px}
 
 /* Detail panel (task-detail-panel.tsx) + chip row (chip.tsx) */
 .app .k-panel{border:1px solid var(--border);border-radius:13px;background:var(--surface);padding:16px 18px 18px;
@@ -214,10 +212,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .app .k-field .ic{color:var(--muted-fg)}
 .app .k-time.k-add{padding-left:0}
 .app .k-time.k-add .k-link{padding-left:4px}
-.app .k-slots{display:flex;flex-wrap:wrap;gap:4px;margin:6px 4px 0}
-.app .k-slots span{display:flex;height:28px;align-items:center;border-radius:6px;padding:0 8px;font-size:12px;font-weight:500;color:#cdd6e4;background:rgb(255 255 255/.04)}
-.app .k-slots .x{background:var(--blue);font-weight:600;color:var(--background)}
-.app .k-slots .o{background:none;color:var(--blue)}
 
 /* Plate II: Today (triage-list.tsx · triage-row.tsx · view-heading.tsx) */
 .app .k-frame{display:flex;flex-direction:column;gap:24px;max-width:46rem;margin:0 auto;padding:24px 16px}
@@ -246,7 +240,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .app .k-row .k-cb{margin-top:2px}
 .app .k-rt{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:14px;line-height:20px}
 .app .k-mark{color:rgb(138 150 168/.95)}
-@media (max-width:43.99rem){.app .k-fold{display:none}.app .k-stage.tall{min-height:480px}.app .k-stage.taller{min-height:550px}
+@media (max-width:43.99rem){.app .k-fold{display:none}.app .k-stage.tall{min-height:480px}
   .app .k-row{flex-wrap:wrap}.app .k-row .k-rt{flex:1 1 calc(100% - 60px)}.app .k-row .k-b{margin-left:52px}}
 </style>
 </head>
@@ -279,15 +273,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>161</span><span class="sep"> — </span><span class="ttl">Add support for due times</span></h1>
   <p class="change" id="change">A task can carry a time as well as a date — “Tomorrow 3 PM” — set in the due-date picker or read from a capture, and it turns red the minute that time passes.</p>
-  <p class="revised" id="revised">Revised 2026-10-03: D2 settled — times float with your device and are never pinned to a time zone (your call).</p>
+  <p class="revised" id="revised">Revised 2026-10-03: D1 → A, the Add-time field; D2 settled as a floating time (both your calls).</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
-    <li data-state="open"><h3><a class="tag" href="#d1">D1</a>How do you enter the time?</h3>
-      <p class="pick">A · an “Add time” field — phone wheel, typed on desktop ★ · B · four quick slots plus Other…</p>
-      <p class="why">A is one plain control everywhere; B saves taps but guesses your four times.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>When does a timed task turn red?</h3>
       <p class="pick">At its minute, live — no reload. Untimed tasks keep today’s rule.</p>
       <p class="why">A time is a deadline; colouring it any later hides the one thing it adds.</p></li>
@@ -297,6 +288,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>What happens to the time on edits?</h3>
       <p class="pick">Date moves and repeats keep it; clearing the date clears it; time-only dates today.</p>
       <p class="why">Nothing silently drops a time you set, and no time floats without a day.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>How do you enter the time?</h3>
+      <p class="pick">An “Add time” field — the phone’s time wheel, typed on desktop.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Where does the time live?</h3>
       <p class="pick">Its own wall-clock column, <code>due_time</code>; 3 PM stays 3 PM in any time zone.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>Does the classifier read times?</h3>
@@ -309,15 +302,10 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
   <!-- ── Plate I · the due-date picker ─────────────────────────────────── -->
   <figure class="plate" id="p1">
-    <fieldset class="switch"><legend>D1</legend>
-      <label><input type="radio" name="p1" value="a" checked>A · Add-time field ★</label>
-      <label><input type="radio" name="p1" value="b">B · Quick slots</label>
-    </fieldset>
     <div class="mount">
 
-      <!-- Option A -->
-      <div class="duo" data-opt="a">
-        <div class="app" role="img" aria-label="Option A, a time set: the detail panel's Due chip reads Tomorrow 3 PM; its open picker shows October 2026 with the 4th selected, then a Time row holding a 03:00 PM field and a clear button, then Clear and Today.">
+      <div class="duo">
+        <div class="app" role="img" aria-label="A time set: the detail panel's Due chip reads Tomorrow 3 PM; its open picker shows October 2026 with the 4th selected, then a Time row holding a 03:00 PM field and a clear button, then Clear and Today.">
           <div class="k-stage tall">
             <div class="k-panel">
               <div class="k-chips">
@@ -348,7 +336,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
             </div>
           </div>
         </div>
-        <div class="app" role="img" aria-label="Option A, before a time is set: the same picker with the 4th selected; the Time row is a single blue Add time link with a clock.">
+        <div class="app" role="img" aria-label="Before a time is set: the same picker with the 4th selected; the Time row is a single blue Add time link with a clock.">
           <div class="k-stage">
             <div class="k-pop solo">
               <div class="k-cal">
@@ -363,59 +351,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
                   <span class="s">1</span><span class="s">2</span><span class="s">3</span><span class="s">4</span><span class="s">5</span><span class="s">6</span><span class="s">7</span>
                 </div>
                 <div class="k-time k-add"><span class="k-link"><svg class="ic" width="13" height="13"><use href="#i-clock"/></svg>Add time</span></div>
-                <div class="k-foot"><span class="k-link">Clear</span><span class="k-link">Today</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Option B -->
-      <div class="duo" data-opt="b">
-        <div class="app" role="img" aria-label="Option B, a time set: the Due chip reads Tomorrow 3 PM; under the month grid a Time label and five buttons, 9 AM, 12 PM, 3 PM filled blue, 6 PM, and Other…, then Clear and Today.">
-          <div class="k-stage tall taller">
-            <div class="k-panel">
-              <div class="k-chips">
-                <span class="k-chip due">Tomorrow 3 PM</span>
-                <span class="k-chip neu"><svg class="ic" width="13" height="13"><use href="#i-rep"/></svg>Never</span>
-              </div>
-              <div class="k-notes"></div>
-            </div>
-            <div class="k-pop">
-              <div class="k-cal">
-                <div class="k-calh"><span class="k-ib"><svg class="ic" width="16" height="16"><use href="#i-cl"/></svg></span><span class="k-month">October 2026</span><span class="k-ib"><svg class="ic" width="16" height="16"><use href="#i-cr"/></svg></span></div>
-                <div class="k-wd"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
-                <div class="k-grid">
-                  <span class="s">27</span><span class="s">28</span><span class="s">29</span><span class="s">30</span><span>1</span><span>2</span><span class="t">3</span>
-                  <span class="x">4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
-                  <span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span>
-                  <span>18</span><span>19</span><span>20</span><span>21</span><span>22</span><span>23</span><span>24</span>
-                  <span>25</span><span>26</span><span>27</span><span>28</span><span>29</span><span>30</span><span>31</span>
-                  <span class="s">1</span><span class="s">2</span><span class="s">3</span><span class="s">4</span><span class="s">5</span><span class="s">6</span><span class="s">7</span>
-                </div>
-                <div class="k-time"><span class="k-tl">Time</span></div>
-                <div class="k-slots"><span>9 AM</span><span>12 PM</span><span class="x">3 PM</span><span>6 PM</span><span class="o">Other…</span></div>
-                <div class="k-foot"><span class="k-link">Clear</span><span class="k-link">Today</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="app" role="img" aria-label="Option B, before a time is set: the same five time buttons, none filled.">
-          <div class="k-stage">
-            <div class="k-pop solo">
-              <div class="k-cal">
-                <div class="k-calh"><span class="k-ib"><svg class="ic" width="16" height="16"><use href="#i-cl"/></svg></span><span class="k-month">October 2026</span><span class="k-ib"><svg class="ic" width="16" height="16"><use href="#i-cr"/></svg></span></div>
-                <div class="k-wd"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
-                <div class="k-grid">
-                  <span class="s">27</span><span class="s">28</span><span class="s">29</span><span class="s">30</span><span>1</span><span>2</span><span class="t">3</span>
-                  <span class="x">4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
-                  <span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span>
-                  <span>18</span><span>19</span><span>20</span><span>21</span><span>22</span><span>23</span><span>24</span>
-                  <span>25</span><span>26</span><span>27</span><span>28</span><span>29</span><span>30</span><span>31</span>
-                  <span class="s">1</span><span class="s">2</span><span class="s">3</span><span class="s">4</span><span class="s">5</span><span class="s">6</span><span class="s">7</span>
-                </div>
-                <div class="k-time"><span class="k-tl">Time</span></div>
-                <div class="k-slots"><span>9 AM</span><span>12 PM</span><span>3 PM</span><span>6 PM</span><span class="o">Other…</span></div>
                 <div class="k-foot"><span class="k-link">Clear</span><span class="k-link">Today</span></div>
               </div>
             </div>
@@ -498,10 +433,10 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <h2>Decision records</h2>
 
   <section class="rec" id="d1">
-    <h3><span class="tag">D1</span>How do you enter the time? · open</h3>
-    <p><strong>A ★ — an “Add time” field.</strong> Under the grid, a Time row: “Add time” (clock + blue link, the footer buttons’ treatment) until a time exists, then a native <code>&lt;input type="time"&gt;</code> styled as the <code>Input</code> atom plus a × that clears just the time. Native is the point: iOS Safari opens its time wheel, desktop browsers give a typed, arrow-steppable hh:mm field, and there’s no list to build or keep accessible. The field commits on blur or Enter (not on every keystroke, or typing 3:30 would save 3:00 first) and Escape reverts.</p>
-    <p><strong>B — quick slots.</strong> Four one-tap buttons (9 AM · 12 PM · 3 PM · 6 PM) drawn like the grid’s selected day, plus “Other…” that reveals A’s field; tapping the selected slot clears it. Faster for those four times, but it’s more chrome and the four are a guess about your day.</p>
-    <p>Either way a day pick keeps today’s save-and-close, and a time commit leaves the picker open — so “time, then day” is one visit and “day, then time” is two. Considered and rejected: staying open after a day pick once the time row is touched, a mode with nothing on screen to say you’re in it. The control lives in a new picker component both entry points share (<a href="#d11">D11</a>).</p>
+    <h3><span class="tag">D1</span>How do you enter the time? · settled</h3>
+    <p><strong>An “Add time” field.</strong> Under the grid, a Time row: “Add time” (clock + blue link, the footer buttons’ treatment) until a time exists, then a native <code>&lt;input type="time"&gt;</code> styled as the <code>Input</code> atom plus a × that clears just the time. Native is the point: iOS Safari opens its time wheel, desktop browsers give a typed, arrow-steppable hh:mm field, and there’s no list to build or keep accessible. The field commits on blur or Enter (not on every keystroke, or typing 3:30 would save 3:00 first) and Escape reverts.</p>
+    <p>A day pick keeps today’s save-and-close, and a time commit leaves the picker open — so “time, then day” is one visit and “day, then time” is two. Considered and rejected: staying open after a day pick once the time row is touched, a mode with nothing on screen to say you’re in it. The control lives in a new picker component both entry points share (<a href="#d11">D11</a>).</p>
+    <p>Considered: four quick slots (9 AM · 12 PM · 3 PM · 6 PM) plus “Other…” — faster for those four times, but more chrome and a guess about your day.</p>
   </section>
 
   <section class="rec" id="d2">
@@ -696,7 +631,7 @@ export const VERDICT_FIELDS = [/* … */ 'due_time'] as const;
     <li><strong>Date helpers</strong> (<code>lib/date-utils.ts</code>) — the four functions in Contracts, red → green, with a pinned clock (<code>lib/pin-clock.ts</code>) and an explicit <code>en-US</code> locale in tests.</li>
     <li><strong>Derived state.</strong> <code>ownKey</code> (<code>lib/priority.ts</code>) → <code>dueMoment</code>; <code>countOverdueDescendants(node, now)</code> (<code>lib/tree.ts</code>); <code>useFolderBadgeCounts</code> (<code>tasks-store.tsx</code>) → <code>isPastDue</code> + D9’s clock; <code>classifyPatch</code> and <code>TaskFieldPatch</code>; <code>ClassifiedRow</code> + <code>classifierVerdictPatch</code> (<code>lib/tasks/classification.ts</code>). <code>computeOptimisticSpawn</code> already spreads the root, so the time rides along — pin it with a test.</li>
     <li><strong>API.</strong> <code>lib/api/schemas.ts</code>; <code>app/api/items/route.ts</code> inserts <code>due_time</code>; <code>app/api/items/[id]/route.ts</code> adds it to the <code>toUpdatePayload</code> list.</li>
-    <li><strong>UI.</strong> <code>due-date-picker.tsx</code> (D1 pick, D11); <code>due-date-chip.tsx</code> label + timed band; <code>task-row.tsx</code> (<code>handleSetDueTime</code>; <code>handleClearDueDate</code> also nulls the time); <code>task-row/row-meta-cluster.tsx</code>, <code>task-row/task-detail-panel.tsx</code>, <code>triage-row.tsx</code> pass <code>dueTime</code>; <code>task-row/task-row-menu.tsx</code> renders the picker for Custom… (presets unchanged — they already send only <code>due_date</code>). Give the native time input <code>color-scheme: dark</code> so its picker indicator and popup match the app. Read <code>frontend-architecture</code>, <code>react</code>, <code>shadcn-ui</code> first.</li>
+    <li><strong>UI.</strong> <code>due-date-picker.tsx</code> (D1, D11); <code>due-date-chip.tsx</code> label + timed band; <code>task-row.tsx</code> (<code>handleSetDueTime</code>; <code>handleClearDueDate</code> also nulls the time); <code>task-row/row-meta-cluster.tsx</code>, <code>task-row/task-detail-panel.tsx</code>, <code>triage-row.tsx</code> pass <code>dueTime</code>; <code>task-row/task-row-menu.tsx</code> renders the picker for Custom… (presets unchanged — they already send only <code>due_date</code>). Give the native time input <code>color-scheme: dark</code> so its picker indicator and popup match the app. Read <code>frontend-architecture</code>, <code>react</code>, <code>shadcn-ui</code> first.</li>
     <li><strong>Classifier.</strong> <code>workers/src/verdict.ts</code>, <code>prompt.ts</code>, <code>supabase.ts</code>, and the sweep’s <code>classified_guess</code> (<code>sweep.ts</code>); read <code>anthropic-api</code> and <code>cloudflare-workers</code>.</li>
     <li><strong>E2E + demo</strong>, then update <code>docs/specs/product/SPEC.md</code> §3.3 with the <code>due_time</code> field.</li>
   </ol>
@@ -706,7 +641,7 @@ export const VERDICT_FIELDS = [/* … */ 'due_time'] as const;
 <section id="ac" data-kind="story">
   <h2>Acceptance criteria</h2>
   <ul class="checks">
-    <li data-trace="D1 P1 D11">The detail panel’s Due chip, a row’s due chip, and ⋯ → Due date → Custom… open the same picker, with the time control drawn for D1’s pick; a time commit saves and leaves it open, and a day pick still saves and closes.</li>
+    <li data-trace="D1 P1 D11">The detail panel’s Due chip, a row’s due chip, and ⋯ → Due date → Custom… open the same picker, whose Time row reads “Add time” until a time is set and then a time field with a ×; a time commit saves and leaves it open, and a day pick still saves and closes.</li>
     <li data-trace="P1 P2 D12">Every due chip (row, panel, Today and By-Priority rows, select mode) reads date + time when timed — “Today 3 PM”, “Tomorrow 9:30 AM”, “Oct 12 6 PM” in en-US — and exactly as today when untimed.</li>
     <li data-trace="D2 D7">The time survives a reload, is stored in <code>items.due_time</code> as a wall-clock time, and no row can hold a time without a date.</li>
     <li data-trace="D3 P2">A timed task due today is amber before its minute and red from it, flipping within a minute without a reload; untimed bands are unchanged.</li>
