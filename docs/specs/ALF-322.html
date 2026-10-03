@@ -444,6 +444,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <h4>D12 · The tick's roster read carries the type</h4>
     <p><code>readRoster</code> selects <code>id,name,summary_kind</code> and returns <code>Map&lt;id, {name, kind}&gt;</code>. No new fetch, so the subrequest table in <code>READER_TICK_LIMIT</code>'s doc comment is unchanged.</p>
   </section>
+
+  <section class="rec" id="d13">
+    <h4>D13 · An Alerts request sends the text without its links</h4>
+    <p>Every kind already reads text, never HTML: <code>prompt.ts</code>'s <code>modelText</code> rebuilds the text from the stored HTML with <code>htmlToText</code> (scripts, styles and hidden blocks stripped), marking each candidate link <code>[n]</code> in place and listing up to <code>READER_MAX_LINK_CANDIDATES</code> (150) URLs after it. The stored <code>reader_posts.html</code> stays as it is, for the Instapaper send and for re-summarising. The links are there so Essay and Roundup can pick Further reading / Links; Alerts outputs no links, and a promo mail is mostly long tracking URLs — the links block would be most of the input tokens and pure noise to the judgment. So for <code>alerts</code>, <code>buildReaderRequest</code> sends <code>htmlToText(html)</code> without the markers (or the stored text when there's no HTML) and the links block reads <code>none</code>; <code>ReaderRequest.links</code> is empty. Essay and Roundup are unchanged.</p>
+  </section>
 </section>
 
 <section id="behavior" data-kind="story">
@@ -452,6 +457,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <thead><tr><th></th><th>Essay (default)</th><th>Roundup</th><th>Alerts</th></tr></thead>
     <tbody>
       <tr><th>The model is asked</th><td>Today's prompt, unchanged</td><td>Pull out what's striking in the issue itself, and pick the linked pieces worth reading in full</td><td>Find sale / security / action / change items; otherwise report none</td></tr>
+      <tr><th>Model input</th><td>text with <code>[n]</code> link markers + links block (today)</td><td>same as Essay</td><td>plain text, no markers, links block <code>none</code> (D13)</td></tr>
       <tr><th>gist</th><td>The claim + new-or-restatement</td><td>≤ 60 words: what the issue covers and what's worth opening it for</td><td>One line naming the finding(s), or "Nothing notable"</td></tr>
       <tr><th>overview (stored)</th><td><code>novel_ideas, evidence, argument, who_should_read, further_reading</code></td><td><code>highlights</code> (≤ 6 bullets), <code>further_reading</code> (the Links, ≤ 10)</td><td><code>findings</code> (≤ 5: category, detail, deadline?)</td></tr>
       <tr><th>Row body</th><td>gist</td><td>gist</td><td>findings, one line each, tagged (P2 b)</td></tr>
@@ -520,7 +526,7 @@ PATCH /api/reader/publications/[id]   { enabled? , name? , notes? , summary_kind
   <p>One session, no subagents needed; Red/Green TDD per step. Order:</p>
   <ol>
     <li><b>Migration + types.</b> The §Contracts migration (next free number; run <code>migration-lint</code>), regenerate <code>frontend/lib/database.types.ts</code>, add the kind/overview types to both type files, extend <code>frontend/lib/reader/fixtures.ts</code> with a roundup post, an alerts post with findings, and an auto-filed alerts post. Update <code>database/README.md</code>'s schema summary.</li>
-    <li><b>Worker: schema + prompt.</b> <code>schema.ts</code>: two new schemas, guards and normalizers beside the essay ones (the essay path untouched). <code>prompt.ts</code>: <code>ROUNDUP_SYSTEM_PROMPT</code>, <code>ALERTS_SYSTEM_PROMPT</code>, the versions map, <code>buildReaderRequest(post, kind)</code> picking the pair. Tests: the essay request is byte-identical to today's (snapshot the system string), each kind gets its own schema, roundup highlights cap at six and its links reuse the essay's number-to-URL mapping, alerts caps at five.</li>
+    <li><b>Worker: schema + prompt.</b> <code>schema.ts</code>: two new schemas, guards and normalizers beside the essay ones (the essay path untouched). <code>prompt.ts</code>: <code>ROUNDUP_SYSTEM_PROMPT</code>, <code>ALERTS_SYSTEM_PROMPT</code>, the versions map, <code>buildReaderRequest(post, kind)</code> picking the pair, and leaving out link numbering for Alerts (D13). Tests: the essay request is byte-identical to today's (snapshot the system string), each kind gets its own schema, roundup highlights cap at six and its links reuse the essay's number-to-URL mapping, alerts caps at five, and an Alerts request built from link-heavy HTML has no <code>[n]</code> markers and a links block of <code>none</code>.</li>
     <li><b>Worker: summarise + tick.</b> <code>summarize.ts</code> passes <code>kind</code> through and validates with that kind's guard. <code>scheduled.ts</code>: <code>readRoster</code> carries the kind (D12); <code>prepareFresh</code>/<code>prepareRetry</code> resolve it (D10); <code>applyOutcome</code>'s <code>done</code> patch writes <code>summary_kind</code>, the kind's <code>prompt_version</code>, and — Alerts with no findings — <code>archived_at</code> (D5). Tests in <code>scheduled.test.ts</code> for each.</li>
     <li><b>Eval.</b> <code>workers/scripts/reader-eval.ts</code> gains <code>--kind essay|roundup|alerts</code> (default essay) and prints each kind's overview readably.</li>
     <li><b>API + store.</b> <code>reader-schemas.ts</code> (create/update accept <code>summary_kind</code>), the two publication routes, <code>lib/data/reader-publications.ts</code>, <code>reader-settings-store.tsx</code> (<code>setKind(id, kind)</code>, <code>addCandidate(handle, kind)</code>). Add <code>summary_kind</code> to <code>READER_POST_LIST_COLUMNS</code>.</li>
@@ -542,6 +548,7 @@ PATCH /api/reader/publications/[id]   { enabled? , name? , notes? , summary_kind
     <li data-trace="D3 P2">An Alerts post with findings appears on the reading list with one tagged line per finding, no Send, and an Overview that holds only the footer.</li>
     <li data-trace="D5 P2">An Alerts post with no findings is archived by the tick in the same write as its summary and reads "Nothing notable — filed automatically." in the archive.</li>
     <li data-trace="D4 D8">Changing a publication's type changes no existing post; Retry summary on one of its posts re-summarises under the new type.</li>
+    <li data-trace="D13">An Alerts request carries the post's text with no link markers and no links list; the stored HTML is unchanged.</li>
     <li data-trace="D10">Research reports and unlinked Instapaper articles are summarised as Essays.</li>
     <li data-trace="D7 D12">Alerts and Roundup calls use <code>READER_MODEL</code>, count against <code>READER_DAILY_CAP</code>, and add no per-tick fetch.</li>
     <li data-trace="impl"><code>npm run eval:reader -w workers -- --kind roundup|alerts</code> prints that kind's summary.</li>
@@ -551,7 +558,7 @@ PATCH /api/reader/publications/[id]   { enabled? , name? , notes? , summary_kind
 <section id="tests" data-kind="story">
   <h2>Tests</h2>
   <ul>
-    <li><b>Jest (workers):</b> <code>prompt.test.ts</code> (essay request unchanged; per-kind system/schema/version), <code>schema.test.ts</code> (both new guards and normalizers: unknown link numbers, caps, blank items), <code>summarize.test.ts</code> (kind-specific guard → <code>counted: schema</code> on a mismatched body), <code>scheduled.test.ts</code> (kind from roster, D10 fallbacks, <code>done</code> patch fields, alerts auto-archive, no archive with findings).</li>
+    <li><b>Jest (workers):</b> <code>prompt.test.ts</code> (essay request unchanged; per-kind system/schema/version; alerts input without links), <code>schema.test.ts</code> (both new guards and normalizers: unknown link numbers, caps, blank items), <code>summarize.test.ts</code> (kind-specific guard → <code>counted: schema</code> on a mismatched body), <code>scheduled.test.ts</code> (kind from roster, D10 fallbacks, <code>done</code> patch fields, alerts auto-archive, no archive with findings).</li>
     <li><b>Jest (frontend):</b> <code>overview.test.ts</code> (<code>overviewOf</code> per kind, null kind → essay, malformed → none), route tests for the publications POST/PATCH and the further-reading route with a roundup overview, <code>reader-schemas.test.ts</code>, the settings store's <code>setKind</code> rollback.</li>
     <li><b>RTL:</b> post-row (alerts: findings, no Send; filed line; roundup panel: Highlights, its empty line, the "Links" heading), publications card chip, candidates Add-as menu.</li>
     <li><b>Storybook snapshots:</b> new row stories (roundup open, alerts notable, alerts filed) and the card with each type; existing essay stories must not move.</li>
