@@ -31,6 +31,7 @@ function buildVerdict(overrides: Partial<Verdict> = {}): Verdict {
     item_type: undefined,
     priority: undefined,
     due_date: undefined,
+    due_time: undefined,
     folder_id: undefined,
     intended_project_id: undefined,
     intended_epic_id: undefined,
@@ -49,6 +50,7 @@ function buildItem(overrides: Partial<SweepItem> = {}): SweepItem {
     item_type: 'unclassified',
     priority: undefined,
     due_date: undefined,
+    due_time: undefined,
     folder_id: undefined,
     intended_project_id: undefined,
     intended_epic_id: undefined,
@@ -58,11 +60,12 @@ function buildItem(overrides: Partial<SweepItem> = {}): SweepItem {
 }
 
 describe('parseVerdict', () => {
-  it('round-trips a well-formed body to a Verdict with all six fields', () => {
+  it('round-trips a well-formed body to a Verdict with all seven fields', () => {
     const raw = {
       item_type: 'task',
       priority: 'high',
       due_date: '2026-08-14',
+      due_time: '15:00',
       folder_id: 'folder-work',
       intended_project_id: 'project-alf',
       intended_epic_id: 'epic-alf',
@@ -74,12 +77,13 @@ describe('parseVerdict', () => {
     // Built via JSON.parse, not an object literal: the package bans the `null` literal, and this
     // is also the actual shape a model response arrives in after JSON.parse.
     const raw = JSON.parse(
-      '{"item_type":null,"priority":null,"due_date":null,"folder_id":null,"intended_project_id":null,"intended_epic_id":null}',
+      '{"item_type":null,"priority":null,"due_date":null,"due_time":null,"folder_id":null,"intended_project_id":null,"intended_epic_id":null}',
     ) as unknown;
     expect(parseVerdict(raw)).toEqual({
       item_type: undefined,
       priority: undefined,
       due_date: undefined,
+      due_time: undefined,
       folder_id: undefined,
       intended_project_id: undefined,
       intended_epic_id: undefined,
@@ -203,6 +207,53 @@ describe('validateVerdict', () => {
     const verdict = buildVerdict({ item_type: 'task', due_date: '2026-08-14' });
     expect(validateVerdict(verdict, buildWorld()).due_date).toBe('2026-08-14');
   });
+
+  it('keeps a valid 24-hour due_time beside a valid due_date on a task', () => {
+    const verdict = buildVerdict({ item_type: 'task', due_date: '2026-08-14', due_time: '15:30' });
+    const result = validateVerdict(verdict, buildWorld());
+    expect(result.due_date).toBe('2026-08-14');
+    expect(result.due_time).toBe('15:30');
+  });
+
+  it.each(['00:00', '09:05', '23:59'])('keeps the in-range time %s', (due_time) => {
+    const verdict = buildVerdict({ item_type: 'task', due_date: '2026-08-14', due_time });
+    expect(validateVerdict(verdict, buildWorld()).due_time).toBe(due_time);
+  });
+
+  it.each([
+    ['a 12-hour spelling', '3pm'],
+    ['an hour past 23', '25:00'],
+    ['24:00', '24:00'],
+    ['minutes past 59', '12:60'],
+    ['a time with seconds', '15:00:00'],
+    ['an unpadded hour', '9:05'],
+    ['an empty string', ''],
+  ])('drops a malformed due_time (%s)', (_label, due_time) => {
+    const verdict = buildVerdict({ item_type: 'task', due_date: '2026-08-14', due_time });
+    const result = validateVerdict(verdict, buildWorld());
+    expect(result.due_date).toBe('2026-08-14');
+    expect(result.due_time).toBeUndefined();
+  });
+
+  it('drops a due_time that has no due_date beside it', () => {
+    const verdict = buildVerdict({ item_type: 'task', due_time: '15:00' });
+    expect(validateVerdict(verdict, buildWorld()).due_time).toBeUndefined();
+  });
+
+  it('drops a due_time whose due_date was itself dropped as invalid', () => {
+    const verdict = buildVerdict({ item_type: 'task', due_date: '2026-02-30', due_time: '15:00' });
+    const result = validateVerdict(verdict, buildWorld());
+    expect(result.due_date).toBeUndefined();
+    expect(result.due_time).toBeUndefined();
+  });
+
+  it.each(['code', 'knowledge', 'research'] as const)(
+    'drops a due_time on a %s verdict',
+    (item_type) => {
+      const verdict = buildVerdict({ item_type, due_date: '2026-08-14', due_time: '15:00' });
+      expect(validateVerdict(verdict, buildWorld()).due_time).toBeUndefined();
+    },
+  );
 
   it('leaves a fully-abstaining verdict untouched — abstention is a legal answer, not a failure', () => {
     const verdict = buildVerdict();
@@ -467,5 +518,55 @@ describe('mergeIntoItem', () => {
     // Serialised, because that is exactly what becomes the PATCH body: an untouched field is
     // `undefined`, and `JSON.stringify` drops it, so it never reaches the wire at all.
     expect(JSON.stringify(result)).toBe('{"due_date":"2026-08-14"}');
+  });
+
+  describe('due_time', () => {
+    const timed = buildVerdict({ item_type: 'task', due_date: '2026-10-04', due_time: '15:00' });
+
+    it('writes the time together with a date it is writing in the same update', () => {
+      const result = mergeIntoItem(timed, buildItem({ item_type: 'task' }), buildWorld());
+      expect(JSON.stringify(result)).toBe('{"due_date":"2026-10-04","due_time":"15:00"}');
+    });
+
+    it('writes the time onto an item that already holds that same date, in its timestamptz form', () => {
+      const item = buildItem({ item_type: 'task', due_date: '2026-10-04T00:00:00+00:00' });
+      const result = mergeIntoItem(timed, item, buildWorld());
+      expect(JSON.stringify(result)).toBe('{"due_time":"15:00"}');
+    });
+
+    it('writes the time onto an item holding that same date as a bare day', () => {
+      const item = buildItem({ item_type: 'task', due_date: '2026-10-04' });
+      expect(mergeIntoItem(timed, item, buildWorld()).due_time).toBe('15:00');
+    });
+
+    it('never pins a guessed time onto a different, human-chosen day', () => {
+      const item = buildItem({ item_type: 'task', due_date: '2026-10-09T00:00:00+00:00' });
+      const result = mergeIntoItem(timed, item, buildWorld());
+      expect(result.due_time).toBeUndefined();
+      expect(JSON.stringify(result)).toBe('{}');
+    });
+
+    it('never overwrites a time the item already holds', () => {
+      const item = buildItem({
+        item_type: 'task',
+        due_date: '2026-10-04T00:00:00+00:00',
+        due_time: '09:00',
+      });
+      expect(mergeIntoItem(timed, item, buildWorld()).due_time).toBeUndefined();
+    });
+
+    it('never writes a time the verdict holds without a date of its own', () => {
+      const undated = buildVerdict({ item_type: 'task', due_time: '15:00' });
+      const dated = buildItem({ item_type: 'task', due_date: '2026-10-04T00:00:00+00:00' });
+      expect(mergeIntoItem(undated, buildItem({ item_type: 'task' }), buildWorld()).due_time).toBe(
+        undefined,
+      );
+      expect(mergeIntoItem(undated, dated, buildWorld()).due_time).toBeUndefined();
+    });
+
+    it('writes no time onto a row that will not be a task', () => {
+      const item = buildItem({ item_type: 'code' });
+      expect(JSON.stringify(mergeIntoItem(timed, item, buildWorld()))).toBe('{}');
+    });
   });
 });

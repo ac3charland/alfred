@@ -37,6 +37,9 @@ export interface Verdict {
   priority: Priority | undefined;
   /** Task-only. `YYYY-MM-DD`, written verbatim; `items.due_date` casts it to UTC midnight. */
   due_date: string | undefined;
+  /** Task-only, and only ever beside a `due_date`. `HH:MM`, 24-hour, a wall-clock time with no
+   *  zone — the same floating kind of value `due_date` is. */
+  due_time: string | undefined;
   /** Task-only. */
   folder_id: string | undefined;
   /** Code-only. */
@@ -45,11 +48,12 @@ export interface Verdict {
   intended_epic_id: string | undefined;
 }
 
-/** The six fields a verdict can carry — the same six the dispatch-time diff compares. */
+/** The seven fields a verdict can carry — the same seven the dispatch-time diff compares. */
 export const VERDICT_FIELDS = [
   'item_type',
   'priority',
   'due_date',
+  'due_time',
   'folder_id',
   'intended_project_id',
   'intended_epic_id',
@@ -102,6 +106,8 @@ export interface SweepItem {
   item_type: string;
   priority: string | undefined;
   due_date: string | undefined;
+  /** `HH:MM`, already normalised from the `HH:MM:SS` the database returns. */
+  due_time: string | undefined;
   folder_id: string | undefined;
   intended_project_id: string | undefined;
   intended_epic_id: string | undefined;
@@ -145,6 +151,8 @@ const PRIORITIES = new Set<string>(['high', 'medium', 'low']);
  *  copy, so the schema's enum and the type this module accepts can never drift apart. */
 export const ITEM_TYPES: readonly ItemType[] = ['task', 'code', 'knowledge', 'research'];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A 24-hour `HH:MM`, 00:00 to 23:59, zero-padded, with no seconds. */
+const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Read a field of a parsed JSON object as a string, treating JSON `null` as absence. */
 function readString(source: Record<string, unknown>, key: string): string | undefined {
@@ -177,6 +185,7 @@ export function parseVerdict(raw: unknown): Verdict | undefined {
     priority:
       priority !== undefined && PRIORITIES.has(priority) ? (priority as Priority) : undefined,
     due_date: readString(body, 'due_date'),
+    due_time: readString(body, 'due_time'),
     folder_id: readString(body, 'folder_id'),
     intended_project_id: readString(body, 'intended_project_id'),
     intended_epic_id: readString(body, 'intended_epic_id'),
@@ -233,14 +242,24 @@ export function validateVerdict(verdict: Verdict, world: ClosedWorld): Verdict {
 
   const isTask = verdict.item_type === 'task';
   const isCode = verdict.item_type === 'code';
+  const dueDate = isTask ? keepIf(verdict.due_date, isCalendarDate) : undefined;
   return {
     item_type: verdict.item_type,
     priority: isTask ? verdict.priority : undefined,
-    due_date: isTask ? keepIf(verdict.due_date, isCalendarDate) : undefined,
+    due_date: dueDate,
+    // A time is meaningless without the day it belongs to, and the database refuses one outright
+    // (`items_due_time_needs_date`), so it survives only when the date did.
+    due_time: dueDate === undefined ? undefined : keepIf(verdict.due_time, isClockTime),
     folder_id: isTask ? folder : undefined,
     intended_project_id: isCode ? project : undefined,
     intended_epic_id: isCode ? epic : undefined,
   };
+}
+
+/** `HH:MM` on the 24-hour clock. Checked here rather than with a schema `format`, which would
+ *  demand an RFC 3339 time with seconds and an offset. */
+function isClockTime(value: string): boolean {
+  return CLOCK_TIME.test(value);
 }
 
 /** `value` when it passes `predicate`, else absent. */
@@ -305,13 +324,27 @@ export function mergeIntoItem(verdict: Verdict, item: SweepItem, world: ClosedWo
     if (owner !== finalProject) epic = undefined;
   }
 
+  const dueDate = gap(item.due_date, verdict.due_date);
+  // A guessed time is only ever pinned to the day it was guessed with: either that day is being
+  // written in this same update, or the row already holds it. The item's date is a timestamptz
+  // (`2026-10-04T00:00:00+00:00`), so only its leading `YYYY-MM-DD` is compared. Pinning it to
+  // any other day would put a time on a day the owner chose without it.
+  const dueTime =
+    item.due_time === undefined &&
+    verdict.due_time !== undefined &&
+    verdict.due_date !== undefined &&
+    (dueDate !== undefined || item.due_date?.slice(0, 10) === verdict.due_date)
+      ? verdict.due_time
+      : undefined;
+
   return {
     item_type: existingType === undefined ? verdict.item_type : undefined,
     priority:
       finalType === 'task'
         ? (gap(item.priority, verdict.priority) as Priority | undefined)
         : undefined,
-    due_date: finalType === 'task' ? gap(item.due_date, verdict.due_date) : undefined,
+    due_date: finalType === 'task' ? dueDate : undefined,
+    due_time: finalType === 'task' ? dueTime : undefined,
     folder_id: finalType === 'task' ? gap(item.folder_id, verdict.folder_id) : undefined,
     intended_project_id: finalType === 'code' ? project : undefined,
     intended_epic_id: finalType === 'code' ? epic : undefined,
