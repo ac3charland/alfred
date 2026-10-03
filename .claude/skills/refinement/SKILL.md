@@ -51,6 +51,9 @@ once the scope is clear do you write the spec below.
      `P1`) and never contradicts it — on conflict the brief wins. Trace every acceptance
      criterion to the row or plate it realizes, or `impl`: a visible behaviour tracing to nothing
      above was never signed off — promote it or cut it.
+   - **Before the criteria are done, ask what the spec meets but never mentions** — empty, huge,
+     duplicate or malformed input, a failed request, a concurrent edit. List the likeliest few in
+     `#ac`'s *Review focus*, each an `impl` criterion with a test, so silence isn't a licence to break.
    - **Reads with scripting off.** alfred's spec view is a script-less sandbox, so plates and
      switchers are static markup + CSS; inline `<script>` only as enhancement.
    - **Mockups are drawn in the app's design system** — not default browser styling, and not the
