@@ -1,4 +1,7 @@
-import type { CommMessage } from '@/lib/types';
+import type { CommMessage, CommPersonWithHandles } from '@/lib/types';
+
+import { resolvePerson } from './people';
+import { isReclassifyPending } from './rerun';
 
 /**
  * The per-row markers the queue draws beside a message — all DERIVED, none stored. Each one
@@ -74,4 +77,78 @@ export function attachmentNotRead(message: CommMessage): boolean {
  */
 export function decodeFailed(message: CommMessage): boolean {
   return !message.body_extracted;
+}
+
+/** Every marker a row can carry, named so a list of them is data before it is chips. */
+export type RowMarkerKind =
+  | 'rerun-pending'
+  | 'priority'
+  | 'unjudged'
+  | 'attachment'
+  | 'decode-failed'
+  | 'expiry'
+  | 'refused'
+  | 'filtered';
+
+/**
+ * The markers one row carries, in the order it draws them. A pending re-run leads, because it
+ * qualifies every other marker — they describe a verdict about to be replaced. Refused and
+ * filtered are shelf-only: a queued row can be neither.
+ */
+export function rowMarkerKinds(
+  message: CommMessage,
+  people: CommPersonWithHandles[],
+  now: Date,
+  shelved: boolean,
+): RowMarkerKind[] {
+  const kinds: RowMarkerKind[] = [];
+  if (isReclassifyPending(message)) kinds.push('rerun-pending');
+  if (resolvePerson(message.sender_handle, people)?.priority === 'high') kinds.push('priority');
+  if (isUnjudged(message)) kinds.push('unjudged');
+  if (attachmentNotRead(message)) kinds.push('attachment');
+  if (decodeFailed(message)) kinds.push('decode-failed');
+  // The sweep is blanket, so a still-owed row can be deleted while still owed; a cleared one
+  // owes nothing and has nothing to warn about.
+  if (expiresSoon(message, now).soon && message.cleared_at === null) kinds.push('expiry');
+  if (shelved && isRefused(message)) kinds.push('refused');
+  if (shelved && isFiltered(message)) kinds.push('filtered');
+  return kinds;
+}
+
+/** The order a row draws its markers in — and so the order a rollup does. */
+const KIND_ORDER: RowMarkerKind[] = [
+  'rerun-pending',
+  'priority',
+  'unjudged',
+  'attachment',
+  'decode-failed',
+  'expiry',
+  'refused',
+  'filtered',
+];
+
+/**
+ * The markers a collapsed shelf conversation carries: every marker any of its messages does,
+ * counted, so collapsing a refused or unreadable message never hides that it is there.
+ *
+ * Expiry does not roll up — in any conversation old enough, its oldest message always carries
+ * one, so it would sit on most old conversations and say nothing; it stays on the message rows,
+ * where it says which one is about to go. Priority is counted once: it describes the sender.
+ */
+export function rollUpMarkers(
+  messages: CommMessage[],
+  people: CommPersonWithHandles[],
+  now: Date,
+): { kind: RowMarkerKind; count: number }[] {
+  const counts = new Map<RowMarkerKind, number>();
+  for (const message of messages) {
+    for (const kind of rowMarkerKinds(message, people, now, true)) {
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+  }
+  return KIND_ORDER.flatMap((kind) => {
+    const count = counts.get(kind);
+    if (count === undefined || kind === 'expiry') return [];
+    return [{ kind, count: kind === 'priority' ? 1 : count }];
+  });
 }

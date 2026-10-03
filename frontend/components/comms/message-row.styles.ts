@@ -54,6 +54,12 @@ export const rowAskClass = 'truncate text-[13px] leading-snug text-muted-foregro
 /** The ask on the selected row, which is expanded and no longer competing for vertical space. */
 export const rowAskSelectedClass = 'text-[13px] leading-snug text-foreground';
 
+/**
+ * An opened shelf conversation's messages: indented under a left rule, so they read as belonging
+ * to the header above them rather than as more rows of the shelf.
+ */
+export const conversationKidsClass = 'ml-3 flex flex-col border-l border-border/60 pl-2 mt-2';
+
 /** The detail panel beneath an expanded row. */
 export const detailClass = 'mt-3 flex flex-col gap-3 border-t border-border/60 pt-3';
 

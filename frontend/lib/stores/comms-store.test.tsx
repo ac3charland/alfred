@@ -1272,6 +1272,28 @@ describe('CommsProvider — shelf paging', () => {
     ]);
   });
 
+  it('always moves forward when the held page already reaches past the next limit', () => {
+    // The server completes the conversation a page ends inside, so it can hand back more rows
+    // than were asked for — here 120 for a limit of 50. A next limit of 100 would ask for fewer
+    // rows than are already held, and the button would do nothing.
+    const shelf = Array.from({ length: 200 }, () =>
+      makeCommMessage(ACCOUNT, { tier: 'fyi', judged_by: 'model' }),
+    );
+    const { result } = renderHook(() => useStore(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <CommsProvider initialSeed={makeCommsSeed({ messages: shelf, shelfLimit: 120 })}>
+          {children}
+        </CommsProvider>
+      ),
+    });
+
+    act(() => {
+      result.current.actions.showMoreShelf();
+    });
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(120 + SHELF_PAGE_SIZE, []);
+  });
+
   it('never asks for more of the shelf than the snapshot route serves', async () => {
     const vast = { ...makeCommsSeed({ messages: LONG_SHELF }), shelfCount: SHELF_LIMIT_MAX * 2 };
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper(LONG_SHELF) });

@@ -2,17 +2,8 @@
 
 import * as React from 'react';
 
-import { Badge } from '@/components/atoms/badge';
-import {
-  attachmentNotRead,
-  decodeFailed,
-  expiresSoon,
-  isFiltered,
-  isReclassifyPending,
-  isRefused,
-  isUnjudged,
-} from '@/lib/comms';
-import { resolvePerson } from '@/lib/comms/people';
+import { Badge, type BadgeProperties } from '@/components/atoms/badge';
+import { type RowMarkerKind, expiresSoon, rollUpMarkers, rowMarkerKinds } from '@/lib/comms';
 import type { CommMessage, CommPersonWithHandles } from '@/lib/types';
 
 /**
@@ -24,12 +15,49 @@ import type { CommMessage, CommPersonWithHandles } from '@/lib/types';
  * message it judged confidently — otherwise the failure it represents is indistinguishable from
  * ordinary operation, which is the one failure mode this module cannot recover from.
  *
- * All of them are DERIVED. Nothing here is a stored flag, so nothing can go stale.
+ * All of them are DERIVED (see `rowMarkerKinds`). Nothing here is a stored flag, so nothing can
+ * go stale. One chip is about the verdict rather than a way it can be wrong: a re-run that is
+ * waiting on the Worker. It leads, because it qualifies every other chip.
  *
- * One chip is about the verdict rather than a way it can be wrong: a re-run that is waiting on the
- * Worker. It leads, because it qualifies every other chip — they describe a verdict that is about
- * to be replaced — and it is on the collapsed row so the wait is visible without opening it.
+ * A collapsed shelf conversation draws the same chips rolled up across its messages, through the
+ * same map below, so a chip can't look different on a conversation and on its message.
  */
+
+const CHIP: Record<RowMarkerKind, { label: string; variant: BadgeProperties['variant'] }> = {
+  'rerun-pending': { label: 'Re-run pending', variant: 'secondary' },
+  priority: { label: 'Priority person', variant: 'accent' },
+  // "Not judged" rather than "not classified": the row is in the queue because nothing decided
+  // it wasn't, and it is treated as owed until it can be read.
+  unjudged: { label: 'Unjudged', variant: 'alert' },
+  attachment: { label: 'Attachment · not read', variant: 'alert' },
+  'decode-failed': { label: 'Body · not decoded', variant: 'alert' },
+  // Labelled per row with the days left — see `expiryLabel`.
+  expiry: { label: 'Deleted soon', variant: 'overdue' },
+  refused: { label: 'Refused', variant: 'destructiveOutline' },
+  // Filtered mail carries no verdict and no reason, so it has to stay distinguishable on the
+  // shelf from mail the model actually looked at.
+  filtered: { label: 'Filtered', variant: 'muted' },
+};
+
+/** The chip row itself; renders nothing for an empty list. */
+function MarkerChips({ chips }: { chips: { kind: RowMarkerKind; label: string }[] }) {
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" data-testid="row-markers">
+      {chips.map(({ kind, label }) => (
+        <Badge key={kind} variant={CHIP[kind].variant} className="font-medium">
+          {label}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+/** The 60-day sweep's warning, with the days it leaves. */
+function expiryLabel(message: CommMessage, now: Date): string {
+  const { daysUntilDeletion } = expiresSoon(message, now);
+  return daysUntilDeletion <= 0 ? 'Deleted today' : `Deleted in ${String(daysUntilDeletion)} days`;
+}
 
 interface RowMarkersProperties {
   message: CommMessage;
@@ -42,90 +70,28 @@ interface RowMarkersProperties {
 }
 
 export function RowMarkers({ message, people, now, shelved = false }: RowMarkersProperties) {
-  const person = resolvePerson(message.sender_handle, people);
-  const expiry = expiresSoon(message, now);
+  const chips = rowMarkerKinds(message, people, now, shelved).map((kind) => ({
+    kind,
+    label: kind === 'expiry' ? expiryLabel(message, now) : CHIP[kind].label,
+  }));
+  return <MarkerChips chips={chips} />;
+}
 
-  const chips: React.ReactNode[] = [];
+interface RolledUpMarkersProperties {
+  /** A shelf conversation's messages. */
+  messages: CommMessage[];
+  people: CommPersonWithHandles[];
+  now: Date;
+}
 
-  if (isReclassifyPending(message)) {
-    chips.push(
-      <Badge key="rerun-pending" variant="secondary" className="font-medium">
-        Re-run pending
-      </Badge>,
-    );
-  }
-
-  if (person?.priority === 'high') {
-    chips.push(
-      <Badge key="priority" variant="accent" className="font-medium">
-        Priority person
-      </Badge>,
-    );
-  }
-
-  // "Not judged" rather than "not classified": the row is in the queue because nothing decided
-  // it wasn't, and it is treated as owed until it can be read.
-  if (isUnjudged(message)) {
-    chips.push(
-      <Badge key="unjudged" variant="alert" className="font-medium">
-        Unjudged
-      </Badge>,
-    );
-  }
-
-  if (attachmentNotRead(message)) {
-    chips.push(
-      <Badge key="attachment" variant="alert" className="font-medium">
-        Attachment · not read
-      </Badge>,
-    );
-  }
-
-  // A skipped message is a false negative that leaves no trace, so the row that hid it from the
-  // classifier says so on its own face — same treatment as the attachment it couldn't read.
-  if (decodeFailed(message)) {
-    chips.push(
-      <Badge key="decode-failed" variant="alert" className="font-medium">
-        Body · not decoded
-      </Badge>,
-    );
-  }
-
-  // The 60-day sweep is blanket, so a still-owed row can be deleted while still owed. The
-  // marker makes that take a week of not looking rather than happening silently.
-  if (expiry.soon && message.cleared_at === null) {
-    chips.push(
-      <Badge key="expiry" variant="overdue" className="font-medium">
-        {expiry.daysUntilDeletion <= 0
-          ? 'Deleted today'
-          : `Deleted in ${String(expiry.daysUntilDeletion)} days`}
-      </Badge>,
-    );
-  }
-
-  if (shelved && isRefused(message)) {
-    chips.push(
-      <Badge key="refused" variant="destructiveOutline" className="font-medium">
-        Refused
-      </Badge>,
-    );
-  }
-
-  // Filtered mail carries no verdict and no reason, so it has to stay distinguishable on the
-  // shelf from mail the model actually looked at.
-  if (shelved && isFiltered(message)) {
-    chips.push(
-      <Badge key="filtered" variant="muted" className="font-medium">
-        Filtered
-      </Badge>,
-    );
-  }
-
-  if (chips.length === 0) return null;
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5" data-testid="row-markers">
-      {chips}
-    </div>
-  );
+/**
+ * A collapsed conversation's chips: each one any of its messages carries, with a count when more
+ * than one does ("Attachment · not read · 2"), so collapsing never hides a warning.
+ */
+export function RolledUpMarkers({ messages, people, now }: RolledUpMarkersProperties) {
+  const chips = rollUpMarkers(messages, people, now).map(({ kind, count }) => ({
+    kind,
+    label: count > 1 ? `${CHIP[kind].label} · ${String(count)}` : CHIP[kind].label,
+  }));
+  return <MarkerChips chips={chips} />;
 }

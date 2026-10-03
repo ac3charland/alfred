@@ -1,4 +1,6 @@
-import { makeCommMessage, resetCommFixtureClock } from './fixtures';
+import type { CommPersonWithHandles } from '@/lib/types';
+
+import { makeCommHandle, makeCommMessage, makeCommPerson, resetCommFixtureClock } from './fixtures';
 import {
   EXPIRY_WARNING_DAYS,
   RETENTION_DAYS,
@@ -8,6 +10,8 @@ import {
   isFiltered,
   isRefused,
   isUnjudged,
+  rollUpMarkers,
+  rowMarkerKinds,
 } from './markers';
 
 const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
@@ -82,5 +86,82 @@ describe('the can-not-judge markers', () => {
   it('flags a body that never decoded', () => {
     expect(decodeFailed(makeCommMessage(ACCOUNT, { body_extracted: false }))).toBe(true);
     expect(decodeFailed(makeCommMessage(ACCOUNT))).toBe(false);
+  });
+});
+
+/** A roster holding one priority person, reachable at `vip@example.com`. */
+function priorityRoster(): CommPersonWithHandles[] {
+  const person = makeCommPerson('Vip', { priority: 'high' });
+  return [{ ...person, comm_handles: [makeCommHandle(person.id, 'vip@example.com')] }];
+}
+
+describe('rowMarkerKinds', () => {
+  it('lists every marker a row carries, in the order the row draws them', () => {
+    const everything = makeCommMessage(ACCOUNT, {
+      sender_handle: 'vip@example.com',
+      reclassify_requested_at: NOW.toISOString(),
+      judged_by: 'refusal',
+      has_attachments: true,
+      body: '',
+      body_extracted: false,
+      filtered_reason: 'newsletter',
+      received_at: new Date(NOW.getTime() - 55 * MS_PER_DAY).toISOString(),
+    });
+
+    expect(rowMarkerKinds(everything, priorityRoster(), NOW, true)).toEqual([
+      'rerun-pending',
+      'priority',
+      'attachment',
+      'decode-failed',
+      'expiry',
+      'refused',
+      'filtered',
+    ]);
+    expect(
+      rowMarkerKinds(makeCommMessage(ACCOUNT, { judged_by: 'unjudged' }), [], NOW, false),
+    ).toEqual(['unjudged']);
+  });
+
+  it('keeps refused and filtered off a queued row — only the shelf carries them', () => {
+    const row = makeCommMessage(ACCOUNT, { judged_by: 'refusal', filtered_reason: 'list' });
+    expect(rowMarkerKinds(row, [], NOW, false)).toEqual([]);
+  });
+
+  it('drops the expiry marker from a cleared row', () => {
+    const row = makeCommMessage(ACCOUNT, {
+      received_at: new Date(NOW.getTime() - 55 * MS_PER_DAY).toISOString(),
+      cleared_at: NOW.toISOString(),
+    });
+    expect(rowMarkerKinds(row, [], NOW, true)).toEqual([]);
+  });
+});
+
+describe('rollUpMarkers', () => {
+  it('counts each marker across the messages, in row order', () => {
+    const messages = [
+      makeCommMessage(ACCOUNT, { judged_by: 'refusal' }),
+      makeCommMessage(ACCOUNT, { has_attachments: true, body: '' }),
+      makeCommMessage(ACCOUNT, { has_attachments: true, body: '', judged_by: 'refusal' }),
+      makeCommMessage(ACCOUNT),
+    ];
+
+    expect(rollUpMarkers(messages, [], NOW)).toEqual([
+      { kind: 'attachment', count: 2 },
+      { kind: 'refused', count: 2 },
+    ]);
+  });
+
+  it('leaves the expiry marker on the messages — it would sit on every old conversation', () => {
+    const messages = [aged(56), aged(1)];
+    expect(rollUpMarkers(messages, [], NOW)).toEqual([]);
+  });
+
+  it('never counts the priority marker, which describes a sender rather than messages', () => {
+    const fromVip = { sender_handle: 'vip@example.com' };
+    const messages = [makeCommMessage(ACCOUNT, fromVip), makeCommMessage(ACCOUNT, fromVip)];
+
+    expect(rollUpMarkers(messages, priorityRoster(), NOW)).toEqual([
+      { kind: 'priority', count: 1 },
+    ]);
   });
 });
