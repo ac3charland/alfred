@@ -18,6 +18,7 @@ import * as supabaseServer from '@/lib/supabase/server';
 import {
   COMMS_MAX_PAGES,
   COMMS_PAGE_SIZE,
+  COMMS_THREAD_CHUNK_SIZE,
   COMMS_VERDICT_CHUNK_SIZE,
   getCommsSeed,
   getCommsSettingsSeed,
@@ -189,9 +190,9 @@ function messageRead(
   query: RecordedQuery,
 ): 'active' | 'shelf' | 'complete' | 'claimed' | 'last' | 'watched' {
   // The only `comm_messages` read that names ids: the rows a tab is waiting on a re-run for.
-  if (query.in !== undefined) return 'watched';
-  // The only one that names a thread: the rest of the conversation the shelf page ended inside.
-  if (query.eq.some(([column]) => column === 'thread_key')) return 'complete';
+  if (query.in?.[0] === 'id') return 'watched';
+  // The only one that names threads: the rest of the conversations a shelf page holds.
+  if (query.in?.[0] === 'thread_key') return 'complete';
   if (query.or === 'tier.is.null,tier.neq.fyi') return 'active';
   if (query.not.some(([column]) => column === 'reader_claimed_at')) return 'claimed';
   if (query.not.some(([column]) => column === 'classified_at')) return 'last';
@@ -585,7 +586,7 @@ describe('readCommsSnapshot', () => {
     expect(seed.health).toBeUndefined();
     expect(seed.accounts).toEqual([ACCOUNT]);
   });
-  describe('completing the conversation a shelf page ends inside', () => {
+  describe('completing the conversations a shelf page holds', () => {
     const IMESSAGE = makeCommAccount('iMessage', {
       id: '00000000-0000-4000-8000-00000000000c',
       kind: 'imessage',
@@ -632,11 +633,13 @@ describe('readCommsSnapshot', () => {
 
       const complete = calls.comm_messages.filter((query) => messageRead(query) === 'complete');
       expect(complete).toHaveLength(1);
-      expect(complete[0]?.eq).toEqual(
-        expect.arrayContaining([
-          ['direction', 'inbound'],
-          ['account_id', ACCOUNT.id],
-          ['thread_key', 'thread'],
+      expect(complete[0]?.eq).toContainEqual(['direction', 'inbound']);
+      // Every thread the page holds, not just the edge row's.
+      expect(complete[0]?.in?.[0]).toBe('thread_key');
+      expect(new Set(complete[0]?.in?.[1] as string[])).toEqual(
+        new Set([
+          'thread',
+          ...Array.from({ length: SHELF_PAGE_SIZE - 1 }, (_, i) => `other-${String(i)}`),
         ]),
       );
       expect(complete[0]?.lte).toEqual(['received_at', edge.received_at]);
@@ -656,6 +659,48 @@ describe('readCommsSnapshot', () => {
       expect(seed.messages).toHaveLength(SHELF_PAGE_SIZE + 2);
       // The shelf's size is still counted in messages.
       expect(seed.shelfCount).toBe(200);
+    });
+
+    it('completes a thread whose newest row sits mid-page, not only the one at the edge', async () => {
+      // Position 5 of the page is today's reply in `potluck`; its original is a week older than
+      // the page edge. Without completing it, the thread would draw as one message.
+      const page = pageEndingWith(row('edge', ACCOUNT, 'edge-thread', 0));
+      page[5] = row('reply', ACCOUNT, 'potluck', -5);
+      const original = row('original', ACCOUNT, 'potluck', 7 * 24);
+      // Same thread key on another account: a different conversation, never pulled in.
+      const elsewhere = row('elsewhere', IMESSAGE, 'potluck', 10);
+      const { client } = makeClient({
+        comm_accounts: { data: [ACCOUNT, IMESSAGE], error: null },
+        comm_messages: messages({
+          shelf: { data: page, error: null, count: 200 },
+          complete: { data: [elsewhere, original], error: null },
+        }),
+      });
+
+      const { seed } = await readCommsSnapshot(client);
+
+      const ids = seed.messages.map((message) => message.id);
+      expect(ids).toContain('original');
+      expect(ids).not.toContain('elsewhere');
+    });
+
+    it('asks for the held threads a chunk at a time, so no one request grows too long', async () => {
+      const limit = COMMS_THREAD_CHUNK_SIZE + 10;
+      const page = Array.from({ length: limit }, (_, index) =>
+        row(`r-${String(index)}`, ACCOUNT, `t-${String(index)}`, index),
+      );
+      const { client, calls } = makeClient({
+        comm_accounts: { data: [ACCOUNT], error: null },
+        comm_messages: messages({ shelf: { data: page, error: null, count: 5000 } }),
+      });
+
+      await readCommsSnapshot(client, limit);
+
+      const complete = calls.comm_messages.filter((query) => messageRead(query) === 'complete');
+      expect(complete.map((query) => (query.in?.[1] as string[]).length)).toEqual([
+        COMMS_THREAD_CHUNK_SIZE,
+        10,
+      ]);
     });
 
     it('stops an iMessage chat at the quiet gap — the older burst is its own conversation', async () => {
