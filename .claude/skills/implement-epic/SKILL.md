@@ -58,7 +58,7 @@ acceptance criteria in your own words, the files it owns, the repo conventions t
 CLAUDE.md, the neighbouring patterns), and **the instruction to pin the behavior with tests**.
 Tell it what's out of its slice, too — an unbriefed agent helpfully "fixes" a neighbour's file.
 
-Subagents write code and tests. **They do not commit, push, or open PRs** — you do, once, at the end.
+Subagents write code and tests. **They do not commit, push, or open PRs** — you do.
 
 ## You own integration and the gates
 
@@ -67,7 +67,29 @@ seams (duplicate helpers, drifting names, a type two slices define differently),
 repo's full check suite** — not the slice's tests. A green subagent report is not a green repo.
 
 Fix integration breaks yourself rather than dispatching a fix-it agent into a file three slices
-touched.
+touched. Once the batch is green, **commit it locally** — that commit is the slice's durable record
+(below). Push once, when the epic is done.
+
+## Keep a progress ledger — compaction erases your memory, not git
+
+An epic run is long enough to compact mid-way, and an orchestrator that loses its place re-dispatches
+slices it already finished, the costliest failure seen in subagent-driven loops. So track progress in a
+git-ignored file, `.claude/epic-ledger.md`, not only in your head or todos:
+
+```text
+# epic ledger — <EPIC-REF>
+Slice 1: dispatched — <files it owns>
+Slice 1: complete <sha>
+```
+
+- **Create it before the first dispatch**, its first line naming the epic. A ledger whose first line
+  names a different epic is a stale run's: replace it.
+- **Append as you go:** `dispatched` when a slice's subagent starts, `complete <sha>` once its batch
+  is integrated, green and committed.
+- **After compaction, or whenever unsure, trust the ledger and `git log` over your recollection.** A
+  `complete` slice is done — never re-dispatch it. A slice `dispatched` but not `complete` may have
+  left work in the tree: read `git status` and its files before deciding whether to integrate or
+  re-dispatch it.
 
 ## The epic spec is not scaffolding
 
