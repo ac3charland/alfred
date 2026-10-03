@@ -101,3 +101,32 @@ test('Today runs a day by time, the untimed task last whatever its priority', as
   await expect(rows.nth(3)).toContainText('Pick up dry cleaningToday 5:30 PM');
   await expect(rows.nth(4)).toContainText('Water the plants');
 });
+
+test('completing a recurring timed task spawns the next occurrence at the same time', async ({
+  page,
+  seed,
+}) => {
+  await page.clock.install({ time: new Date('2026-10-03T09:00:00-05:00') });
+  await seed({
+    items: [
+      task('Take out the bins', {
+        due_date: TODAY,
+        due_time: '19:00:00',
+        recurrence: { freq: 'daily', interval: 1, end: { type: 'never' } },
+      }),
+    ],
+  });
+  await page.goto('/?view=inbox');
+  await expect(page.getByRole('button', { name: `Due date: ${TODAY} 19:00` })).toHaveText(
+    'Today 7 PM',
+  );
+
+  await page.getByRole('button', { name: 'Mark "Take out the bins" complete' }).click();
+
+  // The optimistic next occurrence already carries the time…
+  const next = page.getByRole('button', { name: 'Due date: 2026-10-04 19:00' });
+  await expect(next).toHaveText('Tomorrow 7 PM');
+  // …and so does the row the server spawned.
+  await page.reload();
+  await expect(next).toHaveText('Tomorrow 7 PM');
+});

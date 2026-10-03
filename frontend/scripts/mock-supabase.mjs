@@ -27,6 +27,7 @@
  *     GET  /rest/v1/{task_items,v_code_stories,v_reader_candidates,v_reader_publications}
  *                                                             → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
+ *     POST /rest/v1/rpc/complete_and_spawn                    → complete + next occurrence
  *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,create_code_story,
  *                         convert_to_code_epic,swap_code_priority,move_code_priority,
  *                         move_code_priority_in_project}
@@ -513,6 +514,11 @@ function newItem(input) {
     // The week-plan document this item was created from (migration 0030); null = an ordinary
     // capture. Only `create_weekly_plan_items` ever sets it.
     weekly_plan_id: input.weekly_plan_id ?? null,
+    // The recurrence lineage (migration 0006), so a seeded recurring task can be completed into
+    // its next occurrence through `complete_and_spawn`.
+    recurrence: input.recurrence ?? null,
+    recurrence_series_id: input.recurrence_series_id ?? null,
+    occurrence_index: input.occurrence_index ?? null,
   };
 }
 
@@ -1243,6 +1249,67 @@ function handleRpc(req, res, fn, body) {
       }
     }
     sendJson(res, 200, affected);
+    return;
+  }
+
+  // Migration 0006's atomic complete-and-spawn, with 0052's time carried along: complete the
+  // subtree, then insert the next occurrence (the root's own fields, the engine's next date, the
+  // root's time) and deep-copy its ACTIVE children with their own dates and times.
+  if (fn === 'complete_and_spawn' && req.method === 'POST') {
+    const rootId = String(body?.root_id);
+    const root = items.find((row) => String(row.id) === rootId);
+    if (root === undefined) {
+      sendJson(res, 404, { message: `complete_and_spawn: ${rootId} not found` });
+      return;
+    }
+    const ids = subtreeIds(rootId);
+    const activeChildren = items.filter(
+      (row) => ids.has(row.id) && String(row.id) !== rootId && row.status === 'active',
+    );
+    const now = new Date().toISOString();
+    const completed = [];
+    for (const item of items) {
+      if (ids.has(item.id)) {
+        item.status = 'completed';
+        item.completed_at = now;
+        completed.push(item);
+      }
+    }
+    const spawned = newItem({
+      title: root.title,
+      notes: root.notes,
+      source_url: root.source_url,
+      folder_id: root.folder_id,
+      item_type: root.item_type,
+      raw_capture: root.raw_capture,
+      recurrence: root.recurrence,
+      recurrence_series_id: root.recurrence_series_id,
+      due_date: body?.next_due,
+      due_time: root.due_time,
+      occurrence_index: body?.next_index,
+      dispatched_at: root.dispatched_at,
+    });
+    items.push(spawned);
+    const copies = new Map([[rootId, spawned.id]]);
+    for (const child of activeChildren) copies.set(String(child.id), randomUUID());
+    for (const child of activeChildren) {
+      items.push(
+        newItem({
+          id: copies.get(String(child.id)),
+          title: child.title,
+          notes: child.notes,
+          source_url: child.source_url,
+          folder_id: child.folder_id,
+          item_type: child.item_type,
+          raw_capture: child.raw_capture,
+          parent_id: copies.get(String(child.parent_id)),
+          due_date: child.due_date,
+          due_time: child.due_time,
+          dispatched_at: spawned.dispatched_at,
+        }),
+      );
+    }
+    sendJson(res, 200, { completed, spawned });
     return;
   }
 
@@ -2061,7 +2128,26 @@ function handleRest(req, res, url, body) {
   if (req.method === 'PATCH') {
     const matched = applyFilters(table, url.searchParams);
     const now = new Date().toISOString();
+    // Migration 0052, mirrored exactly: the trigger clears the time only when the date goes from
+    // set to null, and otherwise items_due_time_needs_date refuses a time on an undated row.
+    if (rest === 'items') {
+      const refused = matched.find((row) => {
+        const nextDate = body !== null && 'due_date' in body ? body.due_date : row.due_date;
+        const nextTime = body !== null && 'due_time' in body ? body.due_time : row.due_time;
+        const cleared = row.due_date != null && nextDate == null;
+        return !cleared && nextTime != null && nextDate == null;
+      });
+      if (refused !== undefined) {
+        sendJson(res, 400, {
+          code: '23514',
+          message:
+            'new row for relation "items" violates check constraint "items_due_time_needs_date"',
+        });
+        return;
+      }
+    }
     for (const row of matched) {
+      const hadDate = row.due_date != null;
       // Migration 0029's two triggers (the human-edit claim rule on items, and the
       // dispatch-time correction-log diff) are deliberately NOT reproduced here — the JS mock
       // can't reproduce real-Postgres trigger semantics, same call the residency and epic-hint
@@ -2081,7 +2167,7 @@ function handleRest(req, res, url, body) {
       // Migration 0052's trigger IS mirrored: a writer that clears the date without knowing a
       // time exists still leaves no time behind. Postgres prints a `time` as HH:MM:SS.
       if (rest === 'items') {
-        if (row.due_date === null) row.due_time = null;
+        if (hadDate && row.due_date == null) row.due_time = null;
         else if (typeof row.due_time === 'string' && row.due_time.length === 5) {
           row.due_time = `${row.due_time}:00`;
         }
