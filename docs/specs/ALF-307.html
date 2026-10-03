@@ -153,7 +153,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
 .switch legend{float:left;padding:0;color:var(--ink)}
 .switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
-#p1:has([value=b]:checked) [data-opt=a],#p1:has([value=a]:checked) [data-opt=b]{display:none}
 
 /* alfred's tokens: frontend/app/globals.css. Shelf chrome: components/comms/fyi-shelf.tsx; row shell,
    sender, meta and ask: components/comms/message-row.styles.ts; chips: components/atoms/badge.tsx
@@ -205,14 +204,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>307</span><span class="sep"> — </span><span class="ttl">Collapse threads in the comms FYI drawer</span></h1>
   <p class="change" id="change">Opening FYI shows one row per conversation instead of one per message; open a conversation to see its messages, each still a full row with its own tier picker.</p>
+  <p class="revised" id="revised">Revised 2026-10-03: D3 → B, newest first (your review); Plate I re-rested on B.</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
-    <li data-state="open"><h3><a class="tag" href="#d3">D3</a>Order inside an opened conversation?</h3>
-      <p class="pick">A oldest first, reads like the chat ★ · B newest first, like the shelf</p>
-      <p class="why">A conversation read top-down makes sense; the shelf around it stays newest-first.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>How long a silence splits a chat?</h3>
       <p class="pick">6 hours, one constant</p>
       <p class="why">Separates last night's thread from this morning's; one line to retune.</p></li>
@@ -225,6 +222,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>How a conversation opens</h3>
       <p class="pick">Selecting it opens it; j/k walk into its messages; one open at a time</p>
       <p class="why">Same select-to-expand gesture every row already has; no new state.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>Order inside an opened conversation?</h3>
+      <p class="pick">Newest first, like the rest of the shelf</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>What counts as one conversation?</h3>
       <p class="pick">An email thread; an iMessage chat, split after a quiet gap</p></li>
   </ol>
@@ -233,10 +232,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
 <section id="plates" aria-label="What you’ll see">
   <figure class="plate" id="p1">
-    <fieldset class="switch"><legend>D3</legend>
-      <label><input type="radio" name="p1" value="a" checked>A · oldest first</label>
-      <label><input type="radio" name="p1" value="b">B · newest first</label>
-    </fieldset>
     <div class="mount">
       <div class="app" role="img" aria-label="The opened FYI shelf: two collapsed conversations with message counts and rolled-up chips, one opened email thread showing its four messages, a single-message row unchanged, and Show more">
         <section class="shelf">
@@ -253,13 +248,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
               <div class="l1"><span class="who">Dana Whitfield, Lee Park +1</span><span class="mt">· Personal Gmail · 11:40 <span class="nw">· 4 messages</span></span></div>
               <p class="ask" style="color:var(--foreground)">Re: Saturday potluck — final headcount</p>
               <div class="chips nw"><span class="bdg rf">Refused</span></div>
-              <div class="kids nw" data-opt="a">
-                <div class="row"><div class="l1"><span class="who">Dana Whitfield</span><span class="mt">· Personal Gmail · Yesterday</span></div><p class="ask">Saturday potluck — who's in?</p></div>
-                <div class="row"><div class="l1"><span class="who">Lee Park</span><span class="mt">· Personal Gmail · 08:12</span></div><p class="ask">Re: Saturday potluck — count me in, +1</p></div>
-                <div class="row"><div class="l1"><span class="who">Ana Ruiz</span><span class="mt">· Personal Gmail · 10:31</span></div><p class="ask">Re: Saturday potluck</p><div class="chips"><span class="bdg rf">Refused</span></div></div>
-                <div class="row"><div class="l1"><span class="who">Dana Whitfield</span><span class="mt">· Personal Gmail · 11:40</span></div><p class="ask">Re: Saturday potluck — final headcount</p></div>
-              </div>
-              <div class="kids nw" data-opt="b">
+              <div class="kids nw">
                 <div class="row"><div class="l1"><span class="who">Dana Whitfield</span><span class="mt">· Personal Gmail · 11:40</span></div><p class="ask">Re: Saturday potluck — final headcount</p></div>
                 <div class="row"><div class="l1"><span class="who">Ana Ruiz</span><span class="mt">· Personal Gmail · 10:31</span></div><p class="ask">Re: Saturday potluck</p><div class="chips"><span class="bdg rf">Refused</span></div></div>
                 <div class="row"><div class="l1"><span class="who">Lee Park</span><span class="mt">· Personal Gmail · 08:12</span></div><p class="ask">Re: Saturday potluck — count me in, +1</p></div>
@@ -283,7 +272,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
         </section>
       </div>
     </div>
-    <figcaption><b>Plate I.</b>The opened FYI shelf. Dashed outlines are new: the message count, chips rolled up from inside a conversation, and the opened conversation's messages (one is Refused, so its parent says so). Chase is a one-message conversation and looks exactly as rows do today. "Mom" is this morning's burst only; yesterday's texts are their own row further down.</figcaption>
+    <figcaption><b>Plate I.</b>The opened FYI shelf. Dashed outlines are new: the message count, chips rolled up from inside a conversation, and the opened conversation's messages, newest first (one is Refused, so its parent says so). Chase is a one-message conversation and looks exactly as rows do today. "Mom" is this morning's burst only; yesterday's texts are their own row further down.</figcaption>
   </figure>
 </section>
 
@@ -356,13 +345,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </section>
 
   <section class="rec" id="d3">
-    <h3><span class="tag">D3</span>Order inside an opened conversation? · open</h3>
-    <p><strong>A (recommended): oldest first.</strong> An opened conversation reads top-down like the chat or email
-    thread it mirrors, so a quick read follows the exchange. The shelf itself, and the order of conversations on it,
-    stay newest-first. <strong>B: newest first.</strong> Matches every other list in the module, and the newest message
-    (which the collapsed row already showed) sits directly under the header. The cost: reading the conversation means
-    reading it bottom-up.</p>
-    <p>Whichever wins, <code>j</code>/<code>k</code> walk the messages in the drawn order (D6).</p>
+    <h3><span class="tag">D3</span>Order inside an opened conversation? · settled</h3>
+    <p><strong>Newest first.</strong> It matches every other list in the module, so the shelf reads in one direction
+    all the way down. The newest message, which the collapsed row already showed, sits directly under the header, and
+    <code>j</code> from the header lands on it. <code>j</code>/<code>k</code> walk the messages in the drawn order (D6).</p>
+    <p>Considered: oldest first, which reads like the chat, at the cost of reversing direction inside a newest-first
+    shelf.</p>
   </section>
 
   <section class="rec" id="d4">
@@ -464,7 +452,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <thead><tr><th>Situation</th><th>Result</th></tr></thead>
     <tbody>
       <tr><td>Conversation of one message</td><td>Rendered as today's <code>MessageRow</code>, unchanged: no count, no header (Plate I, Chase).</td></tr>
-      <tr><td>Conversation of 2+</td><td>One header row (D4, D5). Opening it reveals its messages as full shelf <code>MessageRow</code>s, indented under a left rule, in D3 order.</td></tr>
+      <tr><td>Conversation of 2+</td><td>One header row (D4, D5). Opening it reveals its messages as full shelf <code>MessageRow</code>s, indented under a left rule, newest first (D3).</td></tr>
       <tr><td>Same <code>thread_key</code>, different accounts</td><td>Separate conversations: <code>thread_key</code> is per account.</td></tr>
       <tr><td>iMessage, two shelved messages &gt; 6 h apart</td><td>Separate conversations (D1, D2). Exactly 6 h stays together.</td></tr>
       <tr><td>Email thread spanning weeks</td><td>One conversation.</td></tr>
@@ -492,11 +480,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 export const CONVERSATION_GAP_MS = 6 * 60 * 60 * 1000;
 
 export interface ShelfConversation {
-  /** 'conv:' + the oldest message's id (D9). */
+  /** 'conv:' + the oldest message's id, messages.at(-1) (D9). */
   id: string;
-  /** Oldest → newest, always. The view reverses for D3 option B. */
+  /** Newest → oldest, the order they are drawn in (D3). */
   messages: CommMessage[];
-  /** messages.at(-1): what the collapsed row shows. */
+  /** messages[0]: what the collapsed row shows. */
   newest: CommMessage;
 }
 
@@ -555,7 +543,7 @@ export function rollUpMarkers(messages, people, now): { kind: RowMarkerKind; cou
     <li data-trace="D4 P1">A one-message conversation renders exactly as today's shelf row.</li>
     <li data-trace="D4 P1">A collapsed conversation shows who (chat name or up to two names + "+N"), account, newest time, "· N messages" as meta text (not a badge), and the newest message's line, prefixed "Sender:" when there are several senders.</li>
     <li data-trace="D5 P1">A collapsed conversation shows each chip any of its messages carries, with a count when more than one does. Priority person is uncounted; the expiry chip doesn't roll up.</li>
-    <li data-trace="D3 P1">An opened conversation lists its messages as full shelf rows (tier picker included), indented, in the order D3 settles.</li>
+    <li data-trace="D3 P1">An opened conversation lists its messages as full shelf rows (tier picker included), indented, newest first.</li>
     <li data-trace="D6">Selecting a conversation opens it. <code>j</code>/<code>k</code> walk onto it, through its messages and past it, and only one is open at a time. Esc closes it. Verb hotkeys do nothing on its header.</li>
     <li data-trace="D7 D8">A conversation is never cut by a page edge (its count is exact on first load), and "Show more" always appends at least one new conversation while older ones remain.</li>
     <li data-trace="impl">Promoting a message out of a conversation removes just that message; at one remaining message the conversation renders as a plain row.</li>
@@ -567,7 +555,7 @@ export function rollUpMarkers(messages, people, now): { kind: RowMarkerKind; cou
   <h2>Tests</h2>
   <ul>
     <li><strong>Jest, <code>lib/comms/conversations.test.ts</code></strong> (new): grouping key, per-account separation,
-    gap boundary at exactly 6 h and 6 h + 1 ms, email never split, conversation order with ties, inner order, id
+    gap boundary at exactly 6 h and 6 h + 1 ms, email never split, conversation order with ties, inner order newest first, id
     stability when a newer message joins.</li>
     <li><strong>Jest, <code>lib/comms/markers.test.ts</code></strong>: <code>rowMarkerKinds</code> order;
     <code>rollUpMarkers</code> counts, drops expiry, keeps priority uncounted.</li>
