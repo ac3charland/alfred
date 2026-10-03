@@ -148,7 +148,11 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
     };
   }, [orderedIds]);
 
-  const renderRow = (message: CommMessage, shelved: boolean) => {
+  const renderRow = (
+    message: CommMessage,
+    shelved: boolean,
+    onSelect: (id: string | null) => void = setSelectedId,
+  ) => {
     const { account, label } = accountLabel(accounts, message.account_id);
     return (
       <MessageRow
@@ -160,7 +164,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
         verdict={message.verdict_id === null ? undefined : verdicts[message.verdict_id]}
         now={now}
         selected={selectedId === message.id}
-        onSelect={setSelectedId}
+        onSelect={onSelect}
         onAddSender={setAddingSenderFor}
         shelved={shelved}
       />
@@ -225,7 +229,13 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
                     open={isOpen(conversation, selectedId)}
                     onSelect={setSelectedId}
                   >
-                    {conversation.messages.map((message) => renderRow(message, true))}
+                    {conversation.messages.map((message) =>
+                      // Clicking a message shut hands the selection back to its header, so the
+                      // conversation stays open around it; Escape still closes everything.
+                      renderRow(message, true, (id) => {
+                        setSelectedId(id ?? conversation.id);
+                      }),
+                    )}
                   </ShelfConversation>
                 );
               })}

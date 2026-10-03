@@ -853,13 +853,34 @@ describe('CommsQueueView — conversations on the shelf', () => {
     expect(a).toHaveAttribute('aria-expanded', 'false');
     expect(b).toHaveAttribute('aria-expanded', 'true');
 
-    // Back up lands on the previous conversation's header, which opens it again.
+    // Back up lands on the previous conversation's header — not its last message — which
+    // opens it again.
     fireEvent.keyDown(document, { key: 'k' });
     expect(a).toHaveAttribute('aria-expanded', 'true');
     expect(b).toHaveAttribute('aria-expanded', 'false');
+    expect(selectedRow()).toBeUndefined();
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(a).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('keeps the conversation open when one of its messages is clicked shut', async () => {
+    const user = userEvent.setup();
+    renderView(potluck());
+    await openShelf(user);
+    const potluckHeader = header(/3 messages/);
+    await user.click(potluckHeader);
+    const [, anaRow] = within(messageList(potluckHeader)).getAllByTestId('comms-row');
+    const [ana] = within(anaRow ?? document.body).getAllByRole('button');
+    if (ana === undefined) throw new Error('no row trigger');
+
+    await user.click(ana);
+    expect(selectedRow()).toHaveTextContent('Ana');
+    await user.click(ana);
+
+    // The message's detail closes; the thread it sits in stays open around it.
+    expect(selectedRow()).toBeUndefined();
+    expect(potluckHeader).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('gives a selected header no verbs — they belong to its messages', async () => {
