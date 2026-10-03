@@ -398,6 +398,23 @@ describe('WikiWeb — hover', () => {
     expect(nameShown(FOCUS)).toBe(true);
   });
 
+  it("measures the day's concept's name afresh when it stops being featured", async () => {
+    // jsdom lays nothing out, so names are given a width; one measured is kept until a change
+    // to its font asks for it again. The featured name's larger, bold font is such a change.
+    const measure = jest
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(() => ({ width: 100 }) as DOMRect);
+    const user = userEvent.setup();
+    renderWeb();
+    const name = nodeElement(FOCUS).querySelector('[data-shown]');
+    expect(measure.mock.contexts).toContain(name);
+    const before = measure.mock.contexts.length;
+
+    await user.hover(linkOf(neighboursOf(FOCUS)[0] ?? ''));
+
+    expect(measure.mock.contexts.slice(before)).toContain(name);
+  });
+
   it("keeps the day's concept marked while it is the node hovered", async () => {
     const user = userEvent.setup();
     renderWeb();
