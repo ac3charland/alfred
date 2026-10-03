@@ -8,7 +8,7 @@
  * for folders / projects / epics / code stories).
  */
 import type { CreateItemInput, CreateProjectInput } from '@/lib/api-client';
-import { isDueDateOverdue } from '@/lib/date-utils';
+import { isPastDue, normalizeDueTime } from '@/lib/date-utils';
 import { stableSorted } from '@/lib/sort';
 import type { CodeStory, Epic, Folder, Item, Project } from '@/lib/types';
 
@@ -127,21 +127,38 @@ export function countCompletedDescendants(node: ItemNode): number {
 }
 
 /**
- * Count the descendants (any depth) that are **active and past due** — the tally behind a task
- * row's overdue-subtask badge. Excludes the node itself (its own red due chip already says it's
- * late) and completed descendants (a finished subtask's lateness is moot). "Overdue" is strictly
- * before today, matching {@link isDueDateOverdue} and the folder overdue tally — a subtask due
- * today is not yet late.
+ * Count the descendants (any depth) that are **active and past due** at `now` — the tally behind
+ * a task row's overdue-subtask badge. Excludes the node itself (its own red due chip already says
+ * it's late) and completed descendants (a finished subtask's lateness is moot). "Past due" is
+ * {@link isPastDue}, matching the due chip and the folder overdue tally: an untimed subtask due
+ * today is not yet late, a timed one is from its minute.
  */
-export function countOverdueDescendants(node: ItemNode): number {
+export function countOverdueDescendants(node: ItemNode, now: Date = new Date()): number {
   let count = 0;
   for (const child of node.children) {
-    if (child.status === 'active' && child.due_date !== null && isDueDateOverdue(child.due_date)) {
+    if (
+      child.status === 'active' &&
+      child.due_date !== null &&
+      isPastDue(child.due_date, normalizeDueTime(child.due_time), now)
+    ) {
       count += 1;
     }
-    count += countOverdueDescendants(child);
+    count += countOverdueDescendants(child, now);
   }
   return count;
+}
+
+/**
+ * Whether any active descendant (any depth, excluding the node itself) carries a due time — the
+ * only kind of subtask whose lateness changes during a day, so the only reason for a row to keep
+ * a ticking clock for its overdue tally.
+ */
+export function hasActiveTimedDescendant(node: ItemNode): boolean {
+  return node.children.some(
+    (child) =>
+      (child.status === 'active' && normalizeDueTime(child.due_time) !== null) ||
+      hasActiveTimedDescendant(child),
+  );
 }
 
 /** Whether any descendant (any depth) is still `active` (excludes the node itself). */
@@ -240,6 +257,7 @@ export function makeOptimisticItem(
     raw_capture: input.raw_capture ?? input.text ?? null,
     item_type: input.item_type ?? 'unclassified',
     due_date: input.due_date ?? null,
+    due_time: input.due_time ?? null,
     folder_id: input.folder_id ?? null,
     parent_id: input.parent_id ?? null,
     intended_project_id: input.intended_project_id ?? null,
