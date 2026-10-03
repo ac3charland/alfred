@@ -703,3 +703,204 @@ describe('CommsQueueView — asking for a re-run', () => {
     expect(screen.queryByTestId('row-markers')).not.toBeInTheDocument();
   });
 });
+
+/** A thread on the shelf: one row per message, newest first, all sharing `thread`. */
+function thread(name: string, messages: Partial<CommMessage>[]): CommMessage[] {
+  return messages.map((overrides) => row({ tier: 'fyi', thread_key: name, ...overrides }));
+}
+
+/** The conversation header whose text matches `name`. */
+function header(name: RegExp): HTMLElement {
+  const match = screen
+    .getAllByRole('button')
+    .find(
+      (element) =>
+        element.closest('[data-testid="comms-conversation"]') !== null &&
+        name.test(element.textContent),
+    );
+  if (match === undefined) throw new Error(`no conversation header matching ${String(name)}`);
+  return match;
+}
+
+/** The message list a conversation header says it controls. */
+function messageList(conversationHeader: HTMLElement): HTMLElement {
+  const id = conversationHeader.getAttribute('aria-controls') ?? '';
+  const list = document.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`);
+  if (list === null) throw new Error(`no element controlled as ${id}`);
+  return list;
+}
+
+/** The collapse wrapping the selected row — where its exit animation ends. */
+function selectedRowCollapse(): HTMLElement {
+  const collapse = selectedRow()?.closest<HTMLElement>('[data-testid="comms-row-collapse"]');
+  if (collapse === null || collapse === undefined) throw new Error('no selected row');
+  return collapse;
+}
+
+async function openShelf(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /FYI · \d+ messages?/ }));
+}
+
+/** A three-message email thread with three senders, one of them refused. */
+function potluck(): CommMessage[] {
+  return thread('potluck', [
+    { sender_handle: 'dana@example.com', sender_name: 'Dana', subject: 'Re: potluck — final' },
+    {
+      sender_handle: 'ana@example.com',
+      sender_name: 'Ana',
+      subject: 'Re: potluck',
+      judged_by: 'refusal',
+    },
+    { sender_handle: 'lee@example.com', sender_name: 'Lee', subject: 'Re: potluck — +1' },
+  ]);
+}
+
+describe('CommsQueueView — conversations on the shelf', () => {
+  it('draws one row per conversation, its size a sentence in the meta line rather than a badge', async () => {
+    const user = userEvent.setup();
+    renderView([
+      ...potluck(),
+      row({ tier: 'fyi', sender_name: 'Chase', subject: 'Statement ready' }),
+    ]);
+
+    await openShelf(user);
+
+    expect(screen.getAllByTestId('comms-conversation')).toHaveLength(1);
+    const potluckHeader = header(/Dana, Ana \+1/);
+    expect(potluckHeader).toHaveAccessibleName(/Dana, Ana \+1.*3 messages/);
+    expect(within(potluckHeader).getByText(/· 3 messages/)).toHaveClass('text-xs');
+    // The newest message's line, attributed because the thread has several senders.
+    expect(within(potluckHeader).getByText('Dana: Re: potluck — final')).toBeInTheDocument();
+    // The shelf summary still counts messages, not conversations.
+    expect(screen.getByRole('button', { name: /FYI · 4 messages/ })).toBeInTheDocument();
+  });
+
+  it('draws a one-message conversation exactly as a shelf row, with no count', async () => {
+    const user = userEvent.setup();
+    renderView([row({ tier: 'fyi', sender_name: 'Chase', subject: 'Statement ready' })]);
+
+    await openShelf(user);
+
+    expect(screen.queryByTestId('comms-conversation')).not.toBeInTheDocument();
+    expect(screen.getByTestId('comms-row')).toHaveTextContent('Statement ready');
+    expect(screen.queryByText(/messages$/)).not.toBeInTheDocument();
+  });
+
+  it('carries every chip its messages do, counted where more than one carries it', async () => {
+    const user = userEvent.setup();
+    renderView(
+      thread('chat', [
+        { has_attachments: true, body: '' },
+        { has_attachments: true, body: '', judged_by: 'refusal' },
+        { body: 'ok' },
+      ]),
+    );
+
+    await openShelf(user);
+
+    const chips = within(header(/3 messages/)).getByTestId('row-markers');
+    expect(
+      within(chips)
+        .getAllByText(/./)
+        .map((chip) => chip.textContent),
+    ).toEqual(['Attachment · not read · 2', 'Refused']);
+  });
+
+  it('opens on a click, listing its messages as full rows newest first, and closes on another', async () => {
+    const user = userEvent.setup();
+    renderView(potluck());
+    await openShelf(user);
+    const potluckHeader = header(/3 messages/);
+    expect(potluckHeader).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(potluckHeader);
+
+    expect(potluckHeader).toHaveAttribute('aria-expanded', 'true');
+    const rows = within(messageList(potluckHeader)).getAllByTestId('comms-row');
+    expect(rows.map((element) => element.textContent)).toEqual([
+      expect.stringContaining('Re: potluck — final'),
+      expect.stringContaining('Re: potluck'),
+      expect.stringContaining('Re: potluck — +1'),
+    ]);
+    // Full shelf rows: the inside one still says it was refused.
+    expect(within(rows[1] ?? document.body).getByText('Refused')).toBeInTheDocument();
+
+    await user.click(potluckHeader);
+    expect(potluckHeader).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('walks onto a conversation with j, through its messages, and past it — one open at a time', async () => {
+    const user = userEvent.setup();
+    renderView([
+      ...thread('a', [{ subject: 'A newest' }, { subject: 'A oldest' }]),
+      ...thread('b', [{ subject: 'B newest' }, { subject: 'B oldest' }]),
+    ]);
+    await openShelf(user);
+    const a = header(/A newest/);
+    const b = header(/B newest/);
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(a).toHaveAttribute('aria-expanded', 'true');
+    expect(b).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('A newest');
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('A oldest');
+    expect(a).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(a).toHaveAttribute('aria-expanded', 'false');
+    expect(b).toHaveAttribute('aria-expanded', 'true');
+
+    // Back up lands on the previous conversation's header, which opens it again.
+    fireEvent.keyDown(document, { key: 'k' });
+    expect(a).toHaveAttribute('aria-expanded', 'true');
+    expect(b).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(a).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('gives a selected header no verbs — they belong to its messages', async () => {
+    const user = userEvent.setup();
+    renderView(potluck());
+    await openShelf(user);
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(header(/3 messages/)).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(document, { key: 't' });
+    fireEvent.keyDown(document, { key: 'x' });
+    fireEvent.keyDown(document, { key: 'i' });
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(jest.mocked(api).clearCommMessage).not.toHaveBeenCalled();
+    expect(jest.mocked(api).changeCommTier).not.toHaveBeenCalled();
+  });
+
+  it('loses just the promoted message, and draws a conversation left with one as a plain row', async () => {
+    const user = userEvent.setup();
+    const [newer, older] = thread('pair', [
+      { sender_name: 'Mom', body: 'Gutters are done' },
+      { sender_name: 'Mom', body: 'Morning!' },
+    ]) as [CommMessage, CommMessage];
+    jest.mocked(api).changeCommTier.mockResolvedValue({ ...newer, tier: 'today' });
+    renderView([newer, older]);
+    await openShelf(user);
+
+    const pair = header(/2 messages/);
+    await user.click(pair);
+    await user.click(within(messageList(pair)).getByText('Gutters are done', { selector: 'p' }));
+    await user.click(screen.getByRole('button', { name: /Change tier/ }));
+    await screen.findByRole('menu');
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    const collapsed = new Event('transitionend', { bubbles: true });
+    Object.defineProperty(collapsed, 'propertyName', { value: 'grid-template-rows' });
+    fireEvent(selectedRowCollapse(), collapsed);
+
+    expect(await screen.findByLabelText('1 in Today')).toBeInTheDocument();
+    expect(screen.queryByTestId('comms-conversation')).not.toBeInTheDocument();
+    const remaining = screen.getByText('Morning!', { selector: 'p' });
+    expect(remaining.closest('[data-testid="comms-row"]')).not.toBeNull();
+  });
+});

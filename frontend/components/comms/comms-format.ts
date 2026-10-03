@@ -1,5 +1,12 @@
+import { askLine } from '@/lib/comms/ask';
 import { resolvePerson } from '@/lib/comms/people';
-import type { CommAccount, CommMessage, CommPersonWithHandles, CommTier } from '@/lib/types';
+import type {
+  CommAccount,
+  CommAccountKind,
+  CommMessage,
+  CommPersonWithHandles,
+  CommTier,
+} from '@/lib/types';
 
 /**
  * The strings the queue puts on a row — who sent it, what it wants, and when it landed.
@@ -70,6 +77,62 @@ export function senderLabel(message: CommMessage, people: CommPersonWithHandles[
   if (person !== undefined) return person.name;
   const name = message.sender_name?.trim();
   return name === undefined || name === '' ? message.sender_handle : name;
+}
+
+/** Up to two names, then how many more: "Dana Whitfield, Lee Park +1". */
+function namesUpToTwo(names: string[]): string {
+  const shown = names.slice(0, 2).join(', ');
+  return names.length > 2 ? `${shown} +${String(names.length - 2)}` : shown;
+}
+
+/** The distinct senders of a conversation's messages (newest first), labelled. */
+function distinctSenders(messages: CommMessage[], people: CommPersonWithHandles[]): string[] {
+  return [...new Set(messages.map((message) => senderLabel(message, people)))];
+}
+
+/**
+ * Who a collapsed shelf conversation is with — its first line. An iMessage group chat (the
+ * daemon's own rule: a chat name, or more than one other participant) goes by its chat name, else
+ * by its members. Everything else goes by its distinct senders, newest first. Either way, up to
+ * two names and then "+N", so the line never wraps.
+ *
+ * `messages` is the conversation newest first; `kind` is its account's, since only iMessage
+ * carries a group's membership — an email's `participants` are its recipients.
+ */
+export function conversationWho(
+  messages: CommMessage[],
+  kind: CommAccountKind | undefined,
+  people: CommPersonWithHandles[],
+): string {
+  const newest = messages[0];
+  if (newest === undefined) return '';
+  const chatName = newest.chat_name?.trim() ?? '';
+  const group = kind === 'imessage' && (chatName !== '' || newest.participants.length > 1);
+  if (!group) return namesUpToTwo(distinctSenders(messages, people));
+  if (chatName !== '') return chatName;
+
+  // A member is named the way a sender is: the roster, else a name one of their own messages in
+  // this chat carried, else the raw handle.
+  const members = newest.participants.map((handle) => {
+    const own = messages.find((message) => message.sender_handle === handle);
+    return own === undefined
+      ? (resolvePerson(handle, people)?.name ?? handle)
+      : senderLabel(own, people);
+  });
+  return namesUpToTwo(members);
+}
+
+/**
+ * A collapsed conversation's second line: its newest message's line, prefixed with that sender
+ * ("Sam: …") when the conversation has more than one, so a group chat's line is attributable.
+ */
+export function conversationLine(messages: CommMessage[], people: CommPersonWithHandles[]): string {
+  const newest = messages[0];
+  if (newest === undefined) return '';
+  const line = askLine(newest);
+  return distinctSenders(messages, people).length > 1
+    ? `${senderLabel(newest, people)}: ${line}`
+    : line;
 }
 
 /** The tier names as the owner reads them, section eyebrow and tier menu alike. */
