@@ -265,6 +265,12 @@ expect(calls).toEqual([{ command: 'npm', args: ['run', 'check:slow'] }]);
 
 These CLIs take their side effects as parameters precisely so a plain function is enough.
 
+**Spying a prototype method? Read the receiver from `mock.contexts`, not `this`.** ESLint's
+`unicorn/no-this-outside-of-class` rejects a `function (this: HTMLElement)` mock implementation.
+Keep the implementation an arrow and assert on `spy.mock.contexts` (each call's `this`), e.g.
+`expect(measure.mock.contexts.slice(before)).toContain(element)` for "measured again after X" —
+`wiki-web.test.tsx` is the pattern.
+
 **A test's `process.env` never reaches a child process.** Jest gives each test file its own copy,
 while `child_process` inherits the real environment, so setting or deleting a variable in a test
 changes nothing a spawned command sees. Pass `env` explicitly to every spawn, the code under test's
