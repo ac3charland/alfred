@@ -44,7 +44,7 @@ import { fetchAccessToken } from '../src/comms/gmail-oauth.ts';
 import { instapaperClient, instapaperCredentials } from '../src/instapaper/client.ts';
 import { type ExtractedPost, extractPost } from '../src/reader/extract.ts';
 import { READER_FIXTURES } from '../src/reader/fixtures/index.ts';
-import { numberLinks } from '../src/reader/links.ts';
+import { buildReaderRequest } from '../src/reader/prompt.ts';
 import { summarizePost } from '../src/reader/summarize.ts';
 import {
   NO_FOLDER_ERROR,
@@ -281,21 +281,22 @@ function printExtraction(
   console.log(`  ${pad('canonical URL')}${post.canonical_url ?? 'none → mailbox'}`);
   console.log(`  ${pad('word count')}${String(post.word_count)}`);
   console.log(`  ${pad('html_extracted')}${String(post.html_extracted)}`);
-  printLinks(post.html, post.canonical_url, kind);
+  printRequest(toSummaryInput(post, publication, kind));
 }
 
 /**
- * The numbered links the summariser would be shown — the only URLs a Further reading item can
- * ever carry. `none` for a post with no stored HTML, and for every Alerts post, as the model is
- * told.
+ * What the summariser would send for this post, read off the request `buildReaderRequest`
+ * actually builds — the same call `summarizePost` makes — so a dry run shows the real prompt
+ * choice rather than a second copy of it: the kind's system prompt (its first line), the
+ * overview its schema asks for, and the numbered links — the only URLs a Further reading or Links
+ * item can ever carry. `none` for a post with no stored HTML, and for every Alerts post.
  */
-function printLinks(
-  html: string | undefined,
-  canonicalUrl: string | undefined,
-  kind: ReaderSummaryKind,
-): void {
-  const links =
-    html === undefined || kind === 'alerts' ? [] : numberLinks(html, canonicalUrl).links;
+function printRequest(input: SummaryInput): void {
+  const request = buildReaderRequest(input);
+  const overviewKeys = Object.keys(request.schema.properties.overview.properties);
+  console.log(`  ${pad('prompt')}${request.system.split('. ', 1)[0] ?? ''}`);
+  console.log(`  ${pad('overview')}${overviewKeys.join(', ')}`);
+  const { links } = request;
   console.log(`  ${pad('links')}${links.length === 0 ? 'none' : String(links.length)}`);
   for (const link of links) console.log(`    [${String(link.n)}] ${link.url}`);
 }
@@ -511,27 +512,24 @@ async function runInstapaper(options: Options, apiKey: string): Promise<boolean>
     console.log(`  ${pad('site')}${site ?? '(none)'}`);
     console.log(`  ${pad('URL')}${articleUrl(bookmark.url) ?? '(none)'}`);
     console.log(`  ${pad('word count')}${String(wordCount)}`);
-    const storedHtml = articleHtml(html, text);
-    printLinks(storedHtml, articleUrl(bookmark.url), options.kind);
+    const input: SummaryInput = {
+      kind: options.kind,
+      publication,
+      title,
+      receivedAt,
+      wordCount,
+      text,
+      html: articleHtml(html, text),
+      canonicalUrl: articleUrl(bookmark.url),
+    };
+    printRequest(input);
 
     if (text === '') {
       console.log(
         `  ${pad('OUTCOME')}no readable body${html === undefined ? ' (error 1550)' : ''}`,
       );
     } else if (!options.dryRun) {
-      const outcome = await summarizePost(
-        {
-          kind: options.kind,
-          publication,
-          title,
-          receivedAt,
-          wordCount,
-          text,
-          html: storedHtml,
-          canonicalUrl: articleUrl(bookmark.url),
-        },
-        { apiKey, model: options.model },
-      );
+      const outcome = await summarizePost(input, { apiKey, model: options.model });
       printSummary(options.model, outcome);
     }
     console.log('');
