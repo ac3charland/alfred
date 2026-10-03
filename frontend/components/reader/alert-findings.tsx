@@ -3,7 +3,12 @@ import * as React from 'react';
 import { Badge } from '@/components/atoms/badge';
 import type { ReaderAlertCategory, ReaderAlertFinding } from '@/lib/types';
 
-import { findingDetailClass, findingRowClass, findingsClass } from './post-row.styles';
+import {
+  findingDetailClass,
+  findingRowClass,
+  findingsClass,
+  supersededFindingsClass,
+} from './post-row.styles';
 
 /**
  * An Alerts post's findings, in the gist's place on its row: one line each, tagged with what it is
@@ -33,9 +38,19 @@ function deadlineSuffix({ detail, deadline }: ReaderAlertFinding): string {
   return ` · by ${deadline}`;
 }
 
-export function AlertFindings({ findings }: { findings: readonly ReaderAlertFinding[] }) {
+export function AlertFindings({
+  findings,
+  superseded = false,
+}: {
+  findings: readonly ReaderAlertFinding[];
+  /** A re-summarise is replacing them: dimmed, as a superseded gist is. */
+  superseded?: boolean;
+}) {
   return (
-    <span className={findingsClass} data-testid="alert-findings">
+    <span
+      className={superseded ? supersededFindingsClass : findingsClass}
+      data-testid="alert-findings"
+    >
       {findings.map((finding, index) => (
         <span key={index} className={findingRowClass}>
           <Badge variant={finding.category === 'security' ? 'destructive' : 'alert'}>

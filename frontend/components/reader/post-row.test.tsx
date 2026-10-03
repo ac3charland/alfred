@@ -1974,6 +1974,18 @@ describe('PostRow — an Alerts post', () => {
     expect(screen.queryByText(/filed automatically/)).not.toBeInTheDocument();
   });
 
+  it('dims the kept findings while a re-summarise is pending, as a superseded gist is dimmed', () => {
+    renderReader(<PostRow post={post({ ...ALERTS, summary_state: 'pending' })} now={NOW} />);
+
+    expect(screen.getByTestId('alert-findings')).toHaveClass('opacity-60');
+  });
+
+  it('draws a done post’s findings at full strength', () => {
+    renderReader(<PostRow post={post(ALERTS)} now={NOW} />);
+
+    expect(screen.getByTestId('alert-findings')).not.toHaveClass('opacity-60');
+  });
+
   it('is an ordinary row with Send before it has been summarised as Alerts', () => {
     renderReader(
       <PostRow

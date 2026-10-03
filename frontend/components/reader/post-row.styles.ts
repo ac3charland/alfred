@@ -95,6 +95,9 @@ export const supersededGistClass = 'mt-1 text-sm leading-relaxed text-foreground
 /** An Alerts row's findings, in the gist's place: one line each, stacked. */
 export const findingsClass = 'mt-1.5 flex flex-col gap-1';
 
+/** Findings being replaced by a re-summarise — dimmed as a superseded gist is. */
+export const supersededFindingsClass = 'mt-1.5 flex flex-col gap-1 opacity-60';
+
 /** One finding: its category tag, then its detail. */
 export const findingRowClass = 'flex items-baseline gap-2';
 

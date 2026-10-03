@@ -190,12 +190,12 @@ function summaryStamp(post: ReaderPostListItem, now: Date): string | null {
  * because it found none — that it was filed. An overview that fails the Alerts guard reads
  * nothing, as a failing essay overview leaves only its gist.
  */
-function AlertsLine({ read }: { read: PostOverviewOf }) {
+function AlertsLine({ read, superseded }: { read: PostOverviewOf; superseded: boolean }) {
   if (read.kind !== 'alerts') return null;
   if (read.overview.findings.length === 0) {
     return <p className={placeholderGistClass}>{NOTHING_NOTABLE_LINE}</p>;
   }
-  return <AlertFindings findings={read.overview.findings} />;
+  return <AlertFindings findings={read.overview.findings} superseded={superseded} />;
 }
 
 export function PostRow({
@@ -474,7 +474,7 @@ export function PostRow({
               </div>
               <p className={titleClass}>{post.title}</p>
               {alertsRow ? (
-                <AlertsLine read={read} />
+                <AlertsLine read={read} superseded={state === 'pending'} />
               ) : (
                 <p className={awaitingReport ? placeholderGistClass : gistLineClass(post, state)}>
                   {researchLine(post, phase) ?? gistOrPlaceholder(post, state, now)}
