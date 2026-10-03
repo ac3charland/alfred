@@ -242,6 +242,19 @@ column; what is stored here is which of its links the owner has sent.
   `builder_sha` and `base_sha` over an incoming `reconstructed` row. Returns `{upserted,
   kept_recorded}`.
 
+### `0052_due_time.sql` — due times (ALF-161)
+
+- **`items.due_time`** — a nullable zone-less `time`, the wall-clock companion to `due_date`
+  (which stays a calendar date in all but type). `items_due_time_needs_date` refuses a time with no
+  date, and the `items_clear_due_time_with_date` trigger nulls the time whenever the date goes from
+  set to null — so `enter_code_module`, `convert_to_code_epic` and any later writer that clears the
+  date need not know the time exists.
+- **`task_items` re-created** so the column reaches the read path.
+- **`claim_item_from_classifier`** — a human edit to `due_time` claims the row, like `due_date`.
+- **`complete_and_spawn`** — both inserts copy `due_time`, so the next occurrence keeps the time.
+- **`classification_corrections`** — `due_time` joins the logged fields; the diff compares the
+  chosen time as `HH24:MI`, the shape the classifier guesses in.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it.** `.github/workflows/migrate.yml` runs

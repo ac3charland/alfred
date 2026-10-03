@@ -5863,6 +5863,157 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const dueTimeResult = await attempt(
+    'a due time never outlives its date, rides a recurrence, claims, and is diffed (ALF-161)',
+    async () => {
+      /** Seed a task as `authenticated` (the browser's role) and return its id. */
+      const task = async (fields: Record<string, unknown>): Promise<string> => {
+        const columns = ['title', 'item_type', ...Object.keys(fields)];
+        const values = ['timed', 'task', ...Object.values(fields)];
+        const placeholders = values.map((_, index) => `$${String(index + 1)}`).join(', ');
+        const { rows } = await asRole(client, 'authenticated', () =>
+          client.query<{ id: string }>(
+            `insert into items (${columns.join(', ')}) values (${placeholders}) returning id`,
+            values,
+          ),
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error('item insert returned no id');
+        return id;
+      };
+      /** The stored time as Postgres prints it, or the string 'none' for a null column. */
+      const timeOf = async (id: string): Promise<string> => {
+        const { rows } = await client.query<{ due_time: string }>(
+          `select coalesce(due_time::text, 'none') as due_time from items where id = $1`,
+          [id],
+        );
+        return rows[0]?.due_time ?? 'none';
+      };
+
+      // The CHECK: a time with no date is refused loudly, never stored or silently dropped.
+      const undated = await task({});
+      const refused = await asRole(client, 'authenticated', () =>
+        client.query(`update items set due_time = '15:00' where id = $1`, [undated]).then(
+          () => false,
+          (error: unknown) => error instanceof Error && error.message.includes('items_due_time'),
+        ),
+      );
+      if (!refused) throw new Error('a time was stored on an undated task');
+
+      // The read path sees the column (the task_items freeze).
+      const timed = await task({ due_date: '2026-10-03', due_time: '15:00' });
+      const { rows: viewRows } = await client.query<{ due_time: string | null }>(
+        `select due_time::text from task_items where id = $1`,
+        [timed],
+      );
+      if (viewRows[0]?.due_time !== '15:00:00')
+        throw new Error(`task_items read the time as ${String(viewRows[0]?.due_time)}`);
+
+      // Moving the date keeps the time; clearing it clears both.
+      await client.query(`update items set due_date = '2026-10-05' where id = $1`, [timed]);
+      if ((await timeOf(timed)) !== '15:00:00') throw new Error('a date move dropped the time');
+      await client.query(`update items set due_date = null where id = $1`, [timed]);
+      if ((await timeOf(timed)) !== 'none') throw new Error('clearing the date left the time');
+
+      // An RPC that clears the date without knowing the time exists still succeeds.
+      const gated = await task({ due_date: '2026-10-03', due_time: '09:30' });
+      await asRole(client, 'authenticated', () =>
+        client.query(`select enter_code_module($1, $2, $3)`, [gated, PROJECT, EPIC]),
+      );
+      if ((await timeOf(gated)) !== 'none') throw new Error('enter_code_module left a time behind');
+
+      // Completing a recurring timed task spawns the next occurrence at the same time; a child
+      // keeps its own date and time.
+      const recurring = await task({
+        due_date: '2026-10-03',
+        due_time: '15:00',
+        recurrence: JSON.stringify({ freq: 'daily', interval: 1 }),
+      });
+      const { rows: childRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type, parent_id, due_date, due_time)
+           values ('child', 'task', $1, '2026-10-04', '08:15') returning id`,
+        [recurring],
+      );
+      if (childRows[0]?.id === undefined) throw new Error('could not seed a child');
+      const { rows: spawnRows } = await asRole(client, 'authenticated', () =>
+        client.query<{ spawned: { id: string; due_time: string | null } }>(
+          `select (complete_and_spawn($1, '2026-10-04', 2) -> 'spawned') as spawned`,
+          [recurring],
+        ),
+      );
+      const spawned = spawnRows[0]?.spawned;
+      if (spawned?.due_time !== '15:00:00')
+        throw new Error(`the spawned occurrence carries ${String(spawned?.due_time)}`);
+      const { rows: spawnedChildren } = await client.query<{ due_time: string | null }>(
+        `select due_time::text from items where parent_id = $1`,
+        [spawned.id],
+      );
+      if (spawnedChildren[0]?.due_time !== '08:15:00')
+        throw new Error(`the spawned child carries ${String(spawnedChildren[0]?.due_time)}`);
+
+      // A human time edit claims an unjudged row, like a due-date edit.
+      const unjudged = await task({ due_date: '2026-10-03' });
+      await client.query(`update items set due_time = '10:00' where id = $1`, [unjudged]);
+      const { rows: claimRows } = await client.query<{ classified_at: string | null }>(
+        `select classified_at from items where id = $1`,
+        [unjudged],
+      );
+      if (claimRows[0]?.classified_at == undefined)
+        throw new Error('a due_time edit did not claim the row from the classifier');
+
+      // Dispatch diffs the guessed time as HH:MM against the chosen one.
+      const { rows: folderRows } = await client.query<{ id: string }>(
+        `insert into folders (name) values ('Timed') returning id`,
+      );
+      const folder = folderRows[0]?.id;
+      if (folder === undefined) throw new Error('could not seed a folder');
+      const judged = async (guessedTime: string, chosenTime: string): Promise<string> => {
+        const { rows } = await client.query<{ id: string }>(
+          `insert into items (title, item_type, due_date, due_time, classified_at,
+                              classified_provider, classified_model, classified_prompt_version,
+                              classified_guess)
+             values ('dentist tomorrow at 3pm', 'task', '2026-10-04', $1, now(),
+                     'anthropic', 'claude-haiku-4-5', 5, $2)
+           returning id`,
+          [
+            chosenTime,
+            JSON.stringify({
+              item_type: 'task',
+              due_date: '2026-10-04',
+              due_time: guessedTime,
+              folder_id: folder,
+            }),
+          ],
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error('could not seed a judged item');
+        // Filed and dispatched in one step, as triage does — a folder on insert would already
+        // count as dispatched, and the diff only fires on the transition.
+        await client.query(`update items set folder_id = $1, dispatched_at = now() where id = $2`, [
+          folder,
+          id,
+        ]);
+        return id;
+      };
+      const correctionsOf = async (id: string): Promise<string> => {
+        const { rows } = await client.query<{ described: string }>(
+          `select field || ':' || direction || '(' || guessed_value || '→' || chosen_value || ')'
+                    as described
+             from classification_corrections where item_id = $1 order by field`,
+          [id],
+        );
+        return rows.map((row) => row.described).join(', ');
+      };
+      const changed = await correctionsOf(await judged('15:00', '16:30'));
+      if (changed !== 'due_time:changed(15:00→16:30)')
+        throw new Error(`a changed time logged '${changed}'`);
+      const agreed = await correctionsOf(await judged('15:00', '15:00'));
+      if (agreed !== '') throw new Error(`an agreed time logged '${agreed}'`);
+
+      return `CHECK refuses an undated time; date move keeps it, clear and enter_code_module drop it; spawn copies root + child times; a time edit claims; dispatch logs ${changed}`;
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -5967,5 +6118,6 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     researchGrantsResult,
     codeSessionsGrantsResult,
     codeSessionsRecordedWinsResult,
+    dueTimeResult,
   ];
 }
