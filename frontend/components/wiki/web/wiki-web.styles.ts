@@ -94,7 +94,9 @@ export const nameClass = cn(
   // A halo of stacked surface-coloured shadows: it rings each glyph without touching its fill.
   '[text-shadow:0_0_2px_var(--color-surface),0_0_3px_var(--color-surface),0_0_3px_var(--color-surface)]',
   'data-[shown=false]:invisible',
-  'group-data-[state=lit]/node:font-medium group-data-[state=lit]/node:text-foreground',
+  'group-data-[state=lit]/node:text-foreground',
+  // The lit node's medium weight, bar the featured focus's: lit and featured at once, it stays bold.
+  'group-[[data-state=lit]:not([data-featured])]/node:font-medium',
   'group-data-[featured=true]/node:text-[13px] group-data-[featured=true]/node:font-semibold',
   'group-data-[featured=true]/node:text-foreground',
 );

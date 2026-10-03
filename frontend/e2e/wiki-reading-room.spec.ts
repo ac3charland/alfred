@@ -23,6 +23,10 @@ async function boxOf(locator: Locator) {
   return box;
 }
 
+/** The computed font weight of a web node's name. */
+const weightOfName = (node: Locator) =>
+  node.locator('[data-shown]').evaluate((name) => getComputedStyle(name).fontWeight);
+
 /**
  * A page long enough to scroll, with one code-span heading far below the fold — and a screen of
  * text after it, so a hash jump can bring the heading to the top instead of bottoming out.
@@ -105,6 +109,30 @@ test.describe('the Wiki reading room', () => {
 
     const next = hrefs[hrefs.indexOf(landed ?? '') + 1] ?? hrefs.at(-1);
     await expect(page).toHaveURL(next ?? '');
+  });
+
+  test("keeps the day's concept's name bold while it is the node hovered", async ({
+    page,
+    seed,
+  }) => {
+    await seedWiki(seed);
+    await page.goto('/wiki');
+    const focus = web(page).locator('[data-focus="true"]');
+    const other = web(page).locator('[data-wiki-node]:not([data-focus])').first();
+    await expect(focus).toHaveAttribute('data-featured', 'true');
+    expect(await weightOfName(focus)).toBe('600');
+
+    await focus.getByRole('link').hover();
+
+    await expect(focus).toHaveAttribute('data-state', 'lit');
+    await expect(focus).toHaveAttribute('data-featured', 'true');
+    expect(await weightOfName(focus)).toBe('600');
+
+    // Any other node hovered takes the lit node's medium weight.
+    await other.getByRole('link').hover();
+
+    await expect(other).toHaveAttribute('data-state', 'lit');
+    expect(await weightOfName(other)).toBe('500');
   });
 
   test('swaps the card and the web for search results, and brings them back', async ({
