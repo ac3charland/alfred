@@ -120,6 +120,8 @@ v3?
 
 - **Never name a custom `@utility` `text-<word>` (or any other built-in prefix) unless it sets that property.** `cn()`'s tailwind-merge doesn't know the utility, reads `text-glow-blue` as a text colour, and silently drops the `text-accent-blue` beside it — the element loses its colour with no error. Pick a prefix no built-in owns (`title-glow-blue` in `globals.css`), and pin the merged class string in a test that goes through `cn()`.
 
+- **Two variant classes that set the same property on one element have no defined winner.** When both `group-data-[state=lit]/node:font-medium` and `group-data-[featured=true]/node:font-semibold` match, the generated CSS order decides, not the class string. Make the states exclusive with one arbitrary group variant (`group-[[data-state=lit]:not([data-featured])]/node:font-medium`, in `wiki-web.styles.ts`), and pin the computed style in Playwright, since jsdom computes none.
+
 - **Always pair `motion-reduce:` with every animated class.** The alfred project's design spec requires respecting `prefers-reduced-motion`. Minimum: `motion-reduce:transition-none` or `motion-reduce:animate-none` alongside every `transition-*` or `animate-*`.
 
 - **The shadow scale shifted by one step in v4.** The old `shadow` is now `shadow-sm`; old `shadow-sm` is now `shadow-xs`. If a shadow looks larger than expected, you are probably hitting v3 muscle memory on the class name.
