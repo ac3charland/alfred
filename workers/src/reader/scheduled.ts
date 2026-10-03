@@ -651,8 +651,8 @@ async function applyOutcome(
         summary_kind: kind,
         prompt_version: READER_PROMPT_VERSIONS[kind],
         // An Alerts post with nothing notable is filed in the same write, so it never reaches the
-        // reading list. One WITH findings leaves `archived_at` alone: a re-summarise from the
-        // archive that now finds something stays where the owner is already looking at it.
+        // reading list. Nothing else touches `archived_at`: an Alerts post WITH findings, or any
+        // other kind, re-summarised from the archive stays where the owner is already looking at it.
         ...(isNothingNotable(outcome.summary) ? { archived_at: nowIso } : {}),
         summary_state: 'done',
         summarized_at: nowIso,
