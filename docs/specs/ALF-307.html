@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-307 — Collapse threads in the comms FYI drawer</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+
+/* alfred's tokens: frontend/app/globals.css. Shelf chrome: components/comms/fyi-shelf.tsx; row shell,
+   sender, meta and ask: components/comms/message-row.styles.ts; chips: components/atoms/badge.tsx
+   (destructiveOutline, alert, accent, muted); "Show more": components/atoms/button.tsx (ghost, sm).
+   A dashed blue outline marks what this spec adds. */
+@font-face{font-family:Geist;font-weight:100 900;font-display:swap;src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-sans.woff2) format("woff2")}
+.app{--background:#0a0e17;--foreground:#e8edf5;--border:#1e2a3f;--muted-foreground:#8a96a8;
+  --secondary:#1e2a3f;--blue:#60a5fa;--red:#f87171;--teal:#4fd1e0;--amber-400:#fbbf24;
+  background:var(--background);color:var(--foreground);padding:16px;overflow:hidden;
+  font:14px/1.45 Geist,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.app p{margin:0}
+.app code{font:inherit;color:inherit;background:none;padding:0}
+.app .shelf{display:flex;flex-direction:column;gap:4px;border:1px solid rgb(30 42 63/.6);border-radius:12px;padding:12px}
+.app .tog{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:rgb(138 150 168/.7)}
+.app .chev{display:inline-block;width:13px;text-align:center;transform:rotate(90deg)}
+.app .chev.shut{transform:none}
+.app .rows{display:flex;flex-direction:column;padding-top:4px}
+.app .row{border:1px solid transparent;border-radius:8px;padding:8px 12px;opacity:.7}
+.app .row.sel{border-color:rgb(96 165 250/.6);background:rgb(30 42 63/.4);opacity:1}
+.app .l1{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px}
+.app .who{font-weight:500;color:var(--foreground)}
+.app .mt{font-size:12px;color:var(--muted-foreground)}
+.app .ask{font-size:13px;line-height:1.375;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app .ask .by{color:var(--foreground)}
+.app .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.app .bdg{border-radius:9999px;padding:2px 8px;font-size:12px;line-height:16px;font-weight:500}
+.app .bdg.rf{border:1px solid rgb(248 113 113/.5);color:var(--red)}
+.app .bdg.alert{background:rgb(245 158 11/.15);color:var(--amber-400)}
+.app .bdg.acc{background:rgb(79 209 224/.15);color:var(--teal)}
+.app .bdg.muted{border:1px solid rgb(30 42 63/.7);color:var(--muted-foreground)}
+.app .kids{display:flex;flex-direction:column;margin:8px 0 0 12px;padding-left:8px;border-left:1px solid rgb(30 42 63/.6)}
+.app .kids .row{padding:6px 10px}
+.app .more{align-self:flex-start;height:32px;display:inline-flex;align-items:center;padding:0 12px;border-radius:4px;font-size:12px;font-weight:500;color:var(--foreground)}
+.app .nw{outline:1px dashed rgb(96 165 250/.55);outline-offset:2px;border-radius:3px}
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Comms · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>307</span><span class="sep"> — </span><span class="ttl">Collapse threads in the comms FYI drawer</span></h1>
+  <p class="change" id="change">Opening FYI shows one row per conversation instead of one per message; open a conversation to see its messages, each still a full row with its own tier picker.</p>
+  <p class="revised" id="revised">Revised 2026-10-03: D3 → B, newest first (your review); Plate I re-rested on B.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>How long a silence splits a chat?</h3>
+      <p class="pick">6 hours, one constant</p>
+      <p class="why">Separates last night's thread from this morning's; one line to retune.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>What a collapsed conversation shows</h3>
+      <p class="pick">Who's in it, the newest message's line, and "· N messages" as text</p>
+      <p class="why">Same two lines as any row. A count in prose, not a badge, like the shelf's own.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>Can a collapsed conversation hide a warning?</h3>
+      <p class="pick">No: its messages' chips roll up onto it, counted</p>
+      <p class="why">Refused, filtered and unreadable flags only help someone who can see them.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>How a conversation opens</h3>
+      <p class="pick">Selecting it opens it; j/k walk into its messages; one open at a time</p>
+      <p class="why">Same select-to-expand gesture every row already has; no new state.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>Order inside an opened conversation?</h3>
+      <p class="pick">Newest first, like the rest of the shelf</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>What counts as one conversation?</h3>
+      <p class="pick">An email thread; an iMessage chat, split after a quiet gap</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <div class="mount">
+      <div class="app" role="img" aria-label="The opened FYI shelf: two collapsed conversations with message counts and rolled-up chips, one opened email thread showing its four messages, a single-message row unchanged, and Show more">
+        <section class="shelf">
+          <span class="tog"><span class="chev">›</span>FYI · 1,204 messages · no reply owed — open to review</span>
+          <div class="rows">
+
+            <div class="row">
+              <div class="l1"><span class="who">Climbing crew</span><span class="mt">· iMessage · 14:02 <span class="nw">· 12 messages</span></span></div>
+              <p class="ask"><span class="by">Sam:</span> see you at the wall at 6, bringing the spare harness</p>
+              <div class="chips nw"><span class="bdg alert">Attachment · not read · 2</span></div>
+            </div>
+
+            <div class="row sel">
+              <div class="l1"><span class="who">Dana Whitfield, Lee Park +1</span><span class="mt">· Personal Gmail · 11:40 <span class="nw">· 4 messages</span></span></div>
+              <p class="ask" style="color:var(--foreground)">Re: Saturday potluck — final headcount</p>
+              <div class="chips nw"><span class="bdg rf">Refused</span></div>
+              <div class="kids nw">
+                <div class="row"><div class="l1"><span class="who">Dana Whitfield</span><span class="mt">· Personal Gmail · 11:40</span></div><p class="ask">Re: Saturday potluck — final headcount</p></div>
+                <div class="row"><div class="l1"><span class="who">Ana Ruiz</span><span class="mt">· Personal Gmail · 10:31</span></div><p class="ask">Re: Saturday potluck</p><div class="chips"><span class="bdg rf">Refused</span></div></div>
+                <div class="row"><div class="l1"><span class="who">Lee Park</span><span class="mt">· Personal Gmail · 08:12</span></div><p class="ask">Re: Saturday potluck — count me in, +1</p></div>
+                <div class="row"><div class="l1"><span class="who">Dana Whitfield</span><span class="mt">· Personal Gmail · Yesterday</span></div><p class="ask">Saturday potluck — who's in?</p></div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="l1"><span class="who">Mom</span><span class="mt">· iMessage · 09:47 <span class="nw">· 5 messages</span></span></div>
+              <p class="ask">Dad says the gutters are done 🎉</p>
+              <div class="chips nw"><span class="bdg acc">Priority person</span></div>
+            </div>
+
+            <div class="row">
+              <div class="l1"><span class="who">Chase</span><span class="mt">· Personal Gmail · 09:15</span></div>
+              <p class="ask">Your September statement is ready</p>
+            </div>
+
+            <span class="more">Show more (1,152 older)</span>
+          </div>
+        </section>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The opened FYI shelf. Dashed outlines are new: the message count, chips rolled up from inside a conversation, and the opened conversation's messages, newest first (one is Refused, so its parent says so). Chase is a one-message conversation and looks exactly as rows do today. "Mom" is this morning's burst only; yesterday's texts are their own row further down.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <ul>
+    <li>Grouping separate emails from one repeat sender (receipts, alerts).</li>
+    <li>Collapsing the ASAP / Today / Whenever tiers.</li>
+    <li>Acting on a whole conversation at once.</li>
+  </ul>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p><strong>The problem.</strong> The FYI shelf (<code>components/comms/fyi-shelf.tsx</code>, rendered by
+  <code>components/comms/comms-queue-view.tsx</code>) draws one <code>MessageRow</code> per shelved message, newest
+  first, 50 at a time. The owner reports it as "borderline unreadable" because every text in a busy chat and every
+  reply in an email thread gets its own row. In refinement the owner named the noise sources as <em>iMessage chats</em>
+  and <em>email threads</em>, not repeat senders. That makes the conversation, not the sender, the grouping key.</p>
+  <p><strong>What exists.</strong> Every <code>comm_messages</code> row has carried <code>thread_key</code> since migration
+  <code>0034_comms.sql</code>: Gmail's threadId; for IMAP the root of the References chain; for iMessage the chat guid.
+  An iMessage chat's key never changes, so grouping on it alone would merge 60 days of texting one person into one row.
+  The owner chose to split chats on a quiet gap (D1). Rows also carry <code>chat_name</code> and
+  <code>participants</code>. <code>comm_accounts.kind</code> (<code>gmail | imap | imessage</code>) says which rule
+  applies.</p>
+  <p><strong>How the shelf loads.</strong> The store holds every queued row and only a page of the shelf.
+  <code>readShelfPage</code> in <code>lib/data/comms.ts</code> walks the newest <code>limit</code> shelf rows
+  (<code>SHELF_PAGE_SIZE</code> = 50, growing by 50 on "Show more") and returns the shelf's total message count. Message
+  paging can cut a conversation in half at the page edge. D7 handles that.</p>
+  <p><strong>Epic.</strong> ALF-7 Q-"unit of the queue" anticipated this: the unit stays the message, and rolling up by
+  <code>thread_key</code> "becomes a query and a view, a change to C and O, not a migration". This story applies that to
+  the shelf only, and needs no migration. It honours D6 (the shelf stays unbadged and collapsed; its summary stays a
+  sentence), D24/D25 (flagged rows stay visible; see D5) and D3 (the queue is untouched).</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>What counts as one conversation? · settled</h3>
+    <p>A conversation is the shelved messages that share <code>(account_id, thread_key)</code>. For an account whose
+    <code>kind</code> is <code>imessage</code>, that set is also split wherever two consecutive shelved messages (by
+    <code>received_at</code>) are more than the gap (D2) apart. Email is never split by time, because a thread is
+    already a bounded unit. Considered: per-thread only (an iMessage chat becomes one 60-day row), split by calendar
+    day (cuts a conversation that runs past midnight), and grouping by sender (helps receipts and alerts, but the owner
+    said those aren't the noise; listed under Not doing).</p>
+    <p>The gap is measured between <em>shelved</em> messages only. Queued and outbound rows in the same chat are not
+    read. That keeps the rule a pure function of the rows the shelf holds, so client and server can never disagree. One
+    consequence: a queued message in the middle of a chat burst doesn't split the burst around it.</p>
+  </section>
+
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>How long a silence splits a chat? · proposed</h3>
+    <p><code>CONVERSATION_GAP_MS = 6 * 60 * 60 * 1000</code> in the new <code>lib/comms/conversations.ts</code>. A gap of
+    exactly 6 h keeps the messages together; anything longer splits them. Six hours separates an evening's exchange
+    from the next morning's but keeps one afternoon's back-and-forth whole. Considered: 2 h (a slow conversation
+    fragments) and 12 h (a morning and an evening chat merge). This is a constant, not a setting. Retuning it is a
+    one-line change.</p>
+  </section>
+
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>Order inside an opened conversation? · settled</h3>
+    <p><strong>Newest first.</strong> It matches every other list in the module, so the shelf reads in one direction
+    all the way down. The newest message, which the collapsed row already showed, sits directly under the header, and
+    <code>j</code> from the header lands on it. <code>j</code>/<code>k</code> walk the messages in the drawn order (D6).</p>
+    <p>Considered: oldest first, which reads like the chat, at the cost of reversing direction inside a newest-first
+    shelf.</p>
+  </section>
+
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>What a collapsed conversation shows · proposed</h3>
+    <p>It keeps the row's two-line shape (Plate I), so the shelf still reads as one list:</p>
+    <ul>
+      <li><strong>Line 1, who:</strong> for an iMessage group chat (the daemon's own rule in <code>daemon/src/sources/imessage/normalize.ts</code>:
+      <code>chat_name</code> set or <code>participants.length &gt; 1</code>, where <code>participants</code> excludes the
+      owner), its <code>chat_name</code> when it has one, else up to two participant labels and "+N". Otherwise, the distinct sender
+      labels (<code>senderLabel</code>, so roster names win), newest first, up to two and then "+N". After that: the
+      account label, the newest message's time (<code>formatMessageTime</code>) and "· N messages" in the same muted
+      meta text.</li>
+      <li><strong>Line 2:</strong> the newest message's <code>askLine</code>. FYI rows rarely carry an ask, so for email
+      this falls through to the subject, which is the right line for a thread. When the conversation has more than one
+      sender, prefix the newest sender's label ("Sam: …") so a group chat's line is attributable.</li>
+      <li><strong>Line 3:</strong> the rolled-up chips (D5).</li>
+    </ul>
+    <p>The count is prose in the meta line, not a <code>Badge</code>. The shelf is unbadged by D6 because a number in a
+    pill reads as debt, and a dozen pills down the shelf would reintroduce exactly that. Considered: leading with the
+    subject or chat name as a title line (adds a third line to every conversation), and a "+11" pill (a badge).</p>
+  </section>
+
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>Can a collapsed conversation hide a warning? · proposed</h3>
+    <p>No. The collapsed row shows the union of its messages' chips, each with a count when more than one message
+    carries it ("Attachment · not read · 2"). The rollup covers Re-run pending, Priority person, Unjudged, Attachment ·
+    not read, Body · not decoded, Refused and Filtered. Priority person is never counted, since it describes a sender.
+    Chip order matches <code>RowMarkers</code>.</p>
+    <p>The <strong>expiry</strong> chip ("Deleted in N days") does <em>not</em> roll up. In any conversation older than
+    53 days its oldest message always carries one, so it would sit on most old conversations and say nothing. It stays
+    on the message rows inside, where it says which message is about to go.</p>
+    <p>Why roll up at all: D24/D25 put refused, filtered and unreadable messages on the shelf <em>with a visible
+    flag</em>, and the epic is explicit that "a flag only helps someone who looks". Collapsing a refused message into a
+    conversation that shows no sign of it would undo that.</p>
+  </section>
+
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>How a conversation opens · proposed</h3>
+    <p>A conversation is open exactly when it, or one of its messages, is the view's selected row. No separate
+    expansion state: the existing <code>selectedId</code> in <code>CommsQueueView</code> drives it, the same way a
+    message row's detail opens when it's selected. Clicking the conversation header toggles its selection, like a row.
+    <code>j</code>/<code>k</code> step onto the header (opening it), then into its messages, then past it (closing it).
+    Only one conversation is open at a time, because only one row is ever selected. The verb hotkeys
+    (<code>o</code>/<code>i</code>/<code>x</code>/<code>t</code>) do nothing on a selected header. Verbs belong to
+    messages. Considered: independent per-conversation open state (lets several be open, but then <code>j</code>/<code>k</code>
+    need a second notion of "open", and opening a conversation becomes a step separate from selecting it).</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+
+  <section class="rec" id="d7">
+    <h4>D7 · The server never splits a conversation across a page</h4>
+    <p><code>readShelfPage</code> keeps paging by message but <em>completes</em> the last conversation it reached. After
+    the walk, if the last page came back full, it reads that oldest held row's remaining shelved rows: same
+    <code>account_id</code> and <code>thread_key</code>, <code>received_at &lt;=</code> the oldest held row's (with
+    <code>&lt;=</code> plus an id dedupe, to survive ties), within the window, with the same eligibility filter. It then
+    keeps only the rows that <code>groupConversations</code> places in the same conversation as that oldest held row.
+    So every conversation the client holds is whole, its count is exact, and "Show more" only ever adds conversations
+    below the last one.</p>
+    <p>The gap rule lives once, in TypeScript, shared by the server read and the view. Considered: a Postgres function
+    that pages by conversation (window functions over <code>lag(received_at)</code>). That's a migration plus a second
+    copy of the gap rule in SQL that must match the TS one. The repo already pays that cost once
+    (<code>SHELF_ELIGIBLE_FILTER</code> ↔ <code>isShelfEligible</code>) and this doesn't need to. Also considered:
+    grouping client-side over raw message pages. That's simplest, but the oldest conversation's count would be low and
+    "Show more" would grow it in place instead of appending.</p>
+  </section>
+
+  <section class="rec" id="d8">
+    <h4>D8 · "Show more" always moves forward</h4>
+    <p>Completion (D7) can return more than <code>limit</code> rows. <code>showMoreShelf</code> therefore sets the next
+    limit to <code>max(limit + SHELF_PAGE_SIZE, heldShelfRows + SHELF_PAGE_SIZE)</code>, still capped at
+    <code>SHELF_LIMIT_MAX</code> and the shelf's last page. Without this, a page completed past the next limit would make
+    the button a no-op. The button's label keeps counting messages (<code>Show more (N older)</code>), and the shelf
+    summary keeps its message count, so neither needs a server-side conversation count.</p>
+  </section>
+
+  <section class="rec" id="d9">
+    <h4>D9 · A conversation's identity is its oldest message</h4>
+    <p><code>id = 'conv:' + oldest.id</code>. A new message joining the conversation doesn't change it, and loading more
+    pages doesn't either (conversations arrive whole, D7), so an open conversation stays open through a live re-read.
+    The prefix keeps it disjoint from message ids in <code>orderedIds</code>. Known edge: promoting the oldest message
+    out of an open conversation changes the id and closes it. That's acceptable, because the owner just acted on that
+    message and it has left the shelf.</p>
+  </section>
+
+  <section class="rec" id="d10">
+    <h4>D10 · Chips become data before they become badges</h4>
+    <p>Extract <code>RowMarkers</code>' decision list into a pure <code>rowMarkerKinds(message, people, now, shelved)</code>
+    in <code>lib/comms/markers.ts</code>, returning ordered kinds (<code>'rerun-pending' | 'priority' | …</code>).
+    <code>RowMarkers</code> renders one message's kinds. The conversation header renders a rollup:
+    <code>rollUpMarkers(messages, …)</code> counts kinds across messages and drops <code>'expiry'</code>. A single
+    label/variant map renders both, so a chip can't look different on a conversation and on its message.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Situation</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Conversation of one message</td><td>Rendered as today's <code>MessageRow</code>, unchanged: no count, no header (Plate I, Chase).</td></tr>
+      <tr><td>Conversation of 2+</td><td>One header row (D4, D5). Opening it reveals its messages as full shelf <code>MessageRow</code>s, indented under a left rule, newest first (D3).</td></tr>
+      <tr><td>Same <code>thread_key</code>, different accounts</td><td>Separate conversations: <code>thread_key</code> is per account.</td></tr>
+      <tr><td>iMessage, two shelved messages &gt; 6 h apart</td><td>Separate conversations (D1, D2). Exactly 6 h stays together.</td></tr>
+      <tr><td>Email thread spanning weeks</td><td>One conversation.</td></tr>
+      <tr><td>Account row missing (no <code>comm_accounts</code> match)</td><td>Treated as not iMessage: no time split.</td></tr>
+      <tr><td>Order of conversations</td><td>By newest message, descending; ties broken by that message's id ascending (matches the server's order).</td></tr>
+      <tr><td>Promote a message out of an open conversation (tier picker)</td><td>The message exits with its existing animation and the conversation's count drops. At one message it renders as a plain row. If it was the oldest, the conversation closes (D9).</td></tr>
+      <tr><td>Live re-read adds a message to a conversation</td><td>It joins (if within the gap for iMessage). An open conversation stays open (D9).</td></tr>
+      <tr><td><code>j</code>/<code>k</code></td><td>Walk queued rows, then (shelf open) each conversation header or single row. An open conversation's messages come after its header in drawn order (D6). Esc deselects, which closes it.</td></tr>
+      <tr><td>Verb hotkeys on a selected header</td><td>No-op (D6). On a selected message inside, unchanged from today's shelf rows.</td></tr>
+      <tr><td>Shelf summary and "Show more"</td><td>Still count messages (D8). The shelf stays unbadged and lazily mounted.</td></tr>
+      <tr><td>Reduced motion</td><td>The open/close reuses <code>AnimatedHeightCollapse</code>, which already honours it.</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Accessibility.</strong> The header is a <code>ClickableCard</code> with <code>aria-expanded</code> and
+  <code>aria-controls</code> pointing at the message list. Its accessible name includes the who-line and "N messages",
+  so a screen reader hears the count that sighted users read in the meta line.</p>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <p>No schema change, no migration, no route change. The snapshot's shape is unchanged: <code>messages</code> just
+  contains whole conversations. <code>GET /api/comms/messages?scope=shelf</code> and <code>fetchCommMessages</code>
+  have no callers and are left as they are.</p>
+<pre>// lib/comms/conversations.ts (new; exported through lib/comms/index.ts)
+export const CONVERSATION_GAP_MS = 6 * 60 * 60 * 1000;
+
+export interface ShelfConversation {
+  /** 'conv:' + the oldest message's id, messages.at(-1) (D9). */
+  id: string;
+  /** Newest → oldest, the order they are drawn in (D3). */
+  messages: CommMessage[];
+  /** messages[0]: what the collapsed row shows. */
+  newest: CommMessage;
+}
+
+/** Group shelf rows into conversations (D1), newest conversation first. */
+export function groupConversations(
+  shelf: CommMessage[],
+  accounts: Pick&lt;CommAccount, 'id' | 'kind'&gt;[],
+): ShelfConversation[];
+
+// lib/comms/markers.ts (D10)
+export type RowMarkerKind =
+  | 'rerun-pending' | 'priority' | 'unjudged' | 'attachment'
+  | 'decode-failed' | 'expiry' | 'refused' | 'filtered';
+export function rowMarkerKinds(message, people, now, shelved): RowMarkerKind[];
+export function rollUpMarkers(messages, people, now): { kind: RowMarkerKind; count: number }[];</pre>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <p>Read the <code>frontend-architecture</code>, <code>data-flow</code>, <code>react</code>, <code>motion</code> and
+  <code>react-testing-library</code> skills first. Red/green TDD throughout.</p>
+  <ol>
+    <li><strong>Rule.</strong> <code>lib/comms/conversations.ts</code> + test: <code>groupConversations</code> (D1, D2,
+    D9, ordering). Pure, no React.</li>
+    <li><strong>Markers.</strong> Extract <code>rowMarkerKinds</code>/<code>rollUpMarkers</code> into
+    <code>lib/comms/markers.ts</code> (D10). Make <code>RowMarkers</code> render from kinds, and move the kind → label/variant
+    map into one place both renderers import. The existing <code>RowMarkers</code> behaviour must not change, and its
+    tests stay green untouched.</li>
+    <li><strong>Server completion.</strong> In <code>readShelfPage</code> (<code>lib/data/comms.ts</code>), after the walk,
+    complete the oldest conversation (D7). It needs the account kinds: <code>readCommsSnapshot</code> already reads the
+    accounts, so pass them in. Use <code>readAllPages</code> for the completion read so a huge thread can't hit the
+    1000-row cap.</li>
+    <li><strong>Store.</strong> <code>showMoreShelf</code> limit rule (D8) in <code>lib/stores/comms-store.tsx</code>.</li>
+    <li><strong>Component.</strong> New <code>components/comms/shelf-conversation.tsx</code> (header + collapse + child
+    rows passed in as <code>children</code>, so the view keeps owning <code>renderRow</code>). Put its classes in
+    <code>message-row.styles.ts</code> beside the row's: reuse <code>rowShellClass(selected, true)</code> for the header,
+    and add <code>conversationKidsClass</code> = <code>'ml-3 flex flex-col border-l border-border/60 pl-2 mt-2'</code>.
+    Keep it under the component size limit in the <code>frontend-architecture</code> skill.</li>
+    <li><strong>View.</strong> In <code>CommsQueueView</code>: <code>conversations = useMemo(groupConversations(shelf,
+    accounts))</code>. Render single-message conversations through <code>renderRow</code>, the rest through
+    <code>ShelfConversation</code>. Rebuild <code>orderedIds</code> from the conversations (D6). Derive "open" as
+    <code>selectedId === c.id || c.messages.some(m =&gt; m.id === selectedId)</code>.</li>
+    <li><strong>Fixtures and stories.</strong> Give <code>comms-queue-view.stories.tsx</code>'s shelf fixture real
+    conversations: an iMessage burst pair split by &gt; 6 h, a 4-message email thread with one refused message, and
+    single rows. Add a shelf-open story with one conversation open.</li>
+    <li><strong>E2E</strong>, then the demo doc.</li>
+  </ol>
+  <p>Small enough for one session. No subagents needed.</p>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D1 P1">Opening FYI shows one row per conversation: shelved messages sharing account + <code>thread_key</code> collapse into one row.</li>
+    <li data-trace="D1 D2">iMessage shelved messages more than 6 h apart in the same chat are separate conversations; exactly 6 h apart stays one. Email is never split by time.</li>
+    <li data-trace="D4 P1">A one-message conversation renders exactly as today's shelf row.</li>
+    <li data-trace="D4 P1">A collapsed conversation shows who (chat name or up to two names + "+N"), account, newest time, "· N messages" as meta text (not a badge), and the newest message's line, prefixed "Sender:" when there are several senders.</li>
+    <li data-trace="D5 P1">A collapsed conversation shows each chip any of its messages carries, with a count when more than one does. Priority person is uncounted; the expiry chip doesn't roll up.</li>
+    <li data-trace="D3 P1">An opened conversation lists its messages as full shelf rows (tier picker included), indented, newest first.</li>
+    <li data-trace="D6">Selecting a conversation opens it. <code>j</code>/<code>k</code> walk onto it, through its messages and past it, and only one is open at a time. Esc closes it. Verb hotkeys do nothing on its header.</li>
+    <li data-trace="D7 D8">A conversation is never cut by a page edge (its count is exact on first load), and "Show more" always appends at least one new conversation while older ones remain.</li>
+    <li data-trace="impl">Promoting a message out of a conversation removes just that message; at one remaining message the conversation renders as a plain row.</li>
+    <li data-trace="impl">The shelf summary, its unbadged collapsed state and its lazy mount are unchanged.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><strong>Jest, <code>lib/comms/conversations.test.ts</code></strong> (new): grouping key, per-account separation,
+    gap boundary at exactly 6 h and 6 h + 1 ms, email never split, conversation order with ties, inner order newest first, id
+    stability when a newer message joins.</li>
+    <li><strong>Jest, <code>lib/comms/markers.test.ts</code></strong>: <code>rowMarkerKinds</code> order;
+    <code>rollUpMarkers</code> counts, drops expiry, keeps priority uncounted.</li>
+    <li><strong>Jest, <code>lib/data/comms.test.ts</code></strong>: completion pulls the rest of a thread past the page
+    edge; for iMessage it stops at the gap; ties at the boundary aren't lost or duplicated; a short page triggers no
+    completion read.</li>
+    <li><strong>RTL, <code>lib/stores/comms-store.test.tsx</code></strong>: D8's limit jump.</li>
+    <li><strong>RTL, <code>components/comms/comms-queue-view.test.tsx</code></strong>: collapsed conversation rows and
+    counts; single-message row unchanged; click to open and close; <code>j</code>/<code>k</code> traversal into and past
+    an open conversation; rolled-up chips; promotion shrinks a conversation to a plain row.</li>
+    <li><strong>Storybook</strong>: a <code>ShelfConversation</code> story (collapsed / open, with a play function
+    toggling it) and the queue view's shelf-open story. Snapshots move, so approve them per the <code>storybook</code>
+    skill.</li>
+    <li><strong>Playwright, <code>e2e/comms-queue.spec.ts</code></strong>: seed a 3-message email thread and two iMessage
+    bursts into FYI, open the shelf, assert three conversation rows (thread "3 messages", bursts separate), open the
+    thread and see its three messages.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the <code>showboat</code> skill's evidence rules. Capture the opened shelf before and after on the same
+  seeded data (the "every message its own row" state against conversations), an opened conversation, and the moved
+  Storybook snapshot diff images. Store the doc at <code>docs/demos/comms/fyi-conversations.md</code>.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><strong>Repeat senders</strong> (out). The owner said receipts and alerts aren't the noise. If they become it,
+    sender grouping is a second key over these conversations, not a replacement.</li>
+    <li><strong>Queue tiers</strong> (out). The unit of the queue is ALF-7's largest open question, tangled with reply
+    detection and tier conflicts. This story doesn't answer it by accident.</li>
+    <li><strong>Whole-conversation verbs</strong> (out). Re-tiering a whole conversation would write N corrections from
+    one gesture into the example set (D11), which deserves its own decision.</li>
+    <li><strong>Risk: one huge burst.</strong> A 300-text group-chat evening is one conversation and one completion
+    read. It's bounded by the shelf's own size and paged by <code>readAllPages</code>, so it costs more but stays
+    correct.</li>
+  </ul>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
