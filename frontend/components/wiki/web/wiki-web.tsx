@@ -86,8 +86,8 @@ function keyTarget(key: string, index: number, count: number): number | undefine
  * the stage — fits every dot as the web settles, until the reader zooms or pans; a Fit button
  * then hands it back. Dots and names keep their screen size at every zoom, so zooming spreads
  * the web out rather than blowing it up. Hovering a node, or reaching it from the keyboard,
- * lights its neighbourhood and names it, and the day's concept steps back to an ordinary dot; from 1:1 up, every node on the stage is named where
- * names don't collide. A click opens the page; the gestures are in `use-wiki-web-gestures.ts`.
+ * lights its neighbourhood and names it, and the day's concept steps back to an ordinary dot;
+ * from 1:1 up, every node on the stage is named where names don't collide. A click opens the page; the gestures are in `use-wiki-web-gestures.ts`.
  *
  * The web is one tab stop: arrow keys, Home and End walk the nodes in index order.
  */

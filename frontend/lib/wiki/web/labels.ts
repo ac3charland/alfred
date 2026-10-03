@@ -130,8 +130,8 @@ function byImportance(a: { node: LabelNode; role: Role }, b: { node: LabelNode; 
  * day's concept at rest; the caller decides — and `neighbours` its neighbours' ids. The day's
  * concept has no place of its own here: while another dot is lit it is named only as any other
  * dot would be. The candidates are the lit dot, its neighbours and, once `scale` reaches
- * `allNamesScale`, every dot whose centre is on the stage. A neighbour's name is set outward from the lit dot
- * ({@link outward}); every other name centres under its dot. A name that would cross the
+ * `allNamesScale`, every dot whose centre is on the stage. A neighbour's name is set outward
+ * from the lit dot ({@link outward}); every other name centres under its dot. A name that would cross the
  * stage's left or right side is kept inside ({@link kept}).
  *
  * Names are placed greedily, most important first — by role, then most links, then id, so the
