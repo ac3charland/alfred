@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-322 — Summarization types in the Reader</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p2:has([value=b]:checked) [data-opt=a],#p2:has([value=c]:checked) [data-opt=a],
+#p2:has([value=a]:checked) [data-opt=b],#p2:has([value=c]:checked) [data-opt=b],
+#p2:has([value=a]:checked) [data-opt=c],#p2:has([value=b]:checked) [data-opt=c]{display:none}
+
+/* The app's tokens, from frontend/app/globals.css; row chrome from post-row.styles.ts, cards from
+   publications.styles.ts, chips from toggle-button.tsx / badge.tsx, the popover from popover.tsx. */
+@font-face{font-family:"Geist";font-weight:100 900;font-display:swap;
+  src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-sans.woff2) format("woff2")}
+.app{--bg:#0a0e17;--fg:#e8edf5;--surface:#0f1626;--border:#1e2a3f;--mutedfg:#8a96a8;--secondary:#1e2a3f;
+  --teal:#4fd1e0;--green:#34d399;--amber:#f0b429;--red:#f87171;--pop-bg:#0d1320;--pop-border:#25324a;
+  --radius:.5rem;
+  background:var(--bg);color:var(--fg);overflow:hidden;padding:18px;border-radius:10px;
+  font:14px/1.45 "Geist",system-ui,sans-serif}
+.app *{box-sizing:border-box}
+.app code{font:12px ui-monospace,monospace;background:var(--secondary);color:var(--fg);padding:0 3px;border-radius:3px}
+.app .a-head{font:600 12px/1 "Geist",system-ui;letter-spacing:.12em;text-transform:uppercase;color:var(--mutedfg);margin:4px 0 8px}
+.app .a-card{display:flex;flex-direction:column;gap:12px;border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:16px;margin-bottom:12px}
+.app .a-rowline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.app .a-name{font-weight:500;font-size:14px}
+.app .a-badge{display:inline-flex;align-items:center;border:1px solid rgba(30,42,63,.7);color:var(--mutedfg);border-radius:6px;padding:1px 7px;font-size:12px}
+.app .a-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);color:var(--mutedfg);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:500}
+.app .a-chip.is-new{border-color:rgba(52,211,153,.6);color:var(--green);background:rgba(52,211,153,.1)}
+.app .a-toggle{margin-left:auto;display:inline-flex;border:1px solid rgba(79,209,224,.6);background:rgba(79,209,224,.1);color:var(--teal);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:500}
+.app .a-sub{font-size:12px;color:var(--mutedfg)}
+.app .a-pop{position:relative;width:236px;margin:-4px 0 0 120px;border:1px solid var(--pop-border);background:var(--pop-bg);border-radius:12px;padding:4px;box-shadow:0 18px 40px -12px rgba(0,0,0,.7)}
+.app .a-opt{display:flex;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:2px;font-size:13px}
+.app .a-opt small{display:block;color:var(--mutedfg);font-size:11.5px;line-height:1.35}
+.app .a-opt .ck{color:var(--teal)}
+.app .a-cand{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid rgba(30,42,63,.7);border-radius:8px;padding:8px 12px}
+.app .a-btn{display:inline-flex;align-items:center;gap:6px;border-radius:2px;padding:6px 12px;font-size:13px;font-weight:500;background:var(--teal);color:var(--bg);white-space:nowrap}
+.app .a-row{border:1px solid transparent;border-radius:8px;padding:8px 12px;margin-bottom:6px}
+.app .a-row.is-open{border-color:rgba(52,211,153,.6);background:rgba(30,42,63,.4)}
+.app .a-row.is-dim{opacity:.7}
+.app .a-eyebrow{font-size:12px;font-weight:600;color:var(--green)}
+.app .a-meta{font-size:12px;color:var(--mutedfg)}
+.app .a-title{margin-top:6px;font:18px/1.3 "Instrument Serif",Georgia,"Times New Roman",serif;color:var(--fg)}
+.app .a-gist{margin-top:4px;font-size:14px;line-height:1.6}
+.app .a-verbs{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.app .a-verb{font-size:13px;font-weight:500;padding:4px 8px;border-radius:2px;color:var(--fg)}
+.app .a-verb.is-send{background:var(--teal);color:var(--bg)}
+.app .a-verb.is-quiet{color:var(--mutedfg)}
+.app .a-panel{margin-top:12px;border-top:1px solid rgba(30,42,63,.6);padding-top:12px;display:flex;flex-direction:column;gap:12px}
+.app .a-sh{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mutedfg)}
+.app .a-tick{display:flex;gap:10px;align-items:flex-start;padding:4px 6px;font-size:14px}
+.app .a-box{width:16px;height:16px;border:1px solid var(--mutedfg);border-radius:3px;margin-top:3px;flex:none}
+.app .a-note{display:block;font-size:12px;color:var(--mutedfg)}
+.app .a-skip{font-size:13px;color:var(--mutedfg);list-style:disc;padding-left:20px;margin:4px 0 0}
+.app .a-skip li{margin:3px 0}
+.app .a-disc{font-size:13px;color:var(--mutedfg)}
+.app .a-find{display:flex;gap:8px;align-items:baseline;margin-top:6px;font-size:14px}
+.app .a-tag{flex:none;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:500;background:rgba(245,158,11,.15);color:#fbbf24}
+.app .a-tag.is-sec{background:rgba(248,113,113,.15);color:var(--red)}
+.app .a-filed{margin-top:4px;font-size:14px;font-style:italic;color:var(--mutedfg)}
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Reader · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>322</span><span class="sep"> — </span><span class="ttl">Summarization types in the Reader</span></h1>
+  <p class="change" id="change">Each publication gets a type — Essay, Roundup or Alerts — and the summariser asks a different question of each: what's new, which links are worth it, or is there anything I need to know.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d1">D1</a>Where does a type live?</h3>
+      <p class="pick">On the publication: Essay (default), Roundup, Alerts — chosen on its card, and when adding a candidate.</p>
+      <p class="why">A sender's mail is one kind; choosing per post would be a chore.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>What does a Roundup summary contain?</h3>
+      <p class="pick">Every linked item judged: worth-reading ones as the Further reading checklist, the rest listed as skipped.</p>
+      <p class="why">Reuses the existing send-to-Reader/Instapaper checklist; skipped items stay auditable.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>What does an Alerts summary show?</h3>
+      <p class="pick">Findings on the row, tagged Sale · Security · Action · Change; no Send; Overview keeps only the stamp.</p>
+      <p class="why">The finding is the whole value; hiding it behind a click wastes it.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>Does changing a type re-summarise old posts?</h3>
+      <p class="pick">No. Posts keep the type they were summarised under; Retry summary uses the current type.</p>
+      <p class="why">Epic D7: a summary never changes under you silently.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d5">D5</a>An Alerts post with nothing notable?</h3>
+      <p class="pick">Auto-archived, and its archive row says "Nothing notable — filed automatically".</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>What does Alerts look for?</h3>
+      <p class="pick">One fixed rubric for every Alerts publication — no per-publication "watch for".</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d7">D7</a>What does an Alerts post cost?</h3>
+      <p class="pick">Same model, same 30-a-day ceiling as every post.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <div class="mount">
+      <div class="app" role="img" aria-label="A publication card with a type chip open on its three options, and a candidate row whose Add opens a menu of the three types">
+        <p class="a-head">Publications</p>
+        <div class="a-card">
+          <div class="a-rowline">
+            <span class="a-name">Import AI</span>
+            <span class="a-badge">auto</span>
+            <span class="a-chip is-new">Roundup ▾</span>
+            <span class="a-toggle">Enabled</span>
+          </div>
+          <div class="a-pop">
+            <div class="a-opt"><span>Essay<small>What's new, the evidence, the argument</small></span></div>
+            <div class="a-opt" style="background:rgba(30,42,63,.6)"><span>Roundup<small>Which linked items are worth reading</small></span><span class="ck">✓</span></div>
+            <div class="a-opt"><span>Alerts<small>Only sales, security, actions, changes — else archived</small></span></div>
+          </div>
+          <p class="a-sub">importai@substack.com · last post Oct 1</p>
+        </div>
+        <p class="a-head" style="font-size:11px;letter-spacing:.06em;opacity:.7">Candidates — bulk senders not on the roster · last 30 days</p>
+        <div class="a-cand">
+          <div><div class="a-name">Amazon.com</div><div class="a-sub">store-news@amazon.com</div><div class="a-sub">22 messages · last Oct 2</div></div>
+          <span class="a-btn">+ Add as ▾</span>
+        </div>
+        <div class="a-pop" style="margin:4px 0 0 auto;width:150px">
+          <div class="a-opt"><span>Essay</span></div>
+          <div class="a-opt"><span>Roundup</span></div>
+          <div class="a-opt"><span>Alerts</span></div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b> The type chip sits between the provenance badge and the pause toggle (D1); a candidate's Add asks for a type, so a promo sender is never claimed as an essay. Essay cards show "Essay ▾" in the same muted chip; only the open chip takes the green.</figcaption>
+  </figure>
+
+  <figure class="plate" id="p2">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p2" value="a" checked>Roundup, overview open</label>
+      <label><input type="radio" name="p2" value="b">Alerts, notable</label>
+      <label><input type="radio" name="p2" value="c">Alerts, filed (archive)</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="Reading-list rows for a Roundup and an Alerts post, and an auto-archived Alerts row">
+        <div data-opt="a">
+          <div class="a-row is-open">
+            <div class="a-eyebrow">Import AI <span class="a-meta">· Oct 1 · 9 min</span></div>
+            <div class="a-title">Import AI 418: robot dexterity, eval saturation, and a chip export rule</div>
+            <div class="a-gist">Eleven items; three are worth your time — a dexterity benchmark with a real sim-to-real gap, an eval-saturation survey with new data, and the export rule's actual text. The rest are release notes you've seen.</div>
+            <div class="a-panel">
+              <div class="a-sh">Worth reading · 3</div>
+              <div class="a-tick"><span class="a-box"></span><span>DexBench: sim-to-real for folding ↗<span class="a-note">The 30–40 point gap that scaling the simulator doesn't close.</span></span></div>
+              <div class="a-tick"><span class="a-box"></span><span>Saturation of public evals, 2024–26 ↗<span class="a-note">First dataset tracking how fast new benchmarks top out.</span></span></div>
+              <div class="a-tick"><span class="a-box"></span><span>BIS interim final rule ↗<span class="a-note">The primary source; the issue's own take is one paragraph.</span></span></div>
+              <div><div class="a-disc">▾ Skipped · 8</div>
+                <ul class="a-skip"><li>Model X 2.1 release notes — incremental, covered everywhere.</li><li>"10 prompts for agents" — listicle, nothing new.</li><li>…</li></ul></div>
+            </div>
+            <div class="a-verbs"><span class="a-verb is-send">Send to Instapaper</span><span class="a-verb">Hide overview</span><span class="a-verb">Archive</span></div>
+          </div>
+        </div>
+        <div data-opt="b">
+          <div class="a-row">
+            <div class="a-eyebrow">Patagonia <span class="a-meta">· Oct 2 · 2 min</span></div>
+            <div class="a-title">Worn Wear fall event</div>
+            <div class="a-find"><span class="a-tag">Sale</span><span>40% off used outerwear, members only.</span></div>
+            <div class="a-find"><span class="a-tag">Action</span><span>Trade-in credit doubles if you book by Oct 12.</span></div>
+            <div class="a-verbs"><span class="a-verb">Overview</span><span class="a-verb">Archive</span></div>
+          </div>
+          <div class="a-row">
+            <div class="a-eyebrow">Acme Bank <span class="a-meta">· Oct 2 · 1 min</span></div>
+            <div class="a-title">Important information about your account</div>
+            <div class="a-find"><span class="a-tag is-sec">Security</span><span>New device sign-in from Lisbon on Oct 2 — if not you, reset now.</span></div>
+            <div class="a-verbs"><span class="a-verb">Overview</span><span class="a-verb">Archive</span></div>
+          </div>
+        </div>
+        <div data-opt="c">
+          <p class="a-head">Archive</p>
+          <div class="a-row is-dim">
+            <div class="a-eyebrow">Amazon.com <span class="a-meta">· Oct 2 · 1 min</span></div>
+            <div class="a-title">Recommended for you: kitchen picks</div>
+            <div class="a-filed">Nothing notable — filed automatically.</div>
+            <div class="a-verbs"><span class="a-verb">Overview</span><span class="a-verb">Unarchive</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate II.</b> Essay rows are unchanged. A Roundup's overview is the Further reading checklist plus a Skipped list, collapsed by default and drawn open here (D2); an Alerts row carries its findings inline and no Send; its Overview opens only the summary stamp, Original and Retry (D3); a nothing-notable Alerts post never reaches the list and reads like this in the archive (D5).</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>No per-publication criteria, no auto-detected type, no bulk re-summarise when a type changes.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul>
+    <li>Adding a promo sender as Alerts claims its mail off the Comms FYI shelf (epic D14).</li>
+    <li>Only bulk senders become candidates; most bank security mail has no list header.</li>
+    <li>Each Alerts post spends one of the 30 daily summaries (D7).</li>
+  </ul>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p><b>The problem (ticket).</b> The summariser is one size fits all: every post is read as an argumentative essay — novel ideas, evidence, the argument. Two other kinds of mail don't fit. A <i>link roundup</i>'s value is which of its links are worth clicking, not the issue's own claims. A <i>corporate newsletter or account notice</i> is a needle-in-a-haystack: almost always noise, occasionally a sale or a security issue. The owner wants to classify publications by kind and have the summariser's prompt change accordingly.</p>
+  <p><b>What exists.</b> The Reader epic (<code>docs/specs/epics/ALF-232.html</code>) shipped both stories plus follow-ons (Instapaper intake, Further reading, wiki picks, research reports). Relevant pieces:</p>
+  <ul>
+    <li><code>workers/src/reader/prompt.ts</code> — one static <code>SYSTEM_PROMPT</code>, <code>READER_PROMPT_VERSION = 2</code>, <code>buildReaderRequest(post)</code>. Its Further reading clause already half-handles roundups ("in a roundup, pick the few items with real substance").</li>
+    <li><code>workers/src/reader/schema.ts</code> — <code>READER_SUMMARY_SCHEMA</code>, the <code>isReaderSummary</code> guard, <code>normalizeReaderSummary</code> (caps, link-number → URL mapping).</li>
+    <li><code>workers/src/reader/summarize.ts</code> — <code>summarizePost(post, config)</code>, the outcome taxonomy (epic D10). Model/thinking/effort settings stay as they are (epic D8, this spec's D7).</li>
+    <li><code>workers/src/reader/scheduled.ts</code> — the tick. <code>readRoster</code> reads <code>id,name</code> once per tick; <code>prepareFresh</code> / <code>prepareRetry</code> build the <code>SummaryInput</code>; <code>applyOutcome</code> writes the <code>done</code> patch.</li>
+    <li><code>reader_publications</code> (migration 0035) and <code>v_reader_publications</code> (0036, an explicit column list — it must be recreated to expose a new column).</li>
+    <li>Frontend: <code>components/reader/publications-card.tsx</code>, <code>publications-candidates.tsx</code>, <code>lib/stores/reader-settings-store.tsx</code>, <code>app/api/reader/publications/**</code>; the row in <code>components/reader/post-row.tsx</code>, its panel <code>post-overview.tsx</code>, <code>further-reading.tsx</code>; the guards in <code>lib/reader/overview.ts</code>; the further-reading and wiki send routes, which read <code>post.overview</code> through <code>isReaderOverview</code>.</li>
+  </ul>
+  <p><b>The owner's answers in refinement:</b> a nothing-notable Alerts post is auto-archived (D5); Alerts uses one generic rubric, no per-publication criteria (D6); Alerts posts use the same model and the same daily ceiling (D7).</p>
+  <p><b>Where this departs from the epic.</b> Epic §4's publications plate calls the Amazon candidate "the point: it is a candidate, and it stays one." This ticket deliberately makes promo senders legitimate roster members — as Alerts, which is cheap to read and auto-files the noise. Epic D7 (static prompt, no owner rubric) holds: the prompts are still static and versioned; the owner picks between three, not edits one.</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>Where does a type live? · proposed</h3>
+    <p>Considered: per-post auto-classification by the model (a billed judgment nobody can audit, and the epic's D4 reasoning against it applies verbatim); per-post owner override (a chore on fifty posts a day). A sender's mail is overwhelmingly one kind, and the roster is already the place the owner states intent about a sender. The candidate Add asks for the type because promotion claims the last seven days of that sender's mail on the very next tick — an Add that defaulted to Essay would spend summaries reading Amazon promos as essays before the owner could change it. Names: Essay (today's prompt; the default, so every existing publication keeps its behaviour), Roundup, Alerts.</p>
+  </section>
+
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>What does a Roundup summary contain? · proposed</h3>
+    <p>The model judges every substantive linked item in the issue (worth reading in full, or not, with a one-line why). Worth-reading items are stored as <code>overview.further_reading</code>, so the existing checklist — send to Reader, send to Instapaper, sent marks in <code>further_sent_reader</code> / <code>further_sent_instapaper</code> — works with no new UI and no new columns. Skipped items are stored as <code>overview.skipped</code> (title + why) and drawn collapsed, so the owner can audit a verdict. Considered: a three-level verdict (read / skim / skip) — more taste for the model to get wrong, and "skim" has no verb; a ranked list with no verdict — pushes the judgment back to the owner, which is the work the ticket wants gone. The gist becomes "N items; these K are worth it and why".</p>
+  </section>
+
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>What does an Alerts summary show? · proposed</h3>
+    <p>An Alerts post that survives (D5) exists only because something in it matters, so its findings are the row's body, each prefixed with a category tag. The panel machinery is kept, not special-cased: the row's done-state panel already holds the summary stamp, Original and Retry summary, and an Alerts row keeps that — it simply has no overview sections above the footer. Send to Instapaper is dropped for Alerts rows: there is nothing to read later in a sale notice. Category tags reuse <code>Badge</code>'s <code>alert</code> variant (amber) and <code>destructive</code> for Security. The gist is still written (one line) and stored — the list never renders it for Alerts rows, but the eval script and the archive's screen-reader label use it.</p>
+  </section>
+
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>Does changing a type re-summarise old posts? · proposed</h3>
+    <p>Epic D7: "a summary that changes under the owner is indistinguishable from a bug." Each post records the kind it was summarised under (D8), and renders by that, not by its publication's current type. Retry summary is the explicit path: a re-run reads the publication's <em>current</em> type, so "switch Import AI to Roundup, then retry last week's issue" works. Considered: re-summarising the publication's last N posts on change — a burst against the 30/day ceiling triggered by a dropdown.</p>
+  </section>
+
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>An Alerts post with nothing notable? · settled</h3>
+    <p>The <code>done</code> patch for an Alerts post with zero findings also sets <code>archived_at</code>. It lands in <code>/reader/archive</code>, never on the reading list, and is recoverable there. Its row draws "Nothing notable — filed automatically." instead of a gist, derived from <code>summary_kind = 'alerts'</code> plus an empty findings list — no extra column. An Alerts post <em>with</em> findings leaves <code>archived_at</code> untouched, so a re-summarise from the archive that now finds something does not unarchive it (the owner is looking at it already).</p>
+  </section>
+
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>What does Alerts look for? · settled</h3>
+    <p>One static rubric (§Behaviour): a sale or discount on something specific, a security or account-access event, an action required (with its deadline when stated), a change to price, terms or service. Generic marketing ("new arrivals", "recommended for you", newsletters' editorial filler) is never a finding. Per-publication criteria were declined: they would make the prompt non-static and reopen epic D7.</p>
+  </section>
+
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>What does an Alerts post cost? · settled</h3>
+    <p>Same <code>READER_MODEL</code>, same <code>summarizePost</code> call shape, same <code>READER_DAILY_CAP</code>. An Alerts post is short, so it is cheaper per call than an essay anyway. If promoted senders start tripping the ceiling, that is the signal to revisit with data.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+
+  <section class="rec" id="d8">
+    <h4>D8 · The kind is stamped on the post</h4>
+    <p><code>reader_posts.summary_kind</code> (nullable) is written in the <code>done</code> patch alongside <code>prompt_version</code>. Null means a summary written before this story — read as <code>essay</code> everywhere. Every overview reader (row, panel, further-reading route, wiki route) dispatches on it, never on the publication.</p>
+  </section>
+
+  <section class="rec" id="d9">
+    <h4>D9 · One static prompt and schema per kind; per-kind versions</h4>
+    <p><code>prompt.ts</code> holds three system prompts; the Essay prompt is byte-for-byte today's, so <code>READER_PROMPT_VERSIONS.essay</code> stays <code>2</code> and no existing summary looks stale. Roundup and Alerts start at <code>1</code>. <code>prompt_version</code> is read together with <code>summary_kind</code>; the stamp reads e.g. "roundup prompt v1". Each kind's system prompt is still static, so prompt caching is unaffected (three cache entries instead of one). The user turn (metadata block, text, numbered links) is shared.</p>
+  </section>
+
+  <section class="rec" id="d10">
+    <h4>D10 · Posts without a typed publication are Essays</h4>
+    <p>A research report is always <code>essay</code>. An Instapaper article uses its linked publication's type if it has one, else <code>essay</code>. A newsletter whose roster row has gone (retry path) falls back to <code>essay</code>.</p>
+  </section>
+
+  <section class="rec" id="d11">
+    <h4>D11 · Alerts has no separate "notable" flag</h4>
+    <p>The schema asks only for <code>findings</code>; an empty list <em>is</em> "nothing notable". A separate boolean would let the model contradict itself (notable with no findings), which then needs a tie-break rule.</p>
+  </section>
+
+  <section class="rec" id="d12">
+    <h4>D12 · The tick's roster read carries the type</h4>
+    <p><code>readRoster</code> selects <code>id,name,summary_kind</code> and returns <code>Map&lt;id, {name, kind}&gt;</code>. No new fetch, so the subrequest table in <code>READER_TICK_LIMIT</code>'s doc comment is unchanged.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <table>
+    <thead><tr><th></th><th>Essay (default)</th><th>Roundup</th><th>Alerts</th></tr></thead>
+    <tbody>
+      <tr><th>The model is asked</th><td>Today's prompt, unchanged</td><td>Judge each substantive linked item: worth reading in full, or not, and why</td><td>Find sale / security / action / change items; otherwise report none</td></tr>
+      <tr><th>gist</th><td>The claim + new-or-restatement</td><td>≤ 60 words: what the issue covers, which items are worth it</td><td>One line naming the finding(s), or "Nothing notable"</td></tr>
+      <tr><th>overview (stored)</th><td><code>novel_ideas, evidence, argument, who_should_read, further_reading</code></td><td><code>further_reading</code> (worth reading, ≤ 10), <code>skipped</code> (≤ 20, title + note)</td><td><code>findings</code> (≤ 5: category, detail, deadline?)</td></tr>
+      <tr><th>Row body</th><td>gist</td><td>gist</td><td>findings, one line each, tagged (P2 b)</td></tr>
+      <tr><th>Panel</th><td>as today</td><td>Further reading checklist, then "Skipped · N" collapsed, then footer (P2 a)</td><td>footer only: stamp, Original, Retry summary</td></tr>
+      <tr><th>Send to Instapaper</th><td>yes</td><td>yes</td><td>no</td></tr>
+      <tr><th>Wiki picks</th><td>yes</td><td>no</td><td>no</td></tr>
+      <tr><th>Nothing found</th><td>empty novel ideas line (today)</td><td>empty checklist; gist says so</td><td>auto-archived (D5), archive row reads "Nothing notable — filed automatically."</td></tr>
+    </tbody>
+  </table>
+  <p><b>Roundup prompt essentials.</b> An "item" is a linked piece the issue presents for the reader (not chrome, sponsors, the author's own back catalogue). Worth reading = substantive and likely new to a well-read person in the field; a press release, a listicle, a product launch already widely covered, or a link the issue fully summarises is not. Each judged item names the linked piece itself (not the anchor text) and a ≤ 20-word note on why. Link numbers come from the same numbered links block the Essay prompt uses; an item with no link can be mentioned in the gist only.</p>
+  <p><b>Alerts prompt essentials.</b> The reader only wants to know if this message requires or rewards attention. Findings are concrete: <i>what</i>, on <i>what</i>, by <i>when</i>. Categories: <code>sale</code> (a specific discount or offer), <code>security</code> (sign-in, password, breach, suspicious activity), <code>action</code> (something the reader must do, with its deadline in <code>deadline</code> when stated), <code>change</code> (price, terms, plan or service changes affecting the reader). Generic promotion, recommendations, brand storytelling and "new arrivals" are never findings; an empty list is the common, correct answer.</p>
+  <p><b>Rendering by stored kind.</b> <code>summary_kind</code> null or <code>essay</code> → today's guard and panel. A stored overview that fails its kind's guard behaves as an Essay overview failing today: the gist (or, for Alerts, nothing) renders and the panel holds only the footer.</p>
+  <p><b>Publications.</b> The card's type chip is a <code>PickerChip</code> (options with a one-line description, Plate I); a pick PATCHes immediately with the store's optimistic/rollback pattern, like the pause toggle. The candidate's Add becomes "Add as ▾" — a <code>DropdownMenu</code> with the three types; picking one POSTs <code>{ handle, summary_kind }</code>. The auto-discovery upsert (Substack senders) inserts with the column default, Essay.</p>
+  <p><b>Hotkeys.</b> Unchanged: <code>v</code>/enter toggles the panel where one exists (an Alerts row has one — its footer); the Instapaper send hotkey is a no-op on Alerts rows, as it is on any row without Send.</p>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+<pre>-- database/migrations/&lt;next&gt;_reader_summary_kinds.sql
+alter table reader_publications
+  add column summary_kind text not null default 'essay',
+  add constraint reader_publications_summary_kind_valid
+      check (summary_kind in ('essay', 'roundup', 'alerts'));
+
+alter table reader_posts
+  add column summary_kind text,           -- null = summarised before ALF-322, read as essay
+  add constraint reader_posts_summary_kind_valid
+      check (summary_kind is null or summary_kind in ('essay', 'roundup', 'alerts'));
+
+-- v_reader_publications has an explicit column list (0036): drop and recreate it with
+-- p.summary_kind added, re-granting select to anon, authenticated, service_role.
+
+// Shared (workers/src/reader/types.ts, mirrored in frontend/lib/types.ts)
+type ReaderSummaryKind = 'essay' | 'roundup' | 'alerts';
+
+interface ReaderRoundupOverview {
+  further_reading: ReaderFurtherReading[];     // worth reading; same shape the essay stores
+  skipped: { title: string; note: string }[];
+}
+type ReaderAlertCategory = 'sale' | 'security' | 'action' | 'change';
+interface ReaderAlertsOverview {
+  findings: { category: ReaderAlertCategory; detail: string; deadline: string | null }[];
+}
+
+// Model-facing JSON schemas (schema.ts), all additionalProperties:false, every key required:
+//  roundup: { headline, gist, overview: { items: [{ link: integer|null, title, note, worth: boolean }] } }
+//           normalize → worth &amp;&amp; known link → further_reading (≤ 10, link order); !worth → skipped (≤ 20)
+//  alerts:  { headline, gist, overview: { findings: [{ category: enum, detail, deadline: string|null }] } }
+//           normalize → ≤ 5 findings, blank details dropped
+// Budgets stay in descriptions, never maxItems/maxLength (schema.ts's own doc comment).
+
+// prompt.ts
+export const READER_PROMPT_VERSIONS: Record&lt;ReaderSummaryKind, number&gt; = { essay: 2, roundup: 1, alerts: 1 };
+export function buildReaderRequest(post: SummaryInput, kind: ReaderSummaryKind): ReaderRequest;
+// SummaryInput gains kind; summarizePost returns StoredReaderSummary tagged with its kind.
+
+// API
+POST  /api/reader/publications        { handle, summary_kind? }   (default 'essay')
+PATCH /api/reader/publications/[id]   { enabled? , name? , notes? , summary_kind? }
+// GET /api/reader/posts payload gains summary_kind via READER_POST_LIST_COLUMNS.</pre>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <p>One session, no subagents needed; Red/Green TDD per step. Order:</p>
+  <ol>
+    <li><b>Migration + types.</b> The §Contracts migration (next free number; run <code>migration-lint</code>), regenerate <code>frontend/lib/database.types.ts</code>, add the kind/overview types to both type files, extend <code>frontend/lib/reader/fixtures.ts</code> with a roundup post, an alerts post with findings, and an auto-filed alerts post. Update <code>database/README.md</code>'s schema summary.</li>
+    <li><b>Worker: schema + prompt.</b> <code>schema.ts</code>: two new schemas, guards and normalizers beside the essay ones (the essay path untouched). <code>prompt.ts</code>: <code>ROUNDUP_SYSTEM_PROMPT</code>, <code>ALERTS_SYSTEM_PROMPT</code>, the versions map, <code>buildReaderRequest(post, kind)</code> picking the pair. Tests: the essay request is byte-identical to today's (snapshot the system string), each kind gets its own schema, roundup link mapping drops unknown numbers, alerts caps at five.</li>
+    <li><b>Worker: summarise + tick.</b> <code>summarize.ts</code> passes <code>kind</code> through and validates with that kind's guard. <code>scheduled.ts</code>: <code>readRoster</code> carries the kind (D12); <code>prepareFresh</code>/<code>prepareRetry</code> resolve it (D10); <code>applyOutcome</code>'s <code>done</code> patch writes <code>summary_kind</code>, the kind's <code>prompt_version</code>, and — Alerts with no findings — <code>archived_at</code> (D5). Tests in <code>scheduled.test.ts</code> for each.</li>
+    <li><b>Eval.</b> <code>workers/scripts/reader-eval.ts</code> gains <code>--kind essay|roundup|alerts</code> (default essay) and prints each kind's overview readably.</li>
+    <li><b>API + store.</b> <code>reader-schemas.ts</code> (create/update accept <code>summary_kind</code>), the two publication routes, <code>lib/data/reader-publications.ts</code>, <code>reader-settings-store.tsx</code> (<code>setKind(id, kind)</code>, <code>addCandidate(handle, kind)</code>). Add <code>summary_kind</code> to <code>READER_POST_LIST_COLUMNS</code>.</li>
+    <li><b>Overview reading.</b> In <code>lib/reader/overview.ts</code> add <code>overviewOf(post)</code> → a discriminated union by kind (essay | roundup | alerts | none), and a kind-agnostic <code>furtherReadingOf</code> entry for the further-reading send route (today it requires the essay guard, which a roundup overview fails). The wiki route stays essay-only.</li>
+    <li><b>UI.</b> <code>publications-card.tsx</code> type chip; <code>publications-candidates.tsx</code> "Add as ▾"; <code>post-row.tsx</code> renders by <code>overviewOf</code> — alerts findings in the body, no Send on alerts rows, the filed line in place of the gist; <code>post-overview.tsx</code> splits into essay and roundup panels (a new <code>roundup-overview.tsx</code> reusing <code>FurtherReading</code> + a <code>DisclosureToggle</code> "Skipped · N"); a small <code>alert-findings.tsx</code>. Stories for each new state (roundup open, alerts notable, alerts filed in the archive), and the publication card with each type.</li>
+    <li><b>E2E + demo.</b> Extend the publications E2E: change a type, add a candidate as Alerts. Then the demo doc.</li>
+  </ol>
+  <p>Read first: <code>anthropic-api</code> (structured-output schema subset), <code>cloudflare-workers</code>, <code>supabase</code> + <code>migration-lint</code>, <code>data-flow</code>, <code>frontend-architecture</code>, <code>storybook</code>.</p>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D1 P1">Every publication has a type, Essay by default; existing publications read Essay after the migration.</li>
+    <li data-trace="D1 P1">The publication card shows a type chip that changes the type in one pick, optimistically with rollback.</li>
+    <li data-trace="D1 P1">A candidate is added with a chosen type via "Add as ▾"; auto-discovered Substack senders are added as Essay.</li>
+    <li data-trace="D9">An Essay post's request (system prompt, schema, user turn) is identical to today's and is stamped prompt v2.</li>
+    <li data-trace="D2 P2">A Roundup post's worth-reading items render as the Further reading checklist and can be sent to Reader / Instapaper; skipped items render collapsed under "Skipped · N".</li>
+    <li data-trace="D3 P2">An Alerts post with findings appears on the reading list with one tagged line per finding, no Send, and an Overview that holds only the footer.</li>
+    <li data-trace="D5 P2">An Alerts post with no findings is archived by the tick in the same write as its summary and reads "Nothing notable — filed automatically." in the archive.</li>
+    <li data-trace="D4 D8">Changing a publication's type changes no existing post; Retry summary on one of its posts re-summarises under the new type.</li>
+    <li data-trace="D10">Research reports and unlinked Instapaper articles are summarised as Essays.</li>
+    <li data-trace="D7 D12">Alerts and Roundup calls use <code>READER_MODEL</code>, count against <code>READER_DAILY_CAP</code>, and add no per-tick fetch.</li>
+    <li data-trace="impl"><code>npm run eval:reader -w workers -- --kind roundup|alerts</code> prints that kind's summary.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><b>Jest (workers):</b> <code>prompt.test.ts</code> (essay request unchanged; per-kind system/schema/version), <code>schema.test.ts</code> (both new guards and normalizers: unknown link numbers, caps, blank items), <code>summarize.test.ts</code> (kind-specific guard → <code>counted: schema</code> on a mismatched body), <code>scheduled.test.ts</code> (kind from roster, D10 fallbacks, <code>done</code> patch fields, alerts auto-archive, no archive with findings).</li>
+    <li><b>Jest (frontend):</b> <code>overview.test.ts</code> (<code>overviewOf</code> per kind, null kind → essay, malformed → none), route tests for the publications POST/PATCH and the further-reading route with a roundup overview, <code>reader-schemas.test.ts</code>, the settings store's <code>setKind</code> rollback.</li>
+    <li><b>RTL:</b> post-row (alerts: findings, no Send; filed line; roundup panel with skipped toggle), publications card chip, candidates Add-as menu.</li>
+    <li><b>Storybook snapshots:</b> new row stories (roundup open, alerts notable, alerts filed) and the card with each type; existing essay stories must not move.</li>
+    <li><b>Playwright:</b> change a publication's type; add a candidate as Alerts.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Per the <code>showboat</code> skill: <code>docs/demos/reader-summary-kinds/</code> with the scheduled tick's tests for the three kinds (exec), the publications card and the three row states screenshotted from Storybook or the running app, and any moved snapshot's diff image per the <code>storybook</code> skill. Live model output is not demo evidence (it isn't deterministic); the owner judges prompt quality via <code>eval:reader --kind</code> after merge.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><b>Per-publication criteria</b> — declined (D6); <b>model-detected type</b> — D1; <b>bulk re-summarise on type change</b> — D4.</li>
+    <li><b>Non-bulk senders can't become candidates.</b> <code>v_reader_candidates</code> lists only <code>has_list_header</code> senders; transactional security mail often lacks it. Adding an arbitrary handle by UI is a separate story; the POST route already accepts any handle.</li>
+    <li><b>Comms overlap.</b> A promoted sender's mail leaves the Comms FYI shelf (epic D14) but never the queue; a security notice the comms classifier queued stays queued as well as appearing here. Intended.</li>
+    <li><b>Prompt quality is the real risk.</b> Roundup's "worth reading" bar and Alerts' noise rejection are judged by the owner with <code>eval:reader --kind</code>; expect a v2 of either prompt after a week of real mail.</li>
+    <li><b>Confirm while building:</b> that the structured-output grammar accepts <code>{"type": ["integer","null"]}</code> / <code>enum</code> as used (the <code>anthropic-api</code> skill lists the supported subset); fall back to <code>anyOf</code> if not.</li>
+  </ul>
+</section>
+
+<section id="after-merge">
+  <h2>After it ships (for you)</h2>
+  <ol>
+    <li>Set Import AI and any other roundups to Roundup on <code>/reader/publications</code>; Retry summary on a recent issue to compare.</li>
+    <li>Add promo/account senders from the candidates as Alerts; check the archive after a few days for anything wrongly filed.</li>
+    <li>Run <code>npm run eval:reader -w workers -- --kind alerts --query "from:&lt;sender&gt; newer_than:30d" --limit 10</code> to sanity-check the rubric.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
