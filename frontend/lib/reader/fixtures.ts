@@ -501,6 +501,7 @@ export function readerKindFixtureSet(): {
     ...stamp,
     summary_kind: 'alerts',
     title: 'Worn Wear fall event',
+    author: 'Patagonia',
     canonical_url: 'https://www.patagonia.com/wornwear',
     word_count: 410,
     gist: 'A members-only sale on used outerwear, and a trade-in bonus until Oct 12.',
@@ -511,6 +512,7 @@ export function readerKindFixtureSet(): {
     ...stamp,
     summary_kind: 'alerts',
     title: 'Important information about your account',
+    author: 'Acme Bank',
     word_count: 180,
     gist: 'A new-device sign-in from Lisbon.',
     overview: makeAlertsOverview([
@@ -526,6 +528,7 @@ export function readerKindFixtureSet(): {
     ...stamp,
     summary_kind: 'alerts',
     title: 'Recommended for you: kitchen picks',
+    author: 'Amazon.com',
     word_count: 150,
     gist: 'Nothing notable',
     overview: makeAlertsOverview([]),
