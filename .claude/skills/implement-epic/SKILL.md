@@ -67,8 +67,8 @@ seams (duplicate helpers, drifting names, a type two slices define differently),
 repo's full check suite** — not the slice's tests. A green subagent report is not a green repo.
 
 Fix integration breaks yourself rather than dispatching a fix-it agent into a file three slices
-touched. Once the batch is green, **commit it locally** — that commit is the slice's durable record
-(below). Push once, when the epic is done.
+touched. Once the batch is green, **commit it locally** on the feature branch (a plain `git commit`)
+— that commit is the slice's durable record (below). Push once, when the epic is done.
 
 ## Keep a progress ledger — compaction erases your memory, not git
 
@@ -87,9 +87,10 @@ Slice 1: complete <sha>
 - **Append as you go:** `dispatched` when a slice's subagent starts, `complete <sha>` once its batch
   is integrated, green and committed.
 - **After compaction, or whenever unsure, trust the ledger and `git log` over your recollection.** A
-  `complete` slice is done — never re-dispatch it. A slice `dispatched` but not `complete` may have
-  left work in the tree: read `git status` and its files before deciding whether to integrate or
-  re-dispatch it.
+  `complete` slice is done — never re-dispatch it — but only if its sha is on this branch
+  (`git merge-base --is-ancestor <sha> HEAD`); one that isn't is a stale run's, so redo that slice. A
+  slice `dispatched` but not `complete` may have left work in the tree: read `git status` and its
+  files before deciding whether to integrate or re-dispatch it.
 
 ## The epic spec is not scaffolding
 
