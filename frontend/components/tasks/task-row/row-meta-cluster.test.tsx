@@ -1,10 +1,13 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
+import { pinClock, setClockNow } from '@/lib/pin-clock';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { ItemNode } from '@/lib/tree';
 import type { Folder } from '@/lib/types';
 
 import { RowMetaCluster } from './row-meta-cluster';
+
+pinClock('2026-10-03T12:00:00.000Z');
 
 const BASE_NODE: ItemNode = {
   id: 'item-1',
@@ -15,6 +18,7 @@ const BASE_NODE: ItemNode = {
   created_at: '2025-01-01T10:00:00Z',
   raw_capture: null,
   due_date: null,
+  due_time: null,
   status: 'active',
   completed_at: null,
   folder_id: null,
@@ -178,5 +182,55 @@ describe('RowMetaCluster — the Week plan badge', () => {
 
     expect(screen.getByLabelText('Week plan item').tagName).toBe('SPAN');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+});
+
+describe('RowMetaCluster — due times', () => {
+  beforeEach(() => {
+    // Only the interval timer is faked: the pinned clock still answers "what time is it".
+    jest.useFakeTimers({ doNotFake: ['Date'] });
+    setClockNow(new Date(2026, 9, 3, 14, 59, 30).toISOString());
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function renderCluster(node: ItemNode) {
+    return render(
+      <RowMetaCluster
+        node={node}
+        isTask
+        isTopLevelTask={node.parent_id === null}
+        recurrenceRule={null}
+        showReadyPip={false}
+      />,
+    );
+  }
+
+  it('reads the due chip as date + time', () => {
+    renderCluster({ ...BASE_NODE, due_date: '2026-10-03', due_time: '15:00:00' });
+    expect(screen.getByLabelText('Due date: 2026-10-03 15:00')).toHaveTextContent('Today 3 PM');
+  });
+
+  it('adds a timed subtask to the overdue tally at its minute, without a reload', () => {
+    const child: ItemNode = {
+      ...BASE_NODE,
+      id: 'child',
+      parent_id: BASE_NODE.id,
+      due_date: '2026-10-03',
+      due_time: '15:00:00',
+      children: [],
+    };
+    renderCluster({ ...BASE_NODE, children: [child] });
+
+    expect(screen.queryByLabelText('1 overdue subtask')).not.toBeInTheDocument();
+
+    act(() => {
+      setClockNow(new Date(2026, 9, 3, 15, 0, 1).toISOString());
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(screen.getByLabelText('1 overdue subtask')).toHaveTextContent('1');
   });
 });

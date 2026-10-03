@@ -483,6 +483,8 @@ function newItem(input) {
     item_type: input.item_type ?? 'unclassified',
     status: input.status ?? 'active',
     due_date: input.due_date ?? null,
+    // A wall-clock time beside the date (migration 0052); the DB returns it as HH:MM:SS.
+    due_time: input.due_time ?? null,
     completed_at: input.completed_at ?? null,
     folder_id: input.folder_id ?? null,
     parent_id: input.parent_id ?? null,
@@ -1276,6 +1278,7 @@ function handleRpc(req, res, fn, body) {
     if (item !== undefined) {
       item.item_type = 'code';
       item.due_date = null;
+      item.due_time = null;
       item.parent_id = null;
       item.status = 'active';
       item.completed_at = null;
@@ -1359,6 +1362,7 @@ function handleRpc(req, res, fn, body) {
       const priority = topOfProjectPriority(body?.p_project);
       child.item_type = 'code';
       child.due_date = null;
+      child.due_time = null;
       child.parent_id = null;
       child.status = 'active';
       child.completed_at = null;
@@ -2074,6 +2078,14 @@ function handleRest(req, res, url, body) {
           : undefined;
       Object.assign(row, body);
       if (prunedVersion !== undefined) row.pruned_version = prunedVersion;
+      // Migration 0052's trigger IS mirrored: a writer that clears the date without knowing a
+      // time exists still leaves no time behind. Postgres prints a `time` as HH:MM:SS.
+      if (rest === 'items') {
+        if (row.due_date === null) row.due_time = null;
+        else if (typeof row.due_time === 'string' && row.due_time.length === 5) {
+          row.due_time = `${row.due_time}:00`;
+        }
+      }
       // code_items bumps updated_at on every write (mirrors the table trigger).
       if (rest === 'code_items') row.updated_at = now;
     }

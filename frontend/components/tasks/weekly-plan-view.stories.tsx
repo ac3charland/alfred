@@ -60,6 +60,7 @@ function planned(title: string, plan: WeeklyPlan, order: number, overrides: Part
     item_type: 'task',
     status: 'active',
     due_date: null,
+    due_time: null,
     completed_at: null,
     folder_id: null,
     dispatched_at: null,

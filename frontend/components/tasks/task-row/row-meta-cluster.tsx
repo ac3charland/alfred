@@ -11,12 +11,15 @@ import { ProjectKeyChip } from '@/components/tasks/project-key-chip';
 import { metaFooterClass, subtaskCountBadgeClass } from '@/components/tasks/task-row.styles';
 import { FolderChip, IntendedEpicChip } from '@/components/tasks/task-row/detail-chips';
 import { WeekPlanBadge } from '@/components/tasks/week-plan-badge';
+import { lateness } from '@/lib/date-utils';
+import { useHydrated } from '@/lib/hooks/use-hydrated';
+import { useNow } from '@/lib/hooks/use-now';
 import type { TaskPriority } from '@/lib/priority';
 import { isPriorityLevel } from '@/lib/priority';
 import type { RecurrenceRule } from '@/lib/recurrence';
 import { isDispatched } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
-import { countOverdueDescendants } from '@/lib/tree';
+import { countOverdueDescendants, hasActiveTimedDescendant } from '@/lib/tree';
 
 /**
  * The interactive wrappers of the metadata cluster — present on the ordinary row (every label
@@ -28,6 +31,8 @@ import { countOverdueDescendants } from '@/lib/tree';
 export interface RowMetaEditing {
   onSelectDueDate: (iso: string) => void;
   onClearDueDate: () => void;
+  /** Save a committed due time, or null to clear just the time. */
+  onSetDueTime: (time: string | null) => void;
   onChangePriority: (next: TaskPriority | null) => void;
   onSetFolder: (folderId: string | null) => void;
   onSetProject: (projectId: string | null) => void;
@@ -91,9 +96,6 @@ export function RowMetaCluster({
   const showPriorityChip = isTask && isPriorityLevel(node.priority);
   const totalSubtasks = node.children.length;
   const completedSubtasks = node.children.filter((child) => child.status === 'completed').length;
-  // The overdue tally spans the WHOLE subtree, unlike the `completed/total` count beside it: a
-  // late subtask buried three levels down still has to surface on the row you can see.
-  const overdueSubtasks = countOverdueDescendants(node);
 
   const hasMeta =
     // Load-bearing: a planned unclassified capture carries no other chip outside select mode, so
@@ -105,7 +107,7 @@ export function RowMetaCluster({
     showDueChip ||
     showRepeatChip ||
     showPriorityChip ||
-    // No `overdueSubtasks` term needed: an overdue descendant implies at least one child, so
+    // No overdue-tally term needed: an overdue descendant implies at least one child, so
     // `totalSubtasks > 0` already covers every row that can carry the overdue tally.
     totalSubtasks > 0 ||
     // Provably redundant (a ready row always carries a chip already — see the pip's own mount
@@ -156,10 +158,12 @@ export function RowMetaCluster({
       {showDueChip && node.due_date !== null && (
         <DueDateChip
           dueDate={node.due_date}
+          dueTime={node.due_time}
           inert={editing === undefined}
           {...(editing !== undefined && {
             onSelect: editing.onSelectDueDate,
             onClear: editing.onClearDueDate,
+            onSetTime: editing.onSetDueTime,
           })}
         />
       )}
@@ -194,15 +198,14 @@ export function RowMetaCluster({
       {/* Overdue subtasks — how much of the subtree is already late. A bare red count, like the
           folder overdue tally: the number carries the signal and the `aria-label` names its
           meaning. Sits last so it reads as a rider on the subtask count. */}
-      {overdueSubtasks > 0 && (
-        <Badge
-          variant="overdue"
-          className="font-medium"
-          aria-label={`${String(overdueSubtasks)} overdue ${overdueSubtasks === 1 ? 'subtask' : 'subtasks'}`}
-        >
-          {overdueSubtasks}
-        </Badge>
-      )}
+      {/* The tally spans the WHOLE subtree, unlike the `completed/total` count beside it: a late
+          subtask buried three levels down still has to surface on the row you can see. */}
+      {totalSubtasks > 0 &&
+        (hasActiveTimedDescendant(node) ? (
+          <TimedOverdueTally node={node} />
+        ) : (
+          <OverdueTally count={countOverdueDescendants(node)} />
+        ))}
 
       {/* Dispatch-ready cue (ALF-178) — LAST: the verdict reads as the closing word of the
           evidence above it, and "last" is what puts it at a fixed offset from the row's right
@@ -210,4 +213,28 @@ export function RowMetaCluster({
       {showReadyPip && <DispatchReadyMark />}
     </div>
   );
+}
+
+/** The red overdue-subtask count, or nothing when no subtask is late. */
+function OverdueTally({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <Badge
+      variant="overdue"
+      className="font-medium"
+      aria-label={`${String(count)} overdue ${count === 1 ? 'subtask' : 'subtasks'}`}
+    >
+      {count}
+    </Badge>
+  );
+}
+
+/**
+ * The overdue tally for a subtree holding a timed task — the only kind whose lateness changes
+ * during a day — so only these rows keep a minute clock, and a subtask joins the count at its
+ * minute without a reload.
+ */
+function TimedOverdueTally({ node }: { node: ItemNode }) {
+  const now = lateness(useNow(60_000), useHydrated());
+  return <OverdueTally count={countOverdueDescendants(node, now)} />;
 }

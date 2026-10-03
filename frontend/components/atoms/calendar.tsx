@@ -14,6 +14,8 @@ interface CalendarProperties {
   onSelect: (iso: string) => void;
   /** Clear the date entirely (the footer's "Clear"). */
   onClear: () => void;
+  /** Extra controls rendered between the grid and the footer (the due-date picker's time row). */
+  children?: React.ReactNode;
 }
 
 const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
@@ -46,7 +48,7 @@ const FULL_MONTHS = [
  * Stateless about persistence: it reports picks via `onSelect` / `onClear` and lets the caller
  * auto-save. Only the *visible* month is local state, seeded from the selection (or today).
  */
-export function Calendar({ selected, onSelect, onClear }: CalendarProperties) {
+export function Calendar({ selected, onSelect, onClear, children }: CalendarProperties) {
   const today = todayISODate();
   // The month in view — seeded from the selection so opening a dated chip lands on its month.
   const [view, setView] = React.useState(() => {
@@ -134,6 +136,8 @@ export function Calendar({ selected, onSelect, onClear }: CalendarProperties) {
           );
         })}
       </div>
+
+      {children}
 
       {/* Footer: Clear (left) · Today (right). */}
       <div className="mt-2 flex items-center justify-between px-1">

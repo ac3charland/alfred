@@ -36,6 +36,8 @@ interface TaskDetailPanelProperties {
   /** Apply / clear the due date (auto-save). */
   onSelectDueDate: (iso: string) => void;
   onClearDueDate: () => void;
+  /** Save a committed due time, or null to clear just the time (auto-save). */
+  onSetDueTime: (time: string | null) => void;
 
   /** Persist a priority level, or null to clear (auto-save). */
   onChangePriority: (next: TaskPriority | null) => void;
@@ -73,6 +75,7 @@ export function TaskDetailPanel({
   onChangeRecurrence,
   onSelectDueDate,
   onClearDueDate,
+  onSetDueTime,
   onChangePriority,
   onSetFolder,
   onSetProject,
@@ -128,9 +131,11 @@ export function TaskDetailPanel({
           {isTask && (
             <DueDateChip
               dueDate={node.due_date}
+              dueTime={node.due_time}
               size="comfortable"
               onSelect={onSelectDueDate}
               onClear={onClearDueDate}
+              onSetTime={onSetDueTime}
             />
           )}
           {showRepeat && (
