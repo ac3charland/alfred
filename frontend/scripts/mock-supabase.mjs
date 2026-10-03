@@ -748,6 +748,8 @@ function newReaderPublication(input) {
     enabled: input.enabled ?? true,
     source: input.source ?? 'auto',
     notes: input.notes ?? null,
+    // Migration 0052's default: every publication is an essay until the owner says otherwise.
+    summary_kind: input.summary_kind ?? 'essay',
     first_seen_at: input.first_seen_at ?? new Date().toISOString(),
     created_at: input.created_at ?? new Date().toISOString(),
   };
@@ -784,6 +786,7 @@ function newReaderPost(input) {
     overview: input.overview ?? null,
     model: input.model ?? null,
     prompt_version: input.prompt_version ?? null,
+    summary_kind: input.summary_kind ?? null,
     summary_state: input.summary_state ?? 'pending',
     summarize_attempts: input.summarize_attempts ?? 0,
     last_error: input.last_error ?? null,

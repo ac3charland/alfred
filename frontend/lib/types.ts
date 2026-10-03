@@ -300,7 +300,38 @@ export interface FurtherReadingSendResult {
   failure?: string;
 }
 
-/** The shape `reader_posts.overview` holds for a `done` post — the model's structured take. */
+/**
+ * Which question the summariser asks of a publication's mail — `reader_publications.summary_kind`
+ * — and the kind a post's summary was written under (`reader_posts.summary_kind`, null on one
+ * written before kinds existed, read as `essay`). Both columns are CHECKed text, so the union is
+ * declared by hand. Mirrors `workers/src/reader/types.ts`.
+ */
+export type ReaderSummaryKind = 'essay' | 'roundup' | 'alerts';
+
+/** What `reader_posts.overview` holds for a `done` roundup — its highlights and its Links. */
+export interface ReaderRoundupOverview {
+  highlights: string[];
+  /** The Links, under the essay's own key, so the Further reading checklist serves both. */
+  further_reading: ReaderFurtherReading[];
+}
+
+/** What an Alerts finding is about. */
+export type ReaderAlertCategory = 'sale' | 'security' | 'action' | 'change';
+
+/** One thing in an Alerts post that requires or rewards the owner's attention. */
+export interface ReaderAlertFinding {
+  category: ReaderAlertCategory;
+  detail: string;
+  /** The date to act by, as the mail stated it; null when it stated none. */
+  deadline: string | null;
+}
+
+/** What `reader_posts.overview` holds for a `done` Alerts post. Empty is "nothing notable". */
+export interface ReaderAlertsOverview {
+  findings: ReaderAlertFinding[];
+}
+
+/** The shape `reader_posts.overview` holds for a `done` essay — the model's structured take. */
 export interface ReaderOverview {
   novel_ideas: string[];
   evidence: string[];

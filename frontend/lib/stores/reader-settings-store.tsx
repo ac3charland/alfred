@@ -21,7 +21,12 @@ import {
   simpleReducer,
 } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
-import type { ReaderCandidate, ReaderPublication, ReaderPublicationListItem } from '@/lib/types';
+import type {
+  ReaderCandidate,
+  ReaderPublication,
+  ReaderPublicationListItem,
+  ReaderSummaryKind,
+} from '@/lib/types';
 
 /**
  * Reader settings store — the roster the owner keeps, and the bulk senders that could join it.
@@ -51,10 +56,16 @@ export interface ReaderSettingsActions {
   /** Set or clear the owner's note on a publication. */
   setNotes: (id: string, notes: string | null) => Promise<ReaderPublicationListItem>;
   /**
-   * Promote a candidate sender to the roster. Not optimistic once it is real: the server assigns
-   * the publication's id, so the caller awaits the stored row rather than inventing one.
+   * Change which question the summariser asks of a publication's mail. Applies to its next
+   * summary — a Retry included — and to no summary already written.
    */
-  addCandidate: (handle: string) => Promise<ReaderPublicationListItem>;
+  setKind: (id: string, kind: ReaderSummaryKind) => Promise<ReaderPublicationListItem>;
+  /**
+   * Promote a candidate sender to the roster as the kind the owner chose for it. Not optimistic
+   * once it is real: the server assigns the publication's id, so the caller awaits the stored row
+   * rather than inventing one.
+   */
+  addCandidate: (handle: string, kind: ReaderSummaryKind) => Promise<ReaderPublicationListItem>;
   /** Put the Gmail filter query that matches the roster on the clipboard. */
   copyFilterQuery: () => Promise<void>;
 }
@@ -194,7 +205,15 @@ export function ReaderSettingsProvider({
           "Couldn't save that publication",
         );
       },
-      async addCandidate(handle) {
+      setKind(id, kind) {
+        return writePublication(
+          id,
+          { summary_kind: kind },
+          () => updateReaderPublication(id, { summary_kind: kind }),
+          "Couldn't update that publication",
+        );
+      },
+      async addCandidate(handle, kind) {
         const candidate = stateRef.current.candidates.find((row) => row.handle === handle);
         if (candidate === undefined) {
           throw new Error(`No candidate ${handle} to promote`);
@@ -211,6 +230,7 @@ export function ReaderSettingsProvider({
           saved = await createReaderPublication({
             handle,
             ...(candidate.name === null ? {} : { name: candidate.name }),
+            summary_kind: kind,
           });
         } catch (error) {
           if (error instanceof ApiError && error.status === 409) {

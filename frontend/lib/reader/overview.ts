@@ -1,5 +1,13 @@
 import type { Json } from '@/lib/database.types';
-import type { ReaderFurtherReading, ReaderOverview } from '@/lib/types';
+import type {
+  ReaderAlertCategory,
+  ReaderAlertFinding,
+  ReaderAlertsOverview,
+  ReaderFurtherReading,
+  ReaderOverview,
+  ReaderRoundupOverview,
+  ReaderSummaryKind,
+} from '@/lib/types';
 
 /**
  * The type guard over `reader_posts.overview`'s jsonb — the generated row type is `Json | null`,
@@ -80,4 +88,107 @@ export function furtherReadingOf(value: unknown): ReaderFurtherReading[] {
  */
 export function isBullet(bullet: string): boolean {
   return bullet.trim() !== '';
+}
+
+/**
+ * The kind a post's summary was written under. Null — a summary from before kinds existed, or a
+ * post not summarised yet — reads as the essay every such summary is.
+ */
+export function summaryKindOf(post: { summary_kind: string | null }): ReaderSummaryKind {
+  const kind = post.summary_kind;
+  return kind === 'roundup' || kind === 'alerts' ? kind : 'essay';
+}
+
+/**
+ * A post's overview, read by the kind it was SUMMARISED under — never by its publication's current
+ * kind, so changing a publication's kind changes no summary already written. `none` when the
+ * stored overview fails its kind's guard (a hand-edited row, another kind's shape): the row then
+ * renders as a failing essay overview always has — its gist, and a panel of only the footer.
+ */
+export type PostOverviewOf =
+  | { kind: 'essay'; overview: ReaderOverview }
+  | { kind: 'roundup'; overview: ReaderRoundupOverview }
+  | { kind: 'alerts'; overview: ReaderAlertsOverview }
+  | { kind: 'none' };
+
+const ALERT_CATEGORIES: ReadonlySet<unknown> = new Set<ReaderAlertCategory>([
+  'sale',
+  'security',
+  'action',
+  'change',
+]);
+
+/** One stored finding, its absent deadline read as null; undefined when malformed. */
+function alertFindingOf(value: unknown): ReaderAlertFinding | undefined {
+  if (!isRecord(value)) return undefined;
+  const { category, detail, deadline } = value;
+  if (!ALERT_CATEGORIES.has(category) || typeof detail !== 'string') return undefined;
+  if (deadline !== undefined && deadline !== null && typeof deadline !== 'string') return undefined;
+  return {
+    category: category as ReaderAlertCategory,
+    detail,
+    deadline: typeof deadline === 'string' ? deadline : null,
+  };
+}
+
+function roundupOf(value: Json | null): ReaderRoundupOverview | undefined {
+  if (!isRecord(value) || !isStringArray(value['highlights'])) return undefined;
+  return {
+    highlights: value['highlights'],
+    further_reading: furtherReadingOf(value['further_reading']),
+  };
+}
+
+function alertsOf(value: Json | null): ReaderAlertsOverview | undefined {
+  if (!isRecord(value) || !Array.isArray(value['findings'])) return undefined;
+  const findings: ReaderAlertFinding[] = [];
+  for (const entry of value['findings'] as unknown[]) {
+    const finding = alertFindingOf(entry);
+    if (finding === undefined) return undefined;
+    findings.push(finding);
+  }
+  return { findings };
+}
+
+export function overviewOf(post: {
+  summary_kind: string | null;
+  overview: Json | null;
+}): PostOverviewOf {
+  switch (summaryKindOf(post)) {
+    case 'roundup': {
+      const overview = roundupOf(post.overview);
+      return overview === undefined ? { kind: 'none' } : { kind: 'roundup', overview };
+    }
+    case 'alerts': {
+      const overview = alertsOf(post.overview);
+      return overview === undefined ? { kind: 'none' } : { kind: 'alerts', overview };
+    }
+    case 'essay': {
+      return isReaderOverview(post.overview)
+        ? { kind: 'essay', overview: post.overview }
+        : { kind: 'none' };
+    }
+  }
+}
+
+/**
+ * A post's sendable links, whatever its kind: an essay's Further reading or a roundup's Links —
+ * stored under one key, so one checklist and one send route serve both. None for Alerts.
+ */
+export function postFurtherReading(post: {
+  summary_kind: string | null;
+  overview: Json | null;
+}): ReaderFurtherReading[] {
+  const read = overviewOf(post);
+  switch (read.kind) {
+    case 'essay': {
+      return furtherReadingOf(read.overview.further_reading);
+    }
+    case 'roundup': {
+      return read.overview.further_reading;
+    }
+    default: {
+      return [];
+    }
+  }
 }

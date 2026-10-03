@@ -1,13 +1,15 @@
+import { createHash } from 'node:crypto';
+
 import { extractPost } from './extract';
 import { LINK_ROUNDUP_MESSAGE } from './fixtures';
 import {
   READER_MODEL_INPUT_CHARS,
-  READER_PROMPT_VERSION,
+  READER_PROMPT_VERSIONS,
   RESEARCH_AUTHOR,
   RESEARCH_PUBLICATION,
   buildReaderRequest,
 } from './prompt';
-import { READER_SUMMARY_SCHEMA } from './schema';
+import { READER_ALERTS_SCHEMA, READER_ROUNDUP_SCHEMA, READER_SUMMARY_SCHEMA } from './schema';
 import type { SummaryInput } from './types';
 
 const TEXT_MARKER = '--- post text ---\n';
@@ -25,6 +27,7 @@ function sentLinks(user: string): string {
 
 function post(overrides: Partial<SummaryInput> = {}): SummaryInput {
   return {
+    kind: 'essay',
     publication: 'The Diff',
     author: 'Dana Whitfield',
     title: 'The inference cost curve, eighteen months on',
@@ -35,9 +38,93 @@ function post(overrides: Partial<SummaryInput> = {}): SummaryInput {
   };
 }
 
-describe('READER_PROMPT_VERSION', () => {
-  it('is 2 — the wording that asks for Further reading', () => {
-    expect(READER_PROMPT_VERSION).toBe(2);
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+describe('READER_PROMPT_VERSIONS', () => {
+  it('keeps the essay at 2 — the wording that asks for Further reading — and starts the others at 1', () => {
+    expect(READER_PROMPT_VERSIONS).toEqual({ essay: 2, roundup: 1, alerts: 1 });
+  });
+});
+
+describe('buildReaderRequest — the essay is the v2 request, unchanged', () => {
+  // Pinned by digest: an essay summary stamped "prompt v2" must have been asked exactly this. A
+  // change to either string is a new essay version — bump READER_PROMPT_VERSIONS.essay with it.
+  it('sends the v2 system prompt byte for byte', () => {
+    expect(sha256(buildReaderRequest(post()).system)).toBe(
+      '96712d08e60b301fa15dce68258fe7f2bb60985b4e3c550863fbea9c99693790',
+    );
+  });
+
+  it('sends the v2 schema byte for byte', () => {
+    expect(sha256(JSON.stringify(buildReaderRequest(post()).schema))).toBe(
+      '6276e1db00a867094afb24f5ee58bc3840ca9d2d33da81bd41364e66287ca7cc',
+    );
+  });
+});
+
+describe('buildReaderRequest — one static prompt and schema per kind', () => {
+  it('gives each kind its own system prompt and schema', () => {
+    const essay = buildReaderRequest(post());
+    const roundup = buildReaderRequest(post({ kind: 'roundup' }));
+    const alerts = buildReaderRequest(post({ kind: 'alerts' }));
+
+    expect(new Set([essay.system, roundup.system, alerts.system]).size).toBe(3);
+    expect(essay.schema).toBe(READER_SUMMARY_SCHEMA);
+    expect(roundup.schema).toBe(READER_ROUNDUP_SCHEMA);
+    expect(alerts.schema).toBe(READER_ALERTS_SCHEMA);
+  });
+
+  it('keeps each kind static: two different posts of a kind get byte-identical system text', () => {
+    for (const kind of ['roundup', 'alerts'] as const) {
+      const first = buildReaderRequest(post({ kind }));
+      const second = buildReaderRequest(
+        post({ kind, publication: 'Elsewhere', title: 'Other', text: 'x' }),
+      );
+
+      expect(first.system).toBe(second.system);
+      expect(first.system).not.toContain('The Diff');
+    }
+  });
+
+  it('shares the user turn across kinds when the post has no HTML', () => {
+    const essay = buildReaderRequest(post());
+
+    expect(buildReaderRequest(post({ kind: 'roundup' })).user).toBe(essay.user);
+    expect(buildReaderRequest(post({ kind: 'alerts' })).user).toBe(essay.user);
+  });
+
+  it('asks a roundup for its highlights and the linked pieces worth reading in full', () => {
+    const lower = buildReaderRequest(post({ kind: 'roundup' })).system.toLowerCase();
+
+    expect(lower).toContain('overview.highlights');
+    expect(lower).toContain('overview.links');
+    expect(lower).toContain('name links by their numbers only');
+    expect(lower).toContain('not a table of contents');
+    expect(lower).toContain('press release');
+    expect(lower).toContain('always the answer when the links block says "none"');
+  });
+
+  it('asks Alerts for sales, security, actions and changes, and calls an empty list the common answer', () => {
+    const lower = buildReaderRequest(post({ kind: 'alerts' })).system.toLowerCase();
+
+    for (const category of ['sale:', 'security:', 'action:', 'change:']) {
+      expect(lower).toContain(category);
+    }
+    expect(lower).toContain('an empty findings list is the common and correct answer');
+    expect(lower).toContain('recommended for you');
+    expect(lower).toContain('new arrivals');
+    expect(lower).toContain('deadline');
+  });
+
+  it('never tells any kind not to think', () => {
+    for (const kind of ['roundup', 'alerts'] as const) {
+      const lower = buildReaderRequest(post({ kind })).system.toLowerCase();
+
+      expect(lower).not.toContain('do not think');
+      expect(lower).not.toContain('without reasoning');
+    }
   });
 });
 
@@ -272,6 +359,40 @@ describe('buildReaderRequest — the links', () => {
     expect(sentText(request.user)).toHaveLength(READER_MODEL_INPUT_CHARS);
     expect(sentLinks(request.user)).toBe('none');
     expect(request.links).toEqual([]);
+  });
+});
+
+describe('buildReaderRequest — an Alerts post goes without its links', () => {
+  const roundup = extractPost(LINK_ROUNDUP_MESSAGE, { name: 'Gridwork' });
+  const input = post({
+    kind: 'alerts',
+    text: roundup.text,
+    html: roundup.html,
+    canonicalUrl: roundup.canonical_url,
+  });
+
+  it('sends the text rebuilt from the HTML with no [n] markers, and a links block of none', () => {
+    const request = buildReaderRequest(input);
+
+    expect(sentText(request.user)).toContain('The sim-to-real gap in dexterous manipulation');
+    expect(sentText(request.user)).not.toMatch(/\[\d+\]/u);
+    expect(sentLinks(request.user)).toBe('none');
+    expect(request.links).toEqual([]);
+  });
+
+  it('leaves the stored HTML as it was', () => {
+    const before = input.html;
+
+    buildReaderRequest(input);
+
+    expect(input.html).toBe(before);
+  });
+
+  it('sends the same post to a roundup with its links numbered', () => {
+    const request = buildReaderRequest({ ...input, kind: 'roundup' });
+
+    expect(sentText(request.user)).toContain('FoldBench v2 release notes [4]');
+    expect(request.links.length).toBeGreaterThan(0);
   });
 });
 

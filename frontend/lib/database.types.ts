@@ -1149,6 +1149,7 @@ export type Database = {
           summarize_attempts: number
           summarized_at: string | null
           summarizing_since: string | null
+          summary_kind: string | null
           summary_state: string
           text: string | null
           text_swept_at: string | null
@@ -1195,6 +1196,7 @@ export type Database = {
           summarize_attempts?: number
           summarized_at?: string | null
           summarizing_since?: string | null
+          summary_kind?: string | null
           summary_state?: string
           text?: string | null
           text_swept_at?: string | null
@@ -1241,6 +1243,7 @@ export type Database = {
           summarize_attempts?: number
           summarized_at?: string | null
           summarizing_since?: string | null
+          summary_kind?: string | null
           summary_state?: string
           text?: string | null
           text_swept_at?: string | null
@@ -1298,6 +1301,7 @@ export type Database = {
           name: string
           notes: string | null
           source: string
+          summary_kind: string
         }
         Insert: {
           created_at?: string
@@ -1309,6 +1313,7 @@ export type Database = {
           name: string
           notes?: string | null
           source: string
+          summary_kind?: string
         }
         Update: {
           created_at?: string
@@ -1320,6 +1325,7 @@ export type Database = {
           name?: string
           notes?: string | null
           source?: string
+          summary_kind?: string
         }
         Relationships: []
       }
@@ -1653,6 +1659,7 @@ export type Database = {
           name: string | null
           notes: string | null
           source: string | null
+          summary_kind: string | null
         }
         Relationships: []
       }
@@ -1712,6 +1719,7 @@ export type Database = {
           summarize_attempts: number
           summarized_at: string | null
           summarizing_since: string | null
+          summary_kind: string | null
           summary_state: string
           text: string | null
           text_swept_at: string | null
@@ -1775,6 +1783,7 @@ export type Database = {
           summarize_attempts: number
           summarized_at: string | null
           summarizing_since: string | null
+          summary_kind: string | null
           summary_state: string
           text: string | null
           text_swept_at: string | null
@@ -1830,6 +1839,7 @@ export type Database = {
           summarize_attempts: number
           summarized_at: string | null
           summarizing_since: string | null
+          summary_kind: string | null
           summary_state: string
           text: string | null
           text_swept_at: string | null
@@ -2222,6 +2232,7 @@ export type Database = {
           summarize_attempts: number
           summarized_at: string | null
           summarizing_since: string | null
+          summary_kind: string | null
           summary_state: string
           text: string | null
           text_swept_at: string | null

@@ -92,6 +92,18 @@ export const placeholderGistClass = 'mt-1 text-sm italic leading-relaxed text-mu
  */
 export const supersededGistClass = 'mt-1 text-sm leading-relaxed text-foreground opacity-60';
 
+/** An Alerts row's findings, in the gist's place: one line each, stacked. */
+export const findingsClass = 'mt-1.5 flex flex-col gap-1';
+
+/** Findings being replaced by a re-summarise — dimmed as a superseded gist is. */
+export const supersededFindingsClass = 'mt-1.5 flex flex-col gap-1 opacity-60';
+
+/** One finding: its category tag, then its detail. */
+export const findingRowClass = 'flex items-baseline gap-2';
+
+/** A finding's detail, read at the gist's size. */
+export const findingDetailClass = 'text-sm leading-relaxed text-foreground';
+
 /**
  * The strip under a finished summary: where it came from on one side, the verb that replaces it
  * on the other. Inside the overview panel, because it is about the summary rather than about the

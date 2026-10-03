@@ -13,6 +13,11 @@
  *   npm run eval:reader -w workers -- --query … --model claude-opus-5
  *   npm run eval:reader -w workers -- --instapaper --limit 1   # the To Reader folder, oldest first
  *   npm run eval:reader -w workers -- --instapaper --dry-run   # its text only: no key, no bill
+ *   npm run eval:reader -w workers -- --kind alerts --query "from:shop@example.com newer_than:30d"
+ *
+ * `--kind essay|roundup|alerts` (default essay) picks which summary kind's prompt and schema the
+ * run uses — the choice the publications card makes per publication — and prints that kind's
+ * overview. Live output is not deterministic, so this is how a kind's prompt is judged by eye.
  *
  * `--instapaper` reads the Instapaper folder the Reader's To Reader leg takes articles from, with
  * the four `INSTAPAPER_*` values from `.dev.vars` or the environment, and prints what the tick
@@ -39,7 +44,7 @@ import { fetchAccessToken } from '../src/comms/gmail-oauth.ts';
 import { instapaperClient, instapaperCredentials } from '../src/instapaper/client.ts';
 import { type ExtractedPost, extractPost } from '../src/reader/extract.ts';
 import { READER_FIXTURES } from '../src/reader/fixtures/index.ts';
-import { numberLinks } from '../src/reader/links.ts';
+import { buildReaderRequest } from '../src/reader/prompt.ts';
 import { summarizePost } from '../src/reader/summarize.ts';
 import {
   NO_FOLDER_ERROR,
@@ -51,7 +56,13 @@ import {
   listToReader,
   siteOf,
 } from '../src/reader/to-reader.ts';
-import type { SummaryInput, SummaryOutcome } from '../src/reader/types.ts';
+import {
+  READER_SUMMARY_KINDS,
+  type ReaderSummaryKind,
+  type StoredReaderSummary,
+  type SummaryInput,
+  type SummaryOutcome,
+} from '../src/reader/types.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV_VARS = path.join(HERE, '..', '.dev.vars');
@@ -112,6 +123,7 @@ const FLAGS = new Set([
   '--instapaper',
   '--dry-run',
   '--model',
+  '--kind',
 ]);
 
 /**
@@ -154,6 +166,7 @@ interface Options {
   instapaper: boolean;
   dryRun: boolean;
   model: string;
+  kind: ReaderSummaryKind;
   query?: string;
   ids: string[];
   limit: number;
@@ -179,8 +192,19 @@ function readOptions(): Options | undefined {
   }
   // A trailing or flag-shaped value here would otherwise read as the flag being simply absent —
   // silently running the wrong query, ids or model instead of refusing the run.
-  if (missingValue('--query') || missingValue('--ids') || missingValue('--model')) {
-    console.error('--query, --ids and --model each take a value.');
+  if (
+    missingValue('--query') ||
+    missingValue('--ids') ||
+    missingValue('--model') ||
+    missingValue('--kind')
+  ) {
+    console.error('--query, --ids, --model and --kind each take a value.');
+    return undefined;
+  }
+  const rawKind = flagValue('--kind') ?? 'essay';
+  const kind = READER_SUMMARY_KINDS.find((known) => known === rawKind);
+  if (kind === undefined) {
+    console.error(`--kind takes one of ${READER_SUMMARY_KINDS.join(', ')}.`);
     return undefined;
   }
   const ids = (flagValue('--ids') ?? '')
@@ -194,6 +218,7 @@ function readOptions(): Options | undefined {
     instapaper: hasFlag('--instapaper'),
     dryRun: hasFlag('--dry-run'),
     model: chosenModel(),
+    kind,
     ...(query === undefined ? {} : { query }),
     ids,
     limit,
@@ -220,8 +245,13 @@ function publicationName(message: GmailMessage): string {
 }
 
 /** `ExtractedPost` as the summariser's seam wants it. */
-function toSummaryInput(post: ExtractedPost, publication: string): SummaryInput {
+function toSummaryInput(
+  post: ExtractedPost,
+  publication: string,
+  kind: ReaderSummaryKind,
+): SummaryInput {
   return {
+    kind,
     publication,
     ...(post.author === undefined ? {} : { author: post.author }),
     title: post.title,
@@ -238,7 +268,12 @@ function pad(label: string): string {
 }
 
 /** The extraction block — the whole of a `--dry-run`, and the header of a billed post. */
-function printExtraction(label: string, publication: string, post: ExtractedPost): void {
+function printExtraction(
+  label: string,
+  publication: string,
+  post: ExtractedPost,
+  kind: ReaderSummaryKind,
+): void {
   console.log(label);
   console.log(`  ${pad('publication')}${publication}`);
   console.log(`  ${pad('title')}${post.title}`);
@@ -246,15 +281,22 @@ function printExtraction(label: string, publication: string, post: ExtractedPost
   console.log(`  ${pad('canonical URL')}${post.canonical_url ?? 'none → mailbox'}`);
   console.log(`  ${pad('word count')}${String(post.word_count)}`);
   console.log(`  ${pad('html_extracted')}${String(post.html_extracted)}`);
-  printLinks(post.html, post.canonical_url);
+  printRequest(toSummaryInput(post, publication, kind));
 }
 
 /**
- * The numbered links the summariser would be shown — the only URLs a Further reading item can
- * ever carry. `none` for a post with no stored HTML, as the model is told.
+ * What the summariser would send for this post, read off the request `buildReaderRequest`
+ * actually builds — the same call `summarizePost` makes — so a dry run shows the real prompt
+ * choice rather than a second copy of it: the kind's system prompt (its first line), the
+ * overview its schema asks for, and the numbered links — the only URLs a Further reading or Links
+ * item can ever carry. `none` for a post with no stored HTML, and for every Alerts post.
  */
-function printLinks(html: string | undefined, canonicalUrl: string | undefined): void {
-  const links = html === undefined ? [] : numberLinks(html, canonicalUrl).links;
+function printRequest(input: SummaryInput): void {
+  const request = buildReaderRequest(input);
+  const overviewKeys = Object.keys(request.schema.properties.overview.properties);
+  console.log(`  ${pad('prompt')}${request.system.split('. ', 1)[0] ?? ''}`);
+  console.log(`  ${pad('overview')}${overviewKeys.join(', ')}`);
+  const { links } = request;
   console.log(`  ${pad('links')}${links.length === 0 ? 'none' : String(links.length)}`);
   for (const link of links) console.log(`    [${String(link.n)}] ${link.url}`);
 }
@@ -270,13 +312,42 @@ function estimateCost(
   return (inputTokens * price.input + outputTokens * price.output) / 1_000_000;
 }
 
-/** Everything a billed run prints below the extraction block. */
-function printSummary(model: string, outcome: SummaryOutcome): void {
-  switch (outcome.kind) {
-    case 'done': {
-      const { headline, gist, overview } = outcome.summary;
-      console.log(`  ${pad('headline')}${headline}`);
-      console.log(`  ${pad('gist')}${gist}`);
+/** A list of Further reading items (an essay's) or Links (a roundup's). */
+function printFurtherReading(
+  heading: string,
+  items: readonly { url: string; title: string; note: string }[],
+): void {
+  console.log(`  ${heading}`);
+  for (const item of items) {
+    console.log(`    - ${item.title} — ${item.note}`);
+    console.log(`      ${item.url}`);
+  }
+  if (items.length === 0) console.log('    (none)');
+}
+
+/** A done summary's overview, in its kind's own sections. */
+function printOverview(summary: StoredReaderSummary): void {
+  switch (summary.kind) {
+    case 'roundup': {
+      console.log('  highlights');
+      for (const bullet of summary.overview.highlights) console.log(`    - ${bullet}`);
+      if (summary.overview.highlights.length === 0) console.log('    (none)');
+      printFurtherReading('links', summary.overview.further_reading);
+      break;
+    }
+    case 'alerts': {
+      console.log('  findings');
+      for (const finding of summary.overview.findings) {
+        const by = finding.deadline === undefined ? '' : ` (by ${finding.deadline})`;
+        console.log(`    - [${finding.category}] ${finding.detail}${by}`);
+      }
+      if (summary.overview.findings.length === 0) {
+        console.log('    (none — nothing notable; the tick would archive this post)');
+      }
+      break;
+    }
+    default: {
+      const { overview } = summary;
       console.log('  novel ideas');
       for (const bullet of overview.novel_ideas) console.log(`    - ${bullet}`);
       if (overview.novel_ideas.length === 0) console.log('    (none — a restatement)');
@@ -285,12 +356,19 @@ function printSummary(model: string, outcome: SummaryOutcome): void {
       if (overview.evidence.length === 0) console.log('    (none)');
       console.log(`  ${pad('argument')}${overview.argument}`);
       console.log(`  ${pad('who should read')}${overview.who_should_read}`);
-      console.log('  further reading');
-      for (const item of overview.further_reading) {
-        console.log(`    - ${item.title} — ${item.note}`);
-        console.log(`      ${item.url}`);
-      }
-      if (overview.further_reading.length === 0) console.log('    (none)');
+      printFurtherReading('further reading', overview.further_reading);
+    }
+  }
+}
+
+/** Everything a billed run prints below the extraction block. */
+function printSummary(model: string, outcome: SummaryOutcome): void {
+  switch (outcome.kind) {
+    case 'done': {
+      console.log(`  ${pad('kind')}${outcome.summary.kind}`);
+      console.log(`  ${pad('headline')}${outcome.summary.headline}`);
+      console.log(`  ${pad('gist')}${outcome.summary.gist}`);
+      printOverview(outcome.summary);
 
       break;
     }
@@ -434,26 +512,24 @@ async function runInstapaper(options: Options, apiKey: string): Promise<boolean>
     console.log(`  ${pad('site')}${site ?? '(none)'}`);
     console.log(`  ${pad('URL')}${articleUrl(bookmark.url) ?? '(none)'}`);
     console.log(`  ${pad('word count')}${String(wordCount)}`);
-    const storedHtml = articleHtml(html, text);
-    printLinks(storedHtml, articleUrl(bookmark.url));
+    const input: SummaryInput = {
+      kind: options.kind,
+      publication,
+      title,
+      receivedAt,
+      wordCount,
+      text,
+      html: articleHtml(html, text),
+      canonicalUrl: articleUrl(bookmark.url),
+    };
+    printRequest(input);
 
     if (text === '') {
       console.log(
         `  ${pad('OUTCOME')}no readable body${html === undefined ? ' (error 1550)' : ''}`,
       );
     } else if (!options.dryRun) {
-      const outcome = await summarizePost(
-        {
-          publication,
-          title,
-          receivedAt,
-          wordCount,
-          text,
-          html: storedHtml,
-          canonicalUrl: articleUrl(bookmark.url),
-        },
-        { apiKey, model: options.model },
-      );
+      const outcome = await summarizePost(input, { apiKey, model: options.model });
       printSummary(options.model, outcome);
     }
     console.log('');
@@ -541,7 +617,7 @@ async function main(): Promise<void> {
   for (const candidate of candidates) {
     const publication = publicationName(candidate.message);
     const post = extractPost(candidate.message, { name: publication });
-    printExtraction(candidate.label, publication, post);
+    printExtraction(candidate.label, publication, post, options.kind);
 
     const row: ResultRow = {
       label: candidate.label,
@@ -559,7 +635,7 @@ async function main(): Promise<void> {
       if (post.text === '') {
         console.log(`  ${pad('OUTCOME')}skipped — no readable body`);
       } else {
-        const outcome = await summarizePost(toSummaryInput(post, publication), {
+        const outcome = await summarizePost(toSummaryInput(post, publication, options.kind), {
           apiKey,
           model: options.model,
         });

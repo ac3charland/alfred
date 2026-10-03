@@ -169,7 +169,7 @@ describe('planBookmark', () => {
 });
 
 describe('articlePublication', () => {
-  const roster = new Map([['pub-wip', 'Works in Progress']]);
+  const roster = new Map([['pub-wip', { name: 'Works in Progress' }]]);
 
   it('prefers the linked publication’s name', () => {
     expect(articlePublication('pub-wip', 'worksinprogress.co', roster)).toBe('Works in Progress');

@@ -142,10 +142,10 @@ export function articleHtml(html: string | undefined, text: string): string | un
 export function articlePublication(
   publicationId: string | undefined,
   site: string | undefined,
-  roster: ReadonlyMap<string, string>,
+  roster: ReadonlyMap<string, { name: string }>,
 ): string {
   const linked = publicationId === undefined ? undefined : roster.get(publicationId);
-  return linked ?? site ?? INSTAPAPER_PUBLICATION;
+  return linked?.name ?? site ?? INSTAPAPER_PUBLICATION;
 }
 
 /**

@@ -43,6 +43,7 @@ function without(
 }
 
 const SUMMARY: StoredReaderSummary = {
+  kind: 'essay',
   headline: 'Open port telemetry narrowed the routing spread',
   gist: 'Three ports published berth telemetry and the spread fell from $4.10 to $1.30 a tonne.',
   overview: {
@@ -72,8 +73,8 @@ interface Call {
 interface Scenario {
   /** Rows `v_reader_discovery` answers with. */
   discovery?: unknown[];
-  /** Rows `reader_publications?select=id,name` answers with. */
-  roster?: { id: string; name: string }[];
+  /** Rows `reader_publications?select=id,name,summary_kind` answers with. */
+  roster?: { id: string; name: string; summary_kind?: string }[];
   /** The `Content-Range` total the ceiling count reads. */
   callsToday?: number;
   /** Rows the pending-retry read answers with. */
@@ -768,6 +769,7 @@ describe('runReaderTick — the terminal patch', () => {
       gist: SUMMARY.gist,
       overview: SUMMARY.overview,
       model: 'claude-sonnet-5',
+      summary_kind: 'essay',
       prompt_version: 2,
       summary_state: 'done',
       summarized_at: NOW_ISO,
@@ -1454,6 +1456,7 @@ describe('runReaderTick — the To Reader leg, one bookmark', () => {
 
     expect(summarizedInputs(summarized)).toEqual([
       {
+        kind: 'essay',
         publication: 'worksinprogress.co',
         title: 'Cities Are Getting Quieter',
         receivedAt: NOW_ISO,
@@ -1885,6 +1888,181 @@ describe('runReaderTick — a research report retried', () => {
       publication: 'Harborline',
       author: 'Mira Vantz',
     });
+  });
+});
+
+const ROUNDUP_DONE: SummaryOutcome = {
+  kind: 'done',
+  summary: {
+    kind: 'roundup',
+    headline: 'Robot dexterity and eval saturation',
+    gist: 'Worth opening for the dexterity benchmark.',
+    overview: { highlights: ['Sim-to-real drops 95% to 55–60%.'], further_reading: [] },
+  },
+};
+
+/** An Alerts outcome with the given findings. */
+function alertsDone(
+  findings: { category: 'sale' | 'security' | 'action' | 'change'; detail: string }[],
+): SummaryOutcome {
+  return {
+    kind: 'done',
+    summary: {
+      kind: 'alerts',
+      headline: 'Worn Wear fall event',
+      gist: findings.length === 0 ? 'Nothing notable' : 'A members-only sale.',
+      overview: { findings },
+    },
+  };
+}
+
+describe('runReaderTick — summary kinds', () => {
+  it('reads each publication’s kind with the roster it already reads — no extra fetch', async () => {
+    const calls = harness({
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+      roster: [{ id: 'pub-harborline', name: 'Harborline', summary_kind: 'roundup' }],
+    });
+    const summarized = mockSummarize(ROUNDUP_DONE);
+
+    await runReaderTick(env, NOW);
+
+    const rosterReads = restCalls(calls, 'reader_publications', 'GET');
+    expect(rosterReads).toHaveLength(1);
+    expect(new URL(rosterReads[0]?.url ?? '').searchParams.get('select')).toBe(
+      'id,name,summary_kind',
+    );
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      kind: 'roundup',
+      publication: 'Harborline',
+    });
+  });
+
+  it('summarises a fresh post from a publication with no kind set as an essay', async () => {
+    harness({ fresh: [worklistRow()], messages: [ESSAY_MESSAGE], roster: [] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]?.kind).toBe('essay');
+  });
+
+  it('retries a newsletter under its publication’s CURRENT kind', async () => {
+    harness({
+      retries: [retryRow()],
+      roster: [{ id: 'pub-harborline', name: 'Harborline', summary_kind: 'alerts' }],
+    });
+    const summarized = mockSummarize(alertsDone([]));
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]?.kind).toBe('alerts');
+  });
+
+  it('falls back to essay for a newsletter whose roster row has gone', async () => {
+    harness({ retries: [retryRow()], roster: [] });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]?.kind).toBe('essay');
+  });
+
+  it('gives an Instapaper article its linked publication’s kind, else essay', async () => {
+    harness({
+      roster: [{ id: 'pub-wip', name: 'Works in Progress', summary_kind: 'roundup' }],
+      retries: [
+        articleRetry({ publication_id: 'pub-wip' }),
+        articleRetry({ id: 'post-article-2', title: 'Unlinked' }),
+      ],
+    });
+    const summarized = mockSummarize(ROUNDUP_DONE, DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized).map((input) => input.kind)).toEqual(['roundup', 'essay']);
+  });
+
+  it('always summarises a research report as an essay, whatever its row links', async () => {
+    harness({
+      roster: [{ id: 'pub-harborline', name: 'Harborline', summary_kind: 'alerts' }],
+      retries: [researchRetry({ publication_id: 'pub-harborline' })],
+    });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    expect(summarizedInputs(summarized)[0]?.kind).toBe('essay');
+  });
+
+  it('summarises a freshly taken Instapaper article as an essay', async () => {
+    harness({
+      roster: [{ id: 'pub-wip', name: 'Works in Progress', summary_kind: 'alerts' }],
+      instapaper: { bookmarks: [bookmarkRow()], texts: { 11: ARTICLE_HTML } },
+    });
+    const summarized = mockSummarize(DONE);
+
+    await runReaderTick(instapaperEnv, NOW);
+
+    expect(summarizedInputs(summarized)[0]?.kind).toBe('essay');
+  });
+
+  it('stamps a roundup with its kind and its own prompt version', async () => {
+    const calls = harness({ fresh: [worklistRow()], messages: [ESSAY_MESSAGE] });
+    mockSummarize(ROUNDUP_DONE);
+
+    await runReaderTick(env, NOW);
+
+    const patch = payload(restCalls(calls, 'reader_posts', 'PATCH')[0]);
+    expect(patch).toMatchObject({
+      summary_kind: 'roundup',
+      prompt_version: 1,
+      overview: { highlights: ['Sim-to-real drops 95% to 55–60%.'], further_reading: [] },
+      summary_state: 'done',
+    });
+    expect(patch).not.toHaveProperty('archived_at');
+  });
+
+  it('files an Alerts post with no findings to the archive in the same write as its summary', async () => {
+    const calls = harness({ fresh: [worklistRow()], messages: [ESSAY_MESSAGE] });
+    mockSummarize(alertsDone([]));
+
+    await runReaderTick(env, NOW);
+
+    const patches = restCalls(calls, 'reader_posts', 'PATCH');
+    expect(patches).toHaveLength(1);
+    expect(payload(patches[0])).toMatchObject({
+      summary_kind: 'alerts',
+      prompt_version: 1,
+      overview: { findings: [] },
+      summary_state: 'done',
+      archived_at: NOW_ISO,
+    });
+  });
+
+  it('leaves an Alerts post with findings where it is — on the list, or in the archive', async () => {
+    const calls = harness({ fresh: [worklistRow()], messages: [ESSAY_MESSAGE] });
+    mockSummarize(alertsDone([{ category: 'sale', detail: '40% off used outerwear.' }]));
+
+    await runReaderTick(env, NOW);
+
+    const patch = payload(restCalls(calls, 'reader_posts', 'PATCH')[0]);
+    expect(patch).toMatchObject({ summary_kind: 'alerts', summary_state: 'done' });
+    expect(patch).not.toHaveProperty('archived_at');
+  });
+
+  it('counts an Alerts call against the same daily ceiling as any other', async () => {
+    harness({
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+      roster: [{ id: 'pub-harborline', name: 'Harborline', summary_kind: 'alerts' }],
+      callsToday: READER_DEFAULT_DAILY_CAP,
+    });
+    const summarized = mockSummarize(alertsDone([]));
+
+    await runReaderTick(env, NOW);
+
+    expect(summarized).not.toHaveBeenCalled();
   });
 });
 

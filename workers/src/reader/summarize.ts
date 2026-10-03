@@ -16,7 +16,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { buildReaderRequest } from './prompt';
-import { isReaderSummary, normalizeReaderSummary } from './schema';
+import { readReaderSummary } from './schema';
 import type { SummaryConfig, SummaryInput, SummaryOutcome, SummaryUsage } from './types';
 
 /**
@@ -169,15 +169,13 @@ export async function summarizePost(
     return { kind: 'counted', error: 'unparseable', ...usageFields(usage) };
   }
 
-  // A body that parsed but isn't a summary is a structured-output miss, not a transport one: the
-  // schema makes every key required, so the shape failing here is about content.
-  if (!isReaderSummary(parsed)) {
+  // A body that parsed but isn't a summary of the kind asked for is a structured-output miss, not
+  // a transport one: the schema makes every key required, so the shape failing here is about
+  // content.
+  const summary = readReaderSummary(post.kind, parsed, request.links);
+  if (summary === undefined) {
     return { kind: 'counted', error: 'schema', ...usageFields(usage) };
   }
 
-  return {
-    kind: 'done',
-    summary: normalizeReaderSummary(parsed, request.links),
-    ...usageFields(usage),
-  };
+  return { kind: 'done', summary, ...usageFields(usage) };
 }

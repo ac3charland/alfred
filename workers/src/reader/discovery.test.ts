@@ -62,6 +62,7 @@ describe('discoverPublications', () => {
     // owner's own edits — a rename, `enabled = false` after they paused it — and a merge would
     // quietly undo both on the next tick that saw one more message from it.
     expect(upsert?.headers['Prefer']).toBe('resolution=ignore-duplicates,return=representation');
+    // No `summary_kind`: an auto-discovered Substack sender takes the column's default, essay.
     expect(upsert?.rows).toEqual([
       {
         handle: 'harborline@substack.com',

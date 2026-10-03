@@ -9,7 +9,7 @@ import {
   getReaderPostForWiki,
   getReaderPostListItem,
 } from '@/lib/data/reader';
-import { isReaderOverview } from '@/lib/reader/overview';
+import { overviewOf } from '@/lib/reader/overview';
 import { WikiWriteError, commitEnvelopes } from '@/lib/wiki/writer/commit';
 import { getWikiConfig } from '@/lib/wiki/writer/config';
 import { readerEnvelope } from '@/lib/wiki/writer/envelope';
@@ -70,7 +70,10 @@ export const POST = withSession(
     }
     if (post === null) return jsonError(404, 'Post not found');
 
-    const overview = isReaderOverview(post.overview) ? post.overview : null;
+    // Only an essay has bullets to send: a roundup's highlights and an Alerts post's findings
+    // never go to the wiki, so any other kind offers nothing and every pick is stale.
+    const read = overviewOf(post);
+    const overview = read.kind === 'essay' ? read.overview : null;
     const offeredIdeas = new Set(overview?.novel_ideas);
     if (ideas.some((idea) => !offeredIdeas.has(idea))) return jsonError(409, STALE_IDEA);
     const offeredEvidence = new Set(overview?.evidence);
