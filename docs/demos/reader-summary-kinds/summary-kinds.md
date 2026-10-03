@@ -4,9 +4,46 @@ branch: claude/alf-322-summary-kinds
 
 # Reader summary kinds: Essay, Roundup and Alerts
 
-*2026-10-03T18:30:44.817Z*
+*2026-10-03T19:05:00.429Z*
 
 Each Reader publication now has a summary kind, and the summariser asks each kind a different question: **Essay** (the default — today's prompt, unchanged and still stamped prompt v2), **Roundup** (what's striking in the issue itself, plus the linked pieces worth reading in full) and **Alerts** (only sales, security events, required actions and changes; a post with none is filed to the archive by the tick). Posts render by the kind they were summarised under, so changing a publication's kind rewrites nothing; Retry summary uses the current kind.
+
+## The prompt changes per kind
+
+The eval script's dry run prints what `buildReaderRequest`, the same call the summariser makes, builds for a post: the kind's system prompt (first sentence), the overview its schema asks for, and the numbered links the model may pick from. Here is the link-roundup fixture asked as each kind. Essay is today's request; Roundup asks for highlights and links from the same numbered list; Alerts asks for findings only and sends **no** links block, since a promo mail's links are tracking noise.
+
+```bash
+npm run --silent eval:reader -w workers -- --fixtures --dry-run --kind essay | awk '/^link-roundup$/,0' | grep -E '^link-roundup|^  (prompt|overview|links)'
+```
+
+```output
+link-roundup
+  prompt         You summarise newsletter posts for one person who subscribes to far more of them than they can read.
+  overview       novel_ideas, evidence, argument, who_should_read, further_reading
+  links          8
+```
+
+```bash
+npm run --silent eval:reader -w workers -- --fixtures --dry-run --kind roundup | awk '/^link-roundup$/,0' | grep -E '^link-roundup|^  (prompt|overview|links)'
+```
+
+```output
+link-roundup
+  prompt         You summarise link roundups — newsletter issues that are mostly a curated set of links with short commentary — for one person who subscribes to far more newsletters than they can read.
+  overview       highlights, links
+  links          8
+```
+
+```bash
+npm run --silent eval:reader -w workers -- --fixtures --dry-run --kind alerts | awk '/^link-roundup$/,0' | grep -E '^link-roundup|^  (prompt|overview|links)'
+```
+
+```output
+link-roundup
+  prompt         You read corporate, retail and account email — promotions, store newsletters, account and service notices — for one person who only wants to know whether a message requires or rewards their attention
+  overview       findings
+  links          none
+```
 
 ## Choosing a kind on /reader/publications
 
@@ -18,7 +55,7 @@ Opening a card's chip lists the three kinds, each with the question it asks; the
 
 ![](summary-kinds-image-2.png)
 
-Picking Roundup saves at once: the chip updates before the PATCH settles, and rolls back with a toast if it fails.
+Picking Roundup saves at once: the picker closes and the chip updates before the PATCH settles (it rolls back with a toast if the PATCH fails).
 
 ![](summary-kinds-image-3.png)
 
@@ -32,7 +69,7 @@ Added as Alerts: the candidate leaves the list and its card reads Alerts.
 
 ## The reading list by kind
 
-Rows render by the kind they were **summarised under** (`reader_posts.summary_kind`), not by the publication's current kind. An Alerts row shows its findings in place of the gist, one tagged line each (Security in the destructive tone, the rest amber), and has no Send. A Roundup row looks like an Essay row until it's opened.
+Rows render by the kind they were **summarised under** (`reader_posts.summary_kind`), not by the publication's current kind. These posts are seeded as the tick writes them. An Alerts row shows its findings in place of the gist, one tagged line each (Security in the destructive tone, the rest amber), and has no Send. A Roundup row looks like an Essay row until it's opened.
 
 ![](summary-kinds-image-6.png)
 
@@ -44,53 +81,9 @@ An Alerts row's Overview holds only the footer: Original, Re-summarise and the s
 
 ![](summary-kinds-image-8.png)
 
-When an Alerts post has no findings, the tick sets `archived_at` in the same write as the summary, so the post never reaches the reading list. In the archive it reads like this.
+An Alerts post with no findings is shown here as the tick leaves it: archived, reading 'Nothing notable — filed automatically.' The tick's own writes have no visual surface, and the mock backend can't run the Worker, so they are pinned by tests rather than shown: the kind and per-kind version stamped on the done patch, `archived_at` set in that same write, and Retry re-summarising under the publication's current kind (`workers/src/reader/scheduled.test.ts`, *summary kinds*).
 
 ![](summary-kinds-image-9.png)
-
-## What the model is sent, per kind
-
-The tick's writes (kind and per-kind prompt version stamped, auto-archive) are pinned in `workers/src/reader/scheduled.test.ts`. The prompt input has a headless surface: the eval script's dry run prints what the summariser would be shown. With `--kind roundup`, the link-heavy fixture gets its links numbered, as an Essay does today.
-
-```bash
-npm run --silent eval:reader -w workers -- --fixtures --dry-run --kind roundup | grep -E '^[a-z-]+$|^  links'
-```
-
-```output
-essay
-  links          4
-read-in-app
-  links          5
-plain-text-only
-  links          none
-platform-mail
-  links          3
-reaction-notification
-  links          2
-link-roundup
-  links          8
-```
-
-With `--kind alerts`, every fixture sends **no** links block (`links none`): a promo mail is mostly tracking URLs, which would be noise to the judgement. The stored HTML is untouched.
-
-```bash
-npm run --silent eval:reader -w workers -- --fixtures --dry-run --kind alerts | grep -E '^[a-z-]+$|^  links'
-```
-
-```output
-essay
-  links          none
-read-in-app
-  links          none
-plain-text-only
-  links          none
-platform-mail
-  links          none
-reaction-notification
-  links          none
-link-roundup
-  links          none
-```
 
 ## Moved snapshot baselines
 
@@ -98,6 +91,6 @@ The three existing publications stories moved by less than the 1% threshold, so 
 
 ![](summary-kinds-image-10.png)
 
-After (Populated): the kind chip on each card, and **Add as ▾** on candidates.
+After: the kind chip on each card, and **Add as ▾** on candidates.
 
 ![](summary-kinds-image-11.png)
