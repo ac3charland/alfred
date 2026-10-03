@@ -279,6 +279,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>161</span><span class="sep"> — </span><span class="ttl">Add support for due times</span></h1>
   <p class="change" id="change">A task can carry a time as well as a date — “Tomorrow 3 PM” — set in the due-date picker or read from a capture, and it turns red the minute that time passes.</p>
+  <p class="revised" id="revised">Revised 2026-10-03: D2 settled — times float with your device and are never pinned to a time zone (your call).</p>
 </header>
 
 <section class="sec" id="decisions">
@@ -287,9 +288,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="open"><h3><a class="tag" href="#d1">D1</a>How do you enter the time?</h3>
       <p class="pick">A · an “Add time” field — phone wheel, typed on desktop ★ · B · four quick slots plus Other…</p>
       <p class="why">A is one plain control everywhere; B saves taps but guesses your four times.</p></li>
-    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>Where does the time live?</h3>
-      <p class="pick">Its own wall-clock column, <code>due_time</code>; 3 PM stays 3 PM in any time zone.</p>
-      <p class="why">Every date-only path stays untouched, and a schema shape is costly to reverse.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>When does a timed task turn red?</h3>
       <p class="pick">At its minute, live — no reload. Untimed tasks keep today’s rule.</p>
       <p class="why">A time is a deadline; colouring it any later hides the one thing it adds.</p></li>
@@ -299,6 +297,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>What happens to the time on edits?</h3>
       <p class="pick">Date moves and repeats keep it; clearing the date clears it; time-only dates today.</p>
       <p class="why">Nothing silently drops a time you set, and no time floats without a day.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Where does the time live?</h3>
+      <p class="pick">Its own wall-clock column, <code>due_time</code>; 3 PM stays 3 PM in any time zone.</p></li>
     <li data-state="settled"><h3><a class="tag" href="#d6">D6</a>Does the classifier read times?</h3>
       <p class="pick">Yes — “dentist tomorrow at 3pm” lands as Tomorrow 3 PM.</p></li>
   </ol>
@@ -505,9 +505,10 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </section>
 
   <section class="rec" id="d2">
-    <h3><span class="tag">D2</span>Where does the time live? · proposed</h3>
+    <h3><span class="tag">D2</span>Where does the time live? · settled</h3>
     <p><strong>Chosen:</strong> <code>items.due_time time</code> (no zone), nullable, meaningful only beside a date — a wall-clock “floating” time, the same way <code>due_date</code> is already a floating date. 3 PM means 3 PM on whatever device you’re holding, across DST and travel.</p>
     <p><strong>Rejected:</strong> (a) a real instant in <code>due_date</code> plus a has-time flag — every <code>.slice(0, 10)</code> and the corrections log’s UTC <code>to_char</code> go wrong for evening times west of UTC (7 PM CDT is tomorrow in UTC), and the Worker would need the owner’s zone to write one; (b) a floating time packed into <code>due_date</code>, midnight meaning “no time” — no migration, but midnight becomes unrepresentable and the column lies about being an instant.</p>
+    <p><strong>Considered and declined by the owner:</strong> pinning a time to the zone it was set in — right for appointments, wrong for routines, and only visible away from <code>America/Chicago</code>, which is rare, on the few tasks that carry a time. Pinning would make a timed task’s <em>date</em> zone-dependent across every date reader and need zone-aware recurrence arithmetic (a new dependency). If it’s ever wanted, a nullable zone column beside <code>due_time</code> adds it without touching existing rows (null = floating).</p>
     <p><strong>Consequence:</strong> time-aware code reads two fields; all date-only code is untouched. The hourly engine path is left as is — still unreachable; whoever exposes it moves it onto <code>due_time</code>.</p>
   </section>
 
