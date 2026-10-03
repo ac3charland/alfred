@@ -133,3 +133,18 @@ session is told to produce evidence for a spec, which is both impossible and the
 **Workaround used meanwhile:** `git fetch origin main` before pushing. Cheap once you know; the
 cost is entirely in the misdirected error message, which points a fresh session at writing demo
 evidence for a spec.
+
+---
+
+## Fourth instance — a skill's `assets/*.html` template (2026-10-03 · `claude/alf-329-skill-suggestions-09dkf0`)
+
+The skill-markdown exemption is markdown-only, so a prose edit to
+`.claude/skills/refinement/assets/spec-template.html` (a guide comment and one placeholder list)
+plus a one-line `.gitignore` entry made a skills-only branch owe a demo. A template is prose for a
+future session, not runtime behaviour. **Suggested change:** treat `.claude/skills/**` as prose
+except `scripts/**` (the narrowing the first instance already proposed), and add `.gitignore` to the
+enumerated hygiene-file allow-list from the second.
+
+**Workaround used meanwhile:** `docs/demos/alf-329-skill-suggestions/skill-suggestions.md`, a
+three-block demo (the ledger path is ignored; the template carries Review focus; the bug skill
+links the debugging skill).

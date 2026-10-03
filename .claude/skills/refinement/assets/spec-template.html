@@ -371,6 +371,15 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <ul class="checks">
     <li data-trace="[D1 P1|impl]">[…]</li>
   </ul>
+  <!-- guide: Review focus, optional. Up to five inputs or failure modes the spec implies but no criterion
+       above exercises, most likely to bite first: one line each, naming the input or condition and what a
+       reasonable person would expect; an input the spec never mentions still mustn't break the product.
+       Each is a criterion, so #tests pins it; trace it to the D#/P# whose behaviour it guards, or "impl"
+       when the expected outcome isn't visible. Delete the h3 and list when none survive. -->
+  <h3>Review focus</h3>
+  <ul class="checks">
+    <li data-trace="[D1 P1|impl]">[input or condition] → [expected behaviour]</li>
+  </ul>
 </section>
 
 <!-- guide: #tests (story), required. Which test tier pins each criterion, red → green. -->

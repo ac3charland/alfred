@@ -35,3 +35,6 @@ stryker.log
 # the one file in this repo a real credential is most likely to be typed into by hand.
 .dev.vars
 .dev.vars.*
+
+# implement-epic's progress ledger — per-session scratch, survives compaction but not the PR.
+.claude/epic-ledger.md

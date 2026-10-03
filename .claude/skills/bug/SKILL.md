@@ -31,10 +31,12 @@ wearing a diff.
 
 1. **Reproduce.** Get the wrong behaviour to happen on demand — a failing command, a request, a
    click path. Report what you found: what you see, what you expected, and the code responsible.
+   If reading the code doesn't explain it, work it with the `debugging` skill before you guess.
 2. **Pin it red.** Write the test that fails *because* the bug exists, at the tightest level that
    captures it (unit → Storybook play → E2E, in that order of preference). **Watch it fail**, and
    read the failure: a test that passes before the fix is testing something else.
-3. **Fix the cause.** Then watch the same test go green.
+3. **Fix the cause** — located per the `debugging` skill, not guessed. Then watch the same test go
+   green. A fix that doesn't turn it green sends you back there, not to a second patch on top.
 4. **Check the blast radius.** Run the repo's own checks and re-read the diff for anything else
    that relied on the broken behaviour.
 5. **Open the PR** with the `alfred` block below.
