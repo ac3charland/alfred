@@ -1,0 +1,16 @@
+requests recorded: 1
+
+POST /api/1/bookmarks/add
+Authorization: OAuth oauth_consumer_key="mock-consumer-key",
+       oauth_nonce="<per-request>",
+       oauth_signature_method="HMAC-SHA1",
+       oauth_timestamp="<per-request>",
+       oauth_token="mock-access-token",
+       oauth_version="1.0",
+       oauth_signature="<HMAC-SHA1 over the base string>"
+Content-Type: application/x-www-form-urlencoded; charset=utf-8
+
+url = https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion
+title = How near is the intelligence explosion, really?
+description = Argues the "recursive self-improvement" debate conflates three different feedback loops and that only one of them (automated ML research) has any evidence behind it.
+content = <html><body><h1>How near is the intelligence explosion, really?</h1><p>Argues the debate conflates three different feedback loops.</p></body></html>
