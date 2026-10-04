@@ -261,6 +261,184 @@ describe('CommsQueueView — keyboard selection', () => {
   });
 });
 
+/** A three-message email thread, newest first, with one refused reply, plus a lone receipt. */
+function threadedShelf(): CommMessage[] {
+  return [
+    row({
+      tier: 'fyi',
+      thread_key: 'potluck',
+      sender_name: 'Dana',
+      subject: 'Re: potluck — final',
+    }),
+    row({
+      tier: 'fyi',
+      thread_key: 'potluck',
+      sender_name: 'Ana',
+      subject: 'Re: potluck',
+      judged_by: 'refusal',
+    }),
+    row({
+      tier: 'fyi',
+      thread_key: 'potluck',
+      sender_name: 'Dana',
+      subject: 'potluck — who is in?',
+    }),
+    row({ tier: 'fyi', sender_name: 'Chase', subject: 'Your statement is ready' }),
+  ];
+}
+
+async function openShelf(user: ReturnType<typeof userEvent.setup>, count: number) {
+  await user.click(
+    screen.getByRole('button', { name: new RegExp(`FYI · ${String(count)} messages`) }),
+  );
+}
+
+/** A conversation's header: the one button that controls a list of messages. */
+function headerOf(element: HTMLElement): HTMLElement {
+  const button = element.querySelector<HTMLElement>('button[aria-controls]');
+  if (button === null) throw new Error('a conversation without a header');
+  return button;
+}
+
+function header(): HTMLElement {
+  return headerOf(screen.getByTestId('shelf-conversation'));
+}
+
+/** The rows drawn inside the open conversation, by their visible line. */
+function insideRows(): string[] {
+  return within(screen.getByTestId('shelf-conversation'))
+    .queryAllByTestId('comms-row')
+    .filter((element) => element.closest('[aria-hidden="true"]') === null)
+    .map(
+      (element) => within(element).getAllByRole('button')[0]?.querySelector('p')?.textContent ?? '',
+    );
+}
+
+describe('CommsQueueView — the shelf by conversation', () => {
+  it('collapses a thread to one row that counts its messages in prose, beside a plain single row', async () => {
+    const user = userEvent.setup();
+    renderView(threadedShelf());
+    await openShelf(user, 4);
+
+    expect(screen.getAllByTestId('shelf-conversation')).toHaveLength(1);
+    expect(header()).toHaveTextContent('Dana, Ana');
+    expect(header()).toHaveTextContent('· RealPlay · 11:59 · 3 messages');
+    // Several senders, so the newest line says who wrote it.
+    expect(header()).toHaveTextContent('Dana: Re: potluck — final');
+    expect(header()).toHaveAttribute('aria-expanded', 'false');
+    // The lone receipt is just a row: no count, no header.
+    const single = screen
+      .getAllByText('Your statement is ready')[0]
+      ?.closest('[data-testid="comms-row"]');
+    expect(single).not.toBeNull();
+    expect(single?.closest('[data-testid="shelf-conversation"]')).toBeNull();
+    expect(single).not.toHaveTextContent(/messages/);
+  });
+
+  it('rolls a refused message’s chip up onto the collapsed conversation', async () => {
+    const user = userEvent.setup();
+    renderView(threadedShelf());
+    await openShelf(user, 4);
+
+    expect(within(header()).getByText('Refused')).toBeInTheDocument();
+  });
+
+  it('opens on a click to its messages, newest first, and closes on the next', async () => {
+    const user = userEvent.setup();
+    renderView(threadedShelf());
+    await openShelf(user, 4);
+
+    await user.click(header());
+    expect(header()).toHaveAttribute('aria-expanded', 'true');
+    expect(insideRows()).toEqual(['Re: potluck — final', 'Re: potluck', 'potluck — who is in?']);
+
+    await user.click(header());
+    expect(header()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('walks j onto the header, through its messages and past it, closing it behind', async () => {
+    const user = userEvent.setup();
+    renderView(threadedShelf());
+    await openShelf(user, 4);
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(header()).toHaveAttribute('aria-expanded', 'true');
+    // Verbs belong to messages: `x` on the header does nothing.
+    fireEvent.keyDown(document, { key: 'x' });
+    expect(jest.mocked(api).clearCommMessage).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('Re: potluck — final');
+    fireEvent.keyDown(document, { key: 'j' });
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('potluck — who is in?');
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('Your statement is ready');
+    expect(header()).toHaveAttribute('aria-expanded', 'false');
+
+    // Back up lands on the header, which opens it again; Escape closes it.
+    fireEvent.keyDown(document, { key: 'k' });
+    expect(header()).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(header()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('opens only one conversation at a time', async () => {
+    const user = userEvent.setup();
+    renderView([
+      row({ tier: 'fyi', thread_key: 'a', subject: 'A newest' }),
+      row({ tier: 'fyi', thread_key: 'a', subject: 'A oldest' }),
+      row({ tier: 'fyi', thread_key: 'b', subject: 'B newest' }),
+      row({ tier: 'fyi', thread_key: 'b', subject: 'B oldest' }),
+    ]);
+    await openShelf(user, 4);
+    const [first, second] = screen
+      .getAllByTestId('shelf-conversation')
+      .map((element) => headerOf(element));
+
+    if (first === undefined || second === undefined) throw new Error('two conversations expected');
+    await user.click(first);
+    await user.click(second);
+
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    expect(second).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('removes just the promoted message, and a conversation left with one is a plain row', async () => {
+    const user = userEvent.setup();
+    const [newest, oldest] = [
+      row({ tier: 'fyi', thread_key: 'pair', sender_name: 'Dana', subject: 'Second word' }),
+      row({ tier: 'fyi', thread_key: 'pair', sender_name: 'Dana', subject: 'First word' }),
+    ];
+    const promoted = { ...newest, tier: 'today' as const };
+    jest.mocked(api).changeCommTier.mockResolvedValue(promoted);
+    jest
+      .mocked(api)
+      .fetchCommsSnapshot.mockResolvedValue(
+        makeCommsSeed({ accounts: [GMAIL], messages: [promoted, oldest] }),
+      );
+    renderView([newest, oldest]);
+    await openShelf(user, 2);
+
+    fireEvent.keyDown(document, { key: 'j' });
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('Second word');
+    fireEvent.keyDown(document, { key: 't' });
+    const menu = await screen.findByRole('menu');
+    await user.click(within(menu).getByRole('menuitem', { name: 'Today' }));
+    const collapse = selectedRow()?.closest('[data-testid="comms-row-collapse"]');
+    const event = new Event('transitionend', { bubbles: true });
+    Object.defineProperty(event, 'propertyName', { value: 'grid-template-rows' });
+    if (collapse) fireEvent(collapse, event);
+
+    expect(await screen.findByLabelText('1 in Today')).toBeInTheDocument();
+    expect(screen.queryByTestId('shelf-conversation')).not.toBeInTheDocument();
+    const left = screen.getAllByText('First word')[0]?.closest('[data-testid="comms-row"]');
+    expect(left).not.toBeNull();
+  });
+});
+
 describe('CommsQueueView — one selection at a time', () => {
   it('moves the expansion rather than opening a second row', async () => {
     const user = userEvent.setup();

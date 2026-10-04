@@ -314,3 +314,83 @@ test.describe('the Comms triage queue', () => {
     await expect(page.getByLabel(/erroring/)).toBeHidden();
   });
 });
+
+test.describe('the FYI shelf by conversation', () => {
+  const HOUR = 60 * 60 * 1000;
+  /** An FYI row `hoursAgo` before now — anchored to the clock so it stays inside the window. */
+  function shelved(
+    accountId: string,
+    hoursAgo: number,
+    overrides: Parameters<typeof makeCommMessage>[1],
+  ) {
+    return makeCommMessage(accountId, {
+      tier: 'fyi',
+      judged_by: 'model',
+      received_at: new Date(Date.now() - hoursAgo * HOUR).toISOString(),
+      ...overrides,
+    });
+  }
+
+  const THREAD = [
+    shelved(PERSONAL.id, 1, {
+      thread_key: 'potluck',
+      sender_name: 'Dana',
+      subject: 'Re: potluck — final count',
+    }),
+    shelved(PERSONAL.id, 2, {
+      thread_key: 'potluck',
+      sender_name: 'Lee',
+      subject: 'Re: potluck — count me in',
+    }),
+    shelved(PERSONAL.id, 30, {
+      thread_key: 'potluck',
+      sender_name: 'Dana',
+      subject: 'potluck — who is in?',
+    }),
+  ];
+  // One chat, two bursts nine hours apart: more than the six-hour gap, so two conversations.
+  const CHAT = [
+    shelved(IMESSAGE.id, 0.5, {
+      thread_key: 'chat-crew',
+      chat_name: 'Climbing crew',
+      body: 'see you at 6',
+    }),
+    shelved(IMESSAGE.id, 0.6, {
+      thread_key: 'chat-crew',
+      chat_name: 'Climbing crew',
+      body: 'who has the rope?',
+    }),
+    shelved(IMESSAGE.id, 9.5, {
+      thread_key: 'chat-crew',
+      chat_name: 'Climbing crew',
+      body: 'climbing tomorrow?',
+    }),
+    shelved(IMESSAGE.id, 9.6, {
+      thread_key: 'chat-crew',
+      chat_name: 'Climbing crew',
+      body: 'anyone free?',
+    }),
+  ];
+
+  test('collapses a thread and each chat burst to one row, and opens a thread onto its messages', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ commAccounts: [PERSONAL, IMESSAGE], commMessages: [...THREAD, ...CHAT] });
+    await page.goto('/comms');
+
+    await page.getByRole('button', { name: /FYI · 7 messages/ }).click();
+
+    const conversations = page.getByTestId('shelf-conversation');
+    await expect(conversations).toHaveCount(3);
+    const thread = conversations.filter({ hasText: '3 messages' });
+    await expect(thread).toHaveCount(1);
+    await expect(conversations.filter({ hasText: 'Climbing crew' })).toHaveCount(2);
+
+    const header = thread.locator('button[aria-controls]');
+    await header.click();
+    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    await expect(thread.getByTestId('comms-row')).toHaveCount(3);
+    await expect(thread.getByText('potluck — who is in?').first()).toBeVisible();
+  });
+});

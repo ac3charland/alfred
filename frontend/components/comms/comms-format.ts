@@ -1,3 +1,4 @@
+import { askLine } from '@/lib/comms/ask';
 import { resolvePerson } from '@/lib/comms/people';
 import type { CommAccount, CommMessage, CommPersonWithHandles, CommTier } from '@/lib/types';
 
@@ -87,4 +88,52 @@ export function accountLabel(
 ): { account: CommAccount | undefined; label: string } {
   const account = accounts.find((row) => row.id === accountId);
   return { account, label: account?.label ?? 'unknown account' };
+}
+
+/** Up to two names, then how many more: `Dana, Lee +1`. */
+function namesWithOverflow(names: string[]): string {
+  const shown = names.slice(0, 2).join(', ');
+  return names.length > 2 ? `${shown} +${String(names.length - 2)}` : shown;
+}
+
+/** Distinct sender labels across a conversation, newest sender first. */
+function distinctSenders(messages: CommMessage[], people: CommPersonWithHandles[]): string[] {
+  return [...new Set(messages.map((message) => senderLabel(message, people)))];
+}
+
+/**
+ * Who a collapsed conversation is with — its row's first field. An iMessage group chat (the
+ * daemon's rule: it has a name, or more than one participant besides the owner) is named for
+ * itself: its chat name, else its participants. Anything else is named for who wrote in it,
+ * newest first. Either way two names at most, then a count, so the row stays one line.
+ */
+export function conversationWho(
+  messages: CommMessage[],
+  account: CommAccount | undefined,
+  people: CommPersonWithHandles[],
+): string {
+  const newest = messages[0];
+  if (newest !== undefined && account?.kind === 'imessage') {
+    const chatName = newest.chat_name?.trim();
+    if (chatName !== undefined && chatName !== '') return chatName;
+    if (newest.participants.length > 1) {
+      return namesWithOverflow(
+        newest.participants.map((handle) => resolvePerson(handle, people)?.name ?? handle),
+      );
+    }
+  }
+  return namesWithOverflow(distinctSenders(messages, people));
+}
+
+/**
+ * A collapsed conversation's second line: its newest message's own line, prefixed with who said
+ * it when more than one person is talking, so a group chat's line is attributable.
+ */
+export function conversationLine(messages: CommMessage[], people: CommPersonWithHandles[]): string {
+  const newest = messages[0];
+  if (newest === undefined) return '';
+  const line = askLine(newest);
+  return distinctSenders(messages, people).length > 1
+    ? `${senderLabel(newest, people)}: ${line}`
+    : line;
 }

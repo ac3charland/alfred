@@ -4,6 +4,8 @@ import type { CommPersonWithHandles } from '@/lib/types';
 import {
   TIER_LABEL,
   accountLabel,
+  conversationLine,
+  conversationWho,
   formatElapsed,
   formatMessageTime,
   senderLabel,
@@ -122,5 +124,83 @@ describe('TIER_LABEL', () => {
       whenever: 'Whenever',
       fyi: 'FYI',
     });
+  });
+});
+
+function from(handle: string, overrides: Parameters<typeof makeCommMessage>[1] = {}) {
+  return makeCommMessage(ACCOUNT, { sender_handle: handle, ...overrides });
+}
+
+describe('conversationWho', () => {
+  const GMAIL = makeCommAccount('Personal Gmail', { kind: 'gmail' });
+  const PHONE = makeCommAccount('iMessage', { kind: 'imessage' });
+  const dana: CommPersonWithHandles = {
+    ...makeCommPerson('Dana Whitfield'),
+    comm_handles: [
+      {
+        id: 'h1',
+        person_id: 'p1',
+        handle: '+15550102233',
+        kind: 'phone',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+  };
+
+  it('names an iMessage group chat by its chat name', () => {
+    const messages = [
+      from('+15550102233', { chat_name: 'Climbing crew', participants: ['+15550102233'] }),
+    ];
+    expect(conversationWho(messages, PHONE, [dana])).toBe('Climbing crew');
+  });
+
+  it('names an unnamed group chat by up to two participants, then a count', () => {
+    const participants = ['+15550102233', '+15550000001', '+15550000002', '+15550000003'];
+    const messages = [from('+15550000001', { participants })];
+    expect(conversationWho(messages, PHONE, [dana])).toBe('Dana Whitfield, +15550000001 +2');
+  });
+
+  it('names anything else by its distinct senders, newest first, up to two then a count', () => {
+    const messages = [
+      from('dana@example.com', { sender_name: 'Dana' }),
+      from('lee@example.com', { sender_name: 'Lee' }),
+      from('dana@example.com', { sender_name: 'Dana' }),
+      from('ana@example.com', { sender_name: 'Ana' }),
+      from('sam@example.com', { sender_name: 'Sam' }),
+    ];
+    expect(conversationWho(messages, GMAIL, [])).toBe('Dana, Lee +2');
+    expect(conversationWho(messages.slice(0, 3), GMAIL, [])).toBe('Dana, Lee');
+  });
+
+  it('names a one-to-one iMessage chat by its sender, roster first', () => {
+    const messages = [from('+15550102233', { participants: ['+15550102233'] })];
+    expect(conversationWho(messages, PHONE, [dana])).toBe('Dana Whitfield');
+  });
+
+  it('ignores a chat name on a non-iMessage account', () => {
+    const messages = [from('dana@example.com', { sender_name: 'Dana', chat_name: 'Crew' })];
+    expect(conversationWho(messages, GMAIL, [])).toBe('Dana');
+  });
+});
+
+describe('conversationLine', () => {
+  it('is the newest message’s line when one person is talking', () => {
+    const messages = [
+      makeCommMessage(ACCOUNT, { sender_name: 'Dana', subject: 'Re: potluck' }),
+      makeCommMessage(ACCOUNT, { sender_name: 'Dana', subject: 'potluck' }),
+    ];
+    expect(conversationLine(messages, [])).toBe('Re: potluck');
+  });
+
+  it('prefixes the newest sender when several are', () => {
+    const messages = [
+      makeCommMessage(ACCOUNT, {
+        sender_handle: 'sam@example.com',
+        sender_name: 'Sam',
+        body: 'see you at 6',
+      }),
+      makeCommMessage(ACCOUNT, { sender_handle: 'lee@example.com', sender_name: 'Lee' }),
+    ];
+    expect(conversationLine(messages, [])).toBe('Sam: see you at 6');
   });
 });

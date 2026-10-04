@@ -74,3 +74,6 @@ export function sectionShellClass(loud: boolean): string {
     loud ? 'border-accent-blue/40 bg-accent-blue/[0.04] glow-blue' : 'border-border/60',
   );
 }
+
+/** An opened conversation's messages: indented under a left rule, so they read as its children. */
+export const conversationKidsClass = 'ml-3 mt-2 flex flex-col border-l border-border/60 pl-2';
