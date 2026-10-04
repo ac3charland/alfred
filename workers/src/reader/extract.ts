@@ -28,6 +28,12 @@
  * reads, and taking the body from the same place as the URL keeps the two describing one artefact.
  * So HTML wins here and the plain part is the fallback, and the flag says which one it was so a
  * disappointing summary can be traced to the body it was made from.
+ *
+ * `html` is that same markup, kept rather than discarded. The Reader's send verb hands it to
+ * Instapaper, whose parser pulls the article out of it — so a paid post the owner subscribes to
+ * arrives in full instead of as the web paywall's teaser. It is kept RAW: nothing sanitises it and
+ * nothing strips the mail chrome, because the app never renders it and Instapaper's parser wants
+ * the document as it was sent.
  */
 import {
   decodeEncodedWords,
@@ -52,6 +58,14 @@ import type { GmailMessage, GmailPayload } from '../comms/gmail-api';
  */
 export const READER_TEXT_CHARS = 400_000;
 
+/**
+ * The ceiling on the STORED markup. Unlike the text, it is never truncated: half a document is
+ * worse input for Instapaper's parser than none, and the send has a text rung to fall back to. So
+ * past this the HTML is dropped whole. Sized well above the largest post the live table holds (a
+ * 72.6 K-character body), because markup runs several times its own prose.
+ */
+export const READER_HTML_CHARS = 1_000_000;
+
 /** The title of a post whose subject was empty and whose HTML carried no `<title>` either. */
 export const UNTITLED = '(untitled)';
 
@@ -68,6 +82,12 @@ export interface ExtractedPost {
   word_count: number;
   /** True only when the text came out of an HTML part through `htmlToText`. */
   html_extracted: boolean;
+  /**
+   * The decoded `text/html` part exactly as it arrived — present only when it is what produced
+   * {@link ExtractedPost.text} and it fits `READER_HTML_CHARS`. Read by nothing in the Worker;
+   * stored for the Reader's send verb.
+   */
+  html?: string | undefined;
 }
 
 /** `<a … href="…" …>text</a>`, href quoted either way or bare, text non-greedy across newlines. */
@@ -296,5 +316,10 @@ export function extractPost(
     // derives from it never describes words the summariser was not given either.
     word_count: text.split(/\s+/).filter((token) => token !== '').length,
     html_extracted: htmlExtracted,
+    // Kept only when the markup IS the body: a post whose text came from the plain part would
+    // otherwise store HTML that says something different from the text beside it, and the sweep's
+    // predicate (which keys on the text) is only sound while the two travel together.
+    html:
+      htmlExtracted && html !== undefined && html.length <= READER_HTML_CHARS ? html : undefined,
   };
 }

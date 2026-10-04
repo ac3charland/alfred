@@ -51,6 +51,13 @@ export interface ReaderPostInsert {
   canonical_url?: string | undefined;
   received_at: string;
   text: string;
+  /**
+   * The email's own markup, when it is what produced `text`. Absent rather than an explicit JSON
+   * null when there is none: this is an INSERT, so a key `JSON.stringify` drops leaves the column
+   * at its default, which is null — the same outcome, and the shape every other optional column
+   * here already takes. (A PATCH is where the difference bites; see {@link JSON_NULL}.)
+   */
+  html?: string | undefined;
   word_count: number;
   html_extracted: boolean;
   summary_state: 'pending';

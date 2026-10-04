@@ -946,6 +946,11 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
       html_extracted: true,
       canonical_url: 'https://open.substack.com/pub/harborline/p/the-grain-ledger',
     });
+    // The markup rides along on the insert the tick already makes — it is what the send hands to
+    // Instapaper. The plain-text post has none, and the key is simply absent rather than null,
+    // which on an insert leaves the column at its default.
+    expect(inserts[0]?.['html']).toContain('READ IN APP');
+    expect(inserts[2]).not.toHaveProperty('html');
 
     expect(restCalls(calls, 'comm_messages')).toHaveLength(3);
     expect(summarized).toHaveBeenCalledTimes(3);

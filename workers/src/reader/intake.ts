@@ -117,6 +117,8 @@ export async function intakePost(
     canonical_url: post.canonical_url,
     received_at: post.received_at,
     text: post.text,
+    // The same one Gmail read, a larger insert body: the tick's subrequest arithmetic is unmoved.
+    html: post.html,
     word_count: post.word_count,
     html_extracted: post.html_extracted,
     summary_state: 'pending',

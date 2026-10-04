@@ -1,5 +1,5 @@
 import type { GmailMessage } from '../comms/gmail-api';
-import { READER_TEXT_CHARS, UNTITLED, extractPost } from './extract';
+import { READER_HTML_CHARS, READER_TEXT_CHARS, UNTITLED, extractPost } from './extract';
 import {
   ESSAY_MESSAGE,
   PLAIN_TEXT_ONLY_MESSAGE,
@@ -102,6 +102,22 @@ describe('extractPost — the fixtures', () => {
     expect(extractPost(ESSAY_MESSAGE, HARBORLINE).html_extracted).toBe(true);
     // The plain-text fixture has no HTML part at all, so the plain body is the post.
     expect(extractPost(PLAIN_TEXT_ONLY_MESSAGE, HARBORLINE).html_extracted).toBe(false);
+  });
+
+  it('keeps the email markup raw, chrome and all, for an HTML-extracted post', () => {
+    // The send hands this to Instapaper's parser, so it is the document as it arrived: the
+    // preheaders, the tracking pixel and the app button all stay. Anything that stripped them
+    // would be guessing at what the parser wants.
+    const { html } = extractPost(ESSAY_MESSAGE, HARBORLINE);
+    expect(html).toContain('<!doctype html>');
+    expect(html).toContain('display:none');
+    expect(html).toContain('READ IN APP');
+  });
+
+  it('keeps no markup for a post whose body came from the plain part', () => {
+    // There is no HTML part at all here. Storing one for a text-extracted post would put a body
+    // in the column that says something different from the text beside it.
+    expect(extractPost(PLAIN_TEXT_ONLY_MESSAGE, HARBORLINE).html).toBeUndefined();
   });
 
   it('keeps the Message-ID with its angle brackets, as comms stores it', () => {
@@ -270,6 +286,47 @@ describe('extractPost — the edges', () => {
     expect(post.text.length).toBeLessThanOrEqual(READER_TEXT_CHARS);
     // The count describes what was STORED, so it can never claim words nobody has.
     expect(post.word_count).toBe(post.text.split(/\s+/).filter((token) => token !== '').length);
+  });
+
+  it('keeps no markup at all past READER_HTML_CHARS, rather than half a document', () => {
+    // Truncated markup is worse input for Instapaper's parser than none — a document cut
+    // mid-element — and the send still has the stored text to fall back to. So the ceiling drops
+    // the whole column while the text it produced is kept.
+    const body = `<p>${'word '.repeat(220_000)}</p>`;
+    const post = extractPost(htmlMessage(body), HARBORLINE);
+
+    expect(body.length).toBeGreaterThan(READER_HTML_CHARS);
+    expect(post.html).toBeUndefined();
+    expect(post.text).not.toBe('');
+    expect(post.html_extracted).toBe(true);
+  });
+
+  it('keeps markup that sits just inside READER_HTML_CHARS', () => {
+    const body = `<p>${'word '.repeat(100)}</p>`;
+    const post = extractPost(htmlMessage(body), HARBORLINE);
+
+    expect(body.length).toBeLessThanOrEqual(READER_HTML_CHARS);
+    expect(post.html).toBe(body);
+  });
+
+  it('keeps no markup when the HTML part is empty and the plain part is the body', () => {
+    const message: GmailMessage = {
+      id: 'empty-html',
+      threadId: 'thread-empty-html',
+      internalDate: '1789000000000',
+      payload: {
+        mimeType: 'multipart/alternative',
+        headers: [{ name: 'Subject', value: 'Empty markup' }],
+        parts: [
+          { mimeType: 'text/html', body: { size: 0, data: encodeBody(' '.repeat(3)) } },
+          { mimeType: 'text/plain', body: { size: 5, data: encodeBody('hello there') } },
+        ],
+      },
+    };
+
+    const post = extractPost(message, HARBORLINE);
+    expect(post.html_extracted).toBe(false);
+    expect(post.html).toBeUndefined();
   });
 
   it('returns empty text for a message whose every part is an attachment', () => {
