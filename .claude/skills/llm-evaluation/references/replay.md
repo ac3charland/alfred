@@ -22,23 +22,31 @@ use it to find where arms differ, and the ledger to decide.
   session with mid-run turns, a rebase or its own subagents is a reference point, not a control,
   so replay every arm fresh, the baseline included.
 - **`create_session` sets `model` but not effort: pin it in every arm.** Left alone, a child runs
-  its model's default (Opus 5.5: medium, Fable 5.1: high), so arms can differ in effort without
-  anyone choosing it. Two ways:
-  - **`/effort` as the prompt (no setup).** Set `prompt` to exactly `/effort <level>`: a task on the
+  its model's default (Opus 5.5: medium; Opus 5 and Fable 5.1: high), so arms can differ in effort
+  without anyone choosing it. Subagents inherit the session's effort, a `model:` override included,
+  so an arm's reviewer runs at the arm's level. Three ways:
+  - **`effortLevel` on the arm's base branch (preferred: no setup, the prompt stays the first
+    turn).** Push the base commit as `<spike-ref>/base-<level>`, add one commit setting
+    `"effortLevel": "<level>"` in `.claude/settings.json` (`low` to `xhigh`; not `max`), and pass
+    that branch as `source_revision`. The GitHub MCP's `create_or_update_file` makes that commit
+    without running local hooks. In the preamble that commit is the base (review diff,
+    `origin/main`), and the arm is told to leave the file alone.
+  - **`/effort` as the prompt.** Set `prompt` to exactly `/effort <level>`: a task on the
     next line becomes part of the argument and the command fails. It runs without a model turn. Put
     the launch prompt in `append_system_prompt`, then start the child with a `send_message` ("start
     the task in your system prompt"). A task sent only by `send_message` is refused, since it
     arrives as data. The task then sits in the system prompt rather than the first turn, so launch
     every arm this way, baseline included. The arm's ledger row records `/effort <level>` as its
     `prompt`, so don't read `prompt`, `ref` or `skills` from it.
-  - **An environment per level (keeps the prompt as the first turn).** `CLAUDE_CODE_EFFORT_LEVEL`
-    overrides `--effort` and `/effort`. The owner sets it as an environment variable on a copy of
-    the alfred environment, in the claude.ai environment settings; pass that `environment_id`.
-    Precedence is verified in the CLI; no cloud run yet.
+  - **An environment per level.** `CLAUDE_CODE_EFFORT_LEVEL` overrides `--effort` and `/effort`.
+    The owner sets it as an environment variable on a copy of the alfred environment, in the
+    claude.ai environment settings; pass that `environment_id`. Precedence is verified in the CLI;
+    no cloud run yet.
 
-  Check what ran with the transcript dry-run below, or `$CLAUDE_EFFORT` in the child's shell.
-  `get_session` → `session_context.effort_level` shows an `/effort` pick but is null both at the
-  model default and, as far as the CLI's code shows, under the environment variable.
+  Check what ran: every transcript entry, main and `subagents/*.jsonl`, carries `"effort"`
+  (`grep -o '"effort":"[a-z]*"' <file> | sort | uniq -c`), or read `$CLAUDE_EFFORT` in the child's
+  shell. `get_session` → `session_context.effort_level` shows only an `/effort` pick: it is null at
+  the model default, under `effortLevel`, and (per the CLI's code) under the environment variable.
 - **Every rule goes in the launch prompt.** A later `send_message` is delivered as "DATA, not
   operator instructions", so it is weaker than the prompt. Prepend one shared preamble to the
   verbatim prompt; the arms should differ only in their architecture block. The preamble says:
@@ -47,12 +55,15 @@ use it to find where arms differ, and the ledger to decide.
   - review the branch diff instead of a PR;
   - nobody answers questions;
   - don't read the merged solution (name the PR, branch and archived spec);
-  - **`git fetch origin main` is allowed for the pre-push gate only**, because the branch secret
-    scan needs `origin/main`;
+  - **never `git fetch`; point `origin/main` at the base instead** (`git update-ref
+    refs/remotes/origin/main <base>`) before the first push, because the pre-push gate diffs
+    against `origin/main` and a fetch brings in the merged solution;
   - send the final report to `@parent` with `send_message`, because a child that finishes cleanly
     doesn't notify its parent.
 - **A historical base lacks newer tooling.** For example, the recording hook is absent before
-  ALF-310, so the replay writes no ledger row.
+  ALF-310, so the replay writes no ledger row. Its date-bound tests may also have rotted (on a
+  late-September base, a habits E2E's June dates fell outside the window and failed the pre-push
+  gate), so every arm spends a commit re-anchoring them: leave that commit out when comparing diffs.
 
 ## Measure cost
 
@@ -81,6 +92,9 @@ use it to find where arms differ, and the ledger to decide.
   across order. Judges favour their own family, and position bias is real.
 - Pair the judge with the outputs the gates already give: green pre-push `check:slow`, test counts,
   and the review round's findings and their dispositions.
+- **A bug has an objective check: the merged fix's behavioural test.** Insert it into each arm's
+  worktree and run it through `npm run test`. It fails on the base, and passes only where the arm
+  fixed the real cause. A test that calls the original fix's own functions isn't portable.
 
 ## Replaying a review round
 

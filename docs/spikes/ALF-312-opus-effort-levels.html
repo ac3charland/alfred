@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-312 — Would medium have done the stories I ran at Extra?</title><style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · FINDINGS — what a findings document adds to the house stylesheet ═══ */
+#landed>.side~*+*{margin-top:.75rem}
+.detail aside{margin:0 0 .9rem;padding:.75rem 1rem;background:var(--wash);border-left:3px solid var(--rule)}
+.detail aside>h3:first-child{margin-top:0}
+.detail aside>:last-child{margin-bottom:0}
+.cost td.num,.cost th.num{text-align:right;font-variant-numeric:tabular-nums}
+.dg .seg-a rect{fill:var(--wash)}
+.dg .seg-b rect{fill:color-mix(in srgb,var(--teal) 22%,var(--wash))}
+.dg .seg-c rect{fill:color-mix(in srgb,var(--muted) 30%,var(--wash))}
+.dg .seg-h rect{fill:none;stroke-dasharray:3 3}
+
+</style>
+</head>
+<body>
+<main class="page">
+
+<section id="brief" data-fold="above">
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Code · Spike findings</span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>312</span><span class="sep"> — </span><span class="ttl">Would medium have done the stories I ran at Extra?</span></h1>
+  <p class="change" id="answer">Yes. Replayed fresh, both stories you had run at Extra came out correct and gate-green at medium, for 42% and 63% of Extra’s cost. Extra bought breadth, not correctness.</p>
+</header>
+
+<section class="sec" id="landed">
+  <h2 class="side">Where we landed</h2>
+  <p>Launch Opus 5.5 implementation and bug stories at medium, and pick Extra only for a reason you can name. Medium found ALF-317’s real cause and passed the original fix’s regression test. It fixed only the column the report named, though, and filed the same-cause siblings as a follow-up. On ALF-238, four blind judges split two-two. Don’t run Opus 5: at Extra it was no better than 5.5 medium, at four to five times the cost. Two replays are a case study, not a rate. Next I’d cut the effort trial ALF-283 proposed: medium against high, assigned by ticket-ref hash on the implementation and bug lanes, and pinned through a cloud environment per level.</p>
+  <ol class="list">
+    <li><h3>Correctness held</h3>
+      <p class="pick">Every medium arm finished with green gates and a working result.</p>
+      <p class="why">ALF-317’s hidden regression test passes in every arm; ALF-238’s judges tie on correctness — <a href="#bug">§3</a>, <a href="#story">§4</a></p></li>
+    <li><h3>What Extra bought</h3>
+      <p class="pick">Breadth and test depth, plus two slips medium avoided.</p>
+      <p class="why">Five sibling columns fixed, a 375 px E2E, stricter error mapping; a missing schema reload and a 500 path — <a href="#bug">§3</a>, <a href="#story">§4</a></p></li>
+    <li><h3>Cost</h3>
+      <p class="pick">Medium cost $4.71 against $11.29 on the bug, $15.25 against $24.14 on the story.</p>
+      <p class="why"><code>get_session</code> totals, subagents included; same-setting reruns vary 14–31% — <a href="#cost">§2</a></p></li>
+    <li><h3>Opus 5 at Extra</h3>
+      <p class="pick">No better than 5.5 medium, at 4.4–4.8× its cost.</p>
+      <p class="why">Its fix was broader on the bug; judges chose 5.5 medium 4–0 on the story — <a href="#opus5">§5</a></p></li>
+    <li><h3>Setting effort in a test session</h3>
+      <p class="pick">Commit <code>effortLevel</code> to the arm’s base branch; subagents inherit it.</p>
+      <p class="why">Verified on Opus 5.5 and Opus 5 in 2 probes and 6 arms; now in the llm-evaluation skill — <a href="#howto">§6</a></p></li>
+  </ol>
+</section>
+
+<section id="diagram" aria-label="What each arm cost">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 560 262" role="img" aria-label="Cost per arm. ALF-317: Opus 5.5 medium $4.71, Opus 5.5 xhigh $11.29, Opus 5 xhigh $22.71, original xhigh session $9.94. ALF-238: Opus 5.5 medium $15.25, Opus 5.5 xhigh $24.14, Opus 5 xhigh $67.83, original xhigh session $18.36.">
+      <text x="0" y="14">ALF-317 · bug</text>
+      <text class="s" x="0" y="38">5.5 medium</text>
+      <g class="seg-b"><rect x="150" y="26" width="19" height="18"/></g>
+      <text class="s" x="175" y="39">$4.71 · 40 min</text>
+      <text class="s" x="0" y="62">5.5 xhigh</text>
+      <g class="seg-a"><rect x="150" y="50" width="45" height="18"/></g>
+      <text class="s" x="201" y="63">$11.29 · 67 min</text>
+      <text class="s" x="0" y="86">Opus 5 xhigh</text>
+      <g class="seg-c"><rect x="150" y="74" width="91" height="18"/></g>
+      <text class="s" x="247" y="87">$22.71 · 72 min</text>
+      <text class="s" x="0" y="110">original, xhigh</text>
+      <g class="seg-h"><rect x="150" y="98" width="40" height="18"/></g>
+      <text class="lb" x="196" y="111">$9.94 · reference only</text>
+      <text x="0" y="146">ALF-238 · story</text>
+      <text class="s" x="0" y="170">5.5 medium</text>
+      <g class="seg-b"><rect x="150" y="158" width="61" height="18"/></g>
+      <text class="s" x="217" y="171">$15.25 · 73 min</text>
+      <text class="s" x="0" y="194">5.5 xhigh</text>
+      <g class="seg-a"><rect x="150" y="182" width="97" height="18"/></g>
+      <text class="s" x="253" y="195">$24.14 · 51 min</text>
+      <text class="s" x="0" y="218">Opus 5 xhigh</text>
+      <g class="seg-c"><rect x="150" y="206" width="271" height="18"/></g>
+      <text class="s" x="427" y="219">$67.83 · 108 min</text>
+      <text class="s" x="0" y="242">original, xhigh</text>
+      <g class="seg-h"><rect x="150" y="230" width="73" height="18"/></g>
+      <text class="lb" x="229" y="243">$18.36 · reference only</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b> What each fresh replay cost, to scale ($1 = 4 px). The dashed bars are the original sessions, which had owner turns and a different environment or a rebase.</figcaption>
+  </figure>
+</section>
+</section>
+
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>The evidence</h2>
+  <p>Everything below is for whoever builds on this. Acting on the answer needs only what’s above.</p>
+</div>
+
+<section class="detail" id="detail" data-fold="below">
+
+<section id="design">
+  <h2>The experiment</h2>
+  <p>The question, as the owner sharpened it in the first attempt at this spike: take a session that ran at Extra (<code>xhigh</code>) and see whether it could have been completed successfully at Medium. The owner then settled three design questions before anything ran:</p>
+  <ul>
+    <li><strong>Stories.</strong> Two: a bug and a story built from a spec, so two lanes are covered rather than one anecdote.</li>
+    <li><strong>Branches.</strong> Arms push to <code>alf-312/*</code> branches and open no PRs.</li>
+    <li><strong>Opus 5.</strong> Add an Opus 5 <code>xhigh</code> arm, to test the premise that Opus 5 at Extra equals Opus 5.5 at Medium.</li>
+  </ul>
+  <h3>The stories</h3>
+  <p>Both were chosen from the 31 Opus 5.5 sessions on alfred that ran at <code>xhigh</code> between the model’s release (2026-09-22) and 2026-10-03.</p>
+  <div class="scroll"><table>
+    <tr><th>Story</th><th>Why it</th><th>Original session</th><th>Owner turns</th></tr>
+    <tr><td>ALF-317 (bug), PR #435</td><td>The report is a one-line title. The obvious suspect (the realtime update) is innocent, and the real cause is the navigation refetch. Diagnosis is where effort should matter most.</td><td><code>session_01X9qLrPZFyfZ8itJW8Vm38q</code>, $9.94, about 55 min</td><td>One: “wrong cloud environment, push <code>--no-verify</code>”. It ran in the RealPlay environment on Node 22.</td></tr>
+    <tr><td>ALF-238 (story), PR #369</td><td>A 108-file story built from a spec: a migration, the Worker, an OAuth client, a route, a store, the UI, Storybook and Playwright.</td><td><code>session_0123ucU9ofxFJMFKwNqAqeHt</code>, $18.36, overnight</td><td>Several: a phone-layout decision, a Vercel question, then a rebase onto #370 that conflicted in 17 files.</td></tr>
+  </table></div>
+  <p>Neither original is a control, so every arm, Extra included, ran fresh.</p>
+  <h3>Arms</h3>
+  <div class="scroll"><table>
+    <tr><th>Story</th><th>Opus 5.5 · medium</th><th>Opus 5.5 · xhigh</th><th>Opus 5 · xhigh</th></tr>
+    <tr><td>ALF-317</td><td><code>session_01ChRB3mR6qvThfyMugWAQyN</code></td><td><code>session_018k3yAptBFKxTmhX3NoFLpp</code></td><td><code>session_013J9Pvr4VYFfxkco2rsnd6b</code></td></tr>
+    <tr><td>ALF-238</td><td><code>session_019ooJa7iGSDQuxkBzcxBFTW</code></td><td><code>session_01LEvWQLKf7v8CskR6SGUNvN</code></td><td><code>session_01Tvy5B7hyN2L2ngSZ2rg9bh</code></td></tr>
+  </table></div>
+  <h3>Held equal</h3>
+  <ul>
+    <li><strong>Base.</strong> Main at each original session’s start: <code>c912940</code> for ALF-317 and <code>ca292be</code> for ALF-238. On top sits one commit that sets <code>effortLevel</code> (<a href="#howto">§6</a>).</li>
+    <li><strong>Prompt.</strong> The original launch prompt, verbatim, behind one shared preamble. The preamble says: no PR; review the branch diff; nobody answers questions; don’t read the merged solution; never fetch, and point <code>origin/main</code> at the base; for ALF-238, no live Instapaper call; report to the parent. ALF-317’s prompt asks for one Opus review round. ALF-238’s predates that step, so its arms ran none.</li>
+    <li><strong>Environment.</strong> The alfred cloud environment for every arm. That removes the original ALF-317’s Node 22 detour.</li>
+  </ul>
+  <h3>Effort that actually ran</h3>
+  <p>Every transcript entry records its effort, including those of the review and implementer subagents. Every arm ran at its pinned level throughout:</p>
+  <div class="scroll"><table class="cost">
+    <tr><th>Arm</th><th class="num">ALF-317 main / subagents</th><th class="num">ALF-238 main / subagents</th></tr>
+    <tr><td>Opus 5.5 · medium</td><td class="num">97 / 46 medium</td><td class="num">343 / none medium</td></tr>
+    <tr><td>Opus 5.5 · xhigh</td><td class="num">246 / 127 xhigh</td><td class="num">416 / 136 xhigh</td></tr>
+    <tr><td>Opus 5 · xhigh</td><td class="num">228 / 103 xhigh</td><td class="num">480 / none xhigh</td></tr>
+  </table></div>
+</section>
+
+<section id="cost">
+  <h2>Cost and time</h2>
+  <div class="scroll"><table class="cost">
+    <tr><th>Arm</th><th class="num">Server cost</th><th class="num">Output tokens</th><th class="num">Cache reads</th><th class="num">Wall clock</th><th class="num">Commits</th></tr>
+    <tr><th colspan="6">ALF-317 · bug</th></tr>
+    <tr><td>Opus 5.5 · medium</td><td class="num">$4.71</td><td class="num">40k</td><td class="num">10.6M</td><td class="num">40 min</td><td class="num">4</td></tr>
+    <tr><td>Opus 5.5 · xhigh</td><td class="num">$11.29</td><td class="num">113k</td><td class="num">31.7M</td><td class="num">67 min</td><td class="num">7</td></tr>
+    <tr><td>Opus 5 · xhigh</td><td class="num">$22.71</td><td class="num">112k</td><td class="num">32.5M</td><td class="num">72 min</td><td class="num">6</td></tr>
+    <tr><td>Original, xhigh (reference)</td><td class="num">$9.94</td><td class="num">101k</td><td class="num">26.9M</td><td class="num">~55 min</td><td class="num">—</td></tr>
+    <tr><th colspan="6">ALF-238 · story</th></tr>
+    <tr><td>Opus 5.5 · medium</td><td class="num">$15.25</td><td class="num">128k</td><td class="num">48.7M</td><td class="num">73 min</td><td class="num">11</td></tr>
+    <tr><td>Opus 5.5 · xhigh</td><td class="num">$24.14</td><td class="num">256k</td><td class="num">75.8M</td><td class="num">51 min</td><td class="num">12</td></tr>
+    <tr><td>Opus 5 · xhigh</td><td class="num">$67.83</td><td class="num">210k</td><td class="num">113.4M</td><td class="num">108 min</td><td class="num">12</td></tr>
+    <tr><td>Original, xhigh (reference)</td><td class="num">$18.36</td><td class="num">66k</td><td class="num">55.9M</td><td class="num">overnight</td><td class="num">10</td></tr>
+  </table></div>
+  <p>Medium against Extra on Opus 5.5:</p>
+  <ul>
+    <li><strong>ALF-317:</strong> 42% of the cost, 36% of the output, 60% of the time.</li>
+    <li><strong>ALF-238:</strong> 63% of the cost and 50% of the output, but it ran 22 minutes longer. The Extra arm sent two slices to Sonnet subagents in parallel (the Worker change and the Instapaper client) and reviewed their work. Medium did everything itself. So effort changed how the agent organised the work, not only how long it thought.</li>
+  </ul>
+  <p>Cache reads track output: an arm that thinks more takes more turns, and every turn re-reads the context. That is why the cost ratio follows the output ratio rather than the price list.</p>
+  <h3>Run-to-run noise</h3>
+  <p>The fresh <code>xhigh</code> replays cost 14% (ALF-317) and 31% (ALF-238) more than the original <code>xhigh</code> sessions. The originals differ in more than chance: owner turns, a rebase, another environment, an older CLI. Still, that is the size of variation to expect at one setting. ALF-317’s 58% saving is well outside it. ALF-238’s 37% is not.</p>
+</section>
+
+<section id="bug">
+  <h2>ALF-317: did medium find the bug?</h2>
+  <p>Yes. All three arms reproduced the defect before changing anything, and ruled out the realtime path with a contrast test. All three named the same root cause: <code>codeStoryStatusPatch</code> in <code>frontend/lib/code/status.ts</code>. That is the projection the navigation refetch (<code>refreshStatuses</code>) applies, and it carried <code>factory_state</code> but not <code>spec_path</code>. So a story that reached Ready for Dev through the refetch launched the skip-refinement prompt. This is the cause the original session and its reviewer found.</p>
+  <h3>Hidden regression test</h3>
+  <p>The original fix’s store-level test drives a refetch, then Implement, and asserts the launch prompt names the spec. It is behavioural, so it doesn’t care how a fix is written. I inserted it into each arm’s <code>code-store.test.tsx</code> and ran it through <code>npm run test -w frontend</code>:</p>
+  <div class="scroll"><table>
+    <tr><th>Code under test</th><th>Hidden test</th></tr>
+    <tr><td>Base <code>c912940</code> (unfixed)</td><td>fails: the prompt is the skip-refinement one</td></tr>
+    <tr><td>Original fix (PR #435 head)</td><td>passes</td></tr>
+    <tr><td>Opus 5.5 · medium (final head <code>b271030</code>)</td><td>passes</td></tr>
+    <tr><td>Opus 5.5 · xhigh (<code>7f52f22</code>)</td><td>passes</td></tr>
+    <tr><td>Opus 5 · xhigh (<code>21b4c4d</code>)</td><td>passes</td></tr>
+  </table></div>
+  <h3>Breadth: the same-cause siblings</h3>
+  <p>The prompt says to fix “this defect and whatever else is broken for the same reason, nothing more”. The refetch drops five Worker-written columns, not one. A second hidden test checks which of them each arm’s projection carries:</p>
+  <div class="scroll"><table class="cost">
+    <tr><th>Arm</th><th class="num">Carried (of 5)</th><th>What else</th><th>Production lines</th></tr>
+    <tr><td>Original fix</td><td class="num">5</td><td>—</td><td>+33 / −12</td></tr>
+    <tr><td>Opus 5.5 · medium</td><td class="num">1 (<code>spec_path</code>)</td><td>Its reviewer flagged the other four. It declined them as adjacent and raised a follow-up story, citing the prompt’s “raise adjacent bugs” clause.</td><td>+8 / −4</td></tr>
+    <tr><td>Opus 5.5 · xhigh</td><td class="num">5</td><td>Also <code>code_updated_at</code>, which fixes the Done lane’s order. The original reviewer had only raised that as pre-existing. Adds a parity test so the two projections can’t drift again.</td><td>+32 / −7</td></tr>
+    <tr><td>Opus 5 · xhigh</td><td class="num">3 (the spec columns)</td><td>Left the PR URLs as “its own story”.</td><td>+27 / −3</td></tr>
+  </table></div>
+  <p>All four readings are defensible. Medium’s would ship the reported fix and need a second story for the stale PR chip and spec snapshot. Both Extra arms also raised <code>epic_spec_path</code>, which goes stale through every live path, as a new story, as the original reviewer had. Medium’s review didn’t surface it.</p>
+  <h3>Review rounds and gates</h3>
+  <ul>
+    <li>All three reviewers said “ship it”. Medium’s raised 4 findings (2 fixed, 1 raised, 1 question). Extra’s raised 6 (4 fixed, 2 raised). Opus 5’s raised 5 (3 fixed, 1 raised, 1 declined after a probe proved its premise false).</li>
+    <li>Every push passed the pre-push <code>check:slow</code>: 283 Storybook snapshots, 352 Playwright tests and 121 database integration tests.</li>
+    <li>Demo screenshots: Extra 7, Opus 5 5, medium 2. Extra and Opus 5 each recorded two skill gotchas. Extra also admits one <code>npx jest</code> run, against CLAUDE.md.</li>
+  </ul>
+</section>
+
+<section id="story">
+  <h2>ALF-238: medium against Extra on a story</h2>
+  <p>Both Opus 5.5 arms built every layer the spec lists and archived the spec. Both pushed through every gate: Storybook (216–217 snapshots), Playwright (263–264), and database integration (82/82). Each reported nothing in the spec left unbuilt. The diffs judged are 60 files each: +2,987 lines for medium and +4,536 for Extra, most of the difference being tests.</p>
+  <h3>Blind judges</h3>
+  <p>The procedure was the llm-evaluation skill’s replay judging. Diffs were masked, binary snapshots, generated types, skill notes and the date-rot fix were excluded, and patch files had neutral names. Each judge graded a 28–31-item checklist from the spec with <code>file:line</code> citations, hunted defects, scored five criteria, then gave a verdict. A tie on fidelity and correctness was to go to the smaller patch.</p>
+  <div class="scroll"><table>
+    <tr><th>Judge</th><th>Order (X / Y)</th><th>Verdict, unmasked</th><th>Confidence</th><th>Deciding reason</th></tr>
+    <tr><td>Opus 5.5</td><td>xhigh / medium</td><td>xhigh</td><td>low</td><td>spec-literal error mapping, 375 px E2E, deeper tests</td></tr>
+    <tr><td>Opus 5.5</td><td>medium / xhigh</td><td>xhigh</td><td>low</td><td>same</td></tr>
+    <tr><td>Sonnet 5.5</td><td>xhigh / medium</td><td>medium</td><td>low</td><td>fidelity and correctness tied, so the smaller patch</td></tr>
+    <tr><td>Sonnet 5.5</td><td>medium / xhigh</td><td>medium</td><td>low</td><td>same</td></tr>
+  </table></div>
+  <p>Each family held its verdict across order, so it isn’t position bias, but the families disagree. No judge found a major defect in either arm. That reads as “about the same”, with Extra’s extra tests as the visible difference.</p>
+  <h3>What separated them</h3>
+  <p>All of these I checked in the patches:</p>
+  <ul>
+    <li><strong>Extra, better:</strong> it applies the spec’s outcome table as written, checking HTTP 401/403 and 5xx before the body’s error code. Medium reads the body first, so a 401 carrying an error code maps to 422 instead of 502.</li>
+    <li><strong>Extra, better:</strong> a 375 px Playwright test asserts the three verbs share one line with no overflow. Medium has a Storybook snapshot and no assertion.</li>
+    <li><strong>Extra, better:</strong> its OAuth test reproduces a published signature end to end through <code>signRequest</code>, and every outcome row is exercised at route level.</li>
+    <li><strong>Medium, better:</strong> its migration ends with <code>notify pgrst, 'reload schema'</code>, like the column-adding migrations before it. Extra’s omits it.</li>
+    <li><strong>Medium, better:</strong> <code>markReaderPostSent</code> uses <code>.maybeSingle()</code>, as <code>lib/data/reader.ts</code> documents, so a vanished row is a 404. Extra uses <code>.single()</code>, which makes it a 500.</li>
+    <li><strong>Both:</strong> the same date-rotted habits E2E (June 2026 seeds now outside the 120-day window) failed the first push. Each re-anchored it in a separate commit. That is an artefact of the old base, not a finding about effort.</li>
+  </ul>
+</section>
+
+<section id="opus5">
+  <h2>Opus 5 at Extra against Opus 5.5 at medium</h2>
+  <h3>The premise</h3>
+  <p>The ticket says Anthropic’s release makes Opus 5 at Extra equal to Opus 5.5 at medium. The release (2026-09-22) claims something close, but against <code>high</code>:</p>
+  <ul>
+    <li>“Opus 5.5 at default effort matched Opus 5 at high effort on half the output.”</li>
+    <li>On CursorBench, 5.5 at medium scores 52.5% against 46.6% for Opus 5 at <em>max</em>.</li>
+  </ul>
+  <p>Anthropic’s migration guide adds that effort names don’t carry across models. At a given level, Opus 5.5 thinks more per turn than Opus 5, especially at <code>xhigh</code>. The premise is therefore roughly the release’s claim, stated one level higher.</p>
+  <h3>What happened</h3>
+  <ul>
+    <li><strong>ALF-317:</strong> Opus 5 at Extra was correct, passed the hidden test, and was broader than 5.5 medium (3 of 5 columns against 1). It cost $22.71, 4.8× medium’s $4.71 and 2.0× 5.5 at Extra.</li>
+    <li><strong>ALF-238:</strong> Opus 5 at Extra built every layer and passed every gate, at $67.83, 4.4× medium’s cost. All four blind judges preferred 5.5 medium’s build, two at medium confidence, holding across both orders and both judge families (table below).</li>
+  </ul>
+  <h3>Judges: Opus 5 at Extra against 5.5 at medium, on ALF-238</h3>
+  <p>The judging was the same procedure as <a href="#story">§4</a>, on new masked patches:</p>
+  <div class="scroll"><table>
+    <tr><th>Judge</th><th>Order (X / Y)</th><th>Verdict, unmasked</th><th>Confidence</th></tr>
+    <tr><td>Opus 5.5</td><td>Opus 5 / 5.5 medium</td><td>5.5 medium</td><td>low</td></tr>
+    <tr><td>Opus 5.5</td><td>5.5 medium / Opus 5</td><td>5.5 medium</td><td>low</td></tr>
+    <tr><td>Sonnet 5.5</td><td>Opus 5 / 5.5 medium</td><td>5.5 medium</td><td>medium</td></tr>
+    <tr><td>Sonnet 5.5</td><td>5.5 medium / Opus 5</td><td>5.5 medium</td><td>medium</td></tr>
+  </table></div>
+  <p>The reasons the judges agreed on, each checked in the patch:</p>
+  <ul>
+    <li>Opus 5 has no evidence for the 375 px criterion. It has no story, test or demo image; medium has a 343 px story.</li>
+    <li>Its xAuth token exchange signs with an empty <code>oauth_token</code>, where RFC 5849 §3.1 says to omit it, and the exchange is untested.</li>
+    <li>Its provider prop is optional and defaults to “configured”. A caller that forgets it therefore shows an enabled Send that answers 501.</li>
+  </ul>
+  <p>Opus 5 had the broader tests in places, such as an <code>i</code>-key E2E and route-level outcome rows. One of its judges also noted it follows the repo’s Stryker test-environment pragma, which medium doesn’t.</p>
+  <p>On quality, 5.5 medium matched Opus 5 at Extra on the bug and beat it on the story. On cost the comparison isn’t close:</p>
+  <ul>
+    <li><strong>ALF-317: the premium is price alone.</strong> Opus 5 at <code>xhigh</code> spent almost exactly the tokens 5.5 at <code>xhigh</code> did: 112k output and 32.5M cache reads, against 113k and 31.7M. Opus 5 costs $5 / $25 per million against $4 / $20, and its cache reads about $0.50 against $0.20. Repriced at Opus 5.5 rates, its tokens come to about $12, which is 5.5 Extra’s bill.</li>
+    <li><strong>ALF-238: price and turns compound.</strong> Opus 5 delegated nothing, ran longest, and read the most context: 113M cache reads, against 76M for 5.5 Extra and 49M for medium. That is about $32 at 5.5 rates and $67.83 at its own.</li>
+  </ul>
+  <p>Cache reads dominate long sessions, so Opus 5’s 2.5× cache price decides the bill.</p>
+</section>
+
+<section id="howto">
+  <h2>How to set effort in a test session</h2>
+  <p><code>create_session</code> takes a model but no effort. Left alone, a child runs its model’s default: Opus 5.5 medium, Opus 5 high, Fable 5.1 high.</p>
+  <div class="scroll"><table>
+    <tr><th>Route</th><th>Prompt stays the first turn</th><th>Setup</th><th>Status</th></tr>
+    <tr><td><strong><code>effortLevel</code> in <code>.claude/settings.json</code> on the arm’s base branch</strong>, passed as <code>source_revision</code></td><td>yes</td><td>One commit per level. The GitHub MCP’s <code>create_or_update_file</code> makes it without running local hooks.</td><td>Verified here: two probes (Opus 5.5 and Opus 5, both <code>xhigh</code>) and all six arms</td></tr>
+    <tr><td><code>/effort &lt;level&gt;</code> as the prompt, the task in <code>append_system_prompt</code>, kicked off by <code>send_message</code></td><td>no: the task moves to the system prompt</td><td>none</td><td>Verified in ALF-325. The ledger records <code>/effort …</code> as the prompt.</td></tr>
+    <tr><td><code>CLAUDE_CODE_EFFORT_LEVEL</code> on a cloud environment per level, passed as <code>environment_id</code></td><td>yes</td><td>The owner copies the environment.</td><td>Precedence verified in the CLI (ALF-325); not yet run in the cloud</td></tr>
+    <tr><td>The claude.ai effort picker</td><td>yes</td><td>a human</td><td>How every one of your launches is set. A launch deep link can’t carry it.</td></tr>
+  </table></div>
+  <h3>Facts behind the table</h3>
+  <ul>
+    <li><strong>Subagents inherit the session’s effort,</strong> a <code>model:</code> override included. Each arm’s Opus reviewer ran at the arm’s level. ALF-238 Extra’s two Sonnet subagents ran at <code>xhigh</code> too, and so did this session’s own judges, because the spike itself ran at <code>xhigh</code>.</li>
+    <li><strong>Check what ran in the transcript.</strong> Every <code>assistant</code> entry, main and <code>subagents/*.jsonl</code>, has an <code>effort</code> field; <code>$CLAUDE_EFFORT</code> in the shell agrees. <code>get_session</code>’s <code>session_context.effort_level</code> shows only a picker or <code>/effort</code> choice. It is absent under the settings route.</li>
+    <li><strong><code>effortLevel</code> accepts <code>low</code> to <code>xhigh</code>, not <code>max</code></strong> (the CLI’s settings schema). Never commit it to main: it would apply to every session started on that commit. Whether it beats a claude.ai picker choice is untested.</li>
+    <li><strong>The cloud session-create API does take <code>config.effort_level</code>;</strong> that is how the picker reaches the session. The <code>create_session</code> tool doesn’t expose it.</li>
+    <li><strong>Launch deep links document only</strong> <code>prompt</code>, <code>prompt_url</code>, <code>repositories</code> and <code>environment</code>. For alfred’s launcher to assign effort, which an effort trial needs, the only route is an environment per level carrying <code>CLAUDE_CODE_EFFORT_LEVEL</code>, chosen with <code>environment=</code>. That route is the one not yet run in the cloud.</li>
+    <li><strong>The CLI’s schema has more effort controls,</strong> none tested here: <code>modelSettings.&lt;model&gt;.effortLevel</code>; <code>maxEffortLevel</code>, which clamps every other route, the environment variable included; and an <code>effort:</code> field in agent-definition and skill frontmatter.</li>
+  </ul>
+</section>
+
+<section id="also">
+  <h2>Other things this turned up</h2>
+  <ul>
+    <li><strong>You had already moved off Extra.</strong> Of 73 Opus 5.5 sessions on alfred since the model shipped on 2026-09-22, 31 ran at <code>xhigh</code>, 34 at <code>high</code> and 8 at <code>medium</code>. Since 2026-10-02 it is 3, 12 and 5 of 20. The open question is high against medium more than Extra against medium.</li>
+    <li><strong>Old bases rot.</strong> A test with hard-coded dates on a nine-day-old base failed every ALF-238 arm’s pre-push gate. The replay guide now says to expect it and to leave that commit out of comparisons.</li>
+    <li><strong><code>git update-ref</code> beats fetching.</strong> Pointing <code>origin/main</code> at the base satisfied the pre-push gate in all six arms without fetching the merged solution. The replay guide now says this, replacing its earlier “fetch for the gate only”.</li>
+    <li><strong>Six arms in parallel raised the 5-hour rate-limit window to <code>allowed_warning</code>.</strong> Nothing stalled.</li>
+    <li><strong>The arms obeyed the replay rules.</strong> None opened a PR (a search for <code>head:alf-312</code> returns nothing), and every one reported pointing <code>origin/main</code> at its base rather than fetching. I didn’t audit their transcripts for reads of the answer.</li>
+  </ul>
+</section>
+
+<section id="trust">
+  <h2>How much to trust it</h2>
+  <ul>
+    <li><strong>n = 1 per arm per story.</strong> This is a case study, as the llm-evaluation skill warns. The ALF-317 cost gap is larger than the observed run-to-run noise. The ALF-238 gap isn’t, and ALF-238’s quality judgement is a split.</li>
+    <li><strong>The breadth gap may be effort, prompt or chance.</strong> Both Opus 5.5 Extra runs, original and replay, fixed all five columns, and medium fixed one. That fits effort, but it is two runs against one, and the prompt’s “raise adjacent bugs” clause invites either reading.</li>
+    <li><strong>No human in the loop.</strong> The originals had owner turns. These ran unattended, which is the condition the launch prompts are written for, but not how they were used.</li>
+    <li><strong>The judges read diffs, not running software.</strong> They were controlled for order and model family, and their key claims were checked against the patches. Both arms also passed the same real gates.</li>
+    <li><strong>Two lanes only.</strong> Spec writing (refinement) and spikes weren’t tested. That is where most of your remaining Extra launches go, and no gate checks their output.</li>
+  </ul>
+</section>
+
+<section id="alternatives">
+  <h2>Alternatives we’re not taking</h2>
+  <aside><h3>Replay ALF-289 again</h3><p>The first attempt at this spike proposed it, reusing ALF-265’s medium arm. The owner preferred a story that had actually run at Extra.</p></aside>
+  <aside><h3>Make Extra the default “to be safe”</h3><p>On these two stories it raised cost 1.6–2.4× for breadth that a follow-up story or a sharper prompt can buy more cheaply. Its own slips (a missing schema reload, a 500 path) show it isn’t a safety margin either.</p></aside>
+  <aside><h3>Pin effort with <code>/effort</code> for the arms</h3><p>It works, but it moves the task into the system prompt and spoils the arm’s ledger <code>prompt</code>. The settings route keeps the launch prompt as the first turn and needs no owner setup.</p></aside>
+  <aside><h3>More replays now, for an interval</h3><p>Each story’s three arms cost $39–$107 together, plus judging. ALF-283’s power figures put a decision at dozens of sessions per arm. The ledger’s randomised effort trial gets those for free from ordinary launches.</p></aside>
+</section>
+
+<section id="costq">
+  <h2>Cost &amp; open questions</h2>
+  <ul>
+    <li><strong>What this spike spent.</strong> Probes $2.35. Arms $145.93 (ALF-317 $38.71, ALF-238 $107.22). Four judges used 338k–363k subagent tokens each, and four more on Opus 5 against medium used 323k–351k each. On top of that, this session’s own cost.</li>
+    <li><strong>Medium or high?</strong> High is where you launch most stories now, and nothing here measured it. That is the trial’s job.</li>
+    <li><strong>Does <code>CLAUDE_CODE_EFFORT_LEVEL</code> work in a cloud environment,</strong> and does it override the claude.ai picker? The launcher-driven trial depends on the first. The second is a trap if it does, because an environment would silently overrule your pick.</li>
+    <li><strong>Does <code>effortLevel</code> in settings beat the picker?</strong> Untested. Keep it on throwaway branches.</li>
+    <li><strong>Refinement and spikes at medium.</strong> Untested. Specs are judged by humans, so a replay would need a blind spec judge.</li>
+  </ul>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <ol>
+    <li><strong>Sessions.</strong> <code>list_sessions</code> (200 most recent) and <code>get_session</code> for model, effort and cost. <code>list_events</code> and <code>get_event</code> for both originals’ launch prompts and owner turns. The arms’ reports came back over <code>send_message</code>; probes were <code>session_01FLv3YYAHzo2NwWaLtvYmev</code> and <code>session_01TsKwrrqfzd1DKshQV3nt1f</code>. The first attempt at this spike was <code>session_014ASGgxDZfVmq7hmm6dr3CP</code>; ALF-325 was <code>session_011C3PexSwJLP9kyuSVgd83v</code> (PR #433).</li>
+    <li><strong>Branches.</strong> The probe base is <code>alf-312/probe-settings-xhigh</code>. The arm bases are <code>alf-312/base-{317,238}-{xhigh,medium}</code> and the arms pushed to <code>alf-312/replay-{317,238}-{opus55-medium,opus55-xhigh,opus5-xhigh}</code>. The original PRs are #435 and #369.</li>
+    <li><strong>Commands.</strong>
+      <ul>
+        <li><code>git log --first-parent origin/main --until=&lt;created_at&gt; -1</code> found the bases.</li>
+        <li>The hidden tests were inserted into each arm’s worktree and run with <code>npm run test -w frontend -- lib/stores/code-store.test.tsx -t "HIDDEN ALF-317"</code>, plus a five-column projection test.</li>
+        <li>The judged diffs were <code>git diff &lt;base&gt; &lt;arm&gt; -- . ':(exclude)*.png' …</code>, masked.</li>
+        <li><code>strings</code> on the Claude Code 2.1.289 binary showed the <code>effortLevel</code>, <code>maxEffortLevel</code>, <code>CLAUDE_CODE_EFFORT_LEVEL</code> and agent/skill <code>effort</code> schemas, and the session-create <code>effort_level</code> field.</li>
+      </ul></li>
+    <li><strong>Read.</strong>
+      <ul>
+        <li><code>.claude/skills/{spike,llm-evaluation}/</code>, including <code>references/replay.md</code> and <code>recording.md</code>.</li>
+        <li><code>docs/spikes/ALF-265-opus-vs-fable-orchestrator.html</code> and <code>ALF-283-evaluating-coding-sessions.html</code>.</li>
+        <li><code>tools/session-ledger/src/hook/{stop,transcript}.ts</code>, for how the ledger reads effort and <code>ref</code>.</li>
+        <li><code>frontend/lib/code/links.ts</code>, for the deep-link parameters.</li>
+      </ul></li>
+    <li><strong>External.</strong>
+      <ul>
+        <li><a href="https://www.anthropic.com/claude-opus-5-5">Introducing Claude Opus 5.5</a> (2026-09-22).</li>
+        <li><a href="https://code.claude.com/docs/en/web-quickstart">Claude Code docs: cloud quickstart, pre-fill parameters</a>.</li>
+        <li>The <code>claude-api</code> skill’s model-migration guide, “Migrating to Claude Opus 5.5”, for effort calibration and prices, as cached on 2026-09-25.</li>
+      </ul></li>
+  </ol>
+</section>
+
+</section>
+</main>
+</body>
+</html>

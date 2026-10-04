@@ -40,6 +40,8 @@ The evidence, power simulations and sources behind this skill are in the ALF-283
 worked replay of one ticket, a single Opus agent against a Fable orchestrator with Sonnet
 implementers, is in `docs/spikes/ALF-265-opus-vs-fable-orchestrator.html`. Sonnet against Opus as
 the reviewer, replayed on three past review rounds, is in `docs/spikes/ALF-266-sonnet-vs-opus-reviewer.html`.
+Effort (xhigh against medium, and Opus 5 against 5.5) replayed on a bug and a story is in
+`docs/spikes/ALF-312-opus-effort-levels.html`.
 
 ## The question this answers
 
