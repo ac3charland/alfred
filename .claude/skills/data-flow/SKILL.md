@@ -115,7 +115,8 @@ Realtime subscription exactly when that stops being true. Three do:
 
 `patchStory` / the `patch` reducer are keyed by id and a no-op when absent, so a change for an
 unknown/removed row is ignored; and an echo of the user's own optimistic write re-applies
-identical values, so it's **idempotent** — no self-write filtering. Folders have a single browser
+identical values, so it's **idempotent** — no self-write filtering — **unless the tab rewrites the
+same value again before the echo lands** (the Backlog rank; see Backlog ordering below). Folders have a single browser
 writer and stay pure seed-once.
 
 The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
@@ -264,9 +265,8 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   each of the two stories with the other's `priority` (capture the prior pair for rollback) →
   `api.reorderCode` → reconcile both returned rows via `codeItemToStoryPatch`. The **view** owns
   the filter/sort and picks the visible neighbour, so the action just swaps the pair it's handed.
-  It's one `swap_code_priority` RPC (not two PATCHes), which swaps via a negative-sentinel
-  sequence so the `unique(priority)` index never sees a transient duplicate — see the supabase
-  skill (a one-statement CASE swap 409s under a non-deferrable unique index).
+  It's one `swap_code_priority` RPC (not two PATCHes) that locks both rows and exchanges their
+  ranks in one statement, writing only final ranks — see the supabase skill.
 - **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
   (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
   status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it
@@ -277,7 +277,12 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   `move_code_priority_in_project`) in lockstep — the optimistic card must sort to the slot the RPC
   reconciles to.
 - `codeItemToStoryPatch` carries `priority`, so the realtime `code_items` path patches a
-  cross-device reorder into an open tab for free (idempotent echo, as for `factory_state`).
+  cross-device reorder into an open tab. Its echo of this tab's **own** swaps is NOT idempotent:
+  a burst rewrites one rank several times, and an earlier swap's response or echo lands after
+  the next swap was applied — dragging the story back, or tying it with its neighbour so the next
+  swap moves nothing (ALF-250). `serverRankPatch` drops the rank from any server copy while the
+  story has a swap whose response is pending or whose echo is still due (one per story per swap).
+  Queued swaps flush when their row unmounts, so the counts always settle.
 - Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
 
 ## Transient UI state: local until a cross-row command needs it
