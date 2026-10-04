@@ -18,6 +18,7 @@ import {
   useActiveCount,
   useArchiveStatus,
   useArchivedPosts,
+  useInstapaperConfigured,
   useReaderActions,
   useReaderHealth,
   useReaderHealthReconcileStartedAt,
@@ -31,6 +32,7 @@ jest.mock('@/lib/api-client', () => ({
   fetchReaderPosts: jest.fn(),
   fetchReaderHealth: jest.fn(),
   patchReaderPost: jest.fn(),
+  sendReaderPostToInstapaper: jest.fn(),
 }));
 const mockApi = jest.mocked(api);
 
@@ -49,7 +51,7 @@ function post(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION.id, overrides);
+  const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION.id, overrides);
   return listItem;
 }
 
@@ -88,13 +90,22 @@ function state(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HE
     archiveStatus: 'idle',
     archiveFull: false,
     healthReconcileStartedAt: null,
+    instapaperConfigured: true,
   };
 }
 
-function makeWrapper(posts: ReaderPostListItem[], health: ReaderHealthSnapshot = NO_HEALTH) {
+function makeWrapper(
+  posts: ReaderPostListItem[],
+  health: ReaderHealthSnapshot = NO_HEALTH,
+  instapaperConfigured = true,
+) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <ReaderProvider initialPosts={posts} initialHealth={health}>
+      <ReaderProvider
+        initialPosts={posts}
+        initialHealth={health}
+        instapaperConfigured={instapaperConfigured}
+      >
         {children}
       </ReaderProvider>
     );
@@ -819,6 +830,188 @@ describe('resummarize', () => {
       await resummarizing;
     });
     expect(result.current.posts[0]?.summary_state).toBe('pending');
+  });
+});
+
+describe('sendToInstapaper', () => {
+  const SENT_AT = '2026-09-18T12:00:00.000Z';
+
+  it('archives the row and marks it sent immediately, before the server answers', () => {
+    const row = post({ id: 'p-1' });
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => ({ ...useStore(), archived: useArchivedPosts() }), {
+      wrapper: makeWrapper([row]),
+    });
+
+    act(() => {
+      void result.current.actions.sendToInstapaper('p-1');
+    });
+
+    expect(result.current.posts).toHaveLength(0);
+    expect(result.current.archived).toHaveLength(1);
+    expect(result.current.archived[0]?.instapaper_sent_at).not.toBeNull();
+    expect(result.current.archived[0]?.archived_at).toBe(
+      result.current.archived[0]?.instapaper_sent_at,
+    );
+  });
+
+  it('keeps an archived row’s own archived_at — a send from the archive moves nothing', () => {
+    const row = post({ id: 'p-1', archived_at: '2026-09-10T08:00:00.000Z' });
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => ({ ...useStore(), archived: useArchivedPosts() }), {
+      wrapper: makeWrapper([row]),
+    });
+
+    act(() => {
+      void result.current.actions.sendToInstapaper('p-1');
+    });
+
+    expect(result.current.archived[0]).toMatchObject({
+      archived_at: '2026-09-10T08:00:00.000Z',
+    });
+    expect(result.current.archived[0]?.instapaper_sent_at).not.toBeNull();
+  });
+
+  it('reconciles with the row the server stamped', async () => {
+    const row = post({ id: 'p-1' });
+    const saved: ReaderPostListItem = {
+      ...row,
+      archived_at: SENT_AT,
+      instapaper_sent_at: SENT_AT,
+      instapaper_bookmark_id: 1_234_567,
+    };
+    mockApi.sendReaderPostToInstapaper.mockResolvedValue(saved);
+    const { result } = renderHook(() => ({ ...useStore(), archived: useArchivedPosts() }), {
+      wrapper: makeWrapper([row]),
+    });
+
+    await act(async () => {
+      await result.current.actions.sendToInstapaper('p-1');
+    });
+
+    expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledWith('p-1');
+    expect(result.current.archived).toEqual([saved]);
+  });
+
+  it('rolls back the fields it touched and toasts the route’s sentence when the send is refused', async () => {
+    const row = post({ id: 'p-1' });
+    mockApi.sendReaderPostToInstapaper.mockRejectedValue(
+      new api.ApiError('API POST failed: 422', 422, 'This publication has opted out of Instapaper'),
+    );
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    await act(async () => {
+      await expect(result.current.actions.sendToInstapaper('p-1')).rejects.toThrow();
+    });
+
+    expect(result.current.posts).toHaveLength(1);
+    expect(result.current.posts[0]).toMatchObject({ archived_at: null, instapaper_sent_at: null });
+    expect(mockShowToast).toHaveBeenCalledWith('This publication has opted out of Instapaper');
+  });
+
+  it.each([
+    [409, 'Nothing to send — this post has no link and no stored text'],
+    [429, 'Instapaper is rate-limiting — try again in a minute'],
+    [501, "Instapaper isn't set up on this deployment"],
+    [502, "Instapaper rejected alfred's credentials"],
+  ])('toasts the route’s own sentence for a %i', async (status, detail) => {
+    mockApi.sendReaderPostToInstapaper.mockRejectedValue(
+      new api.ApiError(`API POST failed: ${String(status)}`, status, detail),
+    );
+    const { result } = renderHook(() => useStore(), {
+      wrapper: makeWrapper([post({ id: 'p-1' })]),
+    });
+
+    await act(async () => {
+      await expect(result.current.actions.sendToInstapaper('p-1')).rejects.toThrow();
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith(detail);
+  });
+
+  it.each([
+    ['a fault with no sentence', new Error('boom')],
+    ['a 500, whose detail is a database message', new api.ApiError('500', 500, 'deadlock')],
+    ['a 502 the route never wrote', new api.ApiError('502', 502, undefined)],
+  ])('toasts the store’s own line for %s', async (_name, error) => {
+    mockApi.sendReaderPostToInstapaper.mockRejectedValue(error);
+    const { result } = renderHook(() => useStore(), {
+      wrapper: makeWrapper([post({ id: 'p-1' })]),
+    });
+
+    await act(async () => {
+      await expect(result.current.actions.sendToInstapaper('p-1')).rejects.toThrow();
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't send that post to Instapaper");
+  });
+
+  it('ignores a second press while the first send is in flight', async () => {
+    const row = post({ id: 'p-1' });
+    const sending = deferred<ReaderPostListItem>();
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(sending.promise);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let first: Promise<ReaderPostListItem> | undefined;
+    let second: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      first = result.current.actions.sendToInstapaper('p-1');
+      second = result.current.actions.sendToInstapaper('p-1');
+    });
+
+    expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+
+    await act(async () => {
+      sending.settle({ ...row, archived_at: SENT_AT, instapaper_sent_at: SENT_AT });
+      await first;
+    });
+
+    // Once it has settled, the verb is live again — a send from the archive can be repeated.
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(new Promise(() => {}));
+    act(() => {
+      void result.current.actions.sendToInstapaper('p-1');
+    });
+    expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledTimes(2);
+  });
+
+  it('is not undone by a focus refetch that was already in the air', async () => {
+    // The read left the server before the send reached it, so its answer still lists the row as
+    // active and unsent — replacing the list wholesale would put the sent post back on the list.
+    const row = post({ id: 'p-1' });
+    const sending = deferred<ReaderPostListItem>();
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(sending.promise);
+    mockApi.fetchReaderPosts.mockResolvedValue([row]);
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([row]) });
+
+    let send: Promise<ReaderPostListItem> | undefined;
+    act(() => {
+      send = result.current.actions.sendToInstapaper('p-1');
+    });
+    act(() => {
+      result.current.actions.refresh();
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.posts).toHaveLength(0);
+
+    await act(async () => {
+      sending.settle({ ...row, archived_at: SENT_AT, instapaper_sent_at: SENT_AT });
+      await send;
+    });
+    expect(result.current.posts).toHaveLength(0);
+  });
+});
+
+describe('useInstapaperConfigured', () => {
+  it.each([true, false])('reports what the shell said about this deployment (%s)', (configured) => {
+    const { result } = renderHook(() => useInstapaperConfigured(), {
+      wrapper: makeWrapper([], NO_HEALTH, configured),
+    });
+
+    expect(result.current).toBe(configured);
   });
 });
 

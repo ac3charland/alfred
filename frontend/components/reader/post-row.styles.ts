@@ -100,6 +100,16 @@ export const supersededGistClass = 'mt-1 text-sm leading-relaxed text-foreground
 export const overviewFooterClass =
   'mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3';
 
+/** The footer's left-hand group: the way out to the original, then the re-run verb. */
+export const overviewFooterVerbsClass = 'flex flex-wrap items-center gap-1';
+
+/**
+ * The Original link — a ghost verb in the muted text colour, so it reads as a way out rather than
+ * as one of the row's verbs; the send is what the row is for. Icon and label share the
+ * Re-summarise verb's tighter gap.
+ */
+export const originalLinkClass = 'gap-1.5 text-muted-foreground';
+
 /** Which model wrote the summary, under which prompt, and when — the line a re-run visibly moves. */
 export const summaryStampClass = 'text-xs text-muted-foreground';
 

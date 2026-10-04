@@ -19,6 +19,7 @@ describe('readerHotkeyAction — the key map', () => {
     ['k', 'previous'],
     ['ArrowUp', 'previous'],
     ['o', 'open'],
+    ['i', 'send'],
     ['e', 'archive'],
     ['v', 'overview'],
     ['Escape', 'deselect'],

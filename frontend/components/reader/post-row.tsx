@@ -1,6 +1,6 @@
 'use client';
 
-import { RotateCw } from 'lucide-react';
+import { ArrowUpRight, RotateCw } from 'lucide-react';
 import * as React from 'react';
 
 import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
@@ -11,7 +11,8 @@ import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { readerHotkeyAction } from '@/lib/reader/hotkeys';
 import { postOpenLink } from '@/lib/reader/open-link';
 import { isReaderOverview } from '@/lib/reader/overview';
-import { useReaderActions } from '@/lib/stores/reader-store';
+import { sendUnavailable } from '@/lib/reader/send';
+import { useInstapaperConfigured, useReaderActions } from '@/lib/stores/reader-store';
 import type { ReaderPostListItem, ReaderSummaryState } from '@/lib/types';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
@@ -23,7 +24,9 @@ import {
   gistClass,
   hintClass,
   metaClass,
+  originalLinkClass,
   overviewFooterClass,
+  overviewFooterVerbsClass,
   placeholderGistClass,
   rowCollapseClass,
   rowCollapseInnerClass,
@@ -39,9 +42,11 @@ import {
  * One row of the reading list: publication, arrival, title, gist — and once opened, the
  * overview.
  *
- * The row owns its own exit animation (archiving collapses before the mutation commits, so the
- * list doesn't jump), its own overview toggle (local `useState`; no cross-row coordination
- * store — more than one row may sit expanded at once, unlike a single-selection queue) and,
+ * Its primary verb sends the post to Instapaper, where the owner reads; the original stays one
+ * quiet link away. The row owns its own exit animation (archiving or sending collapses before
+ * the mutation commits, so the list doesn't jump), its own overview toggle (local `useState`;
+ * no cross-row coordination store — more than one row may sit expanded at once, unlike a
+ * single-selection queue) and,
  * while it is the selected row, the verb hotkeys. Selection itself belongs to the list, since
  * only one row may hold it and navigation has to work with nothing selected at all.
  */
@@ -63,9 +68,9 @@ export interface PostRowProperties {
   /** Point the keyboard at this row, or clear the selection entirely. */
   onSelect?: (id: string | null) => void;
   /**
-   * The row has begun leaving (archived, or unarchived from the archive). Fired as the exit
-   * STARTS, not when it commits, so the list can move the selection on while the collapse plays
-   * rather than leaving it on a row that is halfway gone.
+   * The row has begun leaving (archived or sent from the list, or unarchived from the archive).
+   * Fired as the exit STARTS, not when it commits, so the list can move the selection on while
+   * the collapse plays rather than leaving it on a row that is halfway gone.
    */
   onExit?: (id: string) => void;
 }
@@ -97,9 +102,9 @@ function canResummarize(post: ReaderPostListItem): boolean {
  */
 function floorStateTail(post: ReaderPostListItem, now: Date): string {
   return post.text_swept_at === null
-    ? 'The post is still here; open it or archive it.'
+    ? 'The post is still here; send it or archive it.'
     : `Its text was swept on ${formatPostDate(post.text_swept_at, now)}, so it can't be retried; ` +
-        'open it or archive it.';
+        'send it or archive it.';
 }
 
 /**
@@ -123,7 +128,7 @@ function gistOrPlaceholder(post: ReaderPostListItem, state: ReaderSummaryState, 
   switch (state) {
     case 'pending': {
       return (
-        post.gist ?? 'The summary is on its way — open it now, or check back in a few minutes.'
+        post.gist ?? 'The summary is on its way — send it now, or check back in a few minutes.'
       );
     }
     case 'refused':
@@ -167,15 +172,15 @@ export function PostRow({
   onExit,
 }: PostRowProperties) {
   const actions = useReaderActions();
+  const instapaperConfigured = useInstapaperConfigured();
   const prefersReducedMotion = usePrefersReducedMotion();
   const [overviewOpen, setOverviewOpen] = React.useState(false);
   const shellRef = React.useRef<HTMLDivElement>(null);
-  const linkRef = React.useRef<HTMLAnchorElement>(null);
   // What the card and the Overview verb say they control, so a screen reader can follow the
   // disclosure to the region it opens rather than being told a state with no referent.
   const panelId = React.useId();
 
-  // The mutation the exit is playing for — archive is the row's only exit-animated verb.
+  // The mutation the exit is playing for — the archive verb's, or the send's from the list.
   const commitRef = React.useRef<(() => Promise<unknown>) | null>(null);
   const commit = React.useCallback(async () => {
     await commitRef.current?.();
@@ -195,6 +200,25 @@ export function PostRow({
     begin();
   }, [actions, archived, begin, exit.isExiting, onExit, post.id]);
 
+  const sendBlocked = sendUnavailable(post, instapaperConfigured);
+
+  // From the list, a send leaves exactly as an archive does — the store archives the post with
+  // it — so it plays the same collapse and commits at the end of it. From the archive the row
+  // stays put: the post was already put away, and the badge appears in place.
+  const send = React.useCallback(() => {
+    if (sendBlocked !== undefined) return;
+    if (archived) {
+      void actions.sendToInstapaper(post.id).catch(() => {
+        // Deliberately silent here: the store rolls the row back and toasts the reason.
+      });
+      return;
+    }
+    if (exit.isExiting) return;
+    commitRef.current = () => actions.sendToInstapaper(post.id);
+    onExit?.(post.id);
+    begin();
+  }, [actions, archived, begin, exit.isExiting, onExit, post.id, sendBlocked]);
+
   const resummarize = React.useCallback(() => {
     void actions.resummarize(post.id).catch(() => {
       // Deliberately silent here: the store rolls the row back and toasts, and the row has
@@ -203,6 +227,21 @@ export function PostRow({
   }, [actions, post.id]);
 
   const link = postOpenLink(post);
+  const href = link.href;
+
+  // Following the post out to its original stamps `opened_at`, whichever way the owner went: the
+  // anchor navigates natively and only stamps; the `o` key opens the same target itself, because
+  // the anchor may sit inside a collapsed — inert — panel where it cannot be clicked.
+  const noteOpened = React.useCallback(() => {
+    onSelect?.(post.id);
+    actions.markOpened(post.id);
+  }, [actions, onSelect, post.id]);
+  const openOriginal = React.useCallback(() => {
+    if (href === undefined) return;
+    globalThis.open(href, '_blank', 'noopener,noreferrer');
+    noteOpened();
+  }, [href, noteOpened]);
+
   const state = summaryState(post);
   // A re-summarising row keeps its previous overview too: the panel is about the summary that is
   // being replaced, and pulling it out from under the owner mid-run would be the same blanking
@@ -214,16 +253,24 @@ export function PostRow({
   const retryable = (state === 'failed' || state === 'refused') && canResummarize(post);
   const stamp = state === 'done' ? summaryStamp(post, now) : null;
   const rerunnable = state === 'done' && canResummarize(post);
-  const hasFooter = stamp !== null || rerunnable;
+  const hasSummaryFooter = stamp !== null || rerunnable;
   const hasOverview = overview !== undefined;
   /**
    * Whether there is anything to disclose at all. The panel holds the overview AND the summary's
    * stamp with its re-run verb, so a done row whose overview failed the guard still has one —
    * and the verb, the `v` key and the card's own disclosure all key off this single question, so
    * none of them can offer to open something that isn't there or hide something that is.
+   *
+   * The Original link never makes a panel: a row with nothing else to disclose would grow an
+   * "Overview" toggle with no overview behind it. It sits in the panel's footer when there is a
+   * panel, and at the end of the verb row when there isn't — so every row with somewhere to point
+   * has exactly one way out to the original.
    */
-  const hasPanel = hasOverview || hasFooter;
+  const hasPanel = hasOverview || hasSummaryFooter;
   const panelOpen = hasPanel && overviewOpen;
+  const originalInFooter = hasPanel && href !== undefined;
+  const originalInVerbs = !hasPanel && href !== undefined;
+  const hasFooter = hasSummaryFooter || originalInFooter;
 
   const toggleOverview = React.useCallback(() => {
     if (!hasPanel) return;
@@ -250,12 +297,20 @@ export function PostRow({
     const onKeyDown = (event: KeyboardEvent) => {
       const action = readerHotkeyAction(event);
       switch (action) {
-        case 'open': {
-          // The row's own anchor, clicked for real: the Gmail-permalink fallback and the
-          // opened_at stamp hang off it, so the key and the verb cannot drift apart. A post with
-          // nowhere to point renders a disabled button and no anchor, and the key does nothing.
+        case 'send': {
+          // The button's own handler, so the key and the verb cannot drift apart — and nothing at
+          // all while the button is disabled.
+          if (sendBlocked !== undefined) break;
           event.preventDefault();
-          linkRef.current?.click();
+          send();
+          break;
+        }
+        case 'open': {
+          // The same target and the same stamp as the Original link. A post with nowhere to point
+          // draws no link, and the key does nothing.
+          if (href === undefined) break;
+          event.preventDefault();
+          openOriginal();
           break;
         }
         case 'archive': {
@@ -280,7 +335,7 @@ export function PostRow({
     return () => {
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [selected, hasPanel, beginArchive, toggleOverview]);
+  }, [selected, hasPanel, beginArchive, toggleOverview, send, sendBlocked, href, openOriginal]);
 
   /** The key that runs a verb, beside its label — on the selected row only, desktop only. */
   const hint = (key: string) =>
@@ -289,6 +344,23 @@ export function PostRow({
         {key}
       </kbd>
     ) : null;
+
+  /**
+   * The quiet way out to the post itself, drawn in whichever of its two places applies. Its
+   * keycap shows only while the link itself can be seen — never from inside a shut panel, where
+   * it would point at a verb the owner cannot see (the key works either way).
+   */
+  const originalVisible = originalInVerbs || (originalInFooter && panelOpen);
+  const original =
+    href === undefined ? null : (
+      <Button variant="ghost" size="sm" className={originalLinkClass} asChild>
+        <a href={href} target="_blank" rel="noreferrer" onClick={noteOpened}>
+          <ArrowUpRight size={14} />
+          Original
+          {originalVisible && hint('o')}
+        </a>
+      </Button>
+    );
 
   return (
     <div
@@ -323,35 +395,27 @@ export function PostRow({
                 <span className={metaClass}>
                   {formatPostDate(post.received_at, now)} · {formatReadMinutes(post.word_count)}
                 </span>
-                <PostMarkers state={state} />
+                <PostMarkers state={state} sent={post.instapaper_sent_at !== null} />
               </div>
               <p className={titleClass}>{post.title}</p>
               <p className={gistLineClass(post, state)}>{gistOrPlaceholder(post, state, now)}</p>
             </ClickableCard>
 
-            <div className={verbRowClass}>
-              {link.href === undefined ? (
-                <Button variant="outline" size="sm" type="button" disabled title={link.unavailable}>
-                  {/* No keycap: `o` runs the anchor, and there is no anchor to run. */}
-                  Open
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" asChild>
-                  <a
-                    ref={linkRef}
-                    href={link.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => {
-                      onSelect?.(post.id);
-                      actions.markOpened(post.id);
-                    }}
-                  >
-                    Open
-                    {hint('o')}
-                  </a>
-                </Button>
-              )}
+            <div className={verbRowClass} data-testid="reader-row-verbs">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={sendBlocked !== undefined}
+                title={sendBlocked}
+                onClick={() => {
+                  onSelect?.(post.id);
+                  send();
+                }}
+              >
+                Send to Instapaper
+                {/* No keycap on a disabled verb: `i` does nothing there. */}
+                {sendBlocked === undefined && hint('i')}
+              </Button>
 
               {hasPanel && (
                 <Button
@@ -398,6 +462,8 @@ export function PostRow({
                 {archiveLabel}
                 {hint('e')}
               </Button>
+
+              {originalInVerbs && original}
             </div>
 
             {/* The id the card and the Overview verb point at sits on a plain wrapper rather than
@@ -408,22 +474,23 @@ export function PostRow({
                   {overview !== undefined && <PostOverview overview={overview} />}
                   {hasFooter && (
                     <div className={overviewFooterClass}>
-                      {rerunnable ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5"
-                          onClick={() => {
-                            onSelect?.(post.id);
-                            resummarize();
-                          }}
-                        >
-                          <RotateCw size={14} />
-                          Re-summarise
-                        </Button>
-                      ) : (
-                        <span />
-                      )}
+                      <div className={overviewFooterVerbsClass}>
+                        {originalInFooter && original}
+                        {rerunnable && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() => {
+                              onSelect?.(post.id);
+                              resummarize();
+                            }}
+                          >
+                            <RotateCw size={14} />
+                            Re-summarise
+                          </Button>
+                        )}
+                      </div>
                       {stamp !== null && <span className={summaryStampClass}>{stamp}</span>}
                     </div>
                   )}

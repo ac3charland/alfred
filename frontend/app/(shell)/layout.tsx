@@ -13,6 +13,7 @@ import { getReaderSettingsSeed } from '@/lib/data/reader-publications';
 import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans';
 import { todayIn } from '@/lib/habits';
 import { getInstanceConfig } from '@/lib/instance';
+import { getInstapaperConfig } from '@/lib/instapaper/config';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
@@ -137,9 +138,12 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                                     initialRubrics={commsSettingsSeed.rubrics}
                                     initialCorrections={commsSettingsSeed.corrections}
                                   >
+                                    {/* Only whether credentials exist crosses to the
+                                    browser — never the credentials themselves. */}
                                     <ReaderProvider
                                       initialPosts={readerSeed.posts}
                                       initialHealth={readerHealthSeed}
+                                      instapaperConfigured={getInstapaperConfig() !== null}
                                     >
                                       <ReaderSettingsProvider
                                         initialPublications={readerSettingsSeed.publications}

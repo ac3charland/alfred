@@ -219,13 +219,26 @@ describe('ArchiveView — the rows', () => {
     overview: makeReaderOverview(),
   });
 
-  it('offers Open and Unarchive, never Archive', async () => {
+  it('offers Send to Instapaper and Unarchive, never Archive', async () => {
     mockApi.fetchReaderPosts.mockResolvedValue([POST]);
     renderReader(<ArchiveView now={NOW} />);
 
     expect(await screen.findByRole('button', { name: 'Unarchive' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send to Instapaper' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+  });
+
+  it('sends from the archive without the row leaving it, and badges it in place', async () => {
+    const user = userEvent.setup();
+    mockApi.fetchReaderPosts.mockResolvedValue([POST]);
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(new Promise(() => {}));
+    renderReader(<ArchiveView now={NOW} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Send to Instapaper' }));
+
+    expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledWith(POST.id);
+    expect(screen.getByText('in Instapaper')).toBeInTheDocument();
+    expect(screen.getByTestId('reader-row-collapse')).toHaveClass('grid-rows-[1fr]');
   });
 
   it('expands into the overview like the reading list does', async () => {

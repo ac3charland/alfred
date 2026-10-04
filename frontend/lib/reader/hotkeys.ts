@@ -5,7 +5,9 @@ import { isHotkeyBlocked } from '@/lib/comms/hotkeys';
  * selected and the selected row has verbs.
  *
  * Its own map rather than the queue's, because the two lists share only navigation — a post is
- * opened, archived and skimmed, not tiered or spun into an Inbox item. What IS shared is the rule
+ * sent to Instapaper, opened, archived and skimmed, not tiered or spun into an Inbox item. One
+ * mnemonic IS borrowed: `i` means "send this somewhere else" in Comms (to the Inbox), and here it
+ * sends the post to Instapaper, so the two lists teach the same key the same way. What IS shared is the rule
  * that decides whether a keystroke is a command at all (`isHotkeyBlocked`, imported): a keystroke
  * aimed at text or inside an open overlay belongs to that text or that overlay, and forking
  * fifteen lines of it would let the two copies drift apart exactly where a drift eats keystrokes.
@@ -22,8 +24,10 @@ export type ReaderHotkeyAction =
   | 'next'
   /** Move the selection one row up. */
   | 'previous'
-  /** Open the selected post at its source. */
+  /** Open the selected post's original — its web page, or the mail it arrived in. */
   | 'open'
+  /** Send the selected post to Instapaper, which archives it here too. */
+  | 'send'
   /** Archive the selected post — or, in the archive, put it back. */
   | 'archive'
   /** Show or hide the selected row's overview panel. */
@@ -46,6 +50,7 @@ const KEYS: Record<string, ReaderHotkeyAction> = {
   k: 'previous',
   arrowup: 'previous',
   o: 'open',
+  i: 'send',
   e: 'archive',
   v: 'overview',
   escape: 'deselect',

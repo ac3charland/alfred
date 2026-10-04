@@ -39,7 +39,7 @@ export function PostList({ posts, now, variant = 'list' }: PostListProperties) {
    * store is still handing that same list down — so they need no pruning: a new array drops
    * them. Usually that array is the write settling, which is exactly when they should go (the
    * row committed and is gone, or rolled back and is navigable again). But ANY store dispatch
-   * that rebuilds `posts` clears them — an Open stamp on another row, a focus refresh — and one
+   * that rebuilds `posts` clears them — an opened stamp on another row, a focus refresh — and one
    * landing mid-collapse costs nothing: the collapse is the row's own state and finishes
    * regardless, and a second archive on the row it forgot is refused by the row's `isExiting`
    * guard rather than by this set.

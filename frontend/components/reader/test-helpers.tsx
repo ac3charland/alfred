@@ -17,6 +17,8 @@ export function renderReader(
   initialPosts: ReaderPostListItem[] = [],
   /** Nothing read yet — the state before the tick has ever run. */
   initialHealth: ReaderHealthSnapshot = NO_READER_HEALTH,
+  /** Whether the deployment can send to Instapaper. */
+  instapaperConfigured = true,
 ) {
   // Via RTL's own `wrapper` option, not inlined around `ui` directly: only that way does the
   // result's `rerender` re-wrap a new element in the same providers rather than replacing the
@@ -24,7 +26,11 @@ export function renderReader(
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <ToastProvider>
-        <ReaderProvider initialPosts={initialPosts} initialHealth={initialHealth}>
+        <ReaderProvider
+          initialPosts={initialPosts}
+          initialHealth={initialHealth}
+          instapaperConfigured={instapaperConfigured}
+        >
           {children}
         </ReaderProvider>
         <ToastViewport />

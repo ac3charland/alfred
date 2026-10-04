@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -17,12 +17,17 @@ import type { ReaderOverview, ReaderPost, ReaderPostListItem } from '@/lib/types
 import { ReadingListView } from './reading-list-view';
 import { renderReader } from './test-helpers';
 
-jest.mock('@/lib/api-client');
+// Every request wrapper automocked, but `ApiError` kept real: the store reads a refusal's status
+// and sentence off it, which an automocked class constructs without.
+jest.mock('@/lib/api-client', () => ({
+  ...jest.createMockFromModule<typeof import('@/lib/api-client')>('@/lib/api-client'),
+  ApiError: jest.requireActual<typeof import('@/lib/api-client')>('@/lib/api-client').ApiError,
+}));
 const mockApi = jest.mocked(api);
 
-/** The list read's own shape — every fixture post has to drop `text` before rendering. */
+/** The list read's own shape — every fixture post has to drop both bodies before rendering. */
 function withoutText(post: ReaderPost): ReaderPostListItem {
-  const { text: _text, ...listItem } = post;
+  const { text: _text, html: _html, ...listItem } = post;
   return listItem;
 }
 
@@ -533,29 +538,31 @@ describe('ReadingListView — selection', () => {
 });
 
 describe('ReadingListView — the verb keys', () => {
-  it('opens the selected row through its own Open link, stamping opened_at', async () => {
+  it('opens the selected row’s original on o, stamping opened_at — its panel shut', async () => {
     const user = userEvent.setup();
     const posts = oneRow();
+    const openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
     mockApi.patchReaderPost.mockResolvedValue(
       posts[0] ?? donePost('p-1', 'Alpha', NOW.toISOString()),
     );
     renderReader(<ReadingListView now={NOW} />, posts);
-    const opened = jest.fn();
-    screen.getByRole('link', { name: 'Open' }).addEventListener('click', (event) => {
-      // jsdom refuses to navigate; the point is that the row's real anchor was the thing clicked.
-      event.preventDefault();
-      opened();
-    });
 
     await user.keyboard('j');
     await user.keyboard('o');
 
-    expect(opened).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledWith(
+      screen.getByRole('link', { name: 'Original', hidden: true }).getAttribute('href'),
+      '_blank',
+      'noopener,noreferrer',
+    );
     expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { opened: true });
+    openSpy.mockRestore();
   });
 
   it('does nothing on o when the row has nowhere to point', async () => {
     const user = userEvent.setup();
+    const openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
     renderReader(
       <ReadingListView now={NOW} />,
       oneRow({ canonical_url: null, rfc822_message_id: null }),
@@ -564,8 +571,51 @@ describe('ReadingListView — the verb keys', () => {
     await user.keyboard('j');
     await user.keyboard('o');
 
-    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled();
+    expect(screen.queryByRole('link', { name: 'Original', hidden: true })).not.toBeInTheDocument();
+    expect(openSpy).not.toHaveBeenCalled();
     expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+
+  it('sends the selected row on i: it collapses out of the list and lands in the archive', async () => {
+    const user = userEvent.setup();
+    const posts = oneRow();
+    const sent = {
+      ...posts[0],
+      archived_at: NOW.toISOString(),
+      instapaper_sent_at: NOW.toISOString(),
+    };
+    mockApi.sendReaderPostToInstapaper.mockResolvedValue(sent as ReaderPostListItem);
+    renderReader(<ReadingListView now={NOW} />, posts);
+
+    await user.keyboard('j');
+    await user.keyboard('i');
+    endExitFor('Alpha');
+
+    await waitFor(() => {
+      expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledWith('p-1');
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
+    });
+  });
+
+  it('puts a refused send back on the list where it was, and says why', async () => {
+    const user = userEvent.setup();
+    mockApi.sendReaderPostToInstapaper.mockRejectedValue(
+      new api.ApiError('API POST failed: 422', 422, 'This publication has opted out of Instapaper'),
+    );
+    renderReader(<ReadingListView now={NOW} />, threeRows());
+
+    await user.click(within(rowFor('Beta')).getByRole('button', { name: 'Send to Instapaper' }));
+    endExitFor('Beta');
+
+    expect(
+      await screen.findByText('This publication has opted out of Instapaper'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByTestId('reader-row').map((row) => row.querySelector('p')?.textContent),
+    ).toEqual(['Alpha', 'Beta', 'Gamma']);
   });
 
   it('toggles the selected row’s overview on v', async () => {
@@ -675,7 +725,7 @@ const HINT_CLASS =
 
 /** Every key hint currently on screen, in document order. */
 function hints(): HTMLElement[] {
-  return screen.queryAllByText(/^[oev]$/, { selector: 'kbd' });
+  return screen.queryAllByText(/^[ioev]$/, { selector: 'kbd' });
 }
 
 /** A failed row: it carries a Retry summary verb, which deliberately has no key. */
@@ -695,7 +745,8 @@ describe('ReadingListView — the keyboard hints', () => {
 
     await user.keyboard('j');
 
-    expect(hints().map((hint) => hint.textContent)).toEqual(['o', 'v', 'e']);
+    // `o` is not among them: on a done row Original sits in the shut panel, out of sight.
+    expect(hints().map((hint) => hint.textContent)).toEqual(['i', 'v', 'e']);
     for (const hint of hints()) {
       expect(rowFor('Alpha')).toContainElement(hint);
       expect(hint).toHaveAttribute('class', HINT_CLASS);
@@ -710,7 +761,7 @@ describe('ReadingListView — the keyboard hints', () => {
 
     await user.keyboard('j');
 
-    expect(hints().map((hint) => hint.textContent)).toEqual(['o', 'e']);
+    expect(hints().map((hint) => hint.textContent)).toEqual(['i', 'e', 'o']);
     expect(screen.getByRole('button', { name: 'Retry summary' })).toHaveTextContent(
       /^Retry summary$/,
     );
@@ -724,7 +775,8 @@ describe('ReadingListView — the keyboard hints', () => {
 
     // jsdom answers no media query, so the breakpoint itself is pinned by the class assertion
     // above; what matters here is that hiding the hints hides no verb with them.
-    expect(screen.getByRole('link', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send to Instapaper' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Original' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry summary' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Archive' })).toBeInTheDocument();
   });
