@@ -18,6 +18,7 @@ function item(title: string, overrides: Partial<Item> = {}): Item {
     item_type: overrides.item_type ?? 'task',
     created_at: overrides.created_at ?? `2026-01-0${String(nextCreated)}T00:00:00Z`,
     due_date: null,
+    due_time: null,
     status: overrides.status ?? 'active',
     completed_at: null,
     folder_id: null,

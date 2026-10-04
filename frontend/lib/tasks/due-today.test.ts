@@ -20,6 +20,7 @@ function task(title: string, overrides: Partial<Item> = {}): Item {
     item_type: overrides.item_type ?? 'task',
     created_at: overrides.created_at ?? `2026-01-0${String(nextCreated)}T00:00:00Z`,
     due_date: overrides.due_date ?? null,
+    due_time: overrides.due_time ?? null,
     status: overrides.status ?? 'active',
     completed_at: null,
     folder_id: null,
@@ -140,6 +141,41 @@ describe('rankDueToday', () => {
           task('First', { due_date: '2026-09-06', created_at: '2026-02-01T00:00:00Z' }),
         ]),
       ).toEqual(['First', 'Second']);
+    });
+  });
+
+  describe('same-day times', () => {
+    it('runs a day by time, the untimed task last whatever its priority', () => {
+      // The Today list on a Saturday: yesterday's overdue task, then today's by the clock.
+      expect(
+        ranked([
+          task('Water the plants', { due_date: '2026-09-06', priority: 'high' }),
+          task('Pick up dry cleaning', {
+            due_date: '2026-09-06',
+            due_time: '17:30:00',
+            priority: 'low',
+          }),
+          task('Call the dentist', { due_date: '2026-09-06', due_time: '15:00:00' }),
+          task('Send standup notes', {
+            due_date: '2026-09-06',
+            due_time: '09:00:00',
+            priority: 'high',
+          }),
+          task('Renew passport', { due_date: '2026-09-05', priority: 'medium' }),
+        ]),
+      ).toEqual([
+        'Renew passport',
+        'Send standup notes',
+        'Call the dentist',
+        'Pick up dry cleaning',
+        'Water the plants',
+      ]);
+    });
+
+    it('keeps a timed task due later today in the list before its time', () => {
+      expect(ranked([task('Tonight', { due_date: '2026-09-06', due_time: '23:00' })])).toEqual([
+        'Tonight',
+      ]);
     });
   });
 });

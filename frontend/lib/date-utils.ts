@@ -174,3 +174,83 @@ export function isDueTodayOrOverdue(iso: string): boolean {
 export function isDueToday(iso: string): boolean {
   return isDueTodayOrOverdue(iso) && !isDueDateOverdue(iso);
 }
+
+// ---------------------------------------------------------------------------
+// Due times — a wall-clock "floating" time beside a due date
+// ---------------------------------------------------------------------------
+//
+// `items.due_time` is a zone-less wall-clock time, meaningful only beside `due_date`: 3 PM means
+// 3 PM on whatever device reads it. The API speaks 24-hour `HH:MM`; PostgREST hands a `time`
+// back as `HH:MM:SS`, so every reader goes through {@link normalizeDueTime} before comparing.
+
+/**
+ * A stored due time as `HH:MM`, or null when the task has none. `undefined` reads as none too: a
+ * read path that predates the column (a `select i.*` view not yet recreated) yields `undefined`
+ * where the row type promises `string | null`.
+ */
+export function normalizeDueTime(time: string | null | undefined): string | null {
+  return time === null || time === undefined ? null : time.slice(0, 5);
+}
+
+/** Split an `HH:MM` (or `HH:MM:SS`) time into its hour and minute numbers. */
+function timeParts(time: string): { hour: number; minute: number } {
+  const [hour = '0', minute = '0'] = time.split(':');
+  return { hour: Number(hour), minute: Number(minute) };
+}
+
+/**
+ * A due time in the device's clock format, with the minutes dropped on the hour: en-US reads
+ * `15:00` as "3 PM" and `09:30` as "9:30 AM"; a 24-hour locale reads them "15" and "09:30".
+ * `locale` defaults to the runtime's own (tests pin it).
+ */
+export function formatDueTime(time: string, locale?: string): string {
+  const { hour, minute } = timeParts(time);
+  const format = new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    ...(minute !== 0 && { minute: '2-digit' }),
+  });
+  return format.format(new Date(2000, 0, 1, hour, minute));
+}
+
+/** A due chip's text: the date label ("Tomorrow"), plus the time when there is one. */
+export function formatDueLabel(date: string, time: string | null, locale?: string): string {
+  const day = formatDueDate(date);
+  return time === null ? day : `${day} ${formatDueTime(time, locale)}`;
+}
+
+/**
+ * The local instant a task falls due — the ordering key every task sort reads. A timed task falls
+ * due at its minute; an untimed one at the last millisecond of its day, so it sorts after that
+ * day's timed tasks ("by end of day") and still before anything due the next day.
+ */
+export function dueMoment(date: string, time: string | null): Date {
+  const day = parseDueDate(date);
+  if (time === null) {
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59, 999);
+  }
+  const { hour, minute } = timeParts(time);
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, minute);
+}
+
+/**
+ * Whether a task is late at `now`. A timed task is late from its minute onward; an untimed one
+ * keeps the day rule — late only once its whole day has passed (see {@link isDueDateOverdue}).
+ */
+export function isPastDue(date: string, time: string | null, now: Date): boolean {
+  if (time === null) {
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return parseDueDate(date) < startOfToday;
+  }
+  return dueMoment(date, time) <= now;
+}
+
+/**
+ * The instant to judge lateness by while a timed surface may still be hydrating. A server renders
+ * with its own clock in its own zone, and React keeps server-rendered attributes through
+ * hydration, so a minute-precise band computed there would stick on screen until the next tick.
+ * Until hydration ends, judge by the start of `now`'s day instead — the day rule, which server and
+ * browser agree on — and switch to the real minute straight after.
+ */
+export function lateness(now: Date, hydrated: boolean): Date {
+  return hydrated ? now : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}

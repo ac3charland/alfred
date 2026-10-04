@@ -36,7 +36,7 @@ export function classificationOrigin(
 }
 
 /**
- * Every column the classifier's write touches: the verdict's six labels, plus the provenance
+ * Every column the classifier's write touches: the verdict's seven labels, plus the provenance
  * that records who judged the row. This is the whole of what a live verdict may change in the
  * store — see {@link classifierVerdictPatch}.
  */
@@ -46,6 +46,7 @@ export type ClassifiedRow = Pick<
   | 'item_type'
   | 'priority'
   | 'due_date'
+  | 'due_time'
   | 'folder_id'
   | 'intended_project_id'
   | 'intended_epic_id'
@@ -75,7 +76,7 @@ export type ClassifiedRow = Pick<
  *   neither of which a re-delivered echo may overwrite.
  *
  * The patch carries the classifier's own columns and nothing else. The payload is a whole row,
- * and its title / notes / sort order could be older than an edit this tab has in flight; the six
+ * and its title / notes / sort order could be older than an edit this tab has in flight; the seven
  * label columns can be too, but only inside the one race the guards leave open — the owner
  * editing a label in the instant between the sweep's write and its delivery — and the PATCH
  * already in flight reconciles the owner's answer back on top a moment later.
@@ -90,6 +91,7 @@ export function classifierVerdictPatch(
     item_type: row.item_type,
     priority: row.priority,
     due_date: row.due_date,
+    due_time: row.due_time,
     folder_id: row.folder_id,
     intended_project_id: row.intended_project_id,
     intended_epic_id: row.intended_epic_id,

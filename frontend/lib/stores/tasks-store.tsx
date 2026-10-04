@@ -5,7 +5,15 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { RESEARCH_SEND_MAX } from '@/lib/api/schemas';
-import { isDueDateOverdue, isDueTodayOrOverdue } from '@/lib/date-utils';
+import {
+  isPastDue,
+  lateness,
+  localISODate,
+  normalizeDueTime,
+  parseDueDate,
+} from '@/lib/date-utils';
+import { useHydrated } from '@/lib/hooks/use-hydrated';
+import { useNow } from '@/lib/hooks/use-now';
 import { rankByPriority } from '@/lib/priority';
 import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { chunkedSend } from '@/lib/stores/chunked-send';
@@ -79,10 +87,10 @@ interface AddTaskInput {
   intendedProjectId?: string | null | undefined;
 }
 
-/** The inline-editable scalar fields of a task (title, due date, notes, recurrence, priority). */
+/** The inline-editable scalar fields of a task (title, due date + time, notes, recurrence, priority). */
 type TaskFieldPatch = Pick<
   api.UpdateItemInput,
-  'title' | 'due_date' | 'notes' | 'recurrence' | 'priority'
+  'title' | 'due_date' | 'due_time' | 'notes' | 'recurrence' | 'priority'
 >;
 
 /** The types a Classify control can set: `unclassified` is a starting state, not a target. */
@@ -91,8 +99,9 @@ export type ClassifyTarget = Exclude<ItemType, 'unclassified'>;
 /**
  * The one coherent PATCH a type change is: `item_type` travels with the clears the new type
  * forbids — chosen from the row's CURRENT type, since that decides which fields it may be
- * carrying. A task's due date is task-only and its recurrence is anchored to it, so both go
- * when it becomes code; a code row's two pre-factory hints are code-only, so both go when it
+ * carrying. A task's due date is task-only and its time and recurrence are anchored to it, so all
+ * three go when it becomes code (the time is sent explicitly so the optimistic row is right
+ * before the server answers); a code row's two pre-factory hints are code-only, so both go when it
  * becomes a task. An unclassified, knowledge or research row can carry neither set (the DB
  * CHECKs), so its flip to task or code is a bare `item_type` patch. Becoming knowledge or research clears
  * every label at once — the four the DB forbids, plus `folder_id`, since the row's folder chip
@@ -105,6 +114,7 @@ function classifyPatch(current: ItemType, next: ClassifyTarget): api.UpdateItemI
     return {
       item_type: next,
       due_date: null,
+      due_time: null,
       recurrence: null,
       intended_project_id: null,
       intended_epic_id: null,
@@ -112,7 +122,7 @@ function classifyPatch(current: ItemType, next: ClassifyTarget): api.UpdateItemI
     };
   }
   if (current === 'task' && next === 'code') {
-    return { item_type: next, due_date: null, recurrence: null };
+    return { item_type: next, due_date: null, due_time: null, recurrence: null };
   }
   if (current === 'code' && next === 'task') {
     return { item_type: next, intended_project_id: null, intended_epic_id: null };
@@ -1280,8 +1290,9 @@ export interface FolderBadgeCounts {
  *
  * The two buckets are **disjoint** — every counted task lands in exactly one — so the numbers
  * never double-count the same task:
- * - **overdue** (red): active, resident in a folder, with a `due_date` strictly before today.
- *   Past-due takes precedence, so a high-priority overdue task counts here, not in attention.
+ * - **overdue** (red): active, resident in a folder, and past due (`isPastDue`) — an untimed
+ *   task once its day has passed, a timed one from its minute. Past-due takes precedence, so a
+ *   high-priority overdue task counts here, not in attention.
  * - **attention** (amber): active, resident in a folder, NOT overdue, and either high-priority
  *   (regardless of due date — a high-priority task with no due date still counts) OR due today.
  *
@@ -1290,10 +1301,15 @@ export interface FolderBadgeCounts {
  * Inbox. Completed tasks never count either. A `due_date` implies the row is a task (the DB
  * `items_task_only_fields` constraint), and subtasks share their ancestor's folder and residency,
  * so these flat counts include nested subtasks.
+ *
+ * One minute-clock serves the whole map, so a timed task moves from amber to red at its minute
+ * without a reload.
  */
 export function useFolderBadgeCounts(): Record<string, FolderBadgeCounts> {
   const items = useTasks();
+  const now = lateness(useNow(60_000), useHydrated());
   return React.useMemo(() => {
+    const today = localISODate(now);
     const counts: Record<string, FolderBadgeCounts> = {};
     const bump = (folderId: string, key: keyof FolderBadgeCounts) => {
       const bucket = (counts[folderId] ??= { attention: 0, overdue: 0 });
@@ -1303,18 +1319,22 @@ export function useFolderBadgeCounts(): Record<string, FolderBadgeCounts> {
       const folderId = residentFolderId(item);
       if (folderId === null) continue;
       if (item.status !== 'active') continue;
-      if (item.due_date !== null && isDueDateOverdue(item.due_date)) {
+      if (
+        item.due_date !== null &&
+        isPastDue(item.due_date, normalizeDueTime(item.due_time), now)
+      ) {
         bump(folderId, 'overdue');
         continue;
       }
-      // Not overdue: a due date that is today-or-earlier can only be today here.
-      const isDueToday = item.due_date !== null && isDueTodayOrOverdue(item.due_date);
+      // Not past due: a due date that is today-or-earlier can only be today here.
+      const isDueToday =
+        item.due_date !== null && localISODate(parseDueDate(item.due_date)) <= today;
       if (item.priority === 'high' || isDueToday) {
         bump(folderId, 'attention');
       }
     }
     return counts;
-  }, [items]);
+  }, [items, now]);
 }
 
 /**

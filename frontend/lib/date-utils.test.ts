@@ -1,14 +1,20 @@
-import { pinClock } from '@/lib/pin-clock';
+import { pinClock, setClockNow } from '@/lib/pin-clock';
 
 import {
   MONTHS,
   addDays,
+  dueMoment,
   formatDueDate,
+  formatDueLabel,
+  formatDueTime,
   isDueDateOverdue,
   isDueToday,
   isDueTodayOrOverdue,
+  isPastDue,
+  lateness,
   localISODate,
   monthGridDays,
+  normalizeDueTime,
   toISODate,
   todayISODate,
 } from './date-utils';
@@ -338,5 +344,125 @@ describe('localISODate', () => {
 
   it("is today's date for the live clock", () => {
     expect(todayISODate()).toBe(localISODate(new Date()));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Due times — a wall-clock time beside a date
+// ---------------------------------------------------------------------------
+
+/** A local instant, as the ISO string `setClockNow` takes — zone-independent fixtures. */
+function localInstant(month0: number, day: number, hour: number, minute: number): string {
+  return new Date(2026, month0, day, hour, minute).toISOString();
+}
+
+describe('normalizeDueTime', () => {
+  it('trims the wire form PostgREST returns to HH:MM', () => {
+    expect(normalizeDueTime('15:00:00')).toBe('15:00');
+    expect(normalizeDueTime('09:30')).toBe('09:30');
+  });
+
+  it('reads an absent column (a view predating it) the same as no time', () => {
+    expect(normalizeDueTime(null)).toBeNull();
+    expect(normalizeDueTime(undefined)).toBeNull();
+  });
+});
+
+describe('formatDueTime', () => {
+  it('drops the minutes on the hour and keeps them otherwise (en-US)', () => {
+    expect(formatDueTime('15:00', 'en-US')).toBe('3 PM');
+    expect(formatDueTime('09:30', 'en-US')).toBe('9:30 AM');
+    expect(formatDueTime('17:30:00', 'en-US')).toBe('5:30 PM');
+  });
+
+  it('names midnight and noon on the 12-hour clock', () => {
+    expect(formatDueTime('00:00', 'en-US')).toBe('12 AM');
+    expect(formatDueTime('12:00', 'en-US')).toBe('12 PM');
+  });
+
+  it('follows a 24-hour locale', () => {
+    expect(formatDueTime('15:00', 'en-GB')).toBe('15');
+    expect(formatDueTime('15:30', 'en-GB')).toBe('15:30');
+    // Whether the hour is zero-padded is the ICU build's call; what matters is no AM/PM.
+    expect(formatDueTime('09:30', 'en-GB')).toMatch(/^0?9:30$/);
+  });
+});
+
+describe('formatDueLabel', () => {
+  beforeEach(() => {
+    setClockNow(localInstant(9, 3, 12, 0));
+  });
+
+  it('reads date + time when timed', () => {
+    expect(formatDueLabel('2026-10-03', '15:00', 'en-US')).toBe('Today 3 PM');
+    expect(formatDueLabel('2026-10-04', '09:30', 'en-US')).toBe('Tomorrow 9:30 AM');
+    expect(formatDueLabel('2026-10-12', '18:00', 'en-US')).toBe('Oct 12 6 PM');
+  });
+
+  it('reads exactly as the date alone when untimed', () => {
+    expect(formatDueLabel('2026-10-04', null, 'en-US')).toBe(formatDueDate('2026-10-04'));
+  });
+});
+
+describe('dueMoment', () => {
+  it('is the local instant of date + time', () => {
+    expect(dueMoment('2026-10-03', '15:00')).toEqual(new Date(2026, 9, 3, 15, 0));
+    expect(dueMoment('2026-10-03T00:00:00+00:00', '09:30:00')).toEqual(new Date(2026, 9, 3, 9, 30));
+  });
+
+  it("is the day's last millisecond when untimed — after every timed task that day", () => {
+    expect(dueMoment('2026-10-03', null)).toEqual(new Date(2026, 9, 3, 23, 59, 59, 999));
+    expect(dueMoment('2026-10-03', '23:59').getTime()).toBeLessThan(
+      dueMoment('2026-10-03', null).getTime(),
+    );
+    expect(dueMoment('2026-10-03', null).getTime()).toBeLessThan(
+      dueMoment('2026-10-04', '00:00').getTime(),
+    );
+  });
+
+  it('puts a midnight time first in its day, distinct from untimed', () => {
+    expect(dueMoment('2026-10-03', '00:00')).toEqual(new Date(2026, 9, 3, 0, 0));
+  });
+});
+
+describe('isPastDue', () => {
+  it('flips a timed task at its minute, not before', () => {
+    expect(isPastDue('2026-10-03', '15:00', new Date(2026, 9, 3, 14, 59, 59))).toBe(false);
+    expect(isPastDue('2026-10-03', '15:00', new Date(2026, 9, 3, 15, 0))).toBe(true);
+  });
+
+  it('is past due from a midnight time onward', () => {
+    expect(isPastDue('2026-10-03', '00:00', new Date(2026, 9, 3, 0, 0))).toBe(true);
+    expect(isPastDue('2026-10-03', '00:00', new Date(2026, 9, 2, 23, 59))).toBe(false);
+  });
+
+  it('keeps the day rule for an untimed task, matching isDueDateOverdue', () => {
+    const now = new Date(2026, 9, 3, 23, 59);
+    setClockNow(now.toISOString());
+    for (const date of ['2026-10-02', '2026-10-03', '2026-10-04']) {
+      expect(isPastDue(date, null, now)).toBe(isDueDateOverdue(date));
+    }
+    expect(isPastDue('2026-10-03', null, now)).toBe(false);
+    expect(isPastDue('2026-10-02', null, now)).toBe(true);
+  });
+
+  it('treats any time on an earlier day as past due, and any on a later day as not', () => {
+    const now = new Date(2026, 9, 3, 9, 0);
+    expect(isPastDue('2026-10-02', '23:59', now)).toBe(true);
+    expect(isPastDue('2026-10-04', '00:00', now)).toBe(false);
+  });
+});
+
+describe('lateness', () => {
+  const now = new Date(2026, 9, 3, 15, 30);
+
+  it('is the real minute once hydrated', () => {
+    expect(lateness(now, true)).toBe(now);
+  });
+
+  it("is the start of the day while hydrating, so a timed task today isn't late yet", () => {
+    expect(lateness(now, false)).toEqual(new Date(2026, 9, 3));
+    expect(isPastDue('2026-10-03', '15:00', lateness(now, false))).toBe(false);
+    expect(isPastDue('2026-10-02', '23:00', lateness(now, false))).toBe(true);
   });
 });
