@@ -2359,6 +2359,96 @@ describe('code-store', () => {
           expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
           expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
         });
+
+        it("ignores a burst's realtime echoes that arrive after its last response", async () => {
+          mockReorderCode
+            .mockResolvedValueOnce([
+              rankedSidecar('i1', 'ALF-1', 2),
+              rankedSidecar('i2', 'ALF-2', 1),
+            ])
+            .mockResolvedValueOnce([
+              rankedSidecar('i1', 'ALF-1', 3),
+              rankedSidecar('i3', 'ALF-3', 2),
+            ]);
+          const { result } = renderBacklog();
+
+          let stepOne!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          let stepTwo!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            stepOne = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          act(() => {
+            stepTwo = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+          });
+          await act(async () => {
+            await result.current.actions.commitReorderBatch([stepOne, stepTwo]);
+          });
+
+          // Realtime trails the HTTP responses: the first swap's echo lands after the burst synced.
+          emitUpdate(rankedSidecar('i1', 'ALF-1', 2));
+          emitUpdate(rankedSidecar('i2', 'ALF-2', 1));
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+          emitUpdate(rankedSidecar('i1', 'ALF-1', 3));
+          emitUpdate(rankedSidecar('i3', 'ALF-3', 2));
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+
+          // Every echo accounted for, a rank change from elsewhere lands live again.
+          emitUpdate(rankedSidecar('i1', 'ALF-1', 0));
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-1', 'ALF-2', 'ALF-3']);
+        });
+
+        it('expects no echo from a swap that failed', async () => {
+          mockReorderCode.mockRejectedValueOnce(new Error('swap failed'));
+          const { result } = renderBacklog();
+
+          let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          await act(async () => {
+            await result.current.actions.commitReorderBatch([step]);
+          });
+
+          emitUpdate(rankedSidecar('i2', 'ALF-2', 0));
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1', 'ALF-3']);
+        });
+
+        it("keeps a jump's response from undoing a later swap of the same story", async () => {
+          const jump = deferred<CodeItem[]>();
+          mockMoveCode.mockReturnValueOnce(jump.promise);
+          mockReorderCode.mockResolvedValueOnce([
+            rankedSidecar('i3', 'ALF-3', 1),
+            rankedSidecar('i1', 'ALF-1', 0),
+          ]);
+          const { result } = renderBacklog();
+
+          // ALF-3 jumps to the top, then is nudged Down past ALF-1 before the jump has synced.
+          let jumped!: NonNullable<ReturnType<CodeActions['applyMoveOptimistic']>>;
+          act(() => {
+            jumped = unwrap(result.current.actions.applyMoveOptimistic('ALF-3', true));
+          });
+          let commitJump!: Promise<void>;
+          act(() => {
+            commitJump = result.current.actions.commitMove('ALF-3', true, jumped.priorityBefore);
+          });
+          let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            step = unwrap(result.current.actions.applyReorderOptimistic('ALF-3', 'ALF-1'));
+          });
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-1', 'ALF-3', 'ALF-2']);
+
+          await act(async () => {
+            jump.resolve([rankedSidecar('i3', 'ALF-3', 0)]);
+            await commitJump;
+          });
+          // Not tied with ALF-1 at 0, where the next swap of the pair would change nothing.
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 0, i2: 2, i3: 1 });
+
+          await act(async () => {
+            await result.current.actions.commitReorderBatch([step]);
+          });
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 0, i2: 2, i3: 1 });
+        });
       });
     });
 
