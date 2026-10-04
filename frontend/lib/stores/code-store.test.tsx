@@ -3892,6 +3892,54 @@ describe('code-store', () => {
       expect(refreshed?.blocked_reason).toBe('checks failing');
     });
 
+    // ALF-317: the refetch is how a refinement PR that merged while this tab held the story
+    // reaches it — and the development launch reads `spec_path`, not the lane, to choose between
+    // the spec-reading and the SKIP-REFINEMENT prompt. Moving the card to Ready for Dev without
+    // the spec it was refined into left it looking spec-less, so "Implement in Claude Code"
+    // opened a session told there was no committed spec to read.
+    it('carries the recorded spec so the development launch reads the merged spec', async () => {
+      const openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+      mockUpdateCodeState.mockResolvedValue(makeSavedSidecar({ factory_state: 'in_development' }));
+      mockListCode.mockResolvedValue([
+        makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+          spec_path: 'docs/specs/ALF-42.md',
+          spec_sha: 'abc123',
+          spec_markdown: '# Spec',
+        }),
+      ]);
+      // What the tab still holds: the pre-merge row — in refinement, no spec recorded yet.
+      const story = makeStory('i1', 'e1', 'p1', {
+        ref: 'ALF-42',
+        factory_state: 'in_refinement',
+        spec_path: null,
+      });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      await act(async () => {
+        await result.current.actions.refreshStatuses();
+      });
+      expect(findStory(result.current.board)).toMatchObject({
+        factory_state: 'ready_for_dev',
+        spec_path: 'docs/specs/ALF-42.md',
+        spec_sha: 'abc123',
+        spec_markdown: '# Spec',
+      });
+
+      await act(async () => {
+        await result.current.actions.openClaudeSession('ALF-42', 'implementation');
+      });
+
+      const prompt = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+      expect(prompt).toMatch(/merged spec/i);
+      expect(prompt).toContain('docs/specs/ALF-42.md');
+      expect(prompt).not.toContain('SKIP-REFINEMENT');
+      openSpy.mockRestore();
+    });
+
     it('leaves non-status fields (title, priority, notes) untouched', async () => {
       mockListCode.mockResolvedValue([
         makeStory('i1', 'e1', 'p1', {

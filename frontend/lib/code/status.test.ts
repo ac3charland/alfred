@@ -54,13 +54,16 @@ describe('codeStoryStatusPatch', () => {
       blocked_reason: 'checks failing',
       blocked_from: 'in_development',
       requires_refinement: false,
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
     });
   });
 
-  it('omits non-status fields (title, priority, notes, spec, prs)', () => {
+  it('omits non-status fields (title, priority, notes, prs)', () => {
     // Exact-equality on the whole patch: any leaked non-status field would fail this.
     const patch = codeStoryStatusPatch(
-      makeStory({ title: 'x', priority: 42, spec_path: '/s', refinement_pr_url: 'http://pr' }),
+      makeStory({ title: 'x', priority: 42, refinement_pr_url: 'http://pr' }),
     );
 
     expect(patch).toEqual({
@@ -69,6 +72,30 @@ describe('codeStoryStatusPatch', () => {
       blocked_reason: null,
       blocked_from: null,
       requires_refinement: true,
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+    });
+  });
+
+  // ALF-317: the refinement merge records `spec_path` in the same write that moves the story to
+  // `ready_for_dev`, and the development launch reads that column — not the lane — to decide
+  // whether it has a spec to hand the session. A projection that carried the lane without the
+  // spec left a refined story looking spec-less, launching it as a skip-refinement.
+  it('carries the recorded spec through the refetch projection', () => {
+    const patch = codeStoryStatusPatch(
+      makeStory({
+        factory_state: 'ready_for_dev',
+        spec_path: 'docs/specs/ALF-42.md',
+        spec_sha: 'abc123',
+        spec_markdown: '# Spec',
+      }),
+    );
+
+    expect(patch).toMatchObject({
+      spec_path: 'docs/specs/ALF-42.md',
+      spec_sha: 'abc123',
+      spec_markdown: '# Spec',
     });
   });
 
