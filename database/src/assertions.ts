@@ -381,11 +381,16 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         await client.query('set local role authenticated');
         await client.query(`select swap_code_priority($1, $2)`, [x.ref, b.ref]);
         await other.query('set role authenticated');
-        const second = other.query(`select swap_code_priority($1, $2)`, [x.ref, c.ref]);
+        // Settle into a result now, so an early rejection is never unhandled while we wait.
+        const second = other.query(`select swap_code_priority($1, $2)`, [x.ref, c.ref]).then(
+          () => '',
+          (error: unknown) => (error instanceof Error ? error.message : String(error)),
+        );
         // Let the second call reach the row lock before the first commits.
         await new Promise((resolve) => setTimeout(resolve, 300));
         await client.query('commit');
-        await second;
+        const failure = await second;
+        if (failure !== '') throw new Error(failure);
       } catch (error) {
         await client.query('rollback');
         throw error;
