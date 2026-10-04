@@ -29,3 +29,5 @@ begin
     returning *;
 end; $$;
 ```
+
+Review round: the same rewind also arrived through realtime — step one's echo landed while step two was still unconfirmed. The store now records the ranks its own swaps write (ownRankWritesRef) and consumes their echoes instead of applying them, while another tab's reorder still lands. Reorder batches also run through one store-wide queue, so overlapping bursts reach the server in click order and every reply confirms the ranks the client predicted.
