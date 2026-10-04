@@ -1,0 +1,20 @@
+ALF-3: Verify the GitHub webhook HMAC signature
+
+You are implementing the ticket ALF-3. Implement the merged spec committed at `docs/specs/ALF-3.md` in this repo — read it first, then build it.
+
+Ground yourself first: skim the repo and honor its own conventions (read any CONTRIBUTING or CLAUDE.md). If the merged spec is ambiguous or has drifted from the current code, ASK ME HERE before building rather than guessing — I'm in this tab. Follow the implement-spec skill at `.claude/skills/implement-spec/SKILL.md` where present — it owns the conventions for building from a spec, including how and where the consumed spec gets archived, and pinning each requirement with a test.
+
+When the change is built, ARCHIVE the now-consumed spec in this same PR (keep the block's spec-path below pointing at the original path `docs/specs/ALF-3.md`). If the implement-spec skill is absent, git-move it to `docs/specs/archive/ALF-3.md`. A CI check fails the PR if `docs/specs/ALF-3.md` is still sitting un-archived in the active specs directory.
+
+When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:
+
+```alfred
+alfred-ticket: ALF-3
+phase: implementation
+spec-path: docs/specs/ALF-3.md
+```
+
+Before opening the PR, confirm your changes satisfy the spec's acceptance criteria, the spec has been archived out of the active specs directory, and the block above is reproduced exactly.
+Once the PR is open, run ONE round of adversarial review: spawn a subagent with its model set to Opus (e.g. the Agent tool's `model: "opus"` — left unset, it typically inherits yours), whatever model you are yourself, to review the PR antagonistically — briefed without your reasoning, and report-only (no edits, commits, or pushes). Run it in the foreground and wait for its report; that wait is your own work, not a check-in. Fix the in-scope findings you verify as legitimate and push; raise real but out-of-scope ones with me rather than widening the diff. Then add an "Adversarial review" section to the PR description listing each finding and what you did with it (fixed, declined and why, or raised with me), leaving the alfred block intact. Follow the adversarial-review skill at `.claude/skills/adversarial-review/SKILL.md` where present — it owns how to brief the reviewer and triage its findings. If the ticket context below says otherwise (more rounds, or none), follow it.
+Once this PR is open, don't proactively schedule a check-in on it (a wakeup, timer, or recurring job polling it, its CI, or its deploy) — left running that's tokens spent finding nothing new. Do respond when a CI failure or comment actually reaches you, via an event subscription (e.g. subscribe_pr_activity) rather than a timer. (Pacing your own work before this PR exists — waiting out a slow check, say — is unaffected and fine.)
+
