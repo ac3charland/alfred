@@ -1,4 +1,7 @@
-import type { CommMessage } from '@/lib/types';
+import type { CommMessage, CommPersonWithHandles } from '@/lib/types';
+
+import { resolvePerson } from './people';
+import { isReclassifyPending } from './rerun';
 
 /**
  * The per-row markers the queue draws beside a message — all DERIVED, none stored. Each one
@@ -74,4 +77,85 @@ export function attachmentNotRead(message: CommMessage): boolean {
  */
 export function decodeFailed(message: CommMessage): boolean {
   return !message.body_extracted;
+}
+
+/**
+ * The chips a row can carry, in the order they are drawn. A re-run that is waiting on the Worker
+ * leads, because it qualifies every other chip — they describe a verdict about to be replaced.
+ */
+export type RowMarkerKind =
+  | 'rerun-pending'
+  | 'priority'
+  | 'unjudged'
+  | 'attachment'
+  | 'decode-failed'
+  | 'expiry'
+  | 'refused'
+  | 'filtered';
+
+const ROW_MARKER_ORDER: readonly RowMarkerKind[] = [
+  'rerun-pending',
+  'priority',
+  'unjudged',
+  'attachment',
+  'decode-failed',
+  'expiry',
+  'refused',
+  'filtered',
+];
+
+/**
+ * Which chips one message carries, in drawing order — the decision list on its own, so a single
+ * row and a collapsed conversation are judged by the same rules. Shelf rows can also be refused
+ * or filtered; queued rows never are.
+ */
+export function rowMarkerKinds(
+  message: CommMessage,
+  people: CommPersonWithHandles[],
+  now: Date,
+  shelved: boolean,
+): RowMarkerKind[] {
+  const kinds: RowMarkerKind[] = [];
+  if (isReclassifyPending(message)) kinds.push('rerun-pending');
+  if (resolvePerson(message.sender_handle, people)?.priority === 'high') kinds.push('priority');
+  if (isUnjudged(message)) kinds.push('unjudged');
+  if (attachmentNotRead(message)) kinds.push('attachment');
+  if (decodeFailed(message)) kinds.push('decode-failed');
+  // The 60-day sweep is blanket, so a still-owed row can be deleted while still owed.
+  if (expiresSoon(message, now).soon && message.cleared_at === null) kinds.push('expiry');
+  if (shelved && isRefused(message)) kinds.push('refused');
+  if (shelved && isFiltered(message)) kinds.push('filtered');
+  return kinds;
+}
+
+/** One chip on a collapsed conversation, and how many of its messages carry it. */
+export interface RolledUpMarker {
+  kind: RowMarkerKind;
+  /** How many messages carry it; always 1 for `priority`, which describes a sender, not a message. */
+  count: number;
+}
+
+/**
+ * The union of a shelved conversation's chips, so collapsing a refused or unreadable message into
+ * a thread can't hide the flag that was the whole point of shelving it visibly.
+ *
+ * The expiry chip is left on the messages: in any conversation older than 53 days the oldest
+ * message always carries one, so rolled up it would sit on most old conversations and say nothing.
+ */
+export function rollUpMarkers(
+  messages: CommMessage[],
+  people: CommPersonWithHandles[],
+  now: Date,
+): RolledUpMarker[] {
+  const counts = new Map<RowMarkerKind, number>();
+  for (const message of messages) {
+    for (const kind of rowMarkerKinds(message, people, now, true)) {
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+  }
+  return ROW_MARKER_ORDER.flatMap((kind) => {
+    const count = counts.get(kind);
+    if (count === undefined || kind === 'expiry') return [];
+    return [{ kind, count: kind === 'priority' ? 1 : count }];
+  });
 }

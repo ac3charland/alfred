@@ -8,6 +8,8 @@ import {
   isFiltered,
   isRefused,
   isUnjudged,
+  rollUpMarkers,
+  rowMarkerKinds,
 } from './markers';
 
 const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
@@ -82,5 +84,74 @@ describe('the can-not-judge markers', () => {
   it('flags a body that never decoded', () => {
     expect(decodeFailed(makeCommMessage(ACCOUNT, { body_extracted: false }))).toBe(true);
     expect(decodeFailed(makeCommMessage(ACCOUNT))).toBe(false);
+  });
+});
+
+describe('rowMarkerKinds', () => {
+  const PRIORITY = {
+    id: 'p1',
+    name: 'Dana',
+    priority: 'high' as const,
+    notes: null,
+    created_at: NOW.toISOString(),
+    comm_handles: [
+      {
+        id: 'h1',
+        person_id: 'p1',
+        handle: 'dana@example.com',
+        kind: 'email' as const,
+        created_at: NOW.toISOString(),
+      },
+    ],
+  };
+
+  it('lists every chip a row carries, in drawing order', () => {
+    const everything = makeCommMessage(ACCOUNT, {
+      sender_handle: 'dana@example.com',
+      reclassify_requested_at: NOW.toISOString(),
+      judged_by: 'refusal',
+      filtered_reason: 'list-unsubscribe',
+      has_attachments: true,
+      body: '',
+      body_extracted: false,
+      received_at: new Date(NOW.getTime() - (RETENTION_DAYS - 1) * MS_PER_DAY).toISOString(),
+    });
+
+    expect(rowMarkerKinds(everything, [PRIORITY], NOW, true)).toEqual([
+      'rerun-pending',
+      'priority',
+      'attachment',
+      'decode-failed',
+      'expiry',
+      'refused',
+      'filtered',
+    ]);
+    expect(
+      rowMarkerKinds(makeCommMessage(ACCOUNT, { judged_by: 'unjudged' }), [], NOW, false),
+    ).toEqual(['unjudged']);
+  });
+
+  it('never marks a queued row refused or filtered', () => {
+    const row = makeCommMessage(ACCOUNT, { judged_by: 'refusal', filtered_reason: 'bulk' });
+
+    expect(rowMarkerKinds(row, [], NOW, false)).toEqual([]);
+  });
+
+  describe('rollUpMarkers', () => {
+    it('counts each chip across a conversation, priority uncounted, expiry dropped', () => {
+      const old = new Date(NOW.getTime() - (RETENTION_DAYS - 1) * MS_PER_DAY).toISOString();
+      const messages = [
+        makeCommMessage(ACCOUNT, { sender_handle: 'dana@example.com', judged_by: 'refusal' }),
+        makeCommMessage(ACCOUNT, { sender_handle: 'dana@example.com', received_at: old }),
+        makeCommMessage(ACCOUNT, { has_attachments: true, body: '', judged_by: 'refusal' }),
+        makeCommMessage(ACCOUNT, { has_attachments: true, body: '', received_at: old }),
+      ];
+
+      expect(rollUpMarkers(messages, [PRIORITY], NOW)).toEqual([
+        { kind: 'priority', count: 1 },
+        { kind: 'attachment', count: 2 },
+        { kind: 'refused', count: 2 },
+      ]);
+    });
   });
 });
