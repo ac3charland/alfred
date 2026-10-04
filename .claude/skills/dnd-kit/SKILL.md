@@ -103,7 +103,7 @@ Do I need a DragOverlay?
 | **Make a list reorderable** | Wrap rows in `<SortableContext items={ids} strategy={verticalListSortingStrategy}>`; call `useSortable({ id })` in each row | `items` must be the **ordered id array** matching render order. |
 | **Apply the drag transform to a row** | `style={{ transform: CSS.Transform.toString(transform), transition }}` + spread `{...attributes} {...listeners}` on the row (or the handle) | `transform`/`transition` come from `useSortable`. Use `CSS.Transform.toString`, not manual string building. |
 | **Compute the new order on drop** | `onDragEnd={({active, over}) => { if (over && active.id !== over.id) setOrder(arrayMove(ids, oldIndex, newIndex)) }}` | `arrayMove(array, from, to)` returns a new array. Persist it (see alfred wiring). |
-| **Drag a task into a sidebar folder** | `useDroppable({ id: folder.id })` on each `ViewLink`; `useDraggable({ id: item.id })` on the row; `onDragEnd` → `moveTask(active.id, over?.id ?? null)` | **`moveTask` already exists** — drag-to-folder needs no new store action. Drop on an Inbox droppable → `moveTask(id, null)`. |
+| **Drag a task into a sidebar folder** | `useDroppable({ id: folder.id })` on each `ViewLink`; `useDraggable({ id: item.id })` on the row; `onDragEnd` → `moveTask(active.id, over?.id ?? null)` | **`moveTask` already exists** — drag-to-folder needs no new store action. |
 | **Add a dedicated drag handle** so row buttons still click | Spread `{...listeners} {...attributes}` on the handle element and bind it with `setActivatorNodeRef`; keep `setNodeRef` on the row | Without a handle, listeners on the whole row swallow clicks on the rename/delete/expand `IconButton`s. |
 | **Stop a drag from hijacking a click** | `useSensor(PointerSensor, { activationConstraint: { distance: 8 } })` | Requires an 8px move before a drag starts, so taps still register as clicks. |
 | **Make it keyboard-accessible** | `useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })` | Tab to the handle, Space to lift, Arrows to move, Space to drop, Esc to cancel. This is also what makes drags **testable** (see Testing). |
@@ -134,8 +134,9 @@ start-state you set with a reset in **both**.
 **Drag-to-folder is nearly free.** The tasks store already exposes
 `moveTask(id, folderId: string | null)` (optimistic patch of the subtree's `folder_id`, with
 reconcile/rollback — see data-flow skill). So the *only* new code is the DnD plumbing: a
-`DndContext` around the `(tasks)` layout, `useDroppable` on each folder `ViewLink` + an Inbox
-drop zone, `useDraggable` on `TaskRow`, and `onDragEnd → moveTask(active.id, over?.id ?? null)`.
+`DndContext` around the `(tasks)` layout, `useDroppable` on each folder `ViewLink`, `useDraggable`
+on `TaskRow`, and `onDragEnd → resolveFolderDrop → moveTask`. Its "already there?" no-op reads
+residency (`residentFolderId`), not `folder_id` — see data-flow's "Inbox residency".
 Re-parenting a subtask is the same idea against `parent_id` (a `reparentTask` action you'd add
 following the optimistic recipe).
 
