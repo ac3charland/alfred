@@ -92,6 +92,9 @@ use it to find where arms differ, and the ledger to decide.
   across order. Judges favour their own family, and position bias is real.
 - Pair the judge with the outputs the gates already give: green pre-push `check:slow`, test counts,
   and the review round's findings and their dispositions.
+- **A bug has an objective check: the merged fix's behavioural test.** Insert it into each arm's
+  worktree and run it through `npm run test`. It fails on the base, and passes only where the arm
+  fixed the real cause. A test that calls the original fix's own functions isn't portable.
 
 ## Replaying a review round
 
