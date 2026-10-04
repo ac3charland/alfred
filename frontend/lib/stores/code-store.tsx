@@ -556,6 +556,14 @@ export function CodeProvider({
     stateRef.current = state;
   }, [state]);
 
+  // The ranks this tab's own chevron swaps write, per item, until the server confirms each one
+  // (ALF-250). A burst's earlier steps echo back over realtime AFTER later steps are already on
+  // screen, so an own write is recognised here and kept off the rank instead of rewinding it.
+  const ownRankWritesRef = React.useRef(new Map<string, number[]>());
+  // Every reorder batch, chained: overlapping bursts must reach the server in click order, or a
+  // reply confirms ranks the server never landed on.
+  const reorderQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+
   const { showToast } = useToastActions();
   // The stable (`[]`) action closures surface a failed write as a toast (ALF-33). They can't
   // close over `showToast` directly (it would need to be a memo dep), so read it through a ref
@@ -600,10 +608,15 @@ export function CodeProvider({
       // reasoning that keeps the board stable (no flicker, no double notification).
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
+      const { priority, ...unranked } = deliveredColumns(codeItemToStoryPatch(row));
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: deliveredColumns(codeItemToStoryPatch(row)),
+        patch:
+          priority === undefined ||
+          takeOwnRankWrite(ownRankWritesRef.current, row.item_id, priority)
+            ? unranked
+            : { ...unranked, priority },
       });
       if (!changedState) return;
 
@@ -682,6 +695,58 @@ export function CodeProvider({
   }, [showToast]);
 
   const actions = React.useMemo<CodeActions>(() => {
+    // Sync one burst's swaps to the server, in order — run only through `commitReorderBatch`'s
+    // queue, so no two batches are ever in flight at once.
+    async function commitReorderSteps(steps: ReorderStep[]): Promise<void> {
+      for (const [index, step] of steps.entries()) {
+        try {
+          const rows = await api.reorderCode(step.ref, step.neighbourRef);
+          // The priority this step's optimistic swap already put on each row. A reply that
+          // confirms it must not re-apply it: a later step in the burst (or a newer burst) may
+          // have moved the row on since, and rewinding it snaps the row back up and ties it
+          // with its new neighbour (ALF-250). Only a priority the server disagrees on lands.
+          const predicted = new Map([
+            [step.aItemId, step.bPriorityBefore],
+            [step.bItemId, step.aPriorityBefore],
+          ]);
+          for (const row of rows) {
+            const { priority, ...rest } = codeItemToStoryPatch(row);
+            dispatch({
+              type: 'patchStory',
+              itemId: row.item_id,
+              patch:
+                priority === undefined || predicted.get(row.item_id) === priority
+                  ? rest
+                  : { ...rest, priority },
+            });
+          }
+        } catch {
+          // This step and everything queued behind it never reached the server — undo them,
+          // in reverse, so each rollback exactly cancels its own swap. Steps before this one
+          // already committed, so they're left as they are.
+          for (let i = steps.length - 1; i >= index; i -= 1) {
+            const failed = steps[i];
+            if (failed === undefined) continue;
+            dispatch({
+              type: 'patchStory',
+              itemId: failed.aItemId,
+              patch: { priority: failed.aPriorityBefore },
+            });
+            dispatch({
+              type: 'patchStory',
+              itemId: failed.bItemId,
+              patch: { priority: failed.bPriorityBefore },
+            });
+            // Never written, so never echoed.
+            takeOwnRankWrite(ownRankWritesRef.current, failed.aItemId, failed.bPriorityBefore);
+            takeOwnRankWrite(ownRankWritesRef.current, failed.bItemId, failed.aPriorityBefore);
+          }
+          showToastRef.current("Couldn't reorder story");
+          return;
+        }
+      }
+    }
+
     // Shared insert-optimistic-then-reconcile path for both entry points (an item already
     // known to the Code view, and one crossing from Tasks), so neither relies on `this`.
     async function admitToFactory(
@@ -1252,53 +1317,14 @@ export function CodeProvider({
         // Swap: each story takes the other's priority (the same exchange the RPC does).
         dispatch({ type: 'patchStory', itemId: aItemId, patch: { priority: bPriorityBefore } });
         dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: aPriorityBefore } });
+        recordOwnRankWrite(ownRankWritesRef.current, aItemId, bPriorityBefore);
+        recordOwnRankWrite(ownRankWritesRef.current, bItemId, aPriorityBefore);
         return { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore };
       },
-      async commitReorderBatch(steps) {
-        for (const [index, step] of steps.entries()) {
-          try {
-            const rows = await api.reorderCode(step.ref, step.neighbourRef);
-            // The priority this step's optimistic swap already put on each row. A reply that
-            // confirms it must not re-apply it: a later step in the burst (or a newer burst) may
-            // have moved the row on since, and rewinding it snaps the row back up and ties it
-            // with its new neighbour (ALF-250). Only a priority the server disagrees on lands.
-            const predicted = new Map([
-              [step.aItemId, step.bPriorityBefore],
-              [step.bItemId, step.aPriorityBefore],
-            ]);
-            for (const row of rows) {
-              const { priority, ...rest } = codeItemToStoryPatch(row);
-              dispatch({
-                type: 'patchStory',
-                itemId: row.item_id,
-                patch:
-                  priority === undefined || predicted.get(row.item_id) === priority
-                    ? rest
-                    : { ...rest, priority },
-              });
-            }
-          } catch {
-            // This step and everything queued behind it never reached the server — undo them,
-            // in reverse, so each rollback exactly cancels its own swap. Steps before this one
-            // already committed, so they're left as they are.
-            for (let i = steps.length - 1; i >= index; i -= 1) {
-              const failed = steps[i];
-              if (failed === undefined) continue;
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.aItemId,
-                patch: { priority: failed.aPriorityBefore },
-              });
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.bItemId,
-                patch: { priority: failed.bPriorityBefore },
-              });
-            }
-            showToastRef.current("Couldn't reorder story");
-            return;
-          }
-        }
+      commitReorderBatch(steps) {
+        const run = reorderQueueRef.current.then(() => commitReorderSteps(steps));
+        reorderQueueRef.current = run;
+        return run;
       },
       applyMoveOptimistic(ref, toTop) {
         const { stories } = stateRef.current;
@@ -1750,4 +1776,29 @@ export function useStoryRankFlags(story: CodeStory | null): StoryRankFlags {
 /** Read the code mutation actions (the gate / ProjectNav `+`). Throws outside a CodeProvider. */
 export function useCodeActions(): CodeActions {
   return useCodeActionsValue('useCodeActions');
+}
+
+/** Note a rank this tab's own reorder wrote to `itemId`, so its realtime echo is recognised. */
+function recordOwnRankWrite(
+  writes: Map<string, number[]>,
+  itemId: string,
+  priority: number | null,
+): void {
+  if (priority === null) return;
+  writes.set(itemId, [...(writes.get(itemId) ?? []), priority]);
+}
+
+/** Consume a recorded own write of `priority` to `itemId`; true when there was one. */
+function takeOwnRankWrite(
+  writes: Map<string, number[]>,
+  itemId: string,
+  priority: number | null,
+): boolean {
+  const pending = writes.get(itemId) ?? [];
+  const index = pending.indexOf(priority ?? Number.NaN);
+  if (index === -1) return false;
+  const rest = pending.filter((_, i) => i !== index);
+  if (rest.length === 0) writes.delete(itemId);
+  else writes.set(itemId, rest);
+  return true;
 }

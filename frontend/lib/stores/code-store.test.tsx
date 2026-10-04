@@ -2297,6 +2297,88 @@ describe('code-store', () => {
         });
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
       });
+
+      it("a realtime echo of this tab's own earlier swap never rewinds a later optimistic swap", () => {
+        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A],
+              epics: [epic],
+              stories: [high, low, third],
+            }),
+          },
+        );
+        act(() => {
+          result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2');
+        });
+        act(() => {
+          result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3');
+        });
+
+        // Step one's echo lands while step two is still unconfirmed.
+        emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }));
+        emitUpdate(makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }));
+
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+        // Another tab's reorder still lands.
+        emitUpdate(makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 9 }));
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-3', 'ALF-1', 'ALF-2']);
+      });
+
+      it('overlapping batches reach the server one at a time, in click order', async () => {
+        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+        let resolveFirst!: (rows: CodeItem[]) => void;
+        mockReorderCode
+          .mockImplementationOnce(
+            () =>
+              new Promise<CodeItem[]>((resolve) => {
+                resolveFirst = resolve;
+              }),
+          )
+          .mockResolvedValueOnce([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 3 }),
+            makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: 2 }),
+          ]);
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({
+            projects: [PROJECT_A],
+            epics: [epic],
+            stories: [high, low, third],
+          }),
+        });
+        let stepOne!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        let stepTwo!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        act(() => {
+          stepOne = unwrap(result.current.applyReorderOptimistic('ALF-1', 'ALF-2'));
+        });
+        act(() => {
+          stepTwo = unwrap(result.current.applyReorderOptimistic('ALF-1', 'ALF-3'));
+        });
+
+        let first!: Promise<void>;
+        let second!: Promise<void>;
+        await act(async () => {
+          first = result.current.commitReorderBatch([stepOne]);
+          second = result.current.commitReorderBatch([stepTwo]);
+          await Promise.resolve();
+        });
+        expect(mockReorderCode).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          resolveFirst([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          await first;
+          await second;
+        });
+        expect(mockReorderCode).toHaveBeenNthCalledWith(2, 'ALF-1', 'ALF-3');
+      });
     });
 
     describe('applyMoveOptimistic + commitMove (Backlog jump to top/bottom)', () => {
