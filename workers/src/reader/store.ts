@@ -53,6 +53,8 @@ export interface ReaderPostInsert {
   text: string;
   word_count: number;
   html_extracted: boolean;
+  /** The raw email HTML a send to Instapaper carries; omitted (the column's null) when none was kept. */
+  html?: string | undefined;
   summary_state: 'pending';
   /** The lease: `now` claims the row for this tick, a JSON null leaves it for tomorrow. */
   summarizing_since: unknown;

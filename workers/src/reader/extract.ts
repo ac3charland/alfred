@@ -52,6 +52,13 @@ import type { GmailMessage, GmailPayload } from '../comms/gmail-api';
  */
 export const READER_TEXT_CHARS = 400_000;
 
+/**
+ * The ceiling on the STORED HTML — the body a send to Instapaper carries. Markup is never
+ * truncated (a cut tag is worse than none): past this, keep none and let the send fall back to the
+ * stored text. Sized ~14× the largest post measured (72.6 K text chars).
+ */
+export const READER_HTML_CHARS = 1_000_000;
+
 /** The title of a post whose subject was empty and whose HTML carried no `<title>` either. */
 export const UNTITLED = '(untitled)';
 
@@ -68,6 +75,12 @@ export interface ExtractedPost {
   word_count: number;
   /** True only when the text came out of an HTML part through `htmlToText`. */
   html_extracted: boolean;
+  /**
+   * The decoded `text/html` part, raw — no sanitising, no stripping of the email chrome — when it
+   * produced the stored text and fits `READER_HTML_CHARS`. Instapaper's parser extracts the
+   * article from it, and the app never renders it.
+   */
+  html?: string | undefined;
 }
 
 /** `<a … href="…" …>text</a>`, href quoted either way or bare, text non-greedy across newlines. */
@@ -296,5 +309,7 @@ export function extractPost(
     // derives from it never describes words the summariser was not given either.
     word_count: text.split(/\s+/).filter((token) => token !== '').length,
     html_extracted: htmlExtracted,
+    html:
+      htmlExtracted && html !== undefined && html.length <= READER_HTML_CHARS ? html : undefined,
   };
 }

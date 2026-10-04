@@ -942,6 +942,8 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
     const inserts = restCalls(calls, 'reader_posts', 'POST').map((call) => payload(call));
     expect(inserts).toHaveLength(3);
     expect(inserts[2]).toMatchObject({ html_extracted: false, title: 'Notes from the third week' });
+    expect(inserts[2]).not.toHaveProperty('html');
+    expect(inserts[0]?.['html']).toEqual(expect.stringContaining('<'));
     expect(inserts[0]).toMatchObject({
       html_extracted: true,
       canonical_url: 'https://open.substack.com/pub/harborline/p/the-grain-ledger',

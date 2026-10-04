@@ -1,5 +1,5 @@
 import type { GmailMessage } from '../comms/gmail-api';
-import { READER_TEXT_CHARS, UNTITLED, extractPost } from './extract';
+import { READER_HTML_CHARS, READER_TEXT_CHARS, UNTITLED, extractPost } from './extract';
 import {
   ESSAY_MESSAGE,
   PLAIN_TEXT_ONLY_MESSAGE,
@@ -102,6 +102,34 @@ describe('extractPost — the fixtures', () => {
     expect(extractPost(ESSAY_MESSAGE, HARBORLINE).html_extracted).toBe(true);
     // The plain-text fixture has no HTML part at all, so the plain body is the post.
     expect(extractPost(PLAIN_TEXT_ONLY_MESSAGE, HARBORLINE).html_extracted).toBe(false);
+  });
+
+  it('keeps the raw HTML of an HTML-extracted post, and none for a plain-text one', () => {
+    const essay = extractPost(ESSAY_MESSAGE, HARBORLINE);
+    expect(essay.html).toContain('<');
+    expect(essay.html).toContain('https://open.substack.com/pub/harborline/p/the-grain-ledger');
+    expect(extractPost(PLAIN_TEXT_ONLY_MESSAGE, HARBORLINE).html).toBeUndefined();
+  });
+
+  it('stores the HTML exactly as decoded — raw means raw', () => {
+    const markup = '<div class="preheader">READ IN APP</div><p>The whole post.</p>';
+    expect(extractPost(htmlMessage(markup), HARBORLINE).html).toBe(markup);
+  });
+
+  it('keeps no HTML past the stored-HTML ceiling, rather than truncating markup', () => {
+    const atCeiling = `<p>${'a'.repeat(READER_HTML_CHARS - 7)}</p>`;
+    expect(atCeiling).toHaveLength(READER_HTML_CHARS);
+    expect(extractPost(htmlMessage(atCeiling), HARBORLINE).html).toBe(atCeiling);
+
+    const overCeiling = `<p>${'a'.repeat(READER_HTML_CHARS - 6)}</p>`;
+    const post = extractPost(htmlMessage(overCeiling), HARBORLINE);
+    expect(post.html).toBeUndefined();
+    // The text still comes out of it — only the stored markup is dropped.
+    expect(post.html_extracted).toBe(true);
+  });
+
+  it('keeps no HTML when the HTML part produced no prose', () => {
+    expect(extractPost(htmlMessage('<p>   </p>'), HARBORLINE).html).toBeUndefined();
   });
 
   it('keeps the Message-ID with its angle brackets, as comms stores it', () => {

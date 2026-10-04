@@ -119,6 +119,9 @@ export async function intakePost(
     text: post.text,
     word_count: post.word_count,
     html_extracted: post.html_extracted,
+    // Same fetch, larger body: keeping the HTML costs the tick no subrequest. Absent (and so
+    // dropped from the JSON body) when extraction kept none — the column's own null.
+    html: post.html,
     summary_state: 'pending',
     // The insert IS the lease. On a capped day it is deliberately left free.
     summarizing_since: options.capped ? JSON_NULL : options.now.toISOString(),
