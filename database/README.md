@@ -137,6 +137,24 @@ update reader_publications set enabled = false where handle = 'news@example.com'
   call still can. The actual guard is that `anon` has no RLS policy on `reader_posts` and
   `authenticated` is the owner's own session, not an arbitrary caller.
 
+### `0038_reader_instapaper.sql` — sending a post to Instapaper (ALF-238)
+
+The reading list's primary verb becomes "send to Instapaper" rather than "open the original".
+
+- **`reader_posts.html`** — the email's own `text/html` part, raw. The intake already decodes it
+  to produce `text` and used to throw it away; the send passes it to Instapaper as the bookmark's
+  content, so a paid post arrives in full rather than as the web paywall's teaser. Written only
+  when that part is what produced `text`, so a row holding `html` always holds non-empty text.
+  Nothing in the app renders it and the list payload never selects it. Null for every post
+  ingested before this migration — those sends fall back to the stored text as paragraphs.
+- **`reader_posts.instapaper_sent_at`** — the last confirmed save, which the row's "in Instapaper"
+  badge reads. Never optimistic: a failed send writes nothing.
+- **`reader_posts.instapaper_bookmark_id`** — Instapaper's own bookmark id. Nothing reads it yet;
+  it is the identity the planned Instapaper tag-sync will match a pulled highlight back on.
+- **`reader_sweep_text`** — same signature, same batching, same guards, one more column in the
+  `SET`: the ninety-day sweep nulls `html` alongside `text`. The `WHERE` clause still keys on
+  `text`, which reaches every row holding `html` because the two are written together.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`
