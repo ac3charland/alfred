@@ -97,6 +97,11 @@ export interface SeedState {
    * EMPTY list is a state of its own: the tick has never run.
    */
   readerHealth?: ReaderHealth[];
+  /**
+   * Not a table: the Instapaper error code the mock refuses the next `bookmarks/add` with.
+   * Omitted, the mock saves the bookmark and hands back an id.
+   */
+  instapaperErrorCode?: number;
 }
 
 let sequence = 0;

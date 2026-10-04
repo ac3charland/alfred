@@ -18,6 +18,15 @@ const mockEnvironment: Record<string, string> = {
   INGEST_API_KEY,
   E2E_USER_EMAIL: E2E_USER.email,
   E2E_USER_PASSWORD: E2E_USER.password,
+  // Fake Instapaper credentials, pointed at the same mock. The send route calls Instapaper from
+  // the Next server, where `page.route()` cannot reach it, so the stand-in has to be a real
+  // server — and a configured deployment is what makes the send verb enabled at all. These are
+  // a deliberate addition for the Reader's send verb, not a change made to turn a check green.
+  INSTAPAPER_CONSUMER_KEY: 'mock-consumer-key',
+  INSTAPAPER_CONSUMER_SECRET: 'mock-consumer-secret',
+  INSTAPAPER_ACCESS_TOKEN: 'mock-access-token',
+  INSTAPAPER_ACCESS_TOKEN_SECRET: 'mock-access-token-secret',
+  INSTAPAPER_API_URL: MOCK_URL,
 };
 
 export default defineConfig({

@@ -233,7 +233,7 @@ test.describe('the reading list — the journeys', () => {
     await expect(rows.nth(2)).toContainText('summarising…');
   });
 
-  test('Open is the canonical URL when the post has one, else the Gmail permalink', async ({
+  test('Original is the canonical URL when the post has one, else the Gmail permalink', async ({
     page,
     seed,
   }) => {
@@ -241,7 +241,10 @@ test.describe('the reading list — the journeys', () => {
     await page.goto('/reader');
 
     const rows = page.getByTestId('reader-row');
-    const canonical = rows.nth(0).getByRole('link', { name: 'Open' });
+    // Both of these rows have a summary, so each keeps its way back to the source in the overview
+    // panel's footer rather than in the verb row.
+    await rows.nth(0).getByRole('button', { name: 'Overview' }).click();
+    const canonical = rows.nth(0).getByRole('link', { name: /Original/ });
     await expect(canonical).toHaveAttribute(
       'href',
       'https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion',
@@ -249,20 +252,23 @@ test.describe('the reading list — the journeys', () => {
     await expect(canonical).toHaveAttribute('target', '_blank');
     await expect(canonical).toHaveAttribute('rel', 'noreferrer');
 
-    const mailbox = rows.nth(1).getByRole('link', { name: 'Open' });
+    await rows.nth(1).getByRole('button', { name: 'Overview' }).click();
+    const mailbox = rows.nth(1).getByRole('link', { name: /Original/ });
     await expect(mailbox).toHaveAttribute(
       'href',
       'https://mail.google.com/mail/u/0/#search/rfc822msgid:import-ai-412%40mail.substack.com',
     );
   });
 
-  test('clicking Open stamps opened_at on the row', async ({ page, seed, request }) => {
+  test('clicking Original stamps opened_at on the row', async ({ page, seed, request }) => {
     await seed({ readerPublications: [PUBLICATION], readerPosts: seededPosts() });
     await page.goto('/reader');
 
+    const row = page.getByTestId('reader-row').nth(0);
+    await row.getByRole('button', { name: 'Overview' }).click();
     const [popup] = await Promise.all([
       page.waitForEvent('popup'),
-      page.getByTestId('reader-row').nth(0).getByRole('link', { name: 'Open' }).click(),
+      row.getByRole('link', { name: /Original/ }).click(),
     ]);
     await popup.close();
 
