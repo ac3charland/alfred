@@ -159,37 +159,37 @@ test('a chain crosses a forgiven day in grey and breaks where the allowance runs
   page,
   seed,
 }) => {
-  const habit = makeHabit('Morning routine', { started_on: '2026-06-01', allowance: 1 });
+  // Anchored to today: the grid only draws the app's trailing window, so fixed dates age out of it.
+  const habit = makeHabit('Morning routine', { started_on: localDaysAgo(20), allowance: 1 });
   await seed({
     habits: [habit],
     habitEntries: [
       // A run, one forgiven partial inside it, then two spent days back to back.
-      makeHabitEntry(habit.id, '2026-06-01'),
-      makeHabitEntry(habit.id, '2026-06-02'),
-      makeHabitEntry(habit.id, '2026-06-03', { status: 'partial' }),
-      makeHabitEntry(habit.id, '2026-06-04'),
-      makeHabitEntry(habit.id, '2026-06-05', { status: 'missed' }),
-      makeHabitEntry(habit.id, '2026-06-06', { status: 'missed' }),
-      makeHabitEntry(habit.id, '2026-06-07'),
+      makeHabitEntry(habit.id, localDaysAgo(20)),
+      makeHabitEntry(habit.id, localDaysAgo(19)),
+      makeHabitEntry(habit.id, localDaysAgo(18), { status: 'partial' }),
+      makeHabitEntry(habit.id, localDaysAgo(17)),
+      makeHabitEntry(habit.id, localDaysAgo(16), { status: 'missed' }),
+      makeHabitEntry(habit.id, localDaysAgo(15), { status: 'missed' }),
+      makeHabitEntry(habit.id, localDaysAgo(14)),
     ],
   });
   await page.goto('/habits');
 
   // Grey either side of the forgiven day, lit where the run was earned…
-  await expect(page.locator('[data-date="2026-06-02"] [data-connector="out"]')).toHaveAttribute(
-    'data-tone',
-    'bridge',
-  );
-  await expect(page.locator('[data-date="2026-06-03"] [data-connector="out"]')).toHaveAttribute(
-    'data-tone',
-    'bridge',
-  );
-  await expect(page.locator('[data-date="2026-06-01"] [data-connector="out"]')).toHaveAttribute(
-    'data-tone',
-    'streak',
-  );
+  await expect(
+    page.locator(`[data-date="${localDaysAgo(19)}"] [data-connector="out"]`),
+  ).toHaveAttribute('data-tone', 'bridge');
+  await expect(
+    page.locator(`[data-date="${localDaysAgo(18)}"] [data-connector="out"]`),
+  ).toHaveAttribute('data-tone', 'bridge');
+  await expect(
+    page.locator(`[data-date="${localDaysAgo(20)}"] [data-connector="out"]`),
+  ).toHaveAttribute('data-tone', 'streak');
   // …and nothing at all across the break, where two spent days share one rolling week.
-  await expect(page.locator('[data-date="2026-06-06"] [data-connector="out"]')).toHaveCount(0);
+  await expect(
+    page.locator(`[data-date="${localDaysAgo(15)}"] [data-connector="out"]`),
+  ).toHaveCount(0);
 });
 
 test('retargets a criterion without moving a logged day, then archives, restores and deletes', async ({
