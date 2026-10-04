@@ -854,3 +854,44 @@ describe('createWeeklyPlanItemsSchema — the per-type matrix', () => {
     expect(createWeeklyPlanItemsSchema.safeParse({ items: [bigFamily] }).success).toBe(false);
   });
 });
+
+describe('due_time', () => {
+  it('accepts a 24-hour HH:MM time beside a date on create and update', () => {
+    expect(
+      createItemSchema.safeParse({ title: 'x', due_date: '2026-10-04', due_time: '15:00' }).success,
+    ).toBe(true);
+    expect(updateItemSchema.safeParse({ due_date: '2026-10-04', due_time: '09:30' }).success).toBe(
+      true,
+    );
+    expect(updateItemSchema.safeParse({ due_time: '00:00' }).success).toBe(true);
+    expect(updateItemSchema.safeParse({ due_time: '23:59' }).success).toBe(true);
+  });
+
+  it('accepts null to clear the time', () => {
+    expect(updateItemSchema.safeParse({ due_time: null }).success).toBe(true);
+    expect(updateItemSchema.safeParse({ due_date: null, due_time: null }).success).toBe(true);
+  });
+
+  it.each(['3pm', '25:00', '15:00:00', '9:30', '12:60', ''])(
+    'rejects the malformed time %j',
+    (time) => {
+      expect(updateItemSchema.safeParse({ due_time: time }).success).toBe(false);
+      expect(
+        createItemSchema.safeParse({ title: 'x', due_date: '2026-10-04', due_time: time }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('rejects a create whose time has no date in the same body', () => {
+    expect(createItemSchema.safeParse({ title: 'x', due_time: '15:00' }).success).toBe(false);
+    expect(
+      createItemSchema.safeParse({ title: 'x', due_date: null, due_time: '15:00' }).success,
+    ).toBe(false);
+    // A null time needs no date.
+    expect(createItemSchema.safeParse({ title: 'x', due_time: null }).success).toBe(true);
+  });
+
+  it('rejects an update that sets a time while clearing the date', () => {
+    expect(updateItemSchema.safeParse({ due_date: null, due_time: '15:00' }).success).toBe(false);
+  });
+});
