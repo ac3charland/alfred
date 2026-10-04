@@ -760,6 +760,15 @@ export function patchReaderPost(
 }
 
 /**
+ * Send a post to the owner's Instapaper account, which archives it here too. Returns the stamped
+ * row. A refusal carries the route's own sentence for the owner — an opted-out publication, a
+ * rate limit, an unconfigured deployment — in the thrown `ApiError`'s `detail`.
+ */
+export function sendReaderPostToInstapaper(id: string): Promise<ReaderPostListItem> {
+  return apiRequest<ReaderPostListItem>(`/api/reader/posts/${id}/instapaper`, { method: 'POST' });
+}
+
+/**
  * The roster, ordered by name, each row carrying the arrival of its newest post. Read from the
  * view rather than the table: "last post" is derived, so nothing writes it back to the roster.
  */

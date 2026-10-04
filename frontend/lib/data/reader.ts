@@ -8,21 +8,22 @@ import type { ReaderHealthSnapshot, ReaderPostListItem, ReaderPostUpdate } from 
 
 /**
  * Server-only read/write layer for the Reader module's list — the shell's seed, the route that
- * serves a focus refetch, and the row verbs' single write.
+ * serves a focus refetch, the row verbs' single write, and the Instapaper send's read and stamp.
  *
  * `READER_POST_LIST_COLUMNS` is the one thing every entry point here shares: `reader_posts.text`
- * is a full post body (tens of KB), and the list never renders it — the "Open" verb sends the
- * owner to the original. Naming every OTHER column explicitly, once, is what keeps the seed, the
- * route and the patch from drifting into three different ideas of "the list shape" — and what
- * makes a migration that adds a column fail loudly (the pinning test below) instead of silently
- * shipping a row missing its newest field.
+ * and `reader_posts.html` are the full post body twice over (tens to hundreds of KB), and the
+ * list never renders either — the row sends the post to Instapaper, or links out to the
+ * original. Naming every OTHER column explicitly, once, is what keeps the seed, the route and the
+ * patch from drifting into three different ideas of "the list shape" — and what makes a migration
+ * that adds a column fail loudly (the pinning test below) instead of silently shipping a row
+ * missing its newest field.
  */
 
 /**
- * Every `reader_posts` column except `text`, as the explicit `.select()` list every read below
- * shares. Hand-maintained against the generated `Row` type — `reader.test.ts` pins it against a
- * fixture's own keys, so a migration that adds or renames a column fails that test until this
- * list is updated to match.
+ * Every `reader_posts` column except the two bodies, `text` and `html`, as the explicit
+ * `.select()` list every list-shaped read below shares. Hand-maintained against the generated
+ * `Row` type — `reader.test.ts` pins it against a fixture's own keys, so a migration that adds or
+ * renames a column fails that test until this list is updated to match.
  */
 export const READER_POST_LIST_COLUMNS = [
   'account_key',
@@ -36,6 +37,8 @@ export const READER_POST_LIST_COLUMNS = [
   'headline',
   'html_extracted',
   'id',
+  'instapaper_bookmark_id',
+  'instapaper_sent_at',
   'last_error',
   'model',
   'model_called_at',
@@ -172,6 +175,61 @@ export async function getReaderPostResummarizeState(
     .select('text_swept_at,word_count,summary_state')
     .eq('id', id)
     .maybeSingle();
+}
+
+/** What the Instapaper send reads off a post: everything the bookmark is built from. */
+export interface ReaderPostForSend {
+  title: string;
+  canonical_url: string | null;
+  gist: string | null;
+  html: string | null;
+  text: string | null;
+  /** Read so a send from the archive keeps the date the post was archived on. */
+  archived_at: string | null;
+}
+
+/**
+ * The one frontend read of a post's bodies. The Instapaper send carries the email HTML (or,
+ * failing that, the stored text) as the bookmark's content, so it is the only caller that needs
+ * either — and its result never leaves the route: the browser gets the list row back, never a
+ * body. `.maybeSingle()`, so a missing post is the route's 404 rather than a 500.
+ */
+export async function getReaderPostForSend(
+  supabase: SupabaseClient<Database>,
+  id: string,
+): Promise<{ data: ReaderPostForSend | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .select('title,canonical_url,gist,html,text,archived_at')
+    .eq('id', id)
+    .maybeSingle();
+}
+
+/**
+ * Record a save Instapaper confirmed, and archive the post with it: once a post is in
+ * Instapaper, that is where it is read, so leaving it on the list would make the owner dismiss
+ * every sent post twice. `alreadyArchivedAt` is the post's own `archived_at` from the send's
+ * read — a send from the archive keeps the date the post was put away rather than re-dating it.
+ * Only ever called after a confirmed save, so a refused or failed send leaves the row untouched.
+ */
+export async function markReaderPostSent(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  bookmarkId: number,
+  now: Date,
+  alreadyArchivedAt: string | null,
+): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
+  const stamp = now.toISOString();
+  return supabase
+    .from('reader_posts')
+    .update({
+      instapaper_sent_at: stamp,
+      instapaper_bookmark_id: bookmarkId,
+      archived_at: alreadyArchivedAt ?? stamp,
+    })
+    .eq('id', id)
+    .select(READER_POST_LIST_COLUMNS)
+    .single();
 }
 
 /**

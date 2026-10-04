@@ -10,10 +10,10 @@ import { getReaderPosts } from '@/lib/data/reader';
 //
 // The shell seeds the store with the active list at load time, so nothing renders the list
 // through here on first paint: this is for the focus refetch (the store's `refresh()`) and, later,
-// the archive view (`scope=archived`). `text` never comes back — `getReaderPosts` selects
-// `READER_POST_LIST_COLUMNS`, the same column list the seed and the patch share, because the
-// list never renders a post's body (the "Open" verb sends the owner to the original) and a
-// 30 KB-per-row column on every refetch is weight nobody asked for.
+// the archive view (`scope=archived`). Neither body (`text`, `html`) ever comes back —
+// `getReaderPosts` selects `READER_POST_LIST_COLUMNS`, the same column list the seed and the patch
+// share, because the list never renders a post's body (the row sends it to Instapaper, or links
+// out to the original) and a 30 KB-per-row column on every refetch is weight nobody asked for.
 // ---------------------------------------------------------------------------
 
 export const GET = withSession(async (session, request) => {

@@ -208,11 +208,12 @@ export type ReaderPostUpdate = Database['public']['Tables']['reader_posts']['Upd
 export type ReaderHealth = Database['public']['Tables']['reader_health']['Row'];
 
 /**
- * A post without its body — the list read's shape. A 30 KB body times hundreds of rows is a
- * seed the list never renders (the verb opens the original), so `getReaderSeed`, `getReaderPosts`
- * and `patchReaderPost` all select the shared `READER_POST_LIST_COLUMNS` instead of `*`.
+ * A post without its bodies — the list read's shape. A 30 KB text and the email HTML it came from,
+ * times hundreds of rows, is a seed the list never renders (the row sends the post to Instapaper,
+ * or links out to the original), so every list-shaped read selects the shared
+ * `READER_POST_LIST_COLUMNS` instead of `*`.
  */
-export type ReaderPostListItem = Omit<ReaderPost, 'text'>;
+export type ReaderPostListItem = Omit<ReaderPost, 'text' | 'html'>;
 
 /**
  * A roster row with the date of its newest post — what `v_reader_publications` returns and what

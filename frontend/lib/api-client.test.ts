@@ -6,16 +6,19 @@
  * a browser.
  */
 import {
+  ApiError,
   createReaderPublication,
   fetchCommsSnapshot,
   fetchReaderCandidates,
   fetchReaderHealth,
   fetchReaderPublications,
+  sendReaderPostToInstapaper,
   updateReaderPublication,
 } from './api-client';
 import {
   makeReaderCandidate,
   makeReaderHealth,
+  makeReaderPost,
   makeReaderPublication,
   makeReaderPublicationListItem,
   resetReaderFixtureClock,
@@ -48,6 +51,38 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+describe('sendReaderPostToInstapaper', () => {
+  const POST_ID = '11111111-1111-4111-8111-111111111111';
+
+  it('posts to the post’s own Instapaper route, with no body, and hands back the stamped row', async () => {
+    const { text: _text, html: _html, ...row } = makeReaderPost(PUBLICATION_ID, { id: POST_ID });
+    const spy = stubFetch(row);
+
+    await expect(sendReaderPostToInstapaper(POST_ID)).resolves.toEqual(row);
+    expect(requested(spy)).toEqual({
+      path: `/api/reader/posts/${POST_ID}/instapaper`,
+      method: 'POST',
+      body: undefined,
+    });
+  });
+
+  it('throws the route’s own sentence as the error’s detail', async () => {
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        Response.json({ error: 'This publication has opted out of Instapaper' }, { status: 422 }),
+      );
+
+    const failure = await sendReaderPostToInstapaper(POST_ID).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(failure).toMatchObject({
+      status: 422,
+      detail: 'This publication has opted out of Instapaper',
+    });
+  });
 });
 
 describe('fetchReaderPublications', () => {
