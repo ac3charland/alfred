@@ -41,7 +41,8 @@ worked replay of one ticket, a single Opus agent against a Fable orchestrator wi
 implementers, is in `docs/spikes/ALF-265-opus-vs-fable-orchestrator.html`. Sonnet against Opus as
 the reviewer, replayed on three past review rounds, is in `docs/spikes/ALF-266-sonnet-vs-opus-reviewer.html`.
 Effort (xhigh against medium, and Opus 5 against 5.5) replayed on a bug and a story is in
-`docs/spikes/ALF-312-opus-effort-levels.html`.
+`docs/spikes/ALF-312-opus-effort-levels.html`. Medium against high up a ladder of bugs, with five
+reruns of the one that split, is in `docs/spikes/ALF-334-medium-vs-high-effort.html`.
 
 ## The question this answers
 
