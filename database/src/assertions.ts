@@ -9,7 +9,7 @@ import {
   schemaDrift,
 } from './backup.ts';
 import { deployMigrations } from './deploy.ts';
-import { MIGRATIONS_DIR, applyMigrations, bootstrapSupabase } from './migrate.ts';
+import { MIGRATIONS_DIR, applyMigrations, bootstrapSupabase, sorted } from './migrate.ts';
 
 /** One integration check's outcome. `detail` is evidence on success, the failure reason otherwise. */
 export interface AssertionResult {
@@ -321,6 +321,45 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         );
       }
       return `${a.ref}:${beforeA}→${beforeB}, ${b.ref}:${beforeB}→${beforeA}`;
+    },
+  );
+
+  const swapNoTransientResult = await attempt(
+    'swap_code_priority writes each row once, straight to its final rank — no parking value (ALF-250)',
+    async () => {
+      // Realtime echoes every row write, so a parked intermediate rank reaches the browser as a
+      // real move: the swapped story flashes to the top of the Backlog before sliding back.
+      const a = await createStory(client, 'story park A');
+      const b = await createStory(client, 'story park B');
+      await client.query(`create table swap_writes (ref text, priority double precision)`);
+      await client.query(`
+        create function record_swap_write() returns trigger
+        language plpgsql security definer as $$
+        begin
+          insert into swap_writes values (new.ref, new.priority);
+          return new;
+        end; $$`);
+      await client.query(`
+        create trigger record_swap_write after update of priority on code_items
+        for each row execute function record_swap_write()`);
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]),
+        );
+        const { rows } = await client.query<{ ref: string; priority: string }>(
+          `select ref, priority::text as priority from swap_writes`,
+        );
+        const writes = sorted(rows.map((r) => `${r.ref}=${r.priority}`));
+        const expected = sorted([`${a.ref}=${b.priority}`, `${b.ref}=${a.priority}`]);
+        if (writes.join(',') !== expected.join(',')) {
+          throw new Error(`swap wrote ${writes.join(', ')}; expected only ${expected.join(', ')}`);
+        }
+        return `two writes: ${writes.join(', ')}`;
+      } finally {
+        await client.query(`drop trigger record_swap_write on code_items`);
+        await client.query(`drop function record_swap_write()`);
+        await client.query(`drop table swap_writes`);
+      }
     },
   );
 
@@ -4819,6 +4858,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     createStoryResult,
     enterModuleResult,
     swapResult,
+    swapNoTransientResult,
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
