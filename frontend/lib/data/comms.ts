@@ -1,10 +1,16 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
-import { RETENTION_DAYS, SHELF_ELIGIBLE_FILTER, SHELF_PAGE_SIZE } from '@/lib/comms';
+import {
+  RETENTION_DAYS,
+  SHELF_ELIGIBLE_FILTER,
+  SHELF_PAGE_SIZE,
+  groupConversations,
+} from '@/lib/comms';
 import type { Database } from '@/lib/database.types';
 import { createClient } from '@/lib/supabase/server';
 import type {
+  CommAccount,
   CommCorrection,
   CommMessage,
   CommPersonWithHandles,
@@ -132,11 +138,17 @@ async function readActiveMessages(
  * request carries the count; the walk stops once it holds `limit` rows or a page comes up short.
  * A row arriving between two requests shifts the next page down by one, so a row that comes back
  * twice is held once.
+ *
+ * The shelf is drawn as conversations, so a page edge must never cut one: when the walk filled
+ * its `limit`, the conversation the oldest held row belongs to is completed by
+ * {@link completeOldestConversation}. Every conversation the client holds is then whole — its
+ * count exact — and "Show more" only ever appends conversations below the last one.
  */
 async function readShelfPage(
   supabase: SupabaseClient<Database>,
   since: string,
   limit: number,
+  accounts: Pick<CommAccount, 'id' | 'kind'>[],
 ): Promise<{ messages: CommMessage[]; count: number; error: PostgrestError | null }> {
   const messages: CommMessage[] = [];
   let count = 0;
@@ -161,9 +173,61 @@ async function readShelfPage(
     if (offset === 0) count = total ?? 0;
     const held = new Set(messages.map((message) => message.id));
     messages.push(...data.filter((message) => !held.has(message.id)));
-    if (data.length < size) break;
+    if (data.length < size) return { messages, count, error: null };
   }
-  return { messages, count, error: null };
+  const completion = await completeOldestConversation(supabase, since, messages, accounts);
+  if (completion.error) return { messages: [], count: 0, error: completion.error };
+  return { messages: [...messages, ...completion.messages], count, error: null };
+}
+
+/**
+ * The rest of the conversation the oldest held shelf row belongs to — the rows a full page left
+ * behind its edge. Reads that row's thread from its arrival backwards (`<=`, with an id dedupe,
+ * so a tie at the boundary is neither lost nor held twice) under the shelf's own eligibility,
+ * then keeps only what `groupConversations` puts in the same conversation: on an iMessage chat a
+ * quiet gap ends it, so last week's texts aren't pulled in behind this evening's.
+ *
+ * Paged through `readAllPages`, so one enormous thread can't silently truncate at the row cap.
+ */
+async function completeOldestConversation(
+  supabase: SupabaseClient<Database>,
+  since: string,
+  held: CommMessage[],
+  accounts: Pick<CommAccount, 'id' | 'kind'>[],
+): Promise<{ messages: CommMessage[]; error: PostgrestError | null }> {
+  const oldest = held.at(-1);
+  if (oldest === undefined) return { messages: [], error: null };
+
+  const { rows, error } = await readAllPages<CommMessage>((offset) =>
+    supabase
+      .from('comm_messages')
+      .select('*')
+      .eq('direction', 'inbound')
+      .eq('account_id', oldest.account_id)
+      .eq('thread_key', oldest.thread_key)
+      .gte('received_at', since)
+      .lte('received_at', oldest.received_at)
+      .or(SHELF_ELIGIBLE_FILTER)
+      .is('reader_claimed_at', null)
+      .order('received_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + COMMS_PAGE_SIZE - 1),
+  );
+  if (error) return { messages: [], error };
+
+  const heldIds = new Set(held.map((message) => message.id));
+  const thread = held.filter(
+    (message) =>
+      message.account_id === oldest.account_id && message.thread_key === oldest.thread_key,
+  );
+  const candidates = [...thread, ...rows.filter((message) => !heldIds.has(message.id))];
+  const conversation = groupConversations(candidates, accounts).find((candidate) =>
+    candidate.messages.some((message) => message.id === oldest.id),
+  );
+  return {
+    messages: (conversation?.messages ?? []).filter((message) => !heldIds.has(message.id)),
+    error: null,
+  };
 }
 
 /** How many shelf-eligible newsletters the Reader claimed — a count, never the rows. */
@@ -295,7 +359,7 @@ export async function readCommsSnapshot(
 
   const active = await readActiveMessages(supabase, since);
   if (active.error) return { seed, error: active.error };
-  const shelf = await readShelfPage(supabase, since, shelfLimit);
+  const shelf = await readShelfPage(supabase, since, shelfLimit, accounts);
   if (shelf.error) return { seed, error: shelf.error };
   // Two reads, so a row cleared between them comes back from both; the shelf's copy is the later.
   const shelfIds = new Set(shelf.messages.map((message) => message.id));

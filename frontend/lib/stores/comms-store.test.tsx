@@ -1247,6 +1247,28 @@ describe('CommsProvider — shelf paging', () => {
     expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(SHELF_PAGE_SIZE * 2, []);
   });
 
+  it('asks past the rows it already holds, so a page completed past the next limit still moves', () => {
+    // A shelf of 300 whose first read came back completed to 80 rows: the conversation the page
+    // edge reached ran on past it. The next page has to reach beyond those 80, not stop at 100.
+    const shelf = Array.from({ length: 300 }, () =>
+      makeCommMessage(ACCOUNT, { tier: 'fyi', judged_by: 'model' }),
+    );
+    function Wrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <CommsProvider initialSeed={makeCommsSeed({ messages: shelf, shelfLimit: 80 })}>
+          {children}
+        </CommsProvider>
+      );
+    }
+    const { result } = renderHook(() => useStore(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.actions.showMoreShelf();
+    });
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(80 + SHELF_PAGE_SIZE, []);
+  });
+
   it('asks for no more of the shelf than there is', async () => {
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper(LONG_SHELF) });
     mockApi.fetchCommsSnapshot.mockResolvedValue(
