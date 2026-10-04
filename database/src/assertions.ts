@@ -348,12 +348,14 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         const { rows } = await client.query<{ ref: string; priority: number }>(
           `select ref, priority from swap_writes`,
         );
-        const written = rows.map((r) => `${r.ref}=${String(r.priority)}`).join(', ');
+        const written = rows.map((r) => `${r.ref}=${String(r.priority)}`);
         const expected = [`${a.ref}=${String(before[1])}`, `${b.ref}=${String(before[0])}`];
-        if (rows.length !== 2 || !expected.every((w) => written.includes(w))) {
-          throw new Error(`expected exactly ${expected.join(', ')}; the swap wrote ${written}`);
+        if (written.length !== 2 || !expected.every((w) => written.includes(w))) {
+          throw new Error(
+            `expected exactly ${expected.join(', ')}; the swap wrote ${written.join(', ')}`,
+          );
         }
-        return `wrote ${written}`;
+        return `wrote ${written.join(', ')}`;
       } finally {
         await client.query('rollback');
       }
@@ -389,8 +391,23 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         await first.query('begin');
         await first.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]);
         const secondSwap = second.query(`select swap_code_priority($1, $2)`, [a.ref, c.ref]);
-        // Let the second swap read and reach the row lock while the first is uncommitted.
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // Race it against a short timeout: it must be waiting on the row lock, not finished
+        // (or failed) on ranks read before the first swap committed.
+        const blocked = Symbol('blocked');
+        const raced = await Promise.race([
+          secondSwap.then(
+            () => 'finished',
+            (error: unknown) => `failed: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+          new Promise((resolve) =>
+            setTimeout(() => {
+              resolve(blocked);
+            }, 300),
+          ),
+        ]);
+        if (raced !== blocked) {
+          throw new Error(`the second swap did not wait for the first (${String(raced)})`);
+        }
         await first.query('commit');
         await secondSwap;
       } finally {
