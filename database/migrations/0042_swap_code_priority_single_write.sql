@@ -17,9 +17,10 @@
 --
 -- THE FIX. Read both ranks `for update` — in a fixed order, so two swaps can't deadlock — so an
 -- overlapping swap waits for the first and then reads what it committed. And exchange them in
--- ONE update under the deferred unique check 0031 made possible, so each row is written exactly
--- once, straight to its final rank: no sentinel, nothing transient to broadcast. The check is set
--- back to immediate straight after, so a real duplicate still fails here rather than at commit.
+-- ONE update, so each row is written exactly once, straight to its final rank: no sentinel,
+-- nothing transient to broadcast. 0031 made the unique check a DEFERRABLE constraint, and even
+-- in its `initially immediate` mode a deferrable constraint is checked at the end of the
+-- statement rather than per row — so the exchange needs no `set constraints`.
 create or replace function swap_code_priority(p_a text, p_b text)
 returns setof code_items language plpgsql security invoker as $$
 declare a_pri double precision; b_pri double precision;
@@ -30,11 +31,9 @@ begin
   if a_pri is null or b_pri is null then
     raise exception 'swap_code_priority: unknown ref (% / %)', p_a, p_b;
   end if;
-  set constraints code_items_priority_key deferred;
   update code_items
      set priority = case when ref = p_a then b_pri else a_pri end
    where ref in (p_a, p_b);
-  set constraints code_items_priority_key immediate;
   return query select * from code_items where ref in (p_a, p_b);
 end; $$;
 

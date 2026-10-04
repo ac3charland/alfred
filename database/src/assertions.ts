@@ -117,6 +117,19 @@ async function priorityOf(client: Client, ref: string): Promise<number> {
   return priority;
 }
 
+/** Poll until backend `pid` is blocked on a lock (a concurrent-write assertion's overlap proof). */
+async function waitForLockWait(client: Client, pid: number | undefined): Promise<void> {
+  for (let tries = 0; tries < 100; tries += 1) {
+    const { rows } = await client.query<{ wait: string | null }>(
+      `select wait_event_type as wait from pg_stat_activity where pid = $1`,
+      [pid],
+    );
+    if (rows[0]?.wait === 'Lock') return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`backend ${String(pid)} never waited on a lock — the calls did not overlap`);
+}
+
 /** The migration that introduced `items.dispatched_at` — the split point of the backfill replay. */
 const DISPATCH_MIGRATION = '0026_inbox_dispatch.sql';
 
@@ -394,9 +407,13 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         await first.query(`set local role authenticated`);
         await first.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]);
         await second.query(`set role authenticated`);
+        const { rows: pidRows } = await second.query<{ pid: number }>(
+          `select pg_backend_pid() as pid`,
+        );
         const secondSwap = second.query(`select swap_code_priority($1, $2)`, [a.ref, c.ref]);
-        // Let the second call reach the rows the first holds before releasing them.
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // Release the first only once the second is provably waiting on its row locks, so the
+        // two genuinely overlap rather than merely running back to back.
+        await waitForLockWait(client, pidRows[0]?.pid);
         await first.query('commit');
         await secondSwap;
       } finally {
