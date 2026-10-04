@@ -429,6 +429,11 @@ action closures can fire it without it becoming a memo dep.
   in a popover or dialog and closed on top of (tap a checkbox, press Escape) is silently dropped.
   Keep the owed value in a ref and fire it from a cleanup effect: closing the surface is not a
   reason to lose what the owner just recorded.
+- **Order-dependent optimistic writes go through ONE store-level queue, not per-burst debounces.**
+  A relative write (the Backlog's "swap ranks with this ref") means something different if the
+  server applies it out of order, and two debounced bursts can be in flight at once. Queue every
+  step in the provider and send one at a time; while an item still has a step queued, keep its
+  optimistic field against earlier responses and Realtime echoes (`commitReorderBatch`).
 - **Selector hooks memoize on the store + scope fields** (`useMemo([items, scopeType,
   folderId])`), and take a small, serializable scope (`TaskViews` builds it from the URL).
 
