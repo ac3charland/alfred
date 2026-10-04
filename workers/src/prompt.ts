@@ -24,7 +24,7 @@ import {
 
 /** The prompt version stamped onto every verdict. Bump BY HAND when the prompt text or the
  *  output schema changes meaningfully — it is what makes a prompt change safely replayable. */
-export const PROMPT_VERSION = 4;
+export const PROMPT_VERSION = 5;
 
 /** How many worked examples the few-shot block carries. */
 export const EXAMPLE_LIMIT = 12;
@@ -87,6 +87,7 @@ export function buildSchema(world: ClosedWorld, heldType?: ItemType): Record<str
       'item_type',
       'priority',
       'due_date',
+      'due_time',
       'folder_id',
       'intended_project_id',
       'intended_epic_id',
@@ -95,6 +96,9 @@ export function buildSchema(world: ClosedWorld, heldType?: ItemType): Record<str
       item_type: heldType === undefined ? nullableEnum(ITEM_TYPES) : { enum: [heldType] },
       priority: nullableEnum(PRIORITIES),
       due_date: { anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }] },
+      // A bare string: structured outputs have no `HH:MM` format, so the shape is checked in code
+      // (`validateVerdict`), and the prompt says what to write.
+      due_time: { anyOf: [{ type: 'string' }, { type: 'null' }] },
       folder_id: nullableEnum(world.folders.map((folder) => folder.id)),
       intended_project_id: nullableEnum(world.projects.map((project) => project.id)),
       intended_epic_id: nullableEnum(world.epics.map((epic) => epic.id)),
@@ -181,8 +185,8 @@ const SYSTEM_PREAMBLE =
   "sometimes a piece of work on alfred's own codebase (`code`), sometimes an idea or piece of " +
   'knowledge worth keeping, with nothing to do about it (`knowledge`), and sometimes a question ' +
   'the owner wants researched on the web and written up as a report (`research`).\n\n' +
-  'You will be shown exactly one captured item. Decide the six fields the response schema defines: ' +
-  'item_type, priority, due_date, folder_id, intended_project_id, and intended_epic_id. Every field ' +
+  'You will be shown exactly one captured item. Decide the seven fields the response schema defines: ' +
+  'item_type, priority, due_date, due_time, folder_id, intended_project_id, and intended_epic_id. Every field ' +
   'may be null — null is always a legal answer, and often the correct one.\n\n' +
   'What you write is a suggestion recorded on the item while it stays in the Inbox: it files ' +
   'nothing, completes nothing, and the owner reviews every item and can overwrite anything you set. ' +
@@ -205,6 +209,10 @@ const ABSTENTION_RULES =
   'unsure between task and research, answer null. A Research label that gets dispatched spends a ' +
   'research run, so abstain unless it is clearly research.\n' +
   '- due_date: answer only when the text actually states a date or a day. Never infer it from urgency.\n' +
+  '- due_time: answer only when the text states a clock time (“at 3”, “3pm”, “15:30”, “noon”), as ' +
+  '24-hour HH:MM. Never infer a time from a part of day (“tonight”, “this afternoon”, “first thing”) ' +
+  'or from urgency. When the text gives a time but names no day, due_date is today. Never answer ' +
+  'due_time without a due_date.\n' +
   '- priority: answer only when the text itself signals it. No default guess.\n' +
   '- folder_id: answer only when exactly one existing folder is a clear fit. Never invent a folder.\n' +
   '- intended_project_id and intended_epic_id: answer only from the sets supplied below. Never invent either.\n\n' +

@@ -53,6 +53,7 @@ function verdict(overrides: Partial<Verdict> = {}): Verdict {
     item_type: undefined,
     priority: undefined,
     due_date: undefined,
+    due_time: undefined,
     folder_id: undefined,
     intended_project_id: undefined,
     intended_epic_id: undefined,
@@ -320,9 +321,74 @@ describe('the write', () => {
       classified_at: NOW.toISOString(),
       classified_provider: 'anthropic',
       classified_model: 'claude-haiku-4-5',
-      classified_prompt_version: 4,
+      classified_prompt_version: 5,
       classified_guess: { item_type: 'task', priority: 'high', due_date: '2026-08-07' },
     });
+  });
+
+  it('writes a stated time with its date and records both in the guess', async () => {
+    const { calls } = mockSupabase({ items: [row({ id: 'a' })] });
+    mockClassify({
+      ok: verdict({ item_type: 'task', due_date: '2026-10-04', due_time: '15:00' }),
+    });
+
+    await runSweep(env, NOW);
+
+    const body = patches(calls)[0]?.body;
+    expect(body).toMatchObject({ due_date: '2026-10-04', due_time: '15:00' });
+    expect(body?.['classified_guess']).toEqual({
+      item_type: 'task',
+      due_date: '2026-10-04',
+      due_time: '15:00',
+    });
+  });
+
+  it('writes a time onto a row that already holds that day, normalising the wire form it read', async () => {
+    const { calls } = mockSupabase({
+      items: [
+        row({ item_type: 'task', due_date: '2026-10-04T00:00:00+00:00', due_time: WIRE_NULL }),
+      ],
+    });
+    mockClassify({
+      ok: verdict({ item_type: 'task', due_date: '2026-10-04', due_time: '15:00' }),
+    });
+
+    await runSweep(env, NOW);
+
+    const body = patches(calls)[0]?.body ?? {};
+    expect(body).toMatchObject({ due_time: '15:00' });
+    expect(body).not.toHaveProperty('due_date');
+  });
+
+  it('keeps a guessed time off a row whose day the owner chose differently, yet still records the guess', async () => {
+    const { calls } = mockSupabase({
+      items: [row({ item_type: 'task', due_date: '2026-10-09T00:00:00+00:00' })],
+    });
+    mockClassify({
+      ok: verdict({ item_type: 'task', due_date: '2026-10-04', due_time: '15:00' }),
+    });
+
+    await runSweep(env, NOW);
+
+    const body = patches(calls)[0]?.body ?? {};
+    expect(body).not.toHaveProperty('due_time');
+    expect(body).not.toHaveProperty('due_date');
+    expect(body['classified_guess']).toMatchObject({ due_time: '15:00' });
+  });
+
+  it('never holds a time the owner already set, which arrives as HH:MM:SS', async () => {
+    const { calls } = mockSupabase({
+      items: [
+        row({ item_type: 'task', due_date: '2026-10-04T00:00:00+00:00', due_time: '09:00:00' }),
+      ],
+    });
+    mockClassify({
+      ok: verdict({ item_type: 'task', due_date: '2026-10-04', due_time: '15:00' }),
+    });
+
+    await runSweep(env, NOW);
+
+    expect(patches(calls)[0]?.body).not.toHaveProperty('due_time');
   });
 
   it('never writes dispatched_at — the machine cannot move anything out of the Inbox', async () => {
@@ -351,7 +417,7 @@ describe('the write', () => {
       classified_at: NOW.toISOString(),
       classified_provider: 'anthropic',
       classified_model: 'claude-haiku-4-5',
-      classified_prompt_version: 4,
+      classified_prompt_version: 5,
       classified_guess: {},
     });
     expect(summary.classified).toBe(1);
@@ -463,7 +529,7 @@ describe('the write', () => {
       classified_at: NOW.toISOString(),
       classified_provider: 'anthropic',
       classified_model: 'claude-haiku-4-5',
-      classified_prompt_version: 4,
+      classified_prompt_version: 5,
       classified_guess: { item_type: 'code' },
     });
   });
