@@ -1,7 +1,7 @@
 import type { ReaderPostListItem } from '@/lib/types';
 
 /**
- * Where the row's "Open" verb points: the post's own canonical URL when extraction found
+ * Where the row's "Original" link points: the post's own canonical URL when extraction found
  * one, else a Gmail permalink built from the captured Message-ID, else nothing at all — the
  * disabled state, with a sentence saying why rather than a link to the wrong place.
  */
@@ -13,10 +13,11 @@ export type ReaderOpenLink =
  * Is this a web address, and not something an email merely spelled like one?
  *
  * The canonical URL is extracted from mail nobody in this system wrote, and it lands in an
- * `href` — so `javascript:` and `data:` are refused at the one place that decides what the verb
- * points at, rather than trusted because a `<link rel=canonical>` said so.
+ * `href` — and in the `url` a send to Instapaper saves — so `javascript:` and `data:` are refused
+ * here, rather than trusted because a `<link rel=canonical>` said so. Shared by both, so the link
+ * the owner opens and the link Instapaper saves can't disagree.
  */
-function isWebUrl(value: string): boolean {
+export function isWebUrl(value: string): boolean {
   try {
     const { protocol } = new URL(value);
     return protocol === 'http:' || protocol === 'https:';
@@ -31,10 +32,10 @@ function stripAngleBrackets(rawId: string): string {
 }
 
 /**
- * The row's "Open" target. An `http`/`https` canonical URL first, else the Gmail permalink built
+ * The row's "Original" target. An `http`/`https` canonical URL first, else the Gmail permalink built
  * from the RFC822 Message-ID comms captured at ingest (`rfc822msgid:` is Gmail search's own
  * operator, so this reopens exactly the mirrored message), else disabled — no link was ever
- * found and no Message-ID was captured, so there is nothing for "Open" to point at.
+ * found and no Message-ID was captured, so there is nothing for "Original" to point at.
  */
 export function postOpenLink(post: ReaderPostListItem): ReaderOpenLink {
   const canonical = post.canonical_url?.trim();

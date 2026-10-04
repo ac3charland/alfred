@@ -107,6 +107,9 @@ export function makeReaderPost(
     opened_at: overrides.opened_at ?? null,
     archived_at: overrides.archived_at ?? null,
     text_swept_at: overrides.text_swept_at ?? null,
+    html: overrides.html ?? null,
+    instapaper_sent_at: overrides.instapaper_sent_at ?? null,
+    instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? null,
     created_at: overrides.created_at ?? receivedAt,
   };
 }

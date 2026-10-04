@@ -26,5 +26,12 @@ declare namespace NodeJS {
     GITHUB_TOKEN?: string;
     PR_RATIO_REPOS?: string;
     PR_RATIO_AUTHORS?: string;
+    // Instapaper Full API — all optional and server-only; without all four credentials the
+    // Reader's send verb is disabled. INSTAPAPER_API_URL exists so the E2E mock can stand in.
+    INSTAPAPER_CONSUMER_KEY?: string;
+    INSTAPAPER_CONSUMER_SECRET?: string;
+    INSTAPAPER_ACCESS_TOKEN?: string;
+    INSTAPAPER_ACCESS_TOKEN_SECRET?: string;
+    INSTAPAPER_API_URL?: string;
   }
 }

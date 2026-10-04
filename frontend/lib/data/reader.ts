@@ -11,15 +11,16 @@ import type { ReaderHealthSnapshot, ReaderPostListItem, ReaderPostUpdate } from 
  * serves a focus refetch, and the row verbs' single write.
  *
  * `READER_POST_LIST_COLUMNS` is the one thing every entry point here shares: `reader_posts.text`
- * is a full post body (tens of KB), and the list never renders it — the "Open" verb sends the
- * owner to the original. Naming every OTHER column explicitly, once, is what keeps the seed, the
+ * and `reader_posts.html` are full post bodies (tens of KB and more), and the list never renders
+ * either — the "Send to Instapaper" verb hands the body to Instapaper server-side, and "Original"
+ * sends the owner to the source. Naming every OTHER column explicitly, once, is what keeps the seed, the
  * route and the patch from drifting into three different ideas of "the list shape" — and what
  * makes a migration that adds a column fail loudly (the pinning test below) instead of silently
  * shipping a row missing its newest field.
  */
 
 /**
- * Every `reader_posts` column except `text`, as the explicit `.select()` list every read below
+ * Every `reader_posts` column except `text` and `html`, as the explicit `.select()` list every read below
  * shares. Hand-maintained against the generated `Row` type — `reader.test.ts` pins it against a
  * fixture's own keys, so a migration that adds or renames a column fails that test until this
  * list is updated to match.
@@ -36,6 +37,8 @@ export const READER_POST_LIST_COLUMNS = [
   'headline',
   'html_extracted',
   'id',
+  'instapaper_bookmark_id',
+  'instapaper_sent_at',
   'last_error',
   'model',
   'model_called_at',
@@ -171,6 +174,58 @@ export async function getReaderPostResummarizeState(
     .from('reader_posts')
     .select('text_swept_at,word_count,summary_state')
     .eq('id', id)
+    .maybeSingle();
+}
+
+/** What a send to Instapaper reads, and the only frontend read of either post body. */
+export interface ReaderPostForSend {
+  title: string;
+  canonical_url: string | null;
+  gist: string | null;
+  html: string | null;
+  text: string | null;
+  archived_at: string | null;
+}
+
+/**
+ * The row a send to Instapaper builds its request from: the title and gist for the bookmark, the
+ * link, both bodies (the email HTML first, the stored text as its fallback), and `archived_at` so
+ * the stamp can keep an existing archive instant. Its result never leaves the send route.
+ * `.maybeSingle()`, so a missing row is the route's 404.
+ */
+export async function getReaderPostForSend(
+  supabase: SupabaseClient<Database>,
+  id: string,
+): Promise<{ data: ReaderPostForSend | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .select('title,canonical_url,gist,html,text,archived_at')
+    .eq('id', id)
+    .maybeSingle();
+}
+
+/**
+ * Record a send Instapaper confirmed: when, the bookmark id it answered with, and the archive —
+ * sending is the post's exit from the reading list. A post sent from the archive keeps the
+ * instant it was first archived (`alreadyArchivedAt`), so its place in the archive doesn't move.
+ * Written only after Instapaper saved the post; nothing here runs on a failed send.
+ */
+export async function markReaderPostSent(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  bookmarkId: number,
+  now: Date,
+  alreadyArchivedAt: string | null,
+): Promise<{ data: ReaderPostListItem | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_posts')
+    .update({
+      instapaper_sent_at: now.toISOString(),
+      instapaper_bookmark_id: bookmarkId,
+      archived_at: alreadyArchivedAt ?? now.toISOString(),
+    })
+    .eq('id', id)
+    .select(READER_POST_LIST_COLUMNS)
     .maybeSingle();
 }
 
