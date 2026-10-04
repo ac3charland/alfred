@@ -327,6 +327,34 @@ function unwrap<T>(value: T | null): T {
   return value;
 }
 
+/** Read the actions + the full ranked Backlog in a single hook (the ALF-250 burst tests). */
+function useBacklogAndActions() {
+  return { actions: useCodeActions(), backlog: useBacklog({ statuses: ALL_FACTORY_STATES }) };
+}
+
+/** A swap response held open until the test releases it — a slow network round trip. */
+function holdNextSwap(rows: CodeItem[]): () => void {
+  let release!: () => void;
+  mockReorderCode.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = () => {
+          resolve(rows);
+        };
+      }),
+  );
+  return () => {
+    release();
+  };
+}
+
+/** Let queued commits reach the (mocked) network — they start on a later microtask. */
+async function settleQueue() {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 describe('code-store', () => {
   describe('HAPPY_PATH_STATES', () => {
     it('lists the six happy-path states in board order and excludes the escape states', () => {
@@ -2230,6 +2258,131 @@ describe('code-store', () => {
         // The first swap already committed server-side (i1↔i2 stays applied); the second (failed)
         // swap rolls back, so ALF-3 is restored to its original priority.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
+      });
+
+      describe('overlapping bursts (ALF-250)', () => {
+        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+        const fourth = makeStory('i4', 'e1', 'p1', { ref: 'ALF-4', priority: 4 });
+        const wrapper = makeWrapper({
+          projects: [PROJECT_A],
+          epics: [epic],
+          stories: [high, low, third, fourth],
+        });
+        it('a second burst waits for the first to reach the server, so the swaps land in click order', async () => {
+          // Burst 1: ALF-1 steps down past ALF-2, then ALF-3; its first swap is slow.
+          const releaseFirst = holdNextSwap([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          mockReorderCode.mockResolvedValue([]);
+          const { result } = renderHook(useBacklogAndActions, { wrapper });
+
+          let one!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          let two!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          let three!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            one = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          act(() => {
+            two = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+          });
+          let firstBurst!: Promise<void>;
+          act(() => {
+            firstBurst = result.current.actions.commitReorderBatch([one, two]);
+          });
+          // Burst 2 (after a pause longer than the debounce): one more step down, past ALF-4.
+          act(() => {
+            three = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-4'));
+          });
+          let secondBurst!: Promise<void>;
+          act(() => {
+            secondBurst = result.current.actions.commitReorderBatch([three]);
+          });
+
+          await settleQueue();
+
+          // The server swaps whatever ranks the two rows hold WHEN it runs, so sending ALF-1↔ALF-4
+          // before ALF-1↔ALF-3 would scramble the ranking for good.
+          expect(mockReorderCode).toHaveBeenCalledTimes(1);
+
+          await act(async () => {
+            releaseFirst();
+            await Promise.all([firstBurst, secondBurst]);
+          });
+          expect(mockReorderCode.mock.calls).toEqual([
+            ['ALF-1', 'ALF-2'],
+            ['ALF-1', 'ALF-3'],
+            ['ALF-1', 'ALF-4'],
+          ]);
+        });
+
+        it('a response for an earlier swap does not snap the story back over a newer click', async () => {
+          const releaseFirst = holdNextSwap([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          const { result } = renderHook(useBacklogAndActions, { wrapper });
+
+          let one!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            one = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          let firstBurst!: Promise<void>;
+          act(() => {
+            firstBurst = result.current.actions.commitReorderBatch([one]);
+          });
+          await settleQueue();
+          // A second click lands while the first swap is still in flight.
+          act(() => {
+            result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3');
+          });
+
+          await act(async () => {
+            releaseFirst();
+            await firstBurst;
+          });
+
+          // ALF-1 stays where the second click put it: below ALF-3, and no rank is shared.
+          expect(result.current.backlog.map((s) => s.ref)).toEqual([
+            'ALF-2',
+            'ALF-3',
+            'ALF-1',
+            'ALF-4',
+          ]);
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
+        });
+
+        it('a realtime echo of an in-flight swap does not move the story while the swap is unsettled', async () => {
+          const releaseFirst = holdNextSwap([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          const { result } = renderHook(useBacklogAndActions, { wrapper });
+
+          let one!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            one = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          let firstBurst!: Promise<void>;
+          act(() => {
+            firstBurst = result.current.actions.commitReorderBatch([one]);
+          });
+          await settleQueue();
+          // The swap's row writes echo back mid-flight — here ALF-1 still at its old rank.
+          emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 1 }));
+          expect(result.current.backlog.map((s) => s.ref)).toEqual([
+            'ALF-2',
+            'ALF-1',
+            'ALF-3',
+            'ALF-4',
+          ]);
+
+          await act(async () => {
+            releaseFirst();
+            await firstBurst;
+          });
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3, i4: 4 });
+        });
       });
     });
 
