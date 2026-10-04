@@ -2413,6 +2413,164 @@ describe('code-store', () => {
           'ALF-4',
         ]);
       });
+      it('lands the server rank when two rows sync out of click order, leaving no tie', async () => {
+        // A stand-in server that swaps the ranks it holds, like `swap_code_priority`.
+        const server = new Map([
+          ['ALF-1', 1],
+          ['ALF-2', 2],
+          ['ALF-3', 3],
+          ['ALF-4', 4],
+        ]);
+        mockReorderCode.mockImplementation((a: string, b: string) => {
+          const aRank = server.get(a) ?? 0;
+          const bRank = server.get(b) ?? 0;
+          server.set(a, bRank);
+          server.set(b, aRank);
+          return Promise.resolve([
+            rankSidecar(Number(a.slice(4)), bRank),
+            rankSidecar(Number(b.slice(4)), aRank),
+          ]);
+        });
+        const { result } = renderBacklog();
+
+        // Each row debounces its own sync, so clicks on different rows flush out of click order.
+        const click = (ref: string, neighbour: string) => {
+          let step!: ReorderStep;
+          act(() => {
+            step = unwrap(result.current.actions.applyReorderOptimistic(ref, neighbour));
+          });
+          return step;
+        };
+        const s1 = click('ALF-2', 'ALF-3');
+        const s2 = click('ALF-1', 'ALF-3');
+        const s3 = click('ALF-2', 'ALF-1');
+        await act(async () => {
+          await Promise.all([
+            result.current.actions.commitReorderBatch([s2]),
+            result.current.actions.commitReorderBatch([s1, s3]),
+          ]);
+        });
+
+        expect(prioritiesById(result.current.backlog)).toEqual({
+          i1: server.get('ALF-1'),
+          i2: server.get('ALF-2'),
+          i3: server.get('ALF-3'),
+          i4: server.get('ALF-4'),
+        });
+      });
+
+      it('holds a jump’s sync until a reorder sync already in flight has settled', async () => {
+        const reorder = deferred<CodeItem[]>();
+        mockReorderCode.mockReturnValueOnce(reorder.promise);
+        mockMoveCode.mockResolvedValueOnce([rankSidecar(4, 0)]);
+        const { result } = renderBacklog();
+
+        let step!: ReorderStep;
+        act(() => {
+          step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+        });
+        let syncReorder!: Promise<void>;
+        act(() => {
+          syncReorder = result.current.actions.commitReorderBatch([step]);
+        });
+        let jumped!: { priorityBefore: number | null };
+        act(() => {
+          jumped = unwrap(result.current.actions.applyMoveOptimistic('ALF-4', true));
+        });
+        let syncJump!: Promise<void>;
+        act(() => {
+          syncJump = result.current.actions.commitMove('ALF-4', true, jumped.priorityBefore);
+        });
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(mockMoveCode).not.toHaveBeenCalled();
+
+        await act(async () => {
+          reorder.resolve([rankSidecar(1, 2), rankSidecar(2, 1)]);
+          await Promise.all([syncReorder, syncJump]);
+        });
+        expect(mockMoveCode).toHaveBeenCalledWith('ALF-4', true);
+      });
+
+      it('leaves a nudge clicked after a jump in place when the jump’s sync fails', async () => {
+        const jump = deferred<CodeItem[]>();
+        mockMoveCode.mockReturnValueOnce(
+          jump.promise.then(() => {
+            throw new Error('down');
+          }),
+        );
+        mockListCode.mockRejectedValueOnce(new Error('down'));
+        const { result } = renderBacklog();
+
+        let jumped!: { priorityBefore: number | null };
+        act(() => {
+          jumped = unwrap(result.current.actions.applyMoveOptimistic('ALF-3', true));
+        });
+        let syncJump!: Promise<void>;
+        act(() => {
+          syncJump = result.current.actions.commitMove('ALF-3', true, jumped.priorityBefore);
+        });
+        act(() => {
+          result.current.actions.applyReorderOptimistic('ALF-3', 'ALF-1');
+        });
+
+        await act(async () => {
+          jump.resolve([]);
+          await syncJump;
+        });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual([
+          'ALF-1',
+          'ALF-3',
+          'ALF-2',
+          'ALF-4',
+        ]);
+      });
+
+      it('rolls a failed burst back only on the rows no later nudge has moved', async () => {
+        mockReorderCode.mockRejectedValueOnce(new Error('down'));
+        mockListCode.mockRejectedValueOnce(new Error('down'));
+        const { result } = renderBacklog();
+
+        // ALF-3 swaps up past ALF-2 (that sync fails), then ALF-4 swaps up past ALF-3.
+        let failed!: ReorderStep;
+        act(() => {
+          failed = unwrap(result.current.actions.applyReorderOptimistic('ALF-3', 'ALF-2'));
+        });
+        act(() => {
+          result.current.actions.applyReorderOptimistic('ALF-4', 'ALF-3');
+        });
+        await act(async () => {
+          await result.current.actions.commitReorderBatch([failed]);
+        });
+
+        // ALF-2 is restored; ALF-3 still belongs to the later, unsynced nudge.
+        const ranks = prioritiesById(result.current.backlog);
+        expect([ranks['i2'], ranks['i3']]).toEqual([2, 4]);
+      });
+
+      it('re-reads the ranks from the server once a sync fails, so chained rollbacks leave no tie', async () => {
+        mockReorderCode
+          .mockRejectedValueOnce(new Error('down'))
+          .mockRejectedValueOnce(new Error('down'));
+        mockListCode.mockResolvedValueOnce(stories).mockResolvedValueOnce(stories);
+        const { result } = renderBacklog();
+
+        // ALF-1 nudged down twice, in two bursts that both fail.
+        const steps = ['ALF-2', 'ALF-3'].map((neighbour) => {
+          let step!: ReorderStep;
+          act(() => {
+            step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', neighbour));
+          });
+          return step;
+        });
+        await act(async () => {
+          await Promise.all(steps.map((step) => result.current.actions.commitReorderBatch([step])));
+        });
+        await waitFor(() => {
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 1, i2: 2, i3: 3, i4: 4 });
+        });
+      });
     });
 
     describe('applyMoveOptimistic + commitMove (Backlog jump to top/bottom)', () => {

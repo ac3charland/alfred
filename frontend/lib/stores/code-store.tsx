@@ -575,13 +575,14 @@ export function CodeProvider({
   // nudge/jump, each sync's reply, a failed sync's rollback, and the realtime echo of every server
   // write (ALF-250). Landing whichever arrived last let an older rank overwrite a newer one — the
   // story snapped back up, or tied a neighbour so the next nudge swapped equal ranks and did
-  // nothing. So every optimistic rank write stamps the rows it moves (item_id → stamp): a reply
-  // lands its rank only on a row whose newest stamp is the write it answers, and a realtime rank
-  // only on a row with no stamp pending.
+  // nothing. So every optimistic rank write stamps the rows it moves (item_id → stamp), and no
+  // server rank — a reply or a realtime echo — lands on a row whose newest stamp is still waiting
+  // on its own reply.
   const pendingRankRef = React.useRef(new Map<string, number>());
   const rankStampRef = React.useRef(0);
-  // Each rank sync starts once the previous one has settled, so the server applies them in click
-  // order and their replies come back in that order.
+  // Each rank sync starts once the previous one has settled, so the server never runs two at once
+  // and their replies come back in the order they were sent (each row flushes its own burst, so
+  // that is click order per row, not across rows).
   const rankSyncRef = React.useRef<Promise<void>>(Promise.resolve());
 
   const { showToast } = useToastActions();
@@ -720,25 +721,49 @@ export function CodeProvider({
     }
 
     /**
-     * Land a sync's reply for the write stamped `stamp`. Its rank lands — and the row is released
-     * — only if no later optimistic write has moved the row since; otherwise that later write's
-     * own reply will land it.
+     * Land a sync's reply for the write stamped `stamp`. Syncs run one at a time, so a reply is
+     * the newest server rank there is: it lands unless ANOTHER optimistic write to the row is still
+     * waiting on its own reply, and it releases the row once its own write is answered.
      */
     function settleRank(row: CodeItem, stamp: number | undefined) {
       const patch = codeItemToStoryPatch(row);
-      const owned = pendingRankRef.current.get(row.item_id) === stamp;
-      if (owned) pendingRankRef.current.delete(row.item_id);
+      const pending = pendingRankRef.current.get(row.item_id);
+      if (pending === stamp) pendingRankRef.current.delete(row.item_id);
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: owned ? patch : withoutPriority(patch),
+        patch: pending === undefined || pending === stamp ? patch : withoutPriority(patch),
+      });
+    }
+
+    /**
+     * After a failed sync, re-read every rank from the server once the queue drains. A rollback
+     * restores the rank captured at click time, which a chain of failed nudges can leave stale
+     * (one story's restored rank is another's optimistic one — a tie). Rows still waiting on a
+     * sync keep their optimistic rank; that sync's reply lands it.
+     */
+    function resyncRanks() {
+      void queueRankSync(async () => {
+        try {
+          const fresh = await api.listCode();
+          for (const story of fresh) {
+            if (story.item_id === null || pendingRankRef.current.has(story.item_id)) continue;
+            dispatch({
+              type: 'patchStory',
+              itemId: story.item_id,
+              patch: { priority: story.priority },
+            });
+          }
+        } catch {
+          // Offline: the click-time rollback stands until the next sync or a reload.
+        }
       });
     }
 
     /** Run a rank sync once every earlier one has settled (ALF-250). */
     function queueRankSync(sync: () => Promise<void>): Promise<void> {
       const run = rankSyncRef.current.then(sync);
-      // A failed sync must not wedge every one queued behind it.
+      // Defensive: every sync catches its own failure, but one that threw must not wedge the queue.
       rankSyncRef.current = run.catch(ignoreFailure);
       return run;
     }
@@ -766,6 +791,7 @@ export function CodeProvider({
             dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
           }
           showToastRef.current("Couldn't move story");
+          resyncRanks();
         }
       });
     }
@@ -1382,6 +1408,7 @@ export function CodeProvider({
               }
               for (const itemId of owned) pendingRankRef.current.delete(itemId);
               showToastRef.current("Couldn't reorder story");
+              resyncRanks();
               return;
             }
           }
