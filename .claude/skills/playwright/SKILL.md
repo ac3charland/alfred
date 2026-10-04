@@ -299,6 +299,9 @@ The suite never touches real Supabase. Every Supabase access in alfred is **serv
   `mock-supabase.mjs` reads only the `p_*` keys it was written for, so a new one is ignored and
   the mock keeps producing the OLD row — no error, just an E2E (or demo capture) that quietly
   proves the previous behaviour.
+- **Seed dates relative to today (`localDaysAgo(n)` in `e2e/support/constants.ts`), never a pinned
+  calendar date, wherever the view is windowed** (the habits grid shows about a quarter): a pinned
+  date passes for months and then ages out of the window, so the locator finds nothing.
 - **Adding a seed key? `e2e/support/fixtures.ts` forwards an explicit list of them.** A key added
   to `SeedState` and the mock's `/__mock__/seed` handler but not to the fixture's POST body never
   reaches the mock — the seed "succeeds" and the test runs against the default.
