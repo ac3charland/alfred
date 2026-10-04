@@ -337,12 +337,14 @@ export interface CodeActions {
   applyReorderOptimistic: (ref: string, neighbourRef: string) => ReorderStep | null;
   /**
    * Commit a burst of `applyReorderOptimistic` swaps to the server, ONE `reorderCode` call per
-   * step, strictly in order — each step's RPC must see the priorities the previous step in the
-   * burst left behind, exactly mirroring how the swaps were already applied locally. Reconciles
-   * each step's returned `code_items` rows as it goes. If a step fails, every step from that one
-   * onward is rolled back to its pre-swap priorities (in reverse order, so each rollback undoes
-   * cleanly); steps that already committed before the failure are left as they are, since the
-   * server already has them.
+   * step, strictly in order — each step's RPC must see the priorities the previous step left
+   * behind, exactly mirroring how the swaps were already applied locally. Every burst joins ONE
+   * provider-wide queue, so a burst committed while another is still syncing waits its turn
+   * rather than racing it (ALF-250). The returned rows are reconciled only once the queue drains:
+   * a mid-queue answer is older than the optimistic state on screen and would snap rows back.
+   * If a step fails, every queued step from that one onward — later bursts included — is rolled
+   * back to its pre-swap priorities (in reverse order, so each rollback undoes cleanly); steps
+   * that already committed are left as the server has them. Resolves when the queue drains.
    */
   commitReorderBatch: (steps: ReorderStep[]) => Promise<void>;
   /**
@@ -566,6 +568,12 @@ export function CodeProvider({
     showToastRef.current = showToast;
   }, [showToast]);
 
+  // The chevron-swap sync queue (`commitReorderBatch`): the steps not yet confirmed by the server,
+  // in click order, and the drain in flight (null when idle). While it drains, the screen is
+  // AHEAD of the server, so realtime priority echoes of our own swaps are stale and skipped.
+  const reorderQueueRef = React.useRef<ReorderStep[]>([]);
+  const reorderDrainRef = React.useRef<Promise<void> | null>(null);
+
   // Live swimlane updates. The webhook Worker (and any other device/tab) writes a story's
   // factory_state out of band, never touching this tab's store — so subscribe to the base
   // `code_items` table (you can't subscribe to the `v_code_stories` view the board reads)
@@ -600,11 +608,11 @@ export function CodeProvider({
       // reasoning that keeps the board stable (no flicker, no double notification).
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
-      dispatch({
-        type: 'patchStory',
-        itemId: row.item_id,
-        patch: deliveredColumns(codeItemToStoryPatch(row)),
-      });
+      const patch = deliveredColumns(codeItemToStoryPatch(row));
+      // Mid-sync, an incoming priority is an intermediate step of our own swaps (ALF-250) — the
+      // drain reconciles the final ranks itself.
+      if (reorderDrainRef.current !== null) delete patch.priority;
+      dispatch({ type: 'patchStory', itemId: row.item_id, patch });
       if (!changedState) return;
 
       const label = FACTORY_STATE_LABELS[row.factory_state];
@@ -1254,40 +1262,50 @@ export function CodeProvider({
         dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: aPriorityBefore } });
         return { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore };
       },
-      async commitReorderBatch(steps) {
-        for (const [index, step] of steps.entries()) {
-          try {
-            const rows = await api.reorderCode(step.ref, step.neighbourRef);
-            // Apply each returned sidecar through the one projection (carries the real priority).
-            for (const row of rows) {
-              dispatch({
-                type: 'patchStory',
-                itemId: row.item_id,
-                patch: codeItemToStoryPatch(row),
-              });
+      commitReorderBatch(steps) {
+        const queue = reorderQueueRef.current;
+        queue.push(...steps);
+        if (reorderDrainRef.current !== null) return reorderDrainRef.current;
+        if (queue.length === 0) return Promise.resolve();
+        const drain = async () => {
+          // The latest server row per item, applied once the queue is empty.
+          const confirmed = new Map<string, CodeItem>();
+          while (queue.length > 0) {
+            const step = queue[0];
+            if (step === undefined) break;
+            try {
+              const rows = await api.reorderCode(step.ref, step.neighbourRef);
+              for (const row of rows) confirmed.set(row.item_id, row);
+              queue.shift();
+            } catch {
+              // This step and everything queued behind it never reached the server — undo them,
+              // in reverse, so each rollback exactly cancels its own swap.
+              const failedSteps = queue.splice(0);
+              for (let i = failedSteps.length - 1; i >= 0; i -= 1) {
+                const failed = failedSteps[i];
+                if (failed === undefined) continue;
+                dispatch({
+                  type: 'patchStory',
+                  itemId: failed.aItemId,
+                  patch: { priority: failed.aPriorityBefore },
+                });
+                dispatch({
+                  type: 'patchStory',
+                  itemId: failed.bItemId,
+                  patch: { priority: failed.bPriorityBefore },
+                });
+              }
+              showToastRef.current("Couldn't reorder story");
             }
-          } catch {
-            // This step and everything queued behind it never reached the server — undo them,
-            // in reverse, so each rollback exactly cancels its own swap. Steps before this one
-            // already committed, so they're left as they are.
-            for (let i = steps.length - 1; i >= index; i -= 1) {
-              const failed = steps[i];
-              if (failed === undefined) continue;
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.aItemId,
-                patch: { priority: failed.aPriorityBefore },
-              });
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.bItemId,
-                patch: { priority: failed.bPriorityBefore },
-              });
-            }
-            showToastRef.current("Couldn't reorder story");
-            return;
           }
-        }
+          reorderDrainRef.current = null;
+          // Apply each confirmed sidecar through the one projection (carries the real priority).
+          for (const row of confirmed.values()) {
+            dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
+          }
+        };
+        reorderDrainRef.current = drain();
+        return reorderDrainRef.current;
       },
       applyMoveOptimistic(ref, toTop) {
         const { stories } = stateRef.current;

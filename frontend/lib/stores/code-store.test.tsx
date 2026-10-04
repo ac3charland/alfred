@@ -322,6 +322,20 @@ function prioritiesById(backlog: CodeStory[]): Record<string, number | null> {
 }
 
 /** Narrow a possibly-null `apply*Optimistic` return for a test that expects it to resolve. */
+/** A sidecar row carrying just the rank a swap reconciles (ALF-250). */
+function sidecar(itemId: string, ref: string, priority: number): CodeItem {
+  return makeSavedSidecar({ item_id: itemId, ref, priority });
+}
+
+/** A promise the test settles by hand, to hold a request in flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function unwrap<T>(value: T | null): T {
   if (value === null) throw new Error('expected a non-null value');
   return value;
@@ -2230,6 +2244,136 @@ describe('code-store', () => {
         // The first swap already committed server-side (i1↔i2 stays applied); the second (failed)
         // swap rolls back, so ALF-3 is restored to its original priority.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
+      });
+
+      // ALF-250: a burst of chevron clicks reorders the list instantly, then syncs step by step.
+      // The server's answer to an EARLIER step is older than the optimistic state on screen, so
+      // applying it mid-sync snapped the row back up (and tied it with a neighbour, deadening the
+      // chevrons) until the later steps landed.
+      describe('syncing a burst (ALF-250)', () => {
+        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+
+        function renderBacklog() {
+          return renderHook(
+            () => ({
+              actions: useCodeActions(),
+              backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+            }),
+            {
+              wrapper: makeWrapper({
+                projects: [PROJECT_A],
+                epics: [epic],
+                stories: [high, low, third],
+              }),
+            },
+          );
+        }
+
+        type Rendered = ReturnType<typeof renderBacklog>['result'];
+
+        /** Nudge ALF-1 down twice — one `act` per click, like two real clicks. */
+        function nudgeDownTwice(result: Rendered) {
+          let stepOne!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          let stepTwo!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            stepOne = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          act(() => {
+            stepTwo = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+          });
+          return [stepOne, stepTwo] as const;
+        }
+
+        it('keeps the optimistic order while later steps are still syncing — no snap back', async () => {
+          const second = deferred<CodeItem[]>();
+          mockReorderCode
+            .mockResolvedValueOnce([sidecar('i1', 'ALF-1', 2), sidecar('i2', 'ALF-2', 1)])
+            .mockReturnValueOnce(second.promise);
+          const { result } = renderBacklog();
+          const steps = nudgeDownTwice(result);
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+
+          let done!: Promise<void>;
+          await act(async () => {
+            done = result.current.actions.commitReorderBatch([...steps]);
+            await Promise.resolve();
+          });
+
+          // Step one's answer is in; step two's isn't — the row stays where the clicks put it.
+          expect(mockReorderCode).toHaveBeenCalledTimes(2);
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+
+          await act(async () => {
+            second.resolve([sidecar('i1', 'ALF-1', 3), sidecar('i3', 'ALF-3', 2)]);
+            await done;
+          });
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+        });
+
+        it('runs a second burst only after the first has synced — swaps never race', async () => {
+          const first = deferred<CodeItem[]>();
+          mockReorderCode
+            .mockReturnValueOnce(first.promise)
+            .mockResolvedValueOnce([sidecar('i1', 'ALF-1', 3), sidecar('i3', 'ALF-3', 2)]);
+          const { result } = renderBacklog();
+          const [stepOne, stepTwo] = nudgeDownTwice(result);
+
+          let burstOne!: Promise<void>;
+          let burstTwo!: Promise<void>;
+          await act(async () => {
+            burstOne = result.current.actions.commitReorderBatch([stepOne]);
+            burstTwo = result.current.actions.commitReorderBatch([stepTwo]);
+            await Promise.resolve();
+          });
+          expect(mockReorderCode).toHaveBeenCalledTimes(1);
+
+          await act(async () => {
+            first.resolve([sidecar('i1', 'ALF-1', 2), sidecar('i2', 'ALF-2', 1)]);
+            await Promise.all([burstOne, burstTwo]);
+          });
+          expect(mockReorderCode).toHaveBeenNthCalledWith(2, 'ALF-1', 'ALF-3');
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+        });
+
+        it('rolls back a burst queued behind a failed one, which never reached the server', async () => {
+          mockReorderCode.mockRejectedValueOnce(new Error('swap failed'));
+          const { result } = renderBacklog();
+          const [stepOne, stepTwo] = nudgeDownTwice(result);
+
+          await act(async () => {
+            await Promise.all([
+              result.current.actions.commitReorderBatch([stepOne]),
+              result.current.actions.commitReorderBatch([stepTwo]),
+            ]);
+          });
+
+          expect(mockReorderCode).toHaveBeenCalledTimes(1);
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 1, i2: 2, i3: 3 });
+        });
+
+        it("ignores the realtime echo of its own swaps' priorities while a sync is in flight", async () => {
+          const second = deferred<CodeItem[]>();
+          mockReorderCode
+            .mockResolvedValueOnce([sidecar('i1', 'ALF-1', 2), sidecar('i2', 'ALF-2', 1)])
+            .mockReturnValueOnce(second.promise);
+          const { result } = renderBacklog();
+          const steps = nudgeDownTwice(result);
+
+          let done!: Promise<void>;
+          await act(async () => {
+            done = result.current.actions.commitReorderBatch([...steps]);
+            await Promise.resolve();
+          });
+          // Step one's own UPDATE arrives over realtime mid-sync, older than the screen.
+          emitUpdate(sidecar('i1', 'ALF-1', 2));
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+
+          await act(async () => {
+            second.resolve([sidecar('i1', 'ALF-1', 3), sidecar('i3', 'ALF-3', 2)]);
+            await done;
+          });
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+        });
       });
     });
 
