@@ -91,11 +91,24 @@ describe('sortNodesBy, in priority mode', () => {
     expect(sorted[0]?.children.map((child) => child.id)).toStrictEqual(['c-low', 'c-high']);
   });
 
-  it('ranks by each node OWN priority (no subtree rollup) — a Low parent stays below Medium', () => {
+  it('ranks a parent by its highest-priority active descendant — a Low parent with a High grandchild beats Medium', () => {
     const tree = [
       node('medium', { priority: 'medium' }),
       node('low-parent', { priority: 'low' }, [
-        node('child', { priority: 'high', parent_id: 'low-parent' }),
+        node('child', { priority: 'low', parent_id: 'low-parent' }, [
+          node('grandchild', { priority: 'high', parent_id: 'child' }),
+        ]),
+      ]),
+    ];
+
+    expect(sortNodesBy(tree, 'priority').map((n) => n.id)).toStrictEqual(['low-parent', 'medium']);
+  });
+
+  it('ignores a completed descendant — a finished High subtask lifts nothing', () => {
+    const tree = [
+      node('medium', { priority: 'medium' }),
+      node('low-parent', { priority: 'low' }, [
+        node('done', { priority: 'high', parent_id: 'low-parent', status: 'completed' }),
       ]),
     ];
 
@@ -150,6 +163,17 @@ describe('sortNodesBy, in due-date mode', () => {
     ];
 
     expect(sortNodesBy(tree, 'due').map((n) => n.id)).toStrictEqual(['older', 'newer']);
+  });
+
+  it('ranks a parent by its earliest-due active descendant', () => {
+    const tree = [
+      node('sooner', { due_date: '2026-02-01' }),
+      node('undated-parent', {}, [
+        node('child', { due_date: '2026-01-15', parent_id: 'undated-parent' }),
+      ]),
+    ];
+
+    expect(sortNodesBy(tree, 'due').map((n) => n.id)).toStrictEqual(['undated-parent', 'sooner']);
   });
 
   it('leaves every subtask group exactly as received', () => {

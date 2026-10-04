@@ -1,6 +1,13 @@
 import { CalendarClock, ListOrdered, type LucideIcon } from 'lucide-react';
 
-import { type PriorityKey, compareKey, compareKeyByDue, ownKey } from '@/lib/priority';
+import {
+  type PriorityKey,
+  bestKey,
+  bestKeyByDue,
+  compareKey,
+  compareKeyByDue,
+  effectiveKey,
+} from '@/lib/priority';
 import { stableSorted } from '@/lib/sort';
 import type { Item } from '@/lib/types';
 
@@ -37,14 +44,19 @@ export function taskSortOption(mode: TaskSortMode): TaskSortOption {
   return OPTIONS[mode];
 }
 
-const COMPARATORS: Record<TaskSortMode, (a: PriorityKey, b: PriorityKey) => number> = {
-  priority: compareKey,
-  due: compareKeyByDue,
+type KeyFunction = (a: PriorityKey, b: PriorityKey) => number;
+type BestFunction = (a: PriorityKey, b: PriorityKey) => PriorityKey;
+
+/** Per mode: how two keys compare, and which of two keys wins a subtree rollup. */
+const ORDERINGS: Record<TaskSortMode, { compare: KeyFunction; best: BestFunction }> = {
+  priority: { compare: compareKey, best: bestKey },
+  due: { compare: compareKeyByDue, best: bestKeyByDue },
 };
 
 /**
  * Order the **top-level** nodes it's handed by `mode`, returning a new array. Each node is ranked
- * by its **own** key — no rollup from its subtree — with `created_at` (oldest first) as the final
+ * by its {@link effectiveKey} — the best of its own key and its active descendants', the same
+ * rollup the By-Priority and Today views use — with `created_at` (oldest first) as the final
  * stable tiebreak. Children are left **exactly as received**: a subtask group keeps the
  * `sort_order` order `buildTree` applied (creation order by default, the manual order once
  * dragged), so neither mode reorders a subtask list.
@@ -55,11 +67,12 @@ export function sortNodesBy<T extends Item & { children: T[] }>(
   nodes: readonly T[],
   mode: TaskSortMode,
 ): T[] {
-  const compare = COMPARATORS[mode];
+  const { compare, best } = ORDERINGS[mode];
+  const keyOf = (node: T): PriorityKey => effectiveKey(node, (n) => n.children, best);
   return stableSorted(
     nodes,
     (a, b) =>
-      compare(ownKey(a), ownKey(b)) ||
+      compare(keyOf(a), keyOf(b)) ||
       (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0),
   );
 }

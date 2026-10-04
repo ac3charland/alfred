@@ -128,6 +128,25 @@ export function bestKeyByDue(a: PriorityKey, b: PriorityKey): PriorityKey {
 }
 
 /**
+ * A task's **effective key**: the best of its own key and its *active* descendants' (recursively),
+ * where `best` picks the winner — {@link bestKey} (importance first) or {@link bestKeyByDue}
+ * (urgency first). The one subtree rollup every ranked view shares, so a Low parent hiding a
+ * High (or overdue) active subtask ranks by that subtask everywhere. A completed descendant —
+ * and its subtree — is skipped: a finished subtask's level and date are moot.
+ */
+export function effectiveKey<T extends Item>(
+  node: T,
+  childrenOf: (node: T) => readonly T[],
+  best: (a: PriorityKey, b: PriorityKey) => PriorityKey = bestKey,
+): PriorityKey {
+  let key = ownKey(node);
+  for (const child of childrenOf(node)) {
+    if (child.status === 'active') key = best(key, effectiveKey(child, childrenOf, best));
+  }
+  return key;
+}
+
+/**
  * Rank the top-level (parentless) tasks of a flat item list for the By-Priority view (ALF-37):
  * High → Medium → Low → unprioritised, earlier due date first within a level, `created_at` as
  * the final stable tiebreak. Completed tasks are dropped unless `showCompleted`.
@@ -146,19 +165,11 @@ export function rankByPriority(items: readonly Item[], showCompleted: boolean): 
     list.push(i);
     childrenOf.set(i.parent_id, list);
   }
-  const effectiveKey = (node: Item): PriorityKey => {
-    let key = ownKey(node);
-    for (const child of childrenOf.get(node.id) ?? []) {
-      if (child.status === 'active') key = bestKey(key, effectiveKey(child));
-    }
-    return key;
-  };
+  const keyOf = (node: Item): PriorityKey => effectiveKey(node, (n) => childrenOf.get(n.id) ?? []);
   const top = items.filter((i) => i.parent_id === null);
   const visible = showCompleted ? top : top.filter((i) => i.status === 'active');
   return stableSorted(
     visible,
-    (a, b) =>
-      compareKey(effectiveKey(a), effectiveKey(b)) ||
-      Date.parse(a.created_at) - Date.parse(b.created_at),
+    (a, b) => compareKey(keyOf(a), keyOf(b)) || Date.parse(a.created_at) - Date.parse(b.created_at),
   );
 }
