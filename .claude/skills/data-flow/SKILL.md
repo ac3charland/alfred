@@ -265,9 +265,12 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   owns the filter/sort and picks the visible neighbour, so the action just swaps the pair it's
   handed. Every burst joins ONE provider-wide queue, drained one `swap_code_priority` call at a
   time: overlapping bursts would race on the server, and each step's answer is OLDER than the
-  screen, so rows are reconciled only once the queue drains — applying them mid-queue snapped the
-  row back up and tied it with a neighbour, deadening the chevrons (ALF-250). For the same reason
-  the realtime handler drops `priority` while the queue drains (its own swaps' echoes).
+  screen, so only the final RANK is reconciled, once the queue drains — applying rows mid-queue
+  snapped the row back up and tied it with a neighbour, deadening the chevrons (ALF-250); applying
+  whole rows late would undo a lane change realtime delivered meanwhile. Realtime priority echoes
+  for the swapped stories are skipped until each settled rank echoes back (they trail the HTTP
+  answer). A failed sync re-reads `listCode` ranks after its rollback — a click still in a row's
+  debounce isn't in the queue, so the rollback alone can leave a tie.
 - **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
   (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
   status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it
