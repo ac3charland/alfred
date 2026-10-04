@@ -198,6 +198,7 @@ export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     item_type: overrides.item_type ?? 'unclassified',
     status: overrides.status ?? 'active',
     due_date: overrides.due_date ?? null,
+    due_time: overrides.due_time ?? null,
     completed_at: overrides.completed_at ?? null,
     folder_id: overrides.folder_id ?? null,
     // Residency, derived rather than flat: a seed that says `folder_id: 'f1'` means "filed in

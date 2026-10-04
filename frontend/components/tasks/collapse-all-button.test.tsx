@@ -18,6 +18,7 @@ const BASE_ITEM: Item = {
   created_at: '2025-01-01T10:00:00Z',
   raw_capture: null,
   due_date: null,
+  due_time: null,
   status: 'active',
   completed_at: null,
   folder_id: null,

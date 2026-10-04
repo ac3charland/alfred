@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import * as React from 'react';
 
-import { pinClock } from '@/lib/pin-clock';
+import { pinClock, setClockNow } from '@/lib/pin-clock';
 
 import { DueDateChip } from './due-date-chip';
 
@@ -150,6 +151,127 @@ describe('DueDateChip', () => {
       await user.click(await screen.findByRole('button', { name: 'Clear' }));
 
       expect(onClear).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Timed — the label reads date + time, and the band flips at the minute
+  // ---------------------------------------------------------------------------
+
+  describe('timed', () => {
+    beforeEach(() => {
+      // Only the interval timer is faked: the pinned clock still answers "what time is it".
+      jest.useFakeTimers({ doNotFake: ['Date'] });
+      setClockNow(new Date(2026, 9, 3, 14, 59, 30).toISOString());
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('reads date + time, and announces both', () => {
+      render(<DueDateChip dueDate="2026-10-04" dueTime="09:30" />);
+
+      const chip = screen.getByRole('button', { name: 'Due date: 2026-10-04 09:30' });
+      expect(chip).toHaveTextContent('Tomorrow 9:30 AM');
+    });
+
+    it('reads exactly as before when untimed', () => {
+      render(<DueDateChip dueDate="2026-10-04" dueTime={null} />);
+      expect(screen.getByRole('button', { name: 'Due date: 2026-10-04' })).toHaveTextContent(
+        /^Tomorrow$/,
+      );
+    });
+
+    it('is amber before its minute and turns red at it, without a reload', () => {
+      render(<DueDateChip dueDate="2026-10-03" dueTime="15:00" />);
+
+      const chip = screen.getByRole('button', { name: /^Due date/ });
+      expect(chip).toHaveTextContent('Today 3 PM');
+      expect(chip).toHaveClass('text-accent-amber');
+
+      act(() => {
+        setClockNow(new Date(2026, 9, 3, 15, 0, 1).toISOString());
+        jest.advanceTimersByTime(1000);
+      });
+
+      expect(screen.getByRole('button', { name: /^Due date/ })).toHaveClass('text-accent-red');
+    });
+
+    it('flips the inert (select-mode) chip too', () => {
+      render(<DueDateChip dueDate="2026-10-03" dueTime="14:00" inert />);
+      expect(screen.getByLabelText(/^Due date/)).toHaveClass('text-accent-red');
+    });
+
+    it('stays blue on a later day whatever the time', () => {
+      render(<DueDateChip dueDate="2026-10-04" dueTime="00:00" />);
+      expect(screen.getByRole('button', { name: /^Due date/ })).toHaveClass('text-accent-blue');
+    });
+  });
+
+  describe('the picker', () => {
+    it('shows the time row, and a time commit saves but leaves the picker open', async () => {
+      const onSetTime = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <DueDateChip
+          dueDate="2025-07-02"
+          onSelect={jest.fn()}
+          onClear={jest.fn()}
+          onSetTime={onSetTime}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Due date: 2025-07-02' }));
+      await user.click(await screen.findByRole('button', { name: 'Add time' }));
+      await user.type(screen.getByLabelText('Due time'), '15:00{Enter}');
+
+      expect(onSetTime).toHaveBeenCalledWith('15:00');
+      expect(screen.getByRole('button', { name: 'July 10, 2025' })).toBeInTheDocument();
+    });
+
+    it('closes on a day pick', async () => {
+      const onSelect = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <DueDateChip
+          dueDate="2025-07-02"
+          dueTime="15:00"
+          onSelect={onSelect}
+          onClear={jest.fn()}
+          onSetTime={jest.fn()}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^Due date/ }));
+      await user.click(await screen.findByRole('button', { name: 'July 10, 2025' }));
+
+      expect(onSelect).toHaveBeenCalledWith('2025-07-10');
+      expect(screen.queryByRole('button', { name: 'July 10, 2025' })).not.toBeInTheDocument();
+    });
+
+    it('stays open when the committed time turns an untimed chip timed', async () => {
+      const user = userEvent.setup();
+      function Harness() {
+        const [time, setTime] = React.useState<string | null>(null);
+        return (
+          <DueDateChip
+            dueDate="2025-07-02"
+            dueTime={time}
+            onSelect={jest.fn()}
+            onClear={jest.fn()}
+            onSetTime={setTime}
+          />
+        );
+      }
+      render(<Harness />);
+
+      await user.click(screen.getByRole('button', { name: /^Due date/ }));
+      await user.click(await screen.findByRole('button', { name: 'Add time' }));
+      await user.type(screen.getByLabelText('Due time'), '15:00{Enter}');
+
+      expect(screen.getByRole('button', { name: /^Due date/ })).toHaveTextContent('3 PM');
+      expect(screen.getByLabelText('Due time')).toHaveValue('15:00');
     });
   });
 

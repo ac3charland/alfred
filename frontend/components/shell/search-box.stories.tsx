@@ -31,6 +31,7 @@ const task = (overrides: Partial<Item>): Item => ({
   created_at: '2025-01-01T00:00:00Z',
   raw_capture: null,
   due_date: null,
+  due_time: null,
   status: 'active',
   completed_at: null,
   folder_id: null,

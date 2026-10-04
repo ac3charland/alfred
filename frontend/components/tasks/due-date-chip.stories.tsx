@@ -7,7 +7,7 @@ const meta = {
   title: 'Tasks/DueDateChip',
   component: DueDateChip,
   tags: ['autodocs'],
-  args: { onSelect: () => {}, onClear: () => {} },
+  args: { onSelect: () => {}, onClear: () => {}, onSetTime: () => {} },
   decorators: [
     (Story) => (
       <div className="inline-flex p-3">
@@ -68,4 +68,20 @@ export const Comfortable: Story = {
       <DueDateChip {...args} dueDate={null} />
     </div>
   ),
+};
+
+// A timed task already past its minute — red, reading date + time.
+export const TimedOverdue: Story = {
+  args: { dueDate: '2000-01-01', dueTime: '09:30' },
+};
+
+// A timed task due later today — amber until its minute, then red without a reload. 23:59 keeps
+// it amber for nearly the whole day the story is opened on.
+export const TimedDueToday: Story = {
+  args: { dueDate: todayLocalYMD(), dueTime: '23:59' },
+};
+
+// A timed task on a later day — blue, whatever the time.
+export const TimedUpcoming: Story = {
+  args: { dueDate: '2099-12-31', dueTime: '15:00' },
 };

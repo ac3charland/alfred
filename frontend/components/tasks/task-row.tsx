@@ -25,6 +25,7 @@ import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeGlyph } from '@/components/tasks/type-glyph';
 import type { ConvertedEpic } from '@/lib/api-client';
 import { projectBoardHref, storyBoardHref } from '@/lib/code/board-links';
+import { normalizeDueTime, todayISODate } from '@/lib/date-utils';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { useBucketName } from '@/lib/hooks/use-bucket-name';
 import { useClassifiedFlash } from '@/lib/hooks/use-classified-flash';
@@ -459,12 +460,33 @@ export function TaskRow({
     }
   };
 
+  // Clearing the date clears its time with it — sent explicitly (when there is one) so the
+  // optimistic row is right before the server answers; the database clears it either way.
   const handleClearDueDate = async () => {
     if (node.due_date === null) return;
     try {
-      await (node.recurrence === null
-        ? updateTask(node.id, { due_date: null })
-        : updateTask(node.id, { due_date: null, recurrence: null }));
+      await updateTask(node.id, {
+        due_date: null,
+        ...(normalizeDueTime(node.due_time) !== null && { due_time: null }),
+        ...(node.recurrence !== null && { recurrence: null }),
+      });
+    } catch {
+      // The store already rolled the row back.
+    }
+  };
+
+  // A committed time (or null from the picker's ×). A date move keeps the time, so this is the
+  // only write that changes it. A time on an undated task dates it today — no time floats without
+  // a day (the same way the Repeat chip stamps today as its anchor).
+  const handleSetDueTime = async (time: string | null) => {
+    if (time === normalizeDueTime(node.due_time)) return;
+    try {
+      await updateTask(
+        node.id,
+        node.due_date === null && time !== null
+          ? { due_date: todayISODate(), due_time: time }
+          : { due_time: time },
+      );
     } catch {
       // The store already rolled the row back.
     }
@@ -563,6 +585,9 @@ export function TaskRow({
     },
     onClearDueDate: () => {
       void handleClearDueDate();
+    },
+    onSetDueTime: (time: string | null) => {
+      void handleSetDueTime(time);
     },
     onChangePriority: (next: TaskPriority | null) => {
       void handleSavePriority(next);
@@ -1159,6 +1184,9 @@ export function TaskRow({
                 }}
                 onClearDueDate={() => {
                   void handleClearDueDate();
+                }}
+                onSetDueTime={(time) => {
+                  void handleSetDueTime(time);
                 }}
                 onChangePriority={(next) => {
                   void handleSavePriority(next);
