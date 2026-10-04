@@ -314,3 +314,56 @@ test.describe('the Comms triage queue', () => {
     await expect(page.getByLabel(/erroring/)).toBeHidden();
   });
 });
+
+/** An instant this many minutes before now. */
+function minutesAgo(minutes: number): string {
+  return new Date(Date.now() - minutes * 60 * 1000).toISOString();
+}
+
+test.describe('the FYI shelf, read as conversations', () => {
+  test('collapses a thread and splits a chat at its quiet gap', async ({ page, seed }) => {
+    const shelved = { tier: 'fyi' as const, judged_by: 'model' as const };
+    const thread = ['Re: potluck — final count', 'Re: potluck', 'Potluck — who is in?'].map(
+      (subject, index) =>
+        makeCommMessage(PERSONAL.id, {
+          ...shelved,
+          thread_key: 'potluck',
+          sender_handle: `guest${String(index)}@example.com`,
+          sender_name: `Guest ${String(index)}`,
+          subject,
+          received_at: minutesAgo(30 + index * 60),
+        }),
+    );
+    // One chat, two bursts more than six hours apart: two conversations.
+    const chat = [10, 15, 9 * 60, 9 * 60 + 5].map((minutes) =>
+      makeCommMessage(IMESSAGE.id, {
+        ...shelved,
+        thread_key: 'chat-mom',
+        sender_handle: '+15550119876',
+        sender_name: 'Mom',
+        body: `Text from ${String(minutes)} minutes ago`,
+        received_at: minutesAgo(minutes),
+      }),
+    );
+    await seed({ commAccounts: [PERSONAL, IMESSAGE], commMessages: [...thread, ...chat] });
+    await page.goto('/comms');
+
+    // The summary still counts messages; the rows inside are conversations.
+    await page.getByRole('button', { name: /FYI · 7 messages/ }).click();
+    const conversations = page.getByTestId('comms-conversation');
+    await expect(conversations).toHaveCount(3);
+    await expect(page.getByRole('button', { name: /Mom · iMessage .* 2 messages/ })).toHaveCount(2);
+
+    const potluck = page.getByRole('button', { name: /3 messages/ });
+    await expect(potluck).toHaveAttribute('aria-expanded', 'false');
+    await potluck.click();
+    await expect(potluck).toHaveAttribute('aria-expanded', 'true');
+
+    const opened = conversations.filter({ has: potluck });
+    await expect(opened.getByTestId('comms-row')).toHaveCount(3);
+    await expect(opened.getByTestId('comms-row').first()).toContainText(
+      'Re: potluck — final count',
+    );
+    await expect(opened.getByTestId('comms-row').last()).toContainText('Potluck — who is in?');
+  });
+});

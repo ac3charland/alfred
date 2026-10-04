@@ -576,11 +576,14 @@ export function CommsProvider({
       },
       showMoreShelf() {
         const { messages, shelfCount } = stateRef.current;
-        if (shelved(messages).length >= shelfCount) return;
+        const held = shelved(messages).length;
+        if (held >= shelfCount) return;
+        // The server completes the conversation a page ends inside, so a read can hold more rows
+        // than it asked for; the next ask counts from what is held, or the button would no-op.
         // Never past the shelf's own last page, nor past what the snapshot route will serve.
         const lastPage = Math.ceil(shelfCount / SHELF_PAGE_SIZE) * SHELF_PAGE_SIZE;
         shelfLimitRef.current = Math.min(
-          shelfLimitRef.current + SHELF_PAGE_SIZE,
+          Math.max(shelfLimitRef.current + SHELF_PAGE_SIZE, held + SHELF_PAGE_SIZE),
           lastPage,
           SHELF_LIMIT_MAX,
         );

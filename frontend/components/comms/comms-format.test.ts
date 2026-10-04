@@ -1,9 +1,16 @@
-import { makeCommAccount, makeCommMessage, makeCommPerson } from '@/lib/comms/fixtures';
-import type { CommPersonWithHandles } from '@/lib/types';
+import {
+  makeCommAccount,
+  makeCommHandle,
+  makeCommMessage,
+  makeCommPerson,
+} from '@/lib/comms/fixtures';
+import type { CommMessage, CommPersonWithHandles } from '@/lib/types';
 
 import {
   TIER_LABEL,
   accountLabel,
+  conversationLine,
+  conversationWho,
   formatElapsed,
   formatMessageTime,
   senderLabel,
@@ -122,5 +129,69 @@ describe('TIER_LABEL', () => {
       whenever: 'Whenever',
       fyi: 'FYI',
     });
+  });
+});
+
+/** A message from `handle`, carrying `name` as its own display name. */
+function from(handle: string, name: string | null, overrides: Partial<CommMessage> = {}) {
+  return makeCommMessage(ACCOUNT, { sender_handle: handle, sender_name: name, ...overrides });
+}
+
+describe('conversationWho', () => {
+  it('names an iMessage group chat by its chat name', () => {
+    const group = { chat_name: 'Climbing crew', participants: ['+15550000001', '+15550000002'] };
+    const messages = [from('+15550000001', 'Sam', group), from('+15550000002', 'Jo', group)];
+
+    expect(conversationWho(messages, 'imessage', [])).toBe('Climbing crew');
+  });
+
+  it('names an unnamed group by up to two members, then how many more', () => {
+    const members = { participants: ['+15550000001', '+15550000002', '+15550000003'] };
+    const messages = [from('+15550000002', 'Jo', members), from('+15550000001', 'Sam', members)];
+
+    // Members are labelled by the roster, else by a name the chat itself carried, else the handle.
+    expect(conversationWho(messages, 'imessage', [])).toBe('Sam, Jo +1');
+  });
+
+  it('names everything else by its distinct senders, newest first, up to two then "+N"', () => {
+    const dana = makeCommPerson('Dana Whitfield');
+    const people: CommPersonWithHandles[] = [
+      { ...dana, comm_handles: [makeCommHandle(dana.id, 'dana@example.com')] },
+    ];
+    const messages = [
+      from('dana@example.com', 'D.'),
+      from('ana@example.com', 'Ana Ruiz'),
+      from('lee@example.com', 'Lee Park'),
+      from('dana@example.com', 'D.'),
+    ];
+
+    expect(conversationWho(messages, 'gmail', people)).toBe('Dana Whitfield, Ana Ruiz +1');
+  });
+
+  it('does not read an email thread with several recipients as a group chat', () => {
+    const cc = { participants: ['a@example.com', 'b@example.com'] };
+    const messages = [from('mom@example.com', 'Mom', cc), from('mom@example.com', 'Mom', cc)];
+
+    expect(conversationWho(messages, 'gmail', [])).toBe('Mom');
+  });
+});
+
+describe('conversationLine', () => {
+  it("is the newest message's line when one person sent everything", () => {
+    const messages = [
+      makeCommMessage(ACCOUNT, { sender_name: 'Mom', body: 'Gutters are done' }),
+      makeCommMessage(ACCOUNT, { sender_name: 'Mom', body: 'Morning!' }),
+    ];
+
+    expect(conversationLine(messages, [])).toBe('Gutters are done');
+  });
+
+  it('attributes the line to the newest sender when there are several', () => {
+    const messages = [
+      makeCommMessage(ACCOUNT, { sender_handle: 'sam', sender_name: 'Sam', body: 'See you at 6' }),
+      makeCommMessage(ACCOUNT, { sender_handle: 'jo', sender_name: 'Jo', body: 'Who is in?' }),
+    ];
+
+    expect(conversationLine(messages, [])).toBe('Sam: See you at 6');
   });
 });
