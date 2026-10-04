@@ -2352,6 +2352,116 @@ describe('code-store', () => {
           expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
         });
 
+        it('a mid-burst response does not snap the story back over the burst’s later steps', async () => {
+          const releaseFirst = holdNextSwap([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          const { result } = renderHook(useBacklogAndActions, { wrapper });
+
+          let one!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          let two!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            one = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          act(() => {
+            two = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+          });
+          // The second step's response never arrives within this test — only the first lands.
+          mockReorderCode.mockImplementationOnce(() => new Promise(() => {}));
+          act(() => {
+            void result.current.actions.commitReorderBatch([one, two]);
+          });
+          await settleQueue();
+          await act(async () => {
+            releaseFirst();
+            await Promise.resolve();
+          });
+
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
+        });
+
+        it('a late echo of a settled swap does not snap the story back over the burst’s later steps', async () => {
+          mockReorderCode
+            .mockResolvedValueOnce([
+              makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+              makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+            ])
+            .mockResolvedValueOnce([
+              makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 3 }),
+              makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: 2 }),
+            ]);
+          const { result } = renderHook(useBacklogAndActions, { wrapper });
+
+          let one!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          let two!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            one = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          act(() => {
+            two = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+          });
+          await act(async () => {
+            await result.current.actions.commitReorderBatch([one, two]);
+          });
+
+          // Realtime trails the responses: the first swap's row writes arrive after both settled.
+          emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }));
+          emitUpdate(makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }));
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
+        });
+
+        it('an echo landing before the next click is committed does not overwrite that click', async () => {
+          mockReorderCode.mockResolvedValueOnce([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          const { result } = renderHook(useBacklogAndActions, { wrapper });
+
+          let one!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            one = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          await act(async () => {
+            await result.current.actions.commitReorderBatch([one]);
+          });
+          // A second click, still inside its debounce window (applied, not yet committed)…
+          act(() => {
+            result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3');
+          });
+          // …then the first swap's echo for ALF-1 arrives.
+          emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }));
+
+          // ALF-1 keeps the second click's rank — it must not share rank 2 with ALF-3.
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
+        });
+
+        it('another writer’s rank change still applies while this tab’s swap is in flight', async () => {
+          const releaseFirst = holdNextSwap([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          const { result } = renderHook(useBacklogAndActions, { wrapper });
+
+          let one!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            one = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          let firstBurst!: Promise<void>;
+          act(() => {
+            firstBurst = result.current.actions.commitReorderBatch([one]);
+          });
+          await settleQueue();
+          // e.g. a respace or another tab re-ranks ALF-4, a row this swap never touches.
+          emitUpdate(makeSavedSidecar({ item_id: 'i4', ref: 'ALF-4', priority: 0 }));
+
+          await act(async () => {
+            releaseFirst();
+            await firstBurst;
+          });
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3, i4: 0 });
+        });
+
         it('a realtime echo of an in-flight swap does not move the story while the swap is unsettled', async () => {
           const releaseFirst = holdNextSwap([
             makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),

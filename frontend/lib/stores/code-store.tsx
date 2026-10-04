@@ -506,6 +506,15 @@ export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
   };
 }
 
+/** Take one expected own-write echo for `itemId`; false when none is outstanding. */
+function consumeOwnEcho(echoes: Map<string, number>, itemId: string): boolean {
+  const pending = echoes.get(itemId) ?? 0;
+  if (pending === 0) return false;
+  if (pending === 1) echoes.delete(itemId);
+  else echoes.set(itemId, pending - 1);
+  return true;
+}
+
 /** A story patch less its `priority` — for a write that must not move the story's rank. */
 function withoutPriority(patch: Partial<CodeStory>): Partial<CodeStory> {
   const { priority: _priority, ...rest } = patch;
@@ -577,10 +586,13 @@ export function CodeProvider({
   // whose commits overlapped would reach the server out of click order and scramble the ranking.
   // `inFlight` counts queued-or-running commits; `applied` counts optimistic priority edits, so a
   // commit can tell whether a newer click has landed on top of what it is syncing.
+  // `echoes` counts, per item, the realtime UPDATEs this tab's own priority writes have yet to
+  // echo back: each one trails the local ranking (it predates later clicks), whenever it lands.
   const priorityWritesRef = React.useRef({
     queue: Promise.resolve(),
     inFlight: 0,
     applied: 0,
+    echoes: new Map<string, number>(),
   });
 
   // Live swimlane updates. The webhook Worker (and any other device/tab) writes a story's
@@ -617,14 +629,16 @@ export function CodeProvider({
       // reasoning that keeps the board stable (no flicker, no double notification).
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
-      // While a priority write is unsettled its rows' echoes trail the local ranking (and the
-      // swap's in-transaction writes would replay through it) — the commit's own response
-      // reconciles the rank once the queue drains (ALF-250).
+      // An echo of this tab's own priority write carries a rank the local ranking has already
+      // moved past (a later click, or the commit's own response) — keep the local rank. Any
+      // other writer's rank (another tab, a respace of the rows around it) still applies (ALF-250).
       const patch = deliveredColumns(codeItemToStoryPatch(row));
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: priorityWritesRef.current.inFlight > 0 ? withoutPriority(patch) : patch,
+        patch: consumeOwnEcho(priorityWritesRef.current.echoes, row.item_id)
+          ? withoutPriority(patch)
+          : patch,
       });
       if (!changedState) return;
 
@@ -736,6 +750,7 @@ export function CodeProvider({
     ): Promise<void> {
       for (const [index, step] of steps.entries()) {
         try {
+          expectEchoes([step.aItemId, step.bItemId]);
           const rows = await api.reorderCode(step.ref, step.neighbourRef);
           const reconcileRank = index === steps.length - 1 && isLatest();
           for (const row of rows) {
@@ -746,6 +761,7 @@ export function CodeProvider({
             });
           }
         } catch {
+          forgetEchoes([step.aItemId, step.bItemId]);
           // This step and everything queued behind it never reached the server — undo them,
           // in reverse, so each rollback exactly cancels its own swap. Steps before this one
           // already committed, so they're left as they are.
@@ -767,6 +783,17 @@ export function CodeProvider({
           return;
         }
       }
+    }
+
+    /** Each of `itemIds` is about to be written once by this tab — expect one echo apiece. */
+    function expectEchoes(itemIds: string[]): void {
+      const { echoes } = priorityWritesRef.current;
+      for (const id of itemIds) echoes.set(id, (echoes.get(id) ?? 0) + 1);
+    }
+
+    /** The write failed, so its echoes will never come. */
+    function forgetEchoes(itemIds: string[]): void {
+      for (const id of itemIds) consumeOwnEcho(priorityWritesRef.current.echoes, id);
     }
 
     /** A returned `code_items` row's patch, keeping the local rank unless `reconcileRank`. */
@@ -1379,6 +1406,7 @@ export function CodeProvider({
           const itemId = target?.item_id ?? null;
           if (itemId === null) return;
           try {
+            expectEchoes([itemId]);
             const rows = await api.moveCode(ref, toTop);
             const reconcileRank = isLatest();
             for (const row of rows) {
@@ -1389,6 +1417,7 @@ export function CodeProvider({
               });
             }
           } catch {
+            forgetEchoes([itemId]);
             dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
             showToastRef.current("Couldn't move story");
           }
@@ -1415,6 +1444,7 @@ export function CodeProvider({
           const itemId = target?.item_id ?? null;
           if (itemId === null) return;
           try {
+            expectEchoes([itemId]);
             const rows = await api.moveCodeInProject(ref, toTop);
             const reconcileRank = isLatest();
             for (const row of rows) {
@@ -1425,6 +1455,7 @@ export function CodeProvider({
               });
             }
           } catch {
+            forgetEchoes([itemId]);
             dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
             showToastRef.current("Couldn't move story");
           }
