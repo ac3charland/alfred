@@ -5,9 +5,9 @@ import type { CodeStory } from '@/lib/types';
  * it sits in) plus the companions that move with it — `lane`, `blocked_reason`, `blocked_from`
  * (the swimlane a blocked story keeps its card in, so a story blocked in another tab lands in the
  * right lane on refetch rather than snapping to the fallback), `requires_refinement` (whether
- * it still needs a spec, which the detail modal's toggle reads back), and the spec and PR columns
- * the webhook Worker writes in the same writes that move it (a merged refinement PR's `spec_path`
- * lands with `ready_for_dev`; a state without them is a half-applied move — ALF-317).
+ * it still needs a spec, which the detail modal's toggle reads back), the Worker-written spec and
+ * PR columns (a merged refinement PR's `spec_path` lands with `ready_for_dev` — ALF-317), and
+ * `code_updated_at` (the Done lane's recency order, ALF-81).
  */
 export type CodeStoryStatus = Pick<
   CodeStory,
@@ -21,6 +21,7 @@ export type CodeStoryStatus = Pick<
   | 'spec_markdown'
   | 'refinement_pr_url'
   | 'implementation_pr_url'
+  | 'code_updated_at'
 >;
 
 /**
@@ -29,10 +30,11 @@ export type CodeStoryStatus = Pick<
  * (a type-only import) so it stands apart from the client store: pure, unit-testable, and the one
  * place that defines "a ticket's status" for the pull-refresh path.
  *
- * The refetch stands in for a realtime UPDATE the tab missed, so it must carry whatever that
- * UPDATE would have: a story moved into `ready_for_dev` without its `spec_path` launches as a
- * skip-refinement session (ALF-317). The Worker-written columns are safe to overwrite — nothing
- * in the browser edits them; only the locally-edited fields (title, notes, priority) stay out.
+ * The refetch stands in for a realtime UPDATE the tab missed, so it carries every column that
+ * UPDATE would have (`codeItemToStoryPatch`): a story moved into `ready_for_dev` without its
+ * `spec_path` launches as a skip-refinement session (ALF-317). Left out are `priority`, which waits
+ * out the pending priority writes (ALF-250), and the columns fixed at creation (`ref`,
+ * `ref_number`, `code_created_at`); title and notes live on the item, not the sidecar.
  */
 export function codeStoryStatusPatch(story: CodeStory): CodeStoryStatus {
   return {
@@ -46,5 +48,6 @@ export function codeStoryStatusPatch(story: CodeStory): CodeStoryStatus {
     spec_markdown: story.spec_markdown,
     refinement_pr_url: story.refinement_pr_url,
     implementation_pr_url: story.implementation_pr_url,
+    code_updated_at: story.code_updated_at,
   };
 }

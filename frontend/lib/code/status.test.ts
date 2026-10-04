@@ -72,7 +72,18 @@ describe('codeStoryStatusPatch', () => {
       spec_markdown: null,
       refinement_pr_url: null,
       implementation_pr_url: null,
+      code_updated_at: '2025-01-01T00:00:00Z',
     });
+  });
+
+  // The Done lane orders by `code_updated_at` (ALF-81), and the row's stamp moves with the story
+  // into done — a refetched completion keeping its old stamp hides behind "Show more".
+  it('carries code_updated_at, the Done lane recency key', () => {
+    const patch = codeStoryStatusPatch(
+      makeStory({ factory_state: 'done', code_updated_at: '2025-06-01T00:00:00Z' }),
+    );
+
+    expect(patch.code_updated_at).toBe('2025-06-01T00:00:00Z');
   });
 
   // ALF-317: the Worker records a merged refinement PR's spec_path in the SAME write that moves the

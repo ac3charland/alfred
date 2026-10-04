@@ -3,6 +3,7 @@ import * as React from 'react';
 
 import { StoryCard } from '@/components/code/story-card';
 import * as api from '@/lib/api-client';
+import { codeStoryStatusPatch } from '@/lib/code/status';
 import { holdRealtimeAuth } from '@/lib/supabase/hold-realtime-auth';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
@@ -3845,6 +3846,20 @@ describe('code-store', () => {
   describe('refreshStatuses (ALF-69 navigation refetch)', () => {
     const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
 
+    // The refetch stands in for a realtime UPDATE the tab missed, so it reconciles every column
+    // that UPDATE would have (ALF-317) — bar `priority`, which waits out the ALF-250 write queue,
+    // and the three columns fixed at creation. A column added to one projection and not the other
+    // fails here instead of shipping a story that only a reload repairs.
+    it('reconciles every column the realtime UPDATE does, bar priority and the creation-fixed ones', () => {
+      const notRefetched = new Set(['priority', 'ref', 'ref_number', 'code_created_at']);
+      const realtime = Object.keys(codeItemToStoryPatch(makeSavedSidecar())).filter(
+        (key) => !notRefetched.has(key),
+      );
+      const refetch = Object.keys(codeStoryStatusPatch(makeStory('i1', 'e1', 'p1')));
+
+      expect(new Set(refetch)).toEqual(new Set(realtime));
+    });
+
     it('patches each seeded story to its freshly-fetched factory_state', async () => {
       mockListCode.mockResolvedValue([
         makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'done' }),
@@ -3962,8 +3977,8 @@ describe('code-store', () => {
   // ALF-317. A refinement PR merging moves the story to Ready for Dev AND records its spec_path
   // in one Worker write, which can reach an open tab by either live channel: the realtime push,
   // or — when that UPDATE was missed (a backgrounded tab, a stale socket) — the navigation
-  // refetch. Whichever carried the move, Implement must open the spec-reading prompt; a story
-  // that lands in the lane without its spec_path is launched as a skip-refinement session.
+  // refetch. The refetch dropped spec_path, so a story it moved launched as a skip-refinement
+  // session; the realtime case always carried it and stands here as the guard on that channel.
   describe('a live in_refinement → ready_for_dev move, then Implement (ALF-317)', () => {
     const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
     const specPath = 'docs/specs/ALF-42.html';
