@@ -17,6 +17,11 @@ create or replace function swap_code_priority(p_a text, p_b text)
 returns setof code_items language plpgsql security invoker as $$
 declare a_pri double precision; b_pri double precision;
 begin
+  -- Lock both rows first, in one statement and a fixed order (so swap(a, b) racing swap(b, a)
+  -- queues instead of deadlocking): a concurrent swap sharing a story — another tab — waits for
+  -- this one to commit, then reads the committed ranks rather than exchanging stale ones into a
+  -- duplicate. Each read below takes a fresh snapshot, after the lock is held.
+  perform 1 from code_items where ref in (p_a, p_b) order by ref for update;
   select priority into a_pri from code_items where ref = p_a;
   select priority into b_pri from code_items where ref = p_b;
   if a_pri is null or b_pri is null then

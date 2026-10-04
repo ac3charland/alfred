@@ -331,18 +331,18 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       // real move: the swapped story flashes to the top of the Backlog before sliding back.
       const a = await createStory(client, 'story park A');
       const b = await createStory(client, 'story park B');
-      await client.query(`create table swap_writes (ref text, priority double precision)`);
-      await client.query(`
-        create function record_swap_write() returns trigger
-        language plpgsql security definer as $$
-        begin
-          insert into swap_writes values (new.ref, new.priority);
-          return new;
-        end; $$`);
-      await client.query(`
-        create trigger record_swap_write after update of priority on code_items
-        for each row execute function record_swap_write()`);
       try {
+        await client.query(`create table swap_writes (ref text, priority double precision)`);
+        await client.query(`
+          create function record_swap_write() returns trigger
+          language plpgsql security definer as $$
+          begin
+            insert into swap_writes values (new.ref, new.priority);
+            return new;
+          end; $$`);
+        await client.query(`
+          create trigger record_swap_write after update of priority on code_items
+          for each row execute function record_swap_write()`);
         await asRole(client, 'authenticated', () =>
           client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]),
         );
@@ -356,9 +356,59 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         }
         return `two writes: ${writes.join(', ')}`;
       } finally {
-        await client.query(`drop trigger record_swap_write on code_items`);
-        await client.query(`drop function record_swap_write()`);
-        await client.query(`drop table swap_writes`);
+        await client.query(`drop trigger if exists record_swap_write on code_items`);
+        await client.query(`drop function if exists record_swap_write()`);
+        await client.query(`drop table if exists swap_writes`);
+      }
+    },
+  );
+
+  const swapConcurrentResult = await attempt(
+    'two overlapping swaps from different sessions both land on committed ranks — no 409 (ALF-250)',
+    async () => {
+      // Two tabs (or a tab and the phone): the second swap shares a story with the first, which
+      // is still uncommitted. It must wait and read the committed ranks, not exchange stale ones.
+      const a = await createStory(client, 'story race A');
+      const b = await createStory(client, 'story race B');
+      const c = await createStory(client, 'story race C');
+      const other = new pg.Client({
+        host: client.host,
+        port: client.port,
+        user: client.user,
+        database: client.database,
+      });
+      await other.connect();
+      try {
+        await client.query('begin');
+        await client.query('set local role authenticated');
+        await client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]);
+        await other.query('set role authenticated');
+        const second = other.query(`select swap_code_priority($1, $2)`, [b.ref, c.ref]);
+        // Give the second swap time to reach the row lock before the first commits.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await client.query('commit');
+        await second;
+        const { rows } = await client.query<{ ref: string; priority: string }>(
+          `select ref, priority from code_items where ref = any($1)`,
+          [[a.ref, b.ref, c.ref]],
+        );
+        const got = new Map(rows.map((r): [string, number] => [r.ref, Number(r.priority)]));
+        // a↔b, then b↔c over the COMMITTED ranks: a=b0, b=c0, c=a0.
+        const expected = new Map([
+          [a.ref, Number(b.priority)],
+          [b.ref, Number(c.priority)],
+          [c.ref, Number(a.priority)],
+        ]);
+        for (const [ref, priority] of expected) {
+          if (got.get(ref) !== priority) {
+            throw new Error(`${ref} at ${String(got.get(ref))}, expected ${String(priority)}`);
+          }
+        }
+        return `a=${String(got.get(a.ref))} b=${String(got.get(b.ref))} c=${String(got.get(c.ref))}`;
+      } finally {
+        // A no-op (a warning, not an error) once the commit went through.
+        await client.query('rollback');
+        await other.end();
       }
     },
   );
@@ -4859,6 +4909,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     enterModuleResult,
     swapResult,
     swapNoTransientResult,
+    swapConcurrentResult,
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
