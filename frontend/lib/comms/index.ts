@@ -31,7 +31,13 @@ export {
   isFiltered,
   isRefused,
   isUnjudged,
+  type RolledUpMarker,
+  type RowMarkerKind,
+  rollUpMarkers,
+  rowMarkerKinds,
 } from './markers';
+
+export { CONVERSATION_GAP_MS, type ShelfConversation, groupConversations } from './conversations';
 
 export {
   ACCOUNT_RECONNECT_GRACE_MS,
