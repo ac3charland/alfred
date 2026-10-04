@@ -93,6 +93,8 @@ only **label** (`setFolder`, `setIntendedProject`, `setIntendedEpic`), and **Dis
 hidden and the menu's **Move to…** (`moveTask`) is the only mover: the two surfaces are
 complementary, so collapsing them strands one half of the model. Residency travels with the whole
 subtree, exactly like `folder_id` — every write that files rows stamps both on each of them.
+Any "where does it live now" comparison — e.g. a drop's already-here no-op — reads
+`residentFolderId`, never raw `folder_id`, or a labelled Inbox row can't be filed into its own label.
 
 ## Realtime: a push channel wherever a Worker is the second writer
 
