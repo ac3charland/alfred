@@ -8,6 +8,7 @@ import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import {
   ALL_FACTORY_STATES,
+  type CodeActions,
   CodeProvider,
   DEFAULT_BACKLOG_STATUSES,
   HAPPY_PATH_STATES,
@@ -3955,6 +3956,58 @@ describe('code-store', () => {
 
       expect(findStoryState(result.current.board)).toBe('in_refinement');
       expect(mockShowToast).not.toHaveBeenCalled();
+    });
+  });
+
+  // ALF-317. A refinement PR merging moves the story to Ready for Dev AND records its spec_path
+  // in one Worker write, which can reach an open tab by either live channel: the realtime push,
+  // or — when that UPDATE was missed (a backgrounded tab, a stale socket) — the navigation
+  // refetch. Whichever carried the move, Implement must open the spec-reading prompt; a story
+  // that lands in the lane without its spec_path is launched as a skip-refinement session.
+  describe('a live in_refinement → ready_for_dev move, then Implement (ALF-317)', () => {
+    const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+    const specPath = 'docs/specs/ALF-42.html';
+    const merged = { factory_state: 'ready_for_dev', spec_path: specPath } as const;
+
+    const deliverBy: [string, (actions: CodeActions) => Promise<void>][] = [
+      [
+        'the realtime push',
+        () => {
+          emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', ...merged }));
+          return Promise.resolve();
+        },
+      ],
+      [
+        'the navigation refetch',
+        async (actions) => {
+          mockListCode.mockResolvedValue([
+            makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', ...merged }),
+          ]);
+          await act(async () => {
+            await actions.refreshStatuses();
+          });
+        },
+      ],
+    ];
+
+    it.each(deliverBy)('opens the spec-reading prompt when %s delivered it', async (_, deliver) => {
+      jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+      mockUpdateCodeState.mockResolvedValue(makeSavedSidecar({ factory_state: 'in_development' }));
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      await deliver(result.current.actions);
+      expect(findStoryState(result.current.board)).toBe('ready_for_dev');
+      await act(async () => {
+        await result.current.actions.openClaudeSession('ALF-42', 'implementation');
+      });
+
+      const prompt = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+      expect(prompt).not.toContain('SKIP-REFINEMENT');
+      expect(prompt).toMatch(/merged spec/i);
+      expect(prompt).toContain(specPath);
     });
   });
 

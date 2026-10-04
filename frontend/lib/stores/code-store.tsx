@@ -428,8 +428,9 @@ export interface CodeActions {
   moveStoryInProject: (ref: string, toTop: boolean) => void;
   /**
    * Refetch every code story from the server and reconcile the STATUS fields (`factory_state`
-   * plus its companions `lane` / `blocked_reason`) onto the stories already held, keyed by
-   * `item_id`. Fired on navigation to a project board or the Backlog (ALF-69) so a status that
+   * plus its companions `lane` / `blocked_reason`, and the spec + PR columns the Worker writes
+   * with a move — `codeStoryStatusPatch`) onto the stories already held, keyed by `item_id`.
+   * Fired on navigation to a project board or the Backlog (ALF-69) so a status that
    * drifted while this tab sat idle — a realtime UPDATE dropped by a stale connection, or a move
    * that landed while backgrounded — reconciles the moment the user lands on a code view. Patches
    * only statuses (not title/priority/notes) and only rows present in the store (the race rule),

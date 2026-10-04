@@ -48,7 +48,7 @@ describe('codeStoryStatusPatch', () => {
       requires_refinement: false,
     });
 
-    expect(codeStoryStatusPatch(story)).toEqual({
+    expect(codeStoryStatusPatch(story)).toMatchObject({
       factory_state: 'blocked',
       lane: 'local',
       blocked_reason: 'checks failing',
@@ -57,11 +57,9 @@ describe('codeStoryStatusPatch', () => {
     });
   });
 
-  it('omits non-status fields (title, priority, notes, spec, prs)', () => {
-    // Exact-equality on the whole patch: any leaked non-status field would fail this.
-    const patch = codeStoryStatusPatch(
-      makeStory({ title: 'x', priority: 42, spec_path: '/s', refinement_pr_url: 'http://pr' }),
-    );
+  it('omits the locally-edited fields (title, priority, notes)', () => {
+    // Exact-equality on the whole patch: any leaked locally-edited field would fail this.
+    const patch = codeStoryStatusPatch(makeStory({ title: 'x', priority: 42, notes: 'n' }));
 
     expect(patch).toEqual({
       factory_state: 'in_development',
@@ -69,6 +67,36 @@ describe('codeStoryStatusPatch', () => {
       blocked_reason: null,
       blocked_from: null,
       requires_refinement: true,
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+      refinement_pr_url: null,
+      implementation_pr_url: null,
+    });
+  });
+
+  // ALF-317: the Worker records a merged refinement PR's spec_path in the SAME write that moves the
+  // story to ready_for_dev. A refetch that moved the card without it left a story Implement
+  // launched as a skip-refinement session; the PR links and spec snapshot ride the same writes.
+  it('carries the spec and PR columns the webhook Worker writes alongside a move', () => {
+    const patch = codeStoryStatusPatch(
+      makeStory({
+        factory_state: 'ready_for_dev',
+        spec_path: 'docs/specs/ALF-1.html',
+        spec_sha: 'abc123',
+        spec_markdown: '# Spec',
+        refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/1',
+        implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/2',
+      }),
+    );
+
+    expect(patch).toMatchObject({
+      factory_state: 'ready_for_dev',
+      spec_path: 'docs/specs/ALF-1.html',
+      spec_sha: 'abc123',
+      spec_markdown: '# Spec',
+      refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/1',
+      implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/2',
     });
   });
 
