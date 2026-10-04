@@ -166,7 +166,7 @@ export function TriageRow({
           {node.title}
         </a>
 
-        {isTask && node.due_date && <DueDateChip dueDate={node.due_date} />}
+        {isTask && node.due_date && <DueDateChip dueDate={node.due_date} dueTime={node.due_time} />}
 
         {isTask && (
           <PriorityChip

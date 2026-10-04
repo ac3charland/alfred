@@ -69,6 +69,7 @@ const BASE_ITEM: Item = {
   created_at: '2025-01-01T10:00:00Z',
   raw_capture: null,
   due_date: null,
+  due_time: null,
   status: 'active',
   completed_at: null,
   folder_id: null,
@@ -2655,6 +2656,7 @@ describe('TaskRow — classification & type-gating', () => {
         expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
           item_type: 'code',
           due_date: null,
+          due_time: null,
           recurrence: null,
         });
       });
@@ -3168,6 +3170,7 @@ describe('TaskRow — knowledge rows', () => {
         expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
           item_type: 'knowledge',
           due_date: null,
+          due_time: null,
           recurrence: null,
           intended_project_id: null,
           intended_epic_id: null,
@@ -3394,6 +3397,7 @@ describe('TaskRow — research rows', () => {
         expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
           item_type: 'research',
           due_date: null,
+          due_time: null,
           recurrence: null,
           intended_project_id: null,
           intended_epic_id: null,
@@ -4090,6 +4094,96 @@ describe('TaskRow — detail panel (ALF-67)', () => {
 
     await waitFor(() => {
       expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: null, recurrence: null });
+    });
+  });
+
+  describe('due time', () => {
+    it('sets a time on an undated task, dating it today, and leaves the picker open', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...BASE_ITEM,
+        due_date: todayISODate(),
+        due_time: '15:00:00',
+      });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+      await openDetails(user);
+
+      await user.click(screen.getByRole('button', { name: 'Due date' }));
+      await user.click(await screen.findByRole('button', { name: 'Add time' }));
+      await user.type(screen.getByLabelText('Due time'), '15:00{Enter}');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          due_date: todayISODate(),
+          due_time: '15:00',
+        });
+      });
+      expect(screen.getByLabelText('Due time')).toBeInTheDocument();
+    });
+
+    it('sends only the time for a task that already has a date', async () => {
+      mockUpdateItem.mockResolvedValue(BASE_ITEM);
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
+      await openDetails(user);
+
+      await user.click(screen.getByRole('button', { name: 'Due date' }));
+      await user.click(await screen.findByRole('button', { name: 'Add time' }));
+      await user.type(screen.getByLabelText('Due time'), '09:30');
+      await user.tab();
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_time: '09:30' });
+      });
+    });
+
+    it('× clears just the time', async () => {
+      mockUpdateItem.mockResolvedValue(BASE_ITEM);
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', due_time: '15:00:00' }]);
+      await openDetails(user);
+
+      await user.click(screen.getByRole('button', { name: 'Due date' }));
+      expect(await screen.findByLabelText('Due time')).toHaveValue('15:00');
+      await user.click(screen.getByRole('button', { name: 'Clear time' }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_time: null });
+      });
+    });
+
+    it('a day pick keeps the time — the patch carries only the date', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...BASE_ITEM,
+        due_date: todayISODate(),
+        due_time: '15:00:00',
+      });
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', due_time: '15:00:00' }]);
+      await openDetails(user);
+
+      expect(screen.getByRole('button', { name: 'Due date' })).toHaveTextContent('Dec 31 3 PM');
+      await user.click(screen.getByRole('button', { name: 'Due date' }));
+      await user.click(await screen.findByRole('button', { name: /^today$/i }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: todayISODate() });
+      });
+      expect(screen.getByRole('button', { name: 'Due date' })).toHaveTextContent(/^Today 3 PM$/);
+    });
+
+    it('clearing the date clears its time too', async () => {
+      mockUpdateItem.mockResolvedValue(BASE_ITEM);
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', due_time: '15:00:00' }]);
+      await openDetails(user);
+
+      await user.click(screen.getByRole('button', { name: 'Due date' }));
+      await user.click(await screen.findByRole('button', { name: /^clear$/i }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: null, due_time: null });
+      });
     });
   });
 
@@ -4805,6 +4899,36 @@ describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
 
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: '2026-07-15' });
+      });
+    });
+
+    it('Custom… opens the same picker, with its time row', async () => {
+      mockUpdateItem.mockResolvedValue(BASE_ITEM);
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', due_time: '15:00:00' }], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+      // Today · Tomorrow · Next week · No due date · Custom…
+      await pickSubmenuOption(user, 4);
+
+      expect(await screen.findByLabelText('Due time')).toHaveValue('15:00');
+      await user.click(screen.getByRole('button', { name: 'Clear time' }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_time: null });
+      });
+    });
+
+    it('a preset moves the date and keeps the time', async () => {
+      mockUpdateItem.mockResolvedValue(BASE_ITEM);
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', due_time: '15:00:00' }], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+      await pickSubmenuOption(user, 1);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          due_date: addDays(todayISODate(), 1),
+        });
       });
     });
 

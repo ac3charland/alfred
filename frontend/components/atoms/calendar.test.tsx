@@ -76,4 +76,17 @@ describe('Calendar', () => {
     const monthName = now.toLocaleString('en-US', { month: 'long' });
     expect(screen.getByText(`${monthName} ${String(now.getFullYear())}`)).toBeInTheDocument();
   });
+
+  it('renders extra controls between the grid and the footer', () => {
+    render(
+      <Calendar selected="2025-07-02" onSelect={jest.fn()} onClear={jest.fn()}>
+        <span>Time row</span>
+      </Calendar>,
+    );
+    const slot = screen.getByText('Time row');
+    const lastDay = screen.getByRole('button', { name: 'August 9, 2025' });
+    const clear = screen.getByRole('button', { name: 'Clear' });
+    expect(lastDay.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(clear) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
