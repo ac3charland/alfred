@@ -1272,6 +1272,28 @@ describe('CommsProvider — shelf paging', () => {
     ]);
   });
 
+  it('moves forward even when a completed conversation already reached past the next page', () => {
+    // A read completes the conversations the page edge cut into, so it can hold more rows than
+    // were asked for. "Show more" then has to ask past what is held, or it would ask for rows the
+    // tab already has and draw nothing new.
+    const shelf = Array.from({ length: SHELF_PAGE_SIZE * 4 }, () =>
+      makeCommMessage(ACCOUNT, { tier: 'fyi', judged_by: 'model' }),
+    );
+    const held = SHELF_PAGE_SIZE * 2 + 5;
+    const completed = makeCommsSeed({ messages: shelf, shelfLimit: held });
+    const { result } = renderHook(() => useStore(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <CommsProvider initialSeed={completed}>{children}</CommsProvider>
+      ),
+    });
+
+    act(() => {
+      result.current.actions.showMoreShelf();
+    });
+
+    expect(mockApi.fetchCommsSnapshot).toHaveBeenLastCalledWith(held + SHELF_PAGE_SIZE, []);
+  });
+
   it('never asks for more of the shelf than the snapshot route serves', async () => {
     const vast = { ...makeCommsSeed({ messages: LONG_SHELF }), shelfCount: SHELF_LIMIT_MAX * 2 };
     const { result } = renderHook(() => useStore(), { wrapper: makeWrapper(LONG_SHELF) });

@@ -18,6 +18,7 @@ import * as supabaseServer from '@/lib/supabase/server';
 import {
   COMMS_MAX_PAGES,
   COMMS_PAGE_SIZE,
+  COMMS_THREAD_CHUNK_SIZE,
   COMMS_VERDICT_CHUNK_SIZE,
   getCommsSeed,
   getCommsSettingsSeed,
@@ -43,6 +44,7 @@ interface Result {
 interface RecordedQuery {
   eq: [string, unknown][];
   gte?: [string, unknown];
+  lte?: [string, unknown];
   in?: [string, unknown];
   is: [string, unknown][];
   not: [string, string, unknown][];
@@ -72,6 +74,7 @@ type Builder = Promise<Result> & {
   select: (columns?: string, options?: unknown) => Builder;
   eq: (column: string, value: unknown) => Builder;
   gte: (column: string, value: unknown) => Builder;
+  lte: (column: string, value: unknown) => Builder;
   in: (column: string, values: unknown) => Builder;
   is: (column: string, value: unknown) => Builder;
   not: (column: string, op: string, value: unknown) => Builder;
@@ -138,6 +141,10 @@ function makeClient(results: Partial<Record<Table, Answer>>) {
         recorded.gte = [column, value];
         return builder;
       }),
+      lte: jest.fn((column: string, value: unknown) => {
+        recorded.lte = [column, value];
+        return builder;
+      }),
       in: jest.fn((column: string, values: unknown) => {
         recorded.in = [column, values];
         return builder;
@@ -178,9 +185,14 @@ function makeClient(results: Partial<Record<Table, Answer>>) {
   return { client: { from } as never, calls };
 }
 
-/** Which of the snapshot's five `comm_messages` reads a request is. */
-function messageRead(query: RecordedQuery): 'active' | 'shelf' | 'claimed' | 'last' | 'watched' {
-  // The only `comm_messages` read that names ids: the rows a tab is waiting on a re-run for.
+/** Which of the snapshot's six `comm_messages` reads a request is. */
+function messageRead(
+  query: RecordedQuery,
+): 'active' | 'shelf' | 'complete' | 'claimed' | 'last' | 'watched' {
+  // The only `comm_messages` read that names threads: the rest of the conversations the shelf
+  // page cut into.
+  if (query.in?.[0] === 'thread_key') return 'complete';
+  // The only one that names ids: the rows a tab is waiting on a re-run for.
   if (query.in !== undefined) return 'watched';
   if (query.or === 'tier.is.null,tier.neq.fyi') return 'active';
   if (query.not.some(([column]) => column === 'reader_claimed_at')) return 'claimed';
@@ -575,6 +587,201 @@ describe('readCommsSnapshot', () => {
     expect(seed.health).toBeUndefined();
     expect(seed.accounts).toEqual([ACCOUNT]);
   });
+  describe('a conversation cut by the page edge', () => {
+    const IMESSAGE = makeCommAccount('iMessage', {
+      id: '00000000-0000-4000-8000-00000000000b',
+      kind: 'imessage',
+    });
+    const HOUR = 60 * 60 * 1000;
+    const EDGE = Date.parse('2026-02-20T12:00:00.000Z');
+
+    /** A full first shelf page, newest first, whose oldest (last) row is on `account`/`thread`. */
+    function pageEndingIn(account: string, thread: string) {
+      const rows = Array.from({ length: SHELF_PAGE_SIZE - 1 }, (_, index) =>
+        makeCommMessage(ACCOUNT.id, {
+          tier: 'fyi',
+          judged_by: 'model',
+          received_at: new Date(EDGE + (SHELF_PAGE_SIZE - index) * HOUR).toISOString(),
+        }),
+      );
+      const edge = makeCommMessage(account, {
+        id: '00000000-0000-4000-8000-0000000000e0',
+        thread_key: thread,
+        tier: 'fyi',
+        judged_by: 'model',
+        received_at: new Date(EDGE).toISOString(),
+      });
+      return { rows: [...rows, edge], edge };
+    }
+
+    /** An older shelf row in the same thread as the edge, `before` ms earlier. */
+    function olderInThread(edge: { account_id: string; thread_key: string }, before: number) {
+      return makeCommMessage(edge.account_id, {
+        thread_key: edge.thread_key,
+        tier: 'fyi',
+        judged_by: 'model',
+        received_at: new Date(EDGE - before).toISOString(),
+      });
+    }
+
+    it('reads the rest of every thread the page holds, with the shelf’s own filters', async () => {
+      const { rows, edge } = pageEndingIn(ACCOUNT.id, 'thread-edge');
+      const rest = [olderInThread(edge, HOUR), olderInThread(edge, 30 * 24 * HOUR)];
+      const { client, calls } = makeClient({
+        comm_accounts: { data: [ACCOUNT], error: null },
+        comm_messages: messages({
+          shelf: { data: rows, error: null, count: 500 },
+          complete: { data: rest, error: null },
+        }),
+      });
+
+      const { seed } = await readCommsSnapshot(client);
+
+      expect(seed.messages.slice(-3)).toEqual([edge, ...rest]);
+      const complete = calls.comm_messages.find((query) => messageRead(query) === 'complete');
+      expect(complete?.eq).toEqual([['direction', 'inbound']]);
+      expect(complete?.in).toEqual([
+        'thread_key',
+        [...new Set(rows.map((message) => message.thread_key))],
+      ]);
+      expect(complete?.lte).toEqual(['received_at', edge.received_at]);
+      expect(complete?.gte).toEqual(['received_at', CUTOFF]);
+      expect(complete?.or).toBe('tier.eq.fyi,cleared_at.not.is.null');
+      expect(complete?.is).toContainEqual(['reader_claimed_at', null]);
+      expect(complete?.order).toEqual([
+        ['received_at', { ascending: false }],
+        ['id', { ascending: true }],
+      ]);
+      // Paged like every other unbounded read, so a huge thread can't hit the row cap.
+      expect(complete?.range).toEqual([0, COMMS_PAGE_SIZE - 1]);
+      // The shelf's own size is still the server's count, not the rows held.
+      expect(seed.shelfCount).toBe(500);
+    });
+
+    it('completes an email thread whose older reply lies past the edge, not only the edge’s own', async () => {
+      const { rows } = pageEndingIn(ACCOUNT.id, 'thread-edge');
+      const top = rows[0];
+      if (top === undefined) throw new Error('empty page');
+      const olderReply = olderInThread(top, 21 * 24 * HOUR);
+      const { client } = makeClient({
+        comm_accounts: { data: [ACCOUNT], error: null },
+        comm_messages: messages({
+          shelf: { data: rows, error: null, count: 500 },
+          complete: { data: [olderReply], error: null },
+        }),
+      });
+
+      const { seed } = await readCommsSnapshot(client);
+
+      expect(seed.messages).toContainEqual(olderReply);
+    });
+
+    it('leaves out another account’s rows that happen to share a thread key', async () => {
+      const { rows, edge } = pageEndingIn(ACCOUNT.id, 'thread-edge');
+      const elsewhere = makeCommMessage(IMESSAGE.id, {
+        thread_key: 'thread-edge',
+        tier: 'fyi',
+        judged_by: 'model',
+        received_at: new Date(EDGE - HOUR).toISOString(),
+      });
+      const { client } = makeClient({
+        comm_accounts: { data: [ACCOUNT, IMESSAGE], error: null },
+        comm_messages: messages({
+          shelf: { data: rows, error: null, count: 500 },
+          complete: { data: [elsewhere, olderInThread(edge, HOUR)], error: null },
+        }),
+      });
+
+      const { seed } = await readCommsSnapshot(client);
+
+      expect(seed.messages).toHaveLength(SHELF_PAGE_SIZE + 1);
+      expect(seed.messages).not.toContainEqual(elsewhere);
+    });
+
+    it('asks for the threads in chunks, so a long page never builds one oversized request', async () => {
+      const page = shelvedRows(COMMS_PAGE_SIZE);
+      const { client, calls } = makeClient({
+        comm_messages: messages({ shelf: { data: page, error: null, count: 5000 } }),
+      });
+
+      await readCommsSnapshot(client, COMMS_PAGE_SIZE);
+
+      const completes = calls.comm_messages.filter((query) => messageRead(query) === 'complete');
+      expect(completes).toHaveLength(COMMS_PAGE_SIZE / COMMS_THREAD_CHUNK_SIZE);
+      const asked = completes.flatMap((query) => query.in?.[1] as string[]);
+      expect(asked).toEqual(page.map((message) => message.thread_key));
+    });
+
+    it('stops an iMessage chat at the quiet gap, as the shelf groups it', async () => {
+      const { rows, edge } = pageEndingIn(IMESSAGE.id, 'chat-guid');
+      const sameBurst = olderInThread(edge, HOUR);
+      const nextBurst = olderInThread(edge, HOUR + 7 * HOUR);
+      const { client } = makeClient({
+        comm_accounts: { data: [ACCOUNT, IMESSAGE], error: null },
+        comm_messages: messages({
+          shelf: { data: rows, error: null, count: 500 },
+          complete: { data: [sameBurst, nextBurst], error: null },
+        }),
+      });
+
+      const { seed } = await readCommsSnapshot(client);
+
+      expect(seed.messages.map((message) => message.id)).toContain(sameBurst.id);
+      expect(seed.messages.map((message) => message.id)).not.toContain(nextBurst.id);
+    });
+
+    it('neither loses nor duplicates a row tied with the edge on arrival time', async () => {
+      const { rows, edge } = pageEndingIn(ACCOUNT.id, 'thread-edge');
+      const tied = makeCommMessage(ACCOUNT.id, {
+        id: '00000000-0000-4000-8000-0000000000e1',
+        thread_key: 'thread-edge',
+        tier: 'fyi',
+        judged_by: 'model',
+        received_at: edge.received_at,
+      });
+      const { client } = makeClient({
+        comm_accounts: { data: [ACCOUNT], error: null },
+        comm_messages: messages({
+          shelf: { data: rows, error: null, count: 500 },
+          // `<=` brings the edge itself back alongside the row it tied with.
+          complete: { data: [edge, tied], error: null },
+        }),
+      });
+
+      const { seed } = await readCommsSnapshot(client);
+
+      expect(seed.messages.filter((message) => message.id === edge.id)).toHaveLength(1);
+      expect(seed.messages.filter((message) => message.id === tied.id)).toHaveLength(1);
+      expect(seed.messages).toHaveLength(SHELF_PAGE_SIZE + 1);
+    });
+
+    it('makes no completion read when the page came back short — the shelf ended there', async () => {
+      const { client, calls } = makeClient({
+        comm_messages: messages({ shelf: { data: shelvedRows(3), error: null, count: 3 } }),
+      });
+
+      await readCommsSnapshot(client);
+
+      expect(calls.comm_messages.filter((query) => messageRead(query) === 'complete')).toEqual([]);
+    });
+
+    it('reports a failed completion read rather than shipping a cut conversation', async () => {
+      const { rows } = pageEndingIn(ACCOUNT.id, 'thread-edge');
+      const { client } = makeClient({
+        comm_accounts: { data: [ACCOUNT], error: null },
+        comm_messages: messages({
+          shelf: { data: rows, error: null, count: 500 },
+          complete: { data: null, error: { message: 'boom' } },
+        }),
+      });
+
+      const { seed, error } = await readCommsSnapshot(client);
+
+      expect(error?.message).toBe('boom');
+      expect(seed.messages).toEqual([]);
+    });
+  });
+
   describe('watch', () => {
     const WATCHED = [
       makeCommMessage(ACCOUNT.id, { tier: 'fyi', judged_by: 'model' }),

@@ -1,10 +1,16 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
-import { RETENTION_DAYS, SHELF_ELIGIBLE_FILTER, SHELF_PAGE_SIZE } from '@/lib/comms';
+import {
+  RETENTION_DAYS,
+  SHELF_ELIGIBLE_FILTER,
+  SHELF_PAGE_SIZE,
+  groupConversations,
+} from '@/lib/comms';
 import type { Database } from '@/lib/database.types';
 import { createClient } from '@/lib/supabase/server';
 import type {
+  CommAccount,
   CommCorrection,
   CommMessage,
   CommPersonWithHandles,
@@ -54,6 +60,13 @@ export const COMMS_MAX_PAGES = 50;
  * request-line/header limits common proxies enforce.
  */
 export const COMMS_VERDICT_CHUNK_SIZE = 200;
+
+/**
+ * How many thread keys one completion `in.(…)` request may carry. An email thread key is a whole
+ * Message-ID — often 60–100 characters — so 100 of them keeps one request's filter near 10KB,
+ * inside what a PostgREST-fronting proxy accepts (see {@link COMMS_VERDICT_CHUNK_SIZE}).
+ */
+export const COMMS_THREAD_CHUNK_SIZE = 100;
 
 function pagingError(): PostgrestError {
   const error = {
@@ -127,19 +140,26 @@ async function readActiveMessages(
 }
 
 /**
- * The newest `limit` shelf rows, and how many are on the shelf in all — walked a page at a time,
- * since a tab that has pressed "Show more" enough asks for more than the row cap. The first
- * request carries the count; the walk stops once it holds `limit` rows or a page comes up short.
- * A row arriving between two requests shifts the next page down by one, so a row that comes back
- * twice is held once.
+ * The newest `limit` shelf rows — rounded up to whole conversations — and how many are on the
+ * shelf in all, walked a page at a time, since a tab that has pressed "Show more" enough asks for
+ * more than the row cap. The first request carries the count; the walk stops once it holds
+ * `limit` rows or a page comes up short. A row arriving between two requests shifts the next page
+ * down by one, so a row that comes back twice is held once.
+ *
+ * The shelf is drawn by conversation, so a page edge that falls inside one would draw it short
+ * and grow it in place on "Show more". When the walk ended on a full page, every conversation it
+ * held is completed (see {@link completeHeldConversations}), so each one the client holds is
+ * whole and "Show more" only ever adds conversations below them.
  */
 async function readShelfPage(
   supabase: SupabaseClient<Database>,
   since: string,
   limit: number,
+  accounts: CommAccount[],
 ): Promise<{ messages: CommMessage[]; count: number; error: PostgrestError | null }> {
   const messages: CommMessage[] = [];
   let count = 0;
+  let cut = false;
   for (let offset = 0; offset < limit; offset += COMMS_PAGE_SIZE) {
     const size = Math.min(COMMS_PAGE_SIZE, limit - offset);
     const {
@@ -161,9 +181,74 @@ async function readShelfPage(
     if (offset === 0) count = total ?? 0;
     const held = new Set(messages.map((message) => message.id));
     messages.push(...data.filter((message) => !held.has(message.id)));
-    if (data.length < size) break;
+    cut = data.length === size;
+    if (!cut) break;
   }
-  return { messages, count, error: null };
+
+  if (!cut) return { messages, count, error: null };
+  const rest = await completeHeldConversations(supabase, since, messages, accounts);
+  if (rest.error) return { messages: [], count: 0, error: rest.error };
+  return { messages: [...messages, ...rest.messages], count, error: null };
+}
+
+/**
+ * The rest of every conversation the shelf walk cut into. Not only the one at the edge: an email
+ * thread is never split by time, so a thread whose newest reply is near the top of the page can
+ * have an older one weeks past the edge, interleaved with everything between.
+ *
+ * Every row newer than the walk's oldest row is already held, so this reads, for each thread the
+ * held rows touch, the shelf rows no newer than that oldest row — with the shelf's own
+ * eligibility — and keeps only those the shelf would group with a held row, so an iMessage chat
+ * stops at its quiet gap. `<=` plus a dedupe against the held rows keeps a row tied with the edge
+ * on arrival time from being lost or doubled. The thread keys go out in chunks (an email key is a
+ * whole Message-ID, so a long `in.()` list builds an oversized URL), and each chunk is paged, so
+ * one enormous thread can't hit the row cap.
+ */
+async function completeHeldConversations(
+  supabase: SupabaseClient<Database>,
+  since: string,
+  held: CommMessage[],
+  accounts: CommAccount[],
+): Promise<{ messages: CommMessage[]; error: PostgrestError | null }> {
+  const edge = held.at(-1);
+  if (edge === undefined) return { messages: [], error: null };
+
+  const threadKeys = [...new Set(held.map((message) => message.thread_key))];
+  const heldIds = new Set(held.map((message) => message.id));
+  const seen = new Set(heldIds);
+  const unheld: CommMessage[] = [];
+  for (let start = 0; start < threadKeys.length; start += COMMS_THREAD_CHUNK_SIZE) {
+    const chunk = threadKeys.slice(start, start + COMMS_THREAD_CHUNK_SIZE);
+    const { rows, error } = await readAllPages<CommMessage>((offset) =>
+      supabase
+        .from('comm_messages')
+        .select('*')
+        .eq('direction', 'inbound')
+        .in('thread_key', chunk)
+        .gte('received_at', since)
+        .lte('received_at', edge.received_at)
+        .or(SHELF_ELIGIBLE_FILTER)
+        .is('reader_claimed_at', null)
+        .order('received_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(offset, offset + COMMS_PAGE_SIZE - 1),
+    );
+    if (error) return { messages: [], error };
+    for (const message of rows) {
+      if (seen.has(message.id)) continue;
+      seen.add(message.id);
+      unheld.push(message);
+    }
+  }
+
+  // A thread key is per account, and an iMessage chat splits at its gap: grouping is what says
+  // which of the rows read belong with something already held.
+  const wanted = new Set<string>();
+  for (const conversation of groupConversations([...held, ...unheld], accounts)) {
+    if (!conversation.messages.some((message) => heldIds.has(message.id))) continue;
+    for (const message of conversation.messages) wanted.add(message.id);
+  }
+  return { messages: unheld.filter((message) => wanted.has(message.id)), error: null };
 }
 
 /** How many shelf-eligible newsletters the Reader claimed — a count, never the rows. */
@@ -253,7 +338,7 @@ async function readWatched(
 
 /**
  * The Comms queue's snapshot: every account, everything above FYI, the newest `shelfLimit` shelf
- * rows, the shelf's and the Reader's counts, the verdicts behind the rows returned, and the
+ * rows rounded up to whole conversations, the shelf's and the Reader's counts, the verdicts behind the rows returned, and the
  * classifier's own health. The shell seeds from it; `GET /api/comms/snapshot` re-reads it whenever
  * a tab may have missed something, and to load more of the shelf.
  *
@@ -295,7 +380,7 @@ export async function readCommsSnapshot(
 
   const active = await readActiveMessages(supabase, since);
   if (active.error) return { seed, error: active.error };
-  const shelf = await readShelfPage(supabase, since, shelfLimit);
+  const shelf = await readShelfPage(supabase, since, shelfLimit, seed.accounts);
   if (shelf.error) return { seed, error: shelf.error };
   // Two reads, so a row cleared between them comes back from both; the shelf's copy is the later.
   const shelfIds = new Set(shelf.messages.map((message) => message.id));
