@@ -431,9 +431,12 @@ action closures can fire it without it becoming a memo dep.
   reason to lose what the owner just recorded.
 - **Order-dependent optimistic writes go through ONE store-level queue, not per-burst debounces.**
   A relative write (the Backlog's "swap ranks with this ref") means something different if the
-  server applies it out of order, and two debounced bursts can be in flight at once. Queue every
-  step in the provider and send one at a time; while an item still has a step queued, keep its
-  optimistic field against earlier responses and Realtime echoes (`commitReorderBatch`).
+  server applies it out of order, and two debounced bursts can be in flight at once. Queue each
+  write in the provider the moment it is APPLIED (not when a row's debounce fires — rows debounce
+  independently), put every write to the same field through it (the Backlog's jumps share the
+  swaps' queue), let the store own the drain timer, and send one at a time. While an item still
+  has a write queued, keep its optimistic field against earlier responses and Realtime echoes
+  (`applyReorderOptimistic`).
 - **Selector hooks memoize on the store + scope fields** (`useMemo([items, scopeType,
   folderId])`), and take a small, serializable scope (`TaskViews` builds it from the URL).
 
