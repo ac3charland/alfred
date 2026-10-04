@@ -41,4 +41,4 @@ Backlog after both:  ALF-3=-4  ALF-2=-3  ALF-1=-2  ALF-4=-1
 
 Before `0042`, one Down click sends the browser three UPDATEs, and the first parks ALF-4 at -5, above every other story. That is the flash to the top. The overlapping second click 409s and ALF-4 stops at -2, one slot short of where the clicks put it on screen. With `0042`, each click writes two rows straight to their final ranks, and the second swap waits for the first and then lands: ALF-4 reaches the bottom.
 
-The browser half (ignoring a server copy of a rank while a later swap of that story is unsynced) has no surface here without a live Supabase realtime channel. It is pinned by the `code-store` unit tests under *while a later swap of the same story is unsynced (ALF-250)*.
+The browser half (ignoring a server copy of a story's rank while one of its swaps still awaits its response or its realtime echo) has no surface here without a live Supabase realtime channel. It is pinned by the `code-store` unit tests under *while a later swap of the same story is unsynced (ALF-250)*, and the row's queued swaps now flush on unmount (`backlog-row` tests).
