@@ -15,8 +15,12 @@ export type ReaderOpenLink =
  * The canonical URL is extracted from mail nobody in this system wrote, and it lands in an
  * `href` — so `javascript:` and `data:` are refused at the one place that decides what the verb
  * points at, rather than trusted because a `<link rel=canonical>` said so.
+ *
+ * Exported because the Instapaper send asks the same question of the same column: a value that
+ * is not safe to put in an `href` is not safe to hand a service that will fetch it, and two
+ * copies of this rule could disagree about one post.
  */
-function isWebUrl(value: string): boolean {
+export function isWebUrl(value: string): boolean {
   try {
     const { protocol } = new URL(value);
     return protocol === 'http:' || protocol === 'https:';
