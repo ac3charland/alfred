@@ -324,6 +324,46 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // ALF-250: realtime broadcasts every row write, so a swap that parks a row at a sentinel rank
+  // flashes it to the very top of every open Backlog. Each write must land a final rank.
+  const swapNoSentinelResult = await attempt(
+    'swap_code_priority writes only the pair’s final ranks — no sentinel (ALF-250)',
+    async () => {
+      const a = await createStory(client, 'story S1');
+      const b = await createStory(client, 'story S2');
+      await client.query(`create temp table swap_writes (ref text, priority double precision)`);
+      await client.query(`grant insert on swap_writes to authenticated`);
+      await client.query(`create function pg_temp.log_swap_write() returns trigger
+        language plpgsql as $$ begin
+          insert into swap_writes values (new.ref, new.priority); return new;
+        end; $$`);
+      await client.query(`create trigger log_swap_write after update of priority on code_items
+        for each row execute function pg_temp.log_swap_write()`);
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]),
+        );
+        const writes = await client.query<{ ref: string; priority: number }>(
+          `select ref, priority from swap_writes`,
+        );
+        const expected = new Map([
+          [a.ref, Number(b.priority)],
+          [b.ref, Number(a.priority)],
+        ]);
+        const stray = writes.rows.filter((w) => expected.get(w.ref) !== w.priority);
+        if (stray.length > 0) {
+          throw new Error(
+            `transient ranks written: ${stray.map((w) => `${w.ref}=${String(w.priority)}`).join(', ')}`,
+          );
+        }
+        return `${String(writes.rows.length)} writes, all final`;
+      } finally {
+        await client.query(`drop trigger log_swap_write on code_items`);
+        await client.query(`drop table swap_writes`);
+      }
+    },
+  );
+
   const moveResult = await attempt(
     'move_code_priority jumps a story past both extremes (0009)',
     async () => {
@@ -4819,6 +4859,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     createStoryResult,
     enterModuleResult,
     swapResult,
+    swapNoSentinelResult,
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
