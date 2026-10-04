@@ -385,6 +385,10 @@ instant it appears captures a ghosted, half-drawn frame. After the target is vis
 let the motion finish — `await page.waitForTimeout(400)`, or await a settled signal like
 a stable bounding box — then screenshot.
 
+**Shoot a dialog at a tall viewport (~1000px).** The story detail modal is capped to the viewport
+and scrolls its body (notes, spec) inside, so a short one clips the lower sections out of the shot
+— an empty-looking spec that is really just below the fold. `page.setViewportSize` before opening it.
+
 #### Images for flows, video only for animations and timing-sensitive changes
 
 The default evidence is **still a screenshot**. Pick the medium deliberately:
