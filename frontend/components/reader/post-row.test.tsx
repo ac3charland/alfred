@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { makeReaderOverview, makeReaderPost, resetReaderFixtureClock } from '@/lib/reader/fixtures';
+import { useArchivedPosts } from '@/lib/stores/reader-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
 import { PostRow } from './post-row';
@@ -20,7 +21,7 @@ function post(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
+  const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
   return listItem;
 }
 
@@ -30,6 +31,17 @@ function endExit(): void {
   const event = new Event('transitionend', { bubbles: true });
   Object.defineProperty(event, 'propertyName', { value: 'grid-template-rows' });
   fireEvent(wrapper, event);
+}
+
+/**
+ * The archive's one row, read from the store, so an optimistic write shows on it the way it
+ * would in the archive view.
+ */
+function ArchivedRowHost({ onExit }: { onExit: (id: string) => void }) {
+  const [row] = useArchivedPosts();
+  return row === undefined ? null : (
+    <PostRow post={row} now={NOW} variant="archive" onExit={onExit} />
+  );
 }
 
 /** The card itself — a button whose accessible name is the content it wraps. */
@@ -79,7 +91,7 @@ describe('PostRow — floor-state placeholders and badges', () => {
 
     expect(screen.getByText('summarising…')).toBeInTheDocument();
     expect(
-      screen.getByText('The summary is on its way — open it now, or check back in a few minutes.'),
+      screen.getByText('The summary is on its way — send it now, or check back in a few minutes.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Overview' })).not.toBeInTheDocument();
   });
@@ -98,7 +110,7 @@ describe('PostRow — floor-state placeholders and badges', () => {
     expect(screen.getByText('summary failed')).toBeInTheDocument();
     expect(
       screen.getByText(
-        "No summary — the model's output didn't fit the schema three times. The post is still here; open it or archive it.",
+        "No summary — the model's output didn't fit the schema three times. The post is still here; send it or archive it.",
       ),
     ).toBeInTheDocument();
   });
@@ -108,7 +120,7 @@ describe('PostRow — floor-state placeholders and badges', () => {
 
     expect(
       screen.getByText(
-        "No summary — the model couldn't produce one. The post is still here; open it or archive it.",
+        "No summary — the model couldn't produce one. The post is still here; send it or archive it.",
       ),
     ).toBeInTheDocument();
   });
@@ -128,7 +140,7 @@ describe('PostRow — floor-state placeholders and badges', () => {
     expect(
       screen.getByText(
         'No summary — this post walks through exploit chains in operational detail. ' +
-          'The post is still here; open it or archive it.',
+          'The post is still here; send it or archive it.',
       ),
     ).toBeInTheDocument();
   });
@@ -138,7 +150,7 @@ describe('PostRow — floor-state placeholders and badges', () => {
 
     expect(
       screen.getByText(
-        'No summary — the model declined to summarise this one. The post is still here; open it or archive it.',
+        'No summary — the model declined to summarise this one. The post is still here; send it or archive it.',
       ),
     ).toBeInTheDocument();
   });
@@ -161,16 +173,58 @@ describe('PostRow — floor-state placeholders and badges', () => {
   });
 });
 
-describe('PostRow — Open', () => {
-  it('links to the canonical URL when there is one', () => {
+/** The verb row's buttons and links, in order, by accessible name (keycaps are aria-hidden). */
+function verbNames(): string[] {
+  const row = screen.getByRole('button', { name: 'Send to Instapaper' }).parentElement;
+  if (row === null) throw new Error('no verb row');
+  return [...row.children].map((child) => child.textContent.trim());
+}
+
+describe('PostRow — the verb row', () => {
+  const LINKED = { canonical_url: 'https://example.substack.com/p/a-post', word_count: 900 };
+
+  it('leads with Send to Instapaper, and Open is gone', () => {
+    renderReader(
+      <PostRow
+        post={post({ ...LINKED, summary_state: 'done', gist: 'g', overview: makeReaderOverview() })}
+        now={NOW}
+      />,
+    );
+
+    expect(verbNames()).toStrictEqual(['Send to Instapaper', 'Overview', 'Archive']);
+    expect(screen.queryByRole('link', { name: 'Open' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open' })).not.toBeInTheDocument();
+  });
+
+  it('ends a panel-less failed row with Original, after Retry summary and Archive', () => {
+    renderReader(<PostRow post={post({ ...LINKED, summary_state: 'failed' })} now={NOW} />);
+
+    expect(verbNames()).toStrictEqual([
+      'Send to Instapaper',
+      'Retry summary',
+      'Archive',
+      'Original',
+    ]);
+  });
+
+  it('ends a first-time pending row with Original too', () => {
+    renderReader(<PostRow post={post({ ...LINKED, summary_state: 'pending' })} now={NOW} />);
+
+    expect(verbNames()).toStrictEqual(['Send to Instapaper', 'Archive', 'Original']);
+  });
+});
+
+describe('PostRow — Original', () => {
+  it('links to the canonical URL at the end of a panel-less row', () => {
     renderReader(
       <PostRow post={post({ canonical_url: 'https://example.substack.com/p/a-post' })} now={NOW} />,
     );
 
-    const link = screen.getByRole('link', { name: 'Open' });
+    const link = screen.getByRole('link', { name: 'Original' });
     expect(link).toHaveAttribute('href', 'https://example.substack.com/p/a-post');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noreferrer');
+    expect(link).toHaveClass('text-muted-foreground');
   });
 
   it('falls back to the Gmail permalink when there is no canonical URL', () => {
@@ -181,29 +235,65 @@ describe('PostRow — Open', () => {
       />,
     );
 
-    const link = screen.getByRole('link', { name: 'Open' });
-    expect(link).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Original' })).toHaveAttribute(
       'href',
       'https://mail.google.com/mail/u/0/#search/rfc822msgid:import-ai-412%40mail.substack.com',
     );
   });
 
-  it('is disabled with a title when neither exists, and wears no keycap', () => {
+  it('is absent when there is nowhere to point', () => {
     renderReader(
-      <PostRow post={post({ canonical_url: null, rfc822_message_id: null })} now={NOW} selected />,
+      <PostRow post={post({ canonical_url: null, rfc822_message_id: null })} now={NOW} />,
     );
 
-    const button = screen.getByRole('button', { name: 'Open' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute(
-      'title',
-      'No link in the post and no Message-ID captured for it.',
-    );
-    // `o` runs the row's anchor, and there is no anchor to run — a hint here points at nothing.
-    expect(within(button).queryByText('o')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Original' })).not.toBeInTheDocument();
   });
 
-  it('stamps opened on click, without calling preventDefault', () => {
+  it('sits in the panel footer, beside Re-summarise, when the row has a panel', async () => {
+    const user = userEvent.setup();
+    renderReader(
+      <PostRow
+        post={post({
+          canonical_url: 'https://example.test/a',
+          word_count: 900,
+          summary_state: 'done',
+          gist: 'g',
+          overview: makeReaderOverview(),
+          model: 'claude-sonnet-5',
+        })}
+        now={NOW}
+        selected
+      />,
+    );
+
+    const panel = screen.getByTestId('reader-row-overview');
+    // The closed panel is hidden from the accessibility tree, so the first look asks for hidden.
+    const link = within(panel).getByRole('link', { name: 'Original', hidden: true });
+    // Not repeated in the verb row: every row with a link has exactly one way out.
+    expect(screen.getAllByRole('link', { name: 'Original', hidden: true })).toHaveLength(1);
+    // The hint shows only once the link is on screen.
+    expect(within(link).queryByText('o')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(within(link).getByText('o')).toBeInTheDocument();
+    const footerGroup = link.parentElement;
+    expect(
+      within(footerGroup ?? panel).getByRole('button', { name: 'Re-summarise' }),
+    ).toBeInTheDocument();
+  });
+
+  it('hints o in the verb row of a selected panel-less row', () => {
+    renderReader(
+      <PostRow post={post({ canonical_url: 'https://example.test/a' })} now={NOW} selected />,
+    );
+
+    expect(
+      within(screen.getByRole('link', { name: 'Original' })).getByText('o'),
+    ).toBeInTheDocument();
+  });
+
+  it('stamps opened on click, without calling preventDefault', async () => {
     mockApi.patchReaderPost.mockResolvedValue(
       post({ canonical_url: 'https://example.substack.com/p/a-post' }),
     );
@@ -213,17 +303,197 @@ describe('PostRow — Open', () => {
         now={NOW}
       />,
     );
-    const link = screen.getByRole('link', { name: 'Open' });
+    const link = screen.getByRole('link', { name: 'Original' });
 
     // A real `click()` rather than a mocked one — the assertion below is that navigation was
-    // never prevented, which a mocked `.click()` (message-row's keyboard-open test pattern)
-    // would make meaningless. jsdom's own default action for an anchor click is unimplemented
-    // and logs rather than throws, so this is safe to run for real.
+    // never prevented. jsdom's own default action for an anchor click is unimplemented and logs
+    // rather than throws, so this is safe to run for real.
     const event = new MouseEvent('click', { bubbles: true, cancelable: true });
     fireEvent(link, event);
 
     expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { opened: true });
     expect(event.defaultPrevented).toBe(false);
+    // Let the stamp's reconcile land inside the test rather than after it.
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Original' })).toBeInTheDocument();
+    });
+  });
+});
+
+describe('PostRow — Send to Instapaper', () => {
+  const SENDABLE = {
+    id: 'p-1',
+    title: 'Alpha',
+    canonical_url: 'https://example.test/alpha',
+    word_count: 900,
+    summary_state: 'done',
+    gist: 'a gist',
+  } as const;
+
+  it('plays the exit on the reading list, then sends — and tells the list as the exit starts', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = post(SENDABLE);
+    mockApi.sendReaderPostToInstapaper.mockResolvedValue({ ...row, archived_at: 'x' });
+    renderReader(<PostRow post={row} now={NOW} onExit={onExit} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Send to Instapaper' }));
+
+    expect(onExit).toHaveBeenCalledWith('p-1');
+    expect(screen.getByTestId('reader-row-collapse')).toHaveClass('grid-rows-[0fr]');
+    expect(mockApi.sendReaderPostToInstapaper).not.toHaveBeenCalled();
+
+    endExit();
+
+    await waitFor(() => {
+      expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledWith('p-1');
+    });
+  });
+
+  it('sends from the archive in place — no exit, and the badge appears at once', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = post({ ...SENDABLE, archived_at: '2026-09-18T08:00:00.000Z' });
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(new Promise(() => {}));
+    renderReader(<ArchivedRowHost onExit={onExit} />, [row]);
+
+    await user.click(screen.getByRole('button', { name: 'Send to Instapaper' }));
+
+    expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledWith('p-1');
+    expect(onExit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('reader-row-collapse')).toHaveClass('grid-rows-[1fr]');
+    expect(screen.getByText('in Instapaper')).toBeInTheDocument();
+  });
+
+  it('shows in Instapaper on a post already sent', () => {
+    renderReader(
+      <PostRow
+        post={post({ ...SENDABLE, instapaper_sent_at: '2026-09-17T08:00:00.000Z' })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('in Instapaper')).toBeInTheDocument();
+  });
+
+  it('is disabled with a title on a deployment without Instapaper, and wears no keycap', () => {
+    renderReader(<PostRow post={post(SENDABLE)} now={NOW} selected />, [], undefined, {
+      instapaperConfigured: false,
+    });
+
+    const button = screen.getByRole('button', { name: 'Send to Instapaper' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', "Instapaper isn't set up on this deployment.");
+    expect(within(button).queryByText('i')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['its text was swept', { text_swept_at: '2026-09-08T03:00:00.000Z' }],
+    ['it never had a body', { word_count: 0 }],
+  ])('is disabled when there is no link and %s', (_label, overrides) => {
+    renderReader(
+      <PostRow
+        post={post({ ...SENDABLE, canonical_url: null, summary_state: 'failed', ...overrides })}
+        now={NOW}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: 'Send to Instapaper' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', 'No link and no stored text to send.');
+  });
+
+  it('stays enabled for a link-less post that still has its text — it goes as a private bookmark', () => {
+    renderReader(<PostRow post={post({ ...SENDABLE, canonical_url: null })} now={NOW} />);
+
+    expect(screen.getByRole('button', { name: 'Send to Instapaper' })).toBeEnabled();
+  });
+
+  it('stays enabled for a swept post that still has a web link', () => {
+    renderReader(
+      <PostRow post={post({ ...SENDABLE, text_swept_at: '2026-09-08T03:00:00.000Z' })} now={NOW} />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Send to Instapaper' })).toBeEnabled();
+  });
+
+  it('hints i on the selected row', () => {
+    renderReader(<PostRow post={post(SENDABLE)} now={NOW} selected />);
+
+    expect(
+      within(screen.getByRole('button', { name: 'Send to Instapaper' })).getByText('i'),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('PostRow — the send and open keys', () => {
+  const ROW = {
+    id: 'p-1',
+    title: 'Alpha',
+    canonical_url: 'https://example.test/alpha',
+    word_count: 900,
+    summary_state: 'done',
+    gist: 'a gist',
+    overview: makeReaderOverview(),
+  } as const;
+
+  it('i sends the selected row', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = post(ROW);
+    mockApi.sendReaderPostToInstapaper.mockResolvedValue(row);
+    renderReader(<PostRow post={row} now={NOW} selected onExit={onExit} />, [row]);
+
+    await user.keyboard('i');
+    endExit();
+
+    expect(onExit).toHaveBeenCalledWith('p-1');
+    await waitFor(() => {
+      expect(mockApi.sendReaderPostToInstapaper).toHaveBeenCalledWith('p-1');
+    });
+  });
+
+  it('i does nothing when the verb is disabled', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = post(ROW);
+    renderReader(<PostRow post={row} now={NOW} selected onExit={onExit} />, [row], undefined, {
+      instapaperConfigured: false,
+    });
+
+    await user.keyboard('i');
+
+    expect(onExit).not.toHaveBeenCalled();
+    expect(mockApi.sendReaderPostToInstapaper).not.toHaveBeenCalled();
+  });
+
+  it('o opens the original of a done row whose panel is closed, and stamps opened_at', async () => {
+    const user = userEvent.setup();
+    const open = jest.spyOn(globalThis, 'open').mockReturnValue(null);
+    mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    const row = post(ROW);
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    await user.keyboard('o');
+
+    expect(open).toHaveBeenCalledWith(
+      'https://example.test/alpha',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { opened: true });
+  });
+
+  it('o does nothing when there is nowhere to point', async () => {
+    const user = userEvent.setup();
+    const open = jest.spyOn(globalThis, 'open').mockReturnValue(null);
+    const row = post({ ...ROW, canonical_url: null, rfc822_message_id: null });
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    await user.keyboard('o');
+
+    expect(open).not.toHaveBeenCalled();
+    expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
   });
 });
 
@@ -359,7 +629,8 @@ describe('PostRow — every verb points the keyboard at its own row', () => {
   } as const;
 
   it.each([
-    ['Open', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
+    ['Send to Instapaper', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
+    ['Original', post({ ...ROW, summary_state: 'pending' })],
     ['Overview', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
     ['Retry summary', post({ ...ROW, summary_state: 'failed' })],
     ['Archive', post({ ...ROW, summary_state: 'done', overview: makeReaderOverview() })],
@@ -367,9 +638,10 @@ describe('PostRow — every verb points the keyboard at its own row', () => {
     const user = userEvent.setup();
     const onSelect = jest.fn();
     mockApi.patchReaderPost.mockReturnValue(new Promise(() => {}));
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(new Promise(() => {}));
     renderReader(<PostRow post={row} now={NOW} onSelect={onSelect} />, [row]);
 
-    await user.click(screen.getByRole(name === 'Open' ? 'link' : 'button', { name }));
+    await user.click(screen.getByRole(name === 'Original' ? 'link' : 'button', { name }));
 
     expect(onSelect).toHaveBeenCalledWith('p-1');
   });
@@ -558,7 +830,7 @@ describe('PostRow — a summary being replaced', () => {
     renderReader(<PostRow post={post({ summary_state: 'pending', gist: null })} now={NOW} />);
 
     expect(
-      screen.getByText('The summary is on its way — open it now, or check back in a few minutes.'),
+      screen.getByText('The summary is on its way — send it now, or check back in a few minutes.'),
     ).toBeInTheDocument();
   });
 });
@@ -574,7 +846,7 @@ describe('PostRow — a swept post', () => {
 
     expect(
       screen.getByText(
-        "No summary — the model declined to summarise this one. Its text was swept on Sep 8, so it can't be retried; open it or archive it.",
+        "No summary — the model declined to summarise this one. Its text was swept on Sep 8, so it can't be retried; send it or archive it.",
       ),
     ).toBeInTheDocument();
   });
@@ -589,7 +861,7 @@ describe('PostRow — a swept post', () => {
 
     expect(
       screen.getByText(
-        'No summary — no readable body. The post is still here; open it or archive it.',
+        'No summary — no readable body. The post is still here; send it or archive it.',
       ),
     ).toBeInTheDocument();
   });

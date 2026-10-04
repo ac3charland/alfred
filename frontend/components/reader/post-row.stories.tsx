@@ -11,8 +11,9 @@ import { PostRow } from './post-row';
 
 /**
  * One story per row state the reading list can show: a finished summary (collapsed and
- * expanded), the three floor states, and a post with nowhere for "Open" to point. Each is its
- * own `ReaderProvider` seed (rather than the shared shell seed) so its archive/open verbs have
+ * expanded), the three floor states, a post with nowhere for "Original" to point, the send verb
+ * disabled for each of its two reasons, a sent post in the archive, and the row at phone width.
+ * Each is its own `ReaderProvider` seed (rather than the shared shell seed) so its verbs have
  * something real to act on in an isolated story.
  */
 
@@ -24,7 +25,7 @@ function post(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
+  const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
   return listItem;
 }
 
@@ -36,9 +37,15 @@ const withFrame: Decorator = (Story) => (
 
 const withProviders: Decorator = (Story, context) => {
   const row = context.args['post'] as ReaderPostListItem;
+  // A story opts into an unconfigured deployment with `parameters: { instapaperConfigured: false }`.
+  const instapaperConfigured = context.parameters['instapaperConfigured'] !== false;
   return (
     <ToastProvider>
-      <ReaderProvider initialPosts={[row]} initialHealth={NO_READER_HEALTH}>
+      <ReaderProvider
+        initialPosts={[row]}
+        initialHealth={NO_READER_HEALTH}
+        instapaperConfigured={instapaperConfigured}
+      >
         <Story />
       </ReaderProvider>
     </ToastProvider>
@@ -145,7 +152,7 @@ export const Refused: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** No canonical URL and no captured Message-ID — Open is disabled, with a title saying why. */
+/** No canonical URL and no captured Message-ID — no Original link; it still sends, as a private bookmark. */
 export const NoLink: Story = {
   args: {
     post: post({
@@ -252,4 +259,69 @@ export const RefusedAndSwept: Story = {
     }),
   },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** Nothing to send — no web link, and the body is gone: Send is disabled, its title says why. */
+export const SendNothingToSend: Story = {
+  args: {
+    post: post({
+      id: 'p-nothing',
+      author: 'Stratechery',
+      title: '(untitled)',
+      received_at: '2026-09-14T14:00:00.000Z',
+      word_count: 0,
+      canonical_url: null,
+      rfc822_message_id: '<untitled@mail.stratechery.com>',
+      summary_state: 'failed',
+      last_error: 'no readable body',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** A deployment without Instapaper credentials: Send is disabled on every row. */
+export const SendUnconfigured: Story = {
+  parameters: {
+    instapaperConfigured: false,
+    visualTest: { target: '[data-testid="row-frame"]' },
+  },
+};
+
+/** In the archive after a send: the in Instapaper badge, Unarchive in Archive's slot. */
+export const SentInArchive: Story = {
+  args: {
+    variant: 'archive',
+    post: post({
+      id: 'p-sent',
+      author: 'Second Thoughts',
+      title: 'How near is the intelligence explosion, really?',
+      received_at: '2026-09-16T14:00:00.000Z',
+      word_count: 3220,
+      canonical_url: 'https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion',
+      summary_state: 'done',
+      gist:
+        'Argues the "recursive self-improvement" debate conflates three different feedback loops ' +
+        'and that only one of them (automated ML research) has any evidence behind it.',
+      overview: makeReaderOverview(),
+      archived_at: '2026-09-17T09:00:00.000Z',
+      instapaper_sent_at: '2026-09-17T09:00:00.000Z',
+      instapaper_bookmark_id: 1_234_567,
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/**
+ * A 375 px phone: the list column is 343 px (the router's `px-4`), hints are hidden below `md`,
+ * and the three verbs still fit on one line.
+ */
+export const PhoneWidth: Story = {
+  decorators: [
+    (Story) => (
+      <div data-testid="phone-frame" className="w-[343px] bg-background">
+        <Story />
+      </div>
+    ),
+  ],
+  parameters: { visualTest: { target: '[data-testid="phone-frame"]' } },
 };

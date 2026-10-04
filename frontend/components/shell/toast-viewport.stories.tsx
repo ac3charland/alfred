@@ -39,3 +39,15 @@ export const Emphasis: Story = {
     },
   },
 };
+
+// A refused Reader send: the route's own sentence, so the owner knows why the row came back.
+export const InstapaperRefusal: Story = {
+  args: {
+    toast: {
+      id: 'i',
+      message: 'This publication has opted out of Instapaper',
+      variant: 'default',
+      leaving: false,
+    },
+  },
+};

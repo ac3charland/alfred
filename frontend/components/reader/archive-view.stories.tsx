@@ -27,7 +27,11 @@ function post(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  const {
+    text: _text,
+    html: _html,
+    ...listItem
+  } = makeReaderPost(PUBLICATION_ID, {
     archived_at: '2026-09-17T09:00:00.000Z',
     ...overrides,
   });
@@ -100,7 +104,7 @@ function withArchiveReadOf(answer: () => Promise<unknown>): Decorator {
     globalThis.fetch = answer as unknown as typeof fetch;
     return (
       <ToastProvider>
-        <ReaderProvider initialPosts={[]} initialHealth={NO_READER_HEALTH}>
+        <ReaderProvider initialPosts={[]} initialHealth={NO_READER_HEALTH} instapaperConfigured>
           <Story />
         </ReaderProvider>
       </ToastProvider>

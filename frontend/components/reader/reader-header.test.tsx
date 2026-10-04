@@ -44,7 +44,11 @@ function liveHealth(overrides: Partial<ReaderHealth> = {}): ReaderHealth {
 
 /** A claimed post the tick should have summarised `minutes` ago. */
 function waiting(minutes: number): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  const {
+    text: _text,
+    html: _html,
+    ...listItem
+  } = makeReaderPost(PUBLICATION_ID, {
     summary_state: 'pending',
     word_count: 1200,
     created_at: ago(minutes),

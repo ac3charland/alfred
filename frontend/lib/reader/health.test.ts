@@ -30,7 +30,7 @@ function ago(minutes: number): string {
 }
 
 function post(overrides: Partial<Omit<ReaderPostListItem, 'overview'>> = {}): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
+  const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
   return listItem;
 }
 

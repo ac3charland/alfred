@@ -24,7 +24,11 @@ function archived(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  const {
+    text: _text,
+    html: _html,
+    ...listItem
+  } = makeReaderPost(PUBLICATION_ID, {
     archived_at: '2026-09-18T08:00:00.000Z',
     ...overrides,
   });
@@ -219,13 +223,29 @@ describe('ArchiveView — the rows', () => {
     overview: makeReaderOverview(),
   });
 
-  it('offers Open and Unarchive, never Archive', async () => {
+  it('offers Send to Instapaper and Unarchive, never Archive', async () => {
     mockApi.fetchReaderPosts.mockResolvedValue([POST]);
     renderReader(<ArchiveView now={NOW} />);
 
     expect(await screen.findByRole('button', { name: 'Unarchive' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send to Instapaper' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+  });
+
+  it('sends a post in place — it stays in the archive and gains the badge', async () => {
+    const user = userEvent.setup();
+    mockApi.fetchReaderPosts.mockResolvedValue([POST]);
+    mockApi.sendReaderPostToInstapaper.mockResolvedValue({
+      ...POST,
+      instapaper_sent_at: '2026-09-18T09:00:00.000Z',
+      instapaper_bookmark_id: 7,
+    });
+    renderReader(<ArchiveView now={NOW} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Send to Instapaper' }));
+
+    expect(await screen.findByText('in Instapaper')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Unarchive' })).toBeInTheDocument();
   });
 
   it('expands into the overview like the reading list does', async () => {

@@ -19,6 +19,20 @@ describe('PostMarkers', () => {
     expect(screen.getByText('summary refused')).toBeInTheDocument();
   });
 
+  it('shows in Instapaper for a sent post, beside any summary-state badge', () => {
+    const { rerender } = render(<PostMarkers state="done" sent />);
+    expect(screen.getByText('in Instapaper')).toBeInTheDocument();
+
+    rerender(<PostMarkers state="failed" sent />);
+    expect(screen.getByText('in Instapaper')).toBeInTheDocument();
+    expect(screen.getByText('summary failed')).toBeInTheDocument();
+  });
+
+  it('shows no Instapaper badge for a post never sent', () => {
+    render(<PostMarkers state="pending" />);
+    expect(screen.queryByText('in Instapaper')).not.toBeInTheDocument();
+  });
+
   it('renders nothing for a done post', () => {
     const { container } = render(<PostMarkers state="done" />);
     expect(container).toBeEmptyDOMElement();

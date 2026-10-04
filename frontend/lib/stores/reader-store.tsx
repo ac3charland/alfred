@@ -32,6 +32,20 @@ function refusal(error: unknown): string | undefined {
 }
 
 /**
+ * The statuses whose sentence the Instapaper send route wrote for the owner: nothing to send,
+ * Instapaper refused (opted out, a link it won't take), rate-limited, not set up here, or
+ * Instapaper itself in trouble. Anything else — a 500 from the stamp's write, a dropped
+ * connection — gets the store's own line.
+ */
+const SEND_DETAIL_STATUSES = new Set([409, 422, 429, 501, 502]);
+
+function sendRefusal(error: unknown): string | undefined {
+  return error instanceof api.ApiError && SEND_DETAIL_STATUSES.has(error.status)
+    ? error.detail
+    : undefined;
+}
+
+/**
  * How many archived posts the archive read asks for. The archive is unbounded — every post ever
  * skimmed — while the app's fetch-everything default assumes a bounded table, so this is a
  * deliberate ceiling rather than a page size: the view says so out loud when it hits it, and a
@@ -65,6 +79,11 @@ export interface ReaderState {
    * read itself takes — see ALF-252.
    */
   healthReconcileStartedAt: string | null;
+  /**
+   * Whether this deployment has Instapaper credentials. Fixed for the provider's life — the shell
+   * reads it server-side — and what disables the send verb on a deployment without them.
+   */
+  instapaperConfigured: boolean;
 }
 
 export interface ReaderActions {
@@ -91,7 +110,16 @@ export interface ReaderActions {
    */
   loadArchive: () => void;
   /**
-   * Stamp `opened_at` the instant "Open" is clicked. Fire-and-forget: the owner is already on
+   * Send a post to the owner's Instapaper and archive it, in one press: optimistic
+   * `instapaper_sent_at` and `archived_at` (an archived post keeps its instant), reconciled with
+   * the server row, rolled back on failure and toasted in the route's own words — "This
+   * publication has opted out of Instapaper" — since the owner is watching and nothing retries on
+   * its own. A second call while one is in flight for the same post returns that same send rather
+   * than starting another.
+   */
+  sendToInstapaper: (id: string) => Promise<ReaderPostListItem>;
+  /**
+   * Stamp `opened_at` the instant "Original" is clicked. Fire-and-forget: the owner is already on
    * their way to the post, so a failed write neither rolls back the stamp nor toasts — the next
    * `refresh()` corrects the row if the server never saw it.
    */
@@ -207,10 +235,13 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 export function ReaderProvider({
   initialPosts,
   initialHealth,
+  instapaperConfigured,
   children,
 }: {
   initialPosts: ReaderPostListItem[];
   initialHealth: ReaderHealthSnapshot;
+  /** Whether this deployment has Instapaper credentials (`getInstapaperConfig() !== null`). */
+  instapaperConfigured: boolean;
   children: React.ReactNode;
 }) {
   const [state, dispatch] = React.useReducer(readerReducer, {
@@ -219,6 +250,7 @@ export function ReaderProvider({
     archiveStatus: 'idle',
     archiveFull: false,
     healthReconcileStartedAt: null,
+    instapaperConfigured,
   });
 
   // Latest state, readable inside the stable action closures so they can capture pre-mutation
@@ -422,6 +454,47 @@ export function ReaderProvider({
     [beginWrite, endWrite],
   );
 
+  /** Sends in flight, by post id — what makes a second press while one is out a no-op. */
+  const sendingRef = React.useRef(new Map<string, Promise<ReaderPostListItem>>());
+
+  const sendToInstapaper = React.useCallback(
+    (id: string): Promise<ReaderPostListItem> => {
+      const inFlight = sendingRef.current.get(id);
+      if (inFlight !== undefined) return inFlight;
+
+      const current = stateRef.current.posts.find((post) => post.id === id);
+      const now = new Date().toISOString();
+      const patch: Partial<ReaderPostListItem> = {
+        instapaper_sent_at: now,
+        archived_at: current?.archived_at ?? now,
+      };
+      // Only the keys this write touches, so a rollback can't clobber what `refresh()` moved.
+      const captured = current === undefined ? {} : capturedFields(current, patch);
+      beginWrite(id);
+      const send = runOptimisticMutation({
+        optimistic: () => {
+          dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch } });
+        },
+        apiCall: () => api.sendReaderPostToInstapaper(id),
+        reconcile: (saved) => {
+          dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
+        },
+        rollback: () => {
+          dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch: captured } });
+        },
+        onError: (error) => {
+          showToastRef.current(sendRefusal(error) ?? "Couldn't send that post to Instapaper");
+        },
+      }).finally(() => {
+        endWrite(id);
+        sendingRef.current.delete(id);
+      });
+      sendingRef.current.set(id, send);
+      return send;
+    },
+    [beginWrite, endWrite],
+  );
+
   const actions = React.useMemo<ReaderActions>(
     () => ({
       archive(id) {
@@ -491,10 +564,11 @@ export function ReaderProvider({
             endWrite(id);
           });
       },
+      sendToInstapaper,
       refresh,
       reconcileHealth,
     }),
-    [refresh, reconcileHealth, loadArchive, setArchived, beginWrite, endWrite],
+    [refresh, reconcileHealth, loadArchive, setArchived, sendToInstapaper, beginWrite, endWrite],
   );
 
   return (
@@ -551,6 +625,11 @@ export function useReaderHealth(): ReaderHealthSnapshot {
  */
 export function useReaderHealthReconcileStartedAt(): string | null {
   return useStateValue('useReaderHealthReconcileStartedAt').healthReconcileStartedAt;
+}
+
+/** Whether this deployment can send to Instapaper — when not, the send verb renders disabled. */
+export function useInstapaperConfigured(): boolean {
+  return useStateValue('useInstapaperConfigured').instapaperConfigured;
 }
 
 /** The Reader mutation actions. Throws outside a ReaderProvider. */
