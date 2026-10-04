@@ -338,8 +338,10 @@ export interface CodeActions {
   /**
    * Commit a burst of `applyReorderOptimistic` swaps to the server, ONE `reorderCode` call per
    * step, strictly in order — each step's RPC must see the priorities the previous step in the
-   * burst left behind, exactly mirroring how the swaps were already applied locally. Reconciles
-   * each step's returned `code_items` rows as it goes. If a step fails, every step from that one
+   * burst left behind, exactly mirroring how the swaps were already applied locally — and a burst
+   * queues behind any earlier one still committing, for the same reason. Reconciles each step's
+   * returned `code_items` rows as it goes, except the rank of a story a later swap has already
+   * moved on from (ALF-250); the last swap touching it reconciles that. If a step fails, every step from that one
    * onward is rolled back to its pre-swap priorities (in reverse order, so each rollback undoes
    * cleanly); steps that already committed before the failure are left as they are, since the
    * server already has them.
@@ -556,6 +558,17 @@ export function CodeProvider({
     stateRef.current = state;
   }, [state]);
 
+  // ALF-250: the chevron swaps this tab has applied but the server hasn't yet confirmed, counted
+  // per item_id. A burst re-ranks the list locally all at once, but the server walks it one swap
+  // at a time, so every response and realtime echo until the last carries a rank the list has
+  // already moved past — applied, it dragged the story back up the list and pointed the next
+  // click at the wrong neighbour. While an item is held here, incoming ranks for it are dropped;
+  // the response of the last swap touching it is the one that reconciles.
+  const heldRanksRef = React.useRef(new Map<string, number>());
+  // The tail of the swap queue: each burst commits only once the one before it has settled, so
+  // the server applies the swaps in exactly the order this tab applied them.
+  const reorderQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+
   const { showToast } = useToastActions();
   // The stable (`[]`) action closures surface a failed write as a toast (ALF-33). They can't
   // close over `showToast` directly (it would need to be a memo dep), so read it through a ref
@@ -603,7 +616,11 @@ export function CodeProvider({
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: deliveredColumns(codeItemToStoryPatch(row)),
+        patch: withoutHeldRank(
+          heldRanksRef.current,
+          row.item_id,
+          deliveredColumns(codeItemToStoryPatch(row)),
+        ),
       });
       if (!changedState) return;
 
@@ -1252,42 +1269,55 @@ export function CodeProvider({
         // Swap: each story takes the other's priority (the same exchange the RPC does).
         dispatch({ type: 'patchStory', itemId: aItemId, patch: { priority: bPriorityBefore } });
         dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: aPriorityBefore } });
+        holdRank(heldRanksRef.current, aItemId);
+        holdRank(heldRanksRef.current, bItemId);
         return { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore };
       },
-      async commitReorderBatch(steps) {
-        for (const [index, step] of steps.entries()) {
-          try {
-            const rows = await api.reorderCode(step.ref, step.neighbourRef);
-            // Apply each returned sidecar through the one projection (carries the real priority).
-            for (const row of rows) {
-              dispatch({
-                type: 'patchStory',
-                itemId: row.item_id,
-                patch: codeItemToStoryPatch(row),
-              });
+      commitReorderBatch(steps) {
+        const held = heldRanksRef.current;
+        const commit = async () => {
+          for (const [index, step] of steps.entries()) {
+            try {
+              const rows = await api.reorderCode(step.ref, step.neighbourRef);
+              releaseRank(held, step.aItemId);
+              releaseRank(held, step.bItemId);
+              // Apply each returned sidecar through the one projection (carries the real
+              // priority) — less the rank of any story a later swap has already moved on from.
+              for (const row of rows) {
+                dispatch({
+                  type: 'patchStory',
+                  itemId: row.item_id,
+                  patch: withoutHeldRank(held, row.item_id, codeItemToStoryPatch(row)),
+                });
+              }
+            } catch {
+              // This step and everything queued behind it never reached the server — undo them,
+              // in reverse, so each rollback exactly cancels its own swap. Steps before this one
+              // already committed, so they're left as they are.
+              for (let i = steps.length - 1; i >= index; i -= 1) {
+                const failed = steps[i];
+                if (failed === undefined) continue;
+                releaseRank(held, failed.aItemId);
+                releaseRank(held, failed.bItemId);
+                dispatch({
+                  type: 'patchStory',
+                  itemId: failed.aItemId,
+                  patch: { priority: failed.aPriorityBefore },
+                });
+                dispatch({
+                  type: 'patchStory',
+                  itemId: failed.bItemId,
+                  patch: { priority: failed.bPriorityBefore },
+                });
+              }
+              showToastRef.current("Couldn't reorder story");
+              return;
             }
-          } catch {
-            // This step and everything queued behind it never reached the server — undo them,
-            // in reverse, so each rollback exactly cancels its own swap. Steps before this one
-            // already committed, so they're left as they are.
-            for (let i = steps.length - 1; i >= index; i -= 1) {
-              const failed = steps[i];
-              if (failed === undefined) continue;
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.aItemId,
-                patch: { priority: failed.aPriorityBefore },
-              });
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.bItemId,
-                patch: { priority: failed.bPriorityBefore },
-              });
-            }
-            showToastRef.current("Couldn't reorder story");
-            return;
           }
-        }
+        };
+        const committed = reorderQueueRef.current.then(commit);
+        reorderQueueRef.current = committed;
+        return committed;
       },
       applyMoveOptimistic(ref, toTop) {
         const { stories } = stateRef.current;
@@ -1550,6 +1580,32 @@ function projectMovePriority(
   const extreme = Math.max(...projectOthers);
   const below = allOthers.filter((p) => p > extreme);
   return below.length === 0 ? extreme + 1 : (Math.min(...below) + extreme) / 2;
+}
+
+/** Count one more unsettled swap touching `itemId` (ALF-250). */
+function holdRank(held: Map<string, number>, itemId: string): void {
+  held.set(itemId, (held.get(itemId) ?? 0) + 1);
+}
+
+/** Settle one swap touching `itemId`; at zero the item's server rank is trusted again. */
+function releaseRank(held: Map<string, number>, itemId: string): void {
+  const remaining = (held.get(itemId) ?? 0) - 1;
+  if (remaining > 0) held.set(itemId, remaining);
+  else held.delete(itemId);
+}
+
+/**
+ * `patch` less its `priority` while `item_id` still has unsettled swaps (ALF-250): that rank is
+ * one the list has already moved past, and the last swap's response will deliver the real one.
+ */
+function withoutHeldRank(
+  held: Map<string, number>,
+  itemId: string,
+  patch: Partial<CodeStory>,
+): Partial<CodeStory> {
+  if (!held.has(itemId)) return patch;
+  const { priority, ...rest } = patch;
+  return rest;
 }
 
 /** The outstanding factory states the Backlog shows by default — everything but done/abandoned. */
