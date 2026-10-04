@@ -26,6 +26,7 @@ import { stableSorted } from '@/lib/sort';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
+import { PriorityLedger } from '@/lib/stores/priority-ledger';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { createClient } from '@/lib/supabase/client';
 import { deliveredColumns, joinWhenAuthenticated } from '@/lib/supabase/realtime';
@@ -506,6 +507,13 @@ export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
   };
 }
 
+/** A story patch minus its `priority` — the rest of a row whose rank is older than the screen's. */
+function withoutPriority(patch: Partial<CodeStory>): Partial<CodeStory> {
+  const rest = { ...patch };
+  delete rest.priority;
+  return rest;
+}
+
 /** Reconcile the optimistic story with the server sidecar (real ref/ref_number/state). */
 function reconcileStory(optimistic: CodeStory, saved: CodeItem): CodeStory {
   return { ...optimistic, ...codeItemToStoryPatch(saved) };
@@ -566,6 +574,14 @@ export function CodeProvider({
     showToastRef.current = showToast;
   }, [showToast]);
 
+  // Keeps older server news from overwriting a newer optimistic priority, and runs the priority
+  // commits one at a time (ALF-250 — see `PriorityLedger`).
+  const [priorityLedger] = React.useState(() => new PriorityLedger());
+  // The ledger token of each optimistic change, keyed by what its commit is handed: a swap's step
+  // object, or a jump burst's kind + story (a burst commits only its LATEST click).
+  const [reorderTokens] = React.useState(() => new WeakMap<ReorderStep, Map<string, number>>());
+  const [jumpTokens] = React.useState(() => new Map<string, number>());
+
   // Live swimlane updates. The webhook Worker (and any other device/tab) writes a story's
   // factory_state out of band, never touching this tab's store — so subscribe to the base
   // `code_items` table (you can't subscribe to the `v_code_stories` view the board reads)
@@ -600,10 +616,16 @@ export function CodeProvider({
       // reasoning that keeps the board stable (no flicker, no double notification).
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
+      const patch = deliveredColumns(codeItemToStoryPatch(row));
+      // A priority this tab wrote (or one landing while it holds an unsynced rank) is older news
+      // than the screen — applying it would snap the row back (ALF-250).
+      const keepPriority =
+        typeof patch.priority === 'number' &&
+        priorityLedger.acceptEcho(row.item_id, patch.priority);
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: deliveredColumns(codeItemToStoryPatch(row)),
+        patch: keepPriority ? patch : withoutPriority(patch),
       });
       if (!changedState) return;
 
@@ -679,9 +701,53 @@ export function CodeProvider({
       window.removeEventListener('focus', handleVisible);
       restoreTitle();
     };
-  }, [showToast]);
+  }, [showToast, priorityLedger]);
 
   const actions = React.useMemo<CodeActions>(() => {
+    // Apply a ranking RPC's returned rows through the one projection (carries the real priority),
+    // keeping the screen's priority for a story with a newer local rank than the answer — one in
+    // `pending` (re-ranked again later in the same burst) or touched after the commit began.
+    function reconcilePriorityRows(
+      rows: CodeItem[],
+      tokens: ReadonlyMap<string, number>,
+      pending: ReadonlySet<string> = new Set(),
+    ) {
+      for (const row of rows) {
+        priorityLedger.recordOwnWrite(row.item_id, row.priority);
+        const patch = codeItemToStoryPatch(row);
+        const current =
+          !pending.has(row.item_id) && priorityLedger.settle(row.item_id, tokens.get(row.item_id));
+        dispatch({
+          type: 'patchStory',
+          itemId: row.item_id,
+          patch: current ? patch : withoutPriority(patch),
+        });
+      }
+    }
+
+    // The network half shared by both top/bottom jumps: queued behind any priority commit still
+    // in flight, reconciled from the answer, rolled back to `priorityBefore` on failure.
+    function commitJump(
+      kind: 'backlog' | 'project',
+      ref: string,
+      priorityBefore: number | null,
+      request: () => Promise<CodeItem[]>,
+    ): Promise<void> {
+      const itemId = stateRef.current.stories.find((s) => s.ref === ref)?.item_id ?? null;
+      if (itemId === null) return Promise.resolve();
+      const token = jumpTokens.get(`${kind}:${itemId}`);
+      const tokens = new Map(token === undefined ? [] : [[itemId, token]]);
+      return priorityLedger.serialize(async () => {
+        try {
+          reconcilePriorityRows(await request(), tokens);
+        } catch {
+          priorityLedger.settle(itemId, token);
+          dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
+          showToastRef.current("Couldn't move story");
+        }
+      });
+    }
+
     // Shared insert-optimistic-then-reconcile path for both entry points (an item already
     // known to the Code view, and one crossing from Tasks), so neither relies on `this`.
     async function admitToFactory(
@@ -1252,42 +1318,53 @@ export function CodeProvider({
         // Swap: each story takes the other's priority (the same exchange the RPC does).
         dispatch({ type: 'patchStory', itemId: aItemId, patch: { priority: bPriorityBefore } });
         dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: aPriorityBefore } });
-        return { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore };
+        const step = { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore };
+        reorderTokens.set(
+          step,
+          new Map([
+            [aItemId, priorityLedger.touch(aItemId)],
+            [bItemId, priorityLedger.touch(bItemId)],
+          ]),
+        );
+        return step;
       },
-      async commitReorderBatch(steps) {
-        for (const [index, step] of steps.entries()) {
-          try {
-            const rows = await api.reorderCode(step.ref, step.neighbourRef);
-            // Apply each returned sidecar through the one projection (carries the real priority).
-            for (const row of rows) {
-              dispatch({
-                type: 'patchStory',
-                itemId: row.item_id,
-                patch: codeItemToStoryPatch(row),
-              });
+      commitReorderBatch(steps) {
+        // Each story's token from the last step that touches it — the change this batch syncs.
+        const tokens = new Map(steps.flatMap((step) => [...(reorderTokens.get(step) ?? [])]));
+        return priorityLedger.serialize(async () => {
+          for (const [index, step] of steps.entries()) {
+            let rows: CodeItem[];
+            try {
+              rows = await api.reorderCode(step.ref, step.neighbourRef);
+            } catch {
+              // This step and everything queued behind it never reached the server — undo them,
+              // in reverse, so each rollback exactly cancels its own swap. Steps before this one
+              // already committed, so they're left as they are.
+              for (let i = steps.length - 1; i >= index; i -= 1) {
+                const failed = steps[i];
+                if (failed === undefined) continue;
+                priorityLedger.settle(failed.aItemId, tokens.get(failed.aItemId));
+                priorityLedger.settle(failed.bItemId, tokens.get(failed.bItemId));
+                dispatch({
+                  type: 'patchStory',
+                  itemId: failed.aItemId,
+                  patch: { priority: failed.aPriorityBefore },
+                });
+                dispatch({
+                  type: 'patchStory',
+                  itemId: failed.bItemId,
+                  patch: { priority: failed.bPriorityBefore },
+                });
+              }
+              showToastRef.current("Couldn't reorder story");
+              return;
             }
-          } catch {
-            // This step and everything queued behind it never reached the server — undo them,
-            // in reverse, so each rollback exactly cancels its own swap. Steps before this one
-            // already committed, so they're left as they are.
-            for (let i = steps.length - 1; i >= index; i -= 1) {
-              const failed = steps[i];
-              if (failed === undefined) continue;
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.aItemId,
-                patch: { priority: failed.aPriorityBefore },
-              });
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.bItemId,
-                patch: { priority: failed.bPriorityBefore },
-              });
-            }
-            showToastRef.current("Couldn't reorder story");
-            return;
+            // A story a later step of this burst swaps again already shows a newer rank than
+            // this step's answer, so its priority waits for the step that last touches it.
+            const later = new Set(steps.slice(index + 1).flatMap((s) => [s.aItemId, s.bItemId]));
+            reconcilePriorityRows(rows, tokens, later);
           }
-        }
+        });
       },
       applyMoveOptimistic(ref, toTop) {
         const { stories } = stateRef.current;
@@ -1307,22 +1384,11 @@ export function CodeProvider({
           itemId,
           patch: { priority: toTop ? extreme - 1 : extreme + 1 },
         });
+        jumpTokens.set(`backlog:${itemId}`, priorityLedger.touch(itemId));
         return { priorityBefore };
       },
-      async commitMove(ref, toTop, priorityBefore) {
-        const { stories } = stateRef.current;
-        const target = stories.find((s) => s.ref === ref);
-        const itemId = target?.item_id ?? null;
-        if (itemId === null) return;
-        try {
-          const rows = await api.moveCode(ref, toTop);
-          for (const row of rows) {
-            dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
-          }
-        } catch {
-          dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
-          showToastRef.current("Couldn't move story");
-        }
+      commitMove(ref, toTop, priorityBefore) {
+        return commitJump('backlog', ref, priorityBefore, () => api.moveCode(ref, toTop));
       },
       applyMoveInProjectOptimistic(ref, toTop) {
         const { stories } = stateRef.current;
@@ -1335,22 +1401,11 @@ export function CodeProvider({
         const priorityBefore = target.priority;
         const nextPriority = projectMovePriority(stories, itemId, projectId, toTop);
         dispatch({ type: 'patchStory', itemId, patch: { priority: nextPriority } });
+        jumpTokens.set(`project:${itemId}`, priorityLedger.touch(itemId));
         return { priorityBefore };
       },
-      async commitMoveInProject(ref, toTop, priorityBefore) {
-        const { stories } = stateRef.current;
-        const target = stories.find((s) => s.ref === ref);
-        const itemId = target?.item_id ?? null;
-        if (itemId === null) return;
-        try {
-          const rows = await api.moveCodeInProject(ref, toTop);
-          for (const row of rows) {
-            dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
-          }
-        } catch {
-          dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
-          showToastRef.current("Couldn't move story");
-        }
+      commitMoveInProject(ref, toTop, priorityBefore) {
+        return commitJump('project', ref, priorityBefore, () => api.moveCodeInProject(ref, toTop));
       },
       async refreshStatuses() {
         let stories: CodeStory[];
@@ -1374,7 +1429,7 @@ export function CodeProvider({
         }
       },
     };
-  }, []);
+  }, [priorityLedger, reorderTokens, jumpTokens]);
 
   return (
     <CodeActionsContext.Provider value={actions}>

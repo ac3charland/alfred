@@ -327,6 +327,20 @@ function unwrap<T>(value: T | null): T {
   return value;
 }
 
+/** A saved sidecar for item `iN` (ref `ALF-N`) at `priority` — a ranking RPC's returned row. */
+function rankedRow(itemId: string, priority: number): CodeItem {
+  return makeSavedSidecar({ item_id: itemId, ref: `ALF-${itemId.slice(1)}`, priority });
+}
+
+/** A promise the test settles by hand, to hold a request in flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
 describe('code-store', () => {
   describe('HAPPY_PATH_STATES', () => {
     it('lists the six happy-path states in board order and excludes the escape states', () => {
@@ -2230,6 +2244,178 @@ describe('code-store', () => {
         // The first swap already committed server-side (i1↔i2 stays applied); the second (failed)
         // swap rolls back, so ALF-3 is restored to its original priority.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
+      });
+    });
+
+    // ALF-250: server news describing a rank the screen has already moved past must not put a
+    // story back — the row snaps back up, and the next chevron swaps from the wrong place.
+    describe('older server news never overwrites a newer optimistic priority (ALF-250)', () => {
+      const epic = makeEpic('e1', 'p1');
+      const seed = [
+        makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 }),
+        makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 }),
+        makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 }),
+      ];
+
+      function renderBacklog() {
+        return renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: seed }) },
+        );
+      }
+
+      it("an earlier step's answer doesn't undo a later step of the same burst", async () => {
+        const second = deferred<CodeItem[]>();
+        mockReorderCode
+          .mockResolvedValueOnce([rankedRow('i1', 2), rankedRow('i2', 1)])
+          .mockReturnValueOnce(second.promise);
+        const { result } = renderBacklog();
+
+        // ALF-1 down twice: past ALF-2, then past ALF-3.
+        const steps: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>[] = [];
+        act(() => {
+          steps.push(unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2')));
+        });
+        act(() => {
+          steps.push(unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3')));
+        });
+        let commit!: Promise<void>;
+        act(() => {
+          commit = result.current.actions.commitReorderBatch(steps);
+        });
+
+        // The first answer (ALF-1 at 2) is in, the second still in flight: ALF-1 stays last.
+        await waitFor(() => {
+          expect(mockReorderCode).toHaveBeenCalledTimes(2);
+        });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+
+        await act(async () => {
+          second.resolve([rankedRow('i1', 3), rankedRow('i3', 2)]);
+          await commit;
+        });
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+      });
+
+      it("a commit's answer doesn't undo a click made while it was in flight", async () => {
+        const first = deferred<CodeItem[]>();
+        mockReorderCode.mockReturnValueOnce(first.promise);
+        const { result } = renderBacklog();
+
+        let commit!: Promise<void>;
+        act(() => {
+          const step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          commit = result.current.actions.commitReorderBatch([step]);
+        });
+        // The next click lands before the first swap answers: ALF-1 down again, past ALF-3.
+        act(() => {
+          result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3');
+        });
+
+        await act(async () => {
+          first.resolve([rankedRow('i1', 2), rankedRow('i2', 1)]);
+          await commit;
+        });
+
+        // ALF-2's answer is current and applies; ALF-1 keeps the newer rank the click gave it.
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+      });
+
+      it("a swap's answer doesn't undo a project jump still waiting to sync", async () => {
+        mockReorderCode.mockResolvedValueOnce([rankedRow('i2', 3), rankedRow('i3', 2)]);
+        const { result } = renderBacklog();
+
+        // ALF-2 down past ALF-3, then — before that swap syncs — ALF-2 to the top of its project.
+        let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        act(() => {
+          step = unwrap(result.current.actions.applyReorderOptimistic('ALF-2', 'ALF-3'));
+        });
+        act(() => {
+          result.current.actions.applyMoveInProjectOptimistic('ALF-2', true);
+        });
+        await act(async () => {
+          await result.current.actions.commitReorderBatch([step]);
+        });
+
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1', 'ALF-3']);
+      });
+
+      it('runs priority commits one at a time, in the order they were started', async () => {
+        const first = deferred<CodeItem[]>();
+        mockReorderCode.mockReturnValueOnce(first.promise);
+        mockMoveCodeInProject.mockResolvedValueOnce([rankedRow('i3', 0)]);
+        const { result } = renderBacklog();
+
+        let swap!: Promise<void>;
+        let jump!: Promise<void>;
+        act(() => {
+          const step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          swap = result.current.actions.commitReorderBatch([step]);
+          const applied = unwrap(
+            result.current.actions.applyMoveInProjectOptimistic('ALF-3', true),
+          );
+          jump = result.current.actions.commitMoveInProject('ALF-3', true, applied.priorityBefore);
+        });
+
+        // The jump waits for the swap: swaps and jumps don't commute on the server.
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(mockMoveCodeInProject).not.toHaveBeenCalled();
+
+        await act(async () => {
+          first.resolve([rankedRow('i1', 2), rankedRow('i2', 1)]);
+          await swap;
+          await jump;
+        });
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-3', true);
+      });
+
+      it("drops the realtime echo of this tab's own earlier write, even after the answer", async () => {
+        mockReorderCode
+          .mockResolvedValueOnce([rankedRow('i1', 2), rankedRow('i2', 1)])
+          .mockResolvedValueOnce([rankedRow('i1', 3), rankedRow('i3', 2)]);
+        const { result } = renderBacklog();
+
+        // Two swaps, each committed and answered: ALF-1 ends last.
+        for (const neighbour of ['ALF-2', 'ALF-3']) {
+          let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', neighbour));
+          });
+          await act(async () => {
+            await result.current.actions.commitReorderBatch([step]);
+          });
+        }
+
+        // The first swap's echo trails both answers: it describes a rank ALF-1 has moved past.
+        emitUpdate(rankedRow('i1', 2));
+        emitUpdate(rankedRow('i2', 1));
+
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+      });
+
+      it('drops a realtime priority for a story with a local rank not yet synced', () => {
+        const { result } = renderBacklog();
+        act(() => {
+          result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2');
+        });
+
+        emitUpdate(rankedRow('i1', 1));
+
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1', 'ALF-3']);
+      });
+
+      it("still applies another writer's priority change over realtime", () => {
+        const { result } = renderBacklog();
+
+        // Another tab moved ALF-3 to the top; this tab has nothing pending for it.
+        emitUpdate(rankedRow('i3', 0));
+
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-3', 'ALF-1', 'ALF-2']);
       });
     });
 
