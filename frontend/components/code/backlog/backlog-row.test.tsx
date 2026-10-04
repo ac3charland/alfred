@@ -64,6 +64,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
       bItemId: `b${String(reorderReturns.length + 1)}`,
       aPriorityBefore: reorderReturns.length + 1,
       bPriorityBefore: reorderReturns.length + 101,
+      stamp: reorderReturns.length + 1,
     };
     reorderReturns.push(step);
     return step;

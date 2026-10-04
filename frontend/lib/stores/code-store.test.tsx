@@ -12,6 +12,7 @@ import {
   CodeProvider,
   DEFAULT_BACKLOG_STATUSES,
   HAPPY_PATH_STATES,
+  type ReorderStep,
   codeItemToStoryPatch,
   codeReducer,
   isEscapeState,
@@ -319,6 +320,25 @@ function prioritiesById(backlog: CodeStory[]): Record<string, number | null> {
     if (story.item_id !== null) out[story.item_id] = story.priority;
   }
   return out;
+}
+
+/** Story `ALF-<n>`'s saved sidecar at `priority` — a rank sync's reply, or its realtime echo. */
+function rankSidecar(n: number, priority: number): CodeItem {
+  return makeSavedSidecar({
+    item_id: `i${String(n)}`,
+    ref: `ALF-${String(n)}`,
+    factory_state: 'needs_refinement',
+    priority,
+  });
+}
+
+/** A promise the test settles by hand, so it controls when each sync answers. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 /** Narrow a possibly-null `apply*Optimistic` return for a test that expects it to resolve. */
@@ -2141,6 +2161,7 @@ describe('code-store', () => {
           bItemId: 'i2',
           aPriorityBefore: 1,
           bPriorityBefore: 2,
+          stamp: 1,
         });
         // ALF-2 now outranks ALF-1, so the backlog order flips — instantly, before any network.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1 });
@@ -2230,6 +2251,167 @@ describe('code-store', () => {
         // The first swap already committed server-side (i1↔i2 stays applied); the second (failed)
         // swap rolls back, so ALF-3 is restored to its original priority.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
+      });
+    });
+
+    describe('a stale rank never overwrites a newer one (ALF-250)', () => {
+      const epic = makeEpic('e1', 'p1');
+      const stories = [1, 2, 3, 4].map((n) =>
+        makeStory(`i${String(n)}`, 'e1', 'p1', { ref: `ALF-${String(n)}`, priority: n }),
+      );
+
+      function renderBacklog() {
+        return renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories }) },
+        );
+      }
+
+      it("keeps a nudged story where the burst left it while the burst's earlier steps sync", async () => {
+        const replies = [deferred<CodeItem[]>(), deferred<CodeItem[]>(), deferred<CodeItem[]>()];
+        for (const reply of replies) mockReorderCode.mockReturnValueOnce(reply.promise);
+        const { result } = renderBacklog();
+
+        // ALF-1 nudged down three times in one burst: it ends at the bottom.
+        const steps = ['ALF-2', 'ALF-3', 'ALF-4'].map((neighbour) => {
+          let step!: ReorderStep;
+          act(() => {
+            step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', neighbour));
+          });
+          return step;
+        });
+        let sync!: Promise<void>;
+        act(() => {
+          sync = result.current.actions.commitReorderBatch(steps);
+        });
+
+        // The first swap's reply carries ALF-1's rank after ONE nudge — already behind the screen.
+        await act(async () => {
+          replies[0]?.resolve([rankSidecar(1, 2), rankSidecar(2, 1)]);
+          await Promise.resolve();
+        });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual([
+          'ALF-2',
+          'ALF-3',
+          'ALF-4',
+          'ALF-1',
+        ]);
+
+        await act(async () => {
+          replies[1]?.resolve([rankSidecar(1, 3), rankSidecar(3, 2)]);
+          replies[2]?.resolve([rankSidecar(1, 4), rankSidecar(4, 3)]);
+          await sync;
+        });
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 4, i2: 1, i3: 2, i4: 3 });
+      });
+
+      it('sends a second burst only once the first has synced, so the server swaps in click order', async () => {
+        const first = deferred<CodeItem[]>();
+        mockReorderCode
+          .mockReturnValueOnce(first.promise)
+          .mockResolvedValueOnce([rankSidecar(1, 3), rankSidecar(3, 2)]);
+        const { result } = renderBacklog();
+
+        let stepOne!: ReorderStep;
+        act(() => {
+          stepOne = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+        });
+        let syncOne!: Promise<void>;
+        act(() => {
+          syncOne = result.current.actions.commitReorderBatch([stepOne]);
+        });
+        let stepTwo!: ReorderStep;
+        act(() => {
+          stepTwo = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+        });
+        let syncTwo!: Promise<void>;
+        act(() => {
+          syncTwo = result.current.actions.commitReorderBatch([stepTwo]);
+        });
+        await act(async () => {
+          await Promise.resolve();
+        });
+
+        expect(mockReorderCode).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          first.resolve([rankSidecar(1, 2), rankSidecar(2, 1)]);
+          await Promise.all([syncOne, syncTwo]);
+        });
+        expect(mockReorderCode).toHaveBeenNthCalledWith(2, 'ALF-1', 'ALF-3');
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
+      });
+
+      it('ignores a realtime echo of an older rank while a nudge is still syncing', () => {
+        const { result } = renderBacklog();
+
+        act(() => {
+          result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2');
+        });
+        // An echo of an earlier write — e.g. a swap's transient top-of-Backlog parking rank.
+        emitUpdate(rankSidecar(1, 0));
+
+        expect(result.current.backlog.map((s) => s.ref)).toEqual([
+          'ALF-2',
+          'ALF-1',
+          'ALF-3',
+          'ALF-4',
+        ]);
+      });
+
+      it('applies a realtime rank again once the nudge has synced', async () => {
+        mockReorderCode.mockResolvedValueOnce([rankSidecar(1, 2), rankSidecar(2, 1)]);
+        const { result } = renderBacklog();
+
+        let step!: ReorderStep;
+        act(() => {
+          step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+        });
+        await act(async () => {
+          await result.current.actions.commitReorderBatch([step]);
+        });
+        // Another tab moves ALF-1 to the bottom.
+        emitUpdate(rankSidecar(1, 5));
+
+        expect(result.current.backlog.map((s) => s.ref)).toEqual([
+          'ALF-2',
+          'ALF-3',
+          'ALF-4',
+          'ALF-1',
+        ]);
+      });
+
+      it("doesn't let a jump's reply overwrite a nudge clicked after the jump", async () => {
+        const jump = deferred<CodeItem[]>();
+        mockMoveCode.mockReturnValueOnce(jump.promise);
+        const { result } = renderBacklog();
+
+        // ALF-3 jumps to the top, and is nudged back down past ALF-1 before the jump has synced.
+        let jumped!: { priorityBefore: number | null };
+        act(() => {
+          jumped = unwrap(result.current.actions.applyMoveOptimistic('ALF-3', true));
+        });
+        let syncJump!: Promise<void>;
+        act(() => {
+          syncJump = result.current.actions.commitMove('ALF-3', true, jumped.priorityBefore);
+        });
+        act(() => {
+          result.current.actions.applyReorderOptimistic('ALF-3', 'ALF-1');
+        });
+
+        await act(async () => {
+          jump.resolve([rankSidecar(3, -1)]);
+          await syncJump;
+        });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual([
+          'ALF-1',
+          'ALF-3',
+          'ALF-2',
+          'ALF-4',
+        ]);
       });
     });
 

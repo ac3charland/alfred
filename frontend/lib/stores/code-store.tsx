@@ -185,6 +185,8 @@ export interface ReorderStep {
   bItemId: string;
   aPriorityBefore: number | null;
   bPriorityBefore: number | null;
+  /** This swap's place in the order of optimistic rank writes (ALF-250). */
+  stamp: number;
 }
 
 /**
@@ -342,7 +344,8 @@ export interface CodeActions {
    * each step's returned `code_items` rows as it goes. If a step fails, every step from that one
    * onward is rolled back to its pre-swap priorities (in reverse order, so each rollback undoes
    * cleanly); steps that already committed before the failure are left as they are, since the
-   * server already has them.
+   * server already has them. Like both jump commits, it starts only once every earlier rank sync
+   * has settled (ALF-250).
    */
   commitReorderBatch: (steps: ReorderStep[]) => Promise<void>;
   /**
@@ -506,6 +509,18 @@ export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
   };
 }
 
+/** Swallow a rejection that its own handler has already dealt with. */
+function ignoreFailure(): void {
+  return undefined;
+}
+
+/** `patch` minus its rank — for a row whose rank a newer, unsynced local write owns (ALF-250). */
+function withoutPriority(patch: Partial<CodeStory>): Partial<CodeStory> {
+  const rest = { ...patch };
+  delete rest.priority;
+  return rest;
+}
+
 /** Reconcile the optimistic story with the server sidecar (real ref/ref_number/state). */
 function reconcileStory(optimistic: CodeStory, saved: CodeItem): CodeStory {
   return { ...optimistic, ...codeItemToStoryPatch(saved) };
@@ -556,6 +571,19 @@ export function CodeProvider({
     stateRef.current = state;
   }, [state]);
 
+  // A Backlog rank reaches this tab from writers that arrive in no fixed order: the optimistic
+  // nudge/jump, each sync's reply, a failed sync's rollback, and the realtime echo of every server
+  // write (ALF-250). Landing whichever arrived last let an older rank overwrite a newer one — the
+  // story snapped back up, or tied a neighbour so the next nudge swapped equal ranks and did
+  // nothing. So every optimistic rank write stamps the rows it moves (item_id → stamp): a reply
+  // lands its rank only on a row whose newest stamp is the write it answers, and a realtime rank
+  // only on a row with no stamp pending.
+  const pendingRankRef = React.useRef(new Map<string, number>());
+  const rankStampRef = React.useRef(0);
+  // Each rank sync starts once the previous one has settled, so the server applies them in click
+  // order and their replies come back in that order.
+  const rankSyncRef = React.useRef<Promise<void>>(Promise.resolve());
+
   const { showToast } = useToastActions();
   // The stable (`[]`) action closures surface a failed write as a toast (ALF-33). They can't
   // close over `showToast` directly (it would need to be a memo dep), so read it through a ref
@@ -600,10 +628,12 @@ export function CodeProvider({
       // reasoning that keeps the board stable (no flicker, no double notification).
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
+      const patch = deliveredColumns(codeItemToStoryPatch(row));
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: deliveredColumns(codeItemToStoryPatch(row)),
+        // A rank this tab moved and hasn't synced yet is newer than any echo.
+        patch: pendingRankRef.current.has(row.item_id) ? withoutPriority(patch) : patch,
       });
       if (!changedState) return;
 
@@ -682,6 +712,64 @@ export function CodeProvider({
   }, [showToast]);
 
   const actions = React.useMemo<CodeActions>(() => {
+    /** Stamp the rows an optimistic rank write moves, and return the stamp (ALF-250). */
+    function stampRank(...itemIds: string[]): number {
+      rankStampRef.current += 1;
+      for (const itemId of itemIds) pendingRankRef.current.set(itemId, rankStampRef.current);
+      return rankStampRef.current;
+    }
+
+    /**
+     * Land a sync's reply for the write stamped `stamp`. Its rank lands — and the row is released
+     * — only if no later optimistic write has moved the row since; otherwise that later write's
+     * own reply will land it.
+     */
+    function settleRank(row: CodeItem, stamp: number | undefined) {
+      const patch = codeItemToStoryPatch(row);
+      const owned = pendingRankRef.current.get(row.item_id) === stamp;
+      if (owned) pendingRankRef.current.delete(row.item_id);
+      dispatch({
+        type: 'patchStory',
+        itemId: row.item_id,
+        patch: owned ? patch : withoutPriority(patch),
+      });
+    }
+
+    /** Run a rank sync once every earlier one has settled (ALF-250). */
+    function queueRankSync(sync: () => Promise<void>): Promise<void> {
+      const run = rankSyncRef.current.then(sync);
+      // A failed sync must not wedge every one queued behind it.
+      rankSyncRef.current = run.catch(ignoreFailure);
+      return run;
+    }
+
+    /**
+     * Sync a jump burst (whole Backlog or own project) with its ONE `call`, queued behind every
+     * earlier rank sync. On failure, roll the row back to `priorityBefore` — unless a later
+     * optimistic write has moved it since, whose own sync reconciles it.
+     */
+    function commitJump(
+      ref: string,
+      priorityBefore: number | null,
+      call: () => Promise<CodeItem[]>,
+    ): Promise<void> {
+      const itemId = stateRef.current.stories.find((s) => s.ref === ref)?.item_id ?? null;
+      if (itemId === null) return Promise.resolve();
+      const stamp = pendingRankRef.current.get(itemId);
+      return queueRankSync(async () => {
+        try {
+          const rows = await call();
+          for (const row of rows) settleRank(row, stamp);
+        } catch {
+          if (pendingRankRef.current.get(itemId) === stamp) {
+            pendingRankRef.current.delete(itemId);
+            dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
+          }
+          showToastRef.current("Couldn't move story");
+        }
+      });
+    }
+
     // Shared insert-optimistic-then-reconcile path for both entry points (an item already
     // known to the Code view, and one crossing from Tasks), so neither relies on `this`.
     async function admitToFactory(
@@ -1252,42 +1340,52 @@ export function CodeProvider({
         // Swap: each story takes the other's priority (the same exchange the RPC does).
         dispatch({ type: 'patchStory', itemId: aItemId, patch: { priority: bPriorityBefore } });
         dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: aPriorityBefore } });
-        return { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore };
+        const stamp = stampRank(aItemId, bItemId);
+        return { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore, stamp };
       },
-      async commitReorderBatch(steps) {
-        for (const [index, step] of steps.entries()) {
-          try {
-            const rows = await api.reorderCode(step.ref, step.neighbourRef);
-            // Apply each returned sidecar through the one projection (carries the real priority).
-            for (const row of rows) {
-              dispatch({
-                type: 'patchStory',
-                itemId: row.item_id,
-                patch: codeItemToStoryPatch(row),
-              });
+      commitReorderBatch(steps) {
+        return queueRankSync(async () => {
+          for (const [index, step] of steps.entries()) {
+            try {
+              const rows = await api.reorderCode(step.ref, step.neighbourRef);
+              // Apply each returned sidecar through the one projection (carries the real priority).
+              for (const row of rows) settleRank(row, step.stamp);
+            } catch {
+              // This step and everything queued behind it never reached the server — undo them,
+              // in reverse, so each rollback exactly cancels its own swap. Steps before this one
+              // already committed, so they're left as they are, and so is any row a later
+              // optimistic write has moved since (its own sync reconciles it).
+              const failed = steps.slice(index);
+              const failedStamps = new Set(failed.map((s) => s.stamp));
+              const owned = new Set(
+                failed
+                  .flatMap((s) => [s.aItemId, s.bItemId])
+                  .filter((itemId) => failedStamps.has(pendingRankRef.current.get(itemId) ?? 0)),
+              );
+              for (let i = failed.length - 1; i >= 0; i -= 1) {
+                const undo = failed[i];
+                if (undo === undefined) continue;
+                if (owned.has(undo.aItemId)) {
+                  dispatch({
+                    type: 'patchStory',
+                    itemId: undo.aItemId,
+                    patch: { priority: undo.aPriorityBefore },
+                  });
+                }
+                if (owned.has(undo.bItemId)) {
+                  dispatch({
+                    type: 'patchStory',
+                    itemId: undo.bItemId,
+                    patch: { priority: undo.bPriorityBefore },
+                  });
+                }
+              }
+              for (const itemId of owned) pendingRankRef.current.delete(itemId);
+              showToastRef.current("Couldn't reorder story");
+              return;
             }
-          } catch {
-            // This step and everything queued behind it never reached the server — undo them,
-            // in reverse, so each rollback exactly cancels its own swap. Steps before this one
-            // already committed, so they're left as they are.
-            for (let i = steps.length - 1; i >= index; i -= 1) {
-              const failed = steps[i];
-              if (failed === undefined) continue;
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.aItemId,
-                patch: { priority: failed.aPriorityBefore },
-              });
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.bItemId,
-                patch: { priority: failed.bPriorityBefore },
-              });
-            }
-            showToastRef.current("Couldn't reorder story");
-            return;
           }
-        }
+        });
       },
       applyMoveOptimistic(ref, toTop) {
         const { stories } = stateRef.current;
@@ -1307,22 +1405,11 @@ export function CodeProvider({
           itemId,
           patch: { priority: toTop ? extreme - 1 : extreme + 1 },
         });
+        stampRank(itemId);
         return { priorityBefore };
       },
-      async commitMove(ref, toTop, priorityBefore) {
-        const { stories } = stateRef.current;
-        const target = stories.find((s) => s.ref === ref);
-        const itemId = target?.item_id ?? null;
-        if (itemId === null) return;
-        try {
-          const rows = await api.moveCode(ref, toTop);
-          for (const row of rows) {
-            dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
-          }
-        } catch {
-          dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
-          showToastRef.current("Couldn't move story");
-        }
+      commitMove(ref, toTop, priorityBefore) {
+        return commitJump(ref, priorityBefore, () => api.moveCode(ref, toTop));
       },
       applyMoveInProjectOptimistic(ref, toTop) {
         const { stories } = stateRef.current;
@@ -1335,22 +1422,11 @@ export function CodeProvider({
         const priorityBefore = target.priority;
         const nextPriority = projectMovePriority(stories, itemId, projectId, toTop);
         dispatch({ type: 'patchStory', itemId, patch: { priority: nextPriority } });
+        stampRank(itemId);
         return { priorityBefore };
       },
-      async commitMoveInProject(ref, toTop, priorityBefore) {
-        const { stories } = stateRef.current;
-        const target = stories.find((s) => s.ref === ref);
-        const itemId = target?.item_id ?? null;
-        if (itemId === null) return;
-        try {
-          const rows = await api.moveCodeInProject(ref, toTop);
-          for (const row of rows) {
-            dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
-          }
-        } catch {
-          dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
-          showToastRef.current("Couldn't move story");
-        }
+      commitMoveInProject(ref, toTop, priorityBefore) {
+        return commitJump(ref, priorityBefore, () => api.moveCodeInProject(ref, toTop));
       },
       async refreshStatuses() {
         let stories: CodeStory[];
