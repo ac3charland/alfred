@@ -73,6 +73,7 @@ Every item, regardless of type, carries:
 A task is an item with `item_type = task`, plus:
 
 - `due_date` — date/datetime, nullable
+- `due_time` — wall-clock time (`HH:MM`, no zone), nullable; only beside a `due_date` (a DB CHECK refuses one without, and clearing the date clears it). It floats like the date: 3 PM is 3 PM wherever the device is. A timed task is past due from its minute (an untimed one only once its day has passed), and sorts by date + time within its day, untimed last.
 - `status` — enum: `active` | `completed` (see completion behavior below). Active/completed is a task lifecycle and does not apply to `code` or `knowledge` items.
 - `completed_at` — timestamp, nullable (set when completed).
 - `folder_id` — UUID, nullable. `null` = the task lives in the Inbox (classified but not yet filed); a value = filed into that folder. Foldering is a tasks-module construct and does not exist on the generic item.
