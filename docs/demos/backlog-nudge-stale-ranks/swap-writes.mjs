@@ -48,6 +48,7 @@ async function showConcurrentNudges() {
   const second = await story('second neighbour');
   const other = new pg.Client(connection);
   await other.connect();
+  const { rows: pids } = await other.query('select pg_backend_pid() as pid');
   try {
     await client.query('begin');
     await client.query(`select swap_code_priority($1, $2)`, [s.ref, first.ref]);
@@ -55,7 +56,15 @@ async function showConcurrentNudges() {
       .query(`select swap_code_priority($1, $2)`, [s.ref, second.ref])
       .then(() => 'committed')
       .catch((error) => `FAILED: ${error.message}`);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Commit only once the second swap is blocked on the row the first still holds.
+    for (;;) {
+      const { rows } = await client.query(
+        `select wait_event_type = 'Lock' as waiting from pg_stat_activity where pid = $1`,
+        [pids[0].pid],
+      );
+      if (rows[0]?.waiting) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     await client.query('commit');
     say(`${s.ref}↔${first.ref} committed; ${s.ref}↔${second.ref} (in flight at the same time): ${await pending}`);
   } finally {
