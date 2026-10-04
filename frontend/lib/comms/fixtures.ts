@@ -10,6 +10,7 @@ import type {
   CommsSeed,
 } from '@/lib/types';
 
+import { groupConversations } from './conversations';
 import { SHELF_PAGE_SIZE, readerClaimedCount, shelved } from './queue';
 
 /**
@@ -232,9 +233,16 @@ export function makeCommsSeed(
     if (message.classified_at !== null && (lastClassifiedAt ?? '') < message.classified_at)
       lastClassifiedAt = message.classified_at;
   }
+  // The page, rounded up to whole conversations as the server's read rounds it.
+  const page = new Set(shelf.slice(0, input.shelfLimit ?? SHELF_PAGE_SIZE).map(({ id }) => id));
+  const held = new Set(
+    groupConversations(shelf, input.accounts ?? [])
+      .filter((conversation) => conversation.messages.some(({ id }) => page.has(id)))
+      .flatMap((conversation) => conversation.messages.map(({ id }) => id)),
+  );
   return {
     accounts: input.accounts ?? [],
-    messages: [...active, ...shelf.slice(0, input.shelfLimit ?? SHELF_PAGE_SIZE)],
+    messages: [...active, ...shelf.filter(({ id }) => held.has(id))],
     verdicts: input.verdicts ?? [],
     health: input.health,
     shelfCount: shelf.length,

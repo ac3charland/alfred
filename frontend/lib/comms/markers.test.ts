@@ -1,4 +1,4 @@
-import { makeCommMessage, resetCommFixtureClock } from './fixtures';
+import { makeCommHandle, makeCommMessage, makeCommPerson, resetCommFixtureClock } from './fixtures';
 import {
   EXPIRY_WARNING_DAYS,
   RETENTION_DAYS,
@@ -8,6 +8,8 @@ import {
   isFiltered,
   isRefused,
   isUnjudged,
+  rollUpMarkers,
+  rowMarkerKinds,
 } from './markers';
 
 const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
@@ -82,5 +84,95 @@ describe('the can-not-judge markers', () => {
   it('flags a body that never decoded', () => {
     expect(decodeFailed(makeCommMessage(ACCOUNT, { body_extracted: false }))).toBe(true);
     expect(decodeFailed(makeCommMessage(ACCOUNT))).toBe(false);
+  });
+});
+
+/** A roster with one high-priority person reachable at `priority@example.com`. */
+function priorityRoster() {
+  const person = makeCommPerson('Priority Pat', { priority: 'high' });
+  return [{ ...person, comm_handles: [makeCommHandle(person.id, 'priority@example.com')] }];
+}
+
+/** A message carrying every chip at once, so the order is the only thing left to assert. */
+function everything(overrides: Partial<ReturnType<typeof makeCommMessage>> = {}) {
+  return makeCommMessage(ACCOUNT, {
+    sender_handle: 'priority@example.com',
+    reclassify_requested_at: NOW.toISOString(),
+    judged_by: 'refusal',
+    has_attachments: true,
+    body: '',
+    body_extracted: false,
+    filtered_reason: 'newsletter',
+    received_at: new Date(NOW.getTime() - 55 * MS_PER_DAY).toISOString(),
+    ...overrides,
+  });
+}
+
+describe('rowMarkerKinds', () => {
+  it('lists a row’s chips in the order the row draws them', () => {
+    expect(rowMarkerKinds(everything(), priorityRoster(), NOW, true)).toEqual([
+      'rerun-pending',
+      'priority',
+      'attachment',
+      'decode-failed',
+      'expiry',
+      'refused',
+      'filtered',
+    ]);
+    expect(
+      rowMarkerKinds(everything({ judged_by: 'unjudged' }), priorityRoster(), NOW, true),
+    ).toContain('unjudged');
+  });
+
+  it('keeps refused and filtered to the shelf, where a queued row can never be either', () => {
+    expect(rowMarkerKinds(everything(), priorityRoster(), NOW, false)).not.toContain('refused');
+    expect(rowMarkerKinds(everything(), priorityRoster(), NOW, false)).not.toContain('filtered');
+  });
+
+  it('marks nothing on an ordinary row', () => {
+    expect(rowMarkerKinds(makeCommMessage(ACCOUNT, { body: 'hi' }), [], NOW, true)).toEqual([]);
+  });
+
+  it('drops the expiry chip once the row has been cleared', () => {
+    const cleared = everything({ cleared_at: NOW.toISOString(), cleared_by: 'not_replying' });
+    expect(rowMarkerKinds(cleared, [], NOW, true)).not.toContain('expiry');
+  });
+});
+
+describe('rollUpMarkers', () => {
+  it('unions the chips across a conversation, counting the ones more than one message carries', () => {
+    const refusedA = makeCommMessage(ACCOUNT, { judged_by: 'refusal', body: 'a' });
+    const refusedB = makeCommMessage(ACCOUNT, { judged_by: 'refusal', body: 'b' });
+    const attachment = makeCommMessage(ACCOUNT, { has_attachments: true, body: '' });
+
+    expect(rollUpMarkers([refusedA, attachment, refusedB], [], NOW)).toEqual([
+      { kind: 'attachment', count: 1 },
+      { kind: 'refused', count: 2 },
+    ]);
+  });
+
+  it('never counts the priority chip, which describes a sender rather than a message', () => {
+    const one = makeCommMessage(ACCOUNT, { sender_handle: 'priority@example.com', body: 'a' });
+    const two = makeCommMessage(ACCOUNT, { sender_handle: 'priority@example.com', body: 'b' });
+
+    expect(rollUpMarkers([one, two], priorityRoster(), NOW)).toEqual([
+      { kind: 'priority', count: 1 },
+    ]);
+  });
+
+  it('leaves the expiry chip on the messages inside rather than rolling it up', () => {
+    expect(rollUpMarkers([everything()], [], NOW).map((marker) => marker.kind)).not.toContain(
+      'expiry',
+    );
+  });
+
+  it('rolls up the shelf-only chips, since a conversation only ever sits on the shelf', () => {
+    expect(rollUpMarkers([everything()], [], NOW).map((marker) => marker.kind)).toEqual([
+      'rerun-pending',
+      'attachment',
+      'decode-failed',
+      'refused',
+      'filtered',
+    ]);
   });
 });

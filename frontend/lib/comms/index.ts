@@ -25,13 +25,19 @@ export {
   EXPIRY_WARNING_DAYS,
   type ExpiryMarker,
   RETENTION_DAYS,
+  type RolledUpMarker,
+  type RowMarkerKind,
   attachmentNotRead,
   decodeFailed,
   expiresSoon,
   isFiltered,
   isRefused,
   isUnjudged,
+  rollUpMarkers,
+  rowMarkerKinds,
 } from './markers';
+
+export { CONVERSATION_GAP_MS, type ShelfConversation, groupConversations } from './conversations';
 
 export {
   ACCOUNT_RECONNECT_GRACE_MS,
