@@ -565,6 +565,10 @@ export function CodeProvider({
   // click at the wrong neighbour. While an item is held here, incoming ranks for it are dropped;
   // the response of the last swap touching it is the one that reconciles.
   const heldRanksRef = React.useRef(new Map<string, number>());
+  // The ranks the server has told this tab it wrote, per item_id, whose realtime echo hasn't
+  // arrived yet. The socket can lag the HTTP response, so an earlier swap's echo may land after
+  // the burst has settled; matched here, it is recognised as this tab's own and dropped.
+  const ownEchoesRef = React.useRef(new Map<string, OwnEcho[]>());
   // The tail of the swap queue: each burst commits only once the one before it has settled, so
   // the server applies the swaps in exactly the order this tab applied them.
   const reorderQueueRef = React.useRef<Promise<void>>(Promise.resolve());
@@ -616,8 +620,9 @@ export function CodeProvider({
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: withoutHeldRank(
+        patch: withoutOwnRank(
           heldRanksRef.current,
+          ownEchoesRef.current,
           row.item_id,
           deliveredColumns(codeItemToStoryPatch(row)),
         ),
@@ -1275,6 +1280,7 @@ export function CodeProvider({
       },
       commitReorderBatch(steps) {
         const held = heldRanksRef.current;
+        const echoes = ownEchoesRef.current;
         const commit = async () => {
           for (const [index, step] of steps.entries()) {
             try {
@@ -1284,6 +1290,7 @@ export function CodeProvider({
               // Apply each returned sidecar through the one projection (carries the real
               // priority) — less the rank of any story a later swap has already moved on from.
               for (const row of rows) {
+                expectOwnEcho(echoes, row.item_id, row.priority);
                 dispatch({
                   type: 'patchStory',
                   itemId: row.item_id,
@@ -1315,7 +1322,8 @@ export function CodeProvider({
             }
           }
         };
-        const committed = reorderQueueRef.current.then(commit);
+        // Chained on both outcomes, so one unforeseen throw can't stall every later burst.
+        const committed = reorderQueueRef.current.then(commit, commit);
         reorderQueueRef.current = committed;
         return committed;
       },
@@ -1604,6 +1612,44 @@ function withoutHeldRank(
   patch: Partial<CodeStory>,
 ): Partial<CodeStory> {
   if (!held.has(itemId)) return patch;
+  const { priority, ...rest } = patch;
+  return rest;
+}
+
+/** A rank this tab's own swap wrote, awaiting its realtime echo (ALF-250). */
+interface OwnEcho {
+  priority: number;
+  expiresAt: number;
+}
+
+/** How long an own write's echo is waited for; past it, a matching rank counts as external. */
+const OWN_ECHO_TTL_MS = 10_000;
+
+/** Record that `itemId`'s realtime echo of `priority` will be this tab's own write. */
+function expectOwnEcho(echoes: Map<string, OwnEcho[]>, itemId: string, priority: number): void {
+  const pending = echoes.get(itemId) ?? [];
+  pending.push({ priority, expiresAt: Date.now() + OWN_ECHO_TTL_MS });
+  echoes.set(itemId, pending);
+}
+
+/**
+ * A realtime patch less its `priority` when that rank is stale for this tab (ALF-250): either the
+ * item still has unsettled swaps, or the rank is the echo of one of this tab's own swaps — which
+ * the response already reconciled, and which may arrive after a later swap has moved it on.
+ */
+function withoutOwnRank(
+  held: Map<string, number>,
+  echoes: Map<string, OwnEcho[]>,
+  itemId: string,
+  patch: Partial<CodeStory>,
+): Partial<CodeStory> {
+  const now = Date.now();
+  const pending = (echoes.get(itemId) ?? []).filter((echo) => echo.expiresAt > now);
+  const match = pending.findIndex((echo) => echo.priority === patch.priority);
+  if (match !== -1) pending.splice(match, 1);
+  if (pending.length > 0) echoes.set(itemId, pending);
+  else echoes.delete(itemId);
+  if (match === -1) return withoutHeldRank(held, itemId, patch);
   const { priority, ...rest } = patch;
   return rest;
 }

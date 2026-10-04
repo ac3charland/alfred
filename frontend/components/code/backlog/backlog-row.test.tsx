@@ -78,7 +78,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
   const applyMove = makeApplyMoveStub(moveReturns);
   const commitMove = jest.fn().mockResolvedValue(undefined);
 
-  render(
+  const { unmount } = render(
     <ul>
       <BacklogRow
         story={makeStory()}
@@ -98,6 +98,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
     </ul>,
   );
   return {
+    unmount,
     applyReorder,
     commitReorder,
     reorderReturns,
@@ -208,6 +209,19 @@ describe('BacklogRow', () => {
 
     // The network sync hasn't fired yet — only the on-screen reorder is instant.
     expect(commitReorder).not.toHaveBeenCalled();
+  });
+
+  // ALF-250: a swap applied on screen but dropped before it synced leaves the list and the server
+  // disagreeing — and the store holding that story's rank against every update until a reload.
+  it('still syncs a swap whose debounce had not settled when the row unmounts (ALF-250)', async () => {
+    const user = userEvent.setup();
+    const { unmount, commitReorder, reorderReturns } = renderRow();
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
+    unmount();
+
+    expect(commitReorder).toHaveBeenCalledTimes(1);
+    expect(commitReorder).toHaveBeenCalledWith(reorderReturns);
   });
 
   it('jumps to the top/bottom of ITS PROJECT on the double chevrons, INSTANTLY (ALF-110)', async () => {

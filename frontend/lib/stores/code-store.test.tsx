@@ -2374,6 +2374,29 @@ describe('code-store', () => {
           expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
         });
 
+        it("ignores an earlier swap's echo that arrives only after the burst has settled", async () => {
+          mockReorderCode
+            .mockResolvedValueOnce([
+              makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+              makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+            ])
+            .mockResolvedValueOnce([
+              makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 3 }),
+              makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: 2 }),
+            ]);
+          const { result } = renderBacklog();
+          const steps = nudgeDownTwice(result);
+          await act(async () => {
+            await result.current.actions.commitReorderBatch([...steps]);
+          });
+
+          // The realtime socket lags the HTTP responses: the first swap's rows land last.
+          emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }));
+          emitUpdate(makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }));
+
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
+        });
+
         it('applies a realtime rank again once the burst has settled', async () => {
           mockReorderCode
             .mockResolvedValueOnce([
