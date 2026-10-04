@@ -78,7 +78,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
   const applyMove = makeApplyMoveStub(moveReturns);
   const commitMove = jest.fn().mockResolvedValue(undefined);
 
-  render(
+  const view = render(
     <ul>
       <BacklogRow
         story={makeStory()}
@@ -107,6 +107,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
     applyMove,
     commitMove,
     moveReturns,
+    unmount: view.unmount,
   };
 }
 
@@ -250,6 +251,28 @@ describe('BacklogRow', () => {
       });
 
       expect(commitReorder).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // ALF-250: a filter change or navigation can unmount the row inside the debounce window. The
+  // click already moved the story on screen, so it must still reach the server.
+  it('syncs every pending burst at once when the row unmounts inside the debounce window', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    jest.useFakeTimers();
+    try {
+      const { commitReorder, commitMoveInProject, commitMove, reorderReturns, unmount } =
+        renderRow();
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top of project' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom of list' }));
+      unmount();
+
+      expect(commitReorder).toHaveBeenCalledWith(reorderReturns);
+      expect(commitMoveInProject).toHaveBeenCalledWith('ALF-1', true, 1);
+      expect(commitMove).toHaveBeenCalledWith('ALF-1', false, 1);
     } finally {
       jest.useRealTimers();
     }

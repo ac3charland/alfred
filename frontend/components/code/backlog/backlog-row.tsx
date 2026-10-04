@@ -101,12 +101,17 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
   // server once the debounce settles, then cleared.
   const reorderStepsRef = React.useRef<ReorderStep[]>([]);
 
-  const flushReorder = useDebouncedCallback(() => {
-    const steps = reorderStepsRef.current;
-    reorderStepsRef.current = [];
-    if (steps.length > 0) void commitReorder(steps);
-    // The swaps queue rather than coalesce, but they sync on the same window as the jumps.
-  }, MOVE_SYNC_DEBOUNCE_MS);
+  const flushReorder = useDebouncedCallback(
+    () => {
+      const steps = reorderStepsRef.current;
+      reorderStepsRef.current = [];
+      if (steps.length > 0) void commitReorder(steps);
+      // The swaps queue rather than coalesce, but they sync on the same window as the jumps — and,
+      // like them, flush rather than drop when the row unmounts mid-window (a filter change).
+    },
+    MOVE_SYNC_DEBOUNCE_MS,
+    { flushOnUnmount: true },
+  );
 
   const reorder = (neighbourRef: string) => {
     if (storyRef === null) return;

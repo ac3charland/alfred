@@ -102,6 +102,40 @@ describe('useDebouncedCallback', () => {
     }
   });
 
+  it('runs a pending call at once on unmount when asked to flush, and never again', () => {
+    jest.useFakeTimers();
+    try {
+      const callback = jest.fn();
+      const { result, unmount } = renderHook(() =>
+        useDebouncedCallback(callback, 200, { flushOnUnmount: true }),
+      );
+
+      act(() => {
+        result.current('a');
+      });
+      unmount();
+      expect(callback).toHaveBeenCalledWith('a');
+
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(callback).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('flushes nothing on unmount when no call is pending', () => {
+    const callback = jest.fn();
+    const { unmount } = renderHook(() =>
+      useDebouncedCallback(callback, 200, { flushOnUnmount: true }),
+    );
+
+    unmount();
+
+    expect(callback).not.toHaveBeenCalled();
+  });
+
   it('always invokes the latest callback identity, not a stale closure', () => {
     jest.useFakeTimers();
     try {
