@@ -18,6 +18,7 @@ import * as supabaseServer from '@/lib/supabase/server';
 import {
   COMMS_MAX_PAGES,
   COMMS_PAGE_SIZE,
+  COMMS_THREAD_CHUNK_SIZE,
   COMMS_VERDICT_CHUNK_SIZE,
   getCommsSeed,
   getCommsSettingsSeed,
@@ -45,6 +46,7 @@ interface RecordedQuery {
   gte?: [string, unknown];
   lte?: [string, unknown];
   in?: [string, unknown];
+  ins: [string, unknown][];
   is: [string, unknown][];
   not: [string, string, unknown][];
   or?: string;
@@ -107,7 +109,7 @@ function makeClient(results: Partial<Record<Table, Answer>>) {
   const pages: Partial<Record<Table, number>> = {};
 
   const from = jest.fn((table: Table) => {
-    const recorded: RecordedQuery = { eq: [], is: [], not: [], order: [] };
+    const recorded: RecordedQuery = { eq: [], ins: [], is: [], not: [], order: [] };
     calls[table].push(recorded);
 
     const queued = results[table];
@@ -146,6 +148,7 @@ function makeClient(results: Partial<Record<Table, Answer>>) {
       }),
       in: jest.fn((column: string, values: unknown) => {
         recorded.in = [column, values];
+        recorded.ins.push([column, values]);
         return builder;
       }),
       is: jest.fn((column: string, value: unknown) => {
@@ -188,10 +191,10 @@ function makeClient(results: Partial<Record<Table, Answer>>) {
 function messageRead(
   query: RecordedQuery,
 ): 'active' | 'shelf' | 'thread' | 'claimed' | 'last' | 'watched' {
-  // The only `comm_messages` read that names ids: the rows a tab is waiting on a re-run for.
+  // The only one that names threads: completing the conversations a full shelf page cut.
+  if (query.ins.some(([column]) => column === 'thread_key')) return 'thread';
+  // The only other `comm_messages` read that names ids: the rows a tab is waiting on a re-run for.
   if (query.in !== undefined) return 'watched';
-  // The only one that names a thread: completing the conversation a full shelf page cut.
-  if (query.eq.some(([column]) => column === 'thread_key')) return 'thread';
   if (query.or === 'tier.is.null,tier.neq.fyi') return 'active';
   if (query.not.some(([column]) => column === 'reader_claimed_at')) return 'claimed';
   if (query.not.some(([column]) => column === 'classified_at')) return 'last';
@@ -407,11 +410,11 @@ describe('readCommsSnapshot', () => {
       );
       expect(seed.shelfCount).toBe(40);
       const thread = calls.comm_messages.find((query) => messageRead(query) === 'thread');
-      expect(thread?.eq).toEqual(
+      expect(thread?.eq).toContainEqual(['direction', 'inbound']);
+      expect(thread?.ins).toEqual(
         expect.arrayContaining([
-          ['direction', 'inbound'],
-          ['account_id', ACCOUNT.id],
-          ['thread_key', 't'],
+          ['account_id', [ACCOUNT.id]],
+          ['thread_key', ['a', 'b', 't']],
         ]),
       );
       expect(thread?.lte).toEqual(['received_at', page[2]?.received_at]);
@@ -419,6 +422,46 @@ describe('readCommsSnapshot', () => {
       expect(thread?.or).toBe('tier.eq.fyi,cleared_at.not.is.null');
       expect(thread?.is).toContainEqual(['reader_claimed_at', null]);
       expect(thread?.range).toEqual([0, COMMS_PAGE_SIZE - 1]);
+    });
+
+    it('completes every thread the page holds, not only the oldest one', async () => {
+      // The potluck thread's reply is the page's newest row; its original is weeks back, past
+      // fifty other rows. Its count has to be exact on the first load all the same.
+      const reply = row(ACCOUNT, 'potluck', 0);
+      const page = [reply, row(ACCOUNT, 'b', 1), row(ACCOUNT, 'c', 2)];
+      const original = row(ACCOUNT, 'potluck', 24 * 21);
+      // Same thread key on another account: a different conversation, never pulled in.
+      const elsewhere = row(PHONE, 'potluck', 24 * 22);
+      const { client } = makeClient({
+        comm_accounts: { data: [ACCOUNT, PHONE], error: null },
+        comm_messages: messages({
+          shelf: { data: page, error: null, count: 60 },
+          thread: { data: [original, elsewhere], error: null },
+        }),
+      });
+
+      const { seed } = await readCommsSnapshot(client, 3);
+
+      expect(seed.messages.map((message) => message.id)).toEqual(
+        [...page, original].map((message) => message.id),
+      );
+    });
+
+    it('chunks the completion read by thread key so a long page never builds one huge request', async () => {
+      const page = Array.from({ length: COMMS_THREAD_CHUNK_SIZE + 1 }, (_, index) =>
+        row(ACCOUNT, `thread-${String(index).padStart(4, '0')}`, index / 100),
+      );
+      const { client, calls } = makeClient({
+        comm_messages: messages({ shelf: { data: page, error: null, count: 500 } }),
+      });
+
+      await readCommsSnapshot(client, page.length);
+
+      const reads = calls.comm_messages.filter((query) => messageRead(query) === 'thread');
+      expect(reads.map((query) => (query.in?.[1] as string[]).length)).toEqual([
+        COMMS_THREAD_CHUNK_SIZE,
+        1,
+      ]);
     });
 
     it('stops an iMessage chat at the quiet gap that ends the conversation', async () => {

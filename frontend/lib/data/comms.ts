@@ -140,8 +140,8 @@ async function readActiveMessages(
  * twice is held once.
  *
  * The shelf is drawn as conversations, so a page edge must never cut one: when the walk filled
- * its `limit`, the conversation the oldest held row belongs to is completed by
- * {@link completeOldestConversation}. Every conversation the client holds is then whole — its
+ * its `limit`, every conversation it holds part of is completed by
+ * {@link completeCutConversations}. Every conversation the client holds is then whole — its
  * count exact — and "Show more" only ever appends conversations below the last one.
  */
 async function readShelfPage(
@@ -175,59 +175,82 @@ async function readShelfPage(
     messages.push(...data.filter((message) => !held.has(message.id)));
     if (data.length < size) return { messages, count, error: null };
   }
-  const completion = await completeOldestConversation(supabase, since, messages, accounts);
+  const completion = await completeCutConversations(supabase, since, messages, accounts);
   if (completion.error) return { messages: [], count: 0, error: completion.error };
   return { messages: [...messages, ...completion.messages], count, error: null };
 }
 
 /**
- * The rest of the conversation the oldest held shelf row belongs to — the rows a full page left
- * behind its edge. Reads that row's thread from its arrival backwards (`<=`, with an id dedupe,
- * so a tie at the boundary is neither lost nor held twice) under the shelf's own eligibility,
- * then keeps only what `groupConversations` puts in the same conversation: on an iMessage chat a
- * quiet gap ends it, so last week's texts aren't pulled in behind this evening's.
- *
- * Paged through `readAllPages`, so one enormous thread can't silently truncate at the row cap.
+ * How many thread keys one completion request may carry. A thread key can be a whole RFC 822
+ * Message-ID, several times a UUID's length, so the chunk is smaller than the verdict read's to
+ * keep its `in.()` clause inside the same request-line limits.
  */
-async function completeOldestConversation(
+export const COMMS_THREAD_CHUNK_SIZE = 100;
+
+/**
+ * The rest of every conversation a full shelf page holds part of — the rows the page's edge left
+ * behind. Any thread on the page can run on past the edge (an email thread's reply is today, its
+ * original three weeks back), not just the oldest row's, so every `(account_id, thread_key)` held
+ * is read back from the edge (`<=`, with an id dedupe, so a tie at the boundary is neither lost nor
+ * held twice) under the shelf's own eligibility. Of what comes back, only what `groupConversations`
+ * puts in a conversation with a held row is kept: on an iMessage chat a quiet gap ends it, so
+ * last week's texts aren't pulled in behind this evening's.
+ *
+ * Chunked by thread key and paged through `readAllPages`, so neither a long page nor one enormous
+ * thread can build an oversized request or silently truncate at the row cap.
+ */
+async function completeCutConversations(
   supabase: SupabaseClient<Database>,
   since: string,
   held: CommMessage[],
   accounts: Pick<CommAccount, 'id' | 'kind'>[],
 ): Promise<{ messages: CommMessage[]; error: PostgrestError | null }> {
-  const oldest = held.at(-1);
-  if (oldest === undefined) return { messages: [], error: null };
+  const edge = held.at(-1);
+  if (edge === undefined) return { messages: [], error: null };
 
-  const { rows, error } = await readAllPages<CommMessage>((offset) =>
-    supabase
-      .from('comm_messages')
-      .select('*')
-      .eq('direction', 'inbound')
-      .eq('account_id', oldest.account_id)
-      .eq('thread_key', oldest.thread_key)
-      .gte('received_at', since)
-      .lte('received_at', oldest.received_at)
-      .or(SHELF_ELIGIBLE_FILTER)
-      .is('reader_claimed_at', null)
-      .order('received_at', { ascending: false })
-      .order('id', { ascending: true })
-      .range(offset, offset + COMMS_PAGE_SIZE - 1),
-  );
-  if (error) return { messages: [], error };
+  const pairKey = (message: CommMessage) =>
+    JSON.stringify([message.account_id, message.thread_key]);
+  const heldPairs = new Set(held.map((message) => pairKey(message)));
+  const accountIds = [...new Set(held.map((message) => message.account_id))];
+  const threadKeys = [...new Set(held.map((message) => message.thread_key))];
 
+  const fetched: CommMessage[] = [];
+  for (let start = 0; start < threadKeys.length; start += COMMS_THREAD_CHUNK_SIZE) {
+    const chunk = threadKeys.slice(start, start + COMMS_THREAD_CHUNK_SIZE);
+    const { rows, error } = await readAllPages<CommMessage>((offset) =>
+      supabase
+        .from('comm_messages')
+        .select('*')
+        .eq('direction', 'inbound')
+        .in('account_id', accountIds)
+        .in('thread_key', chunk)
+        .gte('received_at', since)
+        .lte('received_at', edge.received_at)
+        .or(SHELF_ELIGIBLE_FILTER)
+        .is('reader_claimed_at', null)
+        .order('received_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(offset, offset + COMMS_PAGE_SIZE - 1),
+    );
+    if (error) return { messages: [], error };
+    fetched.push(...rows);
+  }
+
+  // The `in` lists cross every account with every key; only the pairs actually held count.
   const heldIds = new Set(held.map((message) => message.id));
-  const thread = held.filter(
-    (message) =>
-      message.account_id === oldest.account_id && message.thread_key === oldest.thread_key,
-  );
-  const candidates = [...thread, ...rows.filter((message) => !heldIds.has(message.id))];
-  const conversation = groupConversations(candidates, accounts).find((candidate) =>
-    candidate.messages.some((message) => message.id === oldest.id),
-  );
-  return {
-    messages: (conversation?.messages ?? []).filter((message) => !heldIds.has(message.id)),
-    error: null,
-  };
+  const seen = new Set<string>();
+  const behind = fetched.filter((message) => {
+    if (heldIds.has(message.id) || seen.has(message.id)) return false;
+    seen.add(message.id);
+    return heldPairs.has(pairKey(message));
+  });
+  if (behind.length === 0) return { messages: [], error: null };
+
+  const candidates = [...held.filter((message) => heldPairs.has(pairKey(message))), ...behind];
+  const messages = groupConversations(candidates, accounts)
+    .filter((conversation) => conversation.messages.some((message) => heldIds.has(message.id)))
+    .flatMap((conversation) => conversation.messages.filter((message) => !heldIds.has(message.id)));
+  return { messages, error: null };
 }
 
 /** How many shelf-eligible newsletters the Reader claimed — a count, never the rows. */
