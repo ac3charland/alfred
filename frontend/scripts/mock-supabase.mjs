@@ -917,19 +917,6 @@ function syncPrioritySequence() {
   nextPriority = max + 1;
 }
 
-/**
- * Set one code_item's priority, enforcing the IMMEDIATE unique index `code_items_priority_key`
- * the way Postgres does — reject if any OTHER row already holds the new value. This is what makes
- * the swap RPC a faithful model: a sequence that ever assigns a value still held by another row
- * throws here, exactly as the live DB 409s. Throws on collision; the caller maps it to a 409.
- */
-function setPriorityImmediate(target, value) {
-  if (codeItems.some((row) => row !== target && row.priority === value)) {
-    throw new Error(`duplicate key value violates unique constraint "code_items_priority_key"`);
-  }
-  target.priority = value;
-}
-
 /** Build a function that picks the right row constructor for a real table. */
 function rowConstructorFor(name) {
   if (name === 'folders') return newFolder;
@@ -1325,12 +1312,10 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
-  // Swap two stories' global priority (migration 0005/0006 — the Backlog chevron reorder).
-  // Modelled faithfully: `code_items_priority_key` is a NON-deferrable unique index, so Postgres
-  // checks uniqueness PER ROW as each row is updated. A naive `a := b; b := a` therefore 409s
-  // mid-swap (two rows momentarily share a priority) — the exact production bug. So set each row
-  // through `setPriorityImmediate`, which rejects a transient duplicate, and use the same
-  // negative-sentinel sequence the fixed RPC does so every per-row step is unique.
+  // Swap two stories' global priority (the Backlog chevron reorder, migration 0042): ONE update
+  // exchanges both ranks. That's legal because `code_items_priority_key` is a deferrable
+  // constraint (0031), checked at the end of the statement rather than per row — so no row ever
+  // passes through a transient rank.
   if (fn === 'swap_code_priority' && req.method === 'POST') {
     const a = codeItems.find((row) => row.ref === body?.p_a);
     const b = codeItems.find((row) => row.ref === body?.p_b);
@@ -1341,16 +1326,8 @@ function handleRpc(req, res, fn, body) {
       return;
     }
     const aPriority = a.priority;
-    const bPriority = b.priority;
-    try {
-      setPriorityImmediate(a, -aPriority); // park p_a negative, vacating a_pri
-      setPriorityImmediate(b, aPriority); //  p_b takes a_pri (now free)
-      setPriorityImmediate(a, bPriority); //  p_a lands on b_pri (vacated by p_b)
-    } catch (error) {
-      // Mirror the PostgREST 409 the real unique index raises on a transient duplicate.
-      sendJson(res, 409, { message: error instanceof Error ? error.message : 'duplicate key' });
-      return;
-    }
+    a.priority = b.priority;
+    b.priority = aPriority;
     sendJson(res, 200, [a, b]);
     return;
   }
