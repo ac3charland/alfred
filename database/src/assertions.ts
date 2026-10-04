@@ -324,6 +324,85 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // ALF-250: the Backlog's realtime subscription renders every UPDATE, so a swap that parks a row
+  // at a sentinel first flashes it to the top of the list; one write per row means none.
+  const swapWritesResult = await attempt(
+    'swap_code_priority only ever writes the two ranks it trades — no transient sentinel (0042)',
+    async () => {
+      const a = await createStory(client, 'story A');
+      const b = await createStory(client, 'story B');
+      const traded = new Set([Number(a.priority), Number(b.priority)]);
+      // Record every rank written, in a transaction rolled back afterwards (DDL included).
+      await client.query('begin');
+      try {
+        await client.query('create temp table swap_writes (priority double precision)');
+        await client.query(
+          `create function pg_temp.log_swap_write() returns trigger language plpgsql as $$
+           begin insert into swap_writes values (new.priority); return new; end; $$`,
+        );
+        await client.query(
+          `create trigger log_swap_write after update on code_items
+             for each row execute function pg_temp.log_swap_write()`,
+        );
+        await client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]);
+        const { rows } = await client.query<{ priority: number }>(
+          'select priority from swap_writes',
+        );
+        const written = rows.map((row) => row.priority);
+        if (written.length !== 2 || written.some((priority) => !traded.has(priority))) {
+          throw new Error(
+            `wrote ranks ${written.join(', ')}; expected only ${[...traded].join(', ')}`,
+          );
+        }
+        return `${a.ref}↔${b.ref} wrote ${written.join(', ')}`;
+      } finally {
+        await client.query('rollback');
+      }
+    },
+  );
+
+  // ALF-250: two swaps sharing a story (a second chevron burst syncing while the first is still in
+  // flight, or two tabs) must serialize — the second sees the first's ranks, not a 409.
+  const swapRaceResult = await attempt(
+    'concurrent swap_code_priority calls on a shared story both succeed, in order (0042)',
+    async () => {
+      const x = await createStory(client, 'story X');
+      const b = await createStory(client, 'story B');
+      const c = await createStory(client, 'story C');
+      const other = new pg.Client({
+        host: client.host,
+        port: client.port,
+        user: client.user,
+        database: client.database,
+      });
+      await other.connect();
+      try {
+        await client.query('begin');
+        await client.query('set local role authenticated');
+        await client.query(`select swap_code_priority($1, $2)`, [x.ref, b.ref]);
+        await other.query('set role authenticated');
+        const second = other.query(`select swap_code_priority($1, $2)`, [x.ref, c.ref]);
+        // Let the second call reach the row lock before the first commits.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await client.query('commit');
+        await second;
+      } catch (error) {
+        await client.query('rollback');
+        throw error;
+      } finally {
+        await other.end();
+      }
+      const after = [await priorityOf(client, x.ref), await priorityOf(client, b.ref)];
+      const expected = [Number(c.priority), Number(x.priority)];
+      if (after[0] !== expected[0] || after[1] !== expected[1]) {
+        throw new Error(
+          `ranks ${after.join('/')} after both swaps, expected ${expected.join('/')}`,
+        );
+      }
+      return `${x.ref} landed on ${String(after[0])}`;
+    },
+  );
+
   const moveResult = await attempt(
     'move_code_priority jumps a story past both extremes (0009)',
     async () => {
@@ -4819,6 +4898,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     createStoryResult,
     enterModuleResult,
     swapResult,
+    swapWritesResult,
+    swapRaceResult,
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
