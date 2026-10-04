@@ -279,7 +279,7 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   `move_code_priority_in_project`) in lockstep — the optimistic card must sort to the slot the RPC
   reconciles to.
 - `codeItemToStoryPatch` carries `priority`, so the realtime `code_items` path patches a
-  cross-device reorder into an open tab for free (idempotent echo, as for `factory_state`).
+  cross-device reorder into an open tab — but an echo of this tab's OWN swap is consumed via `ownRankWritesRef`, not applied: a burst's earlier echo lands after later swaps and would rewind the row (ALF-250). Batches run through one store-wide queue so overlapping bursts hit the server in click order.
 - Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
 
 ## Transient UI state: local until a cross-row command needs it
