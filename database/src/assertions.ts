@@ -324,6 +324,50 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // Realtime replays every row write of a transaction, in order, so a swap that parks one row
+  // on a sentinel rank publishes that sentinel: the Backlog row jumps to the top of the list,
+  // then slides back when the final write lands (ALF-250). Each row must be written once, with
+  // its final rank.
+  const swapWritesResult = await attempt(
+    'swap_code_priority writes only the two final ranks — no sentinel for realtime to replay (ALF-250)',
+    async () => {
+      const a = await createStory(client, 'story swap-writes A');
+      const b = await createStory(client, 'story swap-writes B');
+      await client.query(
+        `create temporary table swap_writes (ref text, priority double precision)`,
+      );
+      await client.query(`
+        create function pg_temp.log_swap_write() returns trigger language plpgsql as $$
+        begin
+          insert into swap_writes values (new.ref, new.priority);
+          return new;
+        end; $$`);
+      await client.query(`
+        create trigger log_swap_write after update of priority on code_items
+          for each row execute function pg_temp.log_swap_write()`);
+      try {
+        await client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]);
+        const writes = await client.query<{ ref: string; priority: string }>(
+          `select ref, priority::text from swap_writes`,
+        );
+        const seen = writes.rows.map((row) => `${row.ref}=${row.priority}`).join(', ');
+        const expected = new Set([`${a.ref}=${b.priority}`, `${b.ref}=${a.priority}`]);
+        if (
+          writes.rows.length !== 2 ||
+          writes.rows.some((row) => !expected.has(`${row.ref}=${row.priority}`))
+        ) {
+          throw new Error(
+            `expected one final write per row (${[...expected].join(', ')}), saw: ${seen}`,
+          );
+        }
+        return seen;
+      } finally {
+        await client.query(`drop trigger log_swap_write on code_items`);
+        await client.query(`drop table swap_writes`);
+      }
+    },
+  );
+
   const moveResult = await attempt(
     'move_code_priority jumps a story past both extremes (0009)',
     async () => {
@@ -4819,6 +4863,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     createStoryResult,
     enterModuleResult,
     swapResult,
+    swapWritesResult,
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
