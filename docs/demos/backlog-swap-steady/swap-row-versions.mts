@@ -59,11 +59,20 @@ async function run(label: string, include: (file: string) => boolean): Promise<v
     try {
       await first.query('begin');
       await first.query(`select swap_code_priority('ALF-4', 'ALF-2')`);
+      const pid = (await second.query<{ pid: number }>(`select pg_backend_pid() as pid`)).rows[0]?.pid;
       const overlapping = second.query(`select swap_code_priority('ALF-4', 'ALF-1')`).then(
         () => 'landed',
         (error: unknown) => `failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // Commit the first only once the second is blocked on its row locks: a real overlap.
+      for (let tries = 0; tries < 100; tries += 1) {
+        const { rows: waiting } = await client.query<{ wait: string | null }>(
+          `select wait_event_type as wait from pg_stat_activity where pid = $1`,
+          [pid],
+        );
+        if (waiting[0]?.wait === 'Lock') break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
       await first.query('commit');
       console.log(`Overlapping second swap: ${await overlapping}`);
     } finally {

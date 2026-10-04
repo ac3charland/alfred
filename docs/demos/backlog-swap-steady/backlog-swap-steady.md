@@ -35,7 +35,7 @@ Overlapping second swap: landed
 Backlog after:   ALF-3=-4  ALF-2=-3  ALF-1=-2  ALF-4=-1
 ```
 
-Before, ALF-4 is written at -5 (the global top) before landing on -3 — that first version is the "snapped to the top" every open tab saw — and the overlapping swap 409s. After, each row is written once, to its final rank, and the overlapping swap waits for the first and lands: ALF-4 ends two slots down, as two Down clicks intended.
+Before, ALF-4 is written at -5 (the global top) before landing on -3 — that first version is the "snapped to the top" every open tab saw — and the overlapping swap 409s. After, each row is written once, to its final rank, and the overlapping swap waits for the first and lands: both overlapping swaps take ALF-4 further down, so it ends at the bottom, as the clicks intended.
 
 ## 2. The Backlog: two quick Down clicks on ALF-3
 
