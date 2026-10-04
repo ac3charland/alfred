@@ -28,3 +28,17 @@ export function joinWhenAuthenticated(realtime: RealtimeClient, join: () => void
     cancelled = true;
   };
 }
+
+/**
+ * A realtime UPDATE's `payload.new` is NOT the whole row: a large (TOASTed) column the write left
+ * untouched reaches logical decoding as an unchanged-toast datum, so Realtime omits its key. Read
+ * through the row's type, that column is `undefined` — and spreading it into a store patch wipes
+ * the value the store holds (ALF-277: a launch's state write echoed without the spec, and the
+ * story modal crashed on `spec_markdown.trim()`). Drop the absent columns before patching; a
+ * delivered column is never `undefined` (JSON carries a cleared value as `null`).
+ */
+export function presentColumns<T extends object>(patch: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}

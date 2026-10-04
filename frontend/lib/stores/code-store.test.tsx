@@ -47,8 +47,8 @@ const mockListCode = jest.mocked(api.listCode);
 // The provider subscribes one channel per table (`code_items` and `epics`), so the stub keys the
 // captured handler by the filter's table — capturing a single handler would let the second
 // subscription silently overwrite the first.
-let mockRealtimeHandler: ((payload: { new: CodeItem }) => void) | undefined;
-let mockEpicRealtimeHandler: ((payload: { new: Epic }) => void) | undefined;
+let mockRealtimeHandler: ((payload: { new: RealtimeRow<CodeItem> }) => void) | undefined;
+let mockEpicRealtimeHandler: ((payload: { new: RealtimeRow<Epic> }) => void) | undefined;
 const mockRemoveChannel = jest.fn();
 // Every channel join, and the realtime auth call that has to come first (ALF-258).
 const mockSubscribe = jest.fn();
@@ -58,9 +58,9 @@ jest.mock('@/lib/supabase/client', () => ({
     const channel = {
       on: (_event: string, filter: { table?: string }, handler: (payload: never) => void) => {
         if (filter.table === 'epics') {
-          mockEpicRealtimeHandler = handler as (payload: { new: Epic }) => void;
+          mockEpicRealtimeHandler = handler as (payload: { new: RealtimeRow<Epic> }) => void;
         } else {
-          mockRealtimeHandler = handler as (payload: { new: CodeItem }) => void;
+          mockRealtimeHandler = handler as (payload: { new: RealtimeRow<CodeItem> }) => void;
         }
         return channel;
       },
@@ -236,15 +236,23 @@ function findStoryState(board: ReturnType<typeof useProjectBoard>): string | und
   return findStory(board)?.factory_state ?? undefined;
 }
 
+/**
+ * A realtime UPDATE's `new` row as Supabase actually delivers it: a large (TOASTed) column the
+ * write didn't touch is decoded as an unchanged-toast datum, so Realtime leaves its key OUT of the
+ * payload — absent, not null (ALF-277). `spec_markdown` is the column big enough to hit this.
+ */
+type RealtimeRow<T extends { spec_markdown: string | null }> = Omit<T, 'spec_markdown'> &
+  Partial<Pick<T, 'spec_markdown'>>;
+
 /** Drive a simulated `code_items` UPDATE through the captured realtime handler. */
-function emitUpdate(row: CodeItem) {
+function emitUpdate(row: RealtimeRow<CodeItem>) {
   act(() => {
     mockRealtimeHandler?.({ new: row });
   });
 }
 
 /** Drive a simulated `epics` UPDATE (the Worker's epic-spec snapshot) through its handler. */
-function emitEpicUpdate(row: Epic) {
+function emitEpicUpdate(row: RealtimeRow<Epic>) {
   act(() => {
     mockEpicRealtimeHandler?.({ new: row });
   });
@@ -3694,6 +3702,31 @@ describe('code-store', () => {
       expect(findStory(result.current)?.spec_markdown).toBe('# fresh spec');
     });
 
+    // ALF-277: launching a story writes only its factory_state, so the echo arrives without the
+    // (TOASTed) spec. Spreading that absent column as `undefined` wiped the held spec, and the
+    // open detail modal crashed on `spec.trim()` ("This page couldn't load").
+    it('keeps the held spec when an UPDATE omits the unchanged spec_markdown column', () => {
+      const spec = '<!doctype html><html><body>A long plan</body></html>';
+      const story = makeStory('i1', 'e1', 'p1', {
+        ref: 'ALF-42',
+        factory_state: 'ready_for_dev',
+        spec_markdown: spec,
+      });
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      const { spec_markdown: _unchangedToast, ...row } = makeSavedSidecar({
+        item_id: 'i1',
+        ref: 'ALF-42',
+        factory_state: 'in_development',
+      });
+      emitUpdate(row);
+
+      expect(findStoryState(result.current)).toBe('in_development');
+      expect(findStory(result.current)?.spec_markdown).toBe(spec);
+    });
+
     it('joins both channels only once the socket holds the session token (ALF-258)', async () => {
       // A join sent before the token is loaded goes out as `anon`, which RLS lets see nothing.
       const releaseAuth = holdRealtimeAuth(mockSetAuth);
@@ -3942,6 +3975,24 @@ describe('code-store', () => {
         spec_markdown: '<!doctype html><html><body>Epic plan</body></html>',
         refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/12',
       });
+    });
+
+    // ALF-277's epic twin: a rename or notes edit echoes back without the unchanged (TOASTed)
+    // spec, which must not wipe the snapshot the epic spec modal renders.
+    it('keeps the held spec when an UPDATE omits the unchanged spec_markdown column', () => {
+      const spec = '<!doctype html><html><body>Epic plan</body></html>';
+      const { result } = renderHook(() => useEpics(), {
+        wrapper: makeWrapper({
+          projects: [PROJECT_A],
+          epics: [{ ...epic, spec_markdown: spec }],
+          stories: [],
+        }),
+      });
+
+      const { spec_markdown: _unchangedToast, ...row } = { ...epic, name: 'Renamed' };
+      emitEpicUpdate(row);
+
+      expect(result.current[0]?.spec_markdown).toBe(spec);
     });
 
     it('fires no toast — nothing visibly moves on the board for an epic spec', () => {
