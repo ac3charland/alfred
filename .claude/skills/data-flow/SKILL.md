@@ -189,8 +189,10 @@ so the trigger fires exactly on that module's own navigations, not on every app-
 a provider mounted at the shell would otherwise see.
 
 The reconcile itself stays as narrow as the store's own invariants demand. Code (`refreshStatuses`)
-holds heavy optimistic state, so it PATCHES only a small, deliberately-chosen field set (factory
-status fields) onto rows already held — never a full replace, and never an insert (a story created
+holds heavy optimistic state, so it PATCHES only a small, deliberately-chosen field set onto rows
+already held (factory status fields plus the Worker-written spec + PR columns — it stands in for a
+missed realtime UPDATE, and a `ready_for_dev` card without its `spec_path` launches as
+skip-refinement) — never a full replace, and never an insert (a story created
 elsewhere is out of scope for this reconcile; a race-rule no-op for any id not already in the
 store, same as a dropped realtime UPDATE). Comms and Reader already reconcile by full snapshot
 replace for their other triggers (poll; tab return), so their pathname effect just calls that same
