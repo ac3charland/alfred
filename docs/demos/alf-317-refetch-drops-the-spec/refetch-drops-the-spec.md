@@ -97,7 +97,7 @@ Once this PR is open, don't proactively schedule a check-in on it (a wakeup, tim
 The projection now carries the spec snapshot too. They belong there because a state is not self-describing without them — Ready for Dev means two different things depending on whether a spec was ever committed — and they are safe to carry for the same reason `title` and `priority` are not: nothing in the app writes them locally, so there is no edit in flight to clobber.
 
 ```bash
-sed -n '38,49p' frontend/lib/code/status.ts
+awk '/^export function codeStoryStatusPatch/,/^}/' frontend/lib/code/status.ts
 ```
 
 ```output
