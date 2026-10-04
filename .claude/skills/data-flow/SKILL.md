@@ -280,10 +280,11 @@ second ordering source — the board *reflects* priority, it doesn't set it:
 - **A rank the user rewrites in bursts must never take an older value than the newest optimistic
   one.** Nudges queue, replies and realtime echoes arrive in no fixed order, and landing whichever
   came last snaps a story back up — or ties it with its neighbour, so the next nudge swaps equal
-  ranks and does nothing (ALF-250). `CodeProvider` stamps every optimistic rank write (`stampRank`),
-  lands a reply's `priority` only on a row whose newest stamp is the write it answers
-  (`settleRank`), drops `priority` from a realtime echo while the row has a stamp pending, and runs
-  every rank sync one after another (`queueRankSync`) so the server swaps in click order. A
+  ranks and does nothing (ALF-250). `CodeProvider` stamps every optimistic rank write (`stampRank`);
+  no reply or realtime echo lands `priority` on a row whose newest stamp still awaits its own reply
+  (`settleRank`); every rank sync runs one after another (`queueRankSync`), so each reply is the
+  newest server rank; a failed sync re-reads the ranks (`resyncRanks`) since click-time rollbacks
+  chain into ties; and the debounced syncs `flushOnUnmount`, so no stamp outlives its row. A
   cross-device reorder still arrives over realtime once the row has settled.
 - Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
 
