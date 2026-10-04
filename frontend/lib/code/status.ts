@@ -4,12 +4,15 @@ import type { CodeStory } from '@/lib/types';
  * The status fields a code story carries: its `factory_state` (which swimlane / Backlog status
  * it sits in) plus the companions that move with it — `lane`, `blocked_reason`, `blocked_from`
  * (the swimlane a blocked story keeps its card in, so a story blocked in another tab lands in the
- * right lane on refetch rather than snapping to the fallback), and `requires_refinement` (whether
- * it still needs a spec, which the detail modal's toggle reads back).
+ * right lane on refetch rather than snapping to the fallback), `requires_refinement` (whether
+ * it still needs a spec, which the detail modal's toggle reads back), and `spec_path` (whether a
+ * refinement PR committed one — the Worker writes it in the same patch that moves the story to
+ * `ready_for_dev`, and it decides which development session the story launches; a refetch that
+ * moved the card without it launched a merged spec as a skip-refinement session, ALF-317).
  */
 export type CodeStoryStatus = Pick<
   CodeStory,
-  'factory_state' | 'lane' | 'blocked_reason' | 'blocked_from' | 'requires_refinement'
+  'factory_state' | 'lane' | 'blocked_reason' | 'blocked_from' | 'requires_refinement' | 'spec_path'
 >;
 
 /**
@@ -25,5 +28,6 @@ export function codeStoryStatusPatch(story: CodeStory): CodeStoryStatus {
     blocked_reason: story.blocked_reason,
     blocked_from: story.blocked_from,
     requires_refinement: story.requires_refinement,
+    spec_path: story.spec_path,
   };
 }

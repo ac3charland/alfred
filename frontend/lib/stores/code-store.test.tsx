@@ -3942,6 +3942,40 @@ describe('code-store', () => {
       expect(findStoryState(result.current.board)).toBe('done');
     });
 
+    // ALF-317: the Worker writes `ready_for_dev` and `spec_path` in ONE patch when a refinement
+    // PR merges. When that UPDATE never reaches the tab over realtime (a backgrounded or stale
+    // socket), this refetch is the only way the move lands — and it must carry the spec with it,
+    // or the card sits in Ready for Dev looking spec-less and launches a skip-refinement session.
+    it('carries the merged spec_path, so the next launch opens the spec-reading prompt', async () => {
+      const openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+      mockListCode.mockResolvedValue([
+        makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+          spec_path: 'docs/specs/alf-42/SPEC.md',
+        }),
+      ]);
+      mockUpdateCodeState.mockResolvedValue(makeSavedSidecar({ factory_state: 'in_development' }));
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      await act(async () => {
+        await result.current.actions.refreshStatuses();
+      });
+      await act(async () => {
+        await result.current.actions.openClaudeSession('ALF-42', 'implementation');
+      });
+
+      const prompt = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+      expect(prompt).not.toContain('SKIP-REFINEMENT');
+      expect(prompt).toContain(
+        'Implement the merged spec committed at `docs/specs/alf-42/SPEC.md`',
+      );
+      openSpy.mockRestore();
+    });
+
     it('swallows a failed fetch and leaves the seeded status intact', async () => {
       mockListCode.mockRejectedValue(new Error('network down'));
       const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });

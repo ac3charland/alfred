@@ -39,13 +39,14 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
 }
 
 describe('codeStoryStatusPatch', () => {
-  it('projects the status fields (factory_state, lane, blocked_reason, blocked_from, requires_refinement)', () => {
+  it('projects the status fields (factory_state, lane, blocked_reason, blocked_from, requires_refinement, spec_path)', () => {
     const story = makeStory({
       factory_state: 'blocked',
       lane: 'local',
       blocked_reason: 'checks failing',
       blocked_from: 'in_development',
       requires_refinement: false,
+      spec_path: 'docs/specs/alf-1/SPEC.md',
     });
 
     expect(codeStoryStatusPatch(story)).toEqual({
@@ -54,13 +55,19 @@ describe('codeStoryStatusPatch', () => {
       blocked_reason: 'checks failing',
       blocked_from: 'in_development',
       requires_refinement: false,
+      spec_path: 'docs/specs/alf-1/SPEC.md',
     });
   });
 
-  it('omits non-status fields (title, priority, notes, spec, prs)', () => {
+  it('omits non-status fields (title, priority, notes, spec snapshot, prs)', () => {
     // Exact-equality on the whole patch: any leaked non-status field would fail this.
     const patch = codeStoryStatusPatch(
-      makeStory({ title: 'x', priority: 42, spec_path: '/s', refinement_pr_url: 'http://pr' }),
+      makeStory({
+        title: 'x',
+        priority: 42,
+        spec_markdown: '# Spec',
+        refinement_pr_url: 'http://pr',
+      }),
     );
 
     expect(patch).toEqual({
@@ -69,6 +76,7 @@ describe('codeStoryStatusPatch', () => {
       blocked_reason: null,
       blocked_from: null,
       requires_refinement: true,
+      spec_path: null,
     });
   });
 
