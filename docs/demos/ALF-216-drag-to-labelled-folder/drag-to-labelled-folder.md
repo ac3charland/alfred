@@ -8,7 +8,7 @@ branch: alf-334/replay-216-high-r1
 
 **ALF-216**: when the classifier had labelled an Inbox item with a folder, the item could be dragged onto any OTHER folder, but dropping it on the labelled folder did nothing. The drop resolver compared the target against `folder_id`, which since migration 0026 holds only where the item *would* land. The item still *lives* in the Inbox until a human dispatches it, so "already in Work" was a false read and the drop was discarded as a no-op.
 
-Fix: `resolveFolderDrop` now compares the target against the item's residency (`residentFolderId`: `null` until dispatched). Dropping a labelled Inbox item on its label now files it, and dropping it back on the Inbox stays a no-op, where before it also wiped the label.
+Fix: `resolveFolderDrop` now compares the target against the item's residency (`residentFolderId`: `null` until dispatched). Dropping a labelled Inbox item on its label now files it.
 
 Seed: one Inbox task labelled **Work** by the classifier (`folder_id` = Work, `dispatched_at` = null), plus a second folder, Home.
 
@@ -16,7 +16,7 @@ Seed: one Inbox task labelled **Work** by the classifier (`folder_id` = Work, `d
 
 ![](drag-to-labelled-folder-image-1.png)
 
-**2. Mid-gesture**: the row is lifted and held over **Work** in the sidebar, which shows the teal drop highlight. Before the fix, releasing here left the row in the Inbox.
+**2. Mid-gesture**: "Book the dentist" is lifted (its ghost trails the pointer) and held over **Work** in the sidebar, which shows the teal drop highlight.
 
 ![](drag-to-labelled-folder-image-2.png)
 
@@ -27,3 +27,7 @@ Seed: one Inbox task labelled **Work** by the classifier (`folder_id` = Work, `d
 **4. The Work folder**: the item is now filed there as a task.
 
 ![](drag-to-labelled-folder-image-4.png)
+
+**Without the fix** (the same drop, captured with `drag-to-folder.ts` and `task-dnd-provider.tsx` restored from the base commit): after releasing over the highlighted **Work**, the item stays in the Inbox with its label chip. The drop was read as "already in Work" and discarded.
+
+![](drag-to-labelled-folder-image-5.png)
