@@ -351,6 +351,9 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
           [b.ref, Number(a.priority)],
         ]);
         const stray = writes.rows.filter((w) => expected.get(w.ref) !== w.priority);
+        if (writes.rows.length !== 2) {
+          throw new Error(`expected exactly 2 rank writes, saw ${String(writes.rows.length)}`);
+        }
         if (stray.length > 0) {
           throw new Error(
             `transient ranks written: ${stray.map((w) => `${w.ref}=${String(w.priority)}`).join(', ')}`,
