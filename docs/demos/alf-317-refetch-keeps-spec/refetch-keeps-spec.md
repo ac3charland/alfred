@@ -38,3 +38,5 @@ ALF-7: Add a retry policy to the webhook
 You are implementing the ticket ALF-7. Implement the merged spec committed at `docs/specs/alf-7/SPEC.md` in this repo — read it first, then build it.
 0
 ```
+
+**How the journey was captured:** a throwaway Playwright spec under `frontend/e2e/` (run with `npm run test:e2e -w frontend -- <spec>`, then deleted per the showboat skill) seeded the story In Refinement, stubbed `window.open` to record the launched URL, simulated the Worker's merge with `request.patch(`${MOCK_URL}/rest/v1/code_items?ref=eq.ALF-7`, { data: { factory_state: 'ready_for_dev', spec_path: 'docs/specs/alf-7/SPEC.md' } })`, clicked the sidebar **Backlog** link then `page.goBack()` to fire the refetch, clicked **Implement in Claude Code**, and wrote the URL's `q` param to `launch-prompt.txt`. The "before" prompt is the same spec run with `frontend/lib/code/status.ts` reverted to its base. The unit pin is `refreshStatuses … carries the merged spec_path` in `frontend/lib/stores/code-store.test.tsx`.
