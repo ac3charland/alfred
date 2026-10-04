@@ -337,12 +337,14 @@ export interface CodeActions {
   applyReorderOptimistic: (ref: string, neighbourRef: string) => ReorderStep | null;
   /**
    * Commit a burst of `applyReorderOptimistic` swaps to the server, ONE `reorderCode` call per
-   * step, strictly in order — each step's RPC must see the priorities the previous step in the
-   * burst left behind, exactly mirroring how the swaps were already applied locally. Reconciles
-   * each step's returned `code_items` rows as it goes. If a step fails, every step from that one
-   * onward is rolled back to its pre-swap priorities (in reverse order, so each rollback undoes
-   * cleanly); steps that already committed before the failure are left as they are, since the
-   * server already has them.
+   * step, strictly in order — each step's RPC must see the priorities the previous step left
+   * behind, exactly mirroring how the swaps were already applied locally. Bursts share ONE queue
+   * (ALF-250): a burst committed while an earlier one is still in flight waits behind it, and the
+   * returned promise settles once the queue drains. Reconciles each step's returned `code_items`
+   * rows as it goes, except the priority of an item a later queued step still moves. If a step
+   * fails, every step from that one onward — later bursts included — is rolled back to its
+   * pre-swap priorities (in reverse order, so each rollback undoes cleanly); steps that already
+   * committed before the failure are left as they are, since the server already has them.
    */
   commitReorderBatch: (steps: ReorderStep[]) => Promise<void>;
   /**
@@ -556,6 +558,15 @@ export function CodeProvider({
     stateRef.current = state;
   }, [state]);
 
+  // Every chevron swap committed but not yet answered, across ALL rows and bursts, in click order
+  // (ALF-250). A swap is relative — "trade ranks with this ref" — so the server must apply them in
+  // exactly the order the list applied them, which one queue drained one request at a time
+  // guarantees. While an item has a swap queued, its local priority is the optimistic one and
+  // the only one that counts: an earlier step's response or a realtime echo (including the
+  // parked sentinel rank `swap_code_priority` passes through) would drag it back mid-burst.
+  const reorderQueueRef = React.useRef<ReorderStep[]>([]);
+  const reorderDrainRef = React.useRef<Promise<void> | null>(null);
+
   const { showToast } = useToastActions();
   // The stable (`[]`) action closures surface a failed write as a toast (ALF-33). They can't
   // close over `showToast` directly (it would need to be a memo dep), so read it through a ref
@@ -603,7 +614,11 @@ export function CodeProvider({
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: deliveredColumns(codeItemToStoryPatch(row)),
+        patch: withoutQueuedPriority(
+          reorderQueueRef.current,
+          row.item_id,
+          deliveredColumns(codeItemToStoryPatch(row)),
+        ),
       });
       if (!changedState) return;
 
@@ -1254,40 +1269,55 @@ export function CodeProvider({
         dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: aPriorityBefore } });
         return { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore };
       },
-      async commitReorderBatch(steps) {
-        for (const [index, step] of steps.entries()) {
-          try {
-            const rows = await api.reorderCode(step.ref, step.neighbourRef);
-            // Apply each returned sidecar through the one projection (carries the real priority).
+      commitReorderBatch(steps) {
+        const queue = reorderQueueRef.current;
+        queue.push(...steps);
+        // Already draining: the running loop picks these steps up after the ones ahead of them.
+        if (reorderDrainRef.current !== null) return reorderDrainRef.current;
+        const drain = async () => {
+          for (let step = queue[0]; step !== undefined; step = queue[0]) {
+            let rows: CodeItem[];
+            try {
+              rows = await api.reorderCode(step.ref, step.neighbourRef);
+            } catch {
+              // This step and everything queued behind it — later bursts too, which were ranked
+              // on top of it — never reached the server. Undo them in reverse, so each rollback
+              // exactly cancels its own swap; steps that already committed stay as they are.
+              const failedSteps = queue.splice(0);
+              for (let i = failedSteps.length - 1; i >= 0; i -= 1) {
+                const failed = failedSteps[i];
+                if (failed === undefined) continue;
+                dispatch({
+                  type: 'patchStory',
+                  itemId: failed.aItemId,
+                  patch: { priority: failed.aPriorityBefore },
+                });
+                dispatch({
+                  type: 'patchStory',
+                  itemId: failed.bItemId,
+                  patch: { priority: failed.bPriorityBefore },
+                });
+              }
+              showToastRef.current("Couldn't reorder story");
+              return;
+            }
+            queue.shift();
+            // Reconcile through the one projection (carries the real priority) — except the
+            // priority of an item a later queued swap still moves (ALF-250).
             for (const row of rows) {
               dispatch({
                 type: 'patchStory',
                 itemId: row.item_id,
-                patch: codeItemToStoryPatch(row),
+                patch: withoutQueuedPriority(queue, row.item_id, codeItemToStoryPatch(row)),
               });
             }
-          } catch {
-            // This step and everything queued behind it never reached the server — undo them,
-            // in reverse, so each rollback exactly cancels its own swap. Steps before this one
-            // already committed, so they're left as they are.
-            for (let i = steps.length - 1; i >= index; i -= 1) {
-              const failed = steps[i];
-              if (failed === undefined) continue;
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.aItemId,
-                patch: { priority: failed.aPriorityBefore },
-              });
-              dispatch({
-                type: 'patchStory',
-                itemId: failed.bItemId,
-                patch: { priority: failed.bPriorityBefore },
-              });
-            }
-            showToastRef.current("Couldn't reorder story");
-            return;
           }
-        }
+        };
+        const running = drain().finally(() => {
+          reorderDrainRef.current = null;
+        });
+        reorderDrainRef.current = running;
+        return running;
       },
       applyMoveOptimistic(ref, toTop) {
         const { stories } = stateRef.current;
@@ -1387,6 +1417,20 @@ export function CodeProvider({
       </CodeProjectsContext.Provider>
     </CodeActionsContext.Provider>
   );
+}
+
+/**
+ * `patch` less its `priority` when a still-queued chevron swap touches `itemId` (ALF-250): that
+ * swap's optimistic rank is the one the list must keep showing until it lands.
+ */
+function withoutQueuedPriority(
+  queue: readonly ReorderStep[],
+  itemId: string,
+  patch: Partial<CodeStory>,
+): Partial<CodeStory> {
+  if (!queue.some((step) => step.aItemId === itemId || step.bItemId === itemId)) return patch;
+  const { priority: _queued, ...rest } = patch;
+  return rest;
 }
 
 /** Read the project list, in store order. Throws outside a CodeProvider. */
