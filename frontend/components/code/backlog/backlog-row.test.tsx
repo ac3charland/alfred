@@ -79,7 +79,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
   const applyMove = makeApplyMoveStub(moveReturns);
   const commitMove = jest.fn().mockResolvedValue(undefined);
 
-  render(
+  const { unmount } = render(
     <ul>
       <BacklogRow
         story={makeStory()}
@@ -99,6 +99,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
     </ul>,
   );
   return {
+    unmount,
     applyReorder,
     commitReorder,
     reorderReturns,
@@ -235,6 +236,23 @@ describe('BacklogRow', () => {
     expect(applyMove).toHaveBeenCalledWith('ALF-1', false);
 
     expect(commitMove).not.toHaveBeenCalled();
+  });
+
+  it('still syncs a nudge and a jump clicked just before the row unmounts (ALF-250)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    jest.useFakeTimers();
+    try {
+      const { unmount, commitReorder, commitMove } = renderRow();
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top of list' }));
+      unmount();
+
+      expect(commitReorder).toHaveBeenCalledTimes(1);
+      expect(commitMove).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('debounces the reorder network sync: commitReorder only fires once clicks settle', async () => {

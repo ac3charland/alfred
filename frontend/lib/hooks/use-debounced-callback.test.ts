@@ -125,4 +125,23 @@ describe('useDebouncedCallback', () => {
       jest.useRealTimers();
     }
   });
+  it('fires a pending call on unmount instead of dropping it, when asked to', () => {
+    jest.useFakeTimers();
+    try {
+      const callback = jest.fn();
+      const { result, unmount } = renderHook(() =>
+        useDebouncedCallback(callback, 200, { flushOnUnmount: true }),
+      );
+
+      act(() => {
+        result.current('a');
+      });
+      unmount();
+
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledWith('a');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

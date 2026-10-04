@@ -30,12 +30,17 @@ export function useMoveBurst(
 ): (toTop: boolean) => void {
   const burstRef = React.useRef<{ toTop: boolean; priorityBefore: number | null } | null>(null);
 
-  const flush = useDebouncedCallback(() => {
-    const burst = burstRef.current;
-    burstRef.current = null;
-    if (burst !== null && storyRef !== null)
-      void commit(storyRef, burst.toTop, burst.priorityBefore);
-  }, MOVE_SYNC_DEBOUNCE_MS);
+  const flush = useDebouncedCallback(
+    () => {
+      const burst = burstRef.current;
+      burstRef.current = null;
+      if (burst !== null && storyRef !== null)
+        void commit(storyRef, burst.toTop, burst.priorityBefore);
+      // A jump clicked just before the row/modal closes still reaches the server (ALF-250).
+    },
+    MOVE_SYNC_DEBOUNCE_MS,
+    { flushOnUnmount: true },
+  );
 
   return (toTop: boolean) => {
     if (storyRef === null) return;
