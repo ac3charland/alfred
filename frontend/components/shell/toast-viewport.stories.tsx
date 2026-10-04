@@ -27,6 +27,19 @@ export const Default: Story = {
   },
 };
 
+// A send that Instapaper refused, as the Reader's row rolls back: the route's own sentence,
+// which is something the owner can act on — retrying this post cannot work.
+export const SendRefused: Story = {
+  args: {
+    toast: {
+      id: 'r',
+      message: 'This publication has opted out of Instapaper',
+      variant: 'default',
+      leaving: false,
+    },
+  },
+};
+
 // The realtime move alert, as it actually fires: emphasis + a deep link to the story that moved.
 export const Emphasis: Story = {
   args: {

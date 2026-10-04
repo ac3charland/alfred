@@ -2,7 +2,11 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 import { userEvent, within } from 'storybook/test';
 
-import { NO_READER_HEALTH, makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
+import {
+  NO_READER_HEALTH,
+  makeReaderOverview,
+  makeReaderPostListItem,
+} from '@/lib/reader/fixtures';
 import { ARCHIVE_READ_LIMIT, ReaderProvider } from '@/lib/stores/reader-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
@@ -27,11 +31,10 @@ function post(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  return makeReaderPostListItem(PUBLICATION_ID, {
     archived_at: '2026-09-17T09:00:00.000Z',
     ...overrides,
   });
-  return listItem;
 }
 
 /** Two finished posts put away, drawn from the mockup's archive. */

@@ -2,7 +2,11 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 import { userEvent, within } from 'storybook/test';
 
-import { NO_READER_HEALTH, makeReaderOverview, makeReaderPost } from '@/lib/reader/fixtures';
+import {
+  NO_READER_HEALTH,
+  makeReaderOverview,
+  makeReaderPostListItem,
+} from '@/lib/reader/fixtures';
 import { ReaderProvider } from '@/lib/stores/reader-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
@@ -11,9 +15,10 @@ import { PostRow } from './post-row';
 
 /**
  * One story per row state the reading list can show: a finished summary (collapsed and
- * expanded), the three floor states, and a post with nowhere for "Open" to point. Each is its
- * own `ReaderProvider` seed (rather than the shared shell seed) so its archive/open verbs have
- * something real to act on in an isolated story.
+ * expanded), the three floor states, a post with nowhere for the Original link to point, both
+ * reasons the send verb can be disabled, and a post already in Instapaper. Each is its own
+ * `ReaderProvider` seed (rather than the shared shell seed) so its verbs have something real to
+ * act on in an isolated story.
  */
 
 const NOW = new Date(2026, 8, 18, 9, 0);
@@ -24,8 +29,7 @@ function post(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
-  return listItem;
+  return makeReaderPostListItem(PUBLICATION_ID, overrides);
 }
 
 const withFrame: Decorator = (Story) => (
@@ -36,9 +40,17 @@ const withFrame: Decorator = (Story) => (
 
 const withProviders: Decorator = (Story, context) => {
   const row = context.args['post'] as ReaderPostListItem;
+  // A story opts out of Instapaper being set up at all with `parameters.instapaper.configured`,
+  // which is how the disabled-verb state is drawn — the credentials are server-only, so the row
+  // is told rather than reading them.
+  const instapaper = context.parameters['instapaper'] as { configured?: boolean } | undefined;
   return (
     <ToastProvider>
-      <ReaderProvider initialPosts={[row]} initialHealth={NO_READER_HEALTH}>
+      <ReaderProvider
+        initialPosts={[row]}
+        initialHealth={NO_READER_HEALTH}
+        instapaperConfigured={instapaper?.configured ?? true}
+      >
         <Story />
       </ReaderProvider>
     </ToastProvider>
@@ -249,6 +261,72 @@ export const RefusedAndSwept: Story = {
       text_swept_at: '2026-09-08T03:00:00.000Z',
       model: 'claude-sonnet-5',
       prompt_version: 1,
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/**
+ * Nothing to send: no web link and no stored text left. The verb is disabled and its `title`
+ * says which of the two reasons applies.
+ */
+export const SendDisabledNothingToSend: Story = {
+  args: {
+    selected: true,
+    post: post({
+      id: 'p-nothing-to-send',
+      author: 'Stratechery',
+      title: '(untitled)',
+      received_at: '2026-09-14T14:00:00.000Z',
+      word_count: 0,
+      canonical_url: null,
+      rfc822_message_id: null,
+      summary_state: 'failed',
+      last_error: 'no readable body',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/**
+ * The same verb on a deployment with no Instapaper credentials — the Work instance and local
+ * dev. Every row says so, whatever the post's own state, and `Original ↗` still works.
+ */
+export const SendDisabledUnconfigured: Story = {
+  args: { selected: true },
+  parameters: {
+    visualTest: { target: '[data-testid="row-frame"]' },
+    instapaper: { configured: false },
+  },
+};
+
+/**
+ * The archive's row after a send: the `in Instapaper` badge beside the meta line, and Unarchive
+ * in Archive's slot. The badge survives an unarchive — the post is still in Instapaper however
+ * the Reader files it.
+ */
+export const SentAndArchived: Story = {
+  args: {
+    variant: 'archive',
+    post: post({
+      id: 'p-sent',
+      author: 'Second Thoughts',
+      title: 'How near is the intelligence explosion, really?',
+      received_at: '2026-09-16T14:00:00.000Z',
+      word_count: 3220,
+      html_extracted: true,
+      canonical_url: 'https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion',
+      summary_state: 'done',
+      gist:
+        'Argues the "recursive self-improvement" debate conflates three different feedback loops ' +
+        'and that only one of them (automated ML research) has any evidence behind it.',
+      overview: makeReaderOverview(),
+      model: 'claude-sonnet-5',
+      prompt_version: 2,
+      summarized_at: '2026-09-16T14:05:00.000Z',
+      archived_at: '2026-09-17T09:00:00.000Z',
+      instapaper_sent_at: '2026-09-17T09:00:00.000Z',
+      instapaper_bookmark_id: 1_234_567,
     }),
   },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },

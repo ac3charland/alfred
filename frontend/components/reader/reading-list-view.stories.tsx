@@ -3,10 +3,10 @@ import * as React from 'react';
 import { userEvent, within } from 'storybook/test';
 
 import { makeCommAccount } from '@/lib/comms/fixtures';
-import { makeReaderHealth, readerFixtureSet } from '@/lib/reader/fixtures';
+import { makeReaderHealth, readerFixtureSet, toReaderPostListItem } from '@/lib/reader/fixtures';
 import { ReaderProvider } from '@/lib/stores/reader-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
-import type { ReaderHealthSnapshot, ReaderPost, ReaderPostListItem } from '@/lib/types';
+import type { ReaderHealthSnapshot, ReaderPostListItem } from '@/lib/types';
 
 import { ReadingListView } from './reading-list-view';
 
@@ -22,10 +22,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The earliest pinned arrival — every later fixture lands `index` days after it. */
 const BASE_RECEIVED_AT = new Date(Date.UTC(2026, 8, 12, 14, 0, 0));
-
-function withoutText({ text: _text, ...listItem }: ReaderPost) {
-  return listItem;
-}
 
 /** The last summary to land — recent enough that the summariser reads as working. */
 const LAST_SUMMARY_AT = new Date(NOW.getTime() - 5 * 60 * 1000).toISOString();
@@ -48,7 +44,7 @@ function pinnedPosts(): ReaderPostListItem[] {
   return posts.map((post, index) => {
     const receivedAt = new Date(BASE_RECEIVED_AT.getTime() + index * DAY_MS).toISOString();
     return {
-      ...withoutText(post),
+      ...toReaderPostListItem(post),
       received_at: receivedAt,
       created_at: receivedAt,
       summarized_at: post.summarized_at === null ? null : LAST_SUMMARY_AT,
