@@ -103,19 +103,20 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   );
 
   // The order `j`/`k` walk: the queue as drawn, then the shelf if it has been opened — each
-  // conversation's header, then its messages while it is open. Built from the same lists the
-  // sections render, so navigation can never disagree with the page.
+  // conversation's header, then its messages. Stepping onto any of them selects it and so opens
+  // the conversation, which keeps the walk the same in both directions: `j` enters at the header,
+  // `k` at the oldest message. Built from the same lists the sections render, so navigation can
+  // never disagree with the page.
   const orderedIds = React.useMemo(() => {
     const queued = QUEUED_TIERS.flatMap((tier) => byTier[tier].map((message) => message.id));
     if (!shelfOpen) return queued;
-    const shelfIds = conversations.flatMap((conversation) => {
-      if (conversation.messages.length === 1) return [conversation.newest.id];
-      return isOpen(conversation)
-        ? [conversation.id, ...conversation.messages.map((message) => message.id)]
-        : [conversation.id];
-    });
+    const shelfIds = conversations.flatMap((conversation) =>
+      conversation.messages.length === 1
+        ? [conversation.newest.id]
+        : [conversation.id, ...conversation.messages.map((message) => message.id)],
+    );
     return [...queued, ...shelfIds];
-  }, [byTier, conversations, isOpen, shelfOpen]);
+  }, [byTier, conversations, shelfOpen]);
 
   // Navigation and Escape live here rather than on a row, because they have to work when
   // nothing is selected at all — `j` on a fresh page selects the first row. The verbs are the

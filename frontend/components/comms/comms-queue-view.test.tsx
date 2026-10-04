@@ -363,9 +363,12 @@ describe('CommsQueueView — the shelf by conversation', () => {
 
     fireEvent.keyDown(document, { key: 'j' });
     expect(header()).toHaveAttribute('aria-expanded', 'true');
-    // Verbs belong to messages: `x` on the header does nothing.
-    fireEvent.keyDown(document, { key: 'x' });
+    // Verbs belong to messages: none of them does anything on the header.
+    for (const key of ['o', 'i', 'x', 't']) fireEvent.keyDown(document, { key });
     expect(jest.mocked(api).clearCommMessage).not.toHaveBeenCalled();
+    expect(jest.mocked(api).makeInboxItemFromMessage).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(header()).toHaveAttribute('aria-expanded', 'true');
 
     fireEvent.keyDown(document, { key: 'j' });
     expect(selectedRow()).toHaveTextContent('Re: potluck — final');
@@ -377,8 +380,14 @@ describe('CommsQueueView — the shelf by conversation', () => {
     expect(selectedRow()).toHaveTextContent('Your statement is ready');
     expect(header()).toHaveAttribute('aria-expanded', 'false');
 
-    // Back up lands on the header, which opens it again; Escape closes it.
+    // Back up enters at the oldest message, opening it again, and walks up to the header.
     fireEvent.keyDown(document, { key: 'k' });
+    expect(header()).toHaveAttribute('aria-expanded', 'true');
+    expect(selectedRow()).toHaveTextContent('potluck — who is in?');
+    fireEvent.keyDown(document, { key: 'k' });
+    fireEvent.keyDown(document, { key: 'k' });
+    fireEvent.keyDown(document, { key: 'k' });
+    expect(selectedRow()).toBeUndefined();
     expect(header()).toHaveAttribute('aria-expanded', 'true');
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(header()).toHaveAttribute('aria-expanded', 'false');
