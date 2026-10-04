@@ -26,5 +26,12 @@ declare namespace NodeJS {
     GITHUB_TOKEN?: string;
     PR_RATIO_REPOS?: string;
     PR_RATIO_AUTHORS?: string;
+    // Instapaper's Full API — server-only; unset turns the Reader's send verb off. All four
+    // credentials are needed, so a partial set reads as unset.
+    INSTAPAPER_CONSUMER_KEY?: string;
+    INSTAPAPER_CONSUMER_SECRET?: string;
+    INSTAPAPER_ACCESS_TOKEN?: string;
+    INSTAPAPER_ACCESS_TOKEN_SECRET?: string;
+    INSTAPAPER_API_URL?: string;
   }
 }
