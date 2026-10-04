@@ -4,7 +4,6 @@ import { ArrowDownToLine, ArrowUpToLine, ChevronsDown, ChevronsUp } from 'lucide
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
-import { useMoveBurst } from '@/lib/hooks/use-move-burst';
 import { useCodeActions, useStoryRankFlags } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 
@@ -24,20 +23,23 @@ interface Jump {
  * without leaving the board. The Backlog's neighbour swap has no counterpart here: it needs the
  * visible row above/below, which only a rendered list knows.
  *
- * Reuses the row's icons and its instant-apply + debounced-commit `useMoveBurst`, so a click
- * re-ranks the story in the store immediately (the buttons re-derive from that new position) and
- * a rapid burst still costs one request. A jump the story already satisfies is disabled, read
- * from `useStoryRankFlags`.
+ * Reuses the row's icons and the store's jumps, so a click re-ranks the story in the store
+ * immediately (the buttons re-derive from that new position) and syncs through the same ranking
+ * queue as the Backlog's, where a rapid burst of jumps still costs one request. A jump the story
+ * already satisfies is disabled, read from `useStoryRankFlags`.
  *
  * Must be mounted under a `CodeProvider`.
  */
 export function PriorityControls({ story }: { story: CodeStory }) {
-  const { applyMoveInProjectOptimistic, commitMoveInProject, applyMoveOptimistic, commitMove } =
-    useCodeActions();
+  const { moveStoryInProject, moveStory } = useCodeActions();
   const { isProjectTop, isProjectBottom, isBacklogTop, isBacklogBottom } = useStoryRankFlags(story);
-
-  const moveInProject = useMoveBurst(story.ref, applyMoveInProjectOptimistic, commitMoveInProject);
-  const move = useMoveBurst(story.ref, applyMoveOptimistic, commitMove);
+  const ref = story.ref;
+  const moveInProject = (toTop: boolean) => {
+    if (ref !== null) moveStoryInProject(ref, toTop);
+  };
+  const move = (toTop: boolean) => {
+    if (ref !== null) moveStory(ref, toTop);
+  };
 
   const jumps: Jump[] = [
     {

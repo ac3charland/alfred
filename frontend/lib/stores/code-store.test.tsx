@@ -3,12 +3,12 @@ import * as React from 'react';
 
 import { StoryCard } from '@/components/code/story-card';
 import * as api from '@/lib/api-client';
+import { MOVE_SYNC_DEBOUNCE_MS } from '@/lib/stores/code-priority-sync';
 import { holdRealtimeAuth } from '@/lib/supabase/hold-realtime-auth';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import {
   ALL_FACTORY_STATES,
-  type CodeActions,
   CodeProvider,
   DEFAULT_BACKLOG_STATUSES,
   HAPPY_PATH_STATES,
@@ -321,10 +321,25 @@ function prioritiesById(backlog: CodeStory[]): Record<string, number | null> {
   return out;
 }
 
-/** Narrow a possibly-null `apply*Optimistic` return for a test that expects it to resolve. */
-function unwrap<T>(value: T | null): T {
-  if (value === null) throw new Error('expected a non-null value');
-  return value;
+/** Read the actions + the Backlog (every state) in a single hook, for the ranking tests. */
+function useBacklogStore() {
+  return { actions: useCodeActions(), backlog: useBacklog({ statuses: ALL_FACTORY_STATES }) };
+}
+
+/** Let the ranking-sync queue's debounce elapse (fake timers) and its writes run to completion. */
+async function flushMoveSync() {
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(MOVE_SYNC_DEBOUNCE_MS);
+  });
+}
+
+/** A promise the test settles by hand, to hold an RPC in flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 describe('code-store', () => {
@@ -2114,239 +2129,400 @@ describe('code-store', () => {
       });
     });
 
-    describe('applyReorderOptimistic + commitReorderBatch (Backlog priority swap)', () => {
+    describe('reorderStory (Backlog priority swap, queued)', () => {
       const epic = makeEpic('e1', 'p1');
       const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
       const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
+      const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+      const fourth = makeStory('i4', 'e1', 'p1', { ref: 'ALF-4', priority: 4 });
 
-      it('applyReorderOptimistic swaps the pair instantly, with no network call', () => {
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
-        );
+      beforeEach(() => {
+        jest.useFakeTimers();
+        // A write nobody scripted (or one flushed by unmount) resolves empty rather than throwing.
+        mockReorderCode.mockResolvedValue([]);
+        mockMoveCode.mockResolvedValue([]);
+      });
+      afterEach(() => {
+        jest.useRealTimers();
+      });
 
-        let step: ReturnType<CodeActions['applyReorderOptimistic']> = null;
+      function renderBacklogOf(stories: CodeStory[]) {
+        return renderHook(useBacklogStore, {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories }),
+        });
+      }
+
+      it('swaps the pair instantly, with no network call before the debounce', async () => {
+        const { result } = renderBacklogOf([high, low]);
+
         act(() => {
-          step = result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2');
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
         });
 
         expect(mockReorderCode).not.toHaveBeenCalled();
-        expect(step).toEqual({
-          ref: 'ALF-1',
-          neighbourRef: 'ALF-2',
-          aItemId: 'i1',
-          bItemId: 'i2',
-          aPriorityBefore: 1,
-          bPriorityBefore: 2,
-        });
         // ALF-2 now outranks ALF-1, so the backlog order flips — instantly, before any network.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1 });
         expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1']);
-      });
 
-      it('applyReorderOptimistic returns null (and swaps nothing) when a ref is unknown', () => {
-        const { result } = renderHook(() => useCodeActions(), {
-          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high] }),
+        // Even just short of the debounce nothing has been sent.
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(MOVE_SYNC_DEBOUNCE_MS - 1);
         });
-
-        let step: ReturnType<CodeActions['applyReorderOptimistic']> = null;
-        act(() => {
-          step = result.current.applyReorderOptimistic('ALF-1', 'ALF-404');
-        });
-
-        expect(step).toBeNull();
         expect(mockReorderCode).not.toHaveBeenCalled();
       });
 
-      it('commitReorderBatch sends one call per step, in order, and reconciles from each response', async () => {
+      it('is a no-op (swaps and sends nothing) when a ref is unknown', async () => {
+        const { result } = renderBacklogOf([high]);
+
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-404');
+        });
+        await flushMoveSync();
+
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 1 });
+        expect(mockReorderCode).not.toHaveBeenCalled();
+      });
+
+      it('sends a still-queued swap when the provider unmounts, instead of dropping it', () => {
+        const { result, unmount } = renderBacklogOf([high, low]);
+
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+        unmount();
+
+        expect(mockReorderCode).toHaveBeenCalledWith('ALF-1', 'ALF-2');
+      });
+
+      it('sends the swap after the debounce and reconciles from the response', async () => {
         mockReorderCode.mockResolvedValue([
           makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
           makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
         ]);
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
-        );
+        const { result } = renderBacklogOf([high, low]);
 
-        let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
         act(() => {
-          step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
         });
+        await flushMoveSync();
 
-        await act(async () => {
-          await result.current.actions.commitReorderBatch([step]);
-        });
-
+        expect(mockReorderCode).toHaveBeenCalledTimes(1);
         expect(mockReorderCode).toHaveBeenCalledWith('ALF-1', 'ALF-2');
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1 });
       });
 
-      it('on a failed step, rolls back that step and everything queued behind it — earlier steps stay committed', async () => {
-        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+      it('sends a burst of swaps one RPC per swap, in click order, never two at once', async () => {
+        const first = deferred<CodeItem[]>();
+        const second = deferred<CodeItem[]>();
+        mockReorderCode.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+        const { result } = renderBacklogOf([high, low, third]);
+
+        // ALF-1 swaps up past ALF-2, then past ALF-3 — each click its own `act`, so the second
+        // reads the first swap's committed local state, like two real clicks.
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-3');
+        });
+        expect(mockReorderCode).not.toHaveBeenCalled();
+
+        await flushMoveSync();
+        // Only the first swap is out; the second waits for it however long that takes.
+        expect(mockReorderCode).toHaveBeenCalledTimes(1);
+        expect(mockReorderCode).toHaveBeenNthCalledWith(1, 'ALF-1', 'ALF-2');
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(5 * MOVE_SYNC_DEBOUNCE_MS);
+        });
+        expect(mockReorderCode).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          first.resolve([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        expect(mockReorderCode).toHaveBeenCalledTimes(2);
+        expect(mockReorderCode).toHaveBeenNthCalledWith(2, 'ALF-1', 'ALF-3');
+
+        await act(async () => {
+          second.resolve([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 3 }),
+            makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: 2 }),
+          ]);
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+      });
+
+      it('replays two different stories’ interleaved clicks to the server in click order', async () => {
+        const { result } = renderBacklogOf([high, low, third]);
+
+        // A (ALF-1), then B (ALF-3), then A again: not consecutive jumps of one story, so none coalesce.
+        act(() => {
+          result.current.actions.moveStory('ALF-1', false);
+        });
+        act(() => {
+          result.current.actions.moveStory('ALF-3', true);
+        });
+        act(() => {
+          result.current.actions.moveStory('ALF-1', true);
+        });
+        await flushMoveSync();
+
+        expect(mockMoveCode.mock.calls).toEqual([
+          ['ALF-1', false],
+          ['ALF-3', true],
+          ['ALF-1', true],
+        ]);
+      });
+
+      it('does not move a story back when an earlier swap’s response lands while a later swap of it is still pending', async () => {
+        const first = deferred<CodeItem[]>();
+        const second = deferred<CodeItem[]>();
+        mockReorderCode.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+        const { result } = renderBacklogOf([high, low, third]);
+
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+        await flushMoveSync();
+        // The first swap is in flight; the user swaps ALF-1 again meanwhile.
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-3');
+        });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+
+        // The first response says ALF-1 is at 2 — older than the screen's 3.
+        await act(async () => {
+          first.resolve([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ]);
+          await jest.advanceTimersByTimeAsync(0);
+        });
+
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+
+        await act(async () => {
+          second.resolve([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 3 }),
+            makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: 2 }),
+          ]);
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+      });
+
+      it('a realtime echo with a stale priority for a story with a pending write leaves its priority alone but applies other columns', () => {
+        const { result } = renderBacklogOf([high, low]);
+
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+        // The echo still carries ALF-1's old priority (1) — and a factory_state change.
+        emitUpdate(
+          makeSavedSidecar({
+            item_id: 'i1',
+            ref: 'ALF-1',
+            priority: 1,
+            factory_state: 'in_development',
+          }),
+        );
+
+        const story = result.current.backlog.find((s) => s.item_id === 'i1');
+        expect(story?.priority).toBe(2);
+        expect(story?.factory_state).toBe('in_development');
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1']);
+      });
+
+      it('ignores a realtime echo of this tab’s own RPC response even after the queue drained, but applies an unrelated external priority', async () => {
+        mockReorderCode
+          .mockResolvedValueOnce([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ])
+          .mockResolvedValueOnce([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 3 }),
+            makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: 2 }),
+          ]);
+        const { result } = renderBacklogOf([high, low, third]);
+
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-3');
+        });
+        await flushMoveSync();
+        // Both swaps drained: nothing is pending, and ALF-1 sits at 3.
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+
+        // The first swap's echo arrives late, carrying the since-superseded priority 2.
+        emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }));
+        expect(prioritiesById(result.current.backlog)['i1']).toBe(3);
+
+        // A different device re-ranking it to a value this tab never wrote is a real change.
+        emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 7 }));
+        expect(prioritiesById(result.current.backlog)['i1']).toBe(7);
+      });
+
+      it('on a failed swap, keeps the earlier one committed, rolls back it and everything behind it, toasts once, and sends nothing further', async () => {
         mockReorderCode
           .mockResolvedValueOnce([
             makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
             makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
           ])
           .mockRejectedValueOnce(new Error('swap failed'));
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({
-              projects: [PROJECT_A],
-              epics: [epic],
-              stories: [high, low, third],
-            }),
-          },
-        );
+        const { result } = renderBacklogOf([high, low, third, fourth]);
 
-        // Two clicks in one burst, each its own `act` (so the second reads the FIRST swap's
-        // committed local state — exactly like two separate real clicks, re-rendered between):
-        // ALF-1 swaps up past ALF-2, then past ALF-3.
-        let stepOne!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
-        let stepTwo!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        // ALF-1 swaps up past ALF-2, ALF-3, then ALF-4 — three queued writes.
         act(() => {
-          stepOne = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          result.current.actions.reorderStory('ALF-1', 'ALF-2');
         });
         act(() => {
-          stepTwo = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+          result.current.actions.reorderStory('ALF-1', 'ALF-3');
         });
-
-        await act(async () => {
-          await result.current.actions.commitReorderBatch([stepOne, stepTwo]);
+        act(() => {
+          result.current.actions.reorderStory('ALF-1', 'ALF-4');
         });
+        await flushMoveSync();
 
+        expect(mockReorderCode).toHaveBeenCalledTimes(2);
         expect(mockReorderCode).toHaveBeenNthCalledWith(1, 'ALF-1', 'ALF-2');
         expect(mockReorderCode).toHaveBeenNthCalledWith(2, 'ALF-1', 'ALF-3');
-        // The first swap already committed server-side (i1↔i2 stays applied); the second (failed)
-        // swap rolls back, so ALF-3 is restored to its original priority.
-        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
+        // The first swap stays applied (i1↔i2); the failed second and the third behind it roll back.
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3, i4: 4 });
+        expect(mockShowToast).toHaveBeenCalledTimes(1);
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't reorder story");
       });
     });
 
-    describe('applyMoveOptimistic + commitMove (Backlog jump to top/bottom)', () => {
+    describe('moveStory (Backlog jump to top/bottom, queued)', () => {
       const epic = makeEpic('e1', 'p1');
       const a = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 10 });
       const b = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 20 });
       const c = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 30 });
 
-      it('applyMoveOptimistic jumps the last story to the top instantly (min-1), with no network call', () => {
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
-          },
-        );
+      beforeEach(() => {
+        jest.useFakeTimers();
+        mockMoveCode.mockResolvedValue([]);
+      });
+      afterEach(() => {
+        jest.useRealTimers();
+      });
 
-        let applied: ReturnType<CodeActions['applyMoveOptimistic']> = null;
+      function renderBacklog() {
+        return renderHook(useBacklogStore, {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
+        });
+      }
+
+      it('jumps the last story to the top instantly (min-1), with no network call before the debounce', () => {
+        const { result } = renderBacklog();
+
         act(() => {
-          applied = result.current.actions.applyMoveOptimistic('ALF-3', true);
+          result.current.actions.moveStory('ALF-3', true);
         });
 
         expect(mockMoveCode).not.toHaveBeenCalled();
-        expect(applied).toEqual({ priorityBefore: 30 });
         expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-3', 'ALF-1', 'ALF-2']);
+        expect(prioritiesById(result.current.backlog)['i3']).toBe(9);
       });
 
-      it('applyMoveOptimistic jumps the first story to the bottom instantly (max+1)', () => {
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
-          },
-        );
+      it('jumps the first story to the bottom instantly (max+1)', () => {
+        const { result } = renderBacklog();
 
         act(() => {
-          result.current.actions.applyMoveOptimistic('ALF-1', false);
+          result.current.actions.moveStory('ALF-1', false);
         });
 
         expect(mockMoveCode).not.toHaveBeenCalled();
         expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
       });
 
-      it('applyMoveOptimistic returns null when the ref is unknown', () => {
-        const { result } = renderHook(() => useCodeActions(), {
-          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a] }),
-        });
+      it('is a no-op when the ref is unknown', async () => {
+        const { result } = renderBacklog();
 
-        let applied: ReturnType<CodeActions['applyMoveOptimistic']> = null;
         act(() => {
-          applied = result.current.applyMoveOptimistic('ALF-404', true);
+          result.current.actions.moveStory('ALF-404', true);
         });
+        await flushMoveSync();
 
-        expect(applied).toBeNull();
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: 30 });
         expect(mockMoveCode).not.toHaveBeenCalled();
       });
 
-      it('commitMove sends the call and reconciles from the returned row', async () => {
+      it('sends the call after the debounce and reconciles from the returned row', async () => {
         mockMoveCode.mockResolvedValue([
           makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: -1 }),
         ]);
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
-          },
-        );
+        const { result } = renderBacklog();
 
-        let applied!: NonNullable<ReturnType<CodeActions['applyMoveOptimistic']>>;
         act(() => {
-          applied = unwrap(result.current.actions.applyMoveOptimistic('ALF-3', true));
+          result.current.actions.moveStory('ALF-3', true);
         });
+        await flushMoveSync();
 
-        await act(async () => {
-          await result.current.actions.commitMove('ALF-3', true, applied.priorityBefore);
-        });
-
+        expect(mockMoveCode).toHaveBeenCalledTimes(1);
         expect(mockMoveCode).toHaveBeenCalledWith('ALF-3', true);
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: -1 });
       });
 
-      it('commitMove rolls the priority back to priorityBefore on API failure', async () => {
+      it('rolls the priority back to its pre-click value on API failure', async () => {
         mockMoveCode.mockRejectedValue(new Error('move failed'));
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
-          },
-        );
+        const { result } = renderBacklog();
 
-        let applied!: NonNullable<ReturnType<CodeActions['applyMoveOptimistic']>>;
         act(() => {
-          applied = unwrap(result.current.actions.applyMoveOptimistic('ALF-3', true));
+          result.current.actions.moveStory('ALF-3', true);
         });
-
-        await act(async () => {
-          await result.current.actions.commitMove('ALF-3', true, applied.priorityBefore);
-        });
+        await flushMoveSync();
 
         // Restored to the original ranking.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: 30 });
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
+      });
+
+      it('coalesces two consecutive jumps of the same story into one request with the latest direction', async () => {
+        mockMoveCode.mockResolvedValue([
+          makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: 21 }),
+        ]);
+        const { result } = renderBacklog();
+
+        act(() => {
+          result.current.actions.moveStory('ALF-3', true);
+        });
+        act(() => {
+          result.current.actions.moveStory('ALF-3', false);
+        });
+        await flushMoveSync();
+
+        expect(mockMoveCode).toHaveBeenCalledTimes(1);
+        expect(mockMoveCode).toHaveBeenCalledWith('ALF-3', false);
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: 21 });
+      });
+
+      it('restores the priority from before the first jump when a coalesced request fails', async () => {
+        mockMoveCode.mockRejectedValue(new Error('move failed'));
+        const { result } = renderBacklog();
+
+        act(() => {
+          result.current.actions.moveStory('ALF-3', true);
+        });
+        act(() => {
+          result.current.actions.moveStory('ALF-3', false);
+        });
+        await flushMoveSync();
+
+        expect(mockMoveCode).toHaveBeenCalledTimes(1);
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: 30 });
+        expect(mockShowToast).toHaveBeenCalledTimes(1);
       });
     });
 
-    describe('applyMoveInProjectOptimistic + commitMoveInProject (Backlog jump to top/bottom of project, ALF-110)', () => {
+    describe('moveStoryInProject (Backlog jump to top/bottom of project, ALF-110)', () => {
       // p1 has two stories (a, b); p2 has one story ranked better than both (otherBetter) and one
       // ranked worse than both (otherWorse), so a project-scoped jump must land next to a/b
       // without crossing either of the other project's ranks.
@@ -2358,28 +2534,32 @@ describe('code-store', () => {
       const otherWorse = makeStory('i4', 'e2', 'p2', { ref: 'RLP-2', priority: 40 });
       const allStories = [a, b, otherBetter, otherWorse];
 
-      it('applyMoveInProjectOptimistic jumps to the top of its project instantly, stopping short of another project’s better rank — no network call', () => {
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({
-              projects: [PROJECT_A, PROJECT_B],
-              epics: [epicA, epicB],
-              stories: allStories,
-            }),
-          },
-        );
+      beforeEach(() => {
+        jest.useFakeTimers();
+        mockMoveCodeInProject.mockResolvedValue([]);
+      });
+      afterEach(() => {
+        jest.useRealTimers();
+      });
 
-        let applied: ReturnType<CodeActions['applyMoveInProjectOptimistic']> = null;
+      function renderBacklogOf(stories: CodeStory[]) {
+        return renderHook(useBacklogStore, {
+          wrapper: makeWrapper({
+            projects: [PROJECT_A, PROJECT_B],
+            epics: [epicA, epicB],
+            stories,
+          }),
+        });
+      }
+
+      it('jumps to the top of its project instantly, stopping short of another project’s better rank — no network call before the debounce', () => {
+        const { result } = renderBacklogOf(allStories);
+
         act(() => {
-          applied = result.current.actions.applyMoveInProjectOptimistic('ALF-2', true);
+          result.current.actions.moveStoryInProject('ALF-2', true);
         });
 
         expect(mockMoveCodeInProject).not.toHaveBeenCalled();
-        expect(applied).toEqual({ priorityBefore: 30 });
         // b now outranks a (top of p1) but stays behind otherBetter's rank of 5 — the optimistic
         // midpoint between otherBetter (5) and a (10) is 7.5, never leapfrogging otherBetter.
         const priorities = prioritiesById(result.current.backlog);
@@ -2389,23 +2569,11 @@ describe('code-store', () => {
         expect(priorities['i4']).toBe(40);
       });
 
-      it('applyMoveInProjectOptimistic jumps to the bottom of its project instantly, stopping short of another project’s worse rank', () => {
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({
-              projects: [PROJECT_A, PROJECT_B],
-              epics: [epicA, epicB],
-              stories: allStories,
-            }),
-          },
-        );
+      it('jumps to the bottom of its project instantly, stopping short of another project’s worse rank', () => {
+        const { result } = renderBacklogOf(allStories);
 
         act(() => {
-          result.current.actions.applyMoveInProjectOptimistic('ALF-1', false);
+          result.current.actions.moveStoryInProject('ALF-1', false);
         });
 
         expect(mockMoveCodeInProject).not.toHaveBeenCalled();
@@ -2418,7 +2586,7 @@ describe('code-store', () => {
         expect(priorities['i4']).toBe(40);
       });
 
-      it('applyMoveInProjectOptimistic ignores a completed story when finding the top of the project (ALF-120)', () => {
+      it('ignores a completed story when finding the top of the project (ALF-120)', () => {
         // p1 also holds a DONE story ranked better (2) than every VISIBLE row — hidden from the
         // Backlog but still in the table. Jumping b to the top of p1 must land above p1's top
         // OUTSTANDING story (a, 10), NOT above the completed story: the pre-ALF-120 math counted
@@ -2429,22 +2597,10 @@ describe('code-store', () => {
           priority: 2,
           factory_state: 'done',
         });
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({
-              projects: [PROJECT_A, PROJECT_B],
-              epics: [epicA, epicB],
-              stories: [...allStories, doneTop],
-            }),
-          },
-        );
+        const { result } = renderBacklogOf([...allStories, doneTop]);
 
         act(() => {
-          result.current.actions.applyMoveInProjectOptimistic('ALF-2', true);
+          result.current.actions.moveStoryInProject('ALF-2', true);
         });
 
         const priorities = prioritiesById(result.current.backlog);
@@ -2456,77 +2612,45 @@ describe('code-store', () => {
         expect(priorities['i3']).toBe(5);
       });
 
-      it('applyMoveInProjectOptimistic returns null when the ref is unknown', () => {
-        const { result } = renderHook(() => useCodeActions(), {
-          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epicA], stories: [a] }),
-        });
+      it('is a no-op when the ref is unknown', async () => {
+        const { result } = renderBacklogOf([a]);
 
-        let applied: ReturnType<CodeActions['applyMoveInProjectOptimistic']> = null;
         act(() => {
-          applied = result.current.applyMoveInProjectOptimistic('ALF-404', true);
+          result.current.actions.moveStoryInProject('ALF-404', true);
         });
+        await flushMoveSync();
 
-        expect(applied).toBeNull();
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10 });
         expect(mockMoveCodeInProject).not.toHaveBeenCalled();
       });
 
-      it('commitMoveInProject sends the call and reconciles from the returned row', async () => {
+      it('sends the call after the debounce and reconciles from the returned row', async () => {
         mockMoveCodeInProject.mockResolvedValue([
           makeSavedSidecar({ item_id: 'i2', project_id: 'p1', ref: 'ALF-2', priority: 7.5 }),
         ]);
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({
-              projects: [PROJECT_A, PROJECT_B],
-              epics: [epicA, epicB],
-              stories: allStories,
-            }),
-          },
-        );
+        const { result } = renderBacklogOf(allStories);
 
-        let applied!: NonNullable<ReturnType<CodeActions['applyMoveInProjectOptimistic']>>;
         act(() => {
-          applied = unwrap(result.current.actions.applyMoveInProjectOptimistic('ALF-2', true));
+          result.current.actions.moveStoryInProject('ALF-2', true);
         });
+        await flushMoveSync();
 
-        await act(async () => {
-          await result.current.actions.commitMoveInProject('ALF-2', true, applied.priorityBefore);
-        });
-
+        expect(mockMoveCodeInProject).toHaveBeenCalledTimes(1);
         expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-2', true);
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 7.5, i3: 5, i4: 40 });
       });
 
-      it('commitMoveInProject rolls the priority back to priorityBefore on API failure', async () => {
+      it('rolls the priority back to its pre-click value on API failure', async () => {
         mockMoveCodeInProject.mockRejectedValue(new Error('move failed'));
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({
-              projects: [PROJECT_A, PROJECT_B],
-              epics: [epicA, epicB],
-              stories: allStories,
-            }),
-          },
-        );
+        const { result } = renderBacklogOf(allStories);
 
-        let applied!: NonNullable<ReturnType<CodeActions['applyMoveInProjectOptimistic']>>;
         act(() => {
-          applied = unwrap(result.current.actions.applyMoveInProjectOptimistic('ALF-2', true));
+          result.current.actions.moveStoryInProject('ALF-2', true);
         });
-
-        await act(async () => {
-          await result.current.actions.commitMoveInProject('ALF-2', true, applied.priorityBefore);
-        });
+        await flushMoveSync();
 
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 30, i3: 5, i4: 40 });
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
       });
     });
 
@@ -3586,64 +3710,67 @@ describe('code-store', () => {
         expect(mockShowToast).toHaveBeenCalledWith("Couldn't start session");
       });
 
-      it('commitReorderBatch toasts "Couldn\'t reorder story"', async () => {
-        mockReorderCode.mockRejectedValue(new Error('swap failed'));
-        const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
-        const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
-        const { result } = renderHook(() => useCodeActions(), {
-          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
-        });
+      it('reorderStory toasts "Couldn\'t reorder story" when the queued swap fails', async () => {
+        jest.useFakeTimers();
+        try {
+          mockReorderCode.mockRejectedValue(new Error('swap failed'));
+          const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
+          const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
+          const { result } = renderHook(() => useCodeActions(), {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
+          });
 
-        let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
-        act(() => {
-          step = unwrap(result.current.applyReorderOptimistic('ALF-1', 'ALF-2'));
-        });
+          act(() => {
+            result.current.reorderStory('ALF-1', 'ALF-2');
+          });
+          await flushMoveSync();
 
-        await act(async () => {
-          await result.current.commitReorderBatch([step]);
-        });
-
-        expect(mockShowToast).toHaveBeenCalledWith("Couldn't reorder story");
+          expect(mockShowToast).toHaveBeenCalledWith("Couldn't reorder story");
+        } finally {
+          jest.useRealTimers();
+        }
       });
 
-      it('commitMove toasts "Couldn\'t move story"', async () => {
-        mockMoveCode.mockRejectedValue(new Error('move failed'));
-        const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
-        const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
-        const { result } = renderHook(() => useCodeActions(), {
-          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
-        });
+      it('moveStory toasts "Couldn\'t move story" when the queued jump fails', async () => {
+        jest.useFakeTimers();
+        try {
+          mockMoveCode.mockRejectedValue(new Error('move failed'));
+          const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
+          const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
+          const { result } = renderHook(() => useCodeActions(), {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
+          });
 
-        let applied!: NonNullable<ReturnType<CodeActions['applyMoveOptimistic']>>;
-        act(() => {
-          applied = unwrap(result.current.applyMoveOptimistic('ALF-1', true));
-        });
+          act(() => {
+            result.current.moveStory('ALF-1', true);
+          });
+          await flushMoveSync();
 
-        await act(async () => {
-          await result.current.commitMove('ALF-1', true, applied.priorityBefore);
-        });
-
-        expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
+          expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
+        } finally {
+          jest.useRealTimers();
+        }
       });
 
-      it('commitMoveInProject toasts "Couldn\'t move story"', async () => {
-        mockMoveCodeInProject.mockRejectedValue(new Error('move failed'));
-        const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
-        const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
-        const { result } = renderHook(() => useCodeActions(), {
-          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
-        });
+      it('moveStoryInProject toasts "Couldn\'t move story" when the queued jump fails', async () => {
+        jest.useFakeTimers();
+        try {
+          mockMoveCodeInProject.mockRejectedValue(new Error('move failed'));
+          const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
+          const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
+          const { result } = renderHook(() => useCodeActions(), {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
+          });
 
-        let applied!: NonNullable<ReturnType<CodeActions['applyMoveInProjectOptimistic']>>;
-        act(() => {
-          applied = unwrap(result.current.applyMoveInProjectOptimistic('ALF-1', true));
-        });
+          act(() => {
+            result.current.moveStoryInProject('ALF-1', true);
+          });
+          await flushMoveSync();
 
-        await act(async () => {
-          await result.current.commitMoveInProject('ALF-1', true, applied.priorityBefore);
-        });
-
-        expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
+          expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
+        } finally {
+          jest.useRealTimers();
+        }
       });
     });
   });

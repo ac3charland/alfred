@@ -29,14 +29,7 @@ interface BacklogListProperties {
  */
 export function BacklogList({ stories, emptyMessage }: BacklogListProperties) {
   const projects = useProjects();
-  const {
-    applyReorderOptimistic,
-    commitReorderBatch,
-    applyMoveInProjectOptimistic,
-    commitMoveInProject,
-    applyMoveOptimistic,
-    commitMove,
-  } = useCodeActions();
+  const { reorderStory, moveStoryInProject, moveStory } = useCodeActions();
 
   // Each project's best/worst priority among the CURRENTLY LISTED stories (ALF-110), so the
   // double-chevron "to top/bottom of project" disables once a story already holds that slot.
@@ -78,12 +71,9 @@ export function BacklogList({ stories, emptyMessage }: BacklogListProperties) {
             nextRef={index === stories.length - 1 ? null : (stories[index + 1]?.ref ?? null)}
             isProjectTop={bounds === undefined || story.priority === bounds.min}
             isProjectBottom={bounds === undefined || story.priority === bounds.max}
-            applyReorder={applyReorderOptimistic}
-            commitReorder={commitReorderBatch}
-            applyMoveInProject={applyMoveInProjectOptimistic}
-            commitMoveInProject={commitMoveInProject}
-            applyMove={applyMoveOptimistic}
-            commitMove={commitMove}
+            reorder={reorderStory}
+            moveInProject={moveStoryInProject}
+            move={moveStory}
           />
         );
       })}
