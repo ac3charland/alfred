@@ -29,3 +29,27 @@ ShelfConversation, collapsed then open. The chips roll up with counts (Attachmen
 ![](fyi-conversations-image-5.png)
 
 ![](fyi-conversations-image-6.png)
+
+A second live seed covers the page edge, counted chips, the keyboard and promotion. It has 66 FYI messages: a 2-message 'Climbing crew' burst, the potluck thread with two refused replies, and 60 receipts. The thread's original is two days old, behind all 60 receipts, so it sits well past the first 50-row page. The server completes every conversation the page holds part of, so the thread still reads '4 messages' on first load, and the refusals roll up counted ('Refused · 2'):
+
+![](fyi-conversations-image-7.png)
+
+"Show more" keeps counting messages: 66 on the shelf, 51 held (the 50-row page plus the thread's completed original), so 15 older:
+
+![](fyi-conversations-image-8.png)
+
+Pressing j selects the first conversation's header, which opens it onto its messages:
+
+![](fyi-conversations-image-9.png)
+
+Pressing j three more times walks through the burst's two messages and onto the potluck header. The burst closes behind it, because only one conversation is open at a time:
+
+![](fyi-conversations-image-10.png)
+
+Clicking the open header closes it:
+
+![](fyi-conversations-image-11.png)
+
+Promotion: after Escape, j, j selects Sam's newest message inside the 2-message burst, and t opens the tier picker to choose Today. That one message moves to Today. The burst is left with one message, Tomas's, which now draws as a plain row with no header:
+
+![](fyi-conversations-image-12.png)
