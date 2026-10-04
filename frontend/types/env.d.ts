@@ -26,5 +26,12 @@ declare namespace NodeJS {
     GITHUB_TOKEN?: string;
     PR_RATIO_REPOS?: string;
     PR_RATIO_AUTHORS?: string;
+    // Instapaper (the Reader's "Send to Instapaper" verb) — all optional and server-only; any
+    // of the four credentials unset turns the verb off. The API URL defaults to the real service.
+    INSTAPAPER_CONSUMER_KEY?: string;
+    INSTAPAPER_CONSUMER_SECRET?: string;
+    INSTAPAPER_ACCESS_TOKEN?: string;
+    INSTAPAPER_ACCESS_TOKEN_SECRET?: string;
+    INSTAPAPER_API_URL?: string;
   }
 }
