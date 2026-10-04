@@ -135,6 +135,8 @@ interface WireItem {
   item_type: string;
   priority: string | null;
   due_date: string | null;
+  /** PostgREST spells a `time` column `HH:MM:SS`. */
+  due_time: string | null;
   folder_id: string | null;
   intended_project_id: string | null;
   intended_epic_id: string | null;
@@ -151,6 +153,7 @@ function toSweepItem(row: WireItem): SweepItem {
     item_type: row.item_type,
     priority: row.priority ?? undefined,
     due_date: row.due_date ?? undefined,
+    due_time: row.due_time?.slice(0, 5),
     folder_id: row.folder_id ?? undefined,
     intended_project_id: row.intended_project_id ?? undefined,
     intended_epic_id: row.intended_epic_id ?? undefined,
@@ -175,7 +178,7 @@ export async function fetchEligibleItems(
     classified_at: 'is.null',
     classify_attempts: `lt.${String(options.attemptCeiling)}`,
     select:
-      'id,title,notes,raw_capture,source_url,item_type,priority,due_date,folder_id,intended_project_id,intended_epic_id,classify_attempts',
+      'id,title,notes,raw_capture,source_url,item_type,priority,due_date,due_time,folder_id,intended_project_id,intended_epic_id,classify_attempts',
     order: 'created_at.asc',
     limit: String(options.limit),
   });

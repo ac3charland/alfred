@@ -85,6 +85,7 @@ describe('classify — reading a response', () => {
       item_type: 'task',
       priority: 'high',
       due_date: '2026-08-10',
+      due_time: '15:00',
       folder_id: 'folder-1',
       intended_project_id: 'proj-1',
       intended_epic_id: 'epic-1',
@@ -96,6 +97,7 @@ describe('classify — reading a response', () => {
         item_type: 'task',
         priority: 'high',
         due_date: '2026-08-10',
+        due_time: '15:00',
         folder_id: 'folder-1',
         intended_project_id: 'proj-1',
         intended_epic_id: 'epic-1',
@@ -107,7 +109,7 @@ describe('classify — reading a response', () => {
     // Written as raw JSON text (not a JS object literal) so this stays "null" the JSON value,
     // never the `null` literal the project's lint rules forbid in source.
     const body =
-      '{"item_type":null,"priority":null,"due_date":null,"folder_id":null,"intended_project_id":null,"intended_epic_id":null}';
+      '{"item_type":null,"priority":null,"due_date":null,"due_time":null,"folder_id":null,"intended_project_id":null,"intended_epic_id":null}';
     mockCreate().mockResolvedValue(fakeMessage(textContent(body), 'end_turn'));
 
     await expect(classify(env, request)).resolves.toEqual({
@@ -115,6 +117,7 @@ describe('classify — reading a response', () => {
         item_type: undefined,
         priority: undefined,
         due_date: undefined,
+        due_time: undefined,
         folder_id: undefined,
         intended_project_id: undefined,
         intended_epic_id: undefined,

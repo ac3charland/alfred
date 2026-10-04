@@ -77,7 +77,7 @@ export type JsonOutcome = { ok: unknown } | { failed: ClassifyFailure };
  *
  * The provider-agnostic half of this module, and the one both classifiers share: the SDK call,
  * the error taxonomy and the `stop_reason` guards are identical whatever is being judged, while
- * the SHAPE of a verdict is not — the Inbox answers with six nullable fields, Comms with a tier
+ * the SHAPE of a verdict is not — the Inbox answers with seven nullable fields, Comms with a tier
  * and an ask. Rather than fork the call per shape, the caller supplies the schema and reads its
  * own answer out of the JSON, which is what keeps the retry policy and the failure reasons in
  * exactly one place.
