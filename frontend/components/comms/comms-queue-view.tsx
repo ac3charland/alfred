@@ -4,7 +4,11 @@ import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
-import { QUEUED_TIERS } from '@/lib/comms';
+import {
+  type ShelfConversation as Conversation,
+  QUEUED_TIERS,
+  groupConversations,
+} from '@/lib/comms';
 import { rowHotkeyAction } from '@/lib/comms/hotkeys';
 import { useCommsLive } from '@/lib/hooks/use-comms-live';
 import { useNow } from '@/lib/hooks/use-now';
@@ -27,6 +31,7 @@ import { accountLabel } from './comms-format';
 import { CommsHeader } from './comms-header';
 import { FyiShelf } from './fyi-shelf';
 import { MessageRow } from './message-row';
+import { ShelfConversation } from './shelf-conversation';
 import { TierSection } from './tier-section';
 
 /**
@@ -42,11 +47,27 @@ import { TierSection } from './tier-section';
  * from complete data. The shelf is sixty days of FYI — thousands of rows, opened to spot-check the
  * rubric rather than to read — so the store holds it a page at a time and knows its size as a
  * count; "Show more" asks the store for the next page. Nothing here fetches directly.
+ *
+ * The shelf is drawn by conversation — an email thread, or one burst of an iMessage chat — since
+ * one row per message made a busy chat unreadable. A conversation is open exactly while it or one
+ * of its messages is the selection, so there is still only one selection on the page and only
+ * one conversation is ever open.
  */
 
 /** Shown when the queue is empty AND the shelf is too — a genuinely empty module. */
 const EMPTY_DESCRIPTION =
   'Messages that ask something of you will queue here. Everything else lands on the FYI shelf.';
+
+/**
+ * A conversation is open exactly while it, or one of its messages, is the selection — there is no
+ * separate open state to fall out of step with `j`/`k`.
+ */
+function isOpen(conversation: Conversation, selectedId: string | null): boolean {
+  return (
+    selectedId === conversation.id ||
+    conversation.messages.some((message) => message.id === selectedId)
+  );
+}
 
 interface CommsQueueViewProperties {
   /**
@@ -83,12 +104,22 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   const [addingSenderFor, setAddingSenderFor] = React.useState<CommMessage | undefined>();
   const [shelfOpen, setShelfOpen] = React.useState(false);
 
-  // The order `j`/`k` walk: the queue as drawn, then the shelf if it has been opened. Built from
-  // the same lists the sections render, so navigation can never disagree with the page.
+  const conversations = React.useMemo(() => groupConversations(shelf, accounts), [shelf, accounts]);
+  // The order `j`/`k` walk: the queue as drawn, then the shelf if it has been opened — each
+  // conversation's header, then its messages while it is open. Built from the same lists the
+  // sections render, so navigation can never disagree with the page.
   const orderedIds = React.useMemo(() => {
     const queued = QUEUED_TIERS.flatMap((tier) => byTier[tier].map((message) => message.id));
-    return shelfOpen ? [...queued, ...shelf.map((message) => message.id)] : queued;
-  }, [byTier, shelf, shelfOpen]);
+    if (!shelfOpen) return queued;
+    const shelfIds = conversations.flatMap((conversation) => {
+      const messageIds = conversation.messages.map((message) => message.id);
+      if (messageIds.length === 1) return messageIds;
+      return isOpen(conversation, selectedId)
+        ? [conversation.id, ...messageIds]
+        : [conversation.id];
+    });
+    return [...queued, ...shelfIds];
+  }, [byTier, conversations, shelfOpen, selectedId]);
 
   // Navigation and Escape live here rather than on a row, because they have to work when
   // nothing is selected at all — `j` on a fresh page selects the first row. The verbs are the
@@ -183,7 +214,30 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
               claimedCount={readerClaimedCount}
               onOpenChange={setShelfOpen}
             >
-              {shelf.map((message) => renderRow(message, true))}
+              {conversations.map((conversation) => {
+                const [only] = conversation.messages;
+                // One message is a conversation of one: drawn exactly as a shelf row always was.
+                if (only !== undefined && conversation.messages.length === 1)
+                  return renderRow(only, true);
+                const open = isOpen(conversation, selectedId);
+                const { account, label } = accountLabel(accounts, conversation.newest.account_id);
+                return (
+                  <ShelfConversation
+                    key={conversation.id}
+                    conversation={conversation}
+                    account={account}
+                    accountLabel={label}
+                    people={people}
+                    now={now}
+                    open={open}
+                    onToggle={() => {
+                      setSelectedId(open ? null : conversation.id);
+                    }}
+                  >
+                    {conversation.messages.map((message) => renderRow(message, true))}
+                  </ShelfConversation>
+                );
+              })}
               {shelfTotal > shelf.length && (
                 <Button variant="ghost" size="sm" className="self-start" onClick={showMoreShelf}>
                   Show more ({String(shelfTotal - shelf.length)} older)

@@ -261,6 +261,175 @@ describe('CommsQueueView — keyboard selection', () => {
   });
 });
 
+/** Shelf rows in one thread, newest first, each with the given ask. */
+function thread(key: string, ...asks: string[]): CommMessage[] {
+  return asks.map((ask, index) =>
+    row({
+      tier: 'fyi',
+      thread_key: key,
+      ask,
+      sender_handle: `sender${String(index)}@example.com`,
+      sender_name: `Sender ${String(index)}`,
+    }),
+  );
+}
+
+/** A conversation's header, by the count it names — not the shelf summary, which counts too. */
+function header(count: number): HTMLElement {
+  const found = screen
+    .getAllByRole('button', { name: new RegExp(`· ${String(count)} messages`) })
+    .find((element) => element.parentElement?.matches('[data-testid="comms-conversation"]'));
+  if (found === undefined) throw new Error(`no conversation of ${String(count)}`);
+  return found;
+}
+
+async function openShelf(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /^FYI ·/ }));
+}
+
+describe('CommsQueueView — the shelf by conversation', () => {
+  it('collapses a thread into one row with its count as meta text, and draws a lone message as a plain row', async () => {
+    const user = userEvent.setup();
+    renderView([
+      ...thread('t', 'Newest reply.', 'Middle reply.', 'First message.'),
+      row({ tier: 'fyi', ask: 'A receipt.' }),
+    ]);
+    await openShelf(user);
+
+    expect(header(3)).toHaveAttribute('aria-expanded', 'false');
+    expect(within(header(3)).getByText(/· 3 messages/)).toBeInTheDocument();
+    // The second line is the newest message's, attributed since several people are talking.
+    expect(within(header(3)).getByText('Sender 0: Newest reply.')).toBeInTheDocument();
+    expect(screen.getAllByTestId('comms-conversation')).toHaveLength(1);
+    // The lone message is today's row: no header, no count.
+    const receipt = screen.getByRole('button', { name: /A receipt\./ });
+    expect(receipt.closest('[data-testid="comms-conversation"]')).toBeNull();
+    expect(receipt).not.toHaveTextContent(/messages/);
+    // The summary still counts messages.
+    expect(screen.getByRole('button', { name: /^FYI · 4 messages/ })).toBeInTheDocument();
+  });
+
+  it('opens on a click to its messages, newest first, and closes on a second', async () => {
+    const user = userEvent.setup();
+    renderView(thread('t', 'Newest reply.', 'First message.'));
+    await openShelf(user);
+    expect(screen.queryByRole('button', { name: /First message\./ })).not.toBeInTheDocument();
+
+    await user.click(header(2));
+
+    expect(header(2)).toHaveAttribute('aria-expanded', 'true');
+    const list = document.querySelector<HTMLElement>(
+      `[id="${CSS.escape(header(2).getAttribute('aria-controls') ?? '')}"]`,
+    );
+    if (list === null) throw new Error('the header controls nothing');
+    const rows = within(list).getAllByRole('button', { expanded: false });
+    expect(rows.map((element) => element.textContent)).toEqual([
+      expect.stringContaining('Newest reply.'),
+      expect.stringContaining('First message.'),
+    ]);
+
+    await user.click(header(2));
+    expect(header(2)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('keeps only one conversation open at a time', async () => {
+    const user = userEvent.setup();
+    renderView([
+      ...thread('a', 'A newest.', 'A older.'),
+      ...thread('b', 'B newest.', 'B one.', 'B two.'),
+    ]);
+    await openShelf(user);
+
+    await user.click(header(2));
+    await user.click(header(3));
+
+    expect(header(2)).toHaveAttribute('aria-expanded', 'false');
+    expect(header(3)).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('walks onto a conversation with j, through its messages, and past it, closing it', async () => {
+    const user = userEvent.setup();
+    renderView([
+      ...thread('t', 'Newest reply.', 'First message.'),
+      row({ tier: 'fyi', ask: 'A receipt.' }),
+    ]);
+    await openShelf(user);
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(header(2)).toHaveAttribute('aria-expanded', 'true');
+    expect(selectedRow()).toBeUndefined();
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('Newest reply.');
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('First message.');
+    expect(header(2)).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(document, { key: 'j' });
+    expect(selectedRow()).toHaveTextContent('A receipt.');
+    expect(header(2)).toHaveAttribute('aria-expanded', 'false');
+
+    // Back up: onto the header, which opens it again.
+    fireEvent.keyDown(document, { key: 'k' });
+    expect(header(2)).toHaveAttribute('aria-expanded', 'true');
+    expect(selectedRow()).toBeUndefined();
+  });
+
+  it('closes on Escape, and gives the verb hotkeys nothing to do on its header', async () => {
+    const user = userEvent.setup();
+    renderView(thread('t', 'Newest reply.', 'First message.'));
+    await openShelf(user);
+
+    fireEvent.keyDown(document, { key: 'j' });
+    fireEvent.keyDown(document, { key: 't' });
+    fireEvent.keyDown(document, { key: 'o' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(header(2)).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(header(2)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('rolls its messages’ chips up onto the collapsed row, counted', async () => {
+    const user = userEvent.setup();
+    renderView([
+      ...thread('t', 'Newest reply.', 'Second.', 'Third.').map((message, index) =>
+        index === 0 ? message : { ...message, judged_by: 'refusal' as const },
+      ),
+    ]);
+    await openShelf(user);
+
+    expect(within(header(3)).getByText('Refused · 2')).toBeInTheDocument();
+  });
+
+  it('shrinks to a plain row when a message is promoted out of a conversation of two', async () => {
+    const user = userEvent.setup();
+    const [newest, older] = thread('t', 'Newest reply.', 'First message.');
+    if (newest === undefined || older === undefined) throw new Error('no thread');
+    jest.mocked(api).changeCommTier.mockResolvedValue({ ...newest, tier: 'today' });
+    jest.mocked(api).fetchCommsSnapshot.mockReturnValue(new Promise(() => {}));
+    renderView([newest, older]);
+    await openShelf(user);
+
+    await user.click(header(2));
+    await user.click(screen.getByRole('button', { name: /^Sender 0 · .*Newest reply\./ }));
+    await user.click(screen.getByRole('button', { name: /Change tier/ }));
+    await screen.findByRole('menu');
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    const collapsed = new Event('transitionend', { bubbles: true });
+    Object.defineProperty(collapsed, 'propertyName', { value: 'grid-template-rows' });
+    const leaving = screen
+      .getAllByTestId('comms-row-collapse')
+      .find((element) => element.textContent.includes('Newest reply.'));
+    if (leaving === undefined) throw new Error('row gone');
+    fireEvent(leaving, collapsed);
+
+    expect(await screen.findByLabelText('1 in Today')).toBeInTheDocument();
+    expect(screen.queryByTestId('comms-conversation')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /First message\./ })).toBeInTheDocument();
+  });
+});
+
 describe('CommsQueueView — one selection at a time', () => {
   it('moves the expansion rather than opening a second row', async () => {
     const user = userEvent.setup();

@@ -91,6 +91,69 @@ const SHELVED_ROW = makeCommMessage(PERSONAL.id, {
   ask: 'Nothing asked.',
 });
 
+const HOUR_MS = 60 * 60 * 1000;
+
+/** A shelf row this many hours ago, inside the retention window whenever the suite runs. */
+function shelvedAgo(
+  account: string,
+  hours: number,
+  overrides: Parameters<typeof makeCommMessage>[1],
+): ReturnType<typeof makeCommMessage> {
+  return makeCommMessage(account, {
+    tier: 'fyi',
+    judged_by: 'model',
+    received_at: new Date(Date.now() - hours * HOUR_MS).toISOString(),
+    ...overrides,
+  });
+}
+
+/**
+ * A shelf of conversations: a three-reply email thread, and one iMessage chat texted in two
+ * bursts a day apart — which the shelf draws as two conversations, since a chat splits after six
+ * quiet hours.
+ */
+const CONVERSATIONS = [
+  shelvedAgo(PERSONAL.id, 1, {
+    thread_key: 'potluck',
+    sender_name: 'Dana',
+    subject: 'Potluck — final headcount',
+  }),
+  shelvedAgo(PERSONAL.id, 2, {
+    thread_key: 'potluck',
+    sender_name: 'Lee',
+    subject: 'Potluck — count me in',
+  }),
+  shelvedAgo(PERSONAL.id, 30, {
+    thread_key: 'potluck',
+    sender_name: 'Dana',
+    subject: 'Potluck — who is in?',
+  }),
+  shelvedAgo(IMESSAGE.id, 3, {
+    thread_key: 'chat-sam',
+    sender_handle: '+15550100001',
+    sender_name: 'Sam',
+    body: 'see you at 6',
+  }),
+  shelvedAgo(IMESSAGE.id, 4, {
+    thread_key: 'chat-sam',
+    sender_handle: '+15550100001',
+    sender_name: 'Sam',
+    body: 'climbing tonight?',
+  }),
+  shelvedAgo(IMESSAGE.id, 28, {
+    thread_key: 'chat-sam',
+    sender_handle: '+15550100001',
+    sender_name: 'Sam',
+    body: 'good game',
+  }),
+  shelvedAgo(IMESSAGE.id, 29, {
+    thread_key: 'chat-sam',
+    sender_handle: '+15550100001',
+    sender_name: 'Sam',
+    body: 'rematch tomorrow',
+  }),
+];
+
 /** The bad day, minus the failure surfaces — those are seeded per test that asserts them. */
 const BAD_DAY = {
   commAccounts: [PERSONAL, REALPLAY, IMESSAGE],
@@ -141,6 +204,34 @@ test.describe('the Comms triage queue', () => {
 
     await shelf.click();
     await expect(page.getByText('Nothing asked.')).toBeVisible();
+  });
+
+  test('draws the shelf by conversation, and opens one to its messages', async ({ page, seed }) => {
+    await seed({ commAccounts: [PERSONAL, IMESSAGE], commMessages: CONVERSATIONS });
+    await page.goto('/comms');
+
+    await page.getByRole('button', { name: /^FYI · 7 messages/ }).click();
+
+    const headers = page.getByTestId('comms-conversation');
+    await expect(headers).toHaveCount(3);
+    const thread = page.getByRole('button', { name: /Dana, Lee · personal · .* · 3 messages/ });
+    await expect(thread).toHaveAttribute('aria-expanded', 'false');
+    // The chat's two bursts are two conversations, not one row of four.
+    await expect(
+      page.getByRole('button', { name: /^Sam · iMessage · .* · 2 messages/ }),
+    ).toHaveCount(2);
+
+    await thread.click();
+    await expect(thread).toHaveAttribute('aria-expanded', 'true');
+    for (const subject of [
+      'Potluck — final headcount',
+      'Potluck — count me in',
+      'Potluck — who is in?',
+    ]) {
+      await expect(
+        page.getByRole('button', { name: new RegExp(`^(Dana|Lee) · personal · .*${subject}`) }),
+      ).toBeVisible();
+    }
   });
 
   test('expands a row to the ask, the reason and the verbs', async ({ page, seed }) => {

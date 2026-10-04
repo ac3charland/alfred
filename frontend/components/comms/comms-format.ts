@@ -1,3 +1,4 @@
+import { askLine } from '@/lib/comms/ask';
 import { resolvePerson } from '@/lib/comms/people';
 import type { CommAccount, CommMessage, CommPersonWithHandles, CommTier } from '@/lib/types';
 
@@ -87,4 +88,55 @@ export function accountLabel(
 ): { account: CommAccount | undefined; label: string } {
   const account = accounts.find((row) => row.id === accountId);
   return { account, label: account?.label ?? 'unknown account' };
+}
+
+/** Up to two names, then how many more: "Dana, Lee +1". */
+function nameSome(names: string[]): string {
+  const shown = names.slice(0, 2).join(', ');
+  return names.length > 2 ? `${shown} +${String(names.length - 2)}` : shown;
+}
+
+/**
+ * Who a collapsed shelf conversation is with, from its messages newest first.
+ *
+ * An iMessage group chat (the daemon's own test: it has a name, or more than one other member) is
+ * named for the chat — its own name, else up to two members. Anything else is named for the
+ * people who wrote in it. Either way it reads in the row's one-name slot, so the shelf still
+ * reads as one list.
+ */
+export function conversationWho(
+  messages: CommMessage[],
+  people: CommPersonWithHandles[],
+  account: Pick<CommAccount, 'kind'> | undefined,
+): string {
+  const newest = messages[0];
+  if (newest === undefined) return '';
+
+  if (account?.kind === 'imessage') {
+    const chatName = messages.find((message) => (message.chat_name?.trim() ?? '') !== '');
+    if (chatName?.chat_name != null) return chatName.chat_name.trim();
+    if (newest.participants.length > 1) {
+      return nameSome(
+        newest.participants.map((handle) => {
+          const wrote = messages.find((message) => message.sender_handle === handle);
+          if (wrote !== undefined) return senderLabel(wrote, people);
+          return resolvePerson(handle, people)?.name ?? handle;
+        }),
+      );
+    }
+  }
+
+  return nameSome([...new Set(messages.map((message) => senderLabel(message, people)))]);
+}
+
+/**
+ * A collapsed conversation's second line: its newest message's line, attributed to whoever wrote
+ * it when more than one person is talking, so a group chat's line isn't anonymous.
+ */
+export function conversationLine(messages: CommMessage[], people: CommPersonWithHandles[]): string {
+  const newest = messages[0];
+  if (newest === undefined) return '';
+  const senders = new Set(messages.map((message) => senderLabel(message, people)));
+  const line = askLine(newest);
+  return senders.size > 1 ? `${senderLabel(newest, people)}: ${line}` : line;
 }

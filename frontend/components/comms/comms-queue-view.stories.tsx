@@ -276,6 +276,80 @@ function shelfRows(count: number): CommMessage[] {
 }
 
 /**
+ * Real conversations for the shelf, which draws by conversation: one group chat in two bursts a
+ * night apart — so two conversations, since a chat splits after six quiet hours — and a four-reply
+ * email thread with one refusal inside it.
+ */
+function chat(id: string, sender: string, handle: string, body: string, at: Date): CommMessage {
+  return makeCommMessage('acct-imessage', {
+    id,
+    thread_key: 'chat-climbing',
+    chat_name: 'Climbing crew',
+    participants: ['+15550100001', '+15550100002', '+15550100003'],
+    tier: 'fyi',
+    judged_by: 'model',
+    sender_handle: handle,
+    sender_name: sender,
+    body,
+    received_at: at.toISOString(),
+  });
+}
+
+function potluck(
+  id: string,
+  sender: string,
+  subject: string,
+  at: Date,
+  overrides: Partial<CommMessage> = {},
+): CommMessage {
+  return makeCommMessage(PERSONAL.id, {
+    id,
+    thread_key: 'thread-potluck',
+    tier: 'fyi',
+    judged_by: 'model',
+    sender_handle: `${sender.split(' ', 1)[0]?.toLowerCase() ?? 'someone'}@example.com`,
+    sender_name: sender,
+    subject,
+    received_at: at.toISOString(),
+    ...overrides,
+  });
+}
+
+const SHELF_CONVERSATIONS: CommMessage[] = [
+  chat(
+    'c-sam-2',
+    'Sam',
+    '+15550100001',
+    'see you at the wall at 6, bringing the spare harness',
+    new Date(2026, 8, 9, 11, 52),
+  ),
+  chat('c-alex', 'Alex', '+15550100002', 'who’s driving tonight?', new Date(2026, 8, 9, 11, 30)),
+  chat('c-sam-1', 'Sam', '+15550100001', 'anyone up for Thursday?', new Date(2026, 8, 8, 20, 10)),
+  chat('c-jo', 'Jo', '+15550100003', 'thursday works', new Date(2026, 8, 8, 19, 45)),
+  potluck(
+    'e-dana-2',
+    'Dana Whitfield',
+    'Re: Saturday potluck — final headcount',
+    new Date(2026, 8, 9, 11, 40),
+  ),
+  potluck('e-ana', 'Ana Ruiz', 'Re: Saturday potluck', new Date(2026, 8, 9, 10, 31), {
+    judged_by: 'refusal',
+  }),
+  potluck(
+    'e-lee',
+    'Lee Park',
+    'Re: Saturday potluck — count me in, +1',
+    new Date(2026, 8, 9, 8, 12),
+  ),
+  potluck(
+    'e-dana-1',
+    'Dana Whitfield',
+    'Saturday potluck — who’s in?',
+    new Date(2026, 8, 8, 18, 5),
+  ),
+];
+
+/**
  * A week of iMessage history the owner had already answered before alfred ever saw it: inbound,
  * never judged, and cleared by the outbound reply that arrived in the same backfill.
  */
@@ -344,7 +418,7 @@ export const Resting: Story = {
     store: {
       comms: {
         accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
-        messages: [MARCUS, ...shelfRows(2441)],
+        messages: [MARCUS, ...SHELF_CONVERSATIONS, ...shelfRows(2441 - SHELF_CONVERSATIONS.length)],
         verdicts: VERDICTS,
         health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
       },
@@ -376,6 +450,32 @@ export const FreshlyActivated: Story = {
       commsSettings: { people: ROSTER },
     },
     visualTest: { target: '[data-testid="comms-frame"]' },
+  },
+};
+
+/**
+ * The shelf opened, drawn by conversation: the climbing chat's two bursts as two rows, the potluck
+ * thread opened to its four replies newest first — its refusal rolled up onto the header too — and
+ * lone receipts drawn as plain rows. A short shelf, so the crop stays readable.
+ */
+export const ShelfOpen: Story = {
+  parameters: {
+    store: {
+      comms: {
+        accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
+        messages: [MARCUS, ...SHELF_CONVERSATIONS, ...shelfRows(3)],
+        verdicts: VERDICTS,
+        health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
+      },
+      commsSettings: { people: ROSTER },
+    },
+    visualTest: { target: '[data-testid="comms-frame"]' },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: /^FYI ·/ }));
+    await userEvent.click(await canvas.findByRole('button', { name: /· 4 messages/ }));
+    await canvas.findByRole('button', { name: /^Ana Ruiz/ });
   },
 };
 
