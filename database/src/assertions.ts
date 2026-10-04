@@ -324,6 +324,94 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const swapWritesOnlyFinalRanksResult = await attempt(
+    'swap_code_priority writes each row once, straight to its final rank (ALF-250)',
+    async () => {
+      const a = await createStory(client, 'echo story A');
+      const b = await createStory(client, 'echo story B');
+      const before = [await priorityOf(client, a.ref), await priorityOf(client, b.ref)];
+      // Every row version the swap writes is a realtime UPDATE an open Backlog applies; a
+      // transient rank (a parking sentinel) would flash the row to wherever that rank sorts.
+      // Record every write in a throwaway table, inside a transaction rolled back afterwards.
+      await client.query('begin');
+      try {
+        await client.query(`create temp table swap_writes (ref text, priority double precision)`);
+        await client.query(
+          `create function pg_temp.record_swap_write() returns trigger language plpgsql as $$
+           begin insert into swap_writes values (new.ref, new.priority); return new; end; $$`,
+        );
+        await client.query(
+          `create trigger record_swap_write after update on code_items
+             for each row execute function pg_temp.record_swap_write()`,
+        );
+        await client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]);
+        const { rows } = await client.query<{ ref: string; priority: number }>(
+          `select ref, priority from swap_writes`,
+        );
+        const written = rows.map((r) => `${r.ref}=${String(r.priority)}`).join(', ');
+        const expected = [`${a.ref}=${String(before[1])}`, `${b.ref}=${String(before[0])}`];
+        if (rows.length !== 2 || !expected.every((w) => written.includes(w))) {
+          throw new Error(`expected exactly ${expected.join(', ')}; the swap wrote ${written}`);
+        }
+        return `wrote ${written}`;
+      } finally {
+        await client.query('rollback');
+      }
+    },
+  );
+
+  const concurrentSwapResult = await attempt(
+    'swap_code_priority serialises two overlapping concurrent swaps (ALF-250)',
+    async () => {
+      const a = await createStory(client, 'nudged story');
+      const b = await createStory(client, 'first neighbour');
+      const c = await createStory(client, 'second neighbour');
+      const [pa, pb, pc] = [
+        await priorityOf(client, a.ref),
+        await priorityOf(client, b.ref),
+        await priorityOf(client, c.ref),
+      ];
+      // Two real connections: two Backlog syncs in flight at once (one burst still committing
+      // while the next flushes), both moving the same story.
+      const connectionConfig = {
+        host: client.host,
+        port: client.port,
+        user: client.user,
+        database: client.database,
+      };
+      const first = new pg.Client(connectionConfig);
+      const second = new pg.Client(connectionConfig);
+      await first.connect();
+      await second.connect();
+      try {
+        await first.query('set role authenticated');
+        await second.query('set role authenticated');
+        await first.query('begin');
+        await first.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]);
+        const secondSwap = second.query(`select swap_code_priority($1, $2)`, [a.ref, c.ref]);
+        // Let the second swap read and reach the row lock while the first is uncommitted.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await first.query('commit');
+        await secondSwap;
+      } finally {
+        await first.end();
+        await second.end();
+      }
+      const after = [
+        await priorityOf(client, a.ref),
+        await priorityOf(client, b.ref),
+        await priorityOf(client, c.ref),
+      ];
+      // a↔b then a↔c: a ends on c's rank, b on a's, c on b's.
+      if (after[0] !== pc || after[1] !== pa || after[2] !== pb) {
+        throw new Error(
+          `expected ${a.ref}/${b.ref}/${c.ref} = ${String(pc)}/${String(pa)}/${String(pb)}, got ${after.map(String).join('/')}`,
+        );
+      }
+      return `both swaps applied in order: ${after.map(String).join('/')}`;
+    },
+  );
+
   const moveResult = await attempt(
     'move_code_priority jumps a story past both extremes (0009)',
     async () => {
@@ -4819,6 +4907,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     createStoryResult,
     enterModuleResult,
     swapResult,
+    swapWritesOnlyFinalRanksResult,
+    concurrentSwapResult,
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
