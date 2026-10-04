@@ -39,3 +39,15 @@ export const Emphasis: Story = {
     },
   },
 };
+
+// A refused Instapaper send, in the route's own words: the row is already back on the list.
+export const InstapaperRefusal: Story = {
+  args: {
+    toast: {
+      id: 'i',
+      message: 'This publication has opted out of Instapaper',
+      variant: 'default',
+      leaving: false,
+    },
+  },
+};

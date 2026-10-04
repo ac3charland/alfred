@@ -11,9 +11,11 @@ import { PostRow } from './post-row';
 
 /**
  * One story per row state the reading list can show: a finished summary (collapsed and
- * expanded), the three floor states, and a post with nowhere for "Open" to point. Each is its
- * own `ReaderProvider` seed (rather than the shared shell seed) so its archive/open verbs have
- * something real to act on in an isolated story.
+ * expanded, where Original sits in the panel's footer), the three floor states (where it ends the
+ * verb row instead), the send verb disabled for each of its two reasons, and a sent post in the
+ * archive. Each is its own `ReaderProvider` seed (rather than the shared shell seed) so its verbs
+ * have something real to act on in an isolated story; `parameters.instapaperConfigured: false`
+ * stands in for a deployment with no Instapaper credentials.
  */
 
 const NOW = new Date(2026, 8, 18, 9, 0);
@@ -24,7 +26,7 @@ function post(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
+  const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
   return listItem;
 }
 
@@ -36,9 +38,14 @@ const withFrame: Decorator = (Story) => (
 
 const withProviders: Decorator = (Story, context) => {
   const row = context.args['post'] as ReaderPostListItem;
+  const configured = context.parameters['instapaperConfigured'] !== false;
   return (
     <ToastProvider>
-      <ReaderProvider initialPosts={[row]} initialHealth={NO_READER_HEALTH}>
+      <ReaderProvider
+        initialPosts={[row]}
+        initialHealth={NO_READER_HEALTH}
+        instapaperConfigured={configured}
+      >
         <Story />
       </ReaderProvider>
     </ToastProvider>
@@ -81,7 +88,7 @@ export const DoneCollapsed: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** The same row with its overview open, through the verb. */
+/** The same row with its overview open, through the verb — Original joins the footer. */
 export const DoneExpanded: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
   play: async ({ canvasElement }) => {
@@ -90,7 +97,10 @@ export const DoneExpanded: Story = {
   },
 };
 
-/** Waiting on the tick — the muted badge, the placeholder line, no Overview verb. */
+/**
+ * Waiting on the tick — the muted badge, the placeholder line, no Overview verb; with no panel,
+ * Original ends the verb row.
+ */
 export const Pending: Story = {
   args: {
     post: post({
@@ -106,7 +116,7 @@ export const Pending: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** Three counted misses — the alert badge, the schema-miss placeholder, dimmed. */
+/** Three counted misses — the alert badge, the schema-miss placeholder, dimmed, Original last. */
 export const Failed: Story = {
   args: {
     post: post({
@@ -145,7 +155,10 @@ export const Refused: Story = {
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** No canonical URL and no captured Message-ID — Open is disabled, with a title saying why. */
+/**
+ * No canonical URL and no captured Message-ID: there is no Original to draw, and the send still
+ * works — the stored text goes to Instapaper as a private bookmark.
+ */
 export const NoLink: Story = {
   args: {
     post: post({
@@ -191,14 +204,15 @@ export const Resummarising: Story = {
 
 /**
  * The row the keyboard is pointing at: the ring, and a key hint beside each of the three verbs
- * it can run. Collapsed — selection and the overview are separate states.
+ * it can run — `i` on Send, `v`, `e`. Collapsed — selection and the overview are separate states,
+ * and Original's `o` waits inside the shut panel.
  */
 export const SelectedCollapsed: Story = {
   args: { selected: true },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
 };
 
-/** The same selected row with its overview open: the ring and the wash at once. */
+/** The same selected row with its overview open: the ring, the wash, and `o` beside Original. */
 export const SelectedExpanded: Story = {
   args: { selected: true },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
@@ -249,6 +263,71 @@ export const RefusedAndSwept: Story = {
       text_swept_at: '2026-09-08T03:00:00.000Z',
       model: 'claude-sonnet-5',
       prompt_version: 1,
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/**
+ * Nothing to send: no web link, and no stored text — the send verb is disabled with the reason
+ * as its title, and the Gmail permalink is still the way out.
+ */
+export const SendDisabledNothingToSend: Story = {
+  args: {
+    post: post({
+      id: 'p-nothing-to-send',
+      author: 'Stratechery',
+      title: '(untitled)',
+      received_at: '2026-09-14T14:00:00.000Z',
+      word_count: 0,
+      canonical_url: null,
+      rfc822_message_id: '<stratechery-untitled@mail.example.com>',
+      summary_state: 'failed',
+      last_error: 'no readable body',
+    }),
+  },
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+/** A deployment with no Instapaper credentials: the verb is there, disabled, and says why. */
+export const SendDisabledUnconfigured: Story = {
+  args: {
+    post: post({
+      id: 'p-unconfigured',
+      author: 'Second Thoughts',
+      title: 'The case against the case against scaling',
+      received_at: '2026-09-17T14:00:00.000Z',
+      word_count: 2530,
+      canonical_url: 'https://secondthoughts.substack.com/p/the-case-against-the-case',
+      summary_state: 'pending',
+    }),
+  },
+  parameters: {
+    instapaperConfigured: false,
+    visualTest: { target: '[data-testid="row-frame"]' },
+  },
+};
+
+/** A post sent to Instapaper, in the archive: the badge beside the meta, Unarchive in place. */
+export const ArchivedAndSent: Story = {
+  args: {
+    variant: 'archive',
+    post: post({
+      id: 'p-sent',
+      author: 'Second Thoughts',
+      title: 'How near is the intelligence explosion, really?',
+      received_at: '2026-09-16T14:00:00.000Z',
+      word_count: 3220,
+      html_extracted: true,
+      canonical_url: 'https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion',
+      summary_state: 'done',
+      gist:
+        'Argues the "recursive self-improvement" debate conflates three different feedback loops ' +
+        'and that only one of them (automated ML research) has any evidence behind it.',
+      overview: makeReaderOverview(),
+      archived_at: '2026-09-18T08:30:00.000Z',
+      instapaper_sent_at: '2026-09-18T08:30:00.000Z',
+      instapaper_bookmark_id: 1_234_567,
     }),
   },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },

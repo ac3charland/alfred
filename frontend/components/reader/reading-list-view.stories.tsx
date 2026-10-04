@@ -89,7 +89,11 @@ export const Populated: Story = {
   decorators: [
     (Story) => (
       <ToastProvider>
-        <ReaderProvider initialPosts={pinnedPosts()} initialHealth={healthySnapshot()}>
+        <ReaderProvider
+          initialPosts={pinnedPosts()}
+          initialHealth={healthySnapshot()}
+          instapaperConfigured
+        >
           <Story />
         </ReaderProvider>
       </ToastProvider>
@@ -111,7 +115,11 @@ export const SelectedCollapsed: Story = {
   decorators: [
     (Story) => (
       <ToastProvider>
-        <ReaderProvider initialPosts={pinnedPosts()} initialHealth={healthySnapshot()}>
+        <ReaderProvider
+          initialPosts={pinnedPosts()}
+          initialHealth={healthySnapshot()}
+          instapaperConfigured
+        >
           <Story />
         </ReaderProvider>
       </ToastProvider>
@@ -131,7 +139,11 @@ export const SelectedExpanded: Story = {
   decorators: [
     (Story) => (
       <ToastProvider>
-        <ReaderProvider initialPosts={pinnedPosts()} initialHealth={healthySnapshot()}>
+        <ReaderProvider
+          initialPosts={pinnedPosts()}
+          initialHealth={healthySnapshot()}
+          instapaperConfigured
+        >
           <Story />
         </ReaderProvider>
       </ToastProvider>
@@ -151,7 +163,7 @@ export const Empty: Story = {
   decorators: [
     (Story) => (
       <ToastProvider>
-        <ReaderProvider initialPosts={[]} initialHealth={healthySnapshot()}>
+        <ReaderProvider initialPosts={[]} initialHealth={healthySnapshot()} instapaperConfigured>
           <Story />
         </ReaderProvider>
       </ToastProvider>

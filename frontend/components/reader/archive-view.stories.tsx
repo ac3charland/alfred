@@ -100,7 +100,7 @@ function withArchiveReadOf(answer: () => Promise<unknown>): Decorator {
     globalThis.fetch = answer as unknown as typeof fetch;
     return (
       <ToastProvider>
-        <ReaderProvider initialPosts={[]} initialHealth={NO_READER_HEALTH}>
+        <ReaderProvider initialPosts={[]} initialHealth={NO_READER_HEALTH} instapaperConfigured>
           <Story />
         </ReaderProvider>
       </ToastProvider>
