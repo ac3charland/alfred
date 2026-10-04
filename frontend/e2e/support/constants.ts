@@ -97,6 +97,8 @@ export interface SeedState {
    * EMPTY list is a state of its own: the tick has never run.
    */
   readerHealth?: ReaderHealth[];
+  /** The error code the Instapaper stand-in answers every `bookmarks/add` with; unset saves. */
+  instapaperErrorCode?: number;
 }
 
 let sequence = 0;

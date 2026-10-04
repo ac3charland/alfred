@@ -18,6 +18,13 @@ const mockEnvironment: Record<string, string> = {
   INGEST_API_KEY,
   E2E_USER_EMAIL: E2E_USER.email,
   E2E_USER_PASSWORD: E2E_USER.password,
+  // Fake Instapaper credentials, and the mock standing in for its API: the Reader's send route
+  // calls Instapaper from the Next server, where page.route can't intercept.
+  INSTAPAPER_CONSUMER_KEY: 'e2e-consumer-key',
+  INSTAPAPER_CONSUMER_SECRET: 'e2e-consumer-secret',
+  INSTAPAPER_ACCESS_TOKEN: 'e2e-access-token',
+  INSTAPAPER_ACCESS_TOKEN_SECRET: 'e2e-access-token-secret',
+  INSTAPAPER_API_URL: MOCK_URL,
 };
 
 export default defineConfig({

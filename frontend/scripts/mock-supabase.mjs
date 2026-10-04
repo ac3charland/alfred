@@ -34,6 +34,9 @@
  *     POST /rest/v1/rpc/{comm_purge,comm_record_reply,comm_example_set_version,
  *                        comm_create_inbox_item}
  *                                                             → Comms RPCs
+ *   Instapaper's Full API (not Supabase — the Reader's send route calls it from the Next server,
+ *   where Playwright's page.route can't reach, so it points INSTAPAPER_API_URL here):
+ *     POST /api/1/bookmarks/add                               → saves, or answers a seeded error
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
  *
@@ -111,6 +114,13 @@ let readerPosts = [];
 // success on it. So it is never auto-seeded — a test that wants a tick's history says so.
 /** @type {Record<string, unknown>[]} */
 let readerHealth = [];
+// ── Instapaper stand-in: every bookmarks/add the send route made, as received. ──
+/** @type {{ authorization: string | null, params: Record<string, string> }[]} */
+let instapaperRequests = [];
+// The error code the next bookmarks/add answers with (seeded as `instapaperErrorCode`); null saves.
+/** @type {number | null} */
+let instapaperErrorCode = null;
+let nextBookmarkId = 1000;
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
@@ -143,11 +153,14 @@ function sendNoContent(res) {
   res.end();
 }
 
-async function readBody(req) {
+async function readText(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return;
-  const text = Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function readBody(req) {
+  const text = await readText(req);
   if (text === '') return;
   try {
     return JSON.parse(text);
@@ -699,6 +712,10 @@ function newReaderPost(input) {
     archived_at: input.archived_at ?? null,
     // When the retention sweep took the body (migration 0036). Null = it still holds its text.
     text_swept_at: input.text_swept_at ?? null,
+    // The email HTML a send carries, and the last send's stamp and bookmark id (migration 0038).
+    html: input.html ?? null,
+    instapaper_sent_at: input.instapaper_sent_at ?? null,
+    instapaper_bookmark_id: input.instapaper_bookmark_id ?? null,
     created_at: input.created_at ?? receivedAt,
   };
 }
@@ -1765,6 +1782,26 @@ function deleteRows(rest, matched) {
   }
 }
 
+/**
+ * Instapaper's `bookmarks/add`: records the form-encoded request (and its Authorization header,
+ * so a spec can assert it was signed), then answers as Instapaper does — a JSON array holding a
+ * bookmark, or the seeded error.
+ */
+function handleInstapaper(req, res, rawBody) {
+  instapaperRequests.push({
+    authorization: req.headers['authorization'] ?? null,
+    params: Object.fromEntries(new URLSearchParams(rawBody)),
+  });
+  if (instapaperErrorCode !== null) {
+    sendJson(res, 400, [
+      { type: 'error', error_code: instapaperErrorCode, message: 'mock refusal' },
+    ]);
+    return;
+  }
+  nextBookmarkId += 1;
+  sendJson(res, 200, [{ type: 'bookmark', bookmark_id: nextBookmarkId }]);
+}
+
 function handleControl(req, res, url, body) {
   if (url.pathname === '/__mock__/health') {
     sendJson(res, 200, { ok: true });
@@ -1790,6 +1827,8 @@ function handleControl(req, res, url, body) {
     readerPublications = [];
     readerPosts = [];
     readerHealth = [];
+    instapaperRequests = [];
+    instapaperErrorCode = null;
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
@@ -1849,6 +1888,9 @@ function handleControl(req, res, url, body) {
     readerHealth = Array.isArray(body?.readerHealth)
       ? body.readerHealth.map((h) => newReaderHealth(h))
       : [];
+    instapaperRequests = [];
+    instapaperErrorCode =
+      typeof body?.instapaperErrorCode === 'number' ? body.instapaperErrorCode : null;
     // Park the sequence above every seeded rank so gate-created stories append at the bottom.
     syncPrioritySequence();
     sendJson(res, 200, {
@@ -1895,6 +1937,7 @@ function handleControl(req, res, url, body) {
       readerPublications,
       readerPosts,
       readerHealth,
+      instapaperRequests,
     });
     return;
   }
@@ -1910,6 +1953,12 @@ const server = createServer((req, res) => {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, CORS_HEADERS);
       res.end();
+      return;
+    }
+
+    if (url.pathname === '/api/1/bookmarks/add' && req.method === 'POST') {
+      // Form-encoded, not JSON — read raw, before the JSON body parse below.
+      handleInstapaper(req, res, await readText(req));
       return;
     }
 
