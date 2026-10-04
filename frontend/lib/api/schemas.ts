@@ -31,6 +31,10 @@ const dueDate = z.iso
   .date()
   .or(z.iso.datetime({ offset: true }))
   .nullable();
+// A wall-clock due time as 24-hour `HH:MM` — minute precision, no seconds, no zone. It is only
+// meaningful beside a date (the DB CHECK refuses one without), so both item schemas refine it.
+// Nullable so a PATCH can clear just the time.
+const dueTime = z.iso.time({ precision: -1 }).nullable();
 // Discrete task priority (ALF-37). Nullable so a PATCH can clear it (`{ priority: null }`).
 const taskPriority = z.enum(['high', 'medium', 'low']).nullable();
 /**
@@ -135,6 +139,7 @@ export const createItemSchema = z
     raw_capture: z.string().nullable().optional(),
     item_type: itemType.optional(),
     due_date: dueDate.optional(),
+    due_time: dueTime.optional(),
     folder_id: nullableUuid.optional(),
     parent_id: nullableUuid.optional(),
     // The Inbox capture box's project-prefix match assigns a pre-factory, epic-free project
@@ -146,6 +151,11 @@ export const createItemSchema = z
   .refine((data) => data.title !== undefined || data.text !== undefined, {
     message: 'Either "title" or "text" is required',
     path: ['title'],
+  })
+  // A new row has no stored date to lean on, so a time needs its date in the same body.
+  .refine((data) => (data.due_time ?? null) === null || (data.due_date ?? null) !== null, {
+    message: '"due_time" requires a "due_date"',
+    path: ['due_time'],
   });
 
 export type CreateItemInput = ExactOptional<z.infer<typeof createItemSchema>>;
@@ -153,37 +163,45 @@ export type CreateItemInput = ExactOptional<z.infer<typeof createItemSchema>>;
 /**
  * Body for PATCH /api/items/[id] — all fields optional.
  */
-export const updateItemSchema = z.object({
-  title: z.string().min(1).optional(),
-  notes: z.string().nullable().optional(),
-  source_url: z.url().nullable().optional(),
-  due_date: dueDate.optional(),
-  folder_id: nullableUuid.optional(),
-  parent_id: nullableUuid.optional(),
-  item_type: itemType.optional(),
-  status: itemStatus.optional(),
-  // Nullable so a PATCH can clear the rule (`{ recurrence: null }`).
-  recurrence: recurrenceSchema.nullable().optional(),
-  priority: taskPriority.optional(),
-  // Manual subtask rank (ALF-117): a bare double is fine — it's a fractional position, not a
-  // bounded value. The reorder gesture PATCHes it (often alongside a re-parent's parent_id).
-  sort_order: z.number().optional(),
-  // The pre-factory hints (nullable so a PATCH can clear them). The DB owns their coherence:
-  // both are code-only CHECKs, and the epic must belong to the intended project (the 0027
-  // constraint trigger) — so an incoherent pair is a loud write error, not silent corruption.
-  intended_project_id: nullableUuid.optional(),
-  intended_epic_id: nullableUuid.optional(),
-  /**
-   * Inbox residency as an INTENT, not a timestamp: `true` sends the item out of the Inbox,
-   * `false` returns it, omitted leaves it where it is. The route authors the instant — no caller
-   * has a reason to choose *when* an item was dispatched, and letting one backdate the column
-   * would quietly corrupt the record of what triage actually did.
-   *
-   * It is not a column, so it never rides the route's field list; the route maps it onto
-   * `dispatched_at`.
-   */
-  dispatched: z.boolean().optional(),
-});
+export const updateItemSchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    notes: z.string().nullable().optional(),
+    source_url: z.url().nullable().optional(),
+    due_date: dueDate.optional(),
+    due_time: dueTime.optional(),
+    folder_id: nullableUuid.optional(),
+    parent_id: nullableUuid.optional(),
+    item_type: itemType.optional(),
+    status: itemStatus.optional(),
+    // Nullable so a PATCH can clear the rule (`{ recurrence: null }`).
+    recurrence: recurrenceSchema.nullable().optional(),
+    priority: taskPriority.optional(),
+    // Manual subtask rank (ALF-117): a bare double is fine — it's a fractional position, not a
+    // bounded value. The reorder gesture PATCHes it (often alongside a re-parent's parent_id).
+    sort_order: z.number().optional(),
+    // The pre-factory hints (nullable so a PATCH can clear them). The DB owns their coherence:
+    // both are code-only CHECKs, and the epic must belong to the intended project (the 0027
+    // constraint trigger) — so an incoherent pair is a loud write error, not silent corruption.
+    intended_project_id: nullableUuid.optional(),
+    intended_epic_id: nullableUuid.optional(),
+    /**
+     * Inbox residency as an INTENT, not a timestamp: `true` sends the item out of the Inbox,
+     * `false` returns it, omitted leaves it where it is. The route authors the instant — no caller
+     * has a reason to choose *when* an item was dispatched, and letting one backdate the column
+     * would quietly corrupt the record of what triage actually did.
+     *
+     * It is not a column, so it never rides the route's field list; the route maps it onto
+     * `dispatched_at`.
+     */
+    dispatched: z.boolean().optional(),
+  })
+  // Setting a time while clearing the date is contradictory. A time sent alone for an undated
+  // row can't be judged here (the stored date isn't in the body) — the DB CHECK refuses that one.
+  .refine((data) => !(data.due_date === null && typeof data.due_time === 'string'), {
+    message: '"due_time" cannot be set while clearing "due_date"',
+    path: ['due_time'],
+  });
 
 export type UpdateItemInput = ExactOptional<z.infer<typeof updateItemSchema>>;
 

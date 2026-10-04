@@ -884,3 +884,36 @@ describe('DELETE /api/items/[id]', () => {
     expect(response.status).toBe(500);
   });
 });
+
+async function patchDue(body: Record<string, unknown>) {
+  const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+  mockCreateClient.mockResolvedValue(mockSupabase as never);
+  const response = await PATCH(
+    new Request(`http://localhost/api/items/${TEST_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+    routeContext,
+  );
+  return { response, chain: mockSupabase._chain, from: mockSupabase.from };
+}
+
+describe('PATCH /api/items/[id] — due_time', () => {
+  it('forwards a time, and a null that clears it', async () => {
+    const set = await patchDue({ due_time: '15:00' });
+    expect(set.chain.update).toHaveBeenCalledWith({ due_time: '15:00' });
+    const cleared = await patchDue({ due_date: null, due_time: null });
+    expect(cleared.chain.update).toHaveBeenCalledWith({ due_date: null, due_time: null });
+  });
+
+  it.each([
+    ['a time while clearing the date', { due_date: null, due_time: '15:00' }],
+    ['a time with seconds', { due_time: '15:00:00' }],
+    ['an out-of-range hour', { due_time: '25:00' }],
+  ])('rejects %s with 400', async (_label, body) => {
+    const { response, from } = await patchDue(body);
+    expect(response.status).toBe(400);
+    expect(from).not.toHaveBeenCalled();
+  });
+});
