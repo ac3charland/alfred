@@ -177,6 +177,9 @@ export interface CreateProjectInput {
   key: string;
 }
 
+/** How long after a reorder sync a story's priority echoes are screened for stale steps. */
+const SWAP_ECHO_GRACE_MS = 5000;
+
 /** One applied-but-not-yet-committed chevron swap — `applyReorderOptimistic`'s return shape. */
 export interface ReorderStep {
   ref: string;
@@ -569,10 +572,13 @@ export function CodeProvider({
   }, [showToast]);
 
   // The chevron-swap sync queue (`commitReorderBatch`): the steps not yet confirmed by the server,
-  // in click order, and the drain in flight (null when idle). While it drains, the screen is
-  // AHEAD of the server, so realtime priority echoes of our own swaps are stale and skipped.
+  // in click order, and the drain in flight (null when idle).
   const reorderQueueRef = React.useRef<ReorderStep[]>([]);
   const reorderDrainRef = React.useRef<Promise<void> | null>(null);
+  // Stories our own swaps are rewriting → the rank they settle on (`undefined` while unknown).
+  // Realtime echoes of the intermediate steps trail the screen, so a priority echo for one of
+  // these is skipped until the settled rank itself echoes back (or the grace period lapses).
+  const swapEchoesRef = React.useRef(new Map<string, number | null | undefined>());
 
   // Live swimlane updates. The webhook Worker (and any other device/tab) writes a story's
   // factory_state out of band, never touching this tab's store — so subscribe to the base
@@ -609,9 +615,13 @@ export function CodeProvider({
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
       const patch = deliveredColumns(codeItemToStoryPatch(row));
-      // Mid-sync, an incoming priority is an intermediate step of our own swaps (ALF-250) — the
-      // drain reconciles the final ranks itself.
-      if (reorderDrainRef.current !== null) delete patch.priority;
+      // An echo of our own swaps' intermediate steps would snap the row back (ALF-250).
+      const echoes = swapEchoesRef.current;
+      if (echoes.has(row.item_id) && 'priority' in patch) {
+        const settled = echoes.get(row.item_id);
+        if (settled !== undefined && settled === patch.priority) echoes.delete(row.item_id);
+        else delete patch.priority;
+      }
       dispatch({ type: 'patchStory', itemId: row.item_id, patch });
       if (!changedState) return;
 
@@ -1264,44 +1274,81 @@ export function CodeProvider({
       },
       commitReorderBatch(steps) {
         const queue = reorderQueueRef.current;
+        const echoes = swapEchoesRef.current;
         queue.push(...steps);
+        for (const step of steps) {
+          echoes.set(step.aItemId, undefined);
+          echoes.set(step.bItemId, undefined);
+        }
         if (reorderDrainRef.current !== null) return reorderDrainRef.current;
         if (queue.length === 0) return Promise.resolve();
         const drain = async () => {
-          // The latest server row per item, applied once the queue is empty.
-          const confirmed = new Map<string, CodeItem>();
+          // The latest server rank per item, applied once the queue is empty.
+          const confirmed = new Map<string, number | null>();
+          let failed = false;
           while (queue.length > 0) {
             const step = queue[0];
             if (step === undefined) break;
             try {
               const rows = await api.reorderCode(step.ref, step.neighbourRef);
-              for (const row of rows) confirmed.set(row.item_id, row);
+              for (const row of rows) confirmed.set(row.item_id, row.priority);
               queue.shift();
             } catch {
+              failed = true;
               // This step and everything queued behind it never reached the server — undo them,
               // in reverse, so each rollback exactly cancels its own swap.
               const failedSteps = queue.splice(0);
               for (let i = failedSteps.length - 1; i >= 0; i -= 1) {
-                const failed = failedSteps[i];
-                if (failed === undefined) continue;
+                const undo = failedSteps[i];
+                if (undo === undefined) continue;
                 dispatch({
                   type: 'patchStory',
-                  itemId: failed.aItemId,
-                  patch: { priority: failed.aPriorityBefore },
+                  itemId: undo.aItemId,
+                  patch: { priority: undo.aPriorityBefore },
                 });
                 dispatch({
                   type: 'patchStory',
-                  itemId: failed.bItemId,
-                  patch: { priority: failed.bPriorityBefore },
+                  itemId: undo.bItemId,
+                  patch: { priority: undo.bPriorityBefore },
                 });
               }
               showToastRef.current("Couldn't reorder story");
             }
           }
           reorderDrainRef.current = null;
-          // Apply each confirmed sidecar through the one projection (carries the real priority).
-          for (const row of confirmed.values()) {
-            dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
+          // Only the rank: the rows are as old as the queue, and a lane change that landed
+          // meanwhile (realtime) must not be rolled back by them.
+          for (const [itemId, priority] of confirmed) {
+            dispatch({ type: 'patchStory', itemId, patch: { priority } });
+          }
+          // Wait for each settled rank's own echo; forget the rest (a failed step never echoes).
+          const settling = new Map<string, number | null>();
+          for (const itemId of echoes.keys()) {
+            if (confirmed.has(itemId)) settling.set(itemId, confirmed.get(itemId) ?? null);
+          }
+          echoes.clear();
+          for (const [itemId, priority] of settling) echoes.set(itemId, priority);
+          setTimeout(() => {
+            for (const [itemId, priority] of settling) {
+              if (echoes.get(itemId) === priority) echoes.delete(itemId);
+            }
+          }, SWAP_ECHO_GRACE_MS);
+          if (failed) {
+            // A rollback restores the ranks captured at click time, which can't account for a
+            // swap still waiting in a row's debounce — re-read the server's, so no tie survives.
+            try {
+              const fresh = await api.listCode();
+              for (const story of fresh) {
+                if (story.item_id === null) continue;
+                dispatch({
+                  type: 'patchStory',
+                  itemId: story.item_id,
+                  patch: { priority: story.priority },
+                });
+              }
+            } catch {
+              // Best effort: the rollback above already undid what this tab knows it sent.
+            }
           }
         };
         reorderDrainRef.current = drain();

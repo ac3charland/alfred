@@ -321,7 +321,6 @@ function prioritiesById(backlog: CodeStory[]): Record<string, number | null> {
   return out;
 }
 
-/** Narrow a possibly-null `apply*Optimistic` return for a test that expects it to resolve. */
 /** A sidecar row carrying just the rank a swap reconciles (ALF-250). */
 function sidecar(itemId: string, ref: string, priority: number): CodeItem {
   return makeSavedSidecar({ item_id: itemId, ref, priority });
@@ -336,6 +335,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+/** Narrow a possibly-null `apply*Optimistic` return for a test that expects it to resolve. */
 function unwrap<T>(value: T | null): T {
   if (value === null) throw new Error('expected a non-null value');
   return value;
@@ -2348,6 +2348,116 @@ describe('code-store', () => {
           });
 
           expect(mockReorderCode).toHaveBeenCalledTimes(1);
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 1, i2: 2, i3: 3 });
+        });
+
+        /** Commit both nudges with step two held in flight; returns its resolver and the drain. */
+        async function syncWithStepTwoHeld(result: Rendered) {
+          const second = deferred<CodeItem[]>();
+          mockReorderCode
+            .mockResolvedValueOnce([sidecar('i1', 'ALF-1', 2), sidecar('i2', 'ALF-2', 1)])
+            .mockReturnValueOnce(second.promise);
+          const steps = nudgeDownTwice(result);
+          let done!: Promise<void>;
+          await act(async () => {
+            done = result.current.actions.commitReorderBatch([...steps]);
+            await Promise.resolve();
+          });
+          return { second, done };
+        }
+
+        it('reconciles only the rank at drain end — a lane change that landed mid-sync survives', async () => {
+          const { result } = renderBacklog();
+          const { second, done } = await syncWithStepTwoHeld(result);
+          emitUpdate(
+            makeSavedSidecar({
+              item_id: 'i1',
+              ref: 'ALF-1',
+              priority: 3,
+              factory_state: 'ready_for_dev',
+            }),
+          );
+
+          await act(async () => {
+            second.resolve([sidecar('i1', 'ALF-1', 3), sidecar('i3', 'ALF-3', 2)]);
+            await done;
+          });
+          expect(result.current.backlog.find((s) => s.item_id === 'i1')?.factory_state).toBe(
+            'ready_for_dev',
+          );
+        });
+
+        it("lets the server's ranks win once the queue drains", async () => {
+          const { result } = renderBacklog();
+          const { second, done } = await syncWithStepTwoHeld(result);
+
+          await act(async () => {
+            second.resolve([sidecar('i1', 'ALF-1', 7), sidecar('i3', 'ALF-3', 2)]);
+            await done;
+          });
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 7, i2: 1, i3: 2 });
+        });
+
+        it("ignores a swap's stale echo arriving after the drain, until the final echo lands", async () => {
+          const { result } = renderBacklog();
+          const { second, done } = await syncWithStepTwoHeld(result);
+          await act(async () => {
+            second.resolve([sidecar('i1', 'ALF-1', 3), sidecar('i3', 'ALF-3', 2)]);
+            await done;
+          });
+
+          // Step one's echo trails the HTTP answer: it must not tie ALF-1 with ALF-3 again.
+          emitUpdate(sidecar('i1', 'ALF-1', 2));
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+          // The final echo settles it; a later rank change (another device) applies again.
+          emitUpdate(sidecar('i1', 'ALF-1', 3));
+          emitUpdate(sidecar('i1', 'ALF-1', 9));
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 9, i2: 1, i3: 2 });
+        });
+
+        it("still applies another story's rank change while a sync drains", async () => {
+          const fourth = makeStory('i4', 'e1', 'p1', { ref: 'ALF-4', priority: 4 });
+          const { result } = renderHook(
+            () => ({
+              actions: useCodeActions(),
+              backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+            }),
+            {
+              wrapper: makeWrapper({
+                projects: [PROJECT_A],
+                epics: [epic],
+                stories: [high, low, third, fourth],
+              }),
+            },
+          );
+          const { second, done } = await syncWithStepTwoHeld(result);
+          emitUpdate(sidecar('i4', 'ALF-4', 0));
+          expect(prioritiesById(result.current.backlog)['i4']).toBe(0);
+
+          await act(async () => {
+            second.resolve([sidecar('i1', 'ALF-1', 3), sidecar('i3', 'ALF-3', 2)]);
+            await done;
+          });
+        });
+
+        it("re-reads the server's ranks after a failed sync, so no tie survives the rollback", async () => {
+          mockReorderCode.mockRejectedValueOnce(new Error('swap failed'));
+          mockListCode.mockResolvedValue([
+            makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 }),
+            makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 }),
+            makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 }),
+          ]);
+          const { result } = renderBacklog();
+          const [stepOne, stepTwo] = nudgeDownTwice(result);
+
+          // Step two is still in a row's debounce buffer when step one fails, so the rollback
+          // alone can't restore it — only the server's ranks can.
+          await act(async () => {
+            await result.current.actions.commitReorderBatch([stepOne]);
+          });
+
+          expect(mockListCode).toHaveBeenCalled();
+          expect(stepTwo.ref).toBe('ALF-1');
           expect(prioritiesById(result.current.backlog)).toEqual({ i1: 1, i2: 2, i3: 3 });
         });
 
