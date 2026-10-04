@@ -2409,6 +2409,58 @@ describe('code-store', () => {
         expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1', 'ALF-3']);
       });
 
+      it('lands on the final rank when a respaced jump echoes an intermediate write after its answer', async () => {
+        // The midpoint ran out of room, so the RPC respaced every rank to 1..N (ALF-3 to 3, its
+        // OLD slot) and then wrote ALF-3's real rank — two writes to one row, one transaction.
+        mockMoveCodeInProject.mockResolvedValueOnce([rankedRow('i3', 0.5)]);
+        const { result } = renderBacklog();
+
+        let applied!: { priorityBefore: number | null };
+        act(() => {
+          applied = unwrap(result.current.actions.applyMoveInProjectOptimistic('ALF-3', true));
+        });
+        await act(async () => {
+          await result.current.actions.commitMoveInProject('ALF-3', true, applied.priorityBefore);
+        });
+        for (const [itemId, priority] of [
+          ['i1', 1],
+          ['i2', 2],
+          ['i3', 3],
+          ['i3', 0.5],
+        ] as const) {
+          emitUpdate(rankedRow(itemId, priority));
+        }
+
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-3', 'ALF-1', 'ALF-2']);
+      });
+
+      it("applies another writer's rank even when it equals one this tab wrote earlier", async () => {
+        mockReorderCode.mockResolvedValueOnce([rankedRow('i1', 2), rankedRow('i2', 1)]);
+        const { result } = renderBacklog();
+
+        // This tab swaps ALF-1 down; the echo beats the answer, landing while the swap is unsynced.
+        let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        act(() => {
+          step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+        });
+        emitUpdate(rankedRow('i1', 2));
+        emitUpdate(rankedRow('i2', 1));
+        await act(async () => {
+          await result.current.actions.commitReorderBatch([step]);
+        });
+
+        // Another tab swaps them back, then forward again — ranks this tab already wrote once.
+        emitUpdate(rankedRow('i1', 1));
+        emitUpdate(rankedRow('i2', 2));
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-1', 'ALF-2', 'ALF-3']);
+        emitUpdate(rankedRow('i1', 3));
+        emitUpdate(rankedRow('i3', 1));
+        emitUpdate(rankedRow('i1', 2));
+        emitUpdate(rankedRow('i2', 3));
+
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 3, i3: 1 });
+      });
+
       it("still applies another writer's priority change over realtime", () => {
         const { result } = renderBacklog();
 
