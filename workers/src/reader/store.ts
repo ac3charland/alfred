@@ -53,6 +53,11 @@ export interface ReaderPostInsert {
   text: string;
   word_count: number;
   html_extracted: boolean;
+  /**
+   * The raw HTML part, kept for the later send to Instapaper. Left out for a post that has none —
+   * `insertPost` spells that as a JSON null, so the body always says what the column holds.
+   */
+  html?: string | undefined;
   summary_state: 'pending';
   /** The lease: `now` claims the row for this tick, a JSON null leaves it for tomorrow. */
   summarizing_since: unknown;
@@ -113,7 +118,7 @@ export async function insertPost(
   const response = await fetch(restQueryUrl(env, 'reader_posts', {}), {
     method: 'POST',
     headers: headers(env),
-    body: JSON.stringify(row),
+    body: JSON.stringify({ ...row, html: row.html ?? JSON_NULL }),
   });
 
   if (response.status === 409) {

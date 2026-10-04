@@ -7,7 +7,7 @@
  * call), because a skipped message leaves no trace anywhere and cannot be found again even by
  * someone looking for it.
  *
- * Three fields are worth explaining:
+ * Four fields are worth explaining:
  *
  * The TITLE is the `Subject` header, not the HTML's `<h1>`. Substack puts the post title in the
  * subject line; the `<h1>` markup changes between templates and a wrong pick puts a nav label on
@@ -28,6 +28,11 @@
  * reads, and taking the body from the same place as the URL keeps the two describing one artefact.
  * So HTML wins here and the plain part is the fallback, and the flag says which one it was so a
  * disappointing summary can be traced to the body it was made from.
+ *
+ * `html` keeps the part `html_extracted` names, decoded out of Gmail's base64 and otherwise
+ * untouched, for a later send to Instapaper — which wants the sender's markup, not the prose
+ * `htmlToText` boiled it down to. It exists only when the HTML is the body the stored text
+ * came from, so a row never holds markup that describes a different post than its text does.
  */
 import {
   decodeEncodedWords,
@@ -52,6 +57,17 @@ import type { GmailMessage, GmailPayload } from '../comms/gmail-api';
  */
 export const READER_TEXT_CHARS = 400_000;
 
+/**
+ * The ceiling on the stored HTML. Unlike the text, markup is never truncated: half an HTML
+ * document is not something a later send can hand to Instapaper, so a part past this is kept as
+ * NOTHING and the send falls back to the stored text.
+ *
+ * Sized at roughly fourteen times the largest post measured (72.6 K text chars), which leaves room
+ * for markup running several times the length of the prose it wraps. It bounds one row's column
+ * and nothing the tick spends: the HTML rides the insert the tick already makes.
+ */
+export const READER_HTML_CHARS = 1_000_000;
+
 /** The title of a post whose subject was empty and whose HTML carried no `<title>` either. */
 export const UNTITLED = '(untitled)';
 
@@ -68,6 +84,11 @@ export interface ExtractedPost {
   word_count: number;
   /** True only when the text came out of an HTML part through `htmlToText`. */
   html_extracted: boolean;
+  /**
+   * The decoded `text/html` part, raw, kept for the later send to Instapaper. Present only when
+   * that part is what produced the stored text and it fits `READER_HTML_CHARS`.
+   */
+  html?: string | undefined;
 }
 
 /** `<a … href="…" …>text</a>`, href quoted either way or bare, text non-greedy across newlines. */
@@ -296,5 +317,11 @@ export function extractPost(
     // derives from it never describes words the summariser was not given either.
     word_count: text.split(/\s+/).filter((token) => token !== '').length,
     html_extracted: htmlExtracted,
+    // Raw means raw: no sanitising and no stripping of the sender's chrome, because the reader on
+    // the other end is the one that decides what is article and what is footer. Kept only when it
+    // is the body the stored text came from — an HTML part that yielded no prose, beside a plain
+    // part that did, would otherwise leave a row whose text and markup describe different things.
+    html:
+      htmlExtracted && html !== undefined && html.length <= READER_HTML_CHARS ? html : undefined,
   };
 }

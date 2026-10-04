@@ -1,5 +1,6 @@
+import { decodePart, flatten } from '../comms/email-text';
 import type { GmailMessage } from '../comms/gmail-api';
-import { READER_TEXT_CHARS, UNTITLED, extractPost } from './extract';
+import { READER_HTML_CHARS, READER_TEXT_CHARS, UNTITLED, extractPost } from './extract';
 import {
   ESSAY_MESSAGE,
   PLAIN_TEXT_ONLY_MESSAGE,
@@ -24,6 +25,12 @@ function htmlMessage(html: string, headers: { name: string; value: string }[] = 
       body: { size: html.length, data: encodeBody(html) },
     },
   };
+}
+
+/** The decoded `text/html` part of a fixture, read the long way round so a test never hard-codes it. */
+function htmlPartOf(message: GmailMessage): string | undefined {
+  const leaf = flatten(message.payload ?? {}).find((part) => part.mimeType === 'text/html');
+  return leaf === undefined ? undefined : decodePart(leaf);
 }
 
 describe('extractPost — the fixtures', () => {
@@ -261,6 +268,80 @@ describe('extractPost — the header shapes real mail arrives in', () => {
   });
 });
 
+describe('extractPost — the stored HTML', () => {
+  it('keeps the HTML part itself when it is what produced the stored text', () => {
+    const post = extractPost(ESSAY_MESSAGE, HARBORLINE);
+
+    expect(post.html_extracted).toBe(true);
+    // The fixture's own part, decoded — not a string the test wrote down a second time.
+    expect(post.html).toBe(htmlPartOf(ESSAY_MESSAGE));
+    expect(post.html).toContain('Every port keeps two sets of books');
+  });
+
+  it('keeps it raw: the preheaders, the tracking pixel and the footer all survive', () => {
+    // The send hands Instapaper the sender's own markup and lets it do the reading, so anything
+    // this file stripped would be a decision made on its behalf and not undoable later.
+    const { html } = extractPost(ESSAY_MESSAGE, HARBORLINE);
+
+    expect(html).toContain('display:none');
+    expect(html).toContain('<img src="https://eotrx.substackcdn.com/');
+    expect(html).toContain('Manage your subscription');
+    expect(html).toContain('<title>Harborline');
+  });
+
+  it('stores no HTML for a post that had only a plain part', () => {
+    expect(extractPost(PLAIN_TEXT_ONLY_MESSAGE, HARBORLINE).html).toBeUndefined();
+  });
+
+  it('stores no HTML once the part is longer than READER_HTML_CHARS, and still stores the text', () => {
+    // Markup is never truncated: half an HTML document is not a thing Instapaper can be handed,
+    // so past the ceiling the send falls back to the stored text instead.
+    const body = `<p>${'word '.repeat(200_001)}</p>`;
+    const post = extractPost(htmlMessage(body), HARBORLINE);
+
+    expect(body.length).toBeGreaterThan(READER_HTML_CHARS);
+    expect(post.html).toBeUndefined();
+    expect(post.html_extracted).toBe(true);
+    expect(post.text.length).toBeGreaterThan(0);
+  });
+
+  it('keeps an HTML part of exactly READER_HTML_CHARS', () => {
+    const body = `<p>${'a'.repeat(READER_HTML_CHARS - '<p></p>'.length)}</p>`;
+    expect(body).toHaveLength(READER_HTML_CHARS);
+    expect(extractPost(htmlMessage(body), HARBORLINE).html).toBe(body);
+  });
+
+  it('stores no HTML when the HTML part yielded no prose and the plain part was the post', () => {
+    // Markup that is all hidden or all tags reaches `htmlToText` as nothing, so the post is the
+    // plain alternative — and a stored HTML that describes a different body than the stored text
+    // would send Instapaper something other than what the row summarises.
+    const message: GmailMessage = {
+      id: 'hidden-html',
+      threadId: 'thread-hidden-html',
+      internalDate: '1789000000000',
+      payload: {
+        mimeType: 'multipart/alternative',
+        headers: [{ name: 'Subject', value: 'Plain is the post' }],
+        parts: [
+          { mimeType: 'text/plain', body: { size: 11, data: encodeBody('hello there') } },
+          {
+            mimeType: 'text/html',
+            body: {
+              size: 60,
+              data: encodeBody('<div style="display:none;max-height:0px;">hidden</div><hr />'),
+            },
+          },
+        ],
+      },
+    };
+
+    const post = extractPost(message, HARBORLINE);
+    expect(post.html_extracted).toBe(false);
+    expect(post.text).toBe('hello there');
+    expect(post.html).toBeUndefined();
+  });
+});
+
 describe('extractPost — the edges', () => {
   it('truncates the stored text at READER_TEXT_CHARS', () => {
     const body = `<p>${'word '.repeat(120_000)}</p>`;
@@ -300,6 +381,8 @@ describe('extractPost — the edges', () => {
     expect(post.text).toBe('');
     expect(post.word_count).toBe(0);
     expect(post.html_extracted).toBe(false);
+    // The attached `.html` is not the post, so it is not kept as one either.
+    expect(post.html).toBeUndefined();
   });
 
   it('decodes entities in an href before parsing it', () => {
@@ -355,6 +438,7 @@ describe('extractPost — the edges', () => {
     const post = extractPost(message, HARBORLINE);
     expect(post.text).toBe('hello there');
     expect(post.html_extracted).toBe(false);
+    expect(post.html).toBeUndefined();
   });
 
   it('falls back to the caller’s date when Gmail sent no internalDate', () => {

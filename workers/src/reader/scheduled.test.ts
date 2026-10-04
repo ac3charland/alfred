@@ -540,6 +540,61 @@ describe('runReaderTick — the insert', () => {
     });
     expect(summary.intake).toBe(1);
   });
+
+  it('stores the raw HTML on the insert it already makes, not on a write of its own', async () => {
+    // The send to Instapaper reads this column later; the tick only has to keep what it already
+    // decoded. The HTML rides the existing POST — a second write would be a subrequest the tick's
+    // budget has no room for.
+    const calls = harness({ fresh: [worklistRow()], messages: [ESSAY_MESSAGE] });
+    mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    const inserts = restCalls(calls, 'reader_posts', 'POST');
+    expect(inserts).toHaveLength(1);
+    const { html } = payload(inserts[0]);
+    expect(typeof html).toBe('string');
+    // Raw, not the stored text: the markup and the hidden preheader are still in it.
+    expect(html).toContain('<h1');
+    expect(html).toContain('display:none');
+    expect(html).toContain('Every port keeps two sets of books');
+    expect(payload(inserts[0])).toMatchObject({ html_extracted: true });
+    // Nothing else in the tick writes the column: the lease, the stamp and the terminal patch
+    // never mention it.
+    for (const call of calls.filter((entry) => entry.method === 'PATCH')) {
+      expect(payload(call)).not.toHaveProperty('html');
+    }
+  });
+
+  it('sends a JSON null for html when the post had only a plain part', async () => {
+    const calls = harness({
+      fresh: [
+        worklistRow({
+          comm_message_id: 'comm-plain',
+          gmail_message_id: PLAIN_TEXT_ONLY_MESSAGE.id,
+        }),
+      ],
+      messages: [PLAIN_TEXT_ONLY_MESSAGE],
+    });
+    mockSummarize(DONE);
+
+    await runReaderTick(env, NOW);
+
+    const insert = restCalls(calls, 'reader_posts', 'POST')[0];
+    expect(payload(insert)).toMatchObject({ html_extracted: false, html: WIRE_NULL });
+    // Present and null, not an absent key: the body says "no HTML" rather than saying nothing.
+    expect(insert?.body).toContain('"html":null');
+  });
+
+  it('keeps the HTML on a capped day too, since the row is stored either way', async () => {
+    const calls = harness({ callsToday: 30, fresh: [worklistRow()], messages: [ESSAY_MESSAGE] });
+    mockSummarize();
+
+    await runReaderTick(env, NOW);
+
+    const { html } = payload(restCalls(calls, 'reader_posts', 'POST')[0]);
+    expect(html).toContain('Every port keeps two sets of books');
+  });
 });
 
 describe('runReaderTick — the ceiling', () => {
