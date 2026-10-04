@@ -324,6 +324,38 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const swapSingleWriteResult = await attempt(
+    'swap_code_priority writes each row once, straight to its final rank (0042)',
+    async () => {
+      const a = await createStory(client, 'story P');
+      const b = await createStory(client, 'story Q');
+      // Log every row write the swap makes: Realtime broadcasts each one, so a write to any rank
+      // but the final one flashes the story there on an open Backlog (ALF-250).
+      await client.query(`create temp table swap_writes (ref text, priority double precision)`);
+      await client.query(`create function pg_temp.log_swap_write() returns trigger
+        language plpgsql as $$ begin
+          insert into swap_writes values (new.ref, new.priority); return new;
+        end $$`);
+      await client.query(`create trigger swap_write_log after update on code_items
+        for each row execute function pg_temp.log_swap_write()`);
+      try {
+        await client.query(`select swap_code_priority($1, $2)`, [a.ref, b.ref]);
+        const writes = await client.query<{ ref: string; priority: string }>(
+          `select ref, priority from swap_writes order by ref`,
+        );
+        const seen = writes.rows.map((w) => `${w.ref}=${w.priority}`).join(', ');
+        const finals = [`${a.ref}=${b.priority}`, `${b.ref}=${a.priority}`];
+        const expected = (a.ref < b.ref ? finals : [finals[1], finals[0]]).join(', ');
+        if (seen !== expected) throw new Error(`writes were [${seen}], expected [${expected}]`);
+        return seen;
+      } finally {
+        await client.query(`drop trigger swap_write_log on code_items`);
+        await client.query(`drop function pg_temp.log_swap_write()`);
+        await client.query(`drop table swap_writes`);
+      }
+    },
+  );
+
   const moveResult = await attempt(
     'move_code_priority jumps a story past both extremes (0009)',
     async () => {
@@ -4819,6 +4851,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     createStoryResult,
     enterModuleResult,
     swapResult,
+    swapSingleWriteResult,
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
