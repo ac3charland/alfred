@@ -255,24 +255,119 @@ const EXPIRING = judged(
   'A request with no date attached.',
 );
 
+/** A shelf message — FYI, judged, nothing asked — on `accountId`. */
+function shelfMessage(accountId: string, overrides: Partial<CommMessage>): CommMessage {
+  return makeCommMessage(accountId, {
+    tier: 'fyi',
+    judged_by: 'model',
+    ask: null,
+    ...overrides,
+  });
+}
+
+/**
+ * The shelf's real conversations, newest first: a group chat whose two bursts are more than six
+ * hours apart (so they are two rows), a four-message email thread with one refused reply (rolled
+ * up onto its collapsed row), and the receipts around them, which stay one row apiece.
+ */
+const SHELF_CONVERSATIONS: CommMessage[] = [
+  shelfMessage('acct-imessage', {
+    id: 'crew-3',
+    thread_key: 'chat-crew',
+    chat_name: 'Climbing crew',
+    participants: ['+15550102233', '+15550104455'],
+    sender_handle: '+15550104455',
+    sender_name: 'Sam',
+    body: 'see you at the wall at 6, bringing the spare harness',
+    received_at: todayAt(11, 40),
+  }),
+  shelfMessage('acct-imessage', {
+    id: 'crew-2',
+    thread_key: 'chat-crew',
+    chat_name: 'Climbing crew',
+    participants: ['+15550102233', '+15550104455'],
+    sender_handle: '+15550102233',
+    body: 'who has the rope this week?',
+    received_at: todayAt(11, 30),
+  }),
+  shelfMessage(PERSONAL.id, {
+    id: 'potluck-4',
+    thread_key: 'potluck',
+    sender_handle: 'dana@realplay.example',
+    sender_name: 'Dana Whitfield',
+    subject: 'Re: Saturday potluck — final headcount',
+    body: 'Final count is twelve. Thanks all!',
+    received_at: todayAt(10, 31),
+  }),
+  shelfMessage(PERSONAL.id, {
+    id: 'potluck-3',
+    thread_key: 'potluck',
+    judged_by: 'refusal',
+    sender_handle: 'ana@example.com',
+    sender_name: 'Ana Ruiz',
+    subject: 'Re: Saturday potluck',
+    body: 'Bringing the lasagna.',
+    received_at: todayAt(9, 50),
+  }),
+  shelfMessage(PERSONAL.id, {
+    id: 'potluck-2',
+    thread_key: 'potluck',
+    sender_handle: 'lee@example.com',
+    sender_name: 'Lee Park',
+    subject: 'Re: Saturday potluck — count me in, +1',
+    body: 'Count me in, plus one.',
+    received_at: todayAt(8, 12),
+  }),
+  shelfMessage(PERSONAL.id, {
+    id: 'chase',
+    sender_handle: 'alerts@chase.example',
+    sender_name: 'Chase',
+    subject: 'Your September statement is ready',
+    received_at: todayAt(7, 15),
+  }),
+  shelfMessage('acct-imessage', {
+    id: 'crew-1',
+    thread_key: 'chat-crew',
+    chat_name: 'Climbing crew',
+    participants: ['+15550102233', '+15550104455'],
+    sender_handle: '+15550104455',
+    sender_name: 'Sam',
+    body: 'anyone climbing tomorrow?',
+    received_at: todayAt(1, 5),
+  }),
+  shelfMessage(PERSONAL.id, {
+    id: 'potluck-1',
+    thread_key: 'potluck',
+    sender_handle: 'dana@realplay.example',
+    sender_name: 'Dana Whitfield',
+    subject: "Saturday potluck — who's in?",
+    body: 'Who is in for Saturday?',
+    received_at: new Date(2026, 8, 8, 18, 0).toISOString(),
+  }),
+];
+
 /**
  * The shelf, at the size sixty days of FYI actually reaches. Seeded in full rather than
  * faked, because the number in the summary line IS the shelf's length — and because the
- * collapsed shelf mounting none of them is the thing worth proving at this size.
+ * collapsed shelf mounting none of them is the thing worth proving at this size. The newest of it
+ * is {@link SHELF_CONVERSATIONS}; the rest are lone receipts, each its own conversation.
  */
 function shelfRows(count: number): CommMessage[] {
-  return Array.from({ length: count }, (_, index) =>
-    makeCommMessage(PERSONAL.id, {
-      id: `shelf-${String(index)}`,
-      tier: 'fyi',
-      judged_by: 'model',
-      sender_handle: `sender${String(index)}@example.com`,
-      subject: 'Receipt',
-      body: 'Your order has shipped.',
-      ask: 'Nothing asked.',
-      received_at: new Date(NOW.getTime() - (index + 1) * HOUR).toISOString(),
-    }),
+  const receipts = Array.from(
+    { length: Math.max(count - SHELF_CONVERSATIONS.length, 0) },
+    (_, index) =>
+      makeCommMessage(PERSONAL.id, {
+        id: `shelf-${String(index)}`,
+        tier: 'fyi',
+        judged_by: 'model',
+        sender_handle: `sender${String(index)}@example.com`,
+        subject: 'Receipt',
+        body: 'Your order has shipped.',
+        ask: 'Nothing asked.',
+        received_at: new Date(NOW.getTime() - (index + 1) * HOUR).toISOString(),
+      }),
   );
+  return [...SHELF_CONVERSATIONS.slice(0, count), ...receipts];
 }
 
 /**
@@ -445,5 +540,32 @@ export const RecoversAfterTimeAway: Story = {
     await canvas.findByLabelText('RealPlay · live');
     await canvas.findByLabelText('WorkMail · live');
     await canvas.findByLabelText('iMessage · live');
+  },
+};
+
+/**
+ * The shelf opened, by conversation: the group chat's newest burst and the potluck thread each
+ * collapse to one row that counts its messages, the thread's refused reply is rolled up onto it,
+ * and the thread is opened onto its four messages, newest first. Chase is a one-message
+ * conversation and looks exactly as a row always has; the chat's overnight burst is its own row.
+ */
+export const ShelfOpen: Story = {
+  parameters: {
+    store: {
+      comms: {
+        accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
+        messages: shelfRows(12),
+        verdicts: VERDICTS,
+        health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
+      },
+      commsSettings: { people: ROSTER },
+    },
+    visualTest: { target: '[data-testid="comms-frame"]' },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: /FYI · 12 messages/ }));
+    await userEvent.click(await canvas.findByRole('button', { name: /4 messages/ }));
+    await canvas.findAllByText('Re: Saturday potluck — count me in, +1');
   },
 };
