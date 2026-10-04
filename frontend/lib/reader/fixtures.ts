@@ -5,6 +5,7 @@ import type {
   ReaderHealthSnapshot,
   ReaderOverview,
   ReaderPost,
+  ReaderPostListItem,
   ReaderPublication,
   ReaderPublicationListItem,
 } from '@/lib/types';
@@ -91,6 +92,7 @@ export function makeReaderPost(
     canonical_url: overrides.canonical_url ?? null,
     received_at: receivedAt,
     text: overrides.text ?? null,
+    html: overrides.html ?? null,
     word_count: overrides.word_count ?? 0,
     html_extracted: overrides.html_extracted ?? false,
     headline: overrides.headline ?? null,
@@ -107,8 +109,29 @@ export function makeReaderPost(
     opened_at: overrides.opened_at ?? null,
     archived_at: overrides.archived_at ?? null,
     text_swept_at: overrides.text_swept_at ?? null,
+    instapaper_sent_at: overrides.instapaper_sent_at ?? null,
+    instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? null,
     created_at: overrides.created_at ?? receivedAt,
   };
+}
+
+/**
+ * The same row as the LIST read hands it over: both body columns dropped. Every surface that
+ * renders a post takes this shape, so one helper strips them rather than eleven call sites each
+ * naming the columns they are supposed to be ignorant of — and the next body column added is a
+ * change here instead of a sweep.
+ */
+export function toReaderPostListItem(post: ReaderPost): ReaderPostListItem {
+  const { text: _text, html: _html, ...listItem } = post;
+  return listItem;
+}
+
+/** {@link makeReaderPost} in the list read's shape — the builder most test and story seeds want. */
+export function makeReaderPostListItem(
+  publicationId: string,
+  overrides: Partial<Omit<ReaderPost, 'overview'>> & { overview?: ReaderOverview | null } = {},
+): ReaderPostListItem {
+  return toReaderPostListItem(makeReaderPost(publicationId, overrides));
 }
 
 /**

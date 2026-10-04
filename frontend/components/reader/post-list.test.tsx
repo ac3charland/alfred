@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { makeReaderPost, resetReaderFixtureClock } from '@/lib/reader/fixtures';
+import { makeReaderPostListItem, resetReaderFixtureClock } from '@/lib/reader/fixtures';
 import type { ReaderPostListItem } from '@/lib/types';
 
 import { PostList } from './post-list';
@@ -16,12 +16,11 @@ const NOW = new Date(2026, 8, 18, 9, 0);
 const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
 
 function post(title: string, id: string, receivedAt: string): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  return makeReaderPostListItem(PUBLICATION_ID, {
     id,
     title,
     received_at: receivedAt,
   });
-  return listItem;
 }
 
 const POSTS = [

@@ -760,6 +760,21 @@ export function patchReaderPost(
 }
 
 /**
+ * Send one post to the owner's Instapaper account. No body: the id is the whole request, and the
+ * route reads what Instapaper is told out of the row server-side — the credentials never reach
+ * the browser and neither does the post's stored text.
+ *
+ * Returns the stamped row, carrying `instapaper_sent_at` and the archive stamp one press sets.
+ * Throws `ApiError` like its siblings, and its status is what the store's toast keys on: 409 (no
+ * link and no stored text), 422 (Instapaper refused this post), 429 (rate-limited), 501 (this
+ * deployment has no credentials) and 502 (Instapaper is unhappy) each carry a sentence written
+ * for the owner, so the store shows the route's words rather than a generic apology.
+ */
+export function sendReaderPostToInstapaper(id: string): Promise<ReaderPostListItem> {
+  return apiRequest<ReaderPostListItem>(`/api/reader/posts/${id}/instapaper`, { method: 'POST' });
+}
+
+/**
  * The roster, ordered by name, each row carrying the arrival of its newest post. Read from the
  * view rather than the table: "last post" is derived, so nothing writes it back to the roster.
  */

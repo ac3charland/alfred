@@ -13,9 +13,11 @@ import {
   READER_POST_LIST_COLUMNS,
   getReaderHealthSeed,
   getReaderHealthSnapshot,
+  getReaderPostForSend,
   getReaderPostResummarizeState,
   getReaderPosts,
   getReaderSeed,
+  markReaderPostSent,
   patchReaderPost,
 } from './reader';
 
@@ -33,17 +35,94 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+/** The two body columns the list payload must never carry. */
+const BODY_COLUMNS = new Set(['text', 'html']);
+
 describe('READER_POST_LIST_COLUMNS', () => {
-  it('names every reader_posts column except text — pinned against the fixture builder', () => {
+  it('names every reader_posts column except the bodies — pinned against the fixture builder', () => {
     const post = makeReaderPost(PUBLICATION.id);
-    const fixtureColumns = new Set(Object.keys(post).filter((key) => key !== 'text'));
+    const fixtureColumns = new Set(Object.keys(post).filter((key) => !BODY_COLUMNS.has(key)));
     const listedColumns = new Set(READER_POST_LIST_COLUMNS.split(','));
 
     // Symmetric: a migration that adds a column to the Row type (and so to the fixture
     // builder) fails this the moment the fixture is regenerated, and a stray entry left in
     // the constant after a column is dropped fails it too.
     expect(listedColumns).toStrictEqual(fixtureColumns);
+    // Named one at a time as well, because the set comparison above would go green if BOTH the
+    // constant and the fixture grew a body column — and shipping either to the browser is the
+    // mistake this whole column list exists to prevent.
     expect(listedColumns.has('text')).toBe(false);
+    expect(listedColumns.has('html')).toBe(false);
+    // The send's two stamps, on the other hand, are what the row's badge is drawn from.
+    expect(listedColumns.has('instapaper_sent_at')).toBe(true);
+    expect(listedColumns.has('instapaper_bookmark_id')).toBe(true);
+  });
+});
+
+describe('getReaderPostForSend', () => {
+  const SENDABLE = {
+    title: 'How near is the intelligence explosion, really?',
+    canonical_url: 'https://example.com/p/how-near',
+    gist: 'A gist',
+    html: '<p>the post</p>',
+    text: 'the post',
+    archived_at: null,
+  };
+
+  it('reads exactly what the send needs, bodies included, for the row asked for', async () => {
+    // The deliberate exception to this file's no-bodies rule: the send hands the body to
+    // Instapaper, and the result is consumed inside the route rather than returned.
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: SENDABLE } } });
+
+    const { data } = await getReaderPostForSend(supabase as never, POST_ID);
+
+    expect(data).toEqual(SENDABLE);
+    const [columns] = supabase.table('reader_posts').select.mock.calls[0] as [string];
+    expect(columns.split(',')).toStrictEqual([
+      'title',
+      'canonical_url',
+      'gist',
+      'html',
+      'text',
+      'archived_at',
+    ]);
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+  });
+
+  it('resolves null data for a row that is not there — the route handles the 404', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    const { data } = await getReaderPostForSend(supabase as never, POST_ID);
+
+    expect(data).toBeNull();
+  });
+});
+
+describe('markReaderPostSent', () => {
+  const NOW = new Date('2026-09-24T12:00:00.000Z');
+
+  it('stamps the send, the bookmark id and the archive, and reads the list row back', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await markReaderPostSent(supabase as never, POST_ID, 1_234_567, NOW, null);
+
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith({
+      instapaper_sent_at: '2026-09-24T12:00:00.000Z',
+      instapaper_bookmark_id: 1_234_567,
+      archived_at: '2026-09-24T12:00:00.000Z',
+    });
+    expect(supabase.table('reader_posts').eq).toHaveBeenCalledWith('id', POST_ID);
+    expect(supabase.table('reader_posts').select).toHaveBeenCalledWith(READER_POST_LIST_COLUMNS);
+  });
+
+  it('keeps an existing archived_at rather than re-dating a post sent from the archive', async () => {
+    const supabase = makeSupabaseDouble({ reader_posts: { maybeSingle: { data: null } } });
+
+    await markReaderPostSent(supabase as never, POST_ID, 99, NOW, '2026-09-16T08:30:00.000Z');
+
+    expect(supabase.table('reader_posts').update).toHaveBeenCalledWith(
+      expect.objectContaining({ archived_at: '2026-09-16T08:30:00.000Z' }),
+    );
   });
 });
 

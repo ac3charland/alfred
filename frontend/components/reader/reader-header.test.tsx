@@ -6,7 +6,7 @@ import {
   NO_READER_HEALTH,
   READER_HEALTH_FIXTURE_NOW,
   makeReaderHealth,
-  makeReaderPost,
+  makeReaderPostListItem,
   resetReaderFixtureClock,
 } from '@/lib/reader/fixtures';
 import type {
@@ -44,12 +44,11 @@ function liveHealth(overrides: Partial<ReaderHealth> = {}): ReaderHealth {
 
 /** A claimed post the tick should have summarised `minutes` ago. */
 function waiting(minutes: number): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  return makeReaderPostListItem(PUBLICATION_ID, {
     summary_state: 'pending',
     word_count: 1200,
     created_at: ago(minutes),
   });
-  return listItem;
 }
 
 function renderHeader(

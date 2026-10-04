@@ -2,7 +2,7 @@ import { makeCommAccount } from '@/lib/comms/fixtures';
 import {
   READER_HEALTH_FIXTURE_NOW,
   makeReaderHealth,
-  makeReaderPost,
+  makeReaderPostListItem,
   resetReaderFixtureClock,
 } from '@/lib/reader/fixtures';
 import type { ReaderHealthSnapshot, ReaderPostListItem } from '@/lib/types';
@@ -30,8 +30,7 @@ function ago(minutes: number): string {
 }
 
 function post(overrides: Partial<Omit<ReaderPostListItem, 'overview'>> = {}): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
-  return listItem;
+  return makeReaderPostListItem(PUBLICATION_ID, overrides);
 }
 
 /** A claimed post the tick will still try, claimed `minutes` ago. */

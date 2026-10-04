@@ -208,11 +208,24 @@ export type ReaderPostUpdate = Database['public']['Tables']['reader_posts']['Upd
 export type ReaderHealth = Database['public']['Tables']['reader_health']['Row'];
 
 /**
- * A post without its body — the list read's shape. A 30 KB body times hundreds of rows is a
- * seed the list never renders (the verb opens the original), so `getReaderSeed`, `getReaderPosts`
- * and `patchReaderPost` all select the shared `READER_POST_LIST_COLUMNS` instead of `*`.
+ * A post without either of its bodies — the list read's shape. A 30 KB body times hundreds of
+ * rows is a seed the list never renders, and the email HTML is several times that again, so
+ * `getReaderSeed`, `getReaderPosts` and `patchReaderPost` all select the shared
+ * `READER_POST_LIST_COLUMNS` instead of `*`. The one reader of either column is the Instapaper
+ * send route, which reads them server-side and never returns them.
  */
-export type ReaderPostListItem = Omit<ReaderPost, 'text'>;
+export type ReaderPostListItem = Omit<ReaderPost, 'text' | 'html'>;
+
+/**
+ * The opposite shape: exactly what sending a post to Instapaper reads, bodies included. It is
+ * the one read of `html` or `text` outside the Worker, it happens server-side inside the send
+ * route, and nothing on it is ever returned to the browser — the route answers with a
+ * {@link ReaderPostListItem}, which carries neither column.
+ */
+export type ReaderPostForSend = Pick<
+  ReaderPost,
+  'title' | 'canonical_url' | 'gist' | 'html' | 'text' | 'archived_at'
+>;
 
 /**
  * A roster row with the date of its newest post — what `v_reader_publications` returns and what
