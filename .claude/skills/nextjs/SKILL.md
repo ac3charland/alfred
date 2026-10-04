@@ -262,6 +262,12 @@ To keep real URLs but make switching instant, drive navigation with the **native
   fails to even load with a cryptic `server-only` throw. Add the mock at the top of that
   route's test (the `lib/data` reader tests already do — see `lib/data/items.test.ts`).
 
+- **A plain Node script that imports a `server-only` app module runs with
+  `node --conditions=react-server`** (the `server-only` package exports an empty module under that
+  condition) **plus a `module.registerHooks` resolve hook mapping `@/` onto the package** — Node
+  strips the `.ts` types itself, so no loader dependency. `frontend/scripts/instapaper-token.mjs`
+  is the working example; reuse its hook rather than copying the module the script needs.
+
 - **A UUID path-param validator (`parseUUID`) requires real-UUID test fixtures.** Once a
   `[id]` handler validates its segment, a placeholder id like `'item-1'`/`'task-1'` hits the
   new 400 branch, so every fixture id and matching `eq('id', …)` / `root_id` expectation must

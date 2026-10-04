@@ -299,6 +299,14 @@ The suite never touches real Supabase. Every Supabase access in alfred is **serv
   `mock-supabase.mjs` reads only the `p_*` keys it was written for, so a new one is ignored and
   the mock keeps producing the OLD row — no error, just an E2E (or demo capture) that quietly
   proves the previous behaviour.
+- **Adding a seed key? `e2e/support/fixtures.ts` forwards an explicit list of them.** A key added
+  to `SeedState` and the mock's `/__mock__/seed` handler but not to the fixture's POST body never
+  reaches the mock — the seed "succeeds" and the test runs against the default.
+- **A server-side call to a third-party API is mocked the same way as Supabase:** give the client an
+  env-overridable base URL (`INSTAPAPER_API_URL`), point it at `MOCK_URL` in `playwright.config.ts`,
+  and add a handler to `mock-supabase.mjs` that records each request for `/__mock__/state` (the
+  Instapaper `bookmarks/add` stand-in is the example — its body is form-encoded, so it reads raw
+  text before the JSON body parse).
 - **The mock has no realtime socket**, so a channel subscription never joins and nothing reacts to a
   `postgres_changes` event. Push one from a fake `WebSocket` instead — see
   [`references/driving-realtime.md`](references/driving-realtime.md).
