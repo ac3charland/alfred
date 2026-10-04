@@ -1,0 +1,24 @@
+{
+  "requestsReceived": 1,
+  "authorization": [
+    "OAuth oauth_consumer_key=\"mock_instapaper_consumer_key\"",
+    "oauth_nonce=\"<random>\"",
+    "oauth_signature=\"<HMAC-SHA1>\"",
+    "oauth_signature_method=\"HMAC-SHA1\"",
+    "oauth_timestamp=\"<now>\"",
+    "oauth_token=\"mock_instapaper_access_token\"",
+    "oauth_version=\"1.0\""
+  ],
+  "contentType": "application/x-www-form-urlencoded; charset=utf-8",
+  "form": {
+    "title": "How near is the intelligence explosion, really?",
+    "url": "https://secondthoughts.substack.com/p/how-near-is-the-intelligence-explosion",
+    "content": "<html><body><h1>How near is the intelligence explosion?</h1><p>A paragraph only paying subscribers ever see.</p></body></html>",
+    "description": "Argues the recursive self-improvement debate conflates three feedback loops, and that only one has any evidence behind it."
+  },
+  "storedRow": {
+    "archived": true,
+    "instapaper_sent": true,
+    "instapaper_bookmark_id": 1000001
+  }
+}
