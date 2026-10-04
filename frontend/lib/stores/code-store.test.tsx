@@ -2231,6 +2231,72 @@ describe('code-store', () => {
         // swap rolls back, so ALF-3 is restored to its original priority.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
       });
+
+      // ALF-250: an earlier step's server reply must not drag the story back over a later step
+      // that is already applied on screen — that snapped it back up, tied it with its next
+      // neighbour, and a Down click in that window swapped two equal priorities (a no-op).
+      it('an earlier step reconciling never rewinds a later optimistic swap still in flight', async () => {
+        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+        const fourth = makeStory('i4', 'e1', 'p1', { ref: 'ALF-4', priority: 4 });
+        let resolveSecond!: (rows: CodeItem[]) => void;
+        mockReorderCode
+          .mockResolvedValueOnce([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ])
+          .mockImplementationOnce(
+            () =>
+              new Promise<CodeItem[]>((resolve) => {
+                resolveSecond = resolve;
+              }),
+          );
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A],
+              epics: [epic],
+              stories: [high, low, third, fourth],
+            }),
+          },
+        );
+
+        // Two Down clicks on ALF-1: past ALF-2, then past ALF-3.
+        let stepOne!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        let stepTwo!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        act(() => {
+          stepOne = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+        });
+        act(() => {
+          stepTwo = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+        });
+
+        let commit!: Promise<void>;
+        await act(async () => {
+          commit = result.current.actions.commitReorderBatch([stepOne, stepTwo]);
+          await Promise.resolve();
+        });
+
+        // Step one has reconciled, step two is still in flight: the list keeps the full burst.
+        expect(result.current.backlog.map((s) => s.ref)).toEqual([
+          'ALF-2',
+          'ALF-3',
+          'ALF-1',
+          'ALF-4',
+        ]);
+
+        await act(async () => {
+          resolveSecond([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 3 }),
+            makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: 2 }),
+          ]);
+          await commit;
+        });
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2, i4: 4 });
+      });
     });
 
     describe('applyMoveOptimistic + commitMove (Backlog jump to top/bottom)', () => {

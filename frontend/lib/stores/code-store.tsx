@@ -1258,12 +1258,23 @@ export function CodeProvider({
         for (const [index, step] of steps.entries()) {
           try {
             const rows = await api.reorderCode(step.ref, step.neighbourRef);
-            // Apply each returned sidecar through the one projection (carries the real priority).
+            // The priority this step's optimistic swap already put on each row. A reply that
+            // confirms it must not re-apply it: a later step in the burst (or a newer burst) may
+            // have moved the row on since, and rewinding it snaps the row back up and ties it
+            // with its new neighbour (ALF-250). Only a priority the server disagrees on lands.
+            const predicted = new Map([
+              [step.aItemId, step.bPriorityBefore],
+              [step.bItemId, step.aPriorityBefore],
+            ]);
             for (const row of rows) {
+              const { priority, ...rest } = codeItemToStoryPatch(row);
               dispatch({
                 type: 'patchStory',
                 itemId: row.item_id,
-                patch: codeItemToStoryPatch(row),
+                patch:
+                  priority === undefined || predicted.get(row.item_id) === priority
+                    ? rest
+                    : { ...rest, priority },
               });
             }
           } catch {
