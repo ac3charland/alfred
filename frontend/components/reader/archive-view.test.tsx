@@ -3,7 +3,11 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { makeReaderOverview, makeReaderPost, resetReaderFixtureClock } from '@/lib/reader/fixtures';
+import {
+  makeReaderOverview,
+  makeReaderPostListItem,
+  resetReaderFixtureClock,
+} from '@/lib/reader/fixtures';
 import { ARCHIVE_READ_LIMIT, useArchivedPosts, useReaderActions } from '@/lib/stores/reader-store';
 import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
@@ -24,11 +28,10 @@ function archived(
     overview?: ReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
-  const { text: _text, ...listItem } = makeReaderPost(PUBLICATION_ID, {
+  return makeReaderPostListItem(PUBLICATION_ID, {
     archived_at: '2026-09-18T08:00:00.000Z',
     ...overrides,
   });
-  return listItem;
 }
 
 /**
@@ -219,12 +222,12 @@ describe('ArchiveView — the rows', () => {
     overview: makeReaderOverview(),
   });
 
-  it('offers Open and Unarchive, never Archive', async () => {
+  it('offers Send and Unarchive, never Archive', async () => {
     mockApi.fetchReaderPosts.mockResolvedValue([POST]);
     renderReader(<ArchiveView now={NOW} />);
 
     expect(await screen.findByRole('button', { name: 'Unarchive' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Send to Instapaper/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
   });
 

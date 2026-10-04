@@ -32,6 +32,21 @@ function refusal(error: unknown): string | undefined {
 }
 
 /**
+ * The statuses whose sentence the send route wrote for the owner to read. Each is a different
+ * thing to do next — this post will never send (409 / 422), wait a minute (429), this deployment
+ * has no credentials (501), Instapaper is unhappy (502) — and a generic "try again" would be
+ * wrong, or a lie, for most of them.
+ */
+const SEND_REFUSAL_STATUSES = new Set([409, 422, 429, 501, 502]);
+
+/** The route's own sentence for a failed send, when it wrote one. */
+function sendRefusal(error: unknown): string | undefined {
+  return error instanceof api.ApiError && SEND_REFUSAL_STATUSES.has(error.status)
+    ? error.detail
+    : undefined;
+}
+
+/**
  * How many archived posts the archive read asks for. The archive is unbounded — every post ever
  * skimmed — while the app's fetch-everything default assumes a bounded table, so this is a
  * deliberate ceiling rather than a page size: the view says so out loud when it hits it, and a
@@ -59,6 +74,12 @@ export interface ReaderState {
   /** Whether that read came back at its ceiling, so the archive says it is showing a slice. */
   archiveFull: boolean;
   /**
+   * Whether this deployment has Instapaper credentials. Seeded by the shell from the server and
+   * never written by anything here — the credentials are server-only, so the browser cannot
+   * work it out and no action can change it.
+   */
+  instapaperConfigured: boolean;
+  /**
    * The client clock's time the most recently STARTED health reconcile attempt began, successful
    * or not — `null` between attempts. Read by `lib/comms/health.ts`'s `heldNow`, which is what
    * stops a returning tab's mailbox dot from flashing offline for the fraction of a second the
@@ -74,6 +95,18 @@ export interface ReaderActions {
    * the list the owner is looking at, so a failure has to be visible.
    */
   archive: (id: string) => Promise<ReaderPostListItem>;
+  /**
+   * Save a post to the owner's Instapaper account — the list's primary verb. One press does two
+   * things, so the optimistic patch carries both: `instapaper_sent_at` (the badge) and
+   * `archived_at` (the post leaves the reading list, because once it is in Instapaper that is
+   * where it lives). A post already archived keeps the instant it was archived.
+   *
+   * Reconciled with the server row, rolled back and toasted on failure — in the route's own
+   * words where it wrote them, since "this publication has opted out of Instapaper" is something
+   * the owner can act on and "try again" would be a lie. A second press while a send is in
+   * flight resolves with the row and sends nothing.
+   */
+  sendToInstapaper: (id: string) => Promise<ReaderPostListItem>;
   /**
    * Put an archived post back on the reading list: the same optimistic patch to `archived_at` as
    * {@link ReaderActions.archive}, in the other direction, rolled back and toasted on failure —
@@ -207,15 +240,26 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 export function ReaderProvider({
   initialPosts,
   initialHealth,
+  instapaperConfigured = true,
   children,
 }: {
   initialPosts: ReaderPostListItem[];
   initialHealth: ReaderHealthSnapshot;
+  /**
+   * Whether THIS deployment has Instapaper credentials, read server-side by the shell layout —
+   * the browser never sees them, so it has to be told. `false` renders the send verb disabled
+   * with a sentence saying so, rather than letting every press travel to a 501.
+   *
+   * Defaults to true so a test or a story that doesn't care about the unconfigured state gets
+   * the working verb without naming it.
+   */
+  instapaperConfigured?: boolean;
   children: React.ReactNode;
 }) {
   const [state, dispatch] = React.useReducer(readerReducer, {
     posts: initialPosts,
     health: initialHealth,
+    instapaperConfigured,
     archiveStatus: 'idle',
     archiveFull: false,
     healthReconcileStartedAt: null,
@@ -422,10 +466,57 @@ export function ReaderProvider({
     [beginWrite, endWrite],
   );
 
+  /**
+   * Ids with a send in flight. Its own set rather than `mutatingRef`'s refcount, which exists to
+   * hold reads back and deliberately tolerates two writes on one row: a SECOND press of Send is
+   * a second bookmark request for a post already leaving, and the owner pressing twice while
+   * they wait should cost one send, not two.
+   */
+  const sendingRef = React.useRef(new Set<string>());
+
   const actions = React.useMemo<ReaderActions>(
     () => ({
       archive(id) {
         return setArchived(id, true);
+      },
+      async sendToInstapaper(id) {
+        const current = stateRef.current.posts.find((post) => post.id === id);
+        // Already on its way. Resolving with the row the store holds keeps the caller's
+        // `await` honest without a second request — the row is going to leave either way.
+        if (sendingRef.current.has(id) && current !== undefined) return current;
+        const now = new Date().toISOString();
+        const patch: Partial<ReaderPostListItem> = {
+          instapaper_sent_at: now,
+          // One press does both. A post sent from the archive keeps the instant it was
+          // archived, which is also what the route writes — so the optimistic row and the
+          // reconciled one agree instead of the archive re-ordering itself on reconcile.
+          archived_at: current?.archived_at ?? now,
+        };
+        // Only the keys this write touches, so a rollback cannot clobber a field `refresh()`
+        // moved meanwhile.
+        const captured = current === undefined ? {} : capturedFields(current, patch);
+        sendingRef.current.add(id);
+        beginWrite(id);
+        try {
+          return await runOptimisticMutation({
+            optimistic: () => {
+              dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch } });
+            },
+            apiCall: () => api.sendReaderPostToInstapaper(id),
+            reconcile: (saved) => {
+              dispatch({ type: 'posts', action: { type: 'replace', id, item: saved } });
+            },
+            rollback: () => {
+              dispatch({ type: 'posts', action: { type: 'patch', ids: [id], patch: captured } });
+            },
+            onError: (error) => {
+              showToastRef.current(sendRefusal(error) ?? "Couldn't send that post to Instapaper");
+            },
+          });
+        } finally {
+          sendingRef.current.delete(id);
+          endWrite(id);
+        }
       },
       unarchive(id) {
         return setArchived(id, false);
@@ -551,6 +642,14 @@ export function useReaderHealth(): ReaderHealthSnapshot {
  */
 export function useReaderHealthReconcileStartedAt(): string | null {
   return useStateValue('useReaderHealthReconcileStartedAt').healthReconcileStartedAt;
+}
+
+/**
+ * Whether this deployment can send to Instapaper at all. Read by the row, which renders the verb
+ * disabled with a sentence rather than offering a press that can only reach a 501.
+ */
+export function useInstapaperConfigured(): boolean {
+  return useStateValue('useInstapaperConfigured').instapaperConfigured;
 }
 
 /** The Reader mutation actions. Throws outside a ReaderProvider. */

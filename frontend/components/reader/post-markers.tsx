@@ -15,8 +15,25 @@ const MARKER: Partial<
   refused: { label: 'summary refused', variant: 'destructiveOutline' },
 };
 
-export function PostMarkers({ state }: { state: ReaderSummaryState }) {
+export interface PostMarkersProperties {
+  state: ReaderSummaryState;
+  /**
+   * Whether the post has been saved to Instapaper. Its own badge rather than part of the
+   * summary-state map: the two are independent — a post whose summary failed is just as sendable
+   * — so a sent row carries both.
+   */
+  sent?: boolean;
+}
+
+export function PostMarkers({ state, sent = false }: PostMarkersProperties) {
   const marker = MARKER[state];
-  if (marker === undefined) return null;
-  return <Badge variant={marker.variant}>{marker.label}</Badge>;
+  return (
+    <>
+      {marker !== undefined && <Badge variant={marker.variant}>{marker.label}</Badge>}
+      {/* Where the post lives now, which is the one thing the row can still tell the owner once
+          it has left the reading list. It survives an unarchive, because the post is still in
+          Instapaper however the Reader files it. */}
+      {sent && <Badge variant="secondary">in Instapaper</Badge>}
+    </>
+  );
 }

@@ -11,6 +11,7 @@ import {
   makeReaderPost,
   readerFixtureSet,
   resetReaderFixtureClock,
+  toReaderPostListItem,
 } from '@/lib/reader/fixtures';
 import type { ReaderOverview, ReaderPost, ReaderPostListItem } from '@/lib/types';
 
@@ -19,12 +20,6 @@ import { renderReader } from './test-helpers';
 
 jest.mock('@/lib/api-client');
 const mockApi = jest.mocked(api);
-
-/** The list read's own shape — every fixture post has to drop `text` before rendering. */
-function withoutText(post: ReaderPost): ReaderPostListItem {
-  const { text: _text, ...listItem } = post;
-  return listItem;
-}
 
 /** The instant every row's dates are read against, so the list is assertable at all. */
 const NOW = new Date(2026, 8, 18, 9, 0);
@@ -39,7 +34,7 @@ describe('ReadingListView — heading', () => {
     const { posts } = readerFixtureSet();
     renderReader(
       <ReadingListView />,
-      posts.map((post) => withoutText(post)),
+      posts.map((post) => toReaderPostListItem(post)),
     );
 
     expect(screen.getByText('Reader')).toBeInTheDocument();
@@ -65,7 +60,7 @@ describe('ReadingListView — empty state', () => {
 
   it('renders rows instead of the empty state once posts exist', () => {
     const { publication } = readerFixtureSet();
-    const post = withoutText(makeReaderPost(publication.id, { title: 'A post to read' }));
+    const post = toReaderPostListItem(makeReaderPost(publication.id, { title: 'A post to read' }));
     renderReader(<ReadingListView />, [post]);
 
     expect(screen.queryByText('Nothing new to read.')).not.toBeInTheDocument();
@@ -76,14 +71,14 @@ describe('ReadingListView — empty state', () => {
 describe('ReadingListView — rows', () => {
   it('renders newest arrival first', () => {
     const { publication } = readerFixtureSet();
-    const older = withoutText(
+    const older = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-older',
         title: 'Older post',
         received_at: '2026-09-14T09:00:00.000Z',
       }),
     );
-    const newer = withoutText(
+    const newer = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-newer',
         title: 'Newer post',
@@ -99,7 +94,9 @@ describe('ReadingListView — rows', () => {
   it('a failed archive restores the row to the list', async () => {
     const user = userEvent.setup();
     const { publication } = readerFixtureSet();
-    const post = withoutText(makeReaderPost(publication.id, { id: 'p-1', title: 'Still here' }));
+    const post = toReaderPostListItem(
+      makeReaderPost(publication.id, { id: 'p-1', title: 'Still here' }),
+    );
     mockApi.patchReaderPost.mockRejectedValue(new Error('boom'));
     renderReader(<ReadingListView />, [post]);
 
@@ -117,7 +114,9 @@ describe('ReadingListView — rows', () => {
   it('a successful archive removes the row and drops the count', async () => {
     const user = userEvent.setup();
     const { publication } = readerFixtureSet();
-    const post = withoutText(makeReaderPost(publication.id, { id: 'p-1', title: 'Going away' }));
+    const post = toReaderPostListItem(
+      makeReaderPost(publication.id, { id: 'p-1', title: 'Going away' }),
+    );
     mockApi.patchReaderPost.mockResolvedValue({
       ...post,
       archived_at: '2026-09-18T09:00:00.000Z',
@@ -140,14 +139,14 @@ describe('ReadingListView — rows', () => {
 describe('ReadingListView — the clock', () => {
   it('dates every row against the `now` it is handed, not the wall clock', () => {
     const { publication } = readerFixtureSet();
-    const thisYear = withoutText(
+    const thisYear = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-this-year',
         title: 'Arrived in the pinned year',
         received_at: '2030-09-16T14:00:00.000Z',
       }),
     );
-    const lastYear = withoutText(
+    const lastYear = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-last-year',
         title: 'Arrived the year before',
@@ -219,7 +218,7 @@ describe('ReadingListView — the health surface', () => {
 
   it('counts the posts the spent daily budget is holding', () => {
     const { publication } = readerFixtureSet();
-    const claimed = withoutText(
+    const claimed = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-waiting',
         summary_state: 'pending',
@@ -240,7 +239,7 @@ describe('ReadingListView — the health surface', () => {
     const { publication } = readerFixtureSet();
     // The only summary that has landed is on a post the owner has already archived — the
     // summariser is working, and a stall read off the visible list alone would miss it.
-    const archivedSummary = withoutText(
+    const archivedSummary = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-archived-done',
         summary_state: 'done',
@@ -249,7 +248,7 @@ describe('ReadingListView — the health surface', () => {
         archived_at: ago(1),
       }),
     );
-    const claimed = withoutText(
+    const claimed = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-waiting',
         summary_state: 'pending',
@@ -309,7 +308,7 @@ describe('ReadingListView — the health surface', () => {
 
   it('falls to the silence on both surfaces when the tick recorded nothing at all', () => {
     const { publication } = readerFixtureSet();
-    const claimed = withoutText(
+    const claimed = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-waiting',
         summary_state: 'pending',
@@ -337,7 +336,7 @@ describe('ReadingListView — the health surface', () => {
 
   it('counts an archived post that is still claimed among the ones the ceiling holds', () => {
     const { publication } = readerFixtureSet();
-    const archivedClaim = withoutText(
+    const archivedClaim = toReaderPostListItem(
       makeReaderPost(publication.id, {
         id: 'p-archived-pending',
         summary_state: 'pending',
@@ -415,7 +414,7 @@ function donePost(
   overrides: Partial<Omit<ReaderPost, 'overview'>> & { overview?: ReaderOverview | null } = {},
 ): ReaderPostListItem {
   const { publication } = readerFixtureSet();
-  return withoutText(
+  return toReaderPostListItem(
     makeReaderPost(publication.id, {
       id,
       title,
@@ -533,29 +532,28 @@ describe('ReadingListView — selection', () => {
 });
 
 describe('ReadingListView — the verb keys', () => {
-  it('opens the selected row through its own Open link, stamping opened_at', async () => {
+  it('opens the selected row\u2019s original on o, stamping opened_at', async () => {
+    // A done row keeps its Original link inside the overview panel, which is inert while
+    // collapsed — so the key opens the window itself rather than clicking an anchor it cannot
+    // reach. Both routes still go through the same handler, which is what stamps `opened_at`.
     const user = userEvent.setup();
     const posts = oneRow();
     mockApi.patchReaderPost.mockResolvedValue(
       posts[0] ?? donePost('p-1', 'Alpha', NOW.toISOString()),
     );
+    const open = jest.spyOn(globalThis, 'open').mockReturnValue(null);
     renderReader(<ReadingListView now={NOW} />, posts);
-    const opened = jest.fn();
-    screen.getByRole('link', { name: 'Open' }).addEventListener('click', (event) => {
-      // jsdom refuses to navigate; the point is that the row's real anchor was the thing clicked.
-      event.preventDefault();
-      opened();
-    });
 
     await user.keyboard('j');
     await user.keyboard('o');
 
-    expect(opened).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith('https://example.test/p-1', '_blank', 'noopener,noreferrer');
     expect(mockApi.patchReaderPost).toHaveBeenCalledWith('p-1', { opened: true });
   });
 
   it('does nothing on o when the row has nowhere to point', async () => {
     const user = userEvent.setup();
+    const open = jest.spyOn(globalThis, 'open').mockReturnValue(null);
     renderReader(
       <ReadingListView now={NOW} />,
       oneRow({ canonical_url: null, rfc822_message_id: null }),
@@ -564,8 +562,49 @@ describe('ReadingListView — the verb keys', () => {
     await user.keyboard('j');
     await user.keyboard('o');
 
-    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled();
+    expect(screen.queryByRole('link', { name: /Original/ })).not.toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
     expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
+  });
+
+  it('sends the selected row on i', async () => {
+    const user = userEvent.setup();
+    const posts = oneRow();
+    mockApi.sendReaderPostToInstapaper.mockReturnValue(new Promise(() => {}));
+    renderReader(<ReadingListView now={NOW} />, posts);
+
+    await user.keyboard('j');
+    await user.keyboard('i');
+
+    // The row begins its exit; the write lands when the collapse finishes, as Archive's does.
+    expect(rowFor('Alpha')).not.toBeNull();
+    expect(screen.getAllByTestId('reader-row-collapse')[0]).toHaveClass('grid-rows-[0fr]');
+  });
+
+  it('does nothing on i when the send verb is disabled', async () => {
+    const user = userEvent.setup();
+    renderReader(
+      <ReadingListView now={NOW} />,
+      oneRow({ canonical_url: null, rfc822_message_id: null, word_count: 0 }),
+    );
+
+    await user.keyboard('j');
+    await user.keyboard('i');
+
+    expect(screen.getByRole('button', { name: 'Send to Instapaper' })).toBeDisabled();
+    expect(mockApi.sendReaderPostToInstapaper).not.toHaveBeenCalled();
+    expect(screen.getAllByTestId('reader-row-collapse')[0]).toHaveClass('grid-rows-[1fr]');
+  });
+
+  it('does nothing on i on a deployment with no Instapaper credentials', async () => {
+    const user = userEvent.setup();
+    renderReader(<ReadingListView now={NOW} />, oneRow(), undefined, false);
+
+    await user.keyboard('j');
+    await user.keyboard('i');
+
+    expect(mockApi.sendReaderPostToInstapaper).not.toHaveBeenCalled();
+    expect(screen.getAllByTestId('reader-row-collapse')[0]).toHaveClass('grid-rows-[1fr]');
   });
 
   it('toggles the selected row’s overview on v', async () => {
@@ -675,7 +714,7 @@ const HINT_CLASS =
 
 /** Every key hint currently on screen, in document order. */
 function hints(): HTMLElement[] {
-  return screen.queryAllByText(/^[oev]$/, { selector: 'kbd' });
+  return screen.queryAllByText(/^[ioev]$/, { selector: 'kbd' });
 }
 
 /** A failed row: it carries a Retry summary verb, which deliberately has no key. */
@@ -695,7 +734,8 @@ describe('ReadingListView — the keyboard hints', () => {
 
     await user.keyboard('j');
 
-    expect(hints().map((hint) => hint.textContent)).toEqual(['o', 'v', 'e']);
+    // `i` · `v` · `e` along the verb row, and `o` on the Original link inside the panel.
+    expect(hints().map((hint) => hint.textContent)).toEqual(['i', 'v', 'e', 'o']);
     for (const hint of hints()) {
       expect(rowFor('Alpha')).toContainElement(hint);
       expect(hint).toHaveAttribute('class', HINT_CLASS);
@@ -710,7 +750,8 @@ describe('ReadingListView — the keyboard hints', () => {
 
     await user.keyboard('j');
 
-    expect(hints().map((hint) => hint.textContent)).toEqual(['o', 'e']);
+    // A failed row has no panel, so Original ends the verb row and its `o` comes last.
+    expect(hints().map((hint) => hint.textContent)).toEqual(['i', 'e', 'o']);
     expect(screen.getByRole('button', { name: 'Retry summary' })).toHaveTextContent(
       /^Retry summary$/,
     );
@@ -724,8 +765,9 @@ describe('ReadingListView — the keyboard hints', () => {
 
     // jsdom answers no media query, so the breakpoint itself is pinned by the class assertion
     // above; what matters here is that hiding the hints hides no verb with them.
-    expect(screen.getByRole('link', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Send to Instapaper/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Original/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry summary' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Archive' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Archive/ })).toBeInTheDocument();
   });
 });

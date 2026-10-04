@@ -100,6 +100,13 @@ export const supersededGistClass = 'mt-1 text-sm leading-relaxed text-foreground
 export const overviewFooterClass =
   'mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3';
 
+/**
+ * The footer's left-hand group: the two quiet verbs that are about this post rather than about
+ * the list — the way back to the original, and the re-run. A group rather than two children of
+ * the footer so the stamp stays pinned right however many of them are present.
+ */
+export const footerVerbsClass = 'flex flex-wrap items-center gap-1';
+
 /** Which model wrote the summary, under which prompt, and when — the line a re-run visibly moves. */
 export const summaryStampClass = 'text-xs text-muted-foreground';
 
