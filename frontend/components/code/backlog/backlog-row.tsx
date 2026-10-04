@@ -108,6 +108,17 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
     // The swaps queue rather than coalesce, but they sync on the same window as the jumps.
   }, MOVE_SYNC_DEBOUNCE_MS);
 
+  // A row unmounting mid-debounce (navigating away, a filter change) cancels the flush; sync the
+  // queued swaps now instead — dropping them strands swaps that are on screen but never saved.
+  React.useEffect(
+    () => () => {
+      const steps = reorderStepsRef.current;
+      reorderStepsRef.current = [];
+      if (steps.length > 0) void commitReorder(steps);
+    },
+    [commitReorder],
+  );
+
   const reorder = (neighbourRef: string) => {
     if (storyRef === null) return;
     const step = applyReorder(storyRef, neighbourRef);

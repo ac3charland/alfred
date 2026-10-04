@@ -78,7 +78,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
   const applyMove = makeApplyMoveStub(moveReturns);
   const commitMove = jest.fn().mockResolvedValue(undefined);
 
-  render(
+  const { unmount } = render(
     <ul>
       <BacklogRow
         story={makeStory()}
@@ -98,6 +98,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
     </ul>,
   );
   return {
+    unmount,
     applyReorder,
     commitReorder,
     reorderReturns,
@@ -249,6 +250,26 @@ describe('BacklogRow', () => {
         jest.advanceTimersByTime(200);
       });
 
+      expect(commitReorder).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('syncs the queued swaps at once when the row unmounts mid-debounce, instead of dropping them (ALF-250)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    jest.useFakeTimers();
+    try {
+      const { unmount, commitReorder, reorderReturns } = renderRow();
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
+      unmount();
+
+      expect(commitReorder).toHaveBeenCalledTimes(1);
+      expect(commitReorder).toHaveBeenCalledWith(reorderReturns);
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
       expect(commitReorder).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();
