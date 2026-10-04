@@ -75,6 +75,8 @@ test.describe('drag a task to a folder', () => {
     await dragOnto(page, list.getByText('Labelled task'), workFolder);
 
     await expect(list.getByText('Labelled task')).toBeHidden();
+    // Reload so the assertion reads the reconciled server row, not just the optimistic patch.
+    await page.reload();
     await workFolder.click();
     await expect(
       page.getByRole('list', { name: 'Tasks' }).getByText('Labelled task'),
