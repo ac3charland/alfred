@@ -46,6 +46,8 @@ export const test = base.extend<Fixtures>({
           readerPublications: state.readerPublications ?? [],
           readerPosts: state.readerPosts ?? [],
           readerHealth: state.readerHealth ?? [],
+          // Absent (dropped from the JSON) unless a test seeds a refusal; the mock then saves.
+          instapaperError: state.instapaperError,
         },
       });
       expect(response.ok()).toBeTruthy();

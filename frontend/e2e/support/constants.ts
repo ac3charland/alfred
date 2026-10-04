@@ -92,6 +92,8 @@ export interface SeedState {
   commHealth?: CommClassifierHealth[];
   readerPublications?: ReaderPublication[];
   readerPosts?: ReaderPost[];
+  /** The Instapaper error code the mock's `bookmarks/add` answers with; unset saves the post. */
+  instapaperError?: number;
   /**
    * The singleton tick-health row, as a list so the seed shape stays uniform — and because an
    * EMPTY list is a state of its own: the tick has never run.

@@ -34,8 +34,12 @@
  *     POST /rest/v1/rpc/{comm_purge,comm_record_reply,comm_example_set_version,
  *                        comm_create_inbox_item}
  *                                                             → Comms RPCs
+ *   Instapaper's Full API (not part of Supabase — the Reader's send route calls it from the
+ *   Next server, where page.route cannot reach, so E2E points INSTAPAPER_API_URL here):
+ *     POST /api/1/bookmarks/add  → records the request; answers a bookmark, or the error code a
+ *                                  test seeded as `instapaperError`
  *   Test control (not part of Supabase):
- *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
+ *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed   GET /__mock__/state
  *
  * Single-process, in-memory, single worker (playwright.config runs workers: 1),
  * so a shared store with per-test reset/seed is safe. Self-contained: only Node
@@ -111,6 +115,13 @@ let readerPosts = [];
 // success on it. So it is never auto-seeded — a test that wants a tick's history says so.
 /** @type {Record<string, unknown>[]} */
 let readerHealth = [];
+// ── Instapaper (the Reader's send): every bookmarks/add the Next server made, as received, and
+// the error code the next ones answer with (null = save them). Read back through /__mock__/state.
+/** @type {{ authorization: string | null, contentType: string | null, form: Record<string, string> }[]} */
+let instapaperRequests = [];
+/** @type {number | null} */
+let instapaperError = null;
+let nextBookmarkId = 1_000_001;
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
@@ -143,11 +154,14 @@ function sendNoContent(res) {
   res.end();
 }
 
-async function readBody(req) {
+async function readRawBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return;
-  const text = Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/** A JSON body, or nothing — a form-encoded body (Instapaper's) is read raw instead. */
+function parseJsonBody(text) {
   if (text === '') return;
   try {
     return JSON.parse(text);
@@ -699,6 +713,10 @@ function newReaderPost(input) {
     archived_at: input.archived_at ?? null,
     // When the retention sweep took the body (migration 0036). Null = it still holds its text.
     text_swept_at: input.text_swept_at ?? null,
+    // The email HTML and the last confirmed Instapaper save (migration 0038).
+    html: input.html ?? null,
+    instapaper_sent_at: input.instapaper_sent_at ?? null,
+    instapaper_bookmark_id: input.instapaper_bookmark_id ?? null,
     created_at: input.created_at ?? receivedAt,
   };
 }
@@ -1790,6 +1808,8 @@ function handleControl(req, res, url, body) {
     readerPublications = [];
     readerPosts = [];
     readerHealth = [];
+    instapaperRequests = [];
+    instapaperError = null;
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
@@ -1849,6 +1869,8 @@ function handleControl(req, res, url, body) {
     readerHealth = Array.isArray(body?.readerHealth)
       ? body.readerHealth.map((h) => newReaderHealth(h))
       : [];
+    instapaperRequests = [];
+    instapaperError = typeof body?.instapaperError === 'number' ? body.instapaperError : null;
     // Park the sequence above every seeded rank so gate-created stories append at the bottom.
     syncPrioritySequence();
     sendJson(res, 200, {
@@ -1895,10 +1917,43 @@ function handleControl(req, res, url, body) {
       readerPublications,
       readerPosts,
       readerHealth,
+      instapaperRequests,
     });
     return;
   }
   sendJson(res, 404, { message: `No control route: ${req.method} ${url.pathname}` });
+}
+
+// ── Instapaper ───────────────────────────────────────────────────────────────
+
+/**
+ * Instapaper's `bookmarks/add`, as far as the send route can tell: a JSON array holding one
+ * bookmark on success, or one error object (HTTP 400) carrying the seeded code. The request is
+ * recorded verbatim — the signed header, the content type and the decoded form — so a test can
+ * prove what left the server without this stand-in having to verify a signature.
+ */
+function handleInstapaper(req, res, url, rawBody) {
+  if (url.pathname !== '/api/1/bookmarks/add' || req.method !== 'POST') {
+    sendJson(res, 404, { message: `No Instapaper route: ${req.method} ${url.pathname}` });
+    return;
+  }
+  const form = Object.fromEntries(new URLSearchParams(rawBody));
+  instapaperRequests.push({
+    authorization: req.headers.authorization ?? null,
+    contentType: req.headers['content-type'] ?? null,
+    form,
+  });
+  if (instapaperError !== null) {
+    sendJson(res, 400, [
+      { type: 'error', error_code: instapaperError, message: 'Seeded Instapaper error' },
+    ]);
+    return;
+  }
+  sendJson(res, 200, [
+    { type: 'meta' },
+    { type: 'user', user_id: 1, username: 'demo@alfred.test' },
+    { type: 'bookmark', bookmark_id: nextBookmarkId++, title: form['title'] ?? '' },
+  ]);
 }
 
 // ── server ───────────────────────────────────────────────────────────────────
@@ -1914,10 +1969,13 @@ const server = createServer((req, res) => {
     }
 
     const noBody = new Set(['GET', 'HEAD', 'DELETE']);
-    const body = noBody.has(req.method ?? '') ? undefined : await readBody(req);
+    const rawBody = noBody.has(req.method ?? '') ? '' : await readRawBody(req);
+    const body = parseJsonBody(rawBody);
 
     try {
-      if (url.pathname.startsWith('/__mock__/')) {
+      if (url.pathname.startsWith('/api/1/')) {
+        handleInstapaper(req, res, url, rawBody);
+      } else if (url.pathname.startsWith('/__mock__/')) {
         handleControl(req, res, url, body);
       } else if (url.pathname.startsWith('/auth/v1/')) {
         handleAuth(req, res, url, body);
