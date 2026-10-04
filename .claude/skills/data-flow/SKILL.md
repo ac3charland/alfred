@@ -260,13 +260,14 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   subset of `ALL_FACTORY_STATES`, empty = empty list); **`useProjectBoard`** sorts each lane/escape bucket by `priority` and
   orders epics by their best (`min(priority)`) story (no-story epics last). All memoized like the
   other selectors.
-- **`reorderStory(ref, neighbourRef)`** is the only writer: an optimistic **swap** — `patchStory`
-  each of the two stories with the other's `priority` (capture the prior pair for rollback) →
-  `api.reorderCode` → reconcile both returned rows via `codeItemToStoryPatch`. The **view** owns
-  the filter/sort and picks the visible neighbour, so the action just swaps the pair it's handed.
-  It's one `swap_code_priority` RPC (not two PATCHes), which swaps via a negative-sentinel
-  sequence so the `unique(priority)` index never sees a transient duplicate — see the supabase
-  skill (a one-statement CASE swap 409s under a non-deferrable unique index).
+- **The chevron swap is split** — `applyReorderOptimistic` (instant `patchStory` of the pair,
+  capturing the prior pair for rollback) and `commitReorderBatch` (the network half). The **view**
+  owns the filter/sort and picks the visible neighbour, so the action just swaps the pair it's
+  handed. Every burst joins ONE provider-wide queue, drained one `swap_code_priority` call at a
+  time: overlapping bursts would race on the server, and each step's answer is OLDER than the
+  screen, so rows are reconciled only once the queue drains — applying them mid-queue snapped the
+  row back up and tied it with a neighbour, deadening the chevrons (ALF-250). For the same reason
+  the realtime handler drops `priority` while the queue drains (its own swaps' echoes).
 - **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
   (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
   status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it
@@ -277,7 +278,9 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   `move_code_priority_in_project`) in lockstep — the optimistic card must sort to the slot the RPC
   reconciles to.
 - `codeItemToStoryPatch` carries `priority`, so the realtime `code_items` path patches a
-  cross-device reorder into an open tab for free (idempotent echo, as for `factory_state`).
+  cross-device reorder into an open tab for free. Every committed write is rendered, so a ranking
+  RPC must write each row once — never park a row at a temporary rank (the old swap sentinel
+  flashed the story to the top of the list).
 - Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
 
 ## Transient UI state: local until a cross-row command needs it

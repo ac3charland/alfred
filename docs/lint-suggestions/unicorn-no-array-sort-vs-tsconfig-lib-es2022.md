@@ -6,7 +6,8 @@
 **Date / branch:** 2026-07-01 · claude/refetch-ticket-statuses-31flil (hit again
 2026-09-09 · oneshot-comms-module, in `workers`, so the `lib` bump is wanted in both packages;
 and 2026-09-28 · claude/alf-268-pr-ratio-repos-ybl459 via the sibling `unicorn/no-array-reverse`,
-whose `toReversed()` autofix hits the same TS2550 — the same `lib` bump fixes both)
+whose `toReversed()` autofix hits the same TS2550 — the same `lib` bump fixes both; again
+2026-10-04 · alf-250, rolling back a reorder queue in `code-store.tsx`)
 
 ## What happened
 Sorting the keys of an object in a unit test:
