@@ -285,6 +285,7 @@ Jest 30 was released June 2025. alfred may be on v29 or v30 — check `package.j
 - **Minimum TypeScript 5.4** for Jest 30. ts-jest versions must match.
 - **glob v10**: Pattern matching for `testMatch` is stricter. If tests suddenly don't run after upgrade, double-check glob patterns.
 - **`using` keyword for spies** (Jest 30 + TS 5.4+): `using spy = jest.spyOn(obj, 'method')` auto-restores when the block exits (explicit resource management). Optional but clean.
+- **`--testPathPattern` renamed to `--testPathPatterns` (plural) in Jest 30**, and it is CLI-only. The singular form aborts the run with "Option \"testPathPattern\" was replaced", so a filtered run (`npm run test -w frontend -- --testPathPatterns stores/code-store`) that looks like a test failure may just be the flag.
 - **`restoreAllMocks` config key renamed to `restoreMocks` in Jest 30.** Writing `restoreAllMocks: true` in `jest.config.ts` causes a TypeScript error (`Object literal may only specify known properties`) under `@tsconfig/strictest`. Use `restoreMocks: true`. Same behavior — the name changed to match the `clearMocks` / `resetMocks` naming pattern.
 
 > Source: Jest team, "Jest 30: Faster, Leaner, Better" (June 2025) and "From v29 to v30" migration guide, jestjs.io
