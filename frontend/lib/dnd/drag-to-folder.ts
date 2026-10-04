@@ -2,9 +2,11 @@
  * Pure logic for the drag-a-task-to-a-folder interaction (see the dnd-kit skill).
  *
  * dnd-kit reports a drop only as `active.id` / `over.id`; this module turns that pair
- * (plus the task's current folder) into the move it should trigger, or a no-op. Keeping
+ * (plus where the task currently lives) into the move it should trigger, or a no-op. Keeping
  * it pure makes it unit-testable, since jsdom can't measure layout to drive a real drag.
  */
+import { residentFolderId } from '@/lib/tasks/residency';
+import type { Item } from '@/lib/types';
 
 /**
  * Droppable id for the sidebar Inbox target. dnd-kit ids must be defined, so the Inbox
@@ -22,19 +24,22 @@ export interface FolderMove {
 
 /**
  * Resolve a drag-to-folder drop into the move it should trigger, or `null` for a no-op
- * (dropped on nothing, or onto the task's current location).
+ * (dropped on nothing, or onto where the task already LIVES).
  *
- * @param itemId           the dragged task's id (`active.id`)
- * @param overId           the drop target's id (`over.id`), or `null` if dropped on nothing
- * @param currentFolderId  the dragged task's current `folder_id`
+ * "Where it lives" is residency, not `folder_id`: an undispatched row may carry a classifier's
+ * folder label while still sitting in the Inbox, so dropping it on that folder files it.
+ *
+ * @param itemId   the dragged task's id (`active.id`)
+ * @param overId   the drop target's id (`over.id`), or `null` if dropped on nothing
+ * @param dragged  the dragged task's location fields
  */
 export function resolveFolderDrop(
   itemId: string,
   overId: string | null,
-  currentFolderId: string | null,
+  dragged: Pick<Item, 'dispatched_at' | 'folder_id'>,
 ): FolderMove | null {
   if (overId === null) return null;
   const folderId = overId === INBOX_DROP_ID ? null : overId;
-  if (folderId === currentFolderId) return null;
+  if (folderId === residentFolderId(dragged)) return null;
   return { itemId, folderId };
 }

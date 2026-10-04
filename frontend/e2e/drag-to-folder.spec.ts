@@ -53,6 +53,36 @@ test.describe('drag a task to a folder', () => {
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Drag me')).toBeVisible();
   });
 
+  test('files an inbox item into the folder its classifier label already names (ALF-216)', async ({
+    page,
+    seed,
+  }) => {
+    // The classifier labels an Inbox item with the folder it WOULD land in (`folder_id`) without
+    // dispatching it — it still lives in the Inbox. Dropping it on that very folder must file it,
+    // just as dropping it on any other folder does.
+    const work = makeFolder('Work');
+    await seed({
+      folders: [work],
+      items: [
+        makeItem('Labelled by the classifier', {
+          item_type: 'task',
+          folder_id: work.id,
+          dispatched_at: null,
+        }),
+      ],
+    });
+    await page.goto('/?view=inbox');
+
+    const list = page.getByRole('list', { name: 'Tasks' });
+    const workFolder = page.getByRole('link', { name: 'Work' });
+
+    await dragOnto(page, list.getByText('Labelled by the classifier'), workFolder);
+
+    await expect(list.getByText('Labelled by the classifier')).toBeHidden();
+    await workFolder.click();
+    await expect(list.getByText('Labelled by the classifier')).toBeVisible();
+  });
+
   test('filing an unclassified capture by drag classifies it as a task (ALF-72)', async ({
     page,
     seed,
