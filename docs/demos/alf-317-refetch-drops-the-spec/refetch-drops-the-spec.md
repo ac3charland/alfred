@@ -16,7 +16,7 @@ Every screenshot below is the real app driven through the Playwright mock backen
 
 ![](refetch-drops-the-spec-image-1.png)
 
-The refinement PR now merges. The Worker writes `ready_for_dev` **and** `spec_path: docs/specs/ALF-3.md` onto the row, out of band — this tab is never told. The owner then just moves around inside the module (to the Backlog and back), which is all it takes: every navigation refetches and reconciles the ticket statuses (ALF-69), so the card moves with no page reload.
+The refinement PR now merges. The Worker writes `ready_for_dev` **and** `spec_path: docs/specs/ALF-3.md` onto the row, out of band. Usually the realtime channel pushes that straight into the open tab; when it doesn't — a dropped socket, a move that landed while the tab was asleep — the navigation refetch is the backstop, and that is the route this capture drives. The owner just moves around inside the module (to the Backlog and back), which is all it takes: every navigation refetches and reconciles the ticket statuses (ALF-69), so the card moves with no page reload.
 
 ![](refetch-drops-the-spec-image-2.png)
 
@@ -119,4 +119,4 @@ The **realtime** path was never broken: the `code_items` UPDATE handler feeds it
 
 ## Adjacent, left alone
 
-The same projection also omits `refinement_pr_url` / `implementation_pr_url`, so a story whose PR url arrives while the tab is open shows no **Review PR** chip until a reload. That is a separate symptom of the same omission and a separate story; it is not folded into this fix.
+Two neighbours are left for their own stories rather than widening this fix. The same projection omits `refinement_pr_url` / `implementation_pr_url`, so a story whose PR url reaches the tab only through the refetch shows no **Review PR** chip until a reload. And a story's denormalized `epic_spec_path` goes stale the same way — the epics realtime handler patches the epic row, not the stories holding a copy — so an implementation prompt launched after an epic spec merges can lose its *Epic context* paragraph. That one is the closer relative (it is the same prompt coming out wrong), but it is stale through every live path, not just this projection, so carrying it here would only half-fix it.
