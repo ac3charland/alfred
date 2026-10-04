@@ -500,6 +500,17 @@ export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
   };
 }
 
+/**
+ * Drop the keys a realtime payload didn't carry (ALF-277). `payload.new` is not a whole row:
+ * Postgres logical decoding leaves an unchanged TOASTed column (a long `spec_markdown`) out of
+ * an UPDATE, so projecting it as-is would patch that column to `undefined` and blank it.
+ */
+function presentFields<T extends object>(patch: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}
+
 /** Reconcile the optimistic story with the server sidecar (real ref/ref_number/state). */
 function reconcileStory(optimistic: CodeStory, saved: CodeItem): CodeStory {
   return { ...optimistic, ...codeItemToStoryPatch(saved) };
@@ -593,7 +604,11 @@ export function CodeProvider({
       // reasoning that keeps the board stable (no flicker, no double notification).
       const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
       const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
-      dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
+      dispatch({
+        type: 'patchStory',
+        itemId: row.item_id,
+        patch: presentFields(codeItemToStoryPatch(row)),
+      });
       if (!changedState) return;
 
       const label = FACTORY_STATE_LABELS[row.factory_state];
@@ -627,12 +642,12 @@ export function CodeProvider({
       dispatch({
         type: 'patchEpic',
         id: row.id,
-        patch: {
+        patch: presentFields({
           spec_path: row.spec_path,
           spec_sha: row.spec_sha,
           spec_markdown: row.spec_markdown,
           refinement_pr_url: row.refinement_pr_url,
-        },
+        }),
       });
     };
 

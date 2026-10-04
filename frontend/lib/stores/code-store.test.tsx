@@ -3694,6 +3694,32 @@ describe('code-store', () => {
       expect(findStory(result.current)?.spec_markdown).toBe('# fresh spec');
     });
 
+    // ALF-277: Realtime's `payload.new` is NOT a whole row. Postgres logical decoding leaves an
+    // unchanged TOASTed column (a long `spec_markdown`) out of an UPDATE, so a launch's state
+    // write echoes back without the spec. Patching that absence in as `undefined` blanked the
+    // story's spec, and the open detail modal crashed on `spec.trim()`.
+    it('keeps a column the realtime payload omits (an unchanged TOASTed spec)', () => {
+      const spec = '# Spec\n\n' + 'A long, TOASTed spec body. '.repeat(200);
+      const story = makeStory('i1', 'e1', 'p1', {
+        ref: 'ALF-42',
+        factory_state: 'ready_for_dev',
+        spec_markdown: spec,
+      });
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      const { spec_markdown: _omitted, ...partialRow } = makeSavedSidecar({
+        item_id: 'i1',
+        ref: 'ALF-42',
+        factory_state: 'in_development',
+      });
+      emitUpdate(partialRow as CodeItem);
+
+      expect(findStoryState(result.current)).toBe('in_development');
+      expect(findStory(result.current)?.spec_markdown).toBe(spec);
+    });
+
     it('joins both channels only once the socket holds the session token (ALF-258)', async () => {
       // A join sent before the token is loaded goes out as `anon`, which RLS lets see nothing.
       const releaseAuth = holdRealtimeAuth(mockSetAuth);
@@ -3942,6 +3968,30 @@ describe('code-store', () => {
         spec_markdown: '<!doctype html><html><body>Epic plan</body></html>',
         refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/12',
       });
+    });
+
+    // ALF-277: the same omitted-TOAST hole as the code_items channel — an epic update that
+    // leaves a long spec unchanged arrives without `spec_markdown`, which must not blank it.
+    it('keeps a spec column the realtime payload omits', () => {
+      const spec = '<!doctype html>' + 'Epic plan. '.repeat(400);
+      const { result } = renderHook(() => useEpics(), {
+        wrapper: makeWrapper({
+          projects: [PROJECT_A],
+          epics: [{ ...epic, spec_markdown: spec }],
+          stories: [],
+        }),
+      });
+
+      const { spec_markdown: _omitted, ...partialRow } = {
+        ...epic,
+        refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/12',
+      };
+      emitEpicUpdate(partialRow as Epic);
+
+      expect(result.current[0]?.spec_markdown).toBe(spec);
+      expect(result.current[0]?.refinement_pr_url).toBe(
+        'https://github.com/ac3charland/alfred/pull/12',
+      );
     });
 
     it('fires no toast — nothing visibly moves on the board for an epic spec', () => {
