@@ -22,7 +22,7 @@ After the two nudges the list shows ALF-4, ALF-5, ALF-3 — but both requests we
 
 ## After the fix
 
-Every burst now joins one queue that sends a single swap at a time in click order, and an item with a swap still queued keeps its optimistic rank against earlier responses and realtime echoes. The second request waits for the first, and the reload shows exactly what the screen showed.
+Every nudge (and every top/bottom jump) now joins one store-level queue the moment it is clicked, sent one request at a time in click order; an item with a write still queued keeps its optimistic rank against earlier responses and realtime echoes, and the swap RPC (migration 0042) writes each row once, straight to its final rank, instead of parking it at the top of the list first. The same scenario is pinned by `frontend/e2e/code-backlog-nudge-order.spec.ts`. The second request waits for the first, and the reload shows exactly what the screen showed.
 
 ![After: on screen after two nudges](alf-250-nudge-ordering-image-4.png)
 
