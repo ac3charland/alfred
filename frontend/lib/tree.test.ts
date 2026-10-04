@@ -12,6 +12,7 @@ import {
   getDescendantIds,
   getItemDepth,
   hasActiveDescendant,
+  hasActiveTimedDescendant,
   isTempId,
   makeOptimisticEpic,
   makeOptimisticFolder,
@@ -42,6 +43,7 @@ const BASE: Item = {
   created_at: '2025-01-01T10:00:00Z',
   raw_capture: null,
   due_date: null,
+  due_time: null,
   status: 'active',
   completed_at: null,
   folder_id: null,
@@ -204,6 +206,17 @@ function dueOffsetDays(offsetDays: number): string {
 }
 
 describe('countOverdueDescendants', () => {
+  it('counts a timed descendant due today from its minute, not before', () => {
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', created_at: '2025-01-05T00:00:00Z' }),
+        item({ id: 'c-1', parent_id: 'item-1', due_date: '2026-10-03', due_time: '15:00:00' }),
+      ])[0],
+    );
+    expect(countOverdueDescendants(root, new Date(2026, 9, 3, 14, 59))).toBe(0);
+    expect(countOverdueDescendants(root, new Date(2026, 9, 3, 15, 0))).toBe(1);
+  });
+
   it('counts active overdue descendants at every depth, ignoring the node itself', () => {
     // item-1 is itself overdue (not counted); c-1 and g-1 are overdue descendants.
     const root = defined(
@@ -553,5 +566,35 @@ describe('makeOptimisticStory', () => {
     // Every entry point but the New Story dialog's unchecked box lands a story needing a spec;
     // `createStory` is the one caller that overrides this.
     expect(story.requires_refinement).toBe(true);
+  });
+});
+
+describe('hasActiveTimedDescendant', () => {
+  it('finds an active timed task at any depth, below the node itself', () => {
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', due_date: '2026-10-03', due_time: '09:00:00' }),
+        item({ id: 'c-1', parent_id: 'item-1' }),
+        item({ id: 'g-1', parent_id: 'c-1', due_date: '2026-10-03', due_time: '15:00:00' }),
+      ])[0],
+    );
+    expect(hasActiveTimedDescendant(root)).toBe(true);
+  });
+
+  it('ignores the node itself, untimed descendants and completed timed ones', () => {
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', due_date: '2026-10-03', due_time: '09:00:00' }),
+        item({ id: 'c-1', parent_id: 'item-1', due_date: '2026-10-03' }),
+        item({
+          id: 'c-2',
+          parent_id: 'item-1',
+          due_date: '2026-10-03',
+          due_time: '15:00:00',
+          status: 'completed',
+        }),
+      ])[0],
+    );
+    expect(hasActiveTimedDescendant(root)).toBe(false);
   });
 });

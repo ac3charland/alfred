@@ -14,7 +14,11 @@ import type { ItemNode } from '@/lib/tree';
 import type { Item } from '@/lib/types';
 
 /** A minimal item carrying only the fields the priority key reads. */
-function item(priority: TaskPriority | null, due_date: string | null): Item {
+function item(
+  priority: TaskPriority | null,
+  due_date: string | null,
+  due_time: string | null = null,
+): Item {
   return {
     id: 'i',
     title: 't',
@@ -24,6 +28,7 @@ function item(priority: TaskPriority | null, due_date: string | null): Item {
     item_type: 'task',
     created_at: '2026-01-01T00:00:00Z',
     due_date,
+    due_time,
     status: 'active',
     completed_at: null,
     folder_id: null,
@@ -87,10 +92,25 @@ describe('priorityOption', () => {
 });
 
 describe('ownKey', () => {
-  it('reads the rank from priority and the due as a parsed timestamp', () => {
+  it('reads the rank from priority and the due as the moment the task falls due', () => {
     const key = ownKey(item('medium', '2026-06-25'));
     expect(key.rank).toBe(1);
-    expect(key.due).toBe(Date.parse('2026-06-25'));
+    // Untimed: the day's last millisecond, local.
+    expect(key.due).toBe(new Date(2026, 5, 25, 23, 59, 59, 999).getTime());
+    expect(ownKey(item('medium', '2026-06-25', '15:00:00')).due).toBe(
+      new Date(2026, 5, 25, 15, 0).getTime(),
+    );
+  });
+
+  it('orders same-day tasks by time, the untimed one last', () => {
+    const nine = ownKey(item('low', '2026-06-25', '09:00'));
+    const three = ownKey(item('low', '2026-06-25', '15:00'));
+    const untimed = ownKey(item('high', '2026-06-25'));
+    expect(compareKeyByDue(nine, three)).toBeLessThan(0);
+    expect(compareKeyByDue(three, untimed)).toBeLessThan(0);
+    // By-Priority still leads on level; the time only refines its due tiebreak.
+    expect(compareKey(untimed, nine)).toBeLessThan(0);
+    expect(compareKey(three, nine)).toBeGreaterThan(0);
   });
 
   it('uses Infinity for the due when there is no due date', () => {
@@ -115,7 +135,7 @@ describe('effectiveKey', () => {
 
   it('under compareKey, takes the earlier due date within the best level', () => {
     const node = parent(item('medium', '2026-06-30'), item('medium', '2026-06-01'));
-    expect(effectiveKey(node, compareKey).due).toBe(Date.parse('2026-06-01'));
+    expect(effectiveKey(node, compareKey)).toStrictEqual(ownKey(item('medium', '2026-06-01')));
   });
 
   it('under compareKeyByDue, takes the earlier due date over a higher level', () => {
