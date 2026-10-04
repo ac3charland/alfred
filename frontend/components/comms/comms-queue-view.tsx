@@ -105,6 +105,32 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
   const [shelfOpen, setShelfOpen] = React.useState(false);
 
   const conversations = React.useMemo(() => groupConversations(shelf, accounts), [shelf, accounts]);
+
+  // Which conversation holds the selected message, remembered so that when the message leaves
+  // the shelf (promoted out from its own tier picker) the conversation it left stays open. If it
+  // was the oldest, the conversation's identity left with it, and it closes. Adjusted during
+  // render, React's pattern for state that follows other state, so nothing paints in between.
+  const [heldBy, setHeldBy] = React.useState<{ message: string; conversation: string } | null>(
+    null,
+  );
+  const holder =
+    selectedId === null
+      ? undefined
+      : conversations.find(
+          (conversation) =>
+            conversation.messages.length > 1 &&
+            conversation.messages.some((message) => message.id === selectedId),
+        );
+  if (holder !== undefined && selectedId !== null) {
+    if (heldBy?.message !== selectedId || heldBy.conversation !== holder.id)
+      setHeldBy({ message: selectedId, conversation: holder.id });
+  } else if (heldBy !== null) {
+    setHeldBy(null);
+    const remains = conversations.some(
+      (conversation) => conversation.id === heldBy.conversation && conversation.messages.length > 1,
+    );
+    if (selectedId === heldBy.message && remains) setSelectedId(heldBy.conversation);
+  }
   // The order `j`/`k` walk: the queue as drawn, then the shelf if it has been opened — each
   // conversation's header, then its messages while it is open. Built from the same lists the
   // sections render, so navigation can never disagree with the page.
@@ -154,7 +180,11 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
     };
   }, [orderedIds]);
 
-  const renderRow = (message: CommMessage, shelved: boolean) => {
+  const renderRow = (
+    message: CommMessage,
+    shelved: boolean,
+    onSelect: (id: string | null) => void = setSelectedId,
+  ) => {
     const { account, label } = accountLabel(accounts, message.account_id);
     return (
       <MessageRow
@@ -166,7 +196,7 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
         verdict={message.verdict_id === null ? undefined : verdicts[message.verdict_id]}
         now={now}
         selected={selectedId === message.id}
-        onSelect={setSelectedId}
+        onSelect={onSelect}
         onAddSender={setAddingSenderFor}
         shelved={shelved}
       />
@@ -234,7 +264,13 @@ export function CommsQueueView({ now: pinnedNow }: CommsQueueViewProperties) {
                       setSelectedId(open ? null : conversation.id);
                     }}
                   >
-                    {conversation.messages.map((message) => renderRow(message, true))}
+                    {/* Closing a message's detail hands the selection back to its header, so
+                        the reader keeps their place in the conversation. */}
+                    {conversation.messages.map((message) =>
+                      renderRow(message, true, (id) => {
+                        setSelectedId(id ?? conversation.id);
+                      }),
+                    )}
                   </ShelfConversation>
                 );
               })}

@@ -430,6 +430,73 @@ describe('CommsQueueView — the shelf by conversation', () => {
   });
 });
 
+/** Pick Today from the selected row's tier menu and let its exit finish. */
+async function promote(user: ReturnType<typeof userEvent.setup>, ask: string) {
+  await user.click(screen.getByRole('button', { name: /Change tier/ }));
+  await screen.findByRole('menu');
+  await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+  const collapsed = new Event('transitionend', { bubbles: true });
+  Object.defineProperty(collapsed, 'propertyName', { value: 'grid-template-rows' });
+  const leaving = screen
+    .getAllByTestId('comms-row-collapse')
+    .find((element) => element.textContent.includes(ask));
+  if (leaving === undefined) throw new Error('row gone');
+  fireEvent(leaving, collapsed);
+}
+
+describe('CommsQueueView — keeping a conversation open', () => {
+  it('closes only the message, not the conversation, when its selected message is clicked again', async () => {
+    const user = userEvent.setup();
+    renderView(thread('t', 'Newest reply.', 'First message.'));
+    await openShelf(user);
+    await user.click(header(2));
+    const newest = screen.getByRole('button', { name: /^Sender 0 · .*Newest reply\./ });
+
+    await user.click(newest);
+    expect(newest).toHaveAttribute('aria-expanded', 'true');
+    await user.click(newest);
+
+    expect(newest).toHaveAttribute('aria-expanded', 'false');
+    expect(header(2)).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('stays open when a message other than its oldest is promoted out of it', async () => {
+    const user = userEvent.setup();
+    const rows = thread('t', 'Newest reply.', 'Middle reply.', 'First message.');
+    const promoted = rows[1];
+    if (promoted === undefined) throw new Error('no thread');
+    jest.mocked(api).changeCommTier.mockResolvedValue({ ...promoted, tier: 'today' });
+    jest.mocked(api).fetchCommsSnapshot.mockReturnValue(new Promise(() => {}));
+    renderView(rows);
+    await openShelf(user);
+
+    await user.click(header(3));
+    await user.click(screen.getByRole('button', { name: /^Sender 1 · .*Middle reply\./ }));
+    await promote(user, 'Middle reply.');
+
+    expect(await screen.findByLabelText('1 in Today')).toBeInTheDocument();
+    expect(header(2)).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('closes when its oldest message is promoted out, since that was its identity', async () => {
+    const user = userEvent.setup();
+    const rows = thread('t', 'Newest reply.', 'Middle reply.', 'First message.');
+    const promoted = rows[2];
+    if (promoted === undefined) throw new Error('no thread');
+    jest.mocked(api).changeCommTier.mockResolvedValue({ ...promoted, tier: 'today' });
+    jest.mocked(api).fetchCommsSnapshot.mockReturnValue(new Promise(() => {}));
+    renderView(rows);
+    await openShelf(user);
+
+    await user.click(header(3));
+    await user.click(screen.getByRole('button', { name: /^Sender 2 · .*First message\./ }));
+    await promote(user, 'First message.');
+
+    expect(await screen.findByLabelText('1 in Today')).toBeInTheDocument();
+    expect(header(2)).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
 describe('CommsQueueView — one selection at a time', () => {
   it('moves the expansion rather than opening a second row', async () => {
     const user = userEvent.setup();
