@@ -304,6 +304,17 @@ This approach:
 - Gives full TypeScript types on the mock (`.mockResolvedValue` checks the return type)
 - Works with `jest.clearAllMocks()` in `beforeEach`
 
+**The automock replaces `ApiError` too**, so `new api.ApiError('…', 422, 'detail')` builds an empty
+instance and a store branch keyed on `error.status` / `error.detail` silently takes its generic
+path. When a test rejects with an `ApiError`, keep the real class:
+
+```ts
+jest.mock('@/lib/api-client', () => ({
+  ...jest.createMockFromModule<typeof import('@/lib/api-client')>('@/lib/api-client'),
+  ApiError: jest.requireActual<typeof import('@/lib/api-client')>('@/lib/api-client').ApiError,
+}));
+```
+
 **DB null fields in test fixtures (unicorn/no-null)**
 
 `ItemNode` and other DB row types have `string | null` nullable fields (from generated Supabase types). Since `unicorn/no-null` forbids `null` literals in test files, use the `DB_NULL` sentinel:

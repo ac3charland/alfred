@@ -256,6 +256,8 @@ A spec that hard-codes the module switcher's link count (`mobile-module-switch.s
 
 **`page.touchscreen.tap(x, y)` hits a small control from well outside its box — Chromium adds ~14px of touch-target slop.** A 32px button stayed tappable ~14px past its edge with no enlarged hit area. So a synthetic near-miss **cannot robustly demonstrate a modest touch-target enlargement**: growing a control's box by ~12px (≈6px per side) keeps the whole gain *inside* the browser's existing slop, so before-and-after both "hit" and the only differentiating band (between the two slop edges) is ~6px wide — narrower than the few-px run-to-run jitter in element position, so the "before dismisses / after creates" flips unreliably. Don't stage that demo; **assert the rendered size instead** (`toHaveClass('min-h-11')`, or read `boundingBox().height`) and show the feature working on a touch viewport. A near-miss only reads cleanly for a *large* hit-area change well past the slop.
 
+**A phone-width layout assertion needs `isMobile: true`, not just a narrow `viewport`.** Desktop Chromium spends ~15px of a `{ width: 375 }` viewport on a classic scrollbar, so content that fits a real phone (overlay scrollbars) wraps in the test. Use `test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true })` (`e2e/reader-instapaper.spec.ts`).
+
 **The `setup` project must appear before test projects in the `projects` array and must be listed in `dependencies`.** If `dependencies` is omitted, Playwright runs the setup project but test projects will not wait for it — they start immediately.
 
 **Never commit `playwright/.auth/*.json` files.** They contain session cookies. Add `playwright/.auth/` to `.gitignore`.
@@ -295,6 +297,13 @@ The suite never touches real Supabase. Every Supabase access in alfred is **serv
 - **Seed per test, not per build.** `e2e/support/fixtures.ts` adds a `seed` fixture that POSTs to `/__mock__/reset` (clean slate) then `/__mock__/seed` before `page.goto()`. The mock is in-memory and the config runs `workers: 1, fullyParallel: false`, so a shared store with per-test reset is deterministic. Build seed rows with `makeItem` / `makeFolder` from `e2e/support/constants.ts`.
 - **Adding an `items` column? Update the mock's `newItem` too.** The mock's row constructors (`newItem`/`newFolder`/… in `mock-supabase.mjs`) are an **explicit allowlist** — a field they don't copy is silently dropped from every seeded row, so it reads back `undefined`, not the DB default. A render guard like `field !== null && <Chip …/>` then lets `undefined` through and the component crashes in SSR. Adding a column means touching all four of: the migration, `database.types.ts`, `makeItem` in `e2e/support/constants.ts`, **and `newItem` in `mock-supabase.mjs`**.
 
+- **The `seed` fixture is an allowlist too.** `e2e/support/fixtures.ts` forwards each `SeedState`
+  key by name, so a new one (a table, a canned answer like `instapaperError`) added only to
+  `SeedState` and the mock is silently dropped and the test runs against the default.
+- **A third-party API a route handler calls is stood in by the same mock.** `page.route()` can't
+  reach a server-side `fetch`, so give the service an env-overridable base URL, point it at
+  `MOCK_URL` in `playwright.config.ts`, and add the endpoint to `mock-supabase.mjs`, recording
+  each request for `/__mock__/state` (Instapaper's `/api/1/bookmarks/add` is the worked example).
 - **Adding a parameter to an RPC? Teach the mock's handler too.** Each `rpc/{name}` branch in
   `mock-supabase.mjs` reads only the `p_*` keys it was written for, so a new one is ignored and
   the mock keeps producing the OLD row — no error, just an E2E (or demo capture) that quietly
