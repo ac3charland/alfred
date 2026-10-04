@@ -17,8 +17,7 @@ import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
 import { storyBoardHref } from '@/lib/code/board-links';
 import { type ProjectColor, projectBadgeClasses } from '@/lib/code/project-color';
-import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
-import { MOVE_SYNC_DEBOUNCE_MS, useMoveBurst } from '@/lib/hooks/use-move-burst';
+import { useMoveBurst } from '@/lib/hooks/use-move-burst';
 import type { ReorderStep } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 
@@ -35,10 +34,11 @@ export interface BacklogRowProperties {
   isProjectTop: boolean;
   /** True when this story already ranks worst within its own project — disables "to bottom of project". */
   isProjectBottom: boolean;
-  /** Apply one chevron swap's optimistic half instantly (the store's `applyReorderOptimistic`). */
+  /**
+   * Apply one chevron swap instantly and queue it for the server (the store's
+   * `applyReorderOptimistic`, which owns the debounced sync).
+   */
   applyReorder: (ref: string, neighbourRef: string) => ReorderStep | null;
-  /** Sync a burst of applied swaps to the server, in order (the store's `commitReorderBatch`). */
-  commitReorder: (steps: ReorderStep[]) => Promise<void>;
   /**
    * Apply one project-scoped jump's optimistic half instantly (ALF-110, the store's
    * `applyMoveInProjectOptimistic`).
@@ -73,9 +73,9 @@ export interface BacklogRowProperties {
  * Forwards a ref to the root `<li>` so the Backlog's `useFlipList` can animate the reorder.
  *
  * Every button reorders the list INSTANTLY — the row steps through each swap/jump live, even
- * across a rapid burst. Only the NETWORK sync is debounced (`useDebouncedCallback`): a burst of
- * clicks queues (reorder) or coalesces (the two jump kinds) locally, and flushes to the server
- * once the clicks settle, instead of one overlapping request per click.
+ * across a rapid burst. Only the NETWORK sync is debounced: swaps join the store's priority queue
+ * as they are clicked (see `applyReorderOptimistic`), and the two jump kinds coalesce in
+ * `useMoveBurst`; either way the server hears once the clicks settle, one request at a time.
  */
 export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(function BacklogRow(
   {
@@ -86,7 +86,6 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
     isProjectTop,
     isProjectBottom,
     applyReorder,
-    commitReorder,
     applyMoveInProject,
     commitMoveInProject,
     applyMove,
@@ -97,22 +96,8 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
   const storyRef = story.ref;
   const href = storyBoardHref(story.project_id ?? '', storyRef ?? '');
 
-  // The reorder steps queued (in click order) for the burst currently in flight — flushed to the
-  // server once the debounce settles, then cleared.
-  const reorderStepsRef = React.useRef<ReorderStep[]>([]);
-
-  const flushReorder = useDebouncedCallback(() => {
-    const steps = reorderStepsRef.current;
-    reorderStepsRef.current = [];
-    if (steps.length > 0) void commitReorder(steps);
-    // The swaps queue rather than coalesce, but they sync on the same window as the jumps.
-  }, MOVE_SYNC_DEBOUNCE_MS);
-
   const reorder = (neighbourRef: string) => {
-    if (storyRef === null) return;
-    const step = applyReorder(storyRef, neighbourRef);
-    if (step !== null) reorderStepsRef.current.push(step);
-    flushReorder();
+    if (storyRef !== null) applyReorder(storyRef, neighbourRef);
   };
 
   const moveInProject = useMoveBurst(storyRef, applyMoveInProject, commitMoveInProject);

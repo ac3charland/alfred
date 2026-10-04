@@ -54,7 +54,7 @@ function makeApplyMoveStub(returns: { priorityBefore: number | null }[]) {
 
 function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {}) {
   // Distinct return values per call (rather than one fixed stub), recorded here so a test can
-  // tell WHICH call's result reached commitReorder/commitMove, and in what order.
+  // tell WHICH call's result reached commitMove/commitMoveInProject, and in what order.
   const reorderReturns: ReorderStep[] = [];
   const applyReorder = jest.fn((ref: string, neighbourRef: string): ReorderStep => {
     const step: ReorderStep = {
@@ -68,7 +68,6 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
     reorderReturns.push(step);
     return step;
   });
-  const commitReorder = jest.fn().mockResolvedValue(undefined);
 
   const moveInProjectReturns: { priorityBefore: number | null }[] = [];
   const applyMoveInProject = makeApplyMoveStub(moveInProjectReturns);
@@ -88,7 +87,6 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
         isProjectTop={false}
         isProjectBottom={false}
         applyReorder={applyReorder}
-        commitReorder={commitReorder}
         applyMoveInProject={applyMoveInProject}
         commitMoveInProject={commitMoveInProject}
         applyMove={applyMove}
@@ -99,7 +97,6 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
   );
   return {
     applyReorder,
-    commitReorder,
     reorderReturns,
     applyMoveInProject,
     commitMoveInProject,
@@ -198,16 +195,13 @@ describe('BacklogRow', () => {
 
   it('swaps with the previous neighbour on Up and the next on Down, INSTANTLY (no debounce delay)', async () => {
     const user = userEvent.setup();
-    const { applyReorder, commitReorder } = renderRow();
+    const { applyReorder } = renderRow();
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
     expect(applyReorder).toHaveBeenCalledWith('ALF-1', 'ALF-0');
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
     expect(applyReorder).toHaveBeenCalledWith('ALF-1', 'ALF-2');
-
-    // The network sync hasn't fired yet — only the on-screen reorder is instant.
-    expect(commitReorder).not.toHaveBeenCalled();
   });
 
   it('jumps to the top/bottom of ITS PROJECT on the double chevrons, INSTANTLY (ALF-110)', async () => {
@@ -236,48 +230,20 @@ describe('BacklogRow', () => {
     expect(commitMove).not.toHaveBeenCalled();
   });
 
-  it('debounces the reorder network sync: commitReorder only fires once clicks settle', async () => {
-    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    jest.useFakeTimers();
-    try {
-      const { commitReorder } = renderRow();
+  it('a rapid burst of Up/Down clicks applies every swap instantly, in click order — the row never waits on the network', async () => {
+    const user = userEvent.setup();
+    const { applyReorder } = renderRow();
 
-      await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
-      expect(commitReorder).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
 
-      act(() => {
-        jest.advanceTimersByTime(200);
-      });
-
-      expect(commitReorder).toHaveBeenCalledTimes(1);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('a rapid burst of Up/Down clicks reorders on screen every time, then flushes ONE commitReorder call carrying every queued step, in click order', async () => {
-    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    jest.useFakeTimers();
-    try {
-      const { applyReorder, commitReorder, reorderReturns } = renderRow();
-
-      await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
-      await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
-      await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
-
-      // Every click applies instantly — nothing waits for the debounce.
-      expect(applyReorder).toHaveBeenCalledTimes(3);
-      expect(commitReorder).not.toHaveBeenCalled();
-
-      act(() => {
-        jest.advanceTimersByTime(200);
-      });
-
-      expect(commitReorder).toHaveBeenCalledTimes(1);
-      expect(commitReorder).toHaveBeenCalledWith(reorderReturns);
-    } finally {
-      jest.useRealTimers();
-    }
+    // The store queues each swap as it applies it and owns the debounced sync (ALF-250).
+    expect(applyReorder.mock.calls).toEqual([
+      ['ALF-1', 'ALF-0'],
+      ['ALF-1', 'ALF-0'],
+      ['ALF-1', 'ALF-2'],
+    ]);
   });
 
   it("a rapid burst of project-scope jump clicks flushes ONE commitMoveInProject call with the LATEST direction but the FIRST click's prior priority (ALF-110)", async () => {

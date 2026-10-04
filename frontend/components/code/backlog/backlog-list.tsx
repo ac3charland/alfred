@@ -31,7 +31,6 @@ export function BacklogList({ stories, emptyMessage }: BacklogListProperties) {
   const projects = useProjects();
   const {
     applyReorderOptimistic,
-    commitReorderBatch,
     applyMoveInProjectOptimistic,
     commitMoveInProject,
     applyMoveOptimistic,
@@ -79,7 +78,6 @@ export function BacklogList({ stories, emptyMessage }: BacklogListProperties) {
             isProjectTop={bounds === undefined || story.priority === bounds.min}
             isProjectBottom={bounds === undefined || story.priority === bounds.max}
             applyReorder={applyReorderOptimistic}
-            commitReorder={commitReorderBatch}
             applyMoveInProject={applyMoveInProjectOptimistic}
             commitMoveInProject={commitMoveInProject}
             applyMove={applyMoveOptimistic}
