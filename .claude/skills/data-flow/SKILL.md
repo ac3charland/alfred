@@ -115,7 +115,8 @@ Realtime subscription exactly when that stops being true. Three do:
 
 `patchStory` / the `patch` reducer are keyed by id and a no-op when absent, so a change for an
 unknown/removed row is ignored; and an echo of the user's own optimistic write re-applies
-identical values, so it's **idempotent** — no self-write filtering. Folders have a single browser
+identical values, so it's **idempotent** — no self-write filtering — *unless* the user can write
+the same row again before the echo lands (the Backlog rank, below). Folders have a single browser
 writer and stay pure seed-once.
 
 The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
@@ -276,8 +277,14 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   (`topOfProjectPriority` / `projectMovePriority`) and SQL (`top_of_project_priority` /
   `move_code_priority_in_project`) in lockstep — the optimistic card must sort to the slot the RPC
   reconciles to.
-- `codeItemToStoryPatch` carries `priority`, so the realtime `code_items` path patches a
-  cross-device reorder into an open tab for free (idempotent echo, as for `factory_state`).
+- **A rank the user rewrites in bursts must never take an older value than the newest optimistic
+  one.** Nudges queue, replies and realtime echoes arrive in no fixed order, and landing whichever
+  came last snaps a story back up — or ties it with its neighbour, so the next nudge swaps equal
+  ranks and does nothing (ALF-250). `CodeProvider` stamps every optimistic rank write (`stampRank`),
+  lands a reply's `priority` only on a row whose newest stamp is the write it answers
+  (`settleRank`), drops `priority` from a realtime echo while the row has a stamp pending, and runs
+  every rank sync one after another (`queueRankSync`) so the server swaps in click order. A
+  cross-device reorder still arrives over realtime once the row has settled.
 - Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
 
 ## Transient UI state: local until a cross-row command needs it
