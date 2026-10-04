@@ -13,9 +13,13 @@ import type { CodeStory } from '@/lib/types';
  * launch reads `spec_path` — not the lane — to decide between the spec-reading and the
  * skip-refinement prompt (ALF-317). The Worker records the path in the SAME write that moves a
  * merged refinement to `ready_for_dev`, so a projection that took the lane and left the path
- * behind landed a self-contradicting row. They are safe to carry for the same reason `title` and
- * `priority` are not: nothing in the app writes them locally, so there is no edit in flight to
- * clobber.
+ * behind landed a self-contradicting row. They are safe to carry, where `title` and `priority`
+ * are not: nothing in the app writes them locally, so there is no edit in flight to clobber.
+ *
+ * `spec_markdown` arrives in a LATER Worker write than the path (the snapshot is fetched from
+ * GitHub after the transition is recorded), so a refetch that races it can blank the body for one
+ * navigation. That is cosmetic and self-healing, and never reaches the launch, which reads only
+ * `spec_path` — worth less than the modal showing the spec at all on a tab whose socket dropped.
  */
 export type CodeStoryStatus = Pick<
   CodeStory,
