@@ -117,6 +117,19 @@ async function priorityOf(client: Client, ref: string): Promise<number> {
   return priority;
 }
 
+/** Poll until backend `pid` is waiting on a lock (a concurrency check's proof that it raced). */
+async function waitForLockWait(client: Client, pid: number | undefined): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const { rows } = await client.query<{ waiting: boolean }>(
+      `select wait_event_type = 'Lock' as waiting from pg_stat_activity where pid = $1`,
+      [pid],
+    );
+    if (rows[0]?.waiting === true) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`backend ${String(pid)} never blocked on a lock`);
+}
+
 /** The migration that introduced `items.dispatched_at` — the split point of the backfill replay. */
 const DISPATCH_MIGRATION = '0026_inbox_dispatch.sql';
 
@@ -377,15 +390,19 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         database: client.database,
       });
       await other.connect();
+      const { rows: pids } = await other.query<{ pid: number }>('select pg_backend_pid() as pid');
+      const otherPid = pids[0]?.pid;
       try {
         await client.query('begin');
         await client.query(`select swap_code_priority($1, $2)`, [story.ref, first.ref]);
         const pending = other.query(`select swap_code_priority($1, $2)`, [story.ref, second.ref]);
-        // Give the second swap time to reach (and block on) the row the first still holds.
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        // Commit only once the second swap is provably blocked on the row the first still holds —
+        // otherwise it could run after the commit and pass without exercising the race.
+        await waitForLockWait(client, otherPid);
         await client.query('commit');
         await pending;
       } finally {
+        await client.query('rollback');
         await other.end();
       }
       // Committed in order: story↔first, then story↔second.
