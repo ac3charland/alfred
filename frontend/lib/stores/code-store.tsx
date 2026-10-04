@@ -332,14 +332,16 @@ export interface CodeActions {
    * swap with and hands both refs. Returns the touched item ids + their prior priorities (for
    * `commitReorderBatch` to roll back precisely), or null if either ref can't be resolved.
    * Split from the network half so a burst of rapid chevron clicks reorders the list instantly
-   * on every click while the network sync debounces (see `BacklogRow`).
+   * on every click while the network sync debounces (see `BacklogRow`). Both stories' ranks are
+   * held against server copies until this swap syncs (see `serverRankPatch`).
    */
   applyReorderOptimistic: (ref: string, neighbourRef: string) => ReorderStep | null;
   /**
    * Commit a burst of `applyReorderOptimistic` swaps to the server, ONE `reorderCode` call per
    * step, strictly in order — each step's RPC must see the priorities the previous step in the
    * burst left behind, exactly mirroring how the swaps were already applied locally. Reconciles
-   * each step's returned `code_items` rows as it goes. If a step fails, every step from that one
+   * each step's returned `code_items` rows as it goes — less the rank of any story a later,
+   * still-unsynced swap has already moved on (ALF-250). If a step fails, every step from that one
    * onward is rolled back to its pre-swap priorities (in reverse order, so each rollback undoes
    * cleanly); steps that already committed before the failure are left as they are, since the
    * server already has them.
@@ -506,6 +508,32 @@ export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
   };
 }
 
+/**
+ * A server copy of a story (a swap's response, a realtime UPDATE) minus its `priority` while this
+ * tab has a chevron swap of that story applied but not yet synced (ALF-250). Such a copy is
+ * stale by construction — it predates the swap — so applying it dragged the nudged story back
+ * up before the swap's own sync slid it down again, and could leave it tied with the neighbour
+ * it had just passed, where the next swap exchanges two equal ranks and nothing moves. Every
+ * other column is applied as usual.
+ */
+function serverRankPatch(
+  unsyncedSwaps: ReadonlyMap<string, number>,
+  itemId: string,
+  patch: Partial<CodeStory>,
+): Partial<CodeStory> {
+  if (!unsyncedSwaps.has(itemId)) return patch;
+  const rest = { ...patch };
+  delete rest.priority;
+  return rest;
+}
+
+/** Count one more (`delta` 1) or one fewer (`delta` -1) unsynced swap of `itemId`. */
+function countUnsyncedSwap(unsyncedSwaps: Map<string, number>, itemId: string, delta: 1 | -1) {
+  const next = (unsyncedSwaps.get(itemId) ?? 0) + delta;
+  if (next > 0) unsyncedSwaps.set(itemId, next);
+  else unsyncedSwaps.delete(itemId);
+}
+
 /** Reconcile the optimistic story with the server sidecar (real ref/ref_number/state). */
 function reconcileStory(optimistic: CodeStory, saved: CodeItem): CodeStory {
   return { ...optimistic, ...codeItemToStoryPatch(saved) };
@@ -566,6 +594,11 @@ export function CodeProvider({
     showToastRef.current = showToast;
   }, [showToast]);
 
+  // Per story, the chevron swaps applied here but not yet synced — while any are, server copies
+  // of its rank are stale (`serverRankPatch`). Counted from `applyReorderOptimistic` until that
+  // step's commit settles, so the debounce window before the sync is covered too.
+  const unsyncedSwapsRef = React.useRef(new Map<string, number>());
+
   // Live swimlane updates. The webhook Worker (and any other device/tab) writes a story's
   // factory_state out of band, never touching this tab's store — so subscribe to the base
   // `code_items` table (you can't subscribe to the `v_code_stories` view the board reads)
@@ -603,7 +636,9 @@ export function CodeProvider({
       dispatch({
         type: 'patchStory',
         itemId: row.item_id,
-        patch: deliveredColumns(codeItemToStoryPatch(row)),
+        patch: deliveredColumns(
+          serverRankPatch(unsyncedSwapsRef.current, row.item_id, codeItemToStoryPatch(row)),
+        ),
       });
       if (!changedState) return;
 
@@ -1252,20 +1287,16 @@ export function CodeProvider({
         // Swap: each story takes the other's priority (the same exchange the RPC does).
         dispatch({ type: 'patchStory', itemId: aItemId, patch: { priority: bPriorityBefore } });
         dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: aPriorityBefore } });
+        countUnsyncedSwap(unsyncedSwapsRef.current, aItemId, 1);
+        countUnsyncedSwap(unsyncedSwapsRef.current, bItemId, 1);
         return { ref, neighbourRef, aItemId, bItemId, aPriorityBefore, bPriorityBefore };
       },
       async commitReorderBatch(steps) {
+        const unsyncedSwaps = unsyncedSwapsRef.current;
         for (const [index, step] of steps.entries()) {
+          let rows: CodeItem[];
           try {
-            const rows = await api.reorderCode(step.ref, step.neighbourRef);
-            // Apply each returned sidecar through the one projection (carries the real priority).
-            for (const row of rows) {
-              dispatch({
-                type: 'patchStory',
-                itemId: row.item_id,
-                patch: codeItemToStoryPatch(row),
-              });
-            }
+            rows = await api.reorderCode(step.ref, step.neighbourRef);
           } catch {
             // This step and everything queued behind it never reached the server — undo them,
             // in reverse, so each rollback exactly cancels its own swap. Steps before this one
@@ -1273,6 +1304,8 @@ export function CodeProvider({
             for (let i = steps.length - 1; i >= index; i -= 1) {
               const failed = steps[i];
               if (failed === undefined) continue;
+              countUnsyncedSwap(unsyncedSwaps, failed.aItemId, -1);
+              countUnsyncedSwap(unsyncedSwaps, failed.bItemId, -1);
               dispatch({
                 type: 'patchStory',
                 itemId: failed.aItemId,
@@ -1286,6 +1319,17 @@ export function CodeProvider({
             }
             showToastRef.current("Couldn't reorder story");
             return;
+          }
+          countUnsyncedSwap(unsyncedSwaps, step.aItemId, -1);
+          countUnsyncedSwap(unsyncedSwaps, step.bItemId, -1);
+          // Apply each returned sidecar through the one projection (carries the real priority,
+          // unless a later swap of that story is still unsynced).
+          for (const row of rows) {
+            dispatch({
+              type: 'patchStory',
+              itemId: row.item_id,
+              patch: serverRankPatch(unsyncedSwaps, row.item_id, codeItemToStoryPatch(row)),
+            });
           }
         }
       },

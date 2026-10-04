@@ -327,6 +327,20 @@ function unwrap<T>(value: T | null): T {
   return value;
 }
 
+/** A promise the test resolves by hand — holds a request on the wire mid-assertion. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+/** A saved `code_items` row carrying just an item's identity and rank. */
+function rankedSidecar(itemId: string, ref: string, priority: number): CodeItem {
+  return makeSavedSidecar({ item_id: itemId, ref, priority });
+}
+
 describe('code-store', () => {
   describe('HAPPY_PATH_STATES', () => {
     it('lists the six happy-path states in board order and excludes the escape states', () => {
@@ -2230,6 +2244,121 @@ describe('code-store', () => {
         // The first swap already committed server-side (i1↔i2 stays applied); the second (failed)
         // swap rolls back, so ALF-3 is restored to its original priority.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
+      });
+
+      // ALF-250: a nudged story jumped back up, then slid down — and once two stories held the
+      // same local rank, swapping them changed nothing, so the arrows stopped working. Every
+      // server copy of a rank that lands while a later local swap of that story is unsynced is
+      // stale, and must not overwrite the newer optimistic rank.
+      describe('while a later swap of the same story is unsynced (ALF-250)', () => {
+        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+
+        function renderBacklog() {
+          return renderHook(
+            () => ({
+              actions: useCodeActions(),
+              backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+            }),
+            {
+              wrapper: makeWrapper({
+                projects: [PROJECT_A],
+                epics: [epic],
+                stories: [high, low, third],
+              }),
+            },
+          );
+        }
+
+        it("ignores a realtime echo of the story's rank until its swap has synced", async () => {
+          const swap = deferred<CodeItem[]>();
+          mockReorderCode.mockReturnValueOnce(swap.promise);
+          const { result } = renderBacklog();
+
+          let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          let commit!: Promise<void>;
+          act(() => {
+            commit = result.current.actions.commitReorderBatch([step]);
+          });
+
+          // The old RPC's parking rank (the top of the Backlog), then ALF-1's pre-swap rank.
+          emitUpdate(rankedSidecar('i1', 'ALF-1', 0));
+          emitUpdate(rankedSidecar('i1', 'ALF-1', 1));
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1', 'ALF-3']);
+
+          await act(async () => {
+            swap.resolve([rankedSidecar('i1', 'ALF-1', 2), rankedSidecar('i2', 'ALF-2', 1)]);
+            await commit;
+          });
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
+
+          // Once synced, a rank change from elsewhere still lands live.
+          emitUpdate(rankedSidecar('i1', 'ALF-1', 0));
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-1', 'ALF-2', 'ALF-3']);
+        });
+
+        it("keeps a burst's earlier responses from dragging the story back up", async () => {
+          const first = deferred<CodeItem[]>();
+          const second = deferred<CodeItem[]>();
+          mockReorderCode.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+          const { result } = renderBacklog();
+
+          // Two Down clicks in one burst: ALF-1 passes ALF-2, then ALF-3.
+          let stepOne!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          let stepTwo!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            stepOne = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          act(() => {
+            stepTwo = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
+          });
+          let commit!: Promise<void>;
+          act(() => {
+            commit = result.current.actions.commitReorderBatch([stepOne, stepTwo]);
+          });
+
+          // The first swap's response describes ALF-1 one slot short of where it now sits.
+          await act(async () => {
+            first.resolve([rankedSidecar('i1', 'ALF-1', 2), rankedSidecar('i2', 'ALF-2', 1)]);
+            await first.promise;
+          });
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+
+          await act(async () => {
+            second.resolve([rankedSidecar('i1', 'ALF-1', 3), rankedSidecar('i3', 'ALF-3', 2)]);
+            await commit;
+          });
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+        });
+
+        it("keeps a syncing burst's response from undoing the next burst's swap", async () => {
+          const first = deferred<CodeItem[]>();
+          mockReorderCode.mockReturnValueOnce(first.promise);
+          const { result } = renderBacklog();
+
+          let stepOne!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+          act(() => {
+            stepOne = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+          });
+          let commit!: Promise<void>;
+          act(() => {
+            commit = result.current.actions.commitReorderBatch([stepOne]);
+          });
+          // The next Down click lands while the first burst is still on the wire.
+          act(() => {
+            result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3');
+          });
+
+          await act(async () => {
+            first.resolve([rankedSidecar('i1', 'ALF-1', 2), rankedSidecar('i2', 'ALF-2', 1)]);
+            await commit;
+          });
+          expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+          expect(prioritiesById(result.current.backlog)).toEqual({ i1: 3, i2: 1, i3: 2 });
+        });
       });
     });
 
