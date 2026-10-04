@@ -264,9 +264,12 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   each of the two stories with the other's `priority` (capture the prior pair for rollback) →
   `api.reorderCode` → reconcile both returned rows via `codeItemToStoryPatch`. The **view** owns
   the filter/sort and picks the visible neighbour, so the action just swaps the pair it's handed.
-  It's one `swap_code_priority` RPC (not two PATCHes), which swaps via a negative-sentinel
-  sequence so the `unique(priority)` index never sees a transient duplicate — see the supabase
-  skill (a one-statement CASE swap 409s under a non-deferrable unique index).
+  It's one `swap_code_priority` RPC (not two PATCHes) that exchanges whatever ranks the rows hold
+  **when it runs** — so every priority commit (swap, jump, project jump) goes through the store's
+  one serial queue, or two overlapping click bursts reach the server out of order and scramble
+  the ranking. While that queue is busy, a response or realtime echo must not overwrite a newer
+  optimistic `priority` (the "snaps back up, then slides down" flicker); only the last write to
+  settle reconciles the rank (ALF-250).
 - **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
   (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
   status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it
