@@ -1,5 +1,7 @@
 import type { Json } from '@/lib/database.types';
 import type {
+  ReaderAlertFinding,
+  ReaderAlertsOverview,
   ReaderCandidate,
   ReaderFurtherReading,
   ReaderHealth,
@@ -8,7 +10,11 @@ import type {
   ReaderPost,
   ReaderPublication,
   ReaderPublicationListItem,
+  ReaderRoundupOverview,
 } from '@/lib/types';
+
+/** Any kind's stored overview, as a fixture hands one to {@link makeReaderPost}. */
+export type StoredReaderOverview = ReaderOverview | ReaderRoundupOverview | ReaderAlertsOverview;
 
 /**
  * Seed builders for the Reader module's two tables — one home, shared by the unit tests, the
@@ -62,6 +68,7 @@ export function makeReaderPublication(
     enabled: overrides.enabled ?? true,
     source: overrides.source ?? 'auto',
     notes: overrides.notes ?? null,
+    summary_kind: overrides.summary_kind ?? 'essay',
     first_seen_at: overrides.first_seen_at ?? nextTimestamp(),
     created_at: overrides.created_at ?? nextTimestamp(),
   };
@@ -78,7 +85,9 @@ export function makeReaderPost(
   // so a caller (readerFixtureSet, a test, a story) can pass `makeReaderOverview(...)` straight
   // through instead of casting at every call site — this function does the one cast the column's
   // generated type still needs.
-  overrides: Partial<Omit<ReaderPost, 'overview'>> & { overview?: ReaderOverview | null } = {},
+  overrides: Partial<Omit<ReaderPost, 'overview'>> & {
+    overview?: StoredReaderOverview | null;
+  } = {},
 ): ReaderPost {
   const receivedAt = overrides.received_at ?? nextRecentTimestamp();
   return {
@@ -102,6 +111,7 @@ export function makeReaderPost(
     overview: (overrides.overview as Json | null | undefined) ?? null,
     model: overrides.model ?? null,
     prompt_version: overrides.prompt_version ?? null,
+    summary_kind: overrides.summary_kind ?? null,
     summary_state: overrides.summary_state ?? 'pending',
     summarize_attempts: overrides.summarize_attempts ?? 0,
     last_error: overrides.last_error ?? null,
@@ -138,7 +148,9 @@ let bookmarkSequence = 900_000;
  * state is stated via `overrides`, as for {@link makeReaderPost}.
  */
 export function makeReaderArticle(
-  overrides: Partial<Omit<ReaderPost, 'overview'>> & { overview?: ReaderOverview | null } = {},
+  overrides: Partial<Omit<ReaderPost, 'overview'>> & {
+    overview?: StoredReaderOverview | null;
+  } = {},
 ): ReaderPost {
   bookmarkSequence += 1;
   const site = overrides.site === undefined ? 'worksinprogress.co' : overrides.site;
@@ -168,7 +180,9 @@ export function makeReaderArticle(
  * researching; every other phase is stated via `overrides`, as for {@link makeReaderPost}.
  */
 export function makeResearchPost(
-  overrides: Partial<Omit<ReaderPost, 'overview'>> & { overview?: ReaderOverview | null } = {},
+  overrides: Partial<Omit<ReaderPost, 'overview'>> & {
+    overview?: StoredReaderOverview | null;
+  } = {},
 ): ReaderPost {
   const title = overrides.title ?? 'Is a cold-climate heat pump worth it for our Chicago house?';
   const base = makeReaderPost(null, { title, ...overrides });
@@ -382,6 +396,151 @@ export function makeReaderOverview(overrides: Partial<ReaderOverview> = {}): Rea
     ...(overrides.further_reading === undefined
       ? {}
       : { further_reading: overrides.further_reading }),
+  };
+}
+
+/**
+ * A `done` roundup's take, after the spec's Import AI plate: three highlights and the three Links
+ * worth reading. The URLs are invented.
+ */
+export function makeRoundupOverview(
+  overrides: Partial<ReaderRoundupOverview> = {},
+): ReaderRoundupOverview {
+  return {
+    highlights: overrides.highlights ?? [
+      'Folding policies at 95% in simulation land at 55–60% on hardware, and a bigger simulator ' +
+        'doesn’t close the gap.',
+      'Public benchmarks now saturate in a median 14 months, down from 30 in 2022.',
+      'The export rule caps cloud access by compute, not by chip — a first.',
+    ],
+    further_reading: overrides.further_reading ?? [
+      {
+        url: 'https://example.com/dexbench',
+        title: 'DexBench: sim-to-real for folding',
+        note: 'The 30–40 point gap that scaling the simulator doesn’t close.',
+      },
+      {
+        url: 'https://example.com/eval-saturation',
+        title: 'Saturation of public evals, 2024–26',
+        note: 'First dataset tracking how fast new benchmarks top out.',
+      },
+      {
+        url: 'https://example.com/bis-rule',
+        title: 'BIS interim final rule',
+        note: 'The primary source; the issue’s own take is one paragraph.',
+      },
+    ],
+  };
+}
+
+/** A `done` Alerts post's findings. Defaults to the spec's Patagonia plate: a sale and an action. */
+export function makeAlertsOverview(
+  findings: ReaderAlertFinding[] = [
+    { category: 'sale', detail: '40% off used outerwear, members only.', deadline: null },
+    {
+      category: 'action',
+      detail: 'Trade-in credit doubles if you book by Oct 12.',
+      deadline: 'Oct 12',
+    },
+  ],
+): ReaderAlertsOverview {
+  return { findings };
+}
+
+/**
+ * One post per kind-specific state the list renders, after the spec's plates: a roundup, an
+ * Alerts post with a sale and an action, one with a security notice, and an Alerts post the tick
+ * filed because it found nothing — archived, so it reads in the archive. Each publication carries
+ * the kind its post was summarised under.
+ */
+export function readerKindFixtureSet(): {
+  publications: ReaderPublication[];
+  roundup: ReaderPost;
+  alertsSale: ReaderPost;
+  alertsSecurity: ReaderPost;
+  alertsFiled: ReaderPost;
+} {
+  const importAi = makeReaderPublication('Import AI', { summary_kind: 'roundup' });
+  const patagonia = makeReaderPublication('Patagonia', {
+    handle: 'news@patagonia.com',
+    source: 'owner',
+    summary_kind: 'alerts',
+  });
+  const bank = makeReaderPublication('Acme Bank', {
+    handle: 'alerts@acmebank.com',
+    source: 'owner',
+    summary_kind: 'alerts',
+  });
+  const amazon = makeReaderPublication('Amazon.com', {
+    handle: 'store-news@amazon.com',
+    source: 'owner',
+    summary_kind: 'alerts',
+  });
+  const stamp = {
+    summary_state: 'done',
+    model: 'claude-sonnet-5',
+    prompt_version: 1,
+    model_called_at: nextTimestamp(),
+    summarized_at: nextTimestamp(),
+  } as const;
+
+  const roundup = makeReaderPost(importAi.id, {
+    ...stamp,
+    summary_kind: 'roundup',
+    title: 'Import AI 418: robot dexterity, eval saturation, and a chip export rule',
+    author: 'Jack Clark',
+    canonical_url: 'https://importai.substack.com/p/import-ai-418',
+    word_count: 2070,
+    gist:
+      'A week of eval news and one policy change. Worth opening for the dexterity benchmark’s ' +
+      'sim-to-real gap and the export rule’s actual text; the model releases are ones you’ve seen.',
+    overview: makeRoundupOverview(),
+  });
+
+  const alertsSale = makeReaderPost(patagonia.id, {
+    ...stamp,
+    summary_kind: 'alerts',
+    title: 'Worn Wear fall event',
+    author: 'Patagonia',
+    canonical_url: 'https://www.patagonia.com/wornwear',
+    word_count: 410,
+    gist: 'A members-only sale on used outerwear, and a trade-in bonus until Oct 12.',
+    overview: makeAlertsOverview(),
+  });
+
+  const alertsSecurity = makeReaderPost(bank.id, {
+    ...stamp,
+    summary_kind: 'alerts',
+    title: 'Important information about your account',
+    author: 'Acme Bank',
+    word_count: 180,
+    gist: 'A new-device sign-in from Lisbon.',
+    overview: makeAlertsOverview([
+      {
+        category: 'security',
+        detail: 'New device sign-in from Lisbon on Oct 2 — if not you, reset now.',
+        deadline: null,
+      },
+    ]),
+  });
+
+  const alertsFiled = makeReaderPost(amazon.id, {
+    ...stamp,
+    summary_kind: 'alerts',
+    title: 'Recommended for you: kitchen picks',
+    author: 'Amazon.com',
+    word_count: 150,
+    gist: 'Nothing notable',
+    overview: makeAlertsOverview([]),
+    archived_at: stamp.summarized_at,
+  });
+
+  return {
+    publications: [importAi, patagonia, bank, amazon],
+    roundup,
+    alertsSale,
+    alertsSecurity,
+    alertsFiled,
   };
 }
 

@@ -5,11 +5,11 @@ import { jsonError, jsonOk } from '@/lib/api/responses';
 import { sendFurtherReadingSchema } from '@/lib/api/schemas';
 import { mapSupabaseError } from '@/lib/api/supabase-errors';
 import {
+  type ReaderPostFurtherRow,
   appendFurtherReadingSent,
   getReaderPostForFurtherReading,
   getReaderPostListItem,
 } from '@/lib/data/reader';
-import type { Json } from '@/lib/database.types';
 import {
   type AddBookmarkOutcome,
   type InstapaperRefusal,
@@ -19,7 +19,7 @@ import {
   sendFailureResponse,
 } from '@/lib/instapaper/bookmark';
 import { getInstapaperConfig } from '@/lib/instapaper/config';
-import { furtherReadingOf, isReaderOverview } from '@/lib/reader/overview';
+import { postFurtherReading } from '@/lib/reader/overview';
 import type { FurtherReadingSendResult, ReaderFurtherReading } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -83,10 +83,12 @@ function partialWords(failure: SaveFailure): string {
   return PARTIAL_WORDS[failure.kind === 'refused' ? failure.refusal : failure.kind];
 }
 
-/** The post's current Further reading items, by URL — none for an overview without a list. */
-function offeredItems(overview: Json | null): Map<string, ReaderFurtherReading> {
-  const items = isReaderOverview(overview) ? furtherReadingOf(overview.further_reading) : [];
-  return new Map(items.map((item) => [item.url, item]));
+/**
+ * The post's current sendable links, by URL — an essay's Further reading or a roundup's Links,
+ * read by the kind the post was summarised under; none for an overview without a list.
+ */
+function offeredItems(post: ReaderPostFurtherRow): Map<string, ReaderFurtherReading> {
+  return new Map(postFurtherReading(post).map((item) => [item.url, item]));
 }
 
 export const POST = withSession(
@@ -115,7 +117,7 @@ export const POST = withSession(
     }
     if (post === null) return jsonError(404, 'Post not found');
 
-    const offered = offeredItems(post.overview);
+    const offered = offeredItems(post);
     const sent = new Set([...post.further_sent_reader, ...post.further_sent_instapaper]);
     const items = [...new Set(input.urls)]
       .filter((url) => !sent.has(url))

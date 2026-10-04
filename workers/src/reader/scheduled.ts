@@ -74,7 +74,7 @@ import {
   recordRunSuccess,
 } from './health';
 import { type IntakeResult, NO_READABLE_BODY, intakePost } from './intake';
-import { READER_PROMPT_VERSION, RESEARCH_AUTHOR, RESEARCH_PUBLICATION } from './prompt';
+import { READER_PROMPT_VERSIONS, RESEARCH_AUTHOR, RESEARCH_PUBLICATION } from './prompt';
 import { ReaderSweepError, runReaderRetention as sweepReaderText } from './retention';
 import {
   type BookmarkedPost,
@@ -95,7 +95,15 @@ import {
   planBookmark,
   stopsTheLeg,
 } from './to-reader';
-import type { ReaderCeiling, ReaderEnv, SummaryInput, SummaryOutcome, WorklistRow } from './types';
+import type {
+  ReaderCeiling,
+  ReaderEnv,
+  ReaderSummaryKind,
+  StoredReaderSummary,
+  SummaryInput,
+  SummaryOutcome,
+  WorklistRow,
+} from './types';
 import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
 
 /**
@@ -116,8 +124,8 @@ import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
  * Numbering a post's links for its Further reading list costs none of these: the HTML is already
  * in memory at intake, and a retry reads it in the select it already makes. The
  * roster read is the ninth per-tick fetch: the worklist view carries `publication_id` but not the
- * publication's NAME, which the model's input needs, and reading the roster ONCE per tick is the
- * only way to get it that does not cost a fetch per post. On a tick where discovery found nothing
+ * publication's NAME or summary KIND, which the model's input needs, and reading the roster ONCE
+ * per tick is the only way to get them that does not cost a fetch per post. On a tick where discovery found nothing
  * to upsert it simply takes that slot back and the per-tick count is 8 again. A bookmark
  * Instapaper has no text for costs 3: `get_text`, an insert filed as failed, `archive`.
  *
@@ -213,7 +221,17 @@ interface CeilingHolder {
 interface RosterRow {
   id: string;
   name: string;
+  summary_kind: ReaderSummaryKind;
 }
+
+/** One publication as the tick needs it: the name the model is told, and the kind it is asked. */
+interface RosterEntry {
+  name: string;
+  kind: ReaderSummaryKind;
+}
+
+/** The roster, keyed by publication id. */
+type Roster = ReadonlyMap<string, RosterEntry>;
 
 /** One unit of work: a fresh message to read, a pending post to try again, or a bookmark to take. */
 type WorkItem =
@@ -276,15 +294,28 @@ function utcMidnight(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
-/** The roster, read once and keyed by id: the worklist view carries the id but not the name. */
-async function readRoster(env: ReaderEnv): Promise<Map<string, string>> {
+/**
+ * The roster, read once and keyed by id: the worklist view carries the id but not the name or the
+ * kind. The kind is read here, at summarise time, rather than stamped at intake — so a Retry
+ * summary asks the publication's CURRENT kind.
+ */
+async function readRoster(env: ReaderEnv): Promise<Roster> {
   const rows = await fetchJson<RosterRow[]>(
     env,
-    restQueryUrl(env, 'reader_publications', { select: 'id,name' }),
+    restQueryUrl(env, 'reader_publications', { select: 'id,name,summary_kind' }),
     {},
     'GET reader_publications',
   );
-  return new Map(rows.map((row) => [row.id, row.name]));
+  return new Map(rows.map((row) => [row.id, { name: row.name, kind: row.summary_kind }]));
+}
+
+/**
+ * The kind a post is summarised as: its linked publication's, else an essay — a research report,
+ * an article nothing links to a publication, and a newsletter whose roster row has gone all read
+ * as the essay they were before kinds existed.
+ */
+function kindOf(publicationId: string | undefined, roster: Roster): ReaderSummaryKind {
+  return (publicationId === undefined ? undefined : roster.get(publicationId))?.kind ?? 'essay';
 }
 
 /**
@@ -304,8 +335,10 @@ function toSummaryInput(
     canonical_url?: string | undefined;
   },
   publication: string,
+  kind: ReaderSummaryKind,
 ): SummaryInput {
   return {
+    kind,
     publication,
     // `SummaryInput.author` is optional WITHOUT `| undefined`, so under
     // `exactOptionalPropertyTypes` the key has to be omitted rather than set to nothing.
@@ -324,10 +357,10 @@ async function prepareFresh(
   env: ReaderEnv,
   client: GmailClient,
   row: WorklistRow,
-  context: { roster: Map<string, string>; now: Date; capped: boolean; summary: ReaderTickSummary },
+  context: { roster: Roster; now: Date; capped: boolean; summary: ReaderTickSummary },
 ): Promise<PreparedResult> {
   const publication =
-    context.roster.get(row.publication_id) ?? row.sender_name ?? row.sender_handle;
+    context.roster.get(row.publication_id)?.name ?? row.sender_name ?? row.sender_handle;
   const result: IntakeResult = await intakePost(env, client, row, {
     publicationName: publication,
     now: context.now,
@@ -356,7 +389,7 @@ async function prepareFresh(
       return {
         kind: 'summarize',
         id: result.id,
-        input: toSummaryInput(result.post, publication),
+        input: toSummaryInput(result.post, publication, kindOf(row.publication_id, context.roster)),
         attempts: 0,
       };
     }
@@ -367,7 +400,7 @@ async function prepareFresh(
 async function prepareRetry(
   env: ReaderEnv,
   row: RetryRow,
-  roster: Map<string, string>,
+  roster: Roster,
   now: Date,
 ): Promise<PreparedResult> {
   const leased = await leasePost(env, row.id, now);
@@ -392,6 +425,7 @@ async function prepareRetry(
     input: toSummaryInput(
       { ...row, author: retryAuthor(row), text },
       retryPublication(row, roster),
+      row.source === 'research' ? 'essay' : kindOf(row.publication_id, roster),
     ),
     attempts: row.summarize_attempts,
   };
@@ -405,11 +439,11 @@ async function prepareRetry(
  * row that has gone (a renamed handle, a deleted publication) leaves the author, and then the same
  * 'unknown' the eval script prints for a message with no usable `From` name.
  */
-function retryPublication(row: RetryRow, roster: Map<string, string>): string {
+function retryPublication(row: RetryRow, roster: Roster): string {
   if (row.source === 'research') return RESEARCH_PUBLICATION;
   if (row.source === 'instapaper') return articlePublication(row.publication_id, row.site, roster);
   const linked = row.publication_id === undefined ? undefined : roster.get(row.publication_id);
-  return linked ?? row.author ?? 'unknown';
+  return linked?.name ?? row.author ?? 'unknown';
 }
 
 /** The author a retried post is summarised under: the row's own, except a report's — the routine. */
@@ -447,7 +481,7 @@ async function prepareBookmark(
   env: ReaderEnv,
   leg: Leg,
   item: { bookmark: InstapaperBookmark; existing: BookmarkedPost | undefined },
-  context: { roster: Map<string, string>; now: Date; capped: boolean; summary: ReaderTickSummary },
+  context: { roster: Roster; now: Date; capped: boolean; summary: ReaderTickSummary },
 ): Promise<PreparedResult> {
   const plan = planBookmark(item.existing, context.capped);
   switch (plan.kind) {
@@ -506,6 +540,8 @@ async function prepareBookmark(
         kind: 'summarize',
         id: taken.id,
         input: {
+          // A freshly taken article is linked to no publication, so it reads as an essay.
+          kind: 'essay',
           publication: articlePublication(undefined, taken.site, context.roster),
           title: taken.title,
           receivedAt: context.now.toISOString(),
@@ -581,6 +617,11 @@ async function openLeg(
   };
 }
 
+/** An Alerts summary that found nothing — the one summary the tick files on its own. */
+function isNothingNotable(summary: StoredReaderSummary): boolean {
+  return summary.kind === 'alerts' && summary.overview.findings.length === 0;
+}
+
 /**
  * Write the terminal patch for one model attempt (the outcome table), and report a systemic failure if that is
  * what came back.
@@ -599,12 +640,20 @@ async function applyOutcome(
 
   switch (outcome.kind) {
     case 'done': {
+      const { kind } = outcome.summary;
       await patchPost(env, prepared.id, {
         headline: outcome.summary.headline,
         gist: outcome.summary.gist,
         overview: outcome.summary.overview,
         model,
-        prompt_version: READER_PROMPT_VERSION,
+        // The kind and its version together name the prompt; the row renders by the kind it was
+        // summarised under, never by its publication's current one.
+        summary_kind: kind,
+        prompt_version: READER_PROMPT_VERSIONS[kind],
+        // An Alerts post with nothing notable is filed in the same write, so it never reaches the
+        // reading list. Nothing else touches `archived_at`: an Alerts post WITH findings, or any
+        // other kind, re-summarised from the archive stays where the owner is already looking at it.
+        ...(isNothingNotable(outcome.summary) ? { archived_at: nowIso } : {}),
         summary_state: 'done',
         summarized_at: nowIso,
         model_called_at: nowIso,
@@ -906,7 +955,7 @@ function prepareItem(
   client: GmailClient,
   item: WorkItem,
   leg: Leg | undefined,
-  context: { roster: Map<string, string>; now: Date; capped: boolean; summary: ReaderTickSummary },
+  context: { roster: Roster; now: Date; capped: boolean; summary: ReaderTickSummary },
 ): Promise<PreparedResult> {
   switch (item.kind) {
     case 'fresh': {

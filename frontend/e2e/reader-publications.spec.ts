@@ -75,7 +75,7 @@ test.describe('the publications roster', () => {
     await seed({ commAccounts: [ACCOUNT], readerPublications: [ENABLED] });
     await page.goto('/reader/publications');
 
-    await page.getByRole('button', { name: 'Second Thoughts' }).click();
+    await page.getByRole('button', { name: 'Second Thoughts', exact: true }).click();
     const input = page.getByRole('textbox', { name: 'Edit name for Second Thoughts' });
     await input.fill('Second Thoughts Weekly');
     await input.press('Enter');
@@ -97,7 +97,8 @@ test.describe('the publications roster', () => {
     await expect(page.getByText("Ben's Bites")).toBeVisible();
     await expect(page.getByText('No publications yet.')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: "Add Ben's Bites as…" }).click();
+    await page.getByRole('menuitem', { name: /^Essay/ }).click();
 
     await expect(page.getByText('No candidates.')).toBeVisible();
     const card = page.getByRole('listitem').filter({ hasText: 'hello@bensbites.beehiiv.com' });
@@ -118,6 +119,62 @@ test.describe('the publications roster', () => {
           row.name === "Ben's Bites",
       ),
     ).toBe(true);
+  });
+
+  test('changes a publication’s summary type in one pick, and it persists across a reload', async ({
+    page,
+    seed,
+    request,
+  }) => {
+    await seed({ commAccounts: [ACCOUNT], readerPublications: [ENABLED] });
+    await page.goto('/reader/publications');
+
+    await page.getByRole('button', { name: 'Summary type for Second Thoughts: Essay' }).click();
+    await page.getByRole('button', { name: /^Roundup/ }).click();
+
+    await expect(
+      page.getByRole('button', { name: 'Summary type for Second Thoughts: Roundup' }),
+    ).toBeVisible();
+    await expect
+      .poll(async () => {
+        const response = await request.get(`${MOCK_URL}/__mock__/state`);
+        const state = (await response.json()) as {
+          readerPublications: { id: string; summary_kind: string }[];
+        };
+        return state.readerPublications.find((row) => row.id === ENABLED.id)?.summary_kind;
+      })
+      .toBe('roundup');
+
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Summary type for Second Thoughts: Roundup' }),
+    ).toBeVisible();
+  });
+
+  test('adds a candidate as Alerts, and its card says so', async ({ page, seed, request }) => {
+    await seed({
+      commAccounts: [ACCOUNT],
+      commMessages: [
+        candidateMessage({ sender_handle: 'store-news@amazon.com', sender_name: 'Amazon.com' }),
+      ],
+    });
+    await page.goto('/reader/publications');
+
+    await page.getByRole('button', { name: 'Add Amazon.com as…' }).click();
+    await page.getByRole('menuitem', { name: /^Alerts/ }).click();
+
+    await expect(page.getByText('No candidates.')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Summary type for Amazon.com: Alerts' }),
+    ).toBeVisible();
+
+    const response = await request.get(`${MOCK_URL}/__mock__/state`);
+    const state = (await response.json()) as {
+      readerPublications: { handle: string; summary_kind: string }[];
+    };
+    expect(
+      state.readerPublications.find((row) => row.handle === 'store-news@amazon.com')?.summary_kind,
+    ).toBe('alerts');
   });
 
   test('ranks candidates by message volume, the loudest sender first', async ({ page, seed }) => {

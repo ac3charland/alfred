@@ -4,11 +4,14 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import {
+  type StoredReaderOverview,
+  makeAlertsOverview,
   makeReaderArticle,
   makeReaderOverview,
   makeReaderPost,
   makeReaderPublicationListItem,
   makeResearchPost,
+  makeRoundupOverview,
   resetReaderFixtureClock,
 } from '@/lib/reader/fixtures';
 import { stableSorted } from '@/lib/sort';
@@ -32,7 +35,7 @@ const PUBLICATION_ID = '00000000-0000-4000-8000-000000000001';
 
 function post(
   overrides: Partial<Omit<ReaderPostListItem, 'overview'>> & {
-    overview?: ReaderOverview | null;
+    overview?: StoredReaderOverview | null;
   } = {},
 ): ReaderPostListItem {
   const { text: _text, html: _html, ...listItem } = makeReaderPost(PUBLICATION_ID, overrides);
@@ -1775,5 +1778,223 @@ describe('PostRow — a delivered research report', () => {
     );
 
     expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Unarchive']);
+  });
+});
+
+describe('PostRow — a roundup', () => {
+  const ROUNDUP = {
+    id: 'p-roundup',
+    summary_state: 'done',
+    summary_kind: 'roundup',
+    gist: 'Worth opening for the dexterity benchmark.',
+    word_count: 2070,
+    model: 'claude-sonnet-5',
+    prompt_version: 1,
+    summarized_at: '2026-09-16T14:05:00.000Z',
+    overview: makeRoundupOverview(),
+  } as const;
+
+  it('keeps the gist on the row and Send in its verbs, as an essay does', () => {
+    renderReader(<PostRow post={post(ROUNDUP)} now={NOW} />);
+
+    expect(screen.getByText('Worth opening for the dexterity benchmark.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Send to Instapaper/ })).toBeInTheDocument();
+  });
+
+  it('opens on Highlights, then Links — the send checklist under its own heading', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={post(ROUNDUP)} now={NOW} />);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    const panel = screen.getByTestId('reader-row-overview');
+    const headings = within(panel)
+      .getAllByRole('heading')
+      .map((heading) => heading.textContent);
+    expect(headings).toEqual(['Highlights', 'Links']);
+    expect(
+      within(panel).getByText(
+        'Public benchmarks now saturate in a median 14 months, down from 30 in 2022.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Select all Links' })).toBeInTheDocument();
+    expect(within(panel).getByText('DexBench: sim-to-real for folding')).toBeInTheDocument();
+    // No essay section, and nothing to pick for the wiki.
+    expect(within(panel).queryByText('Novel ideas')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('Further reading')).not.toBeInTheDocument();
+  });
+
+  it('says so when nothing in the issue stood out, and draws no Links section without links', async () => {
+    const user = userEvent.setup();
+    renderReader(
+      <PostRow
+        post={post({ ...ROUNDUP, overview: { highlights: [' '], further_reading: [] } })}
+        now={NOW}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    const panel = screen.getByTestId('reader-row-overview');
+    expect(within(panel).getByText('Nothing stood out in the issue itself.')).toBeInTheDocument();
+    expect(within(panel).queryByText('Links')).not.toBeInTheDocument();
+  });
+
+  it('names the kind on the stamp, since each kind’s prompt is versioned apart', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={post(ROUNDUP)} now={NOW} />);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    expect(screen.getByText('claude-sonnet-5 · roundup prompt v1 · Sep 16')).toBeInTheDocument();
+  });
+
+  it('renders by the kind it was summarised under — an essay overview stamped roundup shows no sections', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={post({ ...ROUNDUP, overview: makeReaderOverview() })} now={NOW} />);
+
+    expect(screen.getByText('Worth opening for the dexterity benchmark.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    const panel = screen.getByTestId('reader-row-overview');
+    expect(within(panel).queryAllByRole('heading')).toEqual([]);
+    expect(within(panel).getByText(/roundup prompt v1/)).toBeInTheDocument();
+  });
+});
+
+describe('PostRow — an Alerts post', () => {
+  const ALERTS = {
+    id: 'p-alerts',
+    summary_state: 'done',
+    summary_kind: 'alerts',
+    canonical_url: 'https://www.patagonia.com/wornwear',
+    gist: 'A members-only sale and a trade-in bonus.',
+    word_count: 410,
+    model: 'claude-sonnet-5',
+    prompt_version: 1,
+    summarized_at: '2026-09-16T14:05:00.000Z',
+    overview: makeAlertsOverview(),
+  } as const;
+
+  it('draws one tagged line per finding in the gist’s place', () => {
+    renderReader(<PostRow post={post(ALERTS)} now={NOW} />);
+
+    const lines = [...screen.getByTestId('alert-findings').children].map(
+      (line) => line.textContent,
+    );
+    expect(lines).toEqual([
+      'Sale40% off used outerwear, members only.',
+      'ActionTrade-in credit doubles if you book by Oct 12.',
+    ]);
+    expect(screen.queryByText('A members-only sale and a trade-in bonus.')).not.toBeInTheDocument();
+  });
+
+  it('tags a security finding in the destructive tone and the rest in the alert tone', () => {
+    renderReader(
+      <PostRow
+        post={post({
+          ...ALERTS,
+          overview: makeAlertsOverview([
+            { category: 'security', detail: 'New sign-in from Lisbon.', deadline: null },
+            { category: 'change', detail: 'Plan price rises to $12.', deadline: 'Nov 1' },
+          ]),
+        })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('Security')).toHaveClass('text-destructive');
+    expect(screen.getByText('Change')).toHaveClass('text-amber-400');
+    // A deadline the detail doesn't already say is added after it.
+    expect(screen.getByText('Plan price rises to $12. · by Nov 1')).toBeInTheDocument();
+  });
+
+  it('has no Send — there is nothing to read later in a sale notice — and i does nothing', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = post(ALERTS);
+    renderReader(<PostRow post={row} now={NOW} selected onExit={onExit} />, [row]);
+
+    expect(screen.queryByRole('button', { name: /Send to Instapaper/ })).not.toBeInTheDocument();
+    await user.keyboard('i');
+
+    expect(onExit).not.toHaveBeenCalled();
+    expect(mockApi.sendReaderPostToInstapaper).not.toHaveBeenCalled();
+  });
+
+  it('opens an Overview that holds only the footer: Original, Re-summarise and the stamp', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={post(ALERTS)} now={NOW} />);
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+
+    const panel = screen.getByTestId('reader-row-overview');
+    expect(within(panel).queryAllByRole('heading')).toEqual([]);
+    expect(within(panel).getByRole('link', { name: /Original/ })).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Re-summarise' })).toBeInTheDocument();
+    expect(
+      within(panel).getByText('claude-sonnet-5 · alerts prompt v1 · Sep 16'),
+    ).toBeInTheDocument();
+  });
+
+  it('v toggles that footer panel', async () => {
+    const user = userEvent.setup();
+    const row = post(ALERTS);
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    await user.keyboard('v');
+
+    expect(screen.getByRole('button', { name: 'Hide overview' })).toBeInTheDocument();
+  });
+
+  it('reads "Nothing notable — filed automatically." for a post the tick filed', () => {
+    renderReader(
+      <PostRow
+        post={post({
+          ...ALERTS,
+          gist: 'Nothing notable',
+          overview: makeAlertsOverview([]),
+          archived_at: '2026-09-16T14:05:00.000Z',
+        })}
+        now={NOW}
+        variant="archive"
+      />,
+    );
+
+    expect(screen.getByText('Nothing notable — filed automatically.')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing notable')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Unarchive/ })).toBeInTheDocument();
+  });
+
+  it('reads nothing in the gist’s place when its overview fails the Alerts guard', () => {
+    renderReader(<PostRow post={post({ ...ALERTS, overview: makeReaderOverview() })} now={NOW} />);
+
+    expect(screen.queryByTestId('alert-findings')).not.toBeInTheDocument();
+    expect(screen.queryByText('A members-only sale and a trade-in bonus.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/filed automatically/)).not.toBeInTheDocument();
+  });
+
+  it('dims the kept findings while a re-summarise is pending, as a superseded gist is dimmed', () => {
+    renderReader(<PostRow post={post({ ...ALERTS, summary_state: 'pending' })} now={NOW} />);
+
+    expect(screen.getByTestId('alert-findings')).toHaveClass('opacity-60');
+  });
+
+  it('draws a done post’s findings at full strength', () => {
+    renderReader(<PostRow post={post(ALERTS)} now={NOW} />);
+
+    expect(screen.getByTestId('alert-findings')).not.toHaveClass('opacity-60');
+  });
+
+  it('is an ordinary row with Send before it has been summarised as Alerts', () => {
+    renderReader(
+      <PostRow
+        post={post({ ...ALERTS, summary_state: 'pending', gist: null, summary_kind: null })}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /Send to Instapaper/ })).toBeInTheDocument();
+    expect(screen.getByText(/The summary is on its way/)).toBeInTheDocument();
   });
 });

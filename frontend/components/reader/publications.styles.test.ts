@@ -1,4 +1,9 @@
-import { PAUSED_CARD, PUBLICATION_CAPTION, PUBLICATION_CARD } from './publications.styles';
+import {
+  KIND_CHIP,
+  PAUSED_CARD,
+  PUBLICATION_CAPTION,
+  PUBLICATION_CARD,
+} from './publications.styles';
 
 describe('publications card styles', () => {
   it('is a bordered surface card', () => {
@@ -14,5 +19,10 @@ describe('publications card styles', () => {
   it('is a small-caps caption', () => {
     expect(PUBLICATION_CAPTION).toContain('uppercase');
     expect(PUBLICATION_CAPTION).toContain('text-xs');
+  });
+
+  it('greens the kind chip only while its picker is open', () => {
+    expect(KIND_CHIP).toContain('data-[state=open]:text-accent-green');
+    expect(KIND_CHIP).not.toMatch(/(^| )text-accent-green/);
   });
 });

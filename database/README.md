@@ -242,6 +242,17 @@ column; what is stored here is which of its links the owner has sent.
   `builder_sha` and `base_sha` over an incoming `reconstructed` row. Returns `{upserted,
   kept_recorded}`.
 
+### `0052_reader_summary_kinds.sql` — summary kinds (ALF-322)
+
+- **`reader_publications.summary_kind`** — `essay` (default; every existing row) | `roundup` |
+  `alerts`, CHECKed. Which prompt the summariser reads the publication's mail with; read on every
+  summarise, so a Retry uses the kind as it is now.
+- **`reader_posts.summary_kind`** — the kind a post's summary was written under, stamped by the tick
+  beside `prompt_version` (together they name the prompt). Null = summarised before kinds existed,
+  read as `essay`. The row renders by this, never by its publication's current kind.
+- **`v_reader_publications`** — recreated (explicit column list) to carry `summary_kind`, and
+  re-granted.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it.** `.github/workflows/migrate.yml` runs

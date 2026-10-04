@@ -49,6 +49,20 @@ describe('PATCH /api/reader/publications/[id]', () => {
     expect(supabase.table('reader_publications').update).toHaveBeenCalledWith({ enabled: false });
   });
 
+  it('changes a publication’s kind', async () => {
+    const supabase = signedIn();
+
+    const response = await PATCH(
+      patch(PUBLICATION_ID, { summary_kind: 'roundup' }),
+      context(PUBLICATION_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(supabase.table('reader_publications').update).toHaveBeenCalledWith({
+      summary_kind: 'roundup',
+    });
+  });
+
   it('renames a publication', async () => {
     const supabase = signedIn();
 

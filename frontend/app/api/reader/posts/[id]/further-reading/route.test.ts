@@ -81,9 +81,11 @@ function listRow({ reader = [], instapaper = [] }: Sent = {}): ReaderPostListIte
 function stored(
   sent: Sent = {},
   overview: unknown = makeReaderOverview({ further_reading: ITEMS }),
+  summaryKind: string | null = null,
 ) {
   return {
     overview,
+    summary_kind: summaryKind,
     further_sent_reader: sent.reader ?? [],
     further_sent_instapaper: sent.instapaper ?? [],
   };
@@ -460,6 +462,53 @@ describe('POST /api/reader/posts/[id]/further-reading — nothing left to send',
       p_destination: 'instapaper',
       p_urls: [REPLY],
     });
+  });
+
+  it('sends a roundup’s Links exactly as it sends an essay’s Further reading', async () => {
+    const supabase = signedIn(
+      stored({}, { highlights: ['A striking number.'], further_reading: ITEMS }, 'roundup'),
+      { data: listRow({ instapaper: [PAPER] }) },
+    );
+    stubInstapaper({ add: [bookmark(11)] });
+
+    const response = await POST(
+      send(POST_ID, { destination: 'instapaper', urls: [PAPER] }),
+      context(POST_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(supabase.rpc).toHaveBeenCalledWith('append_further_reading_sent', {
+      p_post: POST_ID,
+      p_destination: 'instapaper',
+      p_urls: [PAPER],
+    });
+  });
+
+  it('reads the list by the kind the post was summarised under, not by its shape', async () => {
+    // An essay-shaped overview stamped roundup fails the roundup guard: nothing is offered.
+    readsTwice(stored({}, makeReaderOverview({ further_reading: ITEMS }), 'roundup'), listRow());
+    const fetchSpy = stubInstapaper();
+
+    const response = await POST(
+      send(POST_ID, { destination: 'reader', urls: [PAPER] }),
+      context(POST_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('offers nothing from an Alerts post', async () => {
+    readsTwice(stored({}, { findings: [] }, 'alerts'), listRow());
+    const fetchSpy = stubInstapaper();
+
+    const response = await POST(
+      send(POST_ID, { destination: 'reader', urls: [PAPER] }),
+      context(POST_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('offers nothing from a post whose overview has no list (summarised before it existed)', async () => {

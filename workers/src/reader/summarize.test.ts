@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { READER_MODEL_INPUT_CHARS, buildReaderRequest } from './prompt';
-import { READER_SUMMARY_SCHEMA } from './schema';
+import { READER_ALERTS_SCHEMA, READER_ROUNDUP_SCHEMA, READER_SUMMARY_SCHEMA } from './schema';
 import {
   READER_MAX_RETRIES,
   READER_MAX_TOKENS,
@@ -16,6 +16,7 @@ const config: SummaryConfig = { apiKey: 'sk-ant-test-key', model: 'claude-sonnet
 const WIRE_NULL: unknown = JSON.parse('null');
 
 const post: SummaryInput = {
+  kind: 'essay',
   publication: 'The Diff',
   author: 'Dana Whitfield',
   title: 'The inference cost curve, eighteen months on',
@@ -142,12 +143,70 @@ describe('summarizePost — the request', () => {
   });
 });
 
+describe('summarizePost — each kind', () => {
+  it.each([
+    ['roundup', READER_ROUNDUP_SCHEMA],
+    ['alerts', READER_ALERTS_SCHEMA],
+  ] as const)('sends a %s post with its own schema and system prompt', async (kind, schema) => {
+    const spy = mockCreate().mockResolvedValue(
+      fakeMessage(textContent(JSON.stringify(validSummary())), 'end_turn'),
+    );
+
+    await summarizePost({ ...post, kind }, config);
+
+    const params = sentParams(spy);
+    expect(params.output_config?.format).toEqual({ type: 'json_schema', schema });
+    expect(params.system).toBe(buildReaderRequest({ ...post, kind }).system);
+    // Same model, same call shape: a kind changes the question, never the bill's terms.
+    expect(params.model).toBe('claude-sonnet-5');
+    expect(params.max_tokens).toBe(READER_MAX_TOKENS);
+    expect(params.thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('counts an essay-shaped answer to an Alerts request as a schema miss', async () => {
+    mockCreate().mockResolvedValue(
+      fakeMessage(textContent(JSON.stringify(validSummary())), 'end_turn'),
+    );
+
+    await expect(summarizePost({ ...post, kind: 'alerts' }, config)).resolves.toEqual({
+      kind: 'counted',
+      error: 'schema',
+    });
+  });
+
+  it('returns an Alerts answer tagged alerts', async () => {
+    const answer = {
+      headline: 'Important information about your account',
+      gist: 'New device sign-in from Lisbon.',
+      overview: {
+        findings: [
+          { category: 'security', detail: 'New sign-in from Lisbon.', deadline: WIRE_NULL },
+        ],
+      },
+    };
+    mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(answer)), 'end_turn'));
+
+    await expect(summarizePost({ ...post, kind: 'alerts' }, config)).resolves.toEqual({
+      kind: 'done',
+      summary: {
+        kind: 'alerts',
+        headline: answer.headline,
+        gist: answer.gist,
+        overview: { findings: [{ category: 'security', detail: 'New sign-in from Lisbon.' }] },
+      },
+    });
+  });
+});
+
 describe('summarizePost — reading a response', () => {
   it('returns done with the parsed summary', async () => {
     const summary = validSummary();
     mockCreate().mockResolvedValue(fakeMessage(textContent(JSON.stringify(summary)), 'end_turn'));
 
-    await expect(summarizePost(post, config)).resolves.toEqual({ kind: 'done', summary });
+    await expect(summarizePost(post, config)).resolves.toEqual({
+      kind: 'done',
+      summary: { kind: 'essay', ...summary },
+    });
   });
 
   it('stores further reading as the URLs of the post’s own links, dropping a number it never had', async () => {
@@ -163,7 +222,9 @@ describe('summarizePost — reading a response', () => {
 
     const outcome = await summarizePost({ ...post, html }, config);
 
-    if (outcome.kind !== 'done') throw new Error('expected done');
+    if (outcome.kind !== 'done' || outcome.summary.kind !== 'essay') {
+      throw new Error('expected an essay');
+    }
     expect(outcome.summary.overview.further_reading).toEqual([
       {
         url: 'https://example.com/berths',
@@ -182,7 +243,9 @@ describe('summarizePost — reading a response', () => {
     const outcome = await summarizePost(post, config);
 
     expect(outcome.kind).toBe('done');
-    if (outcome.kind !== 'done') throw new Error('expected done');
+    if (outcome.kind !== 'done' || outcome.summary.kind !== 'essay') {
+      throw new Error('expected an essay');
+    }
     expect(outcome.summary.overview.novel_ideas).toHaveLength(6);
     expect(outcome.summary.overview.evidence).toHaveLength(6);
   });
@@ -294,7 +357,7 @@ describe('summarizePost — usage', () => {
 
     await expect(summarizePost(post, config)).resolves.toEqual({
       kind: 'done',
-      summary,
+      summary: { kind: 'essay', ...summary },
       usage: { inputTokens: 9123, outputTokens: 1440 },
     });
   });

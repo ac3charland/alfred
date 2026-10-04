@@ -384,6 +384,15 @@ describe('POST /api/reader/posts/[id]/wiki', () => {
     });
   });
 
+  it('409s on a pick from a post summarised as anything but an essay', async () => {
+    // Even an essay-shaped overview: the stored kind decides, and a roundup offers no bullets.
+    signedIn({ ...stored(), summary_kind: 'roundup' });
+
+    const response = await POST(send(POST_ID, { ideas: IDEAS.slice(0, 1) }), context(POST_ID));
+
+    expect(response.status).toBe(409);
+  });
+
   it('409s when the post has no overview to pick from at all', async () => {
     signedIn(makeReaderPost(PUBLICATION.id, { id: POST_ID, overview: null }));
 

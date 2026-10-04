@@ -53,6 +53,40 @@ export interface ReaderOverview {
   further_reading?: ReaderFurtherReading[] | undefined;
 }
 
+/**
+ * Which question the summariser asks of a post, chosen per publication and stamped on each post it
+ * summarises: `essay` — what's new, the evidence, the argument (the default); `roundup` — what's
+ * striking in the issue and which of its links are worth reading; `alerts` — is there a sale, a
+ * security event, an action or a change the owner needs to know about.
+ */
+export type ReaderSummaryKind = 'essay' | 'roundup' | 'alerts';
+
+/** Every kind, in the order the publications card offers them. */
+export const READER_SUMMARY_KINDS: readonly ReaderSummaryKind[] = ['essay', 'roundup', 'alerts'];
+
+/** What `reader_posts.overview` holds for a `done` roundup: its highlights and the links worth reading. */
+export interface ReaderRoundupOverview {
+  highlights: string[];
+  /** The Links, stored under the essay's own key so the same checklist and sent marks serve both. */
+  further_reading: ReaderFurtherReading[];
+}
+
+/** What an Alerts finding is about. */
+export type ReaderAlertCategory = 'sale' | 'security' | 'action' | 'change';
+
+/** One thing in an Alerts post that requires or rewards the owner's attention. */
+export interface ReaderAlertFinding {
+  category: ReaderAlertCategory;
+  detail: string;
+  /** The date by which to act, as the mail states it. The key is absent when it states none. */
+  deadline?: string | undefined;
+}
+
+/** What `reader_posts.overview` holds for a `done` Alerts post. An empty list is "nothing notable". */
+export interface ReaderAlertsOverview {
+  findings: ReaderAlertFinding[];
+}
+
 /** One roster row: a publication the worklist view matches inbound mail against. */
 export interface ReaderPublication {
   id: string;
@@ -62,6 +96,7 @@ export interface ReaderPublication {
   enabled: boolean;
   source: 'auto' | 'owner';
   notes?: string | undefined;
+  summary_kind: ReaderSummaryKind;
   first_seen_at: string;
   created_at: string;
 }
@@ -102,6 +137,8 @@ export interface ReaderPost {
   overview?: ReaderOverview | undefined;
   model?: string | undefined;
   prompt_version?: number | undefined;
+  /** The kind the summary was written under. Absent on one written before kinds existed: an essay. */
+  summary_kind?: ReaderSummaryKind | undefined;
   summary_state: ReaderSummaryState;
   summarize_attempts: number;
   last_error?: string | undefined;
@@ -187,6 +224,8 @@ export interface ReaderEnv extends SupabaseEnv, GmailEnv, InstapaperEnv {
 
 /** What the tick hands the summariser (and the eval script prints). */
 export interface SummaryInput {
+  /** Which prompt and schema the post is summarised with. */
+  kind: ReaderSummaryKind;
   publication: string;
   author?: string;
   title: string;
@@ -223,12 +262,40 @@ export interface ReaderSummary {
   overview: ReaderModelOverview;
 }
 
-/** What is stored: the answer normalised, its picks mapped to the URLs they number. */
-export interface StoredReaderSummary {
+/** A roundup's answer: its links are numbered picks, like the essay's Further reading. */
+export interface ReaderRoundupSummary {
   headline: string;
   gist: string;
-  overview: ReaderOverview & { further_reading: ReaderFurtherReading[] };
+  overview: { highlights: string[]; links: ReaderFurtherReadingPick[] };
 }
+
+/** One finding as the model writes it: the schema's explicit `null` for "no deadline stated". */
+export interface ReaderModelAlertFinding {
+  category: ReaderAlertCategory;
+  detail: string;
+  deadline: string | null;
+}
+
+/** An Alerts answer. */
+export interface ReaderAlertsSummary {
+  headline: string;
+  gist: string;
+  overview: { findings: ReaderModelAlertFinding[] };
+}
+
+/**
+ * What is stored: the answer normalised, its picks mapped to the URLs they number, tagged with the
+ * kind it was written under so the tick can stamp it and the overview's shape is never guessed.
+ */
+export type StoredReaderSummary =
+  | {
+      kind: 'essay';
+      headline: string;
+      gist: string;
+      overview: ReaderOverview & { further_reading: ReaderFurtherReading[] };
+    }
+  | { kind: 'roundup'; headline: string; gist: string; overview: ReaderRoundupOverview }
+  | { kind: 'alerts'; headline: string; gist: string; overview: ReaderAlertsOverview };
 
 export interface SummaryUsage {
   inputTokens: number;

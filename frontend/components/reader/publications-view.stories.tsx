@@ -1,5 +1,6 @@
 import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
+import { expect, userEvent, within } from 'storybook/test';
 
 import { makeReaderCandidate, makeReaderPublicationListItem } from '@/lib/reader/fixtures';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
@@ -8,8 +9,9 @@ import { ToastProvider } from '@/lib/stores/toast-store';
 import { PublicationsView } from './publications-view';
 
 /**
- * The publications roster: an enabled and a paused card plus the candidates section, and both
- * of the surface's empty states.
+ * The publications roster: an enabled and a paused card plus the candidates section, both of the
+ * surface's empty states, a card of each summary kind, and the two pickers a kind is chosen with —
+ * the card's chip and a candidate's "Add as".
  */
 
 /** The instant every card's date is read against, as `reading-list-view.stories.tsx` pins its own. */
@@ -104,4 +106,65 @@ export const EmptyCandidates: Story = {
     ),
   ],
   parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
+};
+
+/** One card of each summary kind: the muted chip names it, Essay by default. */
+const KINDED = [
+  makeReaderPublicationListItem('Import AI', {
+    handle: 'importai@substack.com',
+    source: 'auto',
+    summary_kind: 'roundup',
+    last_post_at: '2026-09-17T12:00:00.000Z',
+  }),
+  makeReaderPublicationListItem('Patagonia', {
+    handle: 'news@patagonia.com',
+    source: 'owner',
+    summary_kind: 'alerts',
+    last_post_at: '2026-09-18T08:00:00.000Z',
+  }),
+  makeReaderPublicationListItem('Second Thoughts', {
+    handle: 'secondthoughts@substack.com',
+    source: 'auto',
+    last_post_at: '2026-09-16T12:00:00.000Z',
+  }),
+];
+
+const withKinded: Decorator = (Story) => (
+  <ToastProvider>
+    <ReaderSettingsProvider initialPublications={KINDED} initialCandidates={CANDIDATES.slice(1)}>
+      <Story />
+    </ReaderSettingsProvider>
+  </ToastProvider>
+);
+
+/** A card of each kind — Roundup, Alerts, and an Essay by default. */
+export const EachKind: Story = {
+  decorators: [withKinded],
+  parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
+};
+
+/** A card's kind chip open: each kind with the question it asks, the current one ticked. */
+export const KindPickerOpen: Story = {
+  decorators: [withKinded],
+  parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole('button', { name: 'Summary type for Import AI: Roundup' }),
+    );
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(await body.findByText('Highlights, and the links worth reading')).toBeVisible();
+  },
+};
+
+/** A candidate's "Add as" open: a sender is never put on the roster without a kind. */
+export const AddAsOpen: Story = {
+  decorators: [withKinded],
+  parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Add Amazon.com as…' }));
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(await body.findByRole('menuitem', { name: /^Alerts/ })).toBeVisible();
+  },
 };

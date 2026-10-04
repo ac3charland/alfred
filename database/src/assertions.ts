@@ -4582,6 +4582,71 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const readerSummaryKindsResult = await attempt(
+    'summary kinds: a publication is an essay by default, both kind columns refuse an unknown ' +
+      'kind, a post’s may be null, and the recreated v_reader_publications carries the kind and ' +
+      'is still readable as authenticated (ALF-322)',
+    async () => {
+      const { rows } = await client.query<{ id: string; summary_kind: string }>(
+        `insert into reader_publications (handle, name, source)
+           values ('kinds-test@example.com', 'Kinds Test', 'owner') returning id, summary_kind`,
+      );
+      const publicationId = rows[0]?.id;
+      if (!publicationId) throw new Error('could not seed the publication');
+      if (rows[0]?.summary_kind !== 'essay') {
+        throw new Error(`a new publication reads ${String(rows[0]?.summary_kind)}, not essay`);
+      }
+
+      await client.query(`update reader_publications set summary_kind = 'alerts' where id = $1`, [
+        publicationId,
+      ]);
+      try {
+        await client.query(`update reader_publications set summary_kind = 'promo' where id = $1`, [
+          publicationId,
+        ]);
+        throw new Error('a publication accepted an unknown kind');
+      } catch (error) {
+        const constraint = (error as { constraint?: unknown }).constraint;
+        if (constraint !== 'reader_publications_summary_kind_valid') throw error;
+      }
+
+      const unsummarised = await readerInsertRefusal(
+        `publication_id, account_key, gmail_message_id`,
+        `$1, 'gmail-personal', 'kinds-null'`,
+        [publicationId],
+      );
+      if (unsummarised !== ACCEPTED) throw new Error(`a post with no kind was ${unsummarised}`);
+      for (const kind of ['essay', 'roundup', 'alerts']) {
+        const stamped = await readerInsertRefusal(
+          `publication_id, account_key, gmail_message_id, summary_kind`,
+          `$1, 'gmail-personal', 'kinds-${kind}', '${kind}'`,
+          [publicationId],
+        );
+        if (stamped !== ACCEPTED) throw new Error(`a post stamped ${kind} was ${stamped}`);
+      }
+      const unknown = await readerInsertRefusal(
+        `publication_id, account_key, gmail_message_id, summary_kind`,
+        `$1, 'gmail-personal', 'kinds-promo', 'promo'`,
+        [publicationId],
+      );
+      if (unknown !== 'reader_posts_summary_kind_valid') {
+        throw new Error(`a post stamped with an unknown kind was ${unknown}`);
+      }
+
+      const { rows: viewed } = await client.query<{ summary_kind: string; last_post_at: unknown }>(
+        `select summary_kind, last_post_at from v_reader_publications where id = $1`,
+        [publicationId],
+      );
+      if (viewed[0]?.summary_kind !== 'alerts') throw new Error('the view dropped the kind');
+      if (viewed[0].last_post_at === null) throw new Error('the view lost last_post_at');
+
+      await asRole(client, 'authenticated', () =>
+        client.query(`select summary_kind from v_reader_publications limit 1`),
+      );
+      return 'essay by default; unknown kinds refused on both tables; the view carries the kind';
+    },
+  );
+
   const readerSourceIdentityResult = await attempt(
     'reader_posts_source_identity: a newsletter needs its whole mail identity, an Instapaper ' +
       'article needs its bookmark id and none of the mail identity, and may carry a ' +
@@ -5947,6 +6012,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     readerPublicationsViewResult,
     readerHealthCeilingColumnsResult,
     readerSourceDefaultResult,
+    readerSummaryKindsResult,
     readerSourceIdentityResult,
     readerInstapaperKeyResult,
     readerInstapaperHealthResult,
