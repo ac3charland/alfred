@@ -137,6 +137,15 @@ update reader_publications set enabled = false where handle = 'news@example.com'
   call still can. The actual guard is that `anon` has no RLS policy on `reader_posts` and
   `authenticated` is the owner's own session, not an arbitrary caller.
 
+### `0038_reader_instapaper.sql` — sending a post to Instapaper (ALF-238)
+
+- **`reader_posts.html`** — the email's decoded `text/html` part, raw, written at intake only when
+  the HTML produced the stored `text` and fits the Worker's ceiling. The send route's body; never
+  in the list payload. Null for older posts, which send their `text` as paragraphs instead.
+- **`reader_posts.instapaper_sent_at`** / **`instapaper_bookmark_id`** — the last successful send
+  and the bookmark id Instapaper answered with (the identity a later Instapaper sync keys on).
+- **`reader_sweep_text`** — now nulls `html` in the same statement as `text`.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`
