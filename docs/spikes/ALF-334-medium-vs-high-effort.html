@@ -1,17 +1,9 @@
 <!DOCTYPE html>
-<!-- guide: The house scaffold for spike findings. Copy it to docs/spikes/<REF>-<short-slug>.html.
-     Two readers, split at the fold: #brief answers the question for the human — ≤ 300 words of prose, the
-     figure uncounted; #detail holds the evidence for whoever builds on it, freeform.
-     Keep #brief's ids and the fold. Stylesheet sections 1–3 are the house stylesheet, shared verbatim with
-     the refinement spec template: never edit them here. One file: CSS stays inline, no build step, no
-     external dependency. It must read completely with scripting off. Placeholders are [bracketed]: replace every one. Delete every guide: comment
-     before committing. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>[REF] — [spike title]</title><!-- guide: the same text as the h1 -->
-<style>
+<title>ALF-334 — When is high effort worth it over medium?</title><style>
 /* ═══════════════════════════════════════════════════════════════════════
    TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
    oxblood, brass) and one light (alfred's teal, the Lit glow); every other
@@ -160,7 +152,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .detail aside{margin:0 0 .9rem;padding:.75rem 1rem;background:var(--wash);border-left:3px solid var(--rule)}
 .detail aside>h3:first-child{margin-top:0}
 .detail aside>:last-child{margin-bottom:0}
-/* guide: Add this document's own rules here, if it needs any. */
+.dg .v-ok rect{fill:color-mix(in srgb,var(--teal) 28%,var(--wash));stroke:var(--teal)}
+.dg .v-no rect{fill:color-mix(in srgb,var(--oxblood) 18%,var(--wash));stroke:var(--oxblood)}
 
 </style>
 </head>
@@ -168,89 +161,219 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 
 <main class="page">
 
-<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
-<!-- guide: The brief: the answer, for the human. ≤ 300 words of prose across #answer and #landed, not
-     counting #diagram. A reader who stops at the fold knows what you'd do and why. -->
 <section id="brief" data-fold="above">
 
 <header class="mast" id="head">
-  <!-- guide: #head, required. No review stamp: findings stay readable long after their PR merges. The h1
-       reads [REF] — [spike title]: the ref's prefix goes in <small>, its number in the numeral. -->
   <div class="mast-bar">
     <span class="wordmark">alfred</span>
-    <span>[Project] · Spike findings</span>
+    <span>Code · Spike findings</span>
   </div>
-  <h1><span class="ref"><small>[PREFIX]<span class="hy">-</span></small>[N]</span><span class="sep"> — </span><span class="ttl">[spike title]</span></h1>
-  <!-- guide: #answer, required. The answer to the spike's question: one sentence, ≤ 30 words. -->
-  <p class="change" id="answer">[…]</p>
-  <!-- guide: #revised, after a review round; delete it on a first draft. The latest round only, ≤ 3
-       clauses — "Revised YYYY-MM-DD: …". Replace it each round; never accumulate. -->
-  <p class="revised" id="revised">[…]</p>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>334</span><span class="sep"> — </span><span class="ttl">When is high effort worth it over medium?</span></h1>
+  <p class="change" id="answer">Almost never on its own. Medium matched high on four of five stories. On the one it lost, a concurrency bug, high also failed: of five runs each, high shipped two and medium one.</p>
 </header>
 
-<!-- guide: #landed, required. The recommendation first, then what you'd do next — follow-up is the human's
-     call, so name the story you'd cut, don't cut it. Optionally the key findings as a list: each point in
-     the text column, its evidence in the margin, linking the section below that carries it. -->
 <section class="sec" id="landed">
   <h2 class="side">Where we landed</h2>
-  <p>[…]</p>
+  <p>Keep Opus 5.5 at medium for bugs and spec stories. Bump to high only for a ticket about ordering between several writers: optimistic UI, RPC replies and realtime echoes racing each other. Even then, don’t count on high: on ALF-250 it failed two runs of five, and medium failed four. What the passing runs shared wasn’t effort but design: one guard covering every writer that touched the rank. Two of the three also wrote a seeded fuzz test. Next I’d trial, on that class of ticket only, a launch-prompt clause asking for a fuzz test over the interleavings. It costs less than high effort and aims at what actually separated the runs.</p>
   <ol class="list">
-    <li><h3>[finding]</h3>
-      <p class="pick">[what you found, ≤ 15 words]</p>
-      <p class="why">[its evidence, in a phrase — <a href="#why">the section below that carries it</a>]</p></li>
+    <li><h3>Ladder</h3>
+      <p class="pick">Three hidden-cause bugs: medium equal, and preferred in 4 of 5 verdicts.</p>
+      <p class="why">Hidden tests pass in both arms; every judge said both ship — <a href="#ladder">§2</a></p></li>
+    <li><h3>Phase 1 hit</h3>
+      <p class="pick">ALF-250 r1: 4 of 4 judges said medium not ready, high ships.</p>
+      <p class="why">Medium’s fix left permanent ties that base heals — <a href="#phase1">§3</a></p></li>
+    <li><h3>Phase 2</h3>
+      <p class="pick">Sporadic, not consistent. Medium shipped 1 of 5, high 2 of 5.</p>
+      <p class="why">High failed three runs too; one-sided Fisher p ≈ 0.50 — <a href="#phase2">§4</a></p></li>
+    <li><h3>What separated</h3>
+      <p class="pick">Design, not effort: one queue over every rank writer.</p>
+      <p class="why">5 of 7 failing runs, at either level, left jumps outside it — <a href="#separated">§5</a></p></li>
+    <li><h3>Cost</h3>
+      <p class="pick">High cost 1.2–2× medium per run, about 1.7× on ALF-250.</p>
+      <p class="why">get_session totals; spike all-in ≈ $245 — <a href="#cost">§8</a></p></li>
   </ol>
 </section>
 
-<!-- guide: #diagram, optional. One figure when a picture carries the answer faster than prose — a flow, an
-     architecture, a comparison — with a one-sentence caption. An SVG diagram keeps to ≤ 7 nodes and is styled
-     with .dg: g.new marks what the recommendation adds, path.hot the flow it changes, text.s a sublabel,
-     text.lb an edge label. -->
-<section id="diagram" aria-label="How it fits">
+<section id="diagram" aria-label="Ship verdicts by run">
   <figure class="fig">
-    <svg class="dg" viewBox="[…]" role="img" aria-label="[what the diagram shows]">[…]</svg>
-    <figcaption><b>Fig. 1.</b>[caption]</figcaption>
+    <svg class="dg" viewBox="0 0 560 196" role="img" aria-label="Absolute judge verdict per ALF-250 run. Medium: r1 not ready, r2 not ready, r3 not ready, r4 not ready, r5 ships. High: r1 ships, r2 ships, r3 not ready, r4 not ready, r5 not ready. On the three earlier rungs and ALF-307, both levels ship in every run.">
+      <text x="0" y="14">ALF-250 · one verdict per fresh run</text>
+      <text class="s" x="0" y="52">medium</text>
+      <g class="v-no"><rect x="90" y="36" width="60" height="24"/></g><text class="lb" x="104" y="53">r1 ✗</text>
+      <g class="v-no"><rect x="160" y="36" width="60" height="24"/></g><text class="lb" x="174" y="53">r2 ✗</text>
+      <g class="v-no"><rect x="230" y="36" width="60" height="24"/></g><text class="lb" x="244" y="53">r3 ✗</text>
+      <g class="v-no"><rect x="300" y="36" width="60" height="24"/></g><text class="lb" x="314" y="53">r4 ✗</text>
+      <g class="v-ok"><rect x="370" y="36" width="60" height="24"/></g><text class="lb" x="384" y="53">r5 ✓</text>
+      <text class="s" x="450" y="53">1 of 5</text>
+      <text class="s" x="0" y="96">high</text>
+      <g class="v-ok"><rect x="90" y="80" width="60" height="24"/></g><text class="lb" x="104" y="97">r1 ✓</text>
+      <g class="v-ok"><rect x="160" y="80" width="60" height="24"/></g><text class="lb" x="174" y="97">r2 ✓</text>
+      <g class="v-no"><rect x="230" y="80" width="60" height="24"/></g><text class="lb" x="244" y="97">r3 ✗</text>
+      <g class="v-no"><rect x="300" y="80" width="60" height="24"/></g><text class="lb" x="314" y="97">r4 ✗</text>
+      <g class="v-no"><rect x="370" y="80" width="60" height="24"/></g><text class="lb" x="384" y="97">r5 ✗</text>
+      <text class="s" x="450" y="97">2 of 5</text>
+      <text x="0" y="150">ALF-216 · ALF-314 · ALF-277 · ALF-307</text>
+      <text class="s" x="0" y="176">both levels ship in every run judged (one run each); judges preferred medium on the three bugs, high on ALF-307</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b> ✓ ships, ✗ not ready, from one blind Opus judge reading each patch alone. The rule set before Phase 2 called a failure consistent only at ≥ 4 of 5 each way.</figcaption>
   </figure>
 </section>
 
 </section>
 
-<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
 <div class="fold" id="fold" role="separator" aria-label="The fold">
   <h2>The evidence</h2>
   <p>Everything below is for whoever builds on this. Acting on the answer needs only what’s above.</p>
 </div>
 
-<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
-<!-- guide: Freeform: no required section, order or budget but #sources — shape it the way the question
-     reads best. The parts below are the shape past findings converged on: rename, merge, split, reorder or
-     delete them, and add your own. Each section takes an h2 and numbers itself. -->
 <section class="detail" id="detail" data-fold="below">
 
-<section id="why">
-  <h2>Why</h2>
-  <p>[the evidence that got you there]</p>
+<section id="experiment">
+  <h2>The experiment</h2>
+  <p>The ticket set the design: <b>Phase 1</b> ran medium against high on stories of rising difficulty until blind judges found one where medium wasn’t ready to ship and high was. <b>Phase 2</b> reran that story to see whether the failure was consistent or sporadic. Before anything ran, the owner set three things:</p>
+  <ul>
+    <li><b>Budget.</b> $500+ for the arms at first, lowered to about $300 all-in once Phase 2 was nearly done. The spike finished at about $245.</li>
+    <li><b>Ladder.</b> I picked it, weighted toward bugs: hidden causes, same-cause siblings and a misleading symptom, rather than size. ALF-312 had already shown a 108-file story tie, so size alone doesn’t separate the levels. Each rung is a bug whose merged fix has a behavioural regression test, so “ready to ship” has an objective check as well as judges.</li>
+    <li><b>Stop rule.</b> If no rung diverged, stop and report.</li>
+  </ul>
+  <h3>Held equal across arms</h3>
+  <ul>
+    <li><b>Model and base.</b> Opus 5.5 on both arms. Each arm starts from main at its original session’s start, plus one commit setting <code>effortLevel</code> in <code>.claude/settings.json</code>, the route ALF-312 verified. Every arm’s report includes <code>CLAUDE_EFFORT</code> and the per-entry <code>"effort"</code> counts from its transcripts, main and subagents. All of them ran at their pinned level.</li>
+    <li><b>Prompt.</b> The original launch prompt verbatim, behind one shared preamble: push to <code>alf-334/replay-*</code>, no PR, nobody answers questions, don’t read the merged solution, report to the parent. ALF-277 and ALF-250 had owner answers mid-session that carried facts the agent needed: ALF-277’s console stack trace, transcribed from two screenshots, and ALF-250’s symptoms. Those went into the prompt up front for both arms. Procedural owner turns were dropped.</li>
+    <li><b>Environment.</b> The same cloud environment for every arm.</li>
+  </ul>
+  <h3>Grading</h3>
+  <ul>
+    <li><b>Hidden tests.</b> The merged fix’s regression tests, dropped into each arm and run through <code>npm run test</code>, or Playwright for ALF-216. Each was checked to fail on the base.</li>
+    <li><b>Blind judges.</b> Patches masked and given neutral names, with images, demos and skill notes excluded. Phase 1 used pairwise judges: two families on the hard rung, each in both orders; on the easy rungs a screening pair of one Opus and one Sonnet in opposite orders. Phase 2 used one absolute Opus judge per patch, blind to level. The r1 arms were re-judged in that mode too, so all ten ALF-250 verdicts come from the same instrument.</li>
+    <li><b>Probe suite (ALF-250).</b> Ten standalone end-state tests the Phase 1 judges wrote: after the interleaving settles, the store’s ranks equal the server’s, with no tie. Plus two transient checks. I ran all twelve against base and every arm.</li>
+  </ul>
 </section>
 
-<section id="shape">
-  <h2>Technical shape</h2>
-  <p>[interfaces, tables, a diagram, the files it touches — enough for a later spec to expand, without becoming it]</p>
+<section id="ladder">
+  <h2>Phase 1: the ladder</h2>
+  <div class="scroll"><table>
+    <tr><th>Rung</th><th>Why it might separate</th><th>Hidden test</th><th>Judges</th></tr>
+    <tr><td>ALF-216 · bug, PR #417</td><td>A drop treated the classifier’s label as the task’s location. The resolver itself was correct; the call site was wrong.</td><td>E2E fails on base; both arms 5/5</td><td>Opus: both ship, production code identical bar a parameter name</td></tr>
+    <tr><td>ALF-314 · bug, PR #436</td><td>Same-cause siblings: three hand-rolled rollups, and an existing test pinning the wrong behaviour.</td><td>3 fail on base; both arms pass</td><td>Opus and Sonnet: both ship, both prefer medium’s smaller patch</td></tr>
+    <tr><td>ALF-277 · bug, PR #387</td><td>Misleading symptom: the owner suspected a Vercel deploy. The real cause was Realtime omitting unchanged TOASTed columns.</td><td>2 fail on base, including the epics sibling; both arms pass</td><td>Opus and Sonnet: both ship, both prefer medium</td></tr>
+    <tr><td><b>ALF-250 · bug, PR #416</b></td><td>Several interacting causes across SQL, the client store and Realtime, with “fuzz and fix whatever you find” in the owner’s words. The original took about 14 h and three review rounds.</td><td>Design-coupled; see §3</td><td><b>4 of 4: medium not ready, high ships</b></td></tr>
+  </table></div>
+  <p>On ALF-277, both arms ignored the owner’s deploy theory and found the TOAST cause from the stack trace. High also proved it with Postgres <code>test_decoding</code>; medium proved it with a realtime stub in Playwright. Both fixed the epics handler too, which is the sibling the original also fixed. With no difference on the easy rungs, ALF-250 was launched in parallel to save wall-clock time. ALF-307, a spec-built story, ran alongside as a different lane (§6).</p>
 </section>
 
-<!-- guide: One aside per appealing option a future reader would otherwise re-investigate, and what ruled it out. -->
-<section id="alternatives">
-  <h2>Alternatives we’re not taking</h2>
-  <aside><h3>[option]</h3><p>[what ruled it out]</p></aside>
+<section id="phase1">
+  <h2>Phase 1 hit: ALF-250 r1</h2>
+  <p>Both r1 arms replaced the sentinel swap with one locked or single-write UPDATE and serialized the swap RPCs. They split on the client:</p>
+  <ul>
+    <li><b>Medium.</b> It skipped a reply whose priority equalled its prediction, and swallowed realtime echoes that matched a ledger of its own writes. It covered swaps only. A jump to top or bottom followed by a quick nudge ends in a <b>permanent tie</b>. Base heals that same sequence: the swap’s reply lands last.</li>
+    <li><b>High.</b> It stamped every optimistic write, swaps and both jump kinds alike. It ignored server ranks for any row with an unanswered stamp, re-read ranks after a failure, and flushed queued writes on unmount.</li>
+  </ul>
+  <div class="scroll"><table class="cost">
+    <tr><th>Check</th><th class="num">Base</th><th class="num">Medium r1</th><th class="num">High r1</th></tr>
+    <tr><td>Probe suite, lasting (of 10)</td><td class="num">9</td><td class="num">1</td><td class="num">10</td></tr>
+    <tr><td>Regressions against base</td><td class="num">—</td><td class="num">8</td><td class="num">0</td></tr>
+    <tr><td>Pairwise judges: Opus and Sonnet, each in both orders</td><td class="num">—</td><td class="num">not ready ×4</td><td class="num">ships ×4</td></tr>
+    <tr><td>Merged tests, 9 that fail on base</td><td class="num">1 pass</td><td class="num">4 pass</td><td class="num">4 pass</td></tr>
+  </table></div>
+  <p>Both Opus judges were highly confident medium wasn’t ready, and each independently reproduced the jump-then-nudge tie. The merged tests don’t help here: they encode the original’s revision protocol, so each arm fails five, and a different five.</p>
+</section>
+
+<section id="phase2">
+  <h2>Phase 2: four more runs each</h2>
+  <div class="scroll"><table class="cost">
+    <tr><th>Run</th><th>Probes, lasting / transient</th><th>Absolute judge</th><th>Blocker, and whether one tab can reach it</th></tr>
+    <tr><th colspan="4">medium</th></tr>
+    <tr><td>r1</td><td>1/10 · 2/2</td><td>not ready, high</td><td>Jump then nudge leaves a lasting tie. Single tab.</td></tr>
+    <tr><td>r2</td><td>10/10 · 2/2</td><td>not ready, medium</td><td>A lost own echo then a foreign write is dropped. Needs a 2nd device and a dropped socket.</td></tr>
+    <tr><td>r3</td><td>9/10 · 2/2</td><td>not ready, medium</td><td>A jump while queued swaps drain is overwritten. Single tab.</td></tr>
+    <tr><td>r4</td><td>9/10 · 0/2</td><td>not ready, high</td><td>The queue jams for good: <code>ref ??= asyncDrain()</code> stores an already-settled promise. Single tab. I verified this in the code.</td></tr>
+    <tr><td>r5</td><td>n/a: store API renamed</td><td><b>ships</b>, medium</td><td>Only rare cases: a respace during a jump, the deploy-order window, a 15 s timeout.</td></tr>
+    <tr><th colspan="4">high</th></tr>
+    <tr><td>r1</td><td>10/10 · 0/2</td><td><b>ships</b>, medium-high</td><td>Only rare multi-tab cases.</td></tr>
+    <tr><td>r2</td><td>10/10 · 2/2</td><td><b>ships</b>, medium</td><td>A lost own echo then a foreign write, judged rare. This is the same class as medium r2’s blocker.</td></tr>
+    <tr><td>r3</td><td>6/10 · 2/2</td><td>not ready, medium</td><td>Jump then nudge with a late jump echo leaves a lasting tie. Single tab. It is medium r1’s flaw.</td></tr>
+    <tr><td>r4</td><td>9/10 · 2/2</td><td>not ready, medium</td><td>Two bursts whose HTTP replies arrive in reverse order leave a lasting tie. Single tab, but needs replies to reorder.</td></tr>
+    <tr><td>r5</td><td>9/10 · 2/2</td><td>not ready, medium</td><td>Jumps bypass its click-order queue, so a jump then a nudge lands in the wrong order for good. Single tab; base has it too.</td></tr>
+  </table></div>
+  <ul>
+    <li><b>Against the pre-set rule:</b> consistent needs medium not ready in ≥ 4 of 5 <i>and</i> high shipping in ≥ 4 of 5. Medium cleared its half (4 of 5). High didn’t: it failed r3, r4 and r5. So the r1 split was <b>sporadic</b>. At this difficulty, neither level reliably ships in one unattended session.</li>
+    <li><b>The difference:</b> medium 1 of 5 against high 2 of 5. One-sided Fisher exact, p ≈ 0.50. That’s a hint that high helps, not a result.</li>
+    <li><b>A judge inconsistency:</b> medium r2 failed, and high r2 shipped, over the same class of defect (a lost echo followed by another device’s write). Different judges weighted the same rare case differently. Under one uniform rule, blocking only on a lasting defect a single tab can reach, medium ships 2 of 5 (r2, r5) and high 2 of 5 (r1, r2): no difference at all.</li>
+    <li><b>The probes are necessary but not sufficient:</b> medium r4 passed 9 of 10 and still jammed its queue. The probes were written against r1’s flaws, so they can’t see a new failure class. A judge reading each patch is still needed.</li>
+  </ul>
+</section>
+
+<section id="separated">
+  <h2>What separated the shipping runs</h2>
+  <p>I read every arm’s report and diff. The three that shipped (high r1, high r2, medium r5) share one trait. <b>Every rank writer goes through one guard</b>: nudges, top and bottom of Backlog, top and bottom of project, and the story modal’s controls. That guard was a stamp or token per optimistic write, or a single store-owned queue. Five of the seven failing runs left jumps outside it (medium r1 and r3, high r3, r4 and r5). Of the other two, medium r2 matched echoes by value with a ledger that leaks when an echo is lost, and medium r4 jammed its own queue on a promise bug. Two of the three passing runs also wrote a <b>seeded fuzz test</b> of the real list against a simulated server (high r2: 24 of 24 seeds failed on the old store; medium r5: 300 seeds swept). One failing run, medium r2, passed every probe and had no fuzz test. Its blocker needed a second device, which a single-tab fuzz wouldn’t model either.</p>
+  <p>Effort made that design more likely: two of five at high against one of five at medium. But it didn’t make it reliable. Both levels produced the swaps-only design (medium r1, high r3 and r5) and the full-coverage design (high r1 and r2, medium r5). The original session needed three review rounds, owner steering and a property test to get there.</p>
+</section>
+
+<section id="alf307">
+  <h2>ALF-307: a spec-built story</h2>
+  <p>ALF-307 (PR #445) collapses FYI shelf threads into conversations. The original session had no owner turns, and its review caught a blocking gap in the spec itself: threads cut at the page edge (51f5595).</p>
+  <ul>
+    <li><b>Both arms</b> caught that same gap in their own review round and fixed it, knowingly deviating from the spec’s D7. Both pass the original’s completion tests (7 of 7).</li>
+    <li><b>Judges.</b> Opus (A/B) and Sonnet (B/A) both say both arms ship, and both prefer high. High keeps a conversation open when its selected message is clicked shut, or when a message other than the oldest is promoted; that’s the D9 behaviour row. Medium collapses it in both cases. The original only fixed that after its PR (14ca72f).</li>
+    <li><b>Cost.</b> Medium $9.22, high $15.57.</li>
+  </ul>
+  <p>So on a spec story high bought one UX nuance a reviewer would catch, at 1.7× the cost.</p>
+</section>
+
+<section id="setup">
+  <h2>Running replays: what broke</h2>
+  <ul>
+    <li><b>Auto mode can refuse <code>git update-ref refs/remotes/origin/main</code></b>, the preamble rule ALF-312 used. One arm in eight (ALF-314 high) was refused, couldn’t push, and correctly refused the parent’s suggested workaround. Later arms used <code>git fetch origin &lt;own base branch&gt;:refs/remotes/origin/main</code>, plus a fallback: paste the diff into the report. Its diff came back that way and was graded uncommitted.</li>
+    <li><b>Turbopack rejects a symlinked <code>node_modules</code></b> (“points out of the filesystem root”). Jest is fine with a symlink, but a Playwright run in a scratch worktree needs a real tree; <code>cp -al</code> hard links work.</li>
+    <li><b>A pushed base commit triggers the pre-push gate.</b> Pushing an old main commit to a new branch name skips the package suites only if HEAD is on a docs-only branch. So I committed the draft findings first.</li>
+    <li><b>The usage limit.</b> The 5-hour window stopped all ten in-flight arms at once. A <code>send_message</code> resume worked once it reset. Two containers then restarted mid-push and lost their background gate; they idle until the parent nudges them.</li>
+    <li><b>Judges sharing a scratch directory.</b> One judge deleted another’s worktree with a glob. Give each judge a path containing its own id.</li>
+  </ul>
 </section>
 
 <section id="cost">
-  <h2>Cost &amp; open questions</h2>
-  <p>[effort, money, risk; what’s genuinely still unknown]</p>
+  <h2>Cost</h2>
+  <div class="scroll"><table class="cost">
+    <tr><th>Story</th><th class="num">Medium</th><th class="num">High</th><th class="num">Medium ÷ high</th></tr>
+    <tr><td>ALF-216</td><td class="num">$3.35</td><td class="num">$4.46</td><td class="num">0.75</td></tr>
+    <tr><td>ALF-314</td><td class="num">$2.49</td><td class="num">$4.86</td><td class="num">0.51</td></tr>
+    <tr><td>ALF-277</td><td class="num">$3.53</td><td class="num">$4.26</td><td class="num">0.83</td></tr>
+    <tr><td>ALF-307</td><td class="num">$9.22</td><td class="num">$15.57</td><td class="num">0.59</td></tr>
+    <tr><td>ALF-250, mean of 5 runs</td><td class="num">$6.55</td><td class="num">$11.31</td><td class="num">0.58</td></tr>
+  </table></div>
+  <p>Costs are <code>get_session</code> totals, subagents included. The resumed Phase 2 arms include their post-interruption turns.</p>
+  <ul>
+    <li><b>Spike total:</b> about $160 on arms, plus about $85 in this session for judges, probes and orchestration, so roughly $245 all-in.</li>
+    <li><b>Run-to-run spread:</b> medium ALF-250 runs ranged $3.73–$10.57 and high $8.83–$14.42. The spread within a level is as wide as the gap between levels.</li>
+  </ul>
 </section>
 
-<!-- guide: #sources, required, last. Real links, and the files and commands you actually looked at. -->
+<section id="alternatives">
+  <h2>Alternatives we’re not taking</h2>
+  <aside><h3>Make high the default “to be safe”</h3><p>On four of five stories it bought nothing a judge would block on, at 1.2–2× the cost. On the fifth it failed two runs of five as well.</p></aside>
+  <aside><h3>Climb further, to xhigh, on concurrency tickets</h3><p>Untested. ALF-312 found xhigh bought breadth, not correctness. Here the failures came from design choices that both levels made. A process change that forces every interleaving to be tested (fuzz, a second review round) targets that more directly.</p></aside>
+  <aside><h3>More reruns for a tighter interval</h3><p>A 20-point gap needs about 80 runs per arm (ALF-283). The ledger trial gets those from ordinary launches, and the owner capped this spike at about $300.</p></aside>
+</section>
+
+<section id="open">
+  <h2>Open questions</h2>
+  <ul>
+    <li>Does a launch-prompt clause asking for a seeded fuzz or property test lift concurrency tickets at medium? The correlation here is 2 of 3 passing runs against 0 of 7 failing ones, and it is untested as an intervention.</li>
+    <li>How noisy is a single absolute judge? Same-class defects drew different verdicts. A two-judge panel per patch, with a tiered rubric, would firm that up.</li>
+    <li>Refinement and spikes at medium are still unmeasured, as ALF-312 noted.</li>
+  </ul>
+</section>
+
 <section id="sources">
   <h2>Sources</h2>
-  <ol><li>[…]</li></ol>
+  <ol>
+    <li><b>Original PRs.</b> #417 (ALF-216), #436 (ALF-314), #387 (ALF-277), #416 (ALF-250), #445 (ALF-307). Launch prompts are from each session’s first user event (<code>list_events</code>/<code>get_event</code>). ALF-277’s console screenshots are from event 57f0844d.</li>
+    <li><b>Bases.</b> fa207ed, c912940, 6bea468, 9372104 and 2bc74c8, found with <code>git log --first-parent origin/main --until=&lt;created_at&gt; -1</code>. Effort commits are on <code>alf-334/base-{216,314,277,250,307}-{medium,high}</code>.</li>
+    <li><b>Arms.</b> Branches <code>alf-334/replay-&lt;ref&gt;-&lt;level&gt;-r&lt;n&gt;</code>. Two never pushed and were graded from the diff they pasted into their report: ALF-314 high r1 (auto mode) and ALF-250 high r5 (its pre-push gate was killed by container restarts). Sessions: ALF-250 r1 session_01Q68nvdUW3JvHg7557LpZZj / session_01QJcSSh2kpvRWg6LxgtULBh; r2–r5 medium session_01DxZ1GybJnsZv3mCabNDCy2, session_01LmVjweoQJHa437eUsVPacN, session_01XyLCCB1pLmNzBwJFqYLtjN, session_011m9m6p6uvbKjpDNsZ2NHC5; high session_01NPxKc7snjYPJXH4GDubrGo, session_018TmKfTSDxT2VKTTHNaiBBB, session_01QCevUWmg9Q1DgHu2dySAdv, session_013J5MopnLUQdgyVif44Kvw8.</li>
+    <li><b>Hidden tests.</b> From 99f6a02 (<code>e2e/drag-to-folder.spec.ts</code>), 1a54484 (<code>lib/tasks/task-sort.test.ts</code>), e1dd7f8 (<code>lib/stores/code-store.test.tsx</code>), 73a75fa (<code>components/code/backlog.test.tsx -t ALF-250</code>), 08142b6 (<code>lib/data/comms.test.ts</code>, <code>comms-queue-view.test.tsx</code>). Each was run as a separate <code>*.hidden.test.*</code> file through <code>npm run test -w frontend</code> or <code>npm run test:e2e -w frontend</code>.</li>
+    <li><b>Read.</b> <code>.claude/skills/{spike,llm-evaluation}/</code> including <code>references/replay.md</code>; <code>docs/spikes/ALF-312-opus-effort-levels.html</code> and <code>ALF-283-evaluating-coding-sessions.html</code>; <code>frontend/lib/stores/code-store.tsx</code> on the medium r4 branch (lines 756–801) to verify the queue jam; <code>tools/check-scope/src/cli.ts</code> for the docs-only push skip.</li>
+  </ol>
 </section>
 
 </section>
