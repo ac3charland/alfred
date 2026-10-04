@@ -115,8 +115,12 @@ Realtime subscription exactly when that stops being true. Three do:
 
 `patchStory` / the `patch` reducer are keyed by id and a no-op when absent, so a change for an
 unknown/removed row is ignored; and an echo of the user's own optimistic write re-applies
-identical values, so it's **idempotent** — no self-write filtering. Folders have a single browser
-writer and stay pure seed-once.
+identical values, so it's **idempotent** — no self-write filtering. **That only holds for a field
+written once.** A field the user re-edits in rapid succession (the Backlog `priority` chevrons) gets
+an earlier write's echo — or an earlier commit's answer — AFTER a newer optimistic value, and
+applying it snaps the row back. Such a field needs per-change tokens, own-echo matching and
+serialized commits: `PriorityLedger` (`lib/stores/priority-ledger.ts`, ALF-250). Folders have a
+single browser writer and stay pure seed-once.
 
 The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
 suite gates, not in branches inside the subscription callback.
