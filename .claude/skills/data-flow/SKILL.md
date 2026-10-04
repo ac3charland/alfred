@@ -267,9 +267,10 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   It's one `swap_code_priority` RPC (not two PATCHes) that exchanges whatever ranks the rows hold
   **when it runs** — so every priority commit (swap, jump, project jump) goes through the store's
   one serial queue, or two overlapping click bursts reach the server out of order and scramble
-  the ranking. While that queue is busy, a response or realtime echo must not overwrite a newer
-  optimistic `priority` (the "snaps back up, then slides down" flicker); only the last write to
-  settle reconciles the rank (ALF-250).
+  the ranking. A stale rank must never overwrite a newer optimistic `priority` (the "snaps back
+  up, then slides down" flicker): only a burst's last response with nothing queued behind it
+  reconciles the rank, and the store counts its own writes' realtime echoes per row and drops
+  their `priority` whenever they land — other writers' ranks still apply (ALF-250).
 - **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
   (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
   status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it
