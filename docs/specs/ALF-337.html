@@ -156,9 +156,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
 #p1:not(:has([value=a]:checked)) [data-opt=a],
 #p1:not(:has([value=b]:checked)) [data-opt=b],
-#p1:not(:has([value=c]:checked)) [data-opt=c],
-#p2:not(:has([value=a]:checked)) [data-opt=a],
-#p2:not(:has([value=b]:checked)) [data-opt=b]{display:none}
+#p1:not(:has([value=c]:checked)) [data-opt=c]{display:none}
 
 /* The app's tokens, from frontend/app/globals.css; row chrome from post-row.styles.ts; verbs from
    button.tsx (outline / ghost, size sm); the field from input.tsx; the toast from toast-viewport.tsx. */
@@ -190,8 +188,6 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 .app .a-input{flex:1;min-width:0;height:36px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--border);background:var(--input);border-radius:4px;font-size:14px;color:var(--fg);box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--teal)}
 .app .a-input.is-empty{color:var(--mutedfg)}
 .app .a-caret{display:inline-block;width:1px;height:16px;background:var(--fg);margin-left:1px}
-.app .a-done{margin-top:6px;font-size:12px;color:var(--mutedfg)}
-.app .a-done b{font-weight:500;color:var(--green)}
 .app .a-toastzone{display:flex;justify-content:flex-end;margin-top:16px}
 .app .a-toast{max-width:20rem;border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:12px 16px;font-size:14px;box-shadow:0 8px 32px 0 rgba(0,0,0,.4)}
 .app .a-toast u{text-underline-offset:2px}
@@ -214,14 +210,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>337</span><span class="sep"> — </span><span class="ttl">Add an Inbox item from a Reader post</span></h1>
   <p class="change" id="change">Every Reader post gets an “Add to Inbox” verb that opens a one-line field under the row; whatever you type lands in the Inbox as a capture linked back to the post.</p>
+  <p class="revised" id="revised">Revised 2026-10-13: D3 → B, a toast linking to the Inbox (your review); Plate II redrawn.</p>
 </header>
 
 <section class="sec" id="decisions">
   <h2 class="side">Decisions</h2>
   <ol class="list">
-    <li data-state="open"><h3><a class="tag" href="#d3">D3</a>How does an add confirm itself?</h3>
-      <p class="pick">A · a quiet “Added to Inbox” line under the field ★ · B · a toast linking to the Inbox</p>
-      <p class="why">A stays in your reading flow; B offers a jump to the Inbox.</p></li>
     <li data-state="proposed"><h3><a class="tag" href="#d1">D1</a>Where does the field live?</h3>
       <p class="pick">A verb in the row’s verb line toggles a field directly beneath it</p>
       <p class="why">Reachable on every row without opening the overview — collapsed, failed, archived.</p></li>
@@ -234,6 +228,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
     <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>Keyboard?</h3>
       <p class="pick"><code>a</code> opens the field on the selected row; Enter adds, Escape closes</p>
       <p class="why">Every other verb has a key; <code>a</code> is free.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>How does an add confirm itself?</h3>
+      <p class="pick">A toast, “Added to Inbox”, linking to the Inbox</p></li>
   </ol>
   <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
 </section>
@@ -276,12 +272,8 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </figure>
 
   <figure class="plate" id="p2">
-    <fieldset class="switch"><legend>D3</legend>
-      <label><input type="radio" name="p2" value="a" checked>A · inline line ★</label>
-      <label><input type="radio" name="p2" value="b">B · toast</label>
-    </fieldset>
     <div class="mount">
-      <div class="app" role="img" aria-label="The row just after an add: the field is cleared and still open, with a confirmation either under it or as a toast">
+      <div class="app" role="img" aria-label="The row just after an add: the field is cleared and still open, with a toast confirming the add">
         <div class="a-row is-sel">
           <div class="a-top"><span class="a-eyebrow">Import AI</span><span class="a-meta">Oct 12 · 9 min read</span></div>
           <div class="a-title">Import AI 412: the eval that wouldn’t transfer</div>
@@ -296,12 +288,11 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
             <span class="a-input is-empty"><span class="a-caret"></span>&nbsp;Something to do about this post…</span>
             <span class="a-verb is-outline is-off">Add</span>
           </div>
-          <div data-opt="a" class="a-done"><b>✓</b> Added to Inbox: “Ask Ana whether our classifier evals have a sim-to-real gap too”</div>
-          <div data-opt="b" class="a-toastzone"><div class="a-toast"><u>Added to Inbox</u></div></div>
+          <div class="a-toastzone"><div class="a-toast"><u>Added to Inbox</u></div></div>
         </div>
       </div>
     </div>
-    <figcaption><b>Plate II.</b>Right after an add the field is cleared and keeps focus for the next one. A names the last item added under the field; B says it in a toast whose text links to the Inbox.</figcaption>
+    <figcaption><b>Plate II.</b>Right after an add the field is cleared and keeps focus for the next one; a toast says “Added to Inbox”, and its text links to the Inbox.</figcaption>
   </figure>
 
   <figure class="plate" id="p3">
@@ -350,8 +341,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
 <section id="decision-records">
   <h2>Decision records</h2>
   <section class="rec" id="d3">
-    <h3><span class="tag">D3</span>How does an add confirm itself? · open</h3>
-    <p>A: a muted line under the field, “✓ Added to Inbox: “&lt;text&gt;””, replaced by each later add and gone when the field closes. B: <code>showToast('Added to Inbox', 'default', '/')</code> — the toast’s text is a link to the Inbox. Recommendation A: the field stays open for a second capture, so the confirmation belongs beside it; toasts stack when several items are added in a row, and the Inbox is one module switch away anyway. Either way, the failure path is the store’s existing toast (D7).</p>
+    <h3><span class="tag">D3</span>How does an add confirm itself? · settled</h3>
+    <p>B, the owner’s pick: once <code>addTask</code> resolves, the field calls <code>showToast('Added to Inbox', 'default', '/')</code>. The toast viewport renders a toast with an <code>href</code> as a <code>ViewLink</code>, so its text navigates to the Inbox and dismisses the toast — the same seam the story-gate toast uses. It fires on success only, never optimistically, so a failed add shows the store’s failure toast alone (D7). Several adds in a row stack one toast each; accepted.</p>
+    <p>Considered: A, a muted “✓ Added to Inbox: “&lt;text&gt;”” line under the field.</p>
   </section>
   <section class="rec" id="d1">
     <h3><span class="tag">D1</span>Where does the field live? · proposed</h3>
@@ -376,7 +368,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </section>
   <section class="rec" id="d7">
     <h4>D7 · Failure restores the draft</h4>
-    <p>The field clears as soon as you submit (optimistic). If <code>addTask</code> rejects, the store has already rolled back and toasted; the field puts the submitted text back if it’s still empty and the field is still open, and shows no confirmation. No second toast from the Reader.</p>
+    <p>The field clears as soon as you submit (optimistic). If <code>addTask</code> rejects, the store has already rolled back and toasted; the field puts the submitted text back if it’s still empty and the field is still open, and the D3 success toast is not shown.</p>
   </section>
   <section class="rec" id="d8">
     <h4>D8 · Notes format</h4>
@@ -384,7 +376,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </section>
   <section class="rec" id="d9">
     <h4>D9 · The field’s state is the row’s own</h4>
-    <p>Open/closed, draft and last-added text are <code>useState</code> in a new <code>ReaderInboxCapture</code> component, not a coordination store: several rows may have it open at once, like the overview. Archiving or sending a row with a draft discards the draft along with the row.</p>
+    <p>Open/closed and the draft are <code>useState</code> in a new <code>ReaderInboxCapture</code> component, not a coordination store: several rows may have it open at once, like the overview. Archiving or sending a row with a draft discards the draft along with the row.</p>
   </section>
 </section>
 
@@ -393,9 +385,9 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <table>
     <tr><th>Input</th><th>Result</th></tr>
     <tr><td>Click “Add to Inbox” or press <code>a</code> on the selected row</td><td>Field opens under the verbs and takes focus; the row becomes selected (as every verb does)</td></tr>
-    <tr><td>Click the verb again, or Escape in the field</td><td>Field closes, draft and confirmation discarded; focus returns to the verb</td></tr>
+    <tr><td>Click the verb again, or Escape in the field</td><td>Field closes, draft discarded; focus returns to the verb</td></tr>
     <tr><td>Blank or whitespace-only text</td><td>Add disabled; Enter does nothing</td></tr>
-    <tr><td>Enter or Add with text</td><td><code>addTask({ text: trimmed, sourceUrl?, notes })</code>; field clears and keeps focus; confirmation per D3</td></tr>
+    <tr><td>Enter or Add with text</td><td><code>addTask({ text: trimmed, sourceUrl?, notes })</code>; field clears and keeps focus; on success a toast “Added to Inbox” linking to <code>/</code> (D3)</td></tr>
     <tr><td>Add fails</td><td>Store rolls back and toasts “Couldn’t add task”; field gets the text back (D7)</td></tr>
     <tr><td>Rapid repeated Enter</td><td>Each non-blank submit is one item; the field is empty after the first, so a double-press can’t duplicate</td></tr>
     <tr><td>Very long text</td><td>Accepted as is (no cap exists on capture titles); the input scrolls horizontally</td></tr>
@@ -434,7 +426,7 @@ export function ReaderInboxCapture(props: {
     <li><code>tasks-store.tsx</code>: add <code>sourceUrl</code>/<code>notes</code> to <code>AddTaskInput</code>; spread them into <code>createInput</code> only when defined (<code>exactOptionalPropertyTypes</code>). Test first in <code>tasks-store.test.tsx</code>.</li>
     <li><code>lib/reader/capture.ts</code> + test: <code>readerCaptureNotes</code> (D8).</li>
     <li><code>lib/reader/hotkeys.ts</code> + test: <code>a → 'capture'</code>.</li>
-    <li><code>components/reader/inbox-capture.tsx</code> (+ any classes in <code>post-row.styles.ts</code>, e.g. <code>captureFieldClass</code>, <code>captureDoneClass</code>): the input (the <code>Input</code> atom), the Add button (<code>Button variant="outline" size="sm"</code>), Enter/Escape handling, draft restore, the D3 confirmation. Check <code>frontend-architecture</code> for an existing single-line submit field before writing one.</li>
+    <li><code>components/reader/inbox-capture.tsx</code> (+ any classes in <code>post-row.styles.ts</code>, e.g. <code>captureFieldClass</code>): the input (the <code>Input</code> atom), the Add button (<code>Button variant="outline" size="sm"</code>), Enter/Escape handling, draft restore, the D3 toast via <code>useToastActions</code>. Check <code>frontend-architecture</code> for an existing single-line submit field before writing one.</li>
     <li><code>post-row.tsx</code>: the verb, the <code>captureOpen</code> state, the <code>'capture'</code> hotkey case, render <code>ReaderInboxCapture</code> under the verb line. <code>post-row.tsx</code> is already ~620 lines; keep the new logic in the new component so the row only gains the verb and one render.</li>
     <li>Storybook: new <code>PostRow</code> stories for “Inbox capture open” and “Inbox capture added”; approve the new baselines and any existing row baselines the new verb moves.</li>
     <li>E2E <code>frontend/e2e/reader-inbox-capture.spec.ts</code>; then the demo doc.</li>
@@ -450,7 +442,7 @@ export function ReaderInboxCapture(props: {
     <li data-trace="D2 P3">Adding creates one unclassified Inbox item whose title is the trimmed text, whose <code>source_url</code> is the row’s open link, and whose notes match D8.</li>
     <li data-trace="D2 P3">A post with no open link creates the item without <code>source_url</code> and with a one-line note.</li>
     <li data-trace="D4 P2">After an add the post stays in the list, the field is empty, still open and focused.</li>
-    <li data-trace="D3 P2">The confirmation follows the chosen D3 option.</li>
+    <li data-trace="D3 P2">A successful add shows one toast, “Added to Inbox”, whose text navigates to the Inbox.</li>
     <li data-trace="D5 P1">On the selected row, <code>a</code> opens and focuses the field and its keycap shows on the verb (md and up); Escape in the field closes it without deselecting the row.</li>
     <li data-trace="D6">The new item appears in the Inbox without a reload.</li>
   </ul>
@@ -458,7 +450,7 @@ export function ReaderInboxCapture(props: {
   <ul class="checks">
     <li data-trace="P1">Blank or whitespace-only text → Add disabled, Enter creates nothing.</li>
     <li data-trace="D5">Typing <code>j</code>, <code>k</code>, <code>e</code>, <code>i</code>, <code>o</code>, <code>v</code> or <code>a</code> in the field → only text, no hotkey fires.</li>
-    <li data-trace="D7 P1">A failed <code>POST /api/items</code> → the text is back in the field, no confirmation, one toast.</li>
+    <li data-trace="D7 P1">A failed <code>POST /api/items</code> → the text is back in the field and only the failure toast shows.</li>
     <li data-trace="impl">Two rows with the field open → each keeps its own draft; adding from one doesn’t touch the other.</li>
   </ul>
 </section>
@@ -467,15 +459,15 @@ export function ReaderInboxCapture(props: {
   <h2>Tests</h2>
   <ul>
     <li><b>Jest:</b> <code>tasks-store.test.tsx</code> — <code>addTask</code> forwards <code>sourceUrl</code>/<code>notes</code> to <code>api.createItem</code> and omits them when absent. <code>capture.test.ts</code> — notes with/without href, Instapaper and research eyebrows. <code>hotkeys.test.ts</code> — <code>a</code>, and modifiers ignored.</li>
-    <li><b>RTL:</b> <code>inbox-capture.test.tsx</code> — blank disables, Enter submits trimmed, clears and keeps focus, confirmation, Escape closes, rejection restores the draft. <code>post-row.test.tsx</code> — verb present in list and archive and on a failed row, toggles <code>aria-expanded</code>, <code>a</code> on the selected row opens it, hotkeys inert while typing, two rows keep separate drafts.</li>
+    <li><b>RTL:</b> <code>inbox-capture.test.tsx</code> — blank disables, Enter submits trimmed, clears and keeps focus, success calls <code>showToast('Added to Inbox', 'default', '/')</code>, Escape closes, rejection restores the draft and shows no success toast. <code>post-row.test.tsx</code> — verb present in list and archive and on a failed row, toggles <code>aria-expanded</code>, <code>a</code> on the selected row opens it, hotkeys inert while typing, two rows keep separate drafts.</li>
     <li><b>Storybook:</b> snapshot stories for the open and just-added states (P1, P2).</li>
-    <li><b>Playwright:</b> <code>reader-inbox-capture.spec.ts</code> — select a post, press <code>a</code>, type, Enter; assert the <code>POST /api/items</code> body (title, <code>item_type</code>, <code>source_url</code>, notes), that the post is still listed, and that the item shows in the Inbox after switching modules.</li>
+    <li><b>Playwright:</b> <code>reader-inbox-capture.spec.ts</code> — select a post, press <code>a</code>, type, Enter; assert the <code>POST /api/items</code> body (title, <code>item_type</code>, <code>source_url</code>, notes), that the post is still listed, and that clicking the “Added to Inbox” toast lands on the Inbox with the new item.</li>
   </ul>
 </section>
 
 <section id="demo" data-kind="story">
   <h2>Demo evidence</h2>
-  <p>A demo doc at <code>docs/demos/reader-inbox-capture/</code> following the <code>showboat</code> skill’s evidence rules: screenshots of the open field and the just-added state on the reading list, the Inbox showing the new item, and the Storybook snapshot diffs for any moved baselines.</p>
+  <p>A demo doc at <code>docs/demos/reader-inbox-capture/</code> following the <code>showboat</code> skill’s evidence rules: screenshots of the open field and the just-added state (toast showing) on the reading list, the Inbox showing the new item, and the Storybook snapshot diffs for any moved baselines.</p>
 </section>
 
 <section id="out">
