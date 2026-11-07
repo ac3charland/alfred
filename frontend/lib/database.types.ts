@@ -1026,6 +1026,83 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          abandoned_at: string | null
+          attempts: number
+          claimed_at: string
+          comm_message_id: string | null
+          fire_key: string
+          id: string
+          item_id: string | null
+          kind: string
+          last_error: string | null
+          leased_at: string | null
+          sent_at: string | null
+          telegram_message_id: number | null
+          text: string | null
+        }
+        Insert: {
+          abandoned_at?: string | null
+          attempts?: number
+          claimed_at?: string
+          comm_message_id?: string | null
+          fire_key: string
+          id?: string
+          item_id?: string | null
+          kind: string
+          last_error?: string | null
+          leased_at?: string | null
+          sent_at?: string | null
+          telegram_message_id?: number | null
+          text?: string | null
+        }
+        Update: {
+          abandoned_at?: string | null
+          attempts?: number
+          claimed_at?: string
+          comm_message_id?: string | null
+          fire_key?: string
+          id?: string
+          item_id?: string | null
+          kind?: string
+          last_error?: string | null
+          leased_at?: string | null
+          sent_at?: string | null
+          telegram_message_id?: number | null
+          text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_comm_message_id_fkey"
+            columns: ["comm_message_id"]
+            isOneToOne: false
+            referencedRelation: "comm_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_comm_message_id_fkey"
+            columns: ["comm_message_id"]
+            isOneToOne: false
+            referencedRelation: "v_reader_worklist"
+            referencedColumns: ["comm_message_id"]
+          },
+          {
+            foreignKeyName: "notifications_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           cloud_environment: string | null
@@ -1860,6 +1937,19 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      claim_notifications: {
+        Args: { p_limit: number; p_now: string; p_zone: string }
+        Returns: {
+          account: string
+          ask: string
+          attempts: number
+          due_time: string
+          id: string
+          kind: string
+          sender: string
+          title: string
+        }[]
       }
       code_session_cost: {
         Args: { p_at: string; p_usage: Json }

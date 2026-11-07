@@ -16,7 +16,8 @@
  *
  * `scheduled` is fired by the cron triggers in wrangler.toml, and dispatches on WHICH schedule
  * fired: the frequent one runs the Inbox classifier and then the comms judge pass, the poll one
- * reads Gmail, the reader one runs the newsletter tick, and the daily one runs the comms
+ * reads Gmail, the reader one runs the newsletter tick, the every-minute one sends the owner's
+ * Telegram pings, and the daily one runs the comms
  * retention sweep, the reader's own text sweep, the model price refresh, and then the wiki sync
  * as the snapshot's safety net. Every handler stays thin and delegates.
  */
@@ -32,6 +33,7 @@ import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
 import { instapaperCredentials } from './instapaper/client';
+import { type NotifyTickSummary, runNotifyTick, telegramConfig } from './notify/tick';
 import { type PriceRefreshSummary, runPriceRefresh } from './pricing/refresh';
 import { READER_DEFAULT_DAILY_CAP } from './reader/config';
 import {
@@ -107,6 +109,17 @@ export interface Env {
    */
   WIKI_REPO: string;
   /**
+   * The Telegram bot the notify tick pings the owner through, and the one chat it writes to. Both
+   * secrets, set by hand once (docs/telegram.md); until both are, the tick claims nothing.
+   */
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
+  /**
+   * The app's public origin, for the link every ping carries — a `[vars]` entry, not a secret.
+   * Optional for the same shadowing reason as the classifier vars: the tick re-checks it.
+   */
+  ALFRED_APP_URL?: string;
+  /**
    * The commit this Worker was built from — a plain `[vars]` binding, NOT a secret, injected by
    * the deploy workflow (`--var WORKER_VERSION:<sha>`). Optional because a hand-run
    * `wrangler deploy` passes none.
@@ -173,6 +186,17 @@ export const RETENTION_CRON = '17 9 * * *';
  */
 export const READER_CRON = '*/5 * * * *';
 
+/**
+ * The notify tick — Telegram pings for a fresh ASAP verdict or a timed task's due minute — every
+ * minute, so a due ping lands at most a minute late and an ASAP ping at most a minute after the
+ * judge tick that wrote it. Its own trigger because every other tick is already at its subrequest
+ * ceiling. This is the account's fifth and LAST Free-plan trigger: the next scheduled feature has
+ * to share this tick's budget (idle, it costs one RPC) or move to the paid plan. No step at all,
+ * so it cannot collapse onto another schedule (see `POLL_CRON`); coinciding with every other tick
+ * is harmless, since each invocation has its own budget.
+ */
+export const NOTIFY_CRON = '* * * * *';
+
 /** The `pull_request` payload fields we read (a tiny subset of GitHub's event). */
 interface PullRequestPayload {
   action: string;
@@ -209,7 +233,8 @@ export default {
     // Naming them here makes that a one-curl check instead of a mystery. It deliberately says
     // nothing about the API key: a health check must not probe a billed endpoint. Instapaper gets
     // the comms ingest treatment — whether its secrets are set, never what they are — because the
-    // To Reader leg is otherwise silently off on a deployment that was never given them.
+    // To Reader leg is otherwise silently off on a deployment that was never given them. Telegram
+    // gets the same: presence of both secrets and the app URL, and never a call to Telegram.
     if (request.method === 'GET' && url.pathname === '/') {
       return new Response(
         `alfred workers ok (build ${env.WORKER_VERSION ?? UNSTAMPED}; ` +
@@ -217,6 +242,7 @@ export default {
           `comms ingest ${env.COMMS_INGEST_HMAC_SECRET === undefined ? 'unconfigured' : 'configured'}; ` +
           `reader ${env.READER_MODEL} cap ${env.READER_DAILY_CAP ?? String(READER_DEFAULT_DAILY_CAP)}; ` +
           `instapaper ${instapaperCredentials(env) === undefined ? 'unconfigured' : 'configured'}; ` +
+          `telegram ${telegramConfig(env) === undefined ? 'unconfigured' : 'configured'}; ` +
           `wiki ${env.WIKI_REPO})`,
       );
     }
@@ -235,7 +261,7 @@ export default {
   },
 
   /**
-   * The cron triggers' entrypoint, shared by all four schedules — the runtime hands over which
+   * The cron triggers' entrypoint, shared by all five schedules — the runtime hands over which
    * one fired and nothing else, so `event.cron` is the whole dispatch. An unrecognised expression
    * takes the frequent path: a schedule that was renamed in wrangler.toml and not here should
    * keep triaging rather than silently do nothing.
@@ -264,6 +290,11 @@ export default {
 
     if (event.cron === READER_CRON) {
       logReaderTick(await runReaderTick(env, now));
+      return;
+    }
+
+    if (event.cron === NOTIFY_CRON) {
+      logNotifyTick(await runNotifyTick(env, now));
       return;
     }
 
@@ -363,6 +394,16 @@ function logReaderTick(summary: ReaderTickSummary): void {
       `${String(leg.archived)} archived, ${String(leg.restored)} restored`,
   );
   for (const failure of leg.failures) console.error(`reader: instapaper: ${failure}`);
+}
+
+/** The notify tick as one line of counts, with each failure beneath it. */
+function logNotifyTick(summary: NotifyTickSummary): void {
+  console.log(
+    `notify: ${String(summary.claimed)} claimed, ${String(summary.sent)} sent, ` +
+      `${String(summary.failed)} failed, ${String(summary.abandoned)} abandoned` +
+      (summary.aborted ? ' (aborted)' : ''),
+  );
+  logFailures(summary.failures, 'notify');
 }
 
 /** `repriced 1 session` / `repriced 212 sessions`, singular like the reader line's `1 post`. */

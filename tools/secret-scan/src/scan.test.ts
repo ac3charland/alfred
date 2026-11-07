@@ -126,6 +126,24 @@ describe('scanFiles', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('flags a Telegram bot token but not the shapes that only resemble one', async () => {
+    // Fabricated: a bot id, a colon, 35 URL-safe characters — assembled so this file stays clean.
+    const token = ['7712345678', ':', 'AAH', 'dQ4w9WgXcQ_k-'.repeat(2), 'Zr8pLm'].join('');
+    expect(token.split(':', 2)[1]).toHaveLength(35);
+    const leaked = await scanOne('demo.md', `curl https://api.telegram.org/bot${token}/getMe\n`);
+    expect(leaked.ok).toBe(false);
+    expect(leaked.output).not.toContain(token);
+
+    const lookalikes = [
+      'bot<TOKEN>/sendMessage',
+      'bot$TOKEN/getUpdates',
+      '12:30:45',
+      '1234567:short',
+    ];
+    const safe = await scanOne('telegram.md', `${lookalikes.join('\n')}\n`);
+    expect(safe.ok).toBe(true);
+  });
+
   it('flags a Supabase personal access token', async () => {
     const result = await scanOne('env.md', `SUPABASE_ACCESS_TOKEN=${SUPABASE_ACCESS_TOKEN}\n`);
     expect(result.ok).toBe(false);

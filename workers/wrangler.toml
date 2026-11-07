@@ -47,6 +47,12 @@ compatibility_flags = ["nodejs_compat"]
 #     and in the knowledge repo's secrets together. All four, or the leg is off — `GET /` says
 #     "instapaper configured" or "unconfigured". The leg also needs an Instapaper folder named
 #     exactly "To Reader"; alfred never creates it.
+#   TELEGRAM_BOT_TOKEN        — the BotFather token of the private bot the notify tick pings through.
+#   TELEGRAM_CHAT_ID          — the owner's chat with that bot (read once from getUpdates).
+#     Both, plus ALFRED_APP_URL below, or the tick claims nothing — `GET /` says "telegram
+#     configured" or "unconfigured". The token rides in the Bot API's URL path, so it must never be
+#     logged, committed or pasted into a chat. Setup, and rotation via BotFather's /revoke:
+#     docs/telegram.md.
 
 # ── Cron triggers ─────────────────────────────────────────────────────────────
 # The Inbox classifier sweep. `wrangler deploy` registers this schedule, and the Deploy Worker
@@ -57,7 +63,7 @@ compatibility_flags = ["nodejs_compat"]
 # Exercise it locally without waiting: `npx wrangler dev --test-scheduled`, then curl the
 # `/__scheduled` endpoint it serves.
 #
-# Four schedules now, dispatched in src/index.ts on the expression the runtime hands the handler —
+# Five schedules now, dispatched in src/index.ts on the expression the runtime hands the handler —
 # so these strings and the constants there must stay in step.
 #   */2 * * * *  the frequent tick: the Inbox classifier sweep, then the Comms JUDGE pass.
 #   */3 * * * *  the Gmail poll. It has its own trigger for one reason: the Workers runtime allows
@@ -78,7 +84,7 @@ compatibility_flags = ["nodejs_compat"]
 #                nothing depends on the exact minute. An odd minute rather than :00 for the usual
 #                reason — the top of the hour is where every scheduler in the world queues up.
 [triggers]
-crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *"]
+crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *", "* * * * *"]
 
 # ── Vars (non-secret, plaintext, committed) ──────────────────────────────────
 # CLASSIFIER_MODEL — which model judges an Inbox item. A var rather than a constant so trying a
@@ -106,12 +112,15 @@ crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *"]
 #   a push to THIS repo's main (every other push is ignored), and the wiki sync reads its page tree
 #   through GraphQL with the existing GITHUB_TOKEN, whose repository list must include it with
 #   Contents: Read. The same GITHUB_WEBHOOK_SECRET signs the wiki repo's webhook.
+# ALFRED_APP_URL — the app's public origin, which every Telegram ping links into (/comms, /today).
+#   Public, so a var rather than a secret.
 [vars]
 CLASSIFIER_MODEL = "claude-haiku-4-5"
 CLASSIFIER_TIMEZONE = "America/Chicago"
 READER_MODEL = "claude-sonnet-5"
 READER_DAILY_CAP = "30"
 WIKI_REPO = "ac3charland/knowledge"
+ALFRED_APP_URL = "https://alfred-six-gamma.vercel.app"
 
 # WORKER_VERSION is deliberately NOT declared here, unlike the two vars above. It is the commit
 # the running build came from, injected per deploy by the Deploy Worker workflow
