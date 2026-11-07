@@ -1037,6 +1037,7 @@ export type Database = {
           item_id: string | null
           kind: string
           last_error: string | null
+          leased_at: string | null
           sent_at: string | null
           telegram_message_id: number | null
           text: string | null
@@ -1051,6 +1052,7 @@ export type Database = {
           item_id?: string | null
           kind: string
           last_error?: string | null
+          leased_at?: string | null
           sent_at?: string | null
           telegram_message_id?: number | null
           text?: string | null
@@ -1065,6 +1067,7 @@ export type Database = {
           item_id?: string | null
           kind?: string
           last_error?: string | null
+          leased_at?: string | null
           sent_at?: string | null
           telegram_message_id?: number | null
           text?: string | null

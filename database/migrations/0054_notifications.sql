@@ -24,6 +24,7 @@ create table notifications (
   attempts            int not null default 0,
   last_error          text,
   abandoned_at        timestamptz,
+  leased_at           timestamptz,
 
   constraint notifications_subject check (
     (kind = 'comms_asap' and comm_message_id is not null and item_id is null) or
@@ -37,6 +38,11 @@ comment on column notifications.fire_key is
 
 comment on column notifications.text is
   'The text actually sent, as Telegram received it. NULL until sent.';
+
+comment on column notifications.leased_at is
+  'When claim_notifications last handed this claim to a tick. A claim is not handed out again for
+   five minutes, so a tick still sending it (a slow Telegram, a late cron) cannot be raced into a
+   duplicate ping by the next minute''s tick. NULL = never handed out (overflow past the limit).';
 
 comment on column notifications.abandoned_at is
   'When the claim was given up on: three failed attempts, an hour since it was claimed, or a
@@ -73,7 +79,8 @@ grant select, insert, update, delete on notifications to anon, authenticated, se
 --     created with a time already past, and the catch-up after an outage from replaying a
 --     backlog as a burst.
 --
--- An unsent claim is re-returned while it has fewer than 3 attempts, is under an hour old, and
+-- An unsent claim is re-returned while it has fewer than 3 attempts, is under an hour old, was not
+-- handed to a tick in the last five minutes (that tick may still be sending it), and
 -- its subject is still eligible — the task still active at the same date and time, the message
 -- still ASAP and uncleared. Otherwise it is abandoned. Retries are not held to the windows above:
 -- a systemic outage fixed within the hour still delivers.
@@ -131,11 +138,14 @@ begin
                 and m.cleared_at is null))
      );
 
-  -- What survives is retryable. Read before the insert, so the new claims are not counted twice.
+  -- What survives, and is not leased to a tick that may still be sending it, is retryable. Read
+  -- before the insert, so the new claims are not counted twice.
   select coalesce(array_agg(n.id), '{}')
     into v_retries
     from notifications n
-   where n.sent_at is null and n.abandoned_at is null;
+   where n.sent_at is null
+     and n.abandoned_at is null
+     and (n.leased_at is null or n.leased_at <= p_now - interval '5 minutes');
 
   -- 2. Claim what just became true. The unique index arbitrates overlapping ticks.
   with claimed as (
@@ -175,29 +185,42 @@ begin
   select coalesce(array_agg(claimed.id), '{}') into v_due from claimed;
 
   -- 3. Hand back everything the Worker needs to build each message: the retries and this call's
-  --    own claims only. A claim another tick committed after the retry read is that tick's to send.
+  --    own claims only (a claim another tick committed after the retry read is that tick's to
+  --    send), and lease what is handed out.
   return query
-  select n.id,
-         n.kind,
-         n.attempts,
-         coalesce(p.name, m.sender_name, m.sender_handle) as sender,
-         a.label as account,
-         v.ask,
-         t.title,
-         t.due_time
-    from notifications n
-    left join comm_messages m on m.id = n.comm_message_id
-    left join comm_verdicts v on v.id = m.verdict_id
-    left join comm_people   p on p.id = v.person_id
-    left join comm_accounts a on a.id = m.account_id
-    left join task_items    t on t.id = n.item_id
-   where n.id = any (v_retries || v_asap || v_due)
-   order by (n.id = any (v_retries)) desc,
-            case when n.id = any (v_retries) then n.claimed_at end,
-            coalesce(v.created_at,
-                     ((t.due_date at time zone 'UTC')::date + t.due_time) at time zone p_zone),
-            n.id
-   limit p_limit;
+  with picked as (
+    select n.id,
+           n.kind,
+           n.attempts,
+           coalesce(p.name, m.sender_name, m.sender_handle) as sender,
+           a.label as account,
+           v.ask,
+           t.title,
+           t.due_time,
+           row_number() over (
+             order by (n.id = any (v_retries)) desc,
+                      case when n.id = any (v_retries) then n.claimed_at end,
+                      coalesce(v.created_at,
+                               ((t.due_date at time zone 'UTC')::date + t.due_time)
+                                 at time zone p_zone),
+                      n.id) as position
+      from notifications n
+      left join comm_messages m on m.id = n.comm_message_id
+      left join comm_verdicts v on v.id = m.verdict_id
+      left join comm_people   p on p.id = v.person_id
+      left join comm_accounts a on a.id = m.account_id
+      left join task_items    t on t.id = n.item_id
+     where n.id = any (v_retries || v_asap || v_due)
+     order by position
+     limit p_limit
+  ), leased as (
+    update notifications n set leased_at = p_now
+      from picked where n.id = picked.id
+  )
+  select picked.id, picked.kind, picked.attempts, picked.sender, picked.account, picked.ask,
+         picked.title, picked.due_time
+    from picked
+   order by picked.position;
 end;
 $$;
 

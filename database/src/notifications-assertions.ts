@@ -445,6 +445,23 @@ export async function runNotificationAssertions(client: Client): Promise<Asserti
       if (idRows.length !== 1) throw new Error('two rows');
       return 'the unique (kind, fire_key) index arbitrates';
     }),
+    await attempt(
+      'a claim just handed to a tick is not re-handed to the next one while it is being sent',
+      async () => {
+        await reset(client);
+        const now = nextDay();
+        const date = ymd(now);
+        const due = chicago(date, '13:00');
+        await task(client, date, '13:00', 'slow send');
+        expectCount(await claim(client, due.toISOString()), 1, 'the first tick');
+        // The first tick is still sending: the next minute's tick must leave the claim alone.
+        expectCount(await claim(client, at(due, 1)), 0, 'a minute later');
+        expectCount(await claim(client, at(due, 4)), 0, 'four minutes later');
+        // Past the lease the first tick is presumed gone, and the claim is retried.
+        expectCount(await claim(client, at(due, 5)), 1, 'past the lease');
+        return 'leased for five minutes from each hand-out, then retried';
+      },
+    ),
     await attempt('an unsent claim is retried first, until it is abandoned', async () => {
       await reset(client);
       const now = nextDay();
@@ -456,13 +473,13 @@ export async function runNotificationAssertions(client: Client): Promise<Asserti
       await client.query(`update notifications set attempts = 2 where id = $1`, [claimed.id]);
       const later = await task(client, date, '12:01', 'new');
 
-      const retried = await claim(client, at(due, 1));
+      const retried = await claim(client, at(due, 5));
       if (retried[0]?.id !== claimed.id || retried[0].attempts !== 2 || retried.length !== 2) {
         throw new Error(`retries should come first: ${JSON.stringify(retried)}`);
       }
 
       await client.query(`update notifications set attempts = 3 where id = $1`, [claimed.id]);
-      const third = await claim(client, at(due, 2));
+      const third = await claim(client, at(due, 10));
       if (third.some((row) => row.id === claimed.id)) throw new Error('3 attempts still retried');
       const [failingRow] = await rowsFor(client, 'item_id', failing);
       if (failingRow?.abandoned_at === null) {
@@ -471,7 +488,7 @@ export async function runNotificationAssertions(client: Client): Promise<Asserti
 
       const [newer] = await rowsFor(client, 'item_id', later);
       if (newer?.abandoned_at !== null) throw new Error('the newer claim was abandoned early');
-      const hourOn = await claim(client, at(due, 61));
+      const hourOn = await claim(client, at(due, 66));
       if (hourOn.length > 0) throw new Error(`a claim over an hour old was retried`);
       const [laterRow] = await rowsFor(client, 'item_id', later);
       if (laterRow?.abandoned_at === null) {
