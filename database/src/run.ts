@@ -15,6 +15,7 @@ import {
   migrationsChangedSinceTrunk,
 } from './gen-types.ts';
 import { applyMigrations, bootstrapSupabase } from './migrate.ts';
+import { runNotificationAssertions } from './notifications-assertions.ts';
 import { runSessionLedgerAssertions } from './session-ledger-assertions.ts';
 
 const { Client } = pg;
@@ -90,6 +91,7 @@ async function main(): Promise<number> {
     const results = [
       ...(await runAssertions(client)),
       ...(await runSessionLedgerAssertions(client)),
+      ...(await runNotificationAssertions(client)),
       typesResult,
       freshnessResult,
       ...(await runDeployAssertions(cluster)),
