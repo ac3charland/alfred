@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-343 — A 7 AM Telegram digest: what’s due, the plan for today, comms and reader</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p1:has([value=normal]:checked) [data-opt]:not([data-opt=normal]),
+#p1:has([value=nomodel]:checked) [data-opt]:not([data-opt=nomodel]),
+#p1:has([value=noplan]:checked) [data-opt]:not([data-opt=noplan]),
+#p1:has([value=quiet]:checked) [data-opt]:not([data-opt=quiet]){display:none}
+/* The canvas is Telegram's own iOS chat, not alfred's UI: the surface this story adds is a message in
+   someone else's app. Chrome copied from ALF-333's plate; the message TEXT inside it is verbatim (§Contracts). */
+.app{--tg-bg:#dfe7ee;--tg-bar:#f7f7f7;--tg-in:#ffffff;--tg-fg:#000000;--tg-muted:#8e8e93;--tg-link:#168acd;
+  max-width:23rem;margin:0 auto;background:var(--tg-bg);color:var(--tg-fg);overflow:hidden;border-radius:18px;
+  font:15px/1.35 -apple-system,"SF Pro Text",system-ui,sans-serif}
+.app .tg-bar{display:flex;align-items:center;gap:.6rem;padding:.6rem .8rem;background:var(--tg-bar);border-bottom:1px solid rgb(0 0 0/.08)}
+.app .tg-avatar{width:2rem;height:2rem;border-radius:50%;background:#0b6b78;color:#fff;display:grid;place-items:center;font-weight:600}
+.app .tg-name{font-weight:600}
+.app .tg-sub{font-size:12px;color:var(--tg-muted)}
+.app .tg-log{padding:.8rem .7rem 1rem;display:flex;flex-direction:column;gap:.5rem}
+.app .tg-day{align-self:center;font-size:12px;color:#fff;background:rgb(0 0 0/.22);border-radius:999px;padding:.1rem .6rem}
+.app .tg-msg{align-self:flex-start;max-width:92%;background:var(--tg-in);border-radius:14px 14px 14px 4px;padding:.45rem .65rem .3rem;box-shadow:0 1px 1px rgb(0 0 0/.08)}
+.app .tg-msg b{font-weight:700}
+.app .tg-msg i{font-style:italic}
+.app .tg-msg a{color:var(--tg-link);text-decoration:none}
+.app .tg-time{display:block;text-align:right;font-size:11px;color:var(--tg-muted);margin-top:.1rem}
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Notify · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>343</span><span class="sep"> — </span><span class="ttl">A 7 AM Telegram digest: what’s due, the plan for today, comms and reader</span></h1>
+  <p class="change" id="change">Every morning at 7:00, one Telegram message: a short model-written opener, then fixed lists of what’s due, your ASAP/Today comms, and how many reader articles are waiting.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>Where do today’s plan lines appear?</h3>
+      <p class="pick">Only in the opener; listed verbatim only if the model fails</p>
+      <p class="why">Plan lines are already due items: listing both repeats the week.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>Model call fails or is slow?</h3>
+      <p class="pick">Send on time without the opener; never hold the digest</p>
+      <p class="why">The lists are the point; the opener is garnish.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d7">D7</a>What schedules it?</h3>
+      <p class="pick">The one-minute notify tick, as a third ping kind; sends 7:00–7:59 or not that day</p>
+      <p class="why">All five Free-plan cron triggers are taken.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>What does the model write?</h3>
+      <p class="pick">A whole-digest opener; every list below it is deterministic</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>When?</h3>
+      <p class="pick">7:00 AM America/Chicago, every day</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>How much comms?</h3>
+      <p class="pick">Tier counts, plus up to five ASAP/Today asks</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d4">D4</a>Which tasks are “due”?</h3>
+      <p class="pick">Exactly the Today view: due today or overdue, same order</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="normal" checked>Normal</label>
+      <label><input type="radio" name="p1" value="nomodel">Model unavailable (D6)</label>
+      <label><input type="radio" name="p1" value="noplan">No plan covers today</label>
+      <label><input type="radio" name="p1" value="quiet">Quiet day</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="The alfred Telegram bot chat showing the 7 AM morning digest in four states">
+        <div class="tg-bar"><span class="tg-avatar">a</span><span><span class="tg-name">alfred</span><br><span class="tg-sub">bot</span></span></div>
+        <div class="tg-log">
+          <span class="tg-day">Today</span>
+
+          <div class="tg-msg" data-opt="normal"><b>Good morning · Saturday, Nov 7</b><br>
+            <i>Long-run day, so the shape is: clear Dana’s rehearsal question first, then finish the RealPlay invoice that slipped Thursday before you head out. The Motivic notes are the week’s Rock 1 thread — an hour this afternoon keeps the win condition in reach.</i><br><br>
+            <b>Due · 5</b><br>
+            • Send RealPlay October invoice — <i>2 days late</i><br>
+            • Plan Motivic beta — <i>subtask late</i><br>
+            • Call the dentist about the crown — 3:00 PM<br>
+            • Draft Motivic chord-voicing notes<br>
+            • Pick a post-show bedtime<br><br>
+            <b>Comms · 1 ASAP · 2 today · 6 whenever</b><br>
+            • ASAP · Dana — Can you confirm Thursday’s rehearsal time?<br>
+            • Today · Chad — Wants your read on the 2.4 release notes.<br>
+            • Today · Mom — Asks whether you’re coming Sunday.<br><br>
+            <b>Reader · 12 waiting</b><br><br>
+            <a href="#p1">Today</a> · <a href="#p1">Comms</a> · <a href="#p1">Reader</a><span class="tg-time">7:00 AM</span></div>
+
+          <div class="tg-msg" data-opt="nomodel"><b>Good morning · Saturday, Nov 7</b><br><br>
+            <b>Plan for today</b><br>
+            • Run · Long run (8)<br>
+            • Rock 1 · Draft Motivic chord-voicing notes<br>
+            • RealPlay · Send RealPlay October invoice<br><br>
+            <b>Due · 5</b><br>
+            • Send RealPlay October invoice — <i>2 days late</i><br>
+            • Plan Motivic beta — <i>subtask late</i><br>
+            • Call the dentist about the crown — 3:00 PM<br>
+            • Draft Motivic chord-voicing notes<br>
+            • Pick a post-show bedtime<br><br>
+            <b>Comms · 1 ASAP · 2 today · 6 whenever</b><br>
+            • ASAP · Dana — Can you confirm Thursday’s rehearsal time?<br>
+            • Today · Chad — Wants your read on the 2.4 release notes.<br>
+            • Today · Mom — Asks whether you’re coming Sunday.<br><br>
+            <b>Reader · 12 waiting</b><br><br>
+            <a href="#p1">Today</a> · <a href="#p1">Comms</a> · <a href="#p1">Reader</a><span class="tg-time">7:00 AM</span></div>
+
+          <div class="tg-msg" data-opt="noplan"><b>Good morning · Saturday, Nov 7</b><br>
+            <i>No week plan covers today, so the list below is the whole picture: the invoice is two days late and Dana is waiting on you — those two first.</i><br><br>
+            <b>Due · 2</b><br>
+            • Send RealPlay October invoice — <i>2 days late</i><br>
+            • Call the dentist about the crown — 3:00 PM<br><br>
+            <b>Comms · 1 ASAP · 0 today · 6 whenever</b><br>
+            • ASAP · Dana — Can you confirm Thursday’s rehearsal time?<br><br>
+            <b>Reader · 12 waiting</b><br><br>
+            <a href="#p1">Today</a> · <a href="#p1">Comms</a> · <a href="#p1">Reader</a><span class="tg-time">7:00 AM</span></div>
+
+          <div class="tg-msg" data-opt="quiet"><b>Good morning · Sunday, Nov 8</b><br>
+            <i>Nothing is due and no one is waiting on you. The plan has today as a rest day — take it.</i><br><br>
+            <b>Due</b> · nothing today<br>
+            <b>Comms</b> · nothing waiting on you<br>
+            <b>Reader · 0 waiting</b><br><br>
+            <a href="#p1">Today</a> · <a href="#p1">Comms</a> · <a href="#p1">Reader</a><span class="tg-time">7:00 AM</span></div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The digest in Telegram’s own iOS chat. Everything below the italic opener is built without the model (§Contracts has the exact text); with no model, the opener’s place goes to today’s plan lines verbatim. At most 8 due rows (then “+N more on Today”) and 5 asks; “whenever” is only ever a count.</figcaption>
+  </figure>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 560 210" role="img" aria-label="The one-minute notify tick claims a morning_digest row, reads digest facts in one RPC, asks the model for an opener, and sends one Telegram message">
+      <g><rect x="10" y="20" width="160" height="50" rx="6"/><text x="22" y="42">Notify tick (* * * * *)</text><text class="s" x="22" y="58">claim_notifications(+digest)</text></g>
+      <g class="new"><rect x="10" y="130" width="160" height="60" rx="6"/><text x="22" y="152">digest_facts() RPC</text><text class="s" x="22" y="168">tasks · comms · reader</text><text class="s" x="22" y="182">latest weekly plan</text></g>
+      <g class="new"><rect x="210" y="75" width="150" height="60" rx="6"/><text x="222" y="99">digest builder</text><text class="s" x="222" y="117">lists + opener → text</text></g>
+      <g><rect x="400" y="20" width="150" height="50" rx="6"/><text x="412" y="42">Anthropic API</text><text class="s" x="412" y="58">opener only (D1, D6)</text></g>
+      <g><rect x="400" y="130" width="150" height="50" rx="6"/><text x="412" y="152">api.telegram.org</text><text class="s" x="412" y="168">sendMessage</text></g>
+      <path class="hot" d="M90 70 L90 130"/><path class="hot" d="M170 160 L210 115"/>
+      <path class="hot" d="M360 95 L400 50"/><path class="hot" d="M360 115 L400 150"/>
+    </svg>
+    <figcaption><b>Fig. 1.</b>No new trigger: the existing tick claims one digest a day and spends at most six subrequests on it.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>Calendar events (the <code>morning</code> brief’s job); reply buttons; a different time on weekends.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul>
+    <li>No new secrets or setup: it reuses the Telegram bot and the Worker’s Anthropic key.</li>
+    <li>Due titles and comms asks go to the model and sit on Telegram’s servers, as pings already do.</li>
+    <li>About one Sonnet call a day: well under $1 a month.</li>
+  </ul>
+</section>
+
+</section>
+
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p><b>The ask.</b> ALF-343: a daily morning Telegram digest of due tasks and “the weekly plan’s instructions for the day”, plus outstanding comms and a count of reader articles waiting. Ticket note: <i>“Make due tasks deterministic; generate summary via an LLM.”</i> In refinement the owner picked a <b>whole-digest</b> opener (D1), 7:00 every day (D2), counts + ASAP/Today asks (D3), and the Today view’s due rule (D4).</p>
+  <p><b>What exists.</b></p>
+  <ul>
+    <li><b>Telegram pings (ALF-333).</b> <code>workers/src/notify/</code>: a one-minute tick (<code>NOTIFY_CRON = '* * * * *'</code>) calls <code>claim_notifications(p_now, p_zone, p_limit)</code> (migration <code>0054_notifications.sql</code>), sends each claim via <code>sendTelegram</code> (<code>workers/src/telegram.ts</code>), and stamps the outcome. Kinds today: <code>comms_asap</code>, <code>task_due</code>. Read the <code>telegram</code> skill first.</li>
+    <li><b>Cron budget.</b> <code>wrangler.toml</code> holds five crons; <code>index.ts</code>’s <code>NOTIFY_CRON</code> comment says it is the account’s <b>last</b> Free-plan trigger and the next scheduled feature must share its budget. Hence D7.</li>
+    <li><b>Due tasks.</b> The Today view’s rule is <code>rankDueToday</code> (<code>frontend/lib/tasks/due-today.ts</code>) over <code>buildTree</code> of every <code>task_items</code> row, ranked by <code>rankNodes(…, compareKeyByDue)</code> (<code>frontend/lib/priority.ts</code>). Due dates are floating (<code>due_date</code> is midnight UTC; read the date with <code>at time zone 'UTC'</code>); <code>due_time</code> is a floating wall-clock time (0053).</li>
+    <li><b>Weekly plan.</b> <code>weekly_plans.html</code> (0022) stores the Friday review’s document verbatim. It is generated by the <code>weekly-review</code> skill’s <code>generate_plan.py</code>, which lives <b>outside this repo</b>. That generator embeds <code>var DAILY_TASKS = {…};</code>: JSON keyed by ISO date, each value an array of <code>{pill, label, text}</code>. It also emits <code>&lt;div class="theme-title"&gt;…&lt;/div&gt;</code>. The review also creates one item per plan line with that day’s <code>due_date</code> (0030), so plan lines and due tasks overlap heavily (D5). Lines with no item behind them are runs, habits and calendar events.</li>
+    <li><b>Comms queue.</b> <code>isQueued</code> (<code>frontend/lib/comms/queue.ts</code>): inbound, <code>cleared_at is null</code>, tier in asap/today/whenever. The ask is <code>comm_verdicts.ask</code>; the sender is <code>coalesce(comm_people.name, sender_name, sender_handle)</code>, exactly as <code>claim_notifications</code> builds it.</li>
+    <li><b>Reader.</b> The reading list is <code>reader_posts where archived_at is null</code> (<code>frontend/lib/reader/list.ts</code>; Instapaper posts included).</li>
+    <li><b>Model calls from the Worker.</b> <code>workers/src/reader/summarize.ts</code> is the pattern: <code>@anthropic-ai/sdk</code>, <code>output_config.format</code> JSON schema, typed error mapping. Read the <code>anthropic-api</code> skill.</li>
+  </ul>
+  <p><b>Not the <code>morning</code> skill.</b> The owner’s Claude-side <code>morning</code> skill renders a calendar-driven HTML brief. This digest is alfred’s own data, pushed; it does not read calendars.</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>What does the model write? · settled</h3>
+    <p>The owner chose the whole-digest briefing over a plan-only focus line. What makes it safe: the model writes <b>only</b> the opener. Every count, row and link is built in code from the same facts the model is shown. The prompt forbids stating counts or naming a task, person or article that isn’t in its input (see <a href="#behavior">Behaviour</a>). The deterministic lists are always authoritative, so the opener can frame them but never replace them. Considered: a plan-only focus line (less context, less risk); plan lines rewritten as instructions.</p>
+  </section>
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>When? · settled</h3>
+    <p>A <code>[vars]</code> entry <code>DIGEST_TIME = "07:00"</code>, read in <code>CLASSIFIER_TIMEZONE</code> (the zone every floating time already uses), so moving it is a one-line deploy. An empty value turns the digest off.</p>
+  </section>
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>How much comms? · settled</h3>
+    <p>Counts for all three queued tiers. Up to five rows: ASAP first, then Today, each tier newest first (the queue’s own order). Whenever is a count only. Unjudged messages (tier null) are in neither the counts nor the rows, matching <code>isQueued</code>.</p>
+  </section>
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>Which tasks are “due”? · settled</h3>
+    <p>The digest’s list is <code>rankDueToday(buildTree(active task_items), false)</code>, evaluated for the local date in <code>CLASSIFIER_TIMEZONE</code> at send time. A root shows if it, or an active descendant, is due on or before today. The order is the effective due moment, then priority rank, then <code>created_at</code>.</p>
+  </section>
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>Where do today’s plan lines appear? · proposed</h3>
+    <p>The review turns most plan lines into due items, so a verbatim “Plan” section would duplicate most of the Due list. The lines that aren’t items (runs, events, habits) are exactly the context the opener is for. So today’s lines and the theme go to the model, and the opener weaves them in. If there is no opener (D6), the plan section takes its place verbatim, as <code>label · text</code> bullets, so the plan never silently disappears. Considered: always list plan lines (duplication); list only the lines with no matching due item (title matching is brittle, and the review may rename items).</p>
+  </section>
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>Model fails or is slow · proposed</h3>
+    <p>Any opener failure is non-fatal: no key, a typed SDK error, a refusal, a schema-invalid reply, or a 20 s timeout. The digest sends at once in the no-model form (Plate I, “Model unavailable”) and logs <code>digest: opener unavailable — &lt;reason&gt;</code>. It counts no attempt and doesn’t retry the model. Holding a 7:00 message for a garnish would trade the point for the decoration.</p>
+  </section>
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>What schedules it? · proposed</h3>
+    <p>A third <code>notifications</code> kind, <code>morning_digest</code>, claimed by <code>claim_notifications</code>. The fire key is the local date (<code>YYYY-MM-DD</code>), so the unique index makes it once a day, whatever the overlapping ticks do. A new claim is made only while local time is in <code>[DIGEST_TIME, DIGEST_TIME + 60 min)</code>. A deploy at noon therefore starts tomorrow, and an outage until 7:59 still delivers. Retries and abandonment follow the existing rules (3 attempts, 60 min since claim, 5-min lease). Considered: a sixth cron (needs the paid plan); a Worker-side clock check plus a separate claim RPC (splits retry handling across two paths).</p>
+  </section>
+  <h3>Implementation decisions</h3>
+  <section class="rec" id="d8">
+    <h4>D8 · One facts RPC, ranking in TypeScript</h4>
+    <p><code>digest_facts(p_now, p_zone)</code> returns everything in one subrequest: active task rows, comms counts and up to five asks, the reader count, and the newest plan’s <code>html</code>. The due ranking is ported to <code>workers/src/digest/due.ts</code>, not written in SQL. The rule being mirrored is TS, and a parity table copied from <code>due-today.test.ts</code> / <code>priority.test.ts</code> catches drift more readably than a recursive CTE would. Workers can’t import from <code>frontend/</code>; note the twin in both files’ doc comments.</p>
+  </section>
+  <section class="rec" id="d9">
+    <h4>D9 · Model: <code>DIGEST_MODEL = "claude-sonnet-5"</code></h4>
+    <p>A <code>[vars]</code> entry, like <code>READER_MODEL</code>, with the same call shape (<code>thinking: {type:'disabled'}</code>, <code>output_config.effort: 'low'</code>, structured output). At one call a day the price is noise, and the opener is read daily, so the quality tier wins. The constraints in the <code>wrangler.toml</code> comment for <code>READER_MODEL</code> apply (no Fable).</p>
+  </section>
+  <section class="rec" id="d10">
+    <h4>D10 · Plan parsing degrades, never throws</h4>
+    <p>alfred doesn’t own the generator. Extract <code>DAILY_TASKS</code> by taking the text after the literal <code>var DAILY_TASKS = </code> up to the first <code>;\n\nfunction initToday</code>, then <code>JSON.parse</code> it and validate the shape (zod is not in workers; use a hand-written guard). Take the theme as the <code>.theme-title</code> div’s text, with tags stripped and the five basic entities decoded. On any failure: log <code>digest: plan unreadable (&lt;plan id&gt;)</code> and treat the day as “no plan”. A plan “covers today” iff <code>DAILY_TASKS</code> has today’s ISO key; an empty array means a planned rest day.</p>
+  </section>
+  <section class="rec" id="d11">
+    <h4>D11 · Retries regenerate the opener</h4>
+    <p><code>notifications.text</code> stays “what was sent”, NULL until sent, so a transient send failure rebuilds the facts and re-asks the model on the next tick. That is at most 3 model calls a day; not worth a draft column.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <h3>The tick</h3>
+  <ul>
+    <li><code>runNotifyTick</code> passes <code>DIGEST_TIME</code> (normalised <code>HH:MM</code>, or <code>null</code> when blank or unset) to <code>claim_notifications</code>. A malformed value (anything not <code>HH:MM</code>, 00–23 : 00–59) is logged <code>notify: DIGEST_TIME invalid — digest off</code> and passed as <code>null</code>. It never aborts the other pings.</li>
+    <li>For a <code>morning_digest</code> claim, the tick builds the text (below), then sends and records it exactly like the other kinds. <code>markSent</code> stores the text Telegram received. The status handling is unchanged.</li>
+    <li>Budget: the per-claim worst case becomes per kind: <b>6</b> for a digest (facts 1 + model 2 with one SDK retry + send 2 + PATCH 1), <b>3</b> otherwise. The <code>SUBREQUEST_CEILING</code> check uses the claim’s own worst case. If <code>digest_facts</code> throws, count a failed attempt (<code>digest facts failed: …</code>) and carry on.</li>
+  </ul>
+  <h3>Building the digest (<code>workers/src/digest/</code>)</h3>
+  <ol>
+    <li><b>Facts</b> via <code>digest_facts</code>. Today = the local date of <code>p_now</code> in the zone.</li>
+    <li><b>Due</b> = D4 over the task rows. For each root, a label:
+      <ul>
+        <li>The effective due date is before today → <i>N days late</i> (<i>1 day late</i> when N is 1). When the late date comes from a subtask rather than the root itself → <i>subtask late</i>.</li>
+        <li>Due today with a time (its own) → <code>formatTime</code>, e.g. “3:00 PM”.</li>
+        <li>Due today via a subtask only → <i>subtask due</i>.</li>
+        <li>Otherwise no label.</li>
+      </ul>
+      Show at most 8 rows. Past that, add a final row <code>+N more on Today</code>. Titles are capped at 100 graphemes (<code>cap</code>).</li>
+    <li><b>Plan</b> (D10): today’s lines as <code>{label || default pill name, text}</code>, and the theme title, or “no plan covers today”.</li>
+    <li><b>Opener</b> (D1, D6): one model call; input below. The output is capped at 600 graphemes and trimmed; if it is empty, there is no opener.</li>
+    <li><b>Text</b>: the sections in Plate I’s order. HTML and the plain-text twin are built by the same function, every interpolated value goes through <code>escapeHtml</code>, and links point to <code>ALFRED_APP_URL</code> + <code>/today</code>, <code>/comms</code>, <code>/reader</code>.</li>
+  </ol>
+  <h3>The model call</h3>
+  <ul>
+    <li><b>Input (user turn, JSON):</b> <code>{ date: "Saturday, Nov 7", plan: { theme, lines:[{label,text}] } | null, due: [{title, label}], due_overflow, comms: { counts, asks:[{tier,sender,ask}] }, reader_waiting }</code>. That is the same values the lists render, after capping.</li>
+    <li><b>System prompt, in substance:</b> write 1–3 sentences (≤ 450 characters) that orient the owner to the shape of the day, using only the facts given. Lead with what’s late or who’s waiting when there is something; draw on today’s plan lines and theme for the why. Don’t restate counts or repeat the lists, and never name a task, person or article that isn’t in the input. Plain text, no markup, second person, no greeting (the headline is the greeting). With nothing due and no plan, say so plainly and briefly.</li>
+    <li><b>Output schema:</b> <code>{ "opener": string }</code>, via <code>output_config.format</code>, with <code>max_tokens: 400</code>. The opener renders in <code>&lt;i&gt;</code>.</li>
+  </ul>
+  <h3>Sections, edge cases</h3>
+  <ul>
+    <li>Nothing due → <code>Due · nothing today</code>. Empty queue → <code>Comms · nothing waiting on you</code>. The reader always shows its count, 0 included.</li>
+    <li>The headline is always <code>Good morning · &lt;Weekday&gt;, &lt;Mon&gt; &lt;D&gt;</code> in the zone.</li>
+    <li>Length: by the caps, the worst case is about 3,000 characters, under Telegram’s 4,096. As a backstop, assert in a test that a maximal fixture stays under 4,000 graphemes.</li>
+    <li>The digest still sends when there is nothing at all to report (Plate I “Quiet day”): its arrival is the signal that alfred is alive.</li>
+  </ul>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <h3>Migration <code>&lt;next&gt;_morning_digest.sql</code></h3>
+<pre>-- 1. A third kind, with no subject row.
+alter table notifications drop constraint notifications_kind_check;   -- confirm the generated name
+alter table notifications add constraint notifications_kind_check
+  check (kind in ('comms_asap', 'task_due', 'morning_digest'));
+alter table notifications drop constraint notifications_subject;
+alter table notifications add constraint notifications_subject check (
+  (kind = 'comms_asap'     and comm_message_id is not null and item_id is null) or
+  (kind = 'task_due'       and item_id is not null and comm_message_id is null) or
+  (kind = 'morning_digest' and item_id is null and comm_message_id is null));
+-- update the fire_key comment: morning_digest = local YYYY-MM-DD.
+
+-- 2. claim_notifications gains p_digest_time (NULL = digest off). Drop the
+--    3-arg function and create the 4-arg one; re-grant execute.
+claim_notifications(p_now timestamptz, p_zone text, p_limit int, p_digest_time time)
+--   new claim:  p_digest_time is not null
+--               and (p_now at time zone p_zone)::time in [p_digest_time, p_digest_time + 60 min)
+--               fire_key = to_char((p_now at time zone p_zone)::date, 'YYYY-MM-DD')
+--   ordering:   its moment = (local date + p_digest_time) at time zone p_zone
+--   abandon:    the shared attempts / 60-minute rules only (no subject to go stale)
+--   returns:    the same columns; all subject fields NULL for a digest row
+
+-- 3. One read for the whole digest.
+digest_facts(p_now timestamptz, p_zone text) returns jsonb
+{ "tasks":  [ { id, parent_id, title, status, priority, due_date: "YYYY-MM-DD"|null,
+                due_time: "HH:MM:SS"|null, created_at } ],   -- every task_items row with status='active'
+  "comms":  { "counts": { "asap": n, "today": n, "whenever": n },
+              "asks": [ { tier, sender, account, ask, received_at } ] },  -- ≤5, asap then today, newest first
+  "reader_waiting": n,                                         -- reader_posts.archived_at is null
+  "plan":   { id, uploaded_at, html } | null }                -- newest weekly_plans row
+-- security invoker; grant execute to anon, authenticated, service_role.
+-- Run migration-lint before committing.</pre>
+  <h3>Worker</h3>
+<pre>wrangler.toml [vars]
+  DIGEST_TIME  = "07:00"            # local, in CLASSIFIER_TIMEZONE; "" = off
+  DIGEST_MODEL = "claude-sonnet-5"
+GET /   gains "digest 07:00 · claude-sonnet-5" (or "digest off")
+
+workers/src/digest/
+  facts.ts     digestFacts(env, now, zone) → DigestFacts         (RPC, typed guard)
+  due.ts       rankDue(rows, today) → DueRow[]                    (D4/D8 port)
+  plan.ts      readPlan(html, todayIso) → PlanToday | 'none' | 'unreadable'
+  opener.ts    writeOpener(env, input) → { opener } | { unavailable: reason }
+  format.ts    buildDigest(facts, opener, appUrl, now, zone) → PingText
+notify/tick.ts  morning_digest branch; per-kind worst case
+notify/store.ts claimNotifications(…, digestTime)</pre>
+  <h3>Sample text (Plate I “Normal”, HTML as sent)</h3>
+<pre>&lt;b&gt;Good morning · Saturday, Nov 7&lt;/b&gt;
+&lt;i&gt;Long-run day, so the shape is: …&lt;/i&gt;
+
+&lt;b&gt;Due · 5&lt;/b&gt;
+• Send RealPlay October invoice — &lt;i&gt;2 days late&lt;/i&gt;
+• Call the dentist about the crown — 3:00 PM
+…
+&lt;b&gt;Comms · 1 ASAP · 2 today · 6 whenever&lt;/b&gt;
+• ASAP · Dana — Can you confirm Thursday’s rehearsal time?
+…
+&lt;b&gt;Reader · 12 waiting&lt;/b&gt;
+
+&lt;a href="…/today"&gt;Today&lt;/a&gt; · &lt;a href="…/comms"&gt;Comms&lt;/a&gt; · &lt;a href="…/reader"&gt;Reader&lt;/a&gt;</pre>
+  <p>The plain twin drops the tags and puts the three URLs on their own lines.</p>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <ol>
+    <li><b>Migration</b> + <code>database/src/notifications-assertions.ts</code> cases (real Postgres): claim inside, before and after the window; once per local date across overlapping calls; <code>p_digest_time</code> null claims nothing; abandonment after 3 attempts or 60 min; the existing kinds unchanged. <code>digest_facts</code> shape, with each filter (cleared, fyi, outbound and unjudged excluded; archived posts excluded; newest plan). Regenerate <code>frontend/lib/database.types.ts</code> with its generator.</li>
+    <li><b><code>digest/due.ts</code></b> with a parity table, red first.</li>
+    <li><b><code>digest/plan.ts</code></b> against a fixture: a real <code>generate_plan.py</code> output committed under <code>workers/src/digest/fixtures/</code>, with personal text replaced by invented lines. Add broken variants.</li>
+    <li><b><code>digest/format.ts</code></b>: the four Plate I states verbatim, escaping, caps, overflow.</li>
+    <li><b><code>digest/opener.ts</code></b> modelled on <code>reader/summarize.ts</code>, with every failure mapped to <code>unavailable</code>.</li>
+    <li><b>Tick wiring</b>, <code>store.ts</code>, <code>index.ts</code> env + <code>GET /</code>, <code>wrangler.toml</code> vars with a comment in the file’s style.</li>
+    <li>Update the <code>telegram</code> skill (“Add a new kind of ping” row: a digest kind has no subject, and the worst case is per kind). Update <code>docs/telegram.md</code> if it lists the kinds.</li>
+  </ol>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D2 D7">With <code>DIGEST_TIME="07:00"</code>, a tick at 07:00–07:59 Chicago claims exactly one <code>morning_digest</code> for that local date; ticks outside the window, or on a date already claimed, claim none.</li>
+    <li data-trace="D7">A digest claim that fails to send is retried on later ticks under the existing attempt/lease/60-minute rules, and never sends twice for one date.</li>
+    <li data-trace="D1 P1">The sent text matches Plate I’s section order and wording; every count and row comes from <code>digest_facts</code>, not the model.</li>
+    <li data-trace="D4 P1">The Due list equals <code>rankDueToday</code>’s order and membership for the same rows (parity table), with the late, subtask and time labels.</li>
+    <li data-trace="D3 P1">Comms shows three tier counts and ≤ 5 rows, ASAP then Today, newest first; whenever, FYI, cleared, outbound and unjudged rows never appear as rows.</li>
+    <li data-trace="P1">The reader count equals the number of unarchived <code>reader_posts</code>, and shows when it is 0.</li>
+    <li data-trace="D5 D10 P1">When the newest plan covers today, its lines and theme are in the model input and not listed. With no plan, the opener input has <code>plan: null</code> and no plan section renders.</li>
+    <li data-trace="D6 P1">Model failure of any kind (no key, error, refusal, bad schema, timeout) sends the digest on the same tick, in the no-model form with today’s plan lines listed, without counting an attempt.</li>
+    <li data-trace="P1">Quiet day: the digest still sends, reading “nothing today” / “nothing waiting on you” / “0 waiting”.</li>
+    <li data-trace="D2">A blank <code>DIGEST_TIME</code> turns the digest off; a malformed one logs and turns it off; neither affects the other pings. <code>GET /</code> reports the digest’s state.</li>
+  </ul>
+  <h3>Review focus</h3>
+  <ul class="checks">
+    <li data-trace="D10">A plan whose HTML has no <code>DAILY_TASKS</code>, or truncated or invalid JSON → digest sends as “no plan”, logs <code>plan unreadable</code>.</li>
+    <li data-trace="P1">A task title or ask containing <code>&lt;</code>, <code>&amp;</code> or an emoji → renders literally, never cut mid-grapheme; Telegram never 400s on it.</li>
+    <li data-trace="P1">40 due tasks and 30 queued asks → 8 rows + “+32 more on Today”, 5 asks; total under 4,000 graphemes.</li>
+    <li data-trace="D7">DST change day (spring forward skips 02:00, not 07:00; fall back repeats 01:00) → exactly one digest, at 07:00 local.</li>
+    <li data-trace="D11">A transient send failure at 07:00 then success at 07:01 → one message; the recorded text is the one sent at 07:01.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><b>Real Postgres</b> (<code>database</code> <code>test:integration</code>, check:slow): the claim window, once-per-date, retry/abandon and DST cases; the <code>digest_facts</code> filters.</li>
+    <li><b>Jest, workers</b> (check:fast): <code>due.test.ts</code> (parity table), <code>plan.test.ts</code> (fixture + broken variants), <code>format.test.ts</code> (Plate I states verbatim, escaping, caps, length backstop), <code>opener.test.ts</code> (stubbed <code>fetch</code>: success, each failure → unavailable), <code>tick.test.ts</code> (digest branch, per-kind budget, facts failure, D6 path, <code>DIGEST_TIME</code> parsing), <code>index.test.ts</code> (<code>GET /</code> line).</li>
+    <li>No live Telegram or Anthropic call from any suite (the <code>telegram</code> and <code>anthropic-api</code> skills).</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>A Telegram message, so the evidence is the text, per the <code>showboat</code> skill’s rules. Add a <code>digest:preview</code> script in <code>workers</code> that builds the digest from the committed fixtures with a stubbed opener. Its output is deterministic, so <code>exec</code> it into <code>docs/demos/morning-digest/&lt;name&gt;.md</code> once for each Plate I state. Then <code>exec</code> the tick tests. Never send a live message from the session.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><b>Calendar</b>: the Worker has no calendar access, and the <code>morning</code> skill covers it. <b>Buttons/replies</b> need an inbound webhook (the <code>telegram</code> skill’s “Deliberately left out”). <b>Weekend time</b>: not asked for; <code>DIGEST_TIME</code> is one value.</li>
+    <li><b>Generator coupling (D10)</b>: a change to <code>generate_plan.py</code>’s script block silently drops the plan to “unreadable”. A cleaner contract would be a <code>&lt;script type="application/json" id="plan-data"&gt;</code> block emitted by the generator. That change lives in the skill, outside this repo; file it as a follow-up rather than building it here.</li>
+    <li><b>Opener faithfulness</b>: the prompt forbids inventing, but no suite runs the model. If the opener drifts in practice, an <code>eval:digest</code> script like <code>eval:reader</code> is the follow-up, not a check in this story.</li>
+    <li>Confirm the generated name of the <code>kind</code> CHECK in 0054 before dropping it (<code>npm run describe -w database</code>).</li>
+  </ul>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
