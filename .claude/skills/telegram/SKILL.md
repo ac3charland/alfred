@@ -42,7 +42,7 @@ steps are in [`docs/telegram.md`](../../../docs/telegram.md); this skill is for 
 | Survive an escaping bug | On 400, resend once as plain text with no `parse_mode` (already in `sendTelegram`) |
 | No link card under the ping | `link_preview_options: { is_disabled: true }` (replaces the old `disable_web_page_preview`) |
 | Silent ping | `disable_notification: true` — alfred deliberately doesn't set it; the phone decides |
-| Add a new kind of ping | A `kind` in the `notifications` check + `claim_notifications`, a builder in `notify/format.ts`, a branch in `notify/tick.ts`'s `textFor` |
+| Add a new kind of ping | A `kind` in the `notifications` check + `notifications_subject` + `claim_notifications`, a builder in `notify/format.ts`, a branch in `notify/tick.ts`. A kind with no subject row (the morning digest) builds its text in the tick from its own read and has its own worst case in the budget |
 | Find a chat id | `curl -s "https://api.telegram.org/bot$TOKEN/getUpdates"` → `result[0].message.chat.id`, after sending the bot a message. Only on the owner's Mac |
 | Check a token is live without sending | `getMe` (401 = bad token) |
 
@@ -73,7 +73,8 @@ steps are in [`docs/telegram.md`](../../../docs/telegram.md); this skill is for 
 - **A wrong `chat_id` is a 400 ("chat not found"), not a 403** — map it to systemic, or every
   claim burns its attempts and is abandoned in silence.
 - **Each send costs a Worker subrequest.** The notify tick budgets 50 per invocation: 1 claim RPC,
-  then 2 per ping (+1 per plain-text resend). See `SUBREQUEST_CEILING` in `notify/tick.ts`.
+  then 2 per ping (+1 per plain-text resend); a digest adds its facts RPC and the model call (+3).
+  A claim starts only if its own worst case fits. See `SUBREQUEST_CEILING` in `notify/tick.ts`.
 
 ## Deliberately left out
 
