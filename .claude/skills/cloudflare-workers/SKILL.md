@@ -143,6 +143,9 @@ export default {
 
 - **`wrangler deploy` registers the schedule**, so with a deploy-on-merge workflow, merging is
   also how a cron goes live or changes cadence. There is no separate "install the cron" step.
+- **The Free plan allows five cron triggers per ACCOUNT, and alfred uses all five** (tick, poll,
+  reader, retention, notify). A sixth fails `wrangler deploy` on the trigger count — add new work
+  to an existing tick's budget (the every-minute notify tick idles at one RPC) or move to Paid.
 - **Two schedules must differ AFTER Cloudflare normalizes them, not just as written.** A stepped
   range with a nonzero start is normalized to its offset-free form: `1-59/2 * * * *` is accepted,
   and the schedules API echoes it back verbatim, but the scheduler fires it on the EVEN minute
