@@ -52,7 +52,7 @@ steps are in [`docs/telegram.md`](../../../docs/telegram.md); this skill is for 
 | --- | --- | --- |
 | 2xx with `result.message_id` | `sent` | stamp `sent_at`, `telegram_message_id`, `text` |
 | 400 | plain-text resend, then `rejected` if it 400s again | count an attempt |
-| 401, 403, 404 | `systemic` (bad token / never started / blocked) | abort the tick, count nothing |
+| 401, 403, 404, or 400 "chat not found" | `systemic` (bad token or chat id / never started / blocked) | abort the tick, count nothing |
 | 429 | `rate_limited` (+ `retry_after`) | stop the tick, count nothing |
 | 5xx, network, 10 s timeout | `transient` | count an attempt; retried next tick |
 
@@ -70,6 +70,8 @@ steps are in [`docs/telegram.md`](../../../docs/telegram.md); this skill is for 
   Worker to pace sends; stop and let the next tick retry.
 - **`getUpdates` and a webhook are mutually exclusive**, and updates are kept only 24 hours. If a
   webhook is ever added, `getUpdates` stops working for finding the chat id.
+- **A wrong `chat_id` is a 400 ("chat not found"), not a 403** — map it to systemic, or every
+  claim burns its attempts and is abandoned in silence.
 - **Each send costs a Worker subrequest.** The notify tick budgets 50 per invocation: 1 claim RPC,
   then 2 per ping (+1 per plain-text resend). See `SUBREQUEST_CEILING` in `notify/tick.ts`.
 

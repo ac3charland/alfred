@@ -27,9 +27,10 @@ calls `claim_notifications` (migration `0054_notifications.sql`), sends each cla
   is. If you travel, a 3 PM task still pings at 3 PM Chicago time.
 - **Once each:** a message pings at most once. A task pings once per date and time, so a reschedule
   re-arms it.
-- **Failures:** a 5xx is retried on the next ticks, up to 3 attempts within an hour. A 429 waits for
-  the next tick. A 401/403 (bad token, chat never started, bot blocked) stops the tick with a
-  `notify: aborting the tick` line in `wrangler tail`.
+- **Failures:** a 5xx is retried on later ticks (each claim waits five minutes between hand-outs,
+  so a slow tick is never raced into a duplicate), up to 3 attempts within an hour. A 429 waits
+  for a later tick. A 401/403, or a 400 "chat not found" (bad token, wrong chat id, chat never
+  started, bot blocked) stops the tick with a `notify: aborting the tick` line in `wrangler tail`.
 - **Off switch:** until `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` and `ALFRED_APP_URL` are all set,
   the tick logs `notify: telegram unconfigured` and claims nothing.
 
