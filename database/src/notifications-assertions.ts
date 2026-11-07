@@ -220,6 +220,19 @@ async function markSent(client: Client, id: string): Promise<void> {
   );
 }
 
+/** Count a failed send and release the claim, the way the Worker records one. */
+async function fail(client: Client, id: string, attempts: number): Promise<void> {
+  await client.query(`update notifications set attempts = $2, leased_at = null where id = $1`, [
+    id,
+    attempts,
+  ]);
+}
+
+/** Hand a claim back unsent and uncounted, as the Worker does for one it never got to. */
+async function release(client: Client, id: string): Promise<void> {
+  await client.query(`update notifications set leased_at = null where id = $1`, [id]);
+}
+
 async function rowsFor(
   client: Client,
   column: 'comm_message_id' | 'item_id',
@@ -470,20 +483,31 @@ export async function runNotificationAssertions(client: Client): Promise<Asserti
       return 'the unique (kind, fire_key) index arbitrates';
     }),
     await attempt(
-      'a claim just handed to a tick is not re-handed to the next one while it is being sent',
+      'a leased claim is never re-handed: released, it retries next tick; expired, it is abandoned',
       async () => {
         await reset(client);
         const now = nextDay();
         const date = ymd(now);
         const due = chicago(date, '13:00');
-        await task(client, date, '13:00', 'slow send');
+        const id = await task(client, date, '13:00', 'slow send');
         expectCount(await claim(client, due.toISOString()), 1, 'the first tick');
-        // The first tick is still sending: the next minute's tick must leave the claim alone.
+        // The first tick is still sending: the next minutes' ticks must leave the claim alone.
         expectCount(await claim(client, at(due, 1)), 0, 'a minute later');
         expectCount(await claim(client, at(due, 4)), 0, 'four minutes later');
-        // Past the lease the first tick is presumed gone, and the claim is retried.
-        expectCount(await claim(client, at(due, 5)), 1, 'past the lease');
-        return 'leased for five minutes from each hand-out, then retried';
+        // The lease ran out unreleased: the first tick may have sent it and failed to record it,
+        // so the claim is abandoned rather than risk a second ping.
+        expectCount(await claim(client, at(due, 5)), 0, 'past the lease');
+        const [expired] = await rowsFor(client, 'item_id', id);
+        if (expired?.abandoned_at === null || expired?.sent_at !== null) {
+          throw new Error(`expired lease: ${JSON.stringify(expired)}`);
+        }
+
+        await reset(client);
+        const [claimed] = await claim(client, due.toISOString());
+        if (claimed === undefined) throw new Error('nothing claimed');
+        await release(client, claimed.id);
+        expectIds(await claim(client, at(due, 1)), [claimed.id], 'released, the next tick');
+        return 'held while leased; a released claim retries at once; an expired one is abandoned';
       },
     ),
     await attempt('an unsent claim is retried first, until it is abandoned', async () => {
@@ -494,15 +518,17 @@ export async function runNotificationAssertions(client: Client): Promise<Asserti
       const failing = await task(client, date, '12:00', 'retried');
       const [claimed] = await claim(client, due.toISOString());
       if (claimed === undefined) throw new Error('nothing claimed');
-      await client.query(`update notifications set attempts = 2 where id = $1`, [claimed.id]);
+      await fail(client, claimed.id, 2);
       const later = await task(client, date, '12:01', 'new');
 
       const retried = await claim(client, at(due, 5));
       if (retried[0]?.id !== claimed.id || retried[0].attempts !== 2 || retried.length !== 2) {
         throw new Error(`retries should come first: ${JSON.stringify(retried)}`);
       }
+      const newerId = retried[1]?.id ?? 'missing';
 
-      await client.query(`update notifications set attempts = 3 where id = $1`, [claimed.id]);
+      await fail(client, claimed.id, 3);
+      await fail(client, newerId, 1);
       const third = await claim(client, at(due, 10));
       if (third.some((row) => row.id === claimed.id)) throw new Error('3 attempts still retried');
       const [failingRow] = await rowsFor(client, 'item_id', failing);
@@ -512,6 +538,7 @@ export async function runNotificationAssertions(client: Client): Promise<Asserti
 
       const [newer] = await rowsFor(client, 'item_id', later);
       if (newer?.abandoned_at !== null) throw new Error('the newer claim was abandoned early');
+      await fail(client, newerId, 2);
       const hourOn = await claim(client, at(due, 66));
       if (hourOn.length > 0) throw new Error(`a claim over an hour old was retried`);
       const [laterRow] = await rowsFor(client, 'item_id', later);
@@ -733,20 +760,24 @@ async function runDigestClaimChecks(client: Client): Promise<AssertionResult[]> 
         const start = chicago(date, '07:00');
         const [claimed] = await claimDigest(client, start.toISOString());
         if (claimed === undefined) throw new Error('nothing claimed');
-        await client.query(`update notifications set attempts = 1 where id = $1`, [claimed.id]);
-        const retried = await claimDigest(client, at(start, 5));
+        // A failed send at 07:00 is retried by the 07:01 tick.
+        await fail(client, claimed.id, 1);
+        const retried = await claimDigest(client, at(start, 1));
         if (retried.length !== 1 || retried[0]?.id !== claimed.id || retried[0].attempts !== 1) {
           throw new Error(`the retry: ${JSON.stringify(retried)}`);
         }
-        await client.query(`update notifications set attempts = 3 where id = $1`, [claimed.id]);
+        await fail(client, claimed.id, 3);
         expectCount(await claimDigest(client, at(start, 10)), 0, 'after 3 attempts');
         const abandoned = await expectOneDigest(client, date, 'after 3 attempts');
         if (abandoned.abandoned_at === null) throw new Error('not abandoned after 3 attempts');
         expectCount(await claimDigest(client, at(start, 11)), 0, 'inside the window, abandoned');
 
         await reset(client);
-        await claimDigest(client, start.toISOString());
+        const [hourly] = await claimDigest(client, start.toISOString());
+        if (hourly === undefined) throw new Error('nothing claimed');
+        await release(client, hourly.id);
         expectCount(await claimDigest(client, at(start, 59)), 1, 'retried at 59 minutes');
+        await release(client, hourly.id);
         expectCount(await claimDigest(client, at(start, 66)), 0, 'an hour on');
         const [old] = await digestRows(client);
         if (old?.abandoned_at === null) throw new Error('not abandoned after an hour');

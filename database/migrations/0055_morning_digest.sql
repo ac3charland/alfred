@@ -6,7 +6,8 @@
 --
 -- Three pieces:
 --   1. `notifications` accepts `morning_digest`, a kind with no subject row.
---   2. `claim_notifications` gains `p_digest_time` and claims one digest per local date.
+--   2. `claim_notifications` gains `p_digest_time` and claims one digest per local date, and a
+--      lease now means at most once (below).
 --   3. `digest_facts` — every fact the digest renders, in one read.
 
 -- ── 1. A third kind, with no subject row ──────────────────────────────────────
@@ -27,6 +28,13 @@ comment on column notifications.fire_key is
    rescheduling a task changes its key and re-arms it), and the local YYYY-MM-DD for
    morning_digest (so a day gets one digest, however many ticks overlap).';
 
+comment on column notifications.leased_at is
+  'When claim_notifications handed this claim to a tick; NULL = free to hand out. The tick clears
+   it for every claim it hands back unsent — a counted failure, a rate limit, or one it never got
+   to — so those are retried on the next tick. A lease that instead runs out (five minutes)
+   belongs to a tick that may have sent the ping and then failed to record it, or died part-way,
+   so the claim is abandoned rather than risk sending it twice: at most once, not at least once.';
+
 -- ── 2. claim_notifications, now with the digest ──────────────────────────────
 -- Everything 0054 says about the two subject kinds still holds; the function body is 0054's with
 -- the digest added. The new rule:
@@ -38,8 +46,12 @@ comment on column notifications.fire_key is
 --     `p_digest_time` means the digest is off and nothing new is claimed.
 --
 -- A digest claim has no subject to go stale, so only the shared rules abandon it: three
--- attempts, or an hour since it was claimed. Abandoned or sent, its row keeps the date's key, so
--- the date never gets a second digest.
+-- attempts, an hour since it was claimed, or an expired lease. Abandoned or sent, its row keeps
+-- the date's key, so the date never gets a second digest.
+--
+-- Leases, for every kind (a change from 0054): a claim is retried only once its tick has released
+-- it (cleared `leased_at`), and abandoned when its lease runs out unreleased. 0054 retried an
+-- expired lease, which re-sent any ping whose send succeeded but whose recording PATCH failed.
 --
 -- `p_digest_time` defaults to NULL so a Worker still calling with three arguments keeps working
 -- (digest off) between this migration applying and the new Worker deploying. The 3-argument
@@ -89,6 +101,7 @@ begin
      and (
           n.attempts >= 3
        or n.claimed_at <= p_now - interval '60 minutes'
+       or n.leased_at <= p_now - interval '5 minutes'
        or (n.kind = 'task_due' and not exists (
              select 1 from task_items t
               where t.id = n.item_id
@@ -104,14 +117,14 @@ begin
                 and m.cleared_at is null))
      );
 
-  -- What survives, and is not leased to a tick that may still be sending it, is retryable. Read
-  -- before the insert, so the new claims are not counted twice.
+  -- What survives and was released (or never handed out) is retryable; a claim still leased is
+  -- with a tick that may be sending it. Read before the insert, so new claims aren't counted twice.
   select coalesce(array_agg(n.id), '{}')
     into v_retries
     from notifications n
    where n.sent_at is null
      and n.abandoned_at is null
-     and (n.leased_at is null or n.leased_at <= p_now - interval '5 minutes');
+     and n.leased_at is null;
 
   -- 2. Claim what just became true. The unique index arbitrates overlapping ticks.
   with claimed as (
