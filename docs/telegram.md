@@ -30,9 +30,10 @@ calls `claim_notifications` (migration `0054_notifications.sql`), sends each cla
   is. If you travel, a 3 PM task still pings at 3 PM Chicago time.
 - **Once each:** a message pings at most once. A task pings once per date and time, so a reschedule
   re-arms it.
-- **Failures:** a 5xx is retried on later ticks (each claim waits five minutes between hand-outs,
-  so a slow tick is never raced into a duplicate), up to 3 attempts within an hour. A 429 waits
-  for a later tick. A 401/403, or a 400 "chat not found" (bad token, wrong chat id, chat never
+- **Failures:** a 5xx is retried on the next tick, up to 3 attempts within an hour. A 429 waits
+  for the next tick. Delivery is at most once: if Telegram accepted a ping but alfred failed to
+  record it (or the Worker died mid-tick), the claim is abandoned five minutes later rather than
+  resent, so a database blip can cost a ping but never doubles one. A 401/403, or a 400 "chat not found" (bad token, wrong chat id, chat never
   started, bot blocked) stops the tick with a `notify: aborting the tick` line in `wrangler tail`.
 - **Digest:** claimed by the first tick in the hour after `DIGEST_TIME`, once per local date, so a
   deploy after 8 AM starts tomorrow. Only the opener comes from the model (`DIGEST_MODEL`, with

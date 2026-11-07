@@ -56,6 +56,11 @@ steps are in [`docs/telegram.md`](../../../docs/telegram.md); this skill is for 
 | 429 | `rate_limited` (+ `retry_after`) | stop the tick, count nothing |
 | 5xx, network, 10 s timeout | `transient` | count an attempt; retried next tick |
 
+Every claim a tick hands back unsent (counted failure, 429, systemic stop, never reached) is
+released (`leased_at` → NULL) and retried next tick. A lease that runs out unreleased means "sent,
+maybe, but unrecorded", and `claim_notifications` abandons it: at most once. A new failure path
+must record or release its claim, or that ping is silently dropped.
+
 ## Common pitfalls
 
 - **Never log the request URL or a raw caught `fetch` error** — some runtimes put the URL (token
