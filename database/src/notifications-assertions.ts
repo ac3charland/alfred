@@ -3,9 +3,10 @@ import pg, { type Client } from 'pg';
 import { type AssertionResult, attempt } from './assertions.ts';
 
 /**
- * The SQL half of the Telegram pings (ALF-333): what `claim_notifications` claims, what it never
- * claims, how a claim is retried or abandoned, and what deleting a subject takes with it. Every
- * eligibility rule lives in the RPC, so this is where each one is pinned.
+ * The SQL half of the Telegram pings: what `claim_notifications` claims, what it never claims,
+ * how a claim is retried or abandoned, and what deleting a subject takes with it — for the comms
+ * and due-task pings and for the once-a-day morning digest — plus what `digest_facts` hands the
+ * digest. Every eligibility rule lives in the RPCs, so this is where each one is pinned.
  *
  * Each check runs at its own instant, a day after the last, far from the wall clock: the rest of
  * the suite writes verdicts and tasks at `now()`, and none of them may land in a window here.
@@ -60,14 +61,37 @@ async function asRole<T>(client: Client, role: string, fn: () => Promise<T>): Pr
 async function claim(
   client: Client,
   now: string,
-  options: { zone?: string; limit?: number } = {},
+  options: { zone?: string; limit?: number; digestTime?: string } = {},
 ): Promise<Claim[]> {
   const { rows } = await asRole(client, 'service_role', () =>
-    client.query<Claim>(`select * from claim_notifications($1::timestamptz, $2, $3)`, [
+    client.query<Claim>(`select * from claim_notifications($1::timestamptz, $2, $3, $4::time)`, [
       now,
       options.zone ?? ZONE,
       options.limit ?? 20,
+      options.digestTime,
     ]),
+  );
+  return rows;
+}
+
+/** Claim with the digest on at 07:00, as the deployed Worker does. */
+function claimDigest(client: Client, now: string): Promise<Claim[]> {
+  return claim(client, now, { digestTime: '07:00' });
+}
+
+interface DigestRow {
+  id: string;
+  fire_key: string;
+  claimed_at: string;
+  attempts: number;
+  sent_at: string | null;
+  abandoned_at: string | null;
+}
+
+async function digestRows(client: Client): Promise<DigestRow[]> {
+  const { rows } = await client.query<DigestRow>(
+    `select id, fire_key, claimed_at, attempts, sent_at, abandoned_at
+       from notifications where kind = 'morning_digest' order by claimed_at`,
   );
   return rows;
 }
@@ -594,8 +618,329 @@ export async function runNotificationAssertions(client: Client): Promise<Asserti
       }
       return 'RLS: the owner sees the stream; anon sees nothing';
     }),
+    ...(await runDigestClaimChecks(client)),
+    await runDigestFactsCheck(client),
   ];
 
   await reset(client);
   return results;
+}
+
+/** Fail unless the table holds exactly one digest, for `date`; return it. */
+async function expectOneDigest(client: Client, date: string, what: string): Promise<DigestRow> {
+  const rows = await digestRows(client);
+  if (rows.length !== 1 || rows[0]?.fire_key !== date) {
+    throw new Error(`${what}: expected one digest for ${date}, got ${JSON.stringify(rows)}`);
+  }
+  return rows[0];
+}
+
+/** Every minute in [from, to) as ISO instants. */
+function minutes(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let t = Date.parse(from); t < Date.parse(to); t += 60_000) {
+    out.push(new Date(t).toISOString());
+  }
+  return out;
+}
+
+async function runDigestClaimChecks(client: Client): Promise<AssertionResult[]> {
+  return [
+    await attempt(
+      'the morning digest claims once, inside [07:00, 08:00) Chicago, keyed on the local date',
+      async () => {
+        await reset(client);
+        const date = ymd(nextDay());
+        expectCount(await claimDigest(client, chicago(date, '06:59').toISOString()), 0, '06:59');
+        const claims = await claimDigest(client, chicago(date, '07:00').toISOString());
+        expectCount(claims, 1, '07:00');
+        const [row] = claims;
+        if (
+          row?.kind !== 'morning_digest' ||
+          row.attempts !== 0 ||
+          [row.sender, row.account, row.ask, row.title, row.due_time].some((v) => v !== null)
+        ) {
+          throw new Error(`wrong claim: ${JSON.stringify(row)}`);
+        }
+        await expectOneDigest(client, date, 'after 07:00');
+
+        await reset(client);
+        expectCount(await claimDigest(client, chicago(date, '07:59').toISOString()), 1, '07:59');
+        await reset(client);
+        expectCount(await claimDigest(client, chicago(date, '08:00').toISOString()), 0, '08:00');
+        return 'nothing at 06:59 or 08:00; one subject-less claim at 07:00 and at 07:59';
+      },
+    ),
+    await attempt('a 23:30 Chicago claim keys on the Chicago date, not the UTC one', async () => {
+      await reset(client);
+      const date = ymd(nextDay());
+      const late = chicago(date, '23:30');
+      if (ymd(late) === date) throw new Error('fixture should cross the UTC day');
+      expectCount(await claim(client, late.toISOString(), { digestTime: '23:15' }), 1, '23:30');
+      await expectOneDigest(client, date, 'keyed');
+      return `claimed at ${late.toISOString()} for ${date}`;
+    }),
+    await attempt(
+      'one digest per local date, across overlapping ticks and every later minute',
+      async () => {
+        await reset(client);
+        const date = ymd(nextDay());
+        const first = await claimDigest(client, chicago(date, '07:00').toISOString());
+        const [claimed] = first;
+        if (claimed === undefined) throw new Error('nothing claimed');
+        // A tick still sending it: the lease keeps the next minutes from re-handing it.
+        expectCount(await claimDigest(client, chicago(date, '07:01').toISOString()), 0, '07:01');
+        await markSent(client, claimed.id);
+        for (const now of minutes(
+          chicago(date, '07:02').toISOString(),
+          chicago(date, '08:00').toISOString(),
+        )) {
+          expectCount(await claimDigest(client, now), 0, now);
+        }
+        await expectOneDigest(client, date, 'after the window');
+        // The next day is a new key.
+        const next = ymd(new Date(Date.parse(`${date}T12:00:00Z`) + 86_400_000));
+        expectCount(await claimDigest(client, chicago(next, '07:00').toISOString()), 1, 'next day');
+        return 'sent at 07:00, never re-claimed that date; the next date claims afresh';
+      },
+    ),
+    await attempt('a NULL digest time claims no digest at any minute', async () => {
+      await reset(client);
+      const date = ymd(nextDay());
+      for (const now of minutes(
+        chicago(date, '06:00').toISOString(),
+        chicago(date, '09:00').toISOString(),
+      )) {
+        await claim(client, now);
+      }
+      // The 3-argument call a Worker predating the digest makes still resolves, digest off.
+      await asRole(client, 'service_role', () =>
+        client.query(`select * from claim_notifications($1::timestamptz, $2, $3)`, [
+          chicago(date, '07:30').toISOString(),
+          ZONE,
+          20,
+        ]),
+      );
+      const rows = await digestRows(client);
+      if (rows.length > 0) throw new Error(`claimed ${JSON.stringify(rows)}`);
+      return 'off means off, and the old call shape still works';
+    }),
+    await attempt(
+      'a failing digest is retried under the shared rules, then abandoned — never re-claimed',
+      async () => {
+        await reset(client);
+        const date = ymd(nextDay());
+        const start = chicago(date, '07:00');
+        const [claimed] = await claimDigest(client, start.toISOString());
+        if (claimed === undefined) throw new Error('nothing claimed');
+        await client.query(`update notifications set attempts = 1 where id = $1`, [claimed.id]);
+        const retried = await claimDigest(client, at(start, 5));
+        if (retried.length !== 1 || retried[0]?.id !== claimed.id || retried[0].attempts !== 1) {
+          throw new Error(`the retry: ${JSON.stringify(retried)}`);
+        }
+        await client.query(`update notifications set attempts = 3 where id = $1`, [claimed.id]);
+        expectCount(await claimDigest(client, at(start, 10)), 0, 'after 3 attempts');
+        const abandoned = await expectOneDigest(client, date, 'after 3 attempts');
+        if (abandoned.abandoned_at === null) throw new Error('not abandoned after 3 attempts');
+        expectCount(await claimDigest(client, at(start, 11)), 0, 'inside the window, abandoned');
+
+        await reset(client);
+        await claimDigest(client, start.toISOString());
+        expectCount(await claimDigest(client, at(start, 59)), 1, 'retried at 59 minutes');
+        expectCount(await claimDigest(client, at(start, 66)), 0, 'an hour on');
+        const [old] = await digestRows(client);
+        if (old?.abandoned_at === null) throw new Error('not abandoned after an hour');
+        return '3 attempts or 60 minutes abandons; the date stays claimed';
+      },
+    ),
+    await attempt(
+      'spring forward and fall back each deliver one digest, at 07:00 local',
+      async () => {
+        const days = [
+          // 2031-03-09: 02:00 CST jumps to 03:00 CDT, so 07:00 local is 12:00Z.
+          { date: '2031-03-09', expected: '2031-03-09T12:00:00.000Z' },
+          // 2031-11-02: 02:00 CDT falls back to 01:00 CST, so 07:00 local is 13:00Z.
+          { date: '2031-11-02', expected: '2031-11-02T13:00:00.000Z' },
+        ];
+        for (const { date, expected } of days) {
+          await reset(client);
+          for (const now of minutes(`${date}T04:00:00Z`, `${date}T20:00:00Z`)) {
+            const claims = await claimDigest(client, now);
+            for (const row of claims) await markSent(client, row.id);
+          }
+          const row = await expectOneDigest(client, date, date);
+          if (Date.parse(row.claimed_at) !== Date.parse(expected)) {
+            throw new Error(`${date}: claimed at ${row.claimed_at}, want ${expected}`);
+          }
+        }
+        return 'one claim each, at 12:00Z (CDT) and 13:00Z (CST)';
+      },
+    ),
+  ];
+}
+
+interface DigestFacts {
+  tasks: {
+    id: string;
+    parent_id: string | null;
+    title: string;
+    status: string;
+    priority: string | null;
+    due_date: string | null;
+    due_time: string | null;
+    created_at: string;
+  }[];
+  comms: {
+    counts: Record<'asap' | 'today' | 'whenever', number>;
+    asks: { tier: string; sender: string; account: string; ask: string; received_at: string }[];
+  };
+  reader_waiting: number;
+  plan: { id: string; uploaded_at: string; html: string } | null;
+}
+
+async function digestFacts(client: Client): Promise<DigestFacts> {
+  const { rows } = await asRole(client, 'service_role', () =>
+    client.query<{ facts: DigestFacts }>(`select digest_facts($1::timestamptz, $2) as facts`, [
+      '2040-01-02T13:00:00Z',
+      ZONE,
+    ]),
+  );
+  const facts = rows[0]?.facts;
+  if (facts === undefined) throw new Error('digest_facts returned no row');
+  return facts;
+}
+
+/** An item row for the facts check, prefixed so the check can pick its own rows out. */
+async function factTask(
+  client: Client,
+  title: string,
+  fields: { parent?: string; status?: string; date?: string; time?: string } = {},
+): Promise<string> {
+  const { rows } = await client.query<{ id: string }>(
+    `insert into items (title, item_type, parent_id, status, completed_at, due_date, due_time)
+       values ($1, 'task', $2, $3::item_status, case when $3::text = 'completed' then now() end,
+               ($4 || 'T00:00:00Z')::timestamptz, $5::time)
+       returning id`,
+    [`facts · ${title}`, fields.parent, fields.status ?? 'active', fields.date, fields.time],
+  );
+  const id = rows[0]?.id;
+  if (id === undefined) throw new Error('no item inserted');
+  return id;
+}
+
+function runDigestFactsCheck(client: Client): Promise<AssertionResult> {
+  return attempt(
+    'digest_facts: active tasks (+ their hidden parents), the queue, the reader count, the newest plan',
+    async () => {
+      // Inside a transaction rolled back at the end, so nothing here outlives the check. The
+      // counts are read as deltas over whatever the rest of the suite left behind.
+      await client.query('begin');
+      try {
+        // Empty the queue first: ASAP sorts ahead of Today whatever its age, so another check's
+        // open ASAP rows would crowd this check's asks out of the five.
+        await client.query(
+          `update comm_messages set cleared_at = now(), cleared_by = 'reply'
+            where cleared_at is null`,
+        );
+        const before = await digestFacts(client);
+
+        const root = await factTask(client, 'active root', { date: '2040-01-02', time: '15:00' });
+        const done = await factTask(client, 'completed parent', { status: 'completed' });
+        const orphan = await factTask(client, 'active child of done', { parent: done });
+        await factTask(client, 'completed child', { parent: root, status: 'completed' });
+        await factTask(client, 'completed leaf', { status: 'completed', date: '2040-01-01' });
+
+        const hour = (h: number): string =>
+          `2040-01-0${String(1 + Math.floor(h / 24))}T${String(h % 24).padStart(2, '0')}:00:00Z`;
+        await message(client, { verdictAt: hour(10), personName: 'Dana', ask: 'asap old' });
+        await message(client, {
+          verdictAt: hour(11),
+          senderName: 'Chad',
+          ask: 'asap new',
+          accountLabel: 'Gmail',
+        });
+        for (const h of [12, 13, 14, 15]) {
+          await message(client, { verdictAt: hour(h), tier: 'today', ask: `today ${String(h)}` });
+        }
+        await message(client, { verdictAt: hour(16), tier: 'whenever', ask: 'whenever' });
+        await message(client, { verdictAt: hour(17), tier: 'fyi', ask: 'fyi' });
+        await message(client, { verdictAt: hour(18), cleared: true, ask: 'cleared' });
+        await message(client, { verdictAt: hour(19), direction: 'outbound', ask: 'outbound' });
+        const accountId = await account(client);
+        await client.query(
+          `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+             values ($1, 'facts-unjudged', 'facts-unjudged', 'x@example.com', $2)`,
+          [accountId, hour(20)],
+        );
+
+        const { rows: pub } = await client.query<{ id: string }>(
+          `insert into reader_publications (handle, name, source)
+             values ('facts@example.com', 'Facts', 'owner') returning id`,
+        );
+        for (const [index, archived] of [false, false, true].entries()) {
+          await client.query(
+            `insert into reader_posts (publication_id, account_key, gmail_message_id, title,
+                                       received_at, archived_at)
+               values ($1, 'k', $2, 't', now(), case when $3 then now() end)`,
+            [pub[0]?.id, `facts-${String(index)}`, archived],
+          );
+        }
+
+        await client.query(
+          `insert into weekly_plans (html, uploaded_at) values
+             ('older', '2040-01-01T00:00:00Z'), ('newest', '2040-01-01T00:00:01Z')`,
+        );
+
+        const facts = await digestFacts(client);
+
+        const mine = facts.tasks.filter((t) => t.title.startsWith('facts · '));
+        const titles = new Set(mine.map((t) => t.title.slice('facts · '.length)));
+        const want = ['active child of done', 'active root', 'completed parent'];
+        if (titles.size !== want.length || !want.every((title) => titles.has(title))) {
+          throw new Error(`tasks: ${JSON.stringify([...titles])}`);
+        }
+        const rootRow = mine.find((t) => t.id === root);
+        if (rootRow?.due_date !== '2040-01-02' || rootRow.due_time !== '15:00:00') {
+          throw new Error(`floating date/time: ${JSON.stringify(rootRow)}`);
+        }
+        if (mine.find((t) => t.id === orphan)?.parent_id !== done) {
+          throw new Error('the active child lost its parent id');
+        }
+
+        const delta = {
+          asap: facts.comms.counts.asap - before.comms.counts.asap,
+          today: facts.comms.counts.today - before.comms.counts.today,
+          whenever: facts.comms.counts.whenever - before.comms.counts.whenever,
+        };
+        if (JSON.stringify(delta) !== JSON.stringify({ asap: 2, today: 4, whenever: 1 })) {
+          throw new Error(`counts moved by ${JSON.stringify(delta)}`);
+        }
+        const asks = facts.comms.asks.map((a) => `${a.tier}:${a.ask}`);
+        const wantAsks = [
+          'asap:asap new',
+          'asap:asap old',
+          'today:today 15',
+          'today:today 14',
+          'today:today 13',
+        ];
+        if (JSON.stringify(asks) !== JSON.stringify(wantAsks)) {
+          throw new Error(`asks: ${JSON.stringify(asks)}`);
+        }
+        const [newest, older] = facts.comms.asks;
+        if (newest?.sender !== 'Chad' || newest.account !== 'Gmail' || older?.sender !== 'Dana') {
+          throw new Error(`sender/account: ${JSON.stringify(facts.comms.asks.slice(0, 2))}`);
+        }
+
+        if (facts.reader_waiting - before.reader_waiting !== 2) {
+          throw new Error(
+            `reader moved by ${String(facts.reader_waiting - before.reader_waiting)}`,
+          );
+        }
+        if (facts.plan?.html !== 'newest') throw new Error(`plan: ${JSON.stringify(facts.plan)}`);
+        return 'filters, order, caps and the newest plan all hold';
+      } finally {
+        await client.query('rollback');
+      }
+    },
+  );
 }
