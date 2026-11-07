@@ -1,0 +1,93 @@
+{
+  "week_number": 99,
+  "date_start": "Nov 6",
+  "date_end": "Nov 13, 2026",
+  "checkin_date": "Fri 11/13 @ 4:45pm",
+  "quarterly_anchor": { "start": "2027-01-11", "end": "2027-01-15" },
+  "theme_title": "Finish what slipped &amp; keep the long run",
+  "theme_story": "An invented week for alfred's digest fixture. Nothing here is real.",
+  "win_conditions": [
+    {
+      "rock": "Rock 1 · Creative habit",
+      "win": "Motivic chord-voicing notes drafted",
+      "color": "r1"
+    },
+    { "rock": "Rock 2 · Health", "win": "Three runs, one long", "color": "r2" },
+    { "rock": "Rock 3 · Home", "win": "Garage shelves up", "color": "r3" }
+  ],
+  "days": [
+    {
+      "dow": "Fri",
+      "date": "11/6",
+      "iso": "2026-11-06",
+      "tasks": [{ "pill": "ci", "label": "", "text": "Weekly review" }],
+      "timeline": { "r1": "", "r2": "", "r3": "", "rp": "", "run": "", "other": "Review" }
+    },
+    {
+      "dow": "Sat",
+      "date": "11/7",
+      "iso": "2026-11-07",
+      "tasks": [
+        { "pill": "run", "label": "", "text": "Long run (8)" },
+        { "pill": "r1", "label": "", "text": "Draft Motivic chord-voicing notes" },
+        { "pill": "rp", "label": "", "text": "Send RealPlay October invoice" }
+      ],
+      "timeline": { "r1": "Notes", "r2": "", "r3": "", "rp": "Invoice", "run": "Long", "other": "" }
+    },
+    {
+      "dow": "Sun",
+      "date": "11/8",
+      "iso": "2026-11-08",
+      "tasks": [],
+      "timeline": { "r1": "", "r2": "", "r3": "", "rp": "", "run": "", "other": "" }
+    },
+    {
+      "dow": "Mon",
+      "date": "11/9",
+      "iso": "2026-11-09",
+      "tasks": [
+        { "pill": "r3", "label": "Shelves", "text": "Buy brackets &amp; <b>anchors</b>" },
+        { "pill": "gen", "label": "", "text": "Call the dentist about the crown" }
+      ],
+      "timeline": { "r1": "", "r2": "", "r3": "Brackets", "rp": "", "run": "", "other": "" }
+    },
+    {
+      "dow": "Tue",
+      "date": "11/10",
+      "iso": "2026-11-10",
+      "tasks": [{ "pill": "run", "label": "", "text": "Easy run (4)" }],
+      "timeline": { "r1": "", "r2": "", "r3": "", "rp": "", "run": "Easy", "other": "" }
+    },
+    {
+      "dow": "Wed",
+      "date": "11/11",
+      "iso": "2026-11-11",
+      "tasks": [{ "pill": "r1", "label": "", "text": "Voice-lead the bridge — café sketch" }],
+      "timeline": { "r1": "Bridge", "r2": "", "r3": "", "rp": "", "run": "", "other": "" }
+    },
+    {
+      "dow": "Thu",
+      "date": "11/12",
+      "iso": "2026-11-12",
+      "tasks": [{ "pill": "prac", "label": "", "text": "Scales, 20 min" }],
+      "timeline": {
+        "r1": "",
+        "r2": "",
+        "r3": "",
+        "rp": "",
+        "prac": "Scales",
+        "run": "",
+        "other": ""
+      }
+    },
+    {
+      "dow": "Fri",
+      "date": "11/13",
+      "iso": "2026-11-13",
+      "tasks": [{ "pill": "ci", "label": "", "text": "Weekly review" }],
+      "timeline": { "r1": "", "r2": "", "r3": "", "rp": "", "run": "", "other": "Review" }
+    }
+  ],
+  "success_criteria": ["Invoice sent", "Notes drafted"],
+  "open_items": [{ "text": "Shelves: measure the studs first" }]
+}

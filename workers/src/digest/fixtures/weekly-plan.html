@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Week 99: Nov 6 – Nov 13, 2026</title>
+<style>
+  :root {
+    --bg: #fafaf8; --surface: #ffffff; --surface-muted: #f5f4f0;
+    --text: #1a1a1a; --text-secondary: #6b6b68; --text-muted: #9b9b97;
+    --border: #e5e4e0; --border-strong: #d3d1c7;
+    --accent: #185FA5; --accent-bg: #E6F1FB; --accent-text: #0C447C;
+    --r1: #E6F1FB; --r1t: #0C447C; --r1m: #85B7EB;
+    --r2: #E1F5EE; --r2t: #085041; --r2m: #5DCAA5;
+    --r3: #EEEDFE; --r3t: #3C3489; --r3m: #AFA9EC;
+    --run: #EAF3DE; --runt: #27500A; --runm: #97C459;
+    --ci: #FAEEDA; --cit: #633806; --cim: #EF9F27;
+    --rp: #FBE9F0; --rpt: #7B1F49; --rpm: #E393B4;
+    --prac: #F4F0D6; --pract: #5B5310; --pracm: #C8B74A;
+    --gen: #f5f4f0; --gent: #6b6b68;
+    --today-highlight: rgba(24,95,165,0.06);
+    --font: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18; --surface: #2c2c2a; --surface-muted: #232321;
+      --text: #e8e8e4; --text-secondary: #a0a09c; --text-muted: #6b6b68;
+      --border: #3a3a38; --border-strong: #4a4a47;
+      --accent: #85B7EB; --accent-bg: #0C447C; --accent-text: #B5D4F4;
+      --r1: #0C447C; --r1t: #B5D4F4; --r1m: #378ADD;
+      --r2: #085041; --r2t: #9FE1CB; --r2m: #1D9E75;
+      --r3: #3C3489; --r3t: #CECBF6; --r3m: #7F77DD;
+      --run: #27500A; --runt: #C0DD97; --runm: #639922;
+      --ci: #633806; --cit: #FAC775; --cim: #BA7517;
+      --rp: #7B1F49; --rpt: #F7C9DC; --rpm: #C4577F;
+      --prac: #4D460E; --pract: #EDE3A8; --pracm: #A8962E;
+      --gen: #2c2c2a; --gent: #a0a09c;
+      --today-highlight: rgba(133,183,235,0.08);
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; max-width: 780px; margin: 0 auto; }
+  .header h1 { font-size: 22px; font-weight: 500; }
+  .header .subtitle { font-size: 14px; color: var(--text-secondary); }
+  .theme-bar { margin-top: 12px; padding: 14px 16px; background: var(--accent-bg); color: var(--accent-text); border-radius: 8px; font-size: 14px; line-height: 1.65; }
+  .theme-bar .theme-title { font-weight: 500; margin-bottom: 6px; }
+  .section { margin-top: 2rem; }
+  .section-title { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 100px; font-size: 13px; white-space: nowrap; }
+  .pill-r1 { background: var(--r1); color: var(--r1t); }
+  .pill-r2 { background: var(--r2); color: var(--r2t); }
+  .pill-r3 { background: var(--r3); color: var(--r3t); }
+  .pill-rp { background: var(--rp); color: var(--rpt); }
+  .pill-prac { background: var(--prac); color: var(--pract); }
+  .pill-run { background: var(--run); color: var(--runt); }
+  .pill-ci { background: var(--ci); color: var(--cit); }
+  .pill-gen { background: var(--gen); color: var(--gent); }
+  .wins-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+  .win-card { border-radius: 8px; padding: 10px 12px; }
+  .win-card .wn { font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+  .win-card .wt { font-size: 13px; }
+  .win-card.r1 { background: var(--r1); color: var(--r1t); }
+  .win-card.r2 { background: var(--r2); color: var(--r2t); }
+  .win-card.r3 { background: var(--r3); color: var(--r3t); }
+  .today-card { background: var(--surface); border: 2px solid var(--accent); border-radius: 12px; padding: 20px; }
+  .today-label { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-text); background: var(--accent-bg); display: inline-block; padding: 2px 10px; border-radius: 100px; margin-bottom: 12px; }
+  .today-day { font-size: 20px; font-weight: 500; margin-bottom: 12px; }
+  .today-tasks { list-style: none; }
+  .today-tasks li { padding: 8px 0; border-bottom: 0.5px solid var(--border); font-size: 15px; display: flex; align-items: center; gap: 10px; }
+  .today-tasks li:last-child { border-bottom: none; }
+  .today-no-plan { font-size: 15px; color: var(--text-secondary); font-style: italic; }
+  .timeline-container { overflow-x: auto; }
+  .timeline { display: grid; grid-template-columns: 90px repeat(8,1fr); gap: 0; min-width: 600px; }
+  .tl-corner { background: var(--surface-muted); padding: 8px; border-bottom: 2px solid var(--border-strong); border-right: 0.5px solid var(--border); }
+  .tl-day-header { background: var(--surface-muted); padding: 8px 6px; font-size: 13px; font-weight: 500; text-align: center; border-bottom: 2px solid var(--border-strong); border-right: 0.5px solid var(--border); }
+  .tl-day-header .dow { color: var(--text); }
+  .tl-day-header .dom { color: var(--text-muted); font-weight: 400; font-size: 12px; }
+  .tl-day-header.is-today { background: var(--accent-bg); }
+  .tl-day-header.is-today .dow { color: var(--accent-text); }
+  .tl-day-header.is-today .dom { color: var(--accent-text); }
+  .tl-row-label { padding: 10px 8px; font-size: 13px; font-weight: 500; border-bottom: 0.5px solid var(--border); border-right: 0.5px solid var(--border); display: flex; align-items: center; gap: 6px; }
+  .tl-row-label .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .tl-cell { padding: 6px 4px; border-bottom: 0.5px solid var(--border); border-right: 0.5px solid var(--border); min-height: 44px; display: flex; align-items: center; justify-content: center; }
+  .tl-cell.is-today { background: var(--today-highlight); }
+  .tl-block { border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 500; text-align: center; width: 100%; min-height: 28px; display: flex; align-items: center; justify-content: center; }
+  .tl-block.r1 { background: var(--r1); color: var(--r1t); }
+  .tl-block.r2 { background: var(--r2); color: var(--r2t); }
+  .tl-block.r3 { background: var(--r3); color: var(--r3t); }
+  .tl-block.rp { background: var(--rp); color: var(--rpt); }
+  .tl-block.prac { background: var(--prac); color: var(--pract); }
+  .tl-block.run { background: var(--run); color: var(--runt); }
+  .tl-block.ci { background: var(--ci); color: var(--cit); }
+  .tl-block.nm { background: var(--gen); color: var(--gent); }
+  .legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .check-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 14px; }
+  .check-item input { margin-top: 3px; accent-color: var(--accent); }
+  .oi-item { font-size: 14px; color: var(--text-secondary); padding: 6px 0 6px 8px; border-left: 2px solid var(--border-strong); margin-bottom: 6px; }
+  .oi-num { color: var(--text-muted); font-size: 12px; margin-right: 4px; }
+  .exp-card { background: var(--surface); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: 8px; padding: 12px 14px; }
+  .exp-name { font-size: 15px; font-weight: 500; margin-bottom: 8px; }
+  .exp-row { font-size: 13px; color: var(--text-secondary); padding: 3px 0; }
+  .exp-label { display: inline-block; min-width: 78px; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .pr-row { display: grid; grid-template-columns: 100px 1fr 76px; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
+  .pr-label { color: var(--text-secondary); }
+  .pr-bar-track { background: var(--surface-muted); border-radius: 4px; height: 14px; overflow: hidden; }
+  .pr-bar-fill { height: 100%; border-radius: 4px; min-width: 2px; }
+  .pr-num { text-align: right; font-size: 12px; color: var(--text-muted); }
+  .pr-empty { font-size: 14px; color: var(--text-secondary); }
+  .pr-window { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+  .review-footer { margin-top: 2rem; padding-top: 16px; border-top: 2px solid var(--border-strong); display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+  .review-card { background: var(--surface-muted); border-radius: 8px; padding: 12px 14px; }
+  .review-card .label { font-size: 12px; color: var(--text-muted); }
+  .review-card .value { font-size: 14px; font-weight: 500; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Week 99</h1>
+  <div class="subtitle">Nov 6 – Nov 13, 2026 · Check-in Fri 11/13 @ 4:45pm</div>
+  <div class="theme-bar">
+    <div class="theme-title">Finish what slipped &amp; keep the long run</div>
+    An invented week for alfred's digest fixture. Nothing here is real.
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Weekly win conditions</div>
+  <div class="wins-grid">
+    <div class="win-card r1"><div class="wn">Rock 1 · Creative habit</div><div class="wt">Motivic chord-voicing notes drafted</div></div>
+    <div class="win-card r2"><div class="wn">Rock 2 · Health</div><div class="wt">Three runs, one long</div></div>
+    <div class="win-card r3"><div class="wn">Rock 3 · Home</div><div class="wt">Garage shelves up</div></div>
+  </div>
+</div>
+
+<div class="section" id="today-section">
+  <div class="section-title">Today's focus</div>
+  <div class="today-card">
+    <div class="today-label">Today</div>
+    <div class="today-day" id="today-day-name"></div>
+    <ul class="today-tasks" id="today-tasks"></ul>
+    <div class="today-no-plan" id="today-no-plan" style="display:none"></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Week at a glance</div>
+  <div class="timeline-container">
+  <div class="timeline" id="timeline-grid">
+    <div class="tl-corner"></div>
+    <div class="tl-day-header" data-date="2026-11-06"><div class="dow">Fri</div><div class="dom">11/6</div></div>
+    <div class="tl-day-header" data-date="2026-11-07"><div class="dow">Sat</div><div class="dom">11/7</div></div>
+    <div class="tl-day-header" data-date="2026-11-08"><div class="dow">Sun</div><div class="dom">11/8</div></div>
+    <div class="tl-day-header" data-date="2026-11-09"><div class="dow">Mon</div><div class="dom">11/9</div></div>
+    <div class="tl-day-header" data-date="2026-11-10"><div class="dow">Tue</div><div class="dom">11/10</div></div>
+    <div class="tl-day-header" data-date="2026-11-11"><div class="dow">Wed</div><div class="dom">11/11</div></div>
+    <div class="tl-day-header" data-date="2026-11-12"><div class="dow">Thu</div><div class="dom">11/12</div></div>
+    <div class="tl-day-header" data-date="2026-11-13"><div class="dow">Fri</div><div class="dom">11/13</div></div>
+
+    <div class="tl-row-label"><span class="dot" style="background:var(--r1m)"></span>Rock 1</div>
+    <div class="tl-cell" data-col="0"></div>
+    <div class="tl-cell" data-col="1"><div class="tl-block r1">Notes</div></div>
+    <div class="tl-cell" data-col="2"></div>
+    <div class="tl-cell" data-col="3"></div>
+    <div class="tl-cell" data-col="4"></div>
+    <div class="tl-cell" data-col="5"><div class="tl-block r1">Bridge</div></div>
+    <div class="tl-cell" data-col="6"></div>
+    <div class="tl-cell" data-col="7"></div>
+
+    <div class="tl-row-label"><span class="dot" style="background:var(--r2m)"></span>Rock 2</div>
+    <div class="tl-cell" data-col="0"></div>
+    <div class="tl-cell" data-col="1"></div>
+    <div class="tl-cell" data-col="2"></div>
+    <div class="tl-cell" data-col="3"></div>
+    <div class="tl-cell" data-col="4"></div>
+    <div class="tl-cell" data-col="5"></div>
+    <div class="tl-cell" data-col="6"></div>
+    <div class="tl-cell" data-col="7"></div>
+
+    <div class="tl-row-label"><span class="dot" style="background:var(--r3m)"></span>Rock 3</div>
+    <div class="tl-cell" data-col="0"></div>
+    <div class="tl-cell" data-col="1"></div>
+    <div class="tl-cell" data-col="2"></div>
+    <div class="tl-cell" data-col="3"><div class="tl-block r3">Brackets</div></div>
+    <div class="tl-cell" data-col="4"></div>
+    <div class="tl-cell" data-col="5"></div>
+    <div class="tl-cell" data-col="6"></div>
+    <div class="tl-cell" data-col="7"></div>
+
+    <div class="tl-row-label"><span class="dot" style="background:var(--rpm)"></span>RealPlay</div>
+    <div class="tl-cell" data-col="0"></div>
+    <div class="tl-cell" data-col="1"><div class="tl-block rp">Invoice</div></div>
+    <div class="tl-cell" data-col="2"></div>
+    <div class="tl-cell" data-col="3"></div>
+    <div class="tl-cell" data-col="4"></div>
+    <div class="tl-cell" data-col="5"></div>
+    <div class="tl-cell" data-col="6"></div>
+    <div class="tl-cell" data-col="7"></div>
+
+    <div class="tl-row-label"><span class="dot" style="background:var(--pracm)"></span>Practice</div>
+    <div class="tl-cell" data-col="0"></div>
+    <div class="tl-cell" data-col="1"></div>
+    <div class="tl-cell" data-col="2"></div>
+    <div class="tl-cell" data-col="3"></div>
+    <div class="tl-cell" data-col="4"></div>
+    <div class="tl-cell" data-col="5"></div>
+    <div class="tl-cell" data-col="6"><div class="tl-block prac">Scales</div></div>
+    <div class="tl-cell" data-col="7"></div>
+
+    <div class="tl-row-label"><span class="dot" style="background:var(--runm)"></span>Running</div>
+    <div class="tl-cell" data-col="0"></div>
+    <div class="tl-cell" data-col="1"><div class="tl-block run">Long</div></div>
+    <div class="tl-cell" data-col="2"></div>
+    <div class="tl-cell" data-col="3"></div>
+    <div class="tl-cell" data-col="4"><div class="tl-block run">Easy</div></div>
+    <div class="tl-cell" data-col="5"></div>
+    <div class="tl-cell" data-col="6"></div>
+    <div class="tl-cell" data-col="7"></div>
+
+    <div class="tl-row-label"><span class="dot" style="background:var(--gent)"></span>Other</div>
+    <div class="tl-cell" data-col="0"><div class="tl-block nm">Review</div></div>
+    <div class="tl-cell" data-col="1"></div>
+    <div class="tl-cell" data-col="2"></div>
+    <div class="tl-cell" data-col="3"></div>
+    <div class="tl-cell" data-col="4"></div>
+    <div class="tl-cell" data-col="5"></div>
+    <div class="tl-cell" data-col="6"></div>
+    <div class="tl-cell" data-col="7"><div class="tl-block nm">Review</div></div>
+  </div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:var(--r1m)"></span>Rock 1</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--r2m)"></span>Rock 2</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--r3m)"></span>Rock 3</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--rpm)"></span>RealPlay</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--pracm)"></span>Practice</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--runm)"></span>Running</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Success criteria</div>
+  <div class="check-item"><input type="checkbox"><span>Invoice sent</span></div>
+  <div class="check-item"><input type="checkbox"><span>Notes drafted</span></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Open items</div>
+  <div class="oi-item">Shelves: measure the studs first</div>
+</div>
+
+
+
+<div class="review-footer">
+  <div class="review-card"><div class="label">Next weekly</div><div class="value">Fri Nov 13</div></div>
+  <div class="review-card"><div class="label">Next monthly</div><div class="value">Fri Nov 27</div></div>
+  <div class="review-card"><div class="label">Next quarterly</div><div class="value">Jan 11–15</div></div>
+</div>
+
+<script>
+var PLAN_DATES = ["2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"];
+var DAILY_TASKS = {
+  "2026-11-06": [
+    {
+      "pill": "ci",
+      "label": "",
+      "text": "Weekly review"
+    }
+  ],
+  "2026-11-07": [
+    {
+      "pill": "run",
+      "label": "",
+      "text": "Long run (8)"
+    },
+    {
+      "pill": "r1",
+      "label": "",
+      "text": "Draft Motivic chord-voicing notes"
+    },
+    {
+      "pill": "rp",
+      "label": "",
+      "text": "Send RealPlay October invoice"
+    }
+  ],
+  "2026-11-08": [],
+  "2026-11-09": [
+    {
+      "pill": "r3",
+      "label": "Shelves",
+      "text": "Buy brackets &amp; <b>anchors</b>"
+    },
+    {
+      "pill": "gen",
+      "label": "",
+      "text": "Call the dentist about the crown"
+    }
+  ],
+  "2026-11-10": [
+    {
+      "pill": "run",
+      "label": "",
+      "text": "Easy run (4)"
+    }
+  ],
+  "2026-11-11": [
+    {
+      "pill": "r1",
+      "label": "",
+      "text": "Voice-lead the bridge \u2014 caf\u00e9 sketch"
+    }
+  ],
+  "2026-11-12": [
+    {
+      "pill": "prac",
+      "label": "",
+      "text": "Scales, 20 min"
+    }
+  ],
+  "2026-11-13": [
+    {
+      "pill": "ci",
+      "label": "",
+      "text": "Weekly review"
+    }
+  ]
+};
+
+function initToday() {
+  var now = new Date();
+  var yyyy = now.getFullYear();
+  var mm = String(now.getMonth()+1).padStart(2,"0");
+  var dd = String(now.getDate()).padStart(2,"0");
+  var todayStr = yyyy + "-" + mm + "-" + dd;
+  var colIndex = PLAN_DATES.indexOf(todayStr);
+
+  var dayNameEl = document.getElementById("today-day-name");
+  var taskListEl = document.getElementById("today-tasks");
+  var noPlanEl = document.getElementById("today-no-plan");
+
+  var dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  var monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var friendlyDate = dayNames[now.getDay()] + ", " + monthNames[now.getMonth()] + " " + now.getDate();
+
+  if (colIndex === -1) {
+    dayNameEl.textContent = friendlyDate;
+    taskListEl.style.display = "none";
+    noPlanEl.style.display = "block";
+    noPlanEl.textContent = "Today is outside this plan\u2019s date range.";
+    return;
+  }
+
+  dayNameEl.textContent = friendlyDate;
+  var tasks = DAILY_TASKS[todayStr] || [];
+  if (tasks.length === 0) {
+    taskListEl.style.display = "none";
+    noPlanEl.style.display = "block";
+    noPlanEl.textContent = "No tasks planned \u2014 rest or catch up.";
+  } else {
+    noPlanEl.style.display = "none";
+    var pillClasses = {"r1":"pill-r1","r2":"pill-r2","r3":"pill-r3","rp":"pill-rp","sax":"pill-rp","prac":"pill-prac","run":"pill-run","ci":"pill-ci","gen":"pill-gen"};
+    tasks.forEach(function(t) {
+      var li = document.createElement("li");
+      var cls = pillClasses[t.pill] || "pill-gen";
+      var defaultLabels = {"r1":"Rock 1","r2":"Rock 2","r3":"Rock 3","rp":"RealPlay","sax":"RealPlay","prac":"Practice","run":"Run","ci":"Check-in","gen":"Other"};
+      var lbl = t.label || defaultLabels[t.pill] || "Other";
+      li.innerHTML = '<span class="pill ' + cls + '">' + lbl + '</span> ' + t.text;
+      taskListEl.appendChild(li);
+    });
+  }
+
+  document.querySelectorAll(".tl-day-header[data-date]").forEach(function(h) {
+    if (h.getAttribute("data-date") === todayStr) h.classList.add("is-today");
+  });
+  document.querySelectorAll(".tl-cell[data-col]").forEach(function(c) {
+    if (parseInt(c.getAttribute("data-col")) === colIndex) c.classList.add("is-today");
+  });
+}
+
+initToday();
+</script>
+</body>
+</html>

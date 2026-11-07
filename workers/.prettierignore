@@ -15,3 +15,7 @@ reports/mutation/
 # (Mirrors the ESLint global ignores; see CLAUDE.md.)
 *.gen.ts
 worker-configuration.d.ts
+
+# The weekly-review skill's generate_plan.py output, committed verbatim as the digest's plan
+# fixture: its exact text is the contract the plan reader parses.
+src/digest/fixtures/weekly-plan.html
