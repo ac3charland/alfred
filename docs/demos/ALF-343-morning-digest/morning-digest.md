@@ -136,7 +136,85 @@ npm run --silent test -w workers -- src/notify/tick.test.ts -t 'morning digest' 
 ✓ reads DIGEST_TIME as HH:MM on a 24-hour clock
 ✓ builds the digest from the facts and the opener, sends it, and records what was sent
 ✓ sends the no-model form on the same tick when the opener fails, counting nothing
+✓ logs an unreadable plan and still sends, as if no plan covered today
 ✓ counts a failed facts read as an attempt and sends nothing for it
 ✓ rebuilds on a retry, so the recorded text is the one that finally went out
 ✓ starts a digest only when its own worst case (6) still fits the budget
+```
+
+The other half of the plan rule: when the newest plan covers today, its lines and theme go **into the model's input** (not the list). This is the exact JSON the opener call is handed for the Normal state — the same capped values the lists render:
+
+```bash
+npm run --silent digest:preview -w workers -- normal --opener-input 2>/dev/null
+```
+
+```output
+{
+  "date": "Saturday, Nov 7",
+  "plan": {
+    "theme": "Finish what slipped & keep the long run",
+    "lines": [
+      {
+        "label": "Run",
+        "text": "Long run (8)"
+      },
+      {
+        "label": "Rock 1",
+        "text": "Draft Motivic chord-voicing notes"
+      },
+      {
+        "label": "RealPlay",
+        "text": "Send RealPlay October invoice"
+      }
+    ]
+  },
+  "due": [
+    {
+      "title": "Send RealPlay October invoice",
+      "label": "2 days late"
+    },
+    {
+      "title": "Plan Motivic beta",
+      "label": "subtask late"
+    },
+    {
+      "title": "Call the dentist about the crown",
+      "label": "3:00 PM"
+    },
+    {
+      "title": "Draft Motivic chord-voicing notes",
+      "label": null
+    },
+    {
+      "title": "Pick a post-show bedtime",
+      "label": null
+    }
+  ],
+  "due_overflow": 0,
+  "comms": {
+    "counts": {
+      "asap": 1,
+      "today": 2,
+      "whenever": 6
+    },
+    "asks": [
+      {
+        "tier": "asap",
+        "sender": "Dana",
+        "ask": "Can you confirm Thursday’s rehearsal time?"
+      },
+      {
+        "tier": "today",
+        "sender": "Chad",
+        "ask": "Wants your read on the 2.4 release notes."
+      },
+      {
+        "tier": "today",
+        "sender": "Mom",
+        "ask": "Asks whether you’re coming Sunday."
+      }
+    ]
+  },
+  "reader_waiting": 12
+}
 ```
