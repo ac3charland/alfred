@@ -4,7 +4,15 @@ import path from 'node:path';
 import * as commsScheduled from './comms/scheduled';
 import { spyOnFetch } from './fetch-stub';
 import { hmacSha256Hex } from './hmac';
-import worker, { type Env, POLL_CRON, READER_CRON, RETENTION_CRON, TICK_CRON } from './index';
+import worker, {
+  type Env,
+  NOTIFY_CRON,
+  POLL_CRON,
+  READER_CRON,
+  RETENTION_CRON,
+  TICK_CRON,
+} from './index';
+import * as notifyTick from './notify/tick';
 import * as pricingRefresh from './pricing/refresh';
 import * as readerScheduled from './reader/scheduled';
 import * as wikiSync from './wiki/sync';
@@ -166,7 +174,7 @@ describe('worker.fetch', () => {
     });
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; wiki ac3charland/knowledge)',
+      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; wiki ac3charland/knowledge)',
     );
   });
 
@@ -176,7 +184,7 @@ describe('worker.fetch', () => {
     const { response } = await invoke(new Request('https://worker.dev/'));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; wiki ac3charland/knowledge)',
+      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; wiki ac3charland/knowledge)',
     );
   });
 
@@ -191,8 +199,31 @@ describe('worker.fetch', () => {
       CLASSIFIER_TIMEZONE: 'Europe/London',
     });
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; wiki ac3charland/knowledge)',
+      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; wiki ac3charland/knowledge)',
     );
+  });
+
+  it('GET / says whether Telegram is configured, never what with, and never calls Telegram', async () => {
+    const spy = spyOnFetch();
+    const telegram = {
+      TELEGRAM_BOT_TOKEN: ['111222333', ':', 'CCH', 'z'.repeat(32)].join(''),
+      TELEGRAM_CHAT_ID: '424242',
+      ALFRED_APP_URL: 'https://alfred-six-gamma.vercel.app',
+    };
+
+    const configured = await invoke(new Request('https://worker.dev/'), { ...env, ...telegram });
+    const text = await configured.response.text();
+    expect(text).toContain('; telegram configured; ');
+    expect(text).not.toContain(telegram.TELEGRAM_BOT_TOKEN);
+    expect(text).not.toContain(telegram.TELEGRAM_CHAT_ID);
+
+    // Any one of the three missing turns the whole channel off.
+    for (const name of Object.keys(telegram) as (keyof typeof telegram)[]) {
+      const { [name]: _unset, ...partial } = telegram;
+      const missing = await invoke(new Request('https://worker.dev/'), { ...env, ...partial });
+      expect(await missing.response.text()).toContain('; telegram unconfigured; ');
+    }
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('GET / says whether the To Reader leg has its four Instapaper secrets, never what they are', async () => {
@@ -878,6 +909,40 @@ describe('worker.scheduled', () => {
     expect(retention).not.toHaveBeenCalled();
   });
 
+  it('runs only the notify tick on the every-minute cron', async () => {
+    spyOnFetch().mockResolvedValue(Response.json([]));
+    const notify = jest.spyOn(notifyTick, 'runNotifyTick').mockResolvedValue({
+      claimed: 2,
+      sent: 1,
+      failed: 1,
+      abandoned: 0,
+      aborted: false,
+      failures: ['task_due n2: HTTP 502'],
+    });
+    const judge = jest.spyOn(commsScheduled, 'runCommsJudge');
+    const poll = jest.spyOn(commsScheduled, 'runCommsPoll');
+    const retention = jest.spyOn(commsScheduled, 'runCommsRetention');
+    const reader = jest.spyOn(readerScheduled, 'runReaderTick');
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(NOTIFY_CRON), env, ctx);
+
+    expect(NOTIFY_CRON).toBe('* * * * *');
+    expect(notify).toHaveBeenCalledTimes(1);
+    for (const unit of [judge, poll, retention, reader, sync, prices]) {
+      expect(unit).not.toHaveBeenCalled();
+    }
+    expect(logged).toContain('notify: 2 claimed, 1 sent, 1 failed, 0 abandoned');
+    expect(errors).toContain('notify: task_due n2: HTTP 502');
+  });
+
   it('never schedules on an offset stepped range, which Cloudflare normalizes away', () => {
     // Learned in production. Cloudflare accepts `1-59/2 * * * *`, and its API echoes that string
     // back, but the scheduler runs the OFFSET-FREE form: the trigger fired on the even minute
@@ -885,13 +950,13 @@ describe('worker.scheduled', () => {
     // string, so the Gmail poll became unreachable and every tick silently took the fall-through
     // branch. Any `<nonzero>-<end>/<step>` field can collapse onto another schedule the same way.
     const offsetStep = /(?:^|\s)([1-9]\d*)-\d+\/\d+(?=\s|$)/;
-    for (const cron of [TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON]) {
+    for (const cron of [TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON, NOTIFY_CRON]) {
       expect(cron).not.toMatch(offsetStep);
     }
   });
 
   it('dispatches on expressions that are all distinct, so no two schedules collide', () => {
-    const crons = [TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON];
+    const crons = [TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON, NOTIFY_CRON];
     expect(new Set(crons).size).toBe(crons.length);
   });
 
@@ -905,7 +970,7 @@ describe('worker.scheduled', () => {
     // Compared as sets: which four schedules exist is the contract, their order in the file
     // is not.
     expect(new Set(registered)).toEqual(
-      new Set([TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON]),
+      new Set([TICK_CRON, POLL_CRON, RETENTION_CRON, READER_CRON, NOTIFY_CRON]),
     );
   });
 
