@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-333 — Send ASAP comms and task due-times to Telegram</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p1:has([value=lock]:checked) [data-opt=chat],#p1:has([value=chat]:checked) [data-opt=lock]{display:none}
+/* The canvas is Telegram's own iOS chat, not alfred's UI: the surface this story adds is a message in
+   someone else's app. Approximate Telegram chrome; the message TEXT inside it is verbatim (§Contracts). */
+.app{--tg-bg:#dfe7ee;--tg-bar:#f7f7f7;--tg-in:#ffffff;--tg-fg:#000000;--tg-muted:#8e8e93;--tg-link:#168acd;
+  --tg-lock:#1c2433;--tg-banner:rgb(245 245 245/.86);
+  max-width:23rem;margin:0 auto;background:var(--tg-bg);color:var(--tg-fg);overflow:hidden;border-radius:18px;
+  font:15px/1.35 -apple-system,"SF Pro Text",system-ui,sans-serif}
+.app .tg-bar{display:flex;align-items:center;gap:.6rem;padding:.6rem .8rem;background:var(--tg-bar);border-bottom:1px solid rgb(0 0 0/.08)}
+.app .tg-avatar{width:2rem;height:2rem;border-radius:50%;background:#0b6b78;color:#fff;display:grid;place-items:center;font-weight:600}
+.app .tg-name{font-weight:600}
+.app .tg-sub{font-size:12px;color:var(--tg-muted)}
+.app .tg-log{padding:.8rem .7rem 1rem;display:flex;flex-direction:column;gap:.5rem}
+.app .tg-day{align-self:center;font-size:12px;color:#fff;background:rgb(0 0 0/.22);border-radius:999px;padding:.1rem .6rem}
+.app .tg-msg{align-self:flex-start;max-width:88%;background:var(--tg-in);border-radius:14px 14px 14px 4px;padding:.45rem .65rem .3rem;box-shadow:0 1px 1px rgb(0 0 0/.08)}
+.app .tg-msg b{font-weight:700}
+.app .tg-msg a{color:var(--tg-link);text-decoration:none}
+.app .tg-time{display:block;text-align:right;font-size:11px;color:var(--tg-muted);margin-top:.1rem}
+.app .tg-lockscreen{background:var(--tg-lock);padding:2.2rem .8rem 1.5rem;display:flex;flex-direction:column;gap:.5rem}
+.app .tg-clock{align-self:center;color:#fff;font:300 3.2rem/1 -apple-system,system-ui,sans-serif;margin-bottom:1rem}
+.app .tg-banner{background:var(--tg-banner);border-radius:14px;padding:.55rem .7rem;font-size:14px}
+.app .tg-banner .hd{display:flex;justify-content:space-between;font-size:12px;color:#555;margin-bottom:.1rem}
+.app .tg-banner .t{font-weight:600}
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Comms · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>333</span><span class="sep"> — </span><span class="ttl">Send ASAP comms and task due-times to Telegram</span></h1>
+  <p class="change" id="change">Your phone buzzes from a private alfred bot on Telegram in two cases: alfred judges a message ASAP, or a task's due time arrives.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>What never pings?</h3>
+      <p class="pick">Tier changes you make, verdicts over 30 minutes old, and due times over 15 minutes past.</p>
+      <p class="why">Otherwise deploy day and every outage would replay a backlog as a burst.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>How fast does a ping arrive?</h3>
+      <p class="pick">Within a minute, from a new cron that uses the account's last free slot.</p>
+      <p class="why">Every existing tick is already at its 50-subrequest ceiling.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>Which time zone are due times read in?</h3>
+      <p class="pick">America/Chicago (the Worker's existing zone), whatever the phone's zone.</p>
+      <p class="why">The Worker can't know where you are. If you travel, pings still fire on Chicago time.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d7">D7</a>Is each ping recorded?</h3>
+      <p class="pick">Yes, one row per ping in a new <code>notifications</code> table.</p>
+      <p class="why">It dedupes across ticks, and lets the Firewall show alfred's stream later.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>How does alfred reach you?</h3>
+      <p class="pick">A dedicated Telegram bot, send-only: no buttons, no replies.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>What does an ASAP ping say?</h3>
+      <p class="pick">The sender, the account and alfred's one-line ask, never the message body.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>When does a timed task ping?</h3>
+      <p class="pick">Once, at its due minute. Tasks with only a date never ping.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="chat" checked>In the alfred chat</label>
+      <label><input type="radio" name="p1" value="lock">Lock-screen banner</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="The alfred Telegram bot chat showing one ASAP comms ping and one due-time ping, and the same ASAP ping as an iOS lock-screen banner">
+        <div data-opt="chat">
+          <div class="tg-bar"><span class="tg-avatar">a</span><span><span class="tg-name">alfred</span><br><span class="tg-sub">bot</span></span></div>
+          <div class="tg-log">
+            <span class="tg-day">Today</span>
+            <div class="tg-msg"><b>ASAP</b> · Dana · iMessage<br>Asks whether you can pick up the kids at 4 today.<br><a href="#p1">Open comms</a><span class="tg-time">2:41 PM</span></div>
+            <div class="tg-msg"><b>Due 3:00 PM</b><br>Call the dentist about the crown<br><a href="#p1">Open Today</a><span class="tg-time">3:00 PM</span></div>
+          </div>
+        </div>
+        <div data-opt="lock">
+          <div class="tg-lockscreen">
+            <span class="tg-clock">2:41</span>
+            <div class="tg-banner"><div class="hd"><span>TELEGRAM</span><span>now</span></div><div class="t">alfred</div>ASAP · Dana · iMessage<br>Asks whether you can pick up the kids at 4 today.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The two kinds of ping, drawn in Telegram's own iOS UI. The text is verbatim (§Contracts): a bold first line, the ask or the task title, then a link into alfred with no link preview. Whether the banner shows the second line is Telegram's "Show Previews" setting, not alfred's.</figcaption>
+  </figure>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 560 200" role="img" aria-label="The comms judge and the items table feed a new one-minute notify tick, which claims rows in a new notifications table and sends them to the Telegram Bot API, which delivers them to the phone">
+      <g><rect x="10" y="20" width="150" height="50" rx="6"/><text x="22" y="42">Comms judge (*/2)</text><text class="s" x="22" y="58">comm_messages tier = asap</text></g>
+      <g><rect x="10" y="120" width="150" height="50" rx="6"/><text x="22" y="142">items</text><text class="s" x="22" y="158">active · due_date + due_time</text></g>
+      <g class="new"><rect x="210" y="70" width="150" height="60" rx="6"/><text x="222" y="94">Notify tick (* * * * *)</text><text class="s" x="222" y="112">claim_notifications() → send</text></g>
+      <g class="new"><rect x="210" y="150" width="150" height="40" rx="6"/><text x="222" y="174">notifications table</text></g>
+      <g><rect x="400" y="70" width="150" height="60" rx="6"/><text x="412" y="94">api.telegram.org</text><text class="s" x="412" y="112">sendMessage → your phone</text></g>
+      <path class="hot" d="M160 45 L210 90"/><path class="hot" d="M160 145 L210 110"/>
+      <path class="hot" d="M360 100 L400 100"/><path class="hot" d="M285 130 L285 150"/>
+      <text class="lb" x="366" y="92">fetch</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b>One new tick reads what the existing judge and the items table already hold, records each ping, and sends it with a single <code>fetch</code>.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>Buttons or replies; a morning digest of date-only tasks; quiet hours (Telegram's and iOS's own settings handle that).</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul>
+    <li>A one-time phone and BotFather setup, plus two Worker secrets: see <a href="#after-merge">After it ships</a>.</li>
+    <li>Bot chats aren't end-to-end encrypted, so every ask sits on Telegram's servers.</li>
+    <li>This uses the Cloudflare account's fifth and last free cron trigger.</li>
+  </ul>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p><b>The problem.</b> Today alfred can't reach the owner at all. An ASAP comms row only exists for someone who opens <code>/comms</code> and looks, and a timed task (ALF-161's <code>due_time</code>) is past due without anyone saying so. The ticket asks for both to land on the owner's phone through Telegram.</p>
+  <p><b>What this departs from.</b> The comms epic (<a href="epics/ALF-7.html">ALF-7</a>, revision R6) removed an outbound ASAP notification (D16 and story M) because the owner had never decided on one, and it left Q0 open: "whether alfred should be able to reach out, and how". This ticket is the owner's answer: yes, via Telegram, for ASAP. D16 and M stay retired identifiers, so this is a new decision rather than their revival.</p>
+  <p><b>What it builds on.</b></p>
+  <ul>
+    <li><a href="../spikes/notifications-spike.md"><code>docs/spikes/notifications-spike.md</code></a> chose the channel: a dedicated BotFather bot, a plain <code>fetch</code> to the Bot API from the existing Worker, and the secrets <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code>. It also asked for each send to be recorded so the Firewall can later show alfred's stream (realized by D7).</li>
+    <li><code>workers/src/index.ts</code> dispatches four cron expressions on <code>event.cron</code>. Each existing tick is budgeted against the Free plan's 50 subrequests per invocation and sits near the ceiling: TICK at about 49, READER at 48, RETENTION at exactly 50. <code>wrangler.toml</code> notes that the account allows five triggers and four are in use.</li>
+    <li>The comms judge writes a <code>comm_verdicts</code> row (with <code>ask</code>, a one-line statement of what the sender wants, and <code>person_id</code>), then points <code>comm_messages.verdict_id</code>/<code>tier</code> at it, with <code>judged_by = 'model'</code>. When the owner retiers a row, <code>judged_by</code> becomes <code>'owner'</code>. Messages are deleted at 60 days.</li>
+    <li><code>items.due_date</code> is a calendar date stored as UTC midnight, and <code>items.due_time</code> is a floating <code>time</code> (migration <code>0053_due_time.sql</code>). <code>task_items</code> excludes code-module rows. The Worker already resolves dates in <code>CLASSIFIER_TIMEZONE = "America/Chicago"</code>.</li>
+  </ul>
+  <p><b>The owner's answers in this session</b>, now D1–D3:</p>
+  <ul>
+    <li>Ping at the due minute only.</li>
+    <li>Sender plus ask, never the body.</li>
+    <li>Send-only for v1.</li>
+  </ul>
+  <p><b>Network.</b> During this session the owner added <code>api.telegram.org</code> and <code>core.telegram.org</code> to the cloud environment's allowlist. D9's facts were checked against the live docs (Bot API 10.3, 2026-08-24), and an unauthenticated <code>getMe</code> returned <code>{"ok":false,"error_code":401,"description":"Unauthorized"}</code>. An <b>authorized</b> send still can't happen from a cloud session. The token sits in the URL path, where the proxy can't inject it, and secrets never go in the sandbox. So the first real send is the owner's (After it ships, step 8).</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>How does alfred reach you? · settled</h3>
+    <p>The channel is the spike's: a private bot that messages one chat. It is send-only, because inline buttons need an inbound Telegram webhook on the Worker (secret-token header, <code>chat_id</code> authorization, callback handling), which would roughly double the scope and add an attack surface. Considered: buttons (deferred to a follow-up ticket); SMS or iMessage and Pushover (both rejected in the spike).</p>
+  </section>
+
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>What does an ASAP ping say? · settled</h3>
+    <p>The ping carries the sender label, the account label, the verdict's <code>ask</code>, and a link to <code>/comms</code>. It never carries the body, the subject or the handle. Bot chats are Telegram "cloud chats", stored server-side without end-to-end encryption. The ask is alfred's paraphrase, so it exposes less than the body while still telling the owner whether to look. Considered: sender only (too little to act on), and a body excerpt (the most exposure).</p>
+  </section>
+
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>When does a timed task ping? · settled</h3>
+    <p>One ping per (task, date, time) at the due minute. A task with only a date has no minute to fire on. A morning digest of those tasks would be a separate feature. Considered: a lead-time ping, ping-before plus ping-at, and a digest.</p>
+  </section>
+
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>What never pings? · proposed</h3>
+    <p>A ping means "this just became true". Three rules keep every ping about something that just happened:</p>
+    <ul>
+      <li><b>Only the model's ASAP pings.</b> The row's <code>judged_by</code> is <code>'model'</code>. A move the owner made to ASAP is something they already know, and filter, unjudged and refusal rows never reach ASAP anyway.</li>
+      <li><b>Only a fresh verdict pings.</b> The current verdict's <code>created_at</code> is within 30 minutes. Without this, the first deploy would ping every ASAP row still open. A re-run that moves a row Today → ASAP does ping, because it writes a fresh verdict and the row has never pinged. ASAP → ASAP doesn't ping again, because the dedupe key is the message (D7).</li>
+      <li><b>Only a recent due moment pings.</b> The due moment must fall in <code>(now − 15 min, now]</code>. That excludes the backlog of already-overdue timed tasks on deploy day, a task created with a time already past, and catching up after a Worker or Supabase outage longer than 15 minutes. A retry of an existing claim is governed by D11, not by this window.</li>
+    </ul>
+    <p>A message the Mac daemon delivers hours late (ALF-7 D17, Mac asleep) still pings, because the clock starts when the verdict is written, not when the message was sent. That is deliberate: it's the case where the owner most needs to hear.</p>
+    <p>Considered: no windows (a burst of stale pings on deploy) and a launch-time watermark (it handles deploy day but not outages).</p>
+  </section>
+
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>How fast does a ping arrive? · proposed</h3>
+    <p>A new <code>NOTIFY_CRON = '* * * * *'</code> gives due pings ≤ 1 minute late and ASAP pings ≤ 1 minute after the judge tick, so ≤ 3 minutes from ingest. It can't share a tick, because each existing one is at its subrequest ceiling (Context). This uses the fifth and last trigger the account allows on the Free plan, so the next scheduled feature has to share NOTIFY's budget (its idle cost is one RPC) or move to the paid plan.</p>
+    <p>The expression has no step, so it can't collapse onto another schedule (the <code>POLL_CRON</code> trap). It does coincide with every other tick, which is harmless because each invocation has its own budget.</p>
+    <p>Considered:</p>
+    <ul>
+      <li>Piggybacking on <code>*/2</code> (it busts that tick's budget).</li>
+      <li>A Durable Object alarm per task (a new binding type and the exact-minute firing it buys isn't needed).</li>
+      <li>The Workers Paid plan (worth having, but not this story's call).</li>
+    </ul>
+  </section>
+
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>Which time zone are due times read in? · proposed</h3>
+    <p>The due moment is <code>((due_date at time zone 'UTC')::date + due_time) at time zone CLASSIFIER_TIMEZONE</code>. <code>due_time</code> floats on the device, but a server has no device, so it reuses the one zone the Worker already treats as "where the owner is". When the owner travels, the app shows 3 PM local while the ping fires at 3 PM Chicago. A var rename (for example to <code>OWNER_TIMEZONE</code>) is out of scope. The notify tick reads the existing var and does the same missing-var abort the sweeps do.</p>
+    <p>On a DST spring-forward day, a time that doesn't exist that day (02:30) resolves the way Postgres resolves it, an hour later. That's acceptable at single-user volume.</p>
+  </section>
+
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>Is each ping recorded? · proposed</h3>
+    <p>The new <code>notifications</code> table (§Contracts) has three jobs:</p>
+    <ul>
+      <li><b>Dedupe and claim across overlapping ticks.</b> A unique index on <code>(kind, fire_key)</code> lets a claim be one atomic <code>insert … on conflict do nothing</code>.</li>
+      <li><b>Retry state.</b> See D11.</li>
+      <li><b>The spike's Firewall forward-compatibility.</b> The Bot API can't read a bot's own history back, so recording at send time is the only record. The row stores the sent text and Telegram's <code>message_id</code>.</li>
+    </ul>
+    <p>Retention follows the subject: <code>on delete cascade</code> from <code>comm_messages</code> (so the 60-day sweep takes the stored ask with it) and from <code>items</code>.</p>
+    <p>Considered: a <code>notified_at</code> column on each source table. That needs two migrations to the busiest tables, can't re-arm a rescheduled task, and records nothing the Firewall could show.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+  <section class="rec" id="d8">
+    <h4>D8 · One claim RPC per tick, built text in the Worker</h4>
+    <p><code>claim_notifications(p_now, p_zone, p_limit)</code> does both the eligibility (D4) and the claim in SQL, and returns every field the message needs, which costs one subrequest. The Worker builds and escapes the text (Jest-tested), sends it, then makes one PATCH to stamp the outcome. Worst case per tick is 1 + 2 × <code>NOTIFY_LIMIT</code> (20), so 41 of 50 subrequests.</p>
+  </section>
+  <section class="rec" id="d9">
+    <h4>D9 · The minimal Bot API surface</h4>
+    <p>The only Bot API call is <code>POST https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage</code> with a JSON body of <code>chat_id</code>, <code>text</code>, <code>parse_mode: "HTML"</code> and <code>link_preview_options: { is_disabled: true }</code>. The response is read as <code>{ ok, result?: { message_id }, error_code?, description?, parameters?: { retry_after? } }</code>. HTML rather than MarkdownV2 because the docs require escaping only <code>&lt;</code>, <code>&gt;</code> and <code>&amp;</code> outside tags, while MarkdownV2 escapes about 18 characters. All of this is checked against Bot API 10.3 (Context).</p>
+    <p>If a send gets <b>400</b>, the Worker retries it once immediately <b>as plain text</b>, with <code>parse_mode</code> and <code>link_preview_options</code> removed and the tags stripped. An escaping bug ("can't parse entities") then degrades the ping instead of dropping it. That retry costs one extra subrequest, which is inside D8's headroom.</p>
+  </section>
+  <section class="rec" id="d10">
+    <h4>D10 · Text caps</h4>
+    <p>The ask is capped at 300 characters and a task title at 200, ending in "…". The total stays far under Telegram's 4096-character message limit. Sender label: <code>comm_people.name</code> via the verdict's <code>person_id</code>, else <code>sender_name</code>, else <code>sender_handle</code>. The handle is the one D2 field allowed, and only when there is no name. Account label: <code>comm_accounts.label</code>. Time: <code>h:mm AM/PM</code>, with no leading zero.</p>
+  </section>
+  <section class="rec" id="d11">
+    <h4>D11 · Failure handling</h4>
+    <p>Branch on the <b>HTTP status</b>, not the body's <code>error_code</code>, which the docs say "is subject to change". Read <code>parameters.retry_after</code> on a 429 for the log line.</p>
+    <div class="scroll"><table>
+      <tr><th>Outcome</th><th>What happens</th></tr>
+      <tr><td><code>ok: true</code></td><td>Stamp <code>sent_at</code>, <code>telegram_message_id</code> and <code>text</code>.</td></tr>
+      <tr><td>429</td><td>Stop sending this tick. The claim stays unsent and no attempt is counted. The next tick retries.</td></tr>
+      <tr><td>5xx, network or timeout</td><td>Count the attempt (<code>attempts + 1</code>, <code>last_error</code>) and retry next tick.</td></tr>
+      <tr><td>400 after the plain-text retry</td><td>Count the attempt.</td></tr>
+      <tr><td>401 or 403</td><td>Systemic: a bad token, or the bot was never started or was blocked. Abort the tick with a distinct log banner and count no attempts.</td></tr>
+    </table></div>
+    <p>The RPC re-returns an unsent claim while <code>attempts &lt; 3</code>, <code>claimed_at &gt; now − 60 min</code> and its subject is still eligible: the task is active with the same date and time, or the message is still ASAP and uncleared. Otherwise it stamps <code>abandoned_at</code>. So a systemic outage that's fixed within the hour still delivers.</p>
+  </section>
+  <section class="rec" id="d12">
+    <h4>D12 · Configuration gating and health</h4>
+    <p>If either secret or <code>ALFRED_APP_URL</code> is missing, the tick logs <code>notify: telegram unconfigured</code> and returns <b>without calling the RPC</b>, so nothing is claimed while it's off. <code>GET /</code> gains <code>telegram configured|unconfigured</code>, reporting presence only and never probing Telegram, the same policy as the Anthropic key. <code>ALFRED_APP_URL</code> is a committed <code>[vars]</code> entry (<code>https://alfred-six-gamma.vercel.app</code>, the public origin, not a secret).</p>
+  </section>
+  <section class="rec" id="d13">
+    <h4>D13 · Keep the token out of logs and commits</h4>
+    <p>The token travels in the URL path. Never log the request URL, and never let a caught error's message (which some runtimes build from the URL) reach <code>console</code> unredacted: log <code>error_code</code> and <code>description</code> only. Add a secretlint pattern for bot tokens to <code>/.secretlintrc.json</code> (<code>/\b\d{8,10}:[A-Za-z0-9_-]{35}\b/</code>; check it against a fabricated token in the test fixture). This is a deliberate rule addition, which CLAUDE.md permits, not a weakening.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <h3>Eligibility (evaluated by <code>claim_notifications</code> at <code>p_now</code>)</h3>
+  <div class="scroll"><table>
+    <tr><th>Kind</th><th>Pings when all hold</th><th><code>fire_key</code></th></tr>
+    <tr><td><code>comms_asap</code></td><td>The message's <code>direction = 'inbound'</code>, <code>tier = 'asap'</code>, <code>judged_by = 'model'</code> and <code>cleared_at is null</code>; its current verdict (<code>verdict_id</code>) has <code>created_at &gt; p_now − 30 min</code>; and no <code>notifications</code> row exists with that key.</td><td><code>message id</code></td></tr>
+    <tr><td><code>task_due</code></td><td>The <code>task_items</code> row has <code>status = 'active'</code> and <code>due_time is not null</code>; its due moment (D6) is in <code>(p_now − 15 min, p_now]</code>; and no row exists with that key.</td><td><code>item_id|YYYY-MM-DD|HH:MM</code></td></tr>
+  </table></div>
+  <ul>
+    <li>A rescheduled task changes its key, so it re-arms. A recurring task's next occurrence is a new item.</li>
+    <li>A subtask with its own time pings like any task. A completed task never pings, and a retry of a claim for one is abandoned (D11).</li>
+    <li>New claims are ordered by due moment or verdict time ascending, and retries come first. At most <code>p_limit</code> rows are returned. Overflow waits a tick, still inside the windows, because 20 per minute is far above single-user volume.</li>
+    <li>Sends go one at a time in claim order. Telegram's per-chat rate (about 1 message a second, sustained) is handled by the 429 rule (D11), not by sleeping.</li>
+  </ul>
+  <h3>Message text (verbatim, P1)</h3>
+  <pre>comms_asap:  &lt;b&gt;ASAP&lt;/b&gt; · {sender} · {account}\n{ask}\n&lt;a href="{ALFRED_APP_URL}/comms"&gt;Open comms&lt;/a&gt;
+task_due:    &lt;b&gt;Due {h:mm AM}&lt;/b&gt;\n{title}\n&lt;a href="{ALFRED_APP_URL}/today"&gt;Open Today&lt;/a&gt;</pre>
+  <p>Every interpolated value is HTML-escaped (<code>&amp;</code> first). The plain-text fallback (D9) is the same text with the tags removed and the link written as a bare URL on line 3. Messages are sent with sound: <code>disable_notification</code> is not set, so how quiet a ping is gets decided on the phone.</p>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <h3>Migration <code>&lt;next&gt;_notifications.sql</code></h3>
+  <pre>create table notifications (
+  id                  uuid primary key default gen_random_uuid(),
+  kind                text not null check (kind in ('comms_asap', 'task_due')),
+  fire_key            text not null,
+  comm_message_id     uuid references comm_messages (id) on delete cascade,
+  item_id             uuid references items (id) on delete cascade,
+  claimed_at          timestamptz not null default now(),
+  sent_at             timestamptz,
+  telegram_message_id bigint,
+  text                text,          -- what was actually sent; null until sent
+  attempts            int not null default 0,
+  last_error          text,
+  abandoned_at        timestamptz,
+  constraint notifications_subject check (
+    (kind = 'comms_asap' and comm_message_id is not null and item_id is null) or
+    (kind = 'task_due'   and item_id is not null and comm_message_id is null))
+);
+create unique index notifications_key_idx on notifications (kind, fire_key);
+create index notifications_pending_idx on notifications (claimed_at)
+  where sent_at is null and abandoned_at is null;
+-- RLS on + the "authenticated full access" policy + explicit grants, as 0034 does;
+-- migration-lint's rules apply.
+
+create function claim_notifications(p_now timestamptz, p_zone text, p_limit int)
+returns table (id uuid, kind text, attempts int,
+               sender text, account text, ask text,      -- comms_asap
+               title text, due_time time)                -- task_due
+-- 1. abandon unsent claims that fail D11's retry test;
+-- 2. insert new claims per §Behaviour (on conflict (kind, fire_key) do nothing);
+-- 3. return retryable + newly inserted, retries first, limit p_limit.
+-- security invoker; grant execute to service_role (and the usual roles, as 0034 does).</pre>
+  <h3>Worker</h3>
+  <pre>// wrangler.toml: crons gains "* * * * *"; [vars] gains ALFRED_APP_URL.
+// Secrets (wrangler secret put): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
+export const NOTIFY_CRON = '* * * * *';
+export const NOTIFY_LIMIT = 20;
+
+// workers/src/telegram.ts — the only module that knows the Bot API.
+export type TelegramOutcome =
+  | { kind: 'sent'; messageId: number }
+  | { kind: 'rate_limited'; retryAfter?: number }
+  | { kind: 'transient'; error: string }      // 5xx, network, timeout
+  | { kind: 'rejected'; error: string }       // 400 (after the plain-text retry)
+  | { kind: 'systemic'; error: string };      // 401, 403
+export function sendTelegram(env: TelegramEnv, html: string, plain: string): Promise&lt;TelegramOutcome&gt;;
+
+// workers/src/notify/ — format.ts (pure text builders + escaping), store.ts (RPC + PATCH),
+// tick.ts (runNotifyTick(env, now) → { claimed, sent, failed, abandoned, aborted }).</pre>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <p>Read the <code>cloudflare-workers</code>, <code>supabase</code>, <code>migration-lint</code>, <code>jest</code> and <code>secret-scan</code> skills first. Then red/green TDD in this order:</p>
+  <ol>
+    <li><b>Migration</b> <code>database/migrations/&lt;next&gt;_notifications.sql</code>: the table and RPC as in §Contracts. Add integration assertions in <code>database/src/assertions.ts</code> for each eligibility and exclusion row, the dedupe, re-arm on reschedule, abandonment and the cascades. Regenerate <code>frontend/lib/database.types.ts</code> with its generator.</li>
+    <li><b><code>workers/src/notify/format.ts</code></b>: the two builders, escaping, caps and the plain-text twin.</li>
+    <li><b><code>workers/src/telegram.ts</code></b>: <code>sendTelegram</code>, which maps responses to <code>TelegramOutcome</code>, runs the one plain-text retry on 400, and redacts the token from logs (D13). Test it against the repo's existing <code>fetch-stub.ts</code>.</li>
+    <li><b><code>workers/src/notify/store.ts</code> and <code>tick.ts</code></b>: the gating (D12), claim, send and stamp steps, and D11's table. Add a test that pins the subrequest worst case (1 + 2 × 20 + retries ≤ 50), the way <code>comms/sweep.test.ts</code> pins its own.</li>
+    <li><b><code>index.ts</code> and <code>wrangler.toml</code></b>: <code>NOTIFY_CRON</code> dispatch placed before the fall-through, a <code>logNotifyTick</code> line, the <code>GET /</code> clause, the <code>Env</code> fields, and the comment blocks (cron list "five, the account's last"; the secrets; <code>ALFRED_APP_URL</code>).</li>
+    <li><b><code>/.secretlintrc.json</code></b>: the bot-token pattern (D13).</li>
+    <li><b>Docs</b>:
+      <ul>
+        <li>Move <a href="#after-merge">After it ships</a> into a durable <code>docs/telegram.md</code>, so the steps survive this spec's archiving.</li>
+        <li>Add a line under ALF-7 Q0 pointing to this spec.</li>
+        <li>Create a <code>telegram</code> skill with the <code>lib-skill-forge</code> skill, from <code>core.telegram.org/bots/api</code> (now reachable) plus what this build learns. Cover the Bot API request and response shape, <code>sendMessage</code>, HTML formatting, the status handling in D11, BotFather and <code>getUpdates</code>, and token hygiene (D13).</li>
+      </ul>
+    </li>
+  </ol>
+  <p>The whole story fits one session; no subagents are needed.</p>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D2 P1">A model-judged ASAP verdict written in the last 30 minutes, on an uncleared inbound row, produces exactly one <code>sendMessage</code> whose text is the verbatim <code>comms_asap</code> format, with sender, account, ask and the <code>/comms</code> link, and no body or subject.</li>
+    <li data-trace="D3 P1">An active task due at <code>D</code> <code>T</code> (Chicago) produces exactly one <code>task_due</code> send on the first tick at or after that minute, with the <code>Due h:mm AM</code> line, the title and the <code>/today</code> link.</li>
+    <li data-trace="D3">A task with a <code>due_date</code> but no <code>due_time</code> never produces a send.</li>
+    <li data-trace="D4">No send for: an owner-set ASAP; a verdict older than 30 minutes (including every ASAP row present at first deploy); a due moment more than 15 minutes past; a completed task; a cleared message.</li>
+    <li data-trace="D4 D7">An ASAP → ASAP re-run doesn't send again. A Today → ASAP re-run sends once. Rescheduling a task that already pinged re-arms it for the new time.</li>
+    <li data-trace="D5">The Worker dispatches <code>* * * * *</code> to the notify tick, and no other unit runs on it.</li>
+    <li data-trace="D6">The due moment is computed in <code>CLASSIFIER_TIMEZONE</code>. A missing zone aborts the tick and claims nothing.</li>
+    <li data-trace="D7">Every successful send leaves a row with <code>sent_at</code>, <code>telegram_message_id</code> and the sent text. Deleting the message or task deletes its rows.</li>
+    <li data-trace="D11">429 stops the tick with no attempt counted. A 5xx is retried on later ticks up to 3 attempts. 401/403 aborts with a banner. A claim past 60 minutes, or whose subject is no longer eligible, is abandoned and never sent.</li>
+    <li data-trace="D9">A 400 triggers exactly one plain-text resend, with no <code>parse_mode</code> and no tags.</li>
+    <li data-trace="D12">If any of the two secrets or <code>ALFRED_APP_URL</code> is missing, the tick makes no RPC and no send, and <code>GET /</code> reports <code>telegram unconfigured</code>. With all three set, it reports <code>configured</code> and never calls Telegram.</li>
+    <li data-trace="D13">No log line or thrown message contains the bot token. secretlint flags a fabricated bot token in a fixture.</li>
+  </ul>
+  <h3>Review focus</h3>
+  <ul class="checks">
+    <li data-trace="D2 P1">An ask or title containing <code>&lt;</code>, <code>&amp;</code>, <code>&gt;</code> or an emoji → rendered literally, never as markup or a 400.</li>
+    <li data-trace="D10">A 2,000-character ask, or a sender with no name → capped with "…"; the sender falls back to the handle.</li>
+    <li data-trace="D7">Two ticks overlapping on one due minute → one claim, one send (the unique index arbitrates).</li>
+    <li data-trace="D4">A task edited from 3:00 to 2:50 at 2:58 → pings once for 2:50 (inside the window) and never for 3:00.</li>
+    <li data-trace="D6">A due time of 23:30 Chicago, which is the next UTC day → pings at 23:30 Chicago on the right date.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><b>Database integration</b> (<code>npm run test:integration -w database</code>, in <code>check:slow</code>): every eligibility and exclusion row, dedupe and concurrency, re-arm, the D6 zone arithmetic (including the next-UTC-day case), abandonment, and the cascades. These pin the SQL half of every criterion.</li>
+    <li><b>Worker unit tests</b> (Jest): the builders, escaping and caps; <code>sendTelegram</code>'s mapping of each status to an outcome, the plain-text retry, and redaction; the tick's gating, D11's behaviour, the subrequest worst case, and the cron dispatch.</li>
+    <li><b>Secret scan</b>: a fixture with a fabricated token is flagged.</li>
+    <li>No test in any suite calls Telegram live. Suites stay hermetic, the same rule as the Anthropic key.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the <code>showboat</code> skill's evidence rules. The deterministic evidence is:</p>
+  <ul>
+    <li>the Jest output that renders both P1 messages verbatim;</li>
+    <li>the integration assertions for D4's windows.</li>
+  </ul>
+  <p>One live <code>exec</code> is deterministic and safe to record: an unauthenticated <code>sendTelegram</code> against the real API with an obviously fake token returns the <code>systemic</code> outcome from a 401. An authorized send can't be captured from the cloud environment (Context). Say so in the demo doc rather than faking one, and point to the owner's first real ping as the live confirmation.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><b>Buttons or replies</b> need an inbound webhook (D1), so they belong in a follow-up ticket. The same goes for <b>a date-only digest</b> (D3) and <b>operational alerts</b> such as a failed backup, which the spike names as the obvious next sender on this channel.</li>
+    <li><b>Quiet hours</b> are left to Telegram's per-chat settings and iOS Focus (After it ships). ASAP means "break focus", so alfred doesn't decide when to stay quiet.</li>
+    <li><b>Still unverified.</b> Which 403 descriptions cover a never-started bot and a blocked bot, and the exact bot-token length (D13's pattern). The docs' example token is not real-shaped. An unauthenticated call can't show either. The owner's first live ping confirms the happy path, and <code>wrangler tail</code> shows the status and <code>description</code> if it fails.</li>
+    <li><b>The cron slot.</b> Confirm in the Cloudflare dashboard that no other Worker on the account uses a trigger. If one does, <code>wrangler deploy</code> fails on the trigger count, and the fix is moving to the paid plan or dropping a schedule, not this story's call.</li>
+    <li><b>Telegram-side retention.</b> Sent pings stay in the chat until deleted. alfred's own copy cascades away (D7). If the client offers it, enable the chat's auto-delete timer on the phone.</li>
+  </ul>
+</section>
+
+<section id="after-merge">
+  <h2>After it ships (for you)</h2>
+  <ol>
+    <li><b>Install Telegram</b> on the iPhone from the App Store and sign up or log in with your phone number.</li>
+    <li><b>Create the bot.</b> Search <b>@BotFather</b> (blue verified check) and send <code>/newbot</code>. Name it <code>alfred</code>; the username must be unique and end in <code>bot</code> (for example <code>ac3_alfred_bot</code>). BotFather replies with the <b>token</b>. Treat it like a password: never paste it into a Claude chat, a commit or a demo doc.</li>
+    <li><b>Lock it down.</b> In BotFather send <code>/setjoingroups</code>, pick the bot and choose <b>Disable</b>, so nobody can add it to a group.</li>
+    <li><b>Start the chat.</b> Open the <code>t.me/&lt;username&gt;</code> link from BotFather's reply and tap <b>Start</b>. A bot can't message you until you've started it; without this step sends fail with 403.</li>
+    <li><b>Find your chat id</b> on the Mac, not in a cloud session: run <code>read -rs TOKEN</code> and paste the token (it stays out of shell history), then <code>curl -s "https://api.telegram.org/bot$TOKEN/getUpdates"</code>. The number at <code>result[0].message.chat.id</code> is your chat id. If <code>result</code> is empty, send the bot "hi" and run it again.</li>
+    <li><b>Set the secrets</b> from <code>workers/</code>: run <code>npx wrangler secret put TELEGRAM_BOT_TOKEN</code>, then <code>npx wrangler secret put TELEGRAM_CHAT_ID</code>, pasting each value when prompted. No redeploy is needed.</li>
+    <li><b>Check it's configured</b>: <code>curl -s https://alfred-workers.alfred-six-gamma.workers.dev/</code> should include <code>telegram configured</code>.</li>
+    <li><b>Live check</b>: give a task a time two minutes from now. Within about a minute of that time, the ping should arrive looking like Plate I. If it doesn't, run <code>npx wrangler tail</code> to see the notify line and any <code>error_code</code>.</li>
+    <li><b>Tune the alerts on the phone</b>:
+      <ul>
+        <li>In the alfred chat, tap the bot's name, then <b>Notifications</b>, to set its own sound and make sure it isn't muted.</li>
+        <li>In iOS Settings → Notifications → Telegram, allow notifications and the lock screen.</li>
+        <li>If you don't want the ask on your lock screen, turn off Telegram → Settings → Notifications and Sounds → Show Previews.</li>
+        <li>To let ASAP break through a Focus, add Telegram under Focus → Allowed Apps. iOS allows apps, not chats, so mute any other Telegram chats.</li>
+        <li>Mute the chat in Telegram on the Mac, if you install it there, to avoid double alerts.</li>
+      </ul>
+    </li>
+    <li><b>If the token ever leaks</b>: send <code>/revoke</code> in BotFather, then run <code>wrangler secret put TELEGRAM_BOT_TOKEN</code> with the new token.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
