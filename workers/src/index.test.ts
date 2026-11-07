@@ -163,6 +163,12 @@ function githubCalls(spy: jest.SpyInstance): string[] {
     .filter((url) => url.startsWith('https://api.github.com/'));
 }
 
+/** The `GET /` health line under `env` with `vars` laid over it. */
+async function healthLine(vars: Partial<Env>): Promise<string> {
+  const { response } = await invoke(new Request('https://worker.dev/'), { ...env, ...vars });
+  return response.text();
+}
+
 describe('worker.fetch', () => {
   it('GET / names the build it is running, so a stale deploy is visible', async () => {
     // The whole point of the stamp (ALF-149): comparing this against `git rev-parse origin/main`
@@ -174,7 +180,7 @@ describe('worker.fetch', () => {
     });
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; wiki ac3charland/knowledge)',
+      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; digest off; wiki ac3charland/knowledge)',
     );
   });
 
@@ -184,7 +190,7 @@ describe('worker.fetch', () => {
     const { response } = await invoke(new Request('https://worker.dev/'));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; wiki ac3charland/knowledge)',
+      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; digest off; wiki ac3charland/knowledge)',
     );
   });
 
@@ -199,7 +205,7 @@ describe('worker.fetch', () => {
       CLASSIFIER_TIMEZONE: 'Europe/London',
     });
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; wiki ac3charland/knowledge)',
+      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured; reader claude-sonnet-5 cap 30; instapaper unconfigured; telegram unconfigured; digest off; wiki ac3charland/knowledge)',
     );
   });
 
@@ -224,6 +230,18 @@ describe('worker.fetch', () => {
       expect(await missing.response.text()).toContain('; telegram unconfigured; ');
     }
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('GET / reports the digest’s time and model, or that it is off and why', async () => {
+    expect(await healthLine({ DIGEST_TIME: '07:00', DIGEST_MODEL: 'claude-sonnet-5' })).toContain(
+      '; digest 07:00 · claude-sonnet-5; ',
+    );
+    expect(await healthLine({ DIGEST_TIME: '', DIGEST_MODEL: 'claude-sonnet-5' })).toContain(
+      '; digest off; ',
+    );
+    expect(await healthLine({ DIGEST_TIME: '7am', DIGEST_MODEL: 'claude-sonnet-5' })).toContain(
+      '; digest off (DIGEST_TIME invalid); ',
+    );
   });
 
   it('GET / says whether the To Reader leg has its four Instapaper secrets, never what they are', async () => {

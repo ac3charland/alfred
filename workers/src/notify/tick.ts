@@ -1,6 +1,7 @@
 /**
  * The notify tick: once a minute, claim what just became true — a comms message the model judged
- * ASAP, a timed task whose due minute arrived — and send each claim to the owner's Telegram chat.
+ * ASAP, a timed task whose due minute arrived, the day's morning digest once its time comes — and
+ * send each claim to the owner's Telegram chat.
  *
  * A tick is one RPC (`claimNotifications`, which also decides eligibility and abandons dead
  * retries), then per claim one send and one PATCH recording the outcome. Sends go one at a time,
@@ -16,7 +17,7 @@
  *                  until it is fixed still spends one send (and logs the banner) finding that out;
  *                  fixing it within the hour delivers everything claimed meanwhile.
  */
-import type { SupabaseEnv } from '../supabase';
+import { DIGEST_BUILD_REQUESTS, type DigestEnv, composeDigest } from '../digest/compose';
 import { type TelegramEnv, sendTelegram } from '../telegram';
 import { type PingText, buildCommsAsap, buildTaskDue } from './format';
 import { type NotificationClaim, claimNotifications, markSent, recordFailedAttempt } from './store';
@@ -30,11 +31,17 @@ export const MAX_ATTEMPTS = 3;
 /**
  * Outbound fetches one invocation may make on the Workers Free plan. A tick spends 1 on the claim,
  * then 2 per claim (send + PATCH), plus 1 more for each plain-text resend: 1 + 2 × 20 = 41 when
- * nothing is resent. A claim only starts when its worst case (3) still fits, so a run of resends
- * leaves the rest for the next tick instead of throwing "Too many subrequests" part-way.
+ * nothing is resent. A digest also reads its facts and asks the model (once, plus the SDK's one
+ * retry) before its send. A claim only starts when its own worst case — 3, or 6 for a digest —
+ * still fits, so a run of resends leaves the rest for the next tick instead of throwing "Too many
+ * subrequests" part-way.
  */
 export const SUBREQUEST_CEILING = 50;
 const WORST_CASE_PER_CLAIM = 3;
+export const WORST_CASE_PER_DIGEST = WORST_CASE_PER_CLAIM + DIGEST_BUILD_REQUESTS;
+
+/** Logged when DIGEST_TIME is set to something other than `HH:MM`; the other pings carry on. */
+export const DIGEST_TIME_INVALID = 'notify: DIGEST_TIME invalid — digest off';
 
 /** Logged when a secret or the app URL is missing: the tick claims nothing while it is off. */
 export const UNCONFIGURED = 'notify: telegram unconfigured';
@@ -47,13 +54,25 @@ export const SYSTEMIC_FAILURE =
 export const CONFIG_FAILURE = 'notify: aborting the tick — CLASSIFIER_TIMEZONE is not set';
 
 /** Everything the tick reads from the environment. */
-export interface NotifyEnv extends SupabaseEnv {
+export interface NotifyEnv extends DigestEnv {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   /** The app's public origin, for the link each ping carries. A `[vars]` entry. */
   ALFRED_APP_URL?: string;
   /** The IANA zone a task's floating due time is read in — the one the classifier uses. */
   CLASSIFIER_TIMEZONE: string;
+  /** When the morning digest goes out, `HH:MM` in that zone. A `[vars]` entry; blank = off. */
+  DIGEST_TIME?: string;
+}
+
+/** What DIGEST_TIME comes to: the time to claim at, off, or off because it is malformed. */
+export type DigestSchedule = { time: string } | { off: 'unset' | 'invalid' };
+
+/** Read DIGEST_TIME: `HH:MM` on a 24-hour clock (`07:00`), else off. */
+export function digestSchedule(raw?: string): DigestSchedule {
+  const value = raw?.trim() ?? '';
+  if (value === '') return { off: 'unset' };
+  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? { time: value } : { off: 'invalid' };
 }
 
 /** What one tick did. `aborted` means it stopped before (or instead of) working the whole claim. */
@@ -77,7 +96,7 @@ export function telegramConfig(
   return { TELEGRAM_BOT_TOKEN: token, TELEGRAM_CHAT_ID: chatId, appUrl };
 }
 
-/** The text for one claim, or `undefined` when the RPC handed back a row missing its fields. */
+/** A ping claim's text, or `undefined` when the RPC handed back a row missing its fields. */
 function textFor(claim: NotificationClaim, appUrl: string): PingText | undefined {
   if (claim.kind === 'comms_asap') {
     const { sender, account, ask } = claim;
@@ -115,10 +134,15 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
     return summary(true);
   }
 
+  // A bad DIGEST_TIME costs the digest, never the other pings.
+  const schedule = digestSchedule(env.DIGEST_TIME);
+  if ('off' in schedule && schedule.off === 'invalid') console.error(DIGEST_TIME_INVALID);
+  const digestTime = 'time' in schedule ? schedule.time : undefined;
+
   const result = summary(false);
   let claims: NotificationClaim[];
   try {
-    claims = await claimNotifications(env, now, zone, NOTIFY_LIMIT);
+    claims = await claimNotifications(env, now, zone, NOTIFY_LIMIT, digestTime);
   } catch (error) {
     result.aborted = true;
     result.failures.push(`claim failed: ${message(error)}`);
@@ -129,9 +153,25 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
 
   try {
     for (const claim of claims) {
-      if (spent + WORST_CASE_PER_CLAIM > SUBREQUEST_CEILING) break;
+      const isDigest = claim.kind === 'morning_digest';
+      if (spent + (isDigest ? WORST_CASE_PER_DIGEST : WORST_CASE_PER_CLAIM) > SUBREQUEST_CEILING) {
+        break;
+      }
 
-      const text = textFor(claim, config.appUrl);
+      let text: PingText | undefined;
+      if (isDigest) {
+        // Rebuilt on every attempt, opener included: `text` records only what was sent.
+        try {
+          text = await composeDigest(env, now, zone, config.appUrl);
+        } catch (error) {
+          spent += 2;
+          await countFailure(env, claim, `digest facts failed: ${message(error)}`, result);
+          continue;
+        }
+        spent += DIGEST_BUILD_REQUESTS;
+      } else {
+        text = textFor(claim, config.appUrl);
+      }
       if (text === undefined) {
         spent += 1;
         await countFailure(env, claim, 'claim is missing its message fields', result);

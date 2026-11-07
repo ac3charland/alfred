@@ -33,7 +33,12 @@ import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
 import { instapaperCredentials } from './instapaper/client';
-import { type NotifyTickSummary, runNotifyTick, telegramConfig } from './notify/tick';
+import {
+  type NotifyTickSummary,
+  digestSchedule,
+  runNotifyTick,
+  telegramConfig,
+} from './notify/tick';
 import { type PriceRefreshSummary, runPriceRefresh } from './pricing/refresh';
 import { READER_DEFAULT_DAILY_CAP } from './reader/config';
 import {
@@ -120,6 +125,12 @@ export interface Env {
    */
   ALFRED_APP_URL?: string;
   /**
+   * When the morning digest goes out, `HH:MM` in `CLASSIFIER_TIMEZONE`, and the model that writes
+   * its opener — both `[vars]` entries. A blank or malformed time turns the digest off.
+   */
+  DIGEST_TIME?: string;
+  DIGEST_MODEL?: string;
+  /**
    * The commit this Worker was built from — a plain `[vars]` binding, NOT a secret, injected by
    * the deploy workflow (`--var WORKER_VERSION:<sha>`). Optional because a hand-run
    * `wrangler deploy` passes none.
@@ -187,7 +198,8 @@ export const RETENTION_CRON = '17 9 * * *';
 export const READER_CRON = '*/5 * * * *';
 
 /**
- * The notify tick — Telegram pings for a fresh ASAP verdict or a timed task's due minute — every
+ * The notify tick — Telegram pings for a fresh ASAP verdict or a timed task's due minute, and the
+ * once-a-day morning digest, which shares this tick's budget rather than taking a trigger — every
  * minute, so a due ping lands at most a minute late and an ASAP ping at most a minute after the
  * judge tick that wrote it. Its own trigger because every other tick is already at its subrequest
  * ceiling. This is the account's fifth and LAST Free-plan trigger: the next scheduled feature has
@@ -209,6 +221,13 @@ interface PullRequestPayload {
   repository: {
     full_name: string;
   };
+}
+
+/** The digest's line in `GET /`: its time and model, or why it is off. */
+function digestState(env: Pick<Env, 'DIGEST_TIME' | 'DIGEST_MODEL'>): string {
+  const schedule = digestSchedule(env.DIGEST_TIME);
+  if ('off' in schedule) return schedule.off === 'invalid' ? 'off (DIGEST_TIME invalid)' : 'off';
+  return `${schedule.time} · ${env.DIGEST_MODEL ?? 'no model'}`;
 }
 
 const json = (status: number, data: Record<string, unknown>): Response =>
@@ -243,6 +262,7 @@ export default {
           `reader ${env.READER_MODEL} cap ${env.READER_DAILY_CAP ?? String(READER_DEFAULT_DAILY_CAP)}; ` +
           `instapaper ${instapaperCredentials(env) === undefined ? 'unconfigured' : 'configured'}; ` +
           `telegram ${telegramConfig(env) === undefined ? 'unconfigured' : 'configured'}; ` +
+          `digest ${digestState(env)}; ` +
           `wiki ${env.WIKI_REPO})`,
       );
     }
