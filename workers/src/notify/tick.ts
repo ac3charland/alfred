@@ -11,9 +11,10 @@
  *                  retries it. Telegram's per-chat rate is handled here, not by sleeping.
  *   transient      count the attempt and carry on; the RPC re-returns the claim next tick.
  *   rejected       the same — a 400 that survived the plain-text resend.
- *   systemic       a bad token, or a chat the bot cannot write to: every later send would fail the
- *                  same way, so stop with a banner and count nothing. Fixing it within the hour
- *                  still delivers everything claimed meanwhile.
+ *   systemic       a bad token or chat id, or a chat the bot cannot write to: every later send
+ *                  would fail the same way, so stop with a banner and count nothing. Each tick
+ *                  until it is fixed still spends one send (and logs the banner) finding that out;
+ *                  fixing it within the hour delivers everything claimed meanwhile.
  */
 import type { SupabaseEnv } from '../supabase';
 import { type TelegramEnv, sendTelegram } from '../telegram';

@@ -24,7 +24,7 @@ export type TelegramOutcome =
   | { kind: 'transient'; error: string }
   /** 400 even as plain text, or another 4xx this chat cannot fix by waiting. */
   | { kind: 'rejected'; error: string }
-  /** 401/403/404: a bad token, or a chat the bot was never started in or was blocked from. */
+  /** 401/403/404, or a 400 "chat not found": a bad token or chat id, or a chat the bot can't write to. */
   | { kind: 'systemic'; error: string };
 
 /** A send's outcome plus how many requests it took (two when the plain-text retry ran). */
@@ -70,7 +70,10 @@ export async function sendTelegram(
     parse_mode: 'HTML',
     link_preview_options: { is_disabled: true },
   });
-  if (first.status !== 400) return { outcome: toOutcome(first), requests: 1 };
+  // Only a 400 that could be the HTML's fault earns the plain-text resend.
+  if (first.status !== 400 || isWrongChat(first)) {
+    return { outcome: toOutcome(first), requests: 1 };
+  }
 
   const second = await post(env, { chat_id: env.TELEGRAM_CHAT_ID, text: plain });
   return { outcome: toOutcome(second), requests: 2 };
@@ -95,6 +98,16 @@ async function post(env: TelegramEnv, payload: Record<string, unknown>): Promise
   }
 }
 
+/**
+ * A wrong `TELEGRAM_CHAT_ID` comes back as a 400, not a 403 — but like a bad token it fails every
+ * send alike, so it must stop the tick rather than burn each claim's attempts and lose them.
+ */
+function isWrongChat(reply: Reply): boolean {
+  return (
+    reply.status === 400 && (reply.body.description ?? '').toLowerCase().includes('chat not found')
+  );
+}
+
 function toOutcome(reply: Reply): TelegramOutcome {
   if (reply.status === 'network') return { kind: 'transient', error: reply.error };
 
@@ -109,7 +122,7 @@ function toOutcome(reply: Reply): TelegramOutcome {
       ? { kind: 'rate_limited' }
       : { kind: 'rate_limited', retryAfter };
   }
-  if (SYSTEMIC_STATUSES.has(status)) return { kind: 'systemic', error };
+  if (SYSTEMIC_STATUSES.has(status) || isWrongChat(reply)) return { kind: 'systemic', error };
   if (status >= 500) return { kind: 'transient', error };
   // A 2xx without a message id is a reply nobody can act on; count it like any other rejection.
   return { kind: 'rejected', error };

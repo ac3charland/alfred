@@ -65,6 +65,18 @@ describe('sendTelegram', () => {
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
+  it('treats a 400 "chat not found" as systemic: a wrong chat id fails every send alike', async () => {
+    const spy = spyOnFetch().mockImplementation(() =>
+      Promise.resolve(reply(400, { ok: false, description: 'Bad Request: chat not found' })),
+    );
+
+    await expect(sendTelegram(env, 'h', 'p')).resolves.toEqual({
+      outcome: { kind: 'systemic', error: 'HTTP 400: Bad Request: chat not found' },
+      requests: 1,
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     [429, { ok: false, parameters: { retry_after: 7 } }, { kind: 'rate_limited', retryAfter: 7 }],
     [429, { ok: false }, { kind: 'rate_limited' }],

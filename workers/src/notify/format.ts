@@ -53,13 +53,22 @@ function appLink(appUrl: string, path: string): string {
   return `${appUrl.replace(/\/+$/, '')}${path}`;
 }
 
-/** The three-line shape every ping shares: a bold headline, a body line, a link into alfred. */
-function ping(headline: string, body: string, url: string, label: string): PingText {
+/**
+ * The three-line shape every ping shares: a headline that opens in bold (`bold`, then the
+ * unbolded `rest`), a body line, a link into alfred.
+ */
+function ping(
+  headline: { bold: string; rest?: string },
+  body: string,
+  url: string,
+  label: string,
+): PingText {
+  const rest = headline.rest ?? '';
   return {
     html:
-      `<b>${escapeHtml(headline)}</b>\n${escapeHtml(body)}\n` +
+      `<b>${escapeHtml(headline.bold)}</b>${escapeHtml(rest)}\n${escapeHtml(body)}\n` +
       `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`,
-    plain: `${headline}\n${body}\n${url}`,
+    plain: `${headline.bold}${rest}\n${body}\n${url}`,
   };
 }
 
@@ -69,7 +78,7 @@ export function buildCommsAsap(
   appUrl: string,
 ): PingText {
   return ping(
-    `ASAP · ${fields.sender} · ${fields.account}`,
+    { bold: 'ASAP', rest: ` · ${fields.sender} · ${fields.account}` },
     cap(fields.ask, ASK_CAP),
     appLink(appUrl, '/comms'),
     'Open comms',
@@ -79,7 +88,7 @@ export function buildCommsAsap(
 /** A timed task whose due minute just arrived. `dueTime` is the column as PostgREST spells it. */
 export function buildTaskDue(fields: { title: string; dueTime: string }, appUrl: string): PingText {
   return ping(
-    `Due ${formatTime(fields.dueTime)}`,
+    { bold: `Due ${formatTime(fields.dueTime)}` },
     cap(fields.title, TITLE_CAP),
     appLink(appUrl, '/today'),
     'Open Today',

@@ -166,7 +166,7 @@ describe('runNotifyTick — the happy path', () => {
 
     const [comms, task] = sends(calls);
     expect(comms?.body['text']).toBe(
-      '<b>ASAP · Dana · iMessage</b>\nAsks whether you can pick up the kids at 4 today.\n' +
+      '<b>ASAP</b> · Dana · iMessage\nAsks whether you can pick up the kids at 4 today.\n' +
         '<a href="https://alfred-six-gamma.vercel.app/comms">Open comms</a>',
     );
     expect(task?.body['text']).toBe(

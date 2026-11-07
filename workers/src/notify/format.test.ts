@@ -22,7 +22,7 @@ describe('buildCommsAsap', () => {
     );
 
     expect(text.html).toBe(
-      '<b>ASAP · Dana · iMessage</b>\n' +
+      '<b>ASAP</b> · Dana · iMessage\n' +
         'Asks whether you can pick up the kids at 4 today.\n' +
         '<a href="https://alfred-six-gamma.vercel.app/comms">Open comms</a>',
     );
@@ -39,7 +39,7 @@ describe('buildCommsAsap', () => {
       APP,
     );
 
-    expect(text.html).toContain('<b>ASAP · A&amp;B &lt;Co&gt; · Work &amp; Play</b>');
+    expect(text.html).toContain('<b>ASAP</b> · A&amp;B &lt;Co&gt; · Work &amp; Play\n');
     expect(text.html).toContain('\nIs &lt;b&gt;this&lt;/b&gt; &gt; that? 🎉\n');
     // The plain twin carries no entities and no tags at all.
     expect(text.plain).toContain('A&B <Co> · Work & Play');
