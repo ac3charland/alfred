@@ -480,6 +480,21 @@ describe('runNotifyTick — the morning digest', () => {
     expect(patches(calls).some((call) => 'attempts' in call.body)).toBe(false);
   });
 
+  it('logs an unreadable plan and still sends, as if no plan covered today', async () => {
+    mockModel().mockRejectedValue(new Anthropic.APIConnectionTimeoutError());
+    const warn = jest.spyOn(console, 'warn').mockImplementation(silence);
+    const { calls } = digestWorld([digest('d1')], {
+      facts: () =>
+        Response.json({ ...FACTS, plan: { id: 'plan-9', uploaded_at: 'x', html: '<html>' } }),
+    });
+
+    const result = await runNotifyTick(digestEnv, NOW);
+
+    expect(result.sent).toBe(1);
+    expect(warn).toHaveBeenCalledWith('digest: plan unreadable (plan-9)');
+    expect(sends(calls)[0]?.body['text']).not.toContain('Plan for today');
+  });
+
   it('counts a failed facts read as an attempt and sends nothing for it', async () => {
     const model = mockModel();
     const { calls } = digestWorld([digest('d1', 1), due('n2')], {
