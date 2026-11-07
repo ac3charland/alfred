@@ -218,3 +218,19 @@ npm run --silent digest:preview -w workers -- normal --opener-input 2>/dev/null
   "reader_waiting": 12
 }
 ```
+
+**Retries are prompt and at most once** (all ping kinds). A failed send is released with its attempt count, so the 07:00 failure retries at 07:01 rather than 07:05. Claims a tick never reached, or stopped on (429, systemic), are released in one PATCH. The one claim never released is a ping Telegram accepted but that failed to record: its lease runs out and `claim_notifications` abandons it rather than send it twice. The Worker side:
+
+```bash
+npm run --silent test -w workers -- src/notify/tick.test.ts -t 'release|429|5xx|401|retried' --json 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const t of JSON.parse(s).testResults[0].assertionResults.filter(a=>a.status!=='pending'))console.log((t.status==='passed'?'✓ ':'✕ ')+t.title)})"
+```
+
+```output
+✓ stops at a 429 without counting an attempt, leaving the rest for the next tick
+✓ counts a 5xx as an attempt and carries on to the next claim
+✓ aborts on a 401 with a banner and counts no attempt
+✓ never releases a ping Telegram accepted but that failed to record, so it is never resent
+✓ reports a release that fails without throwing
+```
+
+The database side runs in `npm run test:integration -w database`: *a leased claim is never re-handed: released, it retries next tick; expired, it is abandoned*, and the 07:00-fail / 07:01-retry digest case.
