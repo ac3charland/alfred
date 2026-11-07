@@ -22,8 +22,8 @@ export const OPENER_CAP = 600;
 /** A few sentences is well under this; a truncation is a failure, not a shorter opener. */
 export const OPENER_MAX_TOKENS = 400;
 
-/** Per request, with one retry: the digest waits at most ~40 s for its garnish. Milliseconds. */
-export const OPENER_TIMEOUT_MS = 20_000;
+/** Per request, with one retry: the digest waits at most ~20 s for its garnish. Milliseconds. */
+export const OPENER_TIMEOUT_MS = 10_000;
 export const OPENER_MAX_RETRIES = 1;
 
 /** The facts the opener may draw on — the same values the lists render, after capping. */

@@ -63,7 +63,8 @@ describe('writeOpener — the request', () => {
     });
     expect(options).toBeUndefined();
     expect(OPENER_MAX_TOKENS).toBe(400);
-    expect(OPENER_TIMEOUT_MS).toBe(20_000);
+    // One retry inside a ~20 s total wait for the opener.
+    expect(OPENER_TIMEOUT_MS * (OPENER_MAX_RETRIES + 1)).toBeLessThanOrEqual(20_000);
     expect(OPENER_MAX_RETRIES).toBe(1);
   });
 
