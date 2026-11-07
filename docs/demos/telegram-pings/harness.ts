@@ -6,10 +6,17 @@
  *   render   both pings as the Worker builds them (format.ts), plus one full of markup and emoji
  *   windows  claim_notifications on a throwaway PostgreSQL with every migration applied: a minute
  *            of ticks around a 3:00 PM task and a fresh ASAP verdict, then a reschedule
+ *   tick     the shipped runNotifyTick end to end (claim, send, record) through every outcome
  *   live     one real sendTelegram against api.telegram.org with an obviously fake token
  *
- * Everything is the shipped code; nothing is mocked. The `windows` section marks each claim sent
- * by hand where the Worker would, after Telegram accepted it.
+ * WHAT IS REAL AND WHAT IS STOOD UP LOCALLY
+ *
+ *   real   format.ts, telegram.ts, tick.ts, store.ts and claim_notifications, unmodified, on a
+ *          throwaway PostgreSQL carrying every migration.
+ *   local  `windows` marks each claim sent by hand, where the Worker would after Telegram accepted
+ *          it. `tick` swaps the global fetch: Supabase REST calls become the same SQL against that
+ *          database (the RPC call, and the PATCH of one notifications row), and each Telegram send
+ *          is answered from a script (200, 400, 502, 429, 401), since no real chat is reachable.
  */
 import process from 'node:process';
 
@@ -18,6 +25,7 @@ import pg from 'pg';
 import { startCluster } from '../../../database/src/cluster.ts';
 import { applyMigrations, bootstrapSupabase } from '../../../database/src/migrate.ts';
 import { buildCommsAsap, buildTaskDue } from '../../../workers/src/notify/format';
+import { runNotifyTick } from '../../../workers/src/notify/tick';
 import { sendTelegram } from '../../../workers/src/telegram';
 
 const APP = 'https://alfred-six-gamma.vercel.app';
@@ -147,6 +155,152 @@ async function windows(): Promise<void> {
   }
 }
 
+/** A throwaway cluster with every migration applied, handed to `fn` and torn down after. */
+async function withDatabase(fn: (db: pg.Client) => Promise<void>): Promise<void> {
+  const cluster = await startCluster();
+  const db = new pg.Client({
+    host: cluster.host,
+    port: cluster.port,
+    user: cluster.user,
+    database: cluster.database,
+  });
+  try {
+    await db.connect();
+    await bootstrapSupabase(db);
+    await applyMigrations(db);
+    await fn(db);
+  } finally {
+    await db.end();
+    cluster.stop();
+  }
+}
+
+type Scripted = { status: number; body: Record<string, unknown> };
+
+const scripted = (status: number, extra: Record<string, unknown> = {}): Scripted => ({
+  status,
+  body: { ok: status === 200, description: status === 200 ? undefined : 'scripted', ...extra },
+});
+
+async function tick(): Promise<void> {
+  await withDatabase(async (db) => {
+    // One minute apart, so the claim order (oldest due moment first) is fixed.
+    const tasks = [
+      ['Call the dentist', '14:56'],
+      ['Book flights', '14:57'],
+      ['Water the plants', '14:58'],
+      ['Pay the sitter', '14:59'],
+      ['Email Sam', '15:00'],
+    ];
+    for (const [title, time] of tasks) {
+      await db.query(
+        `insert into items (title, item_type, due_date, due_time)
+           values ($1, 'task', '2031-01-15T00:00:00Z', $2::time)`,
+        [title, time],
+      );
+    }
+
+    // Each Telegram send takes the next scripted reply; Supabase REST becomes the same SQL.
+    let script: Scripted[] = [];
+    let messageId = 500;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string, init?: RequestInit) => {
+      const url = new URL(input);
+      const body = JSON.parse((init?.body as string | undefined) ?? '{}') as Record<string, unknown>;
+      if (url.hostname === 'api.telegram.org') {
+        const reply = script.shift() ?? scripted(200);
+        if (reply.status === 200) {
+          messageId += 1;
+          reply.body = { ok: true, result: { message_id: messageId } };
+        }
+        const mode = body['parse_mode'] === undefined ? 'plain' : 'HTML';
+        console.log(`  telegram <- ${mode.padEnd(5)} -> ${String(reply.status)}`);
+        return Response.json(reply.body, { status: reply.status });
+      }
+      if (url.pathname === '/rest/v1/rpc/claim_notifications') {
+        const { rows } = await db.query(
+          `select * from claim_notifications($1::timestamptz, $2, $3)`,
+          [body['p_now'], body['p_zone'], body['p_limit']],
+        );
+        return Response.json(rows);
+      }
+      if (url.pathname === '/rest/v1/notifications' && init?.method === 'PATCH') {
+        const id = (url.searchParams.get('id') ?? '').replace(/^eq\./, '');
+        const columns = Object.keys(body);
+        const sets = columns.map((column, index) => `${column} = $${String(index + 2)}`);
+        await db.query(`update notifications set ${sets.join(', ')} where id = $1`, [
+          id,
+          ...columns.map((column) => body[column]),
+        ]);
+        return Response.json([{}]);
+      }
+      throw new Error(`unexpected request: ${init?.method ?? 'GET'} ${url.pathname}`);
+    }) as typeof fetch;
+
+    const env = {
+      SUPABASE_URL: 'https://demo.supabase.test',
+      SUPABASE_SERVICE_ROLE_KEY: 'demo',
+      TELEGRAM_BOT_TOKEN: '123456:not-a-real-token',
+      TELEGRAM_CHAT_ID: '1',
+      ALFRED_APP_URL: APP,
+      CLASSIFIER_TIMEZONE: 'America/Chicago',
+    };
+    const show = async (label: string, at: string): Promise<void> => {
+      console.log(label);
+      const { failures, ...counts } = await runNotifyTick(env, new Date(cst(at)));
+      console.log(`  summary ${JSON.stringify(counts)}`);
+      for (const failure of failures) {
+        console.log(`  failure ${failure.replace(/[0-9a-f-]{36}/, '<id>')}`);
+      }
+      const { rows } = await db.query<Record<string, unknown>>(
+        `select t.title, n.sent_at is not null as sent, n.attempts, n.last_error,
+                split_part(n.text, chr(10), 1) as headline
+           from notifications n join items t on t.id = n.item_id order by t.due_time, t.title`,
+      );
+      for (const row of rows) {
+        console.log(
+          `  row  ${String(row['title']).padEnd(17)} sent=${String(row['sent']).padEnd(5)} ` +
+            `attempts=${String(row['attempts'])} error=${String(row['last_error'] ?? '-')} ` +
+            `text=${String(row['headline'] ?? '-')}`,
+        );
+      }
+      console.log();
+    };
+
+    console.log('Five tasks due 2:56 to 3:00 PM Chicago, one a minute.\n');
+    script = [
+      scripted(200),
+      scripted(400),
+      scripted(200),
+      scripted(502),
+      scripted(429, { parameters: { retry_after: 3 } }),
+    ];
+    await show('tick 3:00 PM: 200; 400 then the plain resend 200; 502; 429 stops the tick', '15:00');
+    script = [];
+    await show('tick 3:01 PM: the leftovers are leased to the last tick for five minutes', '15:01');
+    script = [scripted(200), scripted(200), scripted(200)];
+    await show('tick 3:05 PM: the 502, the 429 and the never-tried claim are retried', '15:05');
+
+    await db.query(
+      `insert into items (title, item_type, due_date, due_time)
+         values ('Feed the cat', 'task', '2031-01-15T00:00:00Z', '15:06')`,
+    );
+    script = [scripted(401)];
+    await show('tick 3:06 PM: a 401 aborts the tick and counts nothing', '15:06');
+
+    const { TELEGRAM_BOT_TOKEN: _unset, ...unconfigured } = env;
+    let requests = 0;
+    globalThis.fetch = (async () => {
+      requests += 1;
+      return Response.json([]);
+    }) as typeof fetch;
+    console.log('tick with TELEGRAM_BOT_TOKEN unset:');
+    const summary = await runNotifyTick(unconfigured, new Date(cst('15:07')));
+    console.log(`  summary ${JSON.stringify(summary)} · requests made: ${String(requests)}`);
+    globalThis.fetch = realFetch;
+  });
+}
+
 async function live(): Promise<void> {
   // Obviously fake, and far too short to be mistaken for (or flagged as) a real token.
   const result = await sendTelegram(
@@ -160,8 +314,9 @@ async function live(): Promise<void> {
 const section = process.argv[2];
 if (section === 'render') render();
 else if (section === 'windows') await windows();
+else if (section === 'tick') await tick();
 else if (section === 'live') await live();
 else {
-  console.error('usage: harness.ts render|windows|live');
+  console.error('usage: harness.ts render|windows|tick|live');
   process.exitCode = 2;
 }
