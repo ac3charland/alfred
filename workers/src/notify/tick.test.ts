@@ -210,7 +210,11 @@ describe('runNotifyTick — failures', () => {
     const result = await runNotifyTick(env, NOW);
 
     expect(sends(calls)).toHaveLength(2);
-    expect(patches(calls)).toHaveLength(1);
+    // n1's sent stamp, then one release of the rate-limited claim and the one never reached.
+    const [, released] = patches(calls);
+    expect(patches(calls)).toHaveLength(2);
+    expect(decodeURIComponent(released?.url ?? '')).toContain('id=in.(n2,n3)');
+    expect(released?.body).toEqual({ leased_at: WIRE_NULL });
     expect(result).toMatchObject({ sent: 1, failed: 0, aborted: false });
     expect(result.failures).toEqual([
       'rate limited (retry after 3s) — the rest wait for the next tick',
@@ -224,7 +228,12 @@ describe('runNotifyTick — failures', () => {
 
     const [attempt] = patches(calls);
     expect(attempt?.url).toContain('id=eq.n1');
-    expect(attempt?.body).toEqual({ attempts: 2, last_error: 'HTTP 502: nope' });
+    // Released with the count, so the next tick (not one five minutes on) retries it.
+    expect(attempt?.body).toEqual({
+      attempts: 2,
+      last_error: 'HTTP 502: nope',
+      leased_at: WIRE_NULL,
+    });
     expect(result).toMatchObject({ sent: 1, failed: 1, abandoned: 0 });
   });
 
@@ -241,7 +250,11 @@ describe('runNotifyTick — failures', () => {
     const result = await runNotifyTick(env, NOW);
 
     expect(sends(calls)).toHaveLength(2);
-    expect(patches(calls)[0]?.body).toEqual({ attempts: 1, last_error: 'HTTP 400: nope' });
+    expect(patches(calls)[0]?.body).toEqual({
+      attempts: 1,
+      last_error: 'HTTP 400: nope',
+      leased_at: WIRE_NULL,
+    });
     expect(result.failed).toBe(1);
   });
 
@@ -252,7 +265,10 @@ describe('runNotifyTick — failures', () => {
     const result = await runNotifyTick(env, NOW);
 
     expect(sends(calls)).toHaveLength(1);
-    expect(patches(calls)).toHaveLength(0);
+    // No attempt counted: the only write releases both claims for the next tick.
+    expect(patches(calls).map((call) => [decodeURIComponent(call.url), call.body])).toEqual([
+      [expect.stringContaining('id=in.(n1,n2)') as unknown, { leased_at: WIRE_NULL }],
+    ]);
     expect(result.aborted).toBe(true);
     expect(error).toHaveBeenCalledWith(`${SYSTEMIC_FAILURE}: HTTP ${String(code)}: nope`);
   });
@@ -264,6 +280,44 @@ describe('runNotifyTick — failures', () => {
 
     expect(sends(calls)).toHaveLength(0);
     expect(result.failed).toBe(1);
+  });
+
+  it('never releases a ping Telegram accepted but that failed to record, so it is never resent', async () => {
+    const calls: Call[] = [];
+    spyOnFetch().mockImplementation((input: FetchInput, init?: FetchInit) => {
+      const url = input as string;
+      calls.push({
+        url: decodeURIComponent(url),
+        method: init?.method ?? 'GET',
+        body: JSON.parse((init?.body ?? '{}') as string) as Record<string, unknown>,
+      });
+      if (url.includes('/rpc/')) return Promise.resolve(Response.json([asap('n1'), asap('n2')]));
+      if (url.includes('telegram')) return Promise.resolve(ok());
+      // The sent stamp for n1 fails; the release that follows succeeds.
+      if (url.includes('id=eq.n1')) return Promise.resolve(new Response('down', { status: 503 }));
+      return Promise.resolve(Response.json([{}]));
+    });
+
+    const result = await runNotifyTick(env, NOW);
+
+    expect(result.aborted).toBe(true);
+    expect(result.failures[0]).toContain('record failed');
+    const released = patches(calls).filter((call) => 'leased_at' in call.body);
+    expect(released.map((call) => call.url)).toEqual([expect.stringContaining('id=in.(n2)')]);
+  });
+
+  it('reports a release that fails without throwing', async () => {
+    spyOnFetch().mockImplementation((input: FetchInput) => {
+      const url = input as string;
+      if (url.includes('/rpc/')) return Promise.resolve(Response.json([asap('n1'), asap('n2')]));
+      if (url.includes('telegram')) return Promise.resolve(status(401)());
+      return Promise.resolve(new Response('down', { status: 503 }));
+    });
+    jest.spyOn(console, 'error').mockImplementation(silence);
+
+    const result = await runNotifyTick(env, NOW);
+
+    expect(result.failures.at(-1)).toMatch(/^release failed: Supabase PATCH notifications/);
   });
 
   it('reports a failed claim RPC as an aborted tick, not a throw', async () => {

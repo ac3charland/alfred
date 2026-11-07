@@ -16,11 +16,22 @@
  *                  would fail the same way, so stop with a banner and count nothing. Each tick
  *                  until it is fixed still spends one send (and logs the banner) finding that out;
  *                  fixing it within the hour delivers everything claimed meanwhile.
+ *
+ * Delivery is at most once. Every claim the tick hands back unsent — a counted failure, a rate
+ * limit, a systemic stop, or one it never reached — is released, so the next tick retries it. The
+ * one claim it never releases is a ping Telegram accepted but whose recording PATCH failed: its
+ * lease runs out and the RPC abandons it, rather than send it a second time.
  */
 import { DIGEST_BUILD_REQUESTS, type DigestEnv, composeDigest } from '../digest/compose';
 import { type TelegramEnv, sendTelegram } from '../telegram';
 import { type PingText, buildCommsAsap, buildTaskDue } from './format';
-import { type NotificationClaim, claimNotifications, markSent, recordFailedAttempt } from './store';
+import {
+  type NotificationClaim,
+  claimNotifications,
+  markSent,
+  recordFailedAttempt,
+  releaseClaims,
+} from './store';
 
 /** At most this many claims per tick — far above single-user volume, inside the budget below. */
 export const NOTIFY_LIMIT = 20;
@@ -39,6 +50,8 @@ export const MAX_ATTEMPTS = 3;
 export const SUBREQUEST_CEILING = 50;
 const WORST_CASE_PER_CLAIM = 3;
 export const WORST_CASE_PER_DIGEST = WORST_CASE_PER_CLAIM + DIGEST_BUILD_REQUESTS;
+/** Held back from every claim's budget for the one PATCH that releases what the tick left. */
+const RELEASE_RESERVE = 1;
 
 /** Logged when DIGEST_TIME is set to something other than `HH:MM`; the other pings carry on. */
 export const DIGEST_TIME_INVALID = 'notify: DIGEST_TIME invalid — digest off';
@@ -150,13 +163,16 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
   }
   result.claimed = claims.length;
   let spent = 1;
+  /** Claims whose outcome is recorded: sent, or a counted (and released) failure. */
+  const settled = new Set<string>();
+  /** A claim Telegram accepted whose recording failed: left leased, so it is never resent. */
+  let sentUnrecorded: string | undefined;
 
   try {
     for (const claim of claims) {
       const isDigest = claim.kind === 'morning_digest';
-      if (spent + (isDigest ? WORST_CASE_PER_DIGEST : WORST_CASE_PER_CLAIM) > SUBREQUEST_CEILING) {
-        break;
-      }
+      const worst = isDigest ? WORST_CASE_PER_DIGEST : WORST_CASE_PER_CLAIM;
+      if (spent + worst + RELEASE_RESERVE > SUBREQUEST_CEILING) break;
 
       let text: PingText | undefined;
       if (isDigest) {
@@ -166,6 +182,7 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
         } catch (error) {
           spent += 2;
           await countFailure(env, claim, `digest facts failed: ${message(error)}`, result);
+          settled.add(claim.id);
           continue;
         }
         spent += DIGEST_BUILD_REQUESTS;
@@ -175,6 +192,7 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
       if (text === undefined) {
         spent += 1;
         await countFailure(env, claim, 'claim is missing its message fields', result);
+        settled.add(claim.id);
         continue;
       }
 
@@ -183,12 +201,15 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
 
       if (outcome.kind === 'sent') {
         spent += 1;
+        sentUnrecorded = claim.id;
         await markSent(env, claim.id, {
           at: new Date(),
           messageId: outcome.messageId,
           // What Telegram received: the HTML, unless the plain-text resend is what got through.
           text: requests === 2 ? text.plain : text.html,
         });
+        sentUnrecorded = undefined;
+        settled.add(claim.id);
         result.sent += 1;
         continue;
       }
@@ -206,11 +227,26 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
       }
       spent += 1;
       await countFailure(env, claim, outcome.error, result);
+      settled.add(claim.id);
     }
   } catch (error) {
-    // A recording PATCH failed. What was sent stays sent; everything unrecorded is retried.
+    // A recording PATCH failed. A ping that went out stays leased (and is abandoned, not resent);
+    // everything else unrecorded is released below and retried.
     result.aborted = true;
     result.failures.push(`record failed: ${message(error)}`);
+  }
+
+  const unsent = claims.filter((claim) => !settled.has(claim.id) && claim.id !== sentUnrecorded);
+  if (unsent.length > 0) {
+    try {
+      await releaseClaims(
+        env,
+        unsent.map((claim) => claim.id),
+      );
+    } catch (error) {
+      // Left leased, they are abandoned when the lease runs out: a lost ping, never a double one.
+      result.failures.push(`release failed: ${message(error)}`);
+    }
   }
   return result;
 }
