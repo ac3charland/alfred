@@ -1939,7 +1939,12 @@ export type Database = {
         }
       }
       claim_notifications: {
-        Args: { p_limit: number; p_now: string; p_zone: string }
+        Args: {
+          p_digest_time?: string
+          p_limit: number
+          p_now: string
+          p_zone: string
+        }
         Returns: {
           account: string
           ask: string
@@ -2150,6 +2155,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      digest_facts: { Args: { p_now: string; p_zone: string }; Returns: Json }
       enter_code_module: {
         Args: {
           p_epic: string

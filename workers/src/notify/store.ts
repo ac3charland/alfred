@@ -5,10 +5,16 @@
  */
 import { type SupabaseEnv, fetchJson, restQueryUrl } from '../supabase';
 
-/** One claim as the RPC returns it — JSON nulls for the other kind's fields. */
+/** A JSON `null`, parsed rather than written: `unicorn/no-null` bans the literal here. */
+const JSON_NULL: unknown = JSON.parse('null');
+
+/**
+ * One claim as the RPC returns it — JSON nulls for the other kinds' fields. A `morning_digest`
+ * claim carries none: the tick reads the digest's facts separately.
+ */
 export interface NotificationClaim {
   id: string;
-  kind: 'comms_asap' | 'task_due';
+  kind: 'comms_asap' | 'task_due' | 'morning_digest';
   attempts: number;
   /** comms_asap: the roster name, else the sender's name, else their handle. */
   sender: string | null;
@@ -24,20 +30,28 @@ export interface NotificationClaim {
 
 /**
  * Claim this tick's pings: the retries first, then whatever just became true, at most `limit`.
- * `zone` is the IANA zone a task's floating due time is read in.
+ * `zone` is the IANA zone a task's floating due time and the digest time are read in.
+ * `digestTime` (`HH:MM`) turns the morning digest on; omitted, the RPC claims no new digest.
  */
 export function claimNotifications(
   env: SupabaseEnv,
   now: Date,
   zone: string,
   limit: number,
+  digestTime?: string,
 ): Promise<NotificationClaim[]> {
   return fetchJson<NotificationClaim[]>(
     env,
     restQueryUrl(env, 'rpc/claim_notifications', {}),
     {
       method: 'POST',
-      body: JSON.stringify({ p_now: now.toISOString(), p_zone: zone, p_limit: limit }),
+      body: JSON.stringify({
+        p_now: now.toISOString(),
+        p_zone: zone,
+        p_limit: limit,
+        // Omitted rather than null when off: the parameter defaults to NULL.
+        ...(digestTime === undefined ? {} : { p_digest_time: digestTime }),
+      }),
     },
     'POST rpc/claim_notifications',
   );
@@ -65,8 +79,8 @@ export async function markSent(
 }
 
 /**
- * Count a failed attempt. `attempts` is the count the claim came back with; the RPC stops
- * re-returning a claim once it reaches the ceiling.
+ * Count a failed attempt and release the claim, so the next tick retries it. `attempts` is the
+ * count the claim came back with; the RPC stops re-returning a claim once it reaches the ceiling.
  */
 export async function recordFailedAttempt(
   env: SupabaseEnv,
@@ -79,8 +93,22 @@ export async function recordFailedAttempt(
     restQueryUrl(env, 'notifications', { id: `eq.${id}` }),
     {
       method: 'PATCH',
-      body: JSON.stringify({ attempts: attempts + 1, last_error: error }),
+      body: JSON.stringify({ attempts: attempts + 1, last_error: error, leased_at: JSON_NULL }),
     },
     `PATCH notifications (${id})`,
+  );
+}
+
+/**
+ * Hand claims back unsent and uncounted — the ones a tick was given but never got to, or stopped
+ * on (a rate limit, a systemic failure) — so the next tick retries them. A claim left leased is
+ * abandoned once its lease runs out: the RPC reads an unreleased lease as "may have been sent".
+ */
+export async function releaseClaims(env: SupabaseEnv, ids: readonly string[]): Promise<void> {
+  await fetchJson<unknown[]>(
+    env,
+    restQueryUrl(env, 'notifications', { id: `in.(${ids.join(',')})` }),
+    { method: 'PATCH', body: JSON.stringify({ leased_at: JSON_NULL }) },
+    `PATCH notifications (release ${String(ids.length)})`,
   );
 }

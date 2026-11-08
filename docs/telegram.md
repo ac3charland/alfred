@@ -1,10 +1,13 @@
 # Telegram pings
 
-alfred messages your phone through a private Telegram bot in two cases:
+alfred messages your phone through a private Telegram bot in three cases:
 
 - **ASAP comms** — the model has just judged an inbound message ASAP. The ping names the sender,
   the account and alfred's one-line ask, never the message body or subject.
 - **Due times** — a task with a due *time* has reached that minute. Tasks with only a date never ping.
+- **The morning digest** — once a day at `DIGEST_TIME` (07:00 Chicago): a short model-written
+  opener, then what's due (the Today view's list, at most eight rows), your ASAP and Today comms
+  (counts plus up to five asks), and how many reader articles are waiting.
 
 ```
 ASAP · Dana · iMessage                Due 3:00 PM
@@ -27,10 +30,16 @@ calls `claim_notifications` (migration `0054_notifications.sql`), sends each cla
   is. If you travel, a 3 PM task still pings at 3 PM Chicago time.
 - **Once each:** a message pings at most once. A task pings once per date and time, so a reschedule
   re-arms it.
-- **Failures:** a 5xx is retried on later ticks (each claim waits five minutes between hand-outs,
-  so a slow tick is never raced into a duplicate), up to 3 attempts within an hour. A 429 waits
-  for a later tick. A 401/403, or a 400 "chat not found" (bad token, wrong chat id, chat never
+- **Failures:** a 5xx is retried on the next tick, up to 3 attempts within an hour. A 429 waits
+  for the next tick. Delivery is at most once: if Telegram accepted a ping but alfred failed to
+  record it (or the Worker died mid-tick), the claim is abandoned five minutes later rather than
+  resent, so a database blip can cost a ping but never doubles one. A 401/403, or a 400 "chat not found" (bad token, wrong chat id, chat never
   started, bot blocked) stops the tick with a `notify: aborting the tick` line in `wrangler tail`.
+- **Digest:** claimed by the first tick in the hour after `DIGEST_TIME`, once per local date, so a
+  deploy after 8 AM starts tomorrow. Only the opener comes from the model (`DIGEST_MODEL`, with
+  today's week-plan lines and theme as context); if the call fails or the key is missing, the
+  digest still goes out on time with today's plan lines listed instead. `DIGEST_TIME = ""` turns
+  it off; `GET /` says which.
 - **Off switch:** until `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` and `ALFRED_APP_URL` are all set,
   the tick logs `notify: telegram unconfigured` and claims nothing.
 
