@@ -177,6 +177,8 @@ export default {
 - **Never commit `.dev.vars` or `.env`.** Add `.dev.vars*` and `.env*` to `.gitignore`.
 - **Always await Promises or pass them to `ctx.waitUntil`.** Floating (unawaited, unregistered) promises are silently dropped by the runtime. Enable the `no-floating-promises` ESLint rule.
 - **Always instantiate third-party SDK clients (Supabase, Anthropic) inside the fetch handler**, not at module scope. Module-scope singletons can hold stale state and share mutable state between requests.
+- **There is no `DOMParser`: parse XML with `fast-xml-parser`** (pure JS; `reader/feeds.ts`). It is lenient — malformed markup parses rather than throws, so test the root you expect — and an empty element (`<channel></channel>`) parses to the string `''`, not an object: check a child is *present*, not that it is a record.
+- **To cap a response body, read `response.body` in chunks — and cast it to `ReadableStream<Uint8Array>` first.** The Workers types leave a fetch body's chunks untyped, so `getReader()` reads `any` and the type-aware lint fails; `readCapped` in `reader/feed-leg.ts` is the pattern.
 - **Never read `request.body` (or call `.json()`, `.text()`, etc.) more than once.** The stream is consumed on first read. Clone with `request.clone()` if you need to read it twice.
 - **Never use `XMLHttpRequest`.** It is not supported in the Workers runtime. Use the global `fetch()` API for all outbound HTTP.
 - **Always set `Content-Type` on JSON responses.** `new Response(JSON.stringify(x))` without the header returns `text/plain` — callers will silently mis-parse it.
