@@ -68,7 +68,10 @@ confirm as a question: the author filters.
 
 Check that every requirement is met (for a bug fix: its root cause, not just the symptom) and
 pinned by a test that would fail without the change; the edge cases the change creates; and the
-repo's CLAUDE.md conventions. Skip what the repo's automated gates (type-check, lint, format)
+repo's CLAUDE.md conventions. Flag any test, fixture, or SQL assertion that mixes a hard-coded date
+with the real clock (`new Date()`, `Date.now()`, `now()`): it passes today and fails once the
+calendar moves past it. The fix is dates derived from now, or a pinned clock (fake timers / an
+injected `now`), never a later literal. Skip what the repo's automated gates (type-check, lint, format)
 already enforce.
 
 Report, in this order:
