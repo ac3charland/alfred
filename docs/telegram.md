@@ -5,7 +5,7 @@ alfred messages your phone through a private Telegram bot in three cases:
 - **ASAP comms** — the model has just judged an inbound message ASAP. The ping names the sender,
   the account and alfred's one-line ask, never the message body or subject.
 - **Due times** — a task with a due *time* has reached that minute. Tasks with only a date never ping.
-- **The morning digest** — once a day at `DIGEST_TIME` (07:00 Chicago): a short model-written
+- **The morning digest** — once a day at `DIGEST_TIME` (07:10 Chicago): a short model-written
   opener, then what's due (the Today view's list, at most eight rows), your ASAP and Today comms
   (counts plus up to five asks), and how many reader articles are waiting.
 
