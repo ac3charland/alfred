@@ -14,7 +14,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { cap } from '../notify/format';
-import { thinkingOff } from '../thinking';
+import { thinkingOffParams } from '../thinking';
 import type { PlanLine } from './plan';
 
 /** The longest opener the digest carries, ellipsis included. */
@@ -98,7 +98,7 @@ export async function writeOpener(env: OpenerEnv, input: OpenerInput): Promise<O
       model,
       max_tokens: OPENER_MAX_TOKENS,
       // Omitted, Sonnet thinks adaptively — billed as output and counted against max_tokens.
-      thinking: thinkingOff(model),
+      ...thinkingOffParams(model),
       output_config: { effort: 'low', format: { type: 'json_schema', schema: OPENER_SCHEMA } },
       system: OPENER_SYSTEM,
       messages: [{ role: 'user', content: JSON.stringify(input) }],

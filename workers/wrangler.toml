@@ -90,8 +90,8 @@ crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *", "* * * * *"]
 # CLASSIFIER_MODEL — which model judges an Inbox item. A var rather than a constant so trying a
 #   different model for a week is a deploy flag rather than a story. Haiku 5.5 by default: at
 #   this volume every option is inside noise, so the choice is decided by fit, and the property
-#   that matters is structured-output support. The call switches thinking off (`thinkingOff`),
-#   which Opus 5.5 and Fable cannot do.
+#   that matters is structured-output support. The call switches thinking off (`thinkingOff`);
+#   on Opus 5.5 and Fable, which can't, it runs with adaptive thinking instead.
 # CLASSIFIER_TIMEZONE — the IANA zone "friday" resolves against. It is the one piece of the
 #   prompt that is about the owner rather than the domain, and it changes if they move. The
 #   Worker computes an absolute reference date from it and hands the model that, so the model is
@@ -99,9 +99,9 @@ crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *", "* * * * *"]
 # READER_MODEL — which model summarises a Reader post. Sonnet 5.5 by default: "is this actually a
 #   new idea" is a synthesis task where the tier shows, at ~$0.03 a post. The reader's call turns
 #   thinking off (`thinkingOff`: `between_tools` on Sonnet 5.5, `disabled` elsewhere) with
-#   `output_config.effort: 'medium'`, so the value must be a model that accepts both — Sonnet 5.5,
-#   Sonnet 5, Opus 5 and Haiku 5.5 do; Opus 5.5 and Fable 5/5.1 cannot switch thinking off and
-#   400, which the tick would record as a systemic bad request on every post.
+#   `output_config.effort: 'medium'`. Sonnet 5.5, Sonnet 5, Opus 5 and Haiku 5.5 all take that;
+#   Opus 5.5 and Fable can't switch thinking off, so on them the key is left out and the call
+#   thinks adaptively — billed as output and counted against max_tokens.
 # READER_DAILY_CAP — the Reader's daily model-call ceiling, the money guard. Past it, intake
 #   still runs and posts wait, unsummarised, for the UTC day to roll over. Sized at three times
 #   the owner's heavy day (eight to ten posts) so a roster mistake trips it the same day and a

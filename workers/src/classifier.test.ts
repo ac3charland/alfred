@@ -84,6 +84,16 @@ describe('classify — the request', () => {
     expect(sentParams(spy).thinking).toEqual({ type: 'between_tools' });
   });
 
+  it('omits the thinking key on a model that cannot switch thinking off', async () => {
+    // Before Haiku 5.5 the call never sent the key, so CLASSIFIER_MODEL could point at Opus 5.5;
+    // `disabled` would 400 there on every item.
+    const spy = mockCreate().mockResolvedValue(fakeMessage(textContent('{}'), 'end_turn'));
+
+    await classify({ ...env, CLASSIFIER_MODEL: 'claude-opus-5-5' }, request);
+
+    expect(sentParams(spy)).not.toHaveProperty('thinking');
+  });
+
   it('carries no output_config.effort key', async () => {
     const spy = mockCreate().mockResolvedValue(fakeMessage(textContent('{}'), 'end_turn'));
 

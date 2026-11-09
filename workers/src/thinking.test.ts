@@ -11,4 +11,11 @@ describe('thinkingOff', () => {
       expect(thinkingOff(model)).toEqual({ type: 'disabled' });
     },
   );
+
+  it.each(['claude-opus-5-5', 'claude-fable-5-1', 'claude-mythos-5-1'])(
+    'leaves the key out on %s, which 400s on any thinking-off spelling',
+    (model) => {
+      expect(thinkingOff(model)).toBeUndefined();
+    },
+  );
 });

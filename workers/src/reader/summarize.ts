@@ -15,7 +15,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 
-import { thinkingOff } from '../thinking';
+import { thinkingOffParams } from '../thinking';
 import { buildReaderRequest } from './prompt';
 import { readReaderSummary } from './schema';
 import type { SummaryConfig, SummaryInput, SummaryOutcome, SummaryUsage } from './types';
@@ -114,7 +114,7 @@ export async function summarizePost(
       max_tokens: READER_MAX_TOKENS,
       // Sonnet runs ADAPTIVE thinking when this key is omitted — billed as output and counted
       // against max_tokens, which is exactly the silent truncation this call must not have.
-      thinking: thinkingOff(config.model),
+      ...thinkingOffParams(config.model),
       output_config: {
         effort: 'medium',
         format: { type: 'json_schema', schema: request.schema },

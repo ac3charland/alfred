@@ -242,9 +242,9 @@ one is a 400 on every request:
 |---|---|
 | Sonnet 5.5 | `{ type: 'between_tools' }` — no other field; effort `high` or below; every other model 400s on it |
 | Haiku 5.5, Sonnet 5, Opus 5 | `{ type: 'disabled' }` — Haiku 5.5 / Opus 5 only at effort `high` or below |
-| Opus 5.5, Fable 5/5.1 | Can't — lower `effort` instead |
+| Opus 5.5, Fable 5/5.1 | Can't — any spelling 400s; omit `thinking` and lower `effort` |
 
-Never hand-write either spelling in a Worker call: use `thinkingOff(model)`
+Never hand-write either spelling in a Worker call: spread `thinkingOffParams(model)`
 (`workers/src/thinking.ts`), so each `*_MODEL` var stays a deploy flag. `@anthropic-ai/sdk`
 ≥ 0.130 types `between_tools`; `output_config.effort` and an `as const` JSON-schema literal in
 `output_config.format.schema` need no cast.
