@@ -11,7 +11,7 @@ import {
   writeOpener,
 } from './opener';
 
-const env = { ANTHROPIC_API_KEY: 'sk-ant-test-key', DIGEST_MODEL: 'claude-sonnet-5' };
+const env = { ANTHROPIC_API_KEY: 'sk-ant-test-key', DIGEST_MODEL: 'claude-sonnet-5-5' };
 
 const input: OpenerInput = {
   date: 'Saturday, Nov 7',
@@ -54,9 +54,9 @@ describe('writeOpener — the request', () => {
       unknown,
     ];
     expect(params).toEqual({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-5-5',
       max_tokens: OPENER_MAX_TOKENS,
-      thinking: { type: 'disabled' },
+      thinking: { type: 'between_tools' },
       output_config: { effort: 'low', format: { type: 'json_schema', schema: OPENER_SCHEMA } },
       system: OPENER_SYSTEM,
       messages: [{ role: 'user', content: JSON.stringify(input) }],
@@ -66,6 +66,16 @@ describe('writeOpener — the request', () => {
     // One retry inside a ~20 s total wait for the opener.
     expect(OPENER_TIMEOUT_MS * (OPENER_MAX_RETRIES + 1)).toBeLessThanOrEqual(20_000);
     expect(OPENER_MAX_RETRIES).toBe(1);
+  });
+
+  it('switches thinking off with `disabled` on a model other than Sonnet 5.5', async () => {
+    // DIGEST_MODEL is a deploy flag: rolling back to Sonnet 5 must not need a code change.
+    const spy = mockCreate().mockResolvedValue(reply({ opener: 'Invoice first.' }));
+
+    await writeOpener({ ...env, DIGEST_MODEL: 'claude-sonnet-5' }, input);
+
+    const [params] = spy.mock.calls[0] as [Anthropic.MessageCreateParamsNonStreaming];
+    expect(params.thinking).toEqual({ type: 'disabled' });
   });
 
   it('tells the model to use only the given facts and never to restate the lists', () => {

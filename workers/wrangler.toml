@@ -88,19 +88,20 @@ crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *", "* * * * *"]
 
 # ── Vars (non-secret, plaintext, committed) ──────────────────────────────────
 # CLASSIFIER_MODEL — which model judges an Inbox item. A var rather than a constant so trying a
-#   different model for a week is a deploy flag rather than a story. Haiku 4.5 by default: at
+#   different model for a week is a deploy flag rather than a story. Haiku 5.5 by default: at
 #   this volume every option is inside noise, so the choice is decided by fit, and the property
-#   that matters is structured-output support.
+#   that matters is structured-output support. The call switches thinking off (`thinkingOff`);
+#   on Opus 5.5 and Fable, which can't, it runs with adaptive thinking instead.
 # CLASSIFIER_TIMEZONE — the IANA zone "friday" resolves against. It is the one piece of the
 #   prompt that is about the owner rather than the domain, and it changes if they move. The
 #   Worker computes an absolute reference date from it and hands the model that, so the model is
 #   never asked to know what day it is.
-# READER_MODEL — which model summarises a Reader post. Sonnet 5 by default: "is this actually a
-#   new idea" is a synthesis task where the tier shows, at ~$0.03 a post. The reader's call sends
-#   `thinking: { type: 'disabled' }` with `output_config.effort: 'medium'`, so the value must be a
-#   model that accepts both — Sonnet 5 and Opus 5 do; Haiku 4.5 only if `effort` is also dropped
-#   from the call; Fable 5/5.1 reject `disabled` with a 400, which the tick would record as a
-#   systemic bad request on every post.
+# READER_MODEL — which model summarises a Reader post. Sonnet 5.5 by default: "is this actually a
+#   new idea" is a synthesis task where the tier shows, at ~$0.03 a post. The reader's call turns
+#   thinking off (`thinkingOff`: `between_tools` on Sonnet 5.5, `disabled` elsewhere) with
+#   `output_config.effort: 'medium'`. Sonnet 5.5, Sonnet 5, Opus 5 and Haiku 5.5 all take that;
+#   Opus 5.5 and Fable can't switch thinking off, so on them the key is left out and the call
+#   thinks adaptively — billed as output and counted against max_tokens.
 # READER_DAILY_CAP — the Reader's daily model-call ceiling, the money guard. Past it, intake
 #   still runs and posts wait, unsummarised, for the UTC day to roll over. Sized at three times
 #   the owner's heavy day (eight to ten posts) so a roster mistake trips it the same day and a
@@ -121,18 +122,17 @@ crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *", "* * * * *"]
 #   day's digest, so a deploy after the hour starts tomorrow. "" turns it off; a malformed value
 #   logs and turns it off, never the other pings. `GET /` reports which.
 # DIGEST_MODEL — which model writes the digest's opener, about one call a day. The call shape is
-#   READER_MODEL's (`thinking: { type: 'disabled' }`, with `output_config.effort: 'low'`), so the
-#   same constraints apply: Sonnet 5 or Opus 5, never Fable. Any failure sends the digest without
-#   the opener rather than late.
+#   READER_MODEL's (thinking off, with `output_config.effort: 'low'`), so the same constraints
+#   apply. Any failure sends the digest without the opener rather than late.
 [vars]
-CLASSIFIER_MODEL = "claude-haiku-4-5"
+CLASSIFIER_MODEL = "claude-haiku-5-5"
 CLASSIFIER_TIMEZONE = "America/Chicago"
-READER_MODEL = "claude-sonnet-5"
+READER_MODEL = "claude-sonnet-5-5"
 READER_DAILY_CAP = "30"
 WIKI_REPO = "ac3charland/knowledge"
 ALFRED_APP_URL = "https://alfred-six-gamma.vercel.app"
 DIGEST_TIME = "07:10"
-DIGEST_MODEL = "claude-sonnet-5"
+DIGEST_MODEL = "claude-sonnet-5-5"
 
 # WORKER_VERSION is deliberately NOT declared here, unlike the two vars above. It is the commit
 # the running build came from, injected per deploy by the Deploy Worker workflow

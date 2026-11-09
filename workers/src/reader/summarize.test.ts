@@ -10,7 +10,7 @@ import {
 } from './summarize';
 import type { ReaderSummary, SummaryConfig, SummaryInput } from './types';
 
-const config: SummaryConfig = { apiKey: 'sk-ant-test-key', model: 'claude-sonnet-5' };
+const config: SummaryConfig = { apiKey: 'sk-ant-test-key', model: 'claude-sonnet-5-5' };
 
 /** The wire value the SDK types as `null` on `RefusalStopDetails` — the package bans the literal. */
 const WIRE_NULL: unknown = JSON.parse('null');
@@ -82,19 +82,30 @@ describe('summarizePost — the request', () => {
 
     const request = buildReaderRequest(post);
     const params = sentParams(spy);
-    expect(params.model).toBe('claude-sonnet-5');
+    expect(params.model).toBe('claude-sonnet-5-5');
     expect(params.max_tokens).toBe(READER_MAX_TOKENS);
     expect(READER_MAX_TOKENS).toBe(4096);
     expect(params.system).toBe(request.system);
     expect(params.messages).toEqual([{ role: 'user', content: request.user }]);
   });
 
-  it('switches thinking off explicitly — Sonnet 5 thinks adaptively when the key is omitted', async () => {
+  it('switches thinking off explicitly — Sonnet 5.5 thinks adaptively when the key is omitted', async () => {
     const spy = mockCreate().mockResolvedValue(
       fakeMessage(textContent(JSON.stringify(validSummary())), 'end_turn'),
     );
 
     await summarizePost(post, config);
+
+    expect(sentParams(spy).thinking).toEqual({ type: 'between_tools' });
+  });
+
+  it('switches thinking off with `disabled` on a model other than Sonnet 5.5', async () => {
+    // READER_MODEL is a deploy flag: rolling back to Sonnet 5 must not need a code change.
+    const spy = mockCreate().mockResolvedValue(
+      fakeMessage(textContent(JSON.stringify(validSummary())), 'end_turn'),
+    );
+
+    await summarizePost(post, { ...config, model: 'claude-sonnet-5' });
 
     expect(sentParams(spy).thinking).toEqual({ type: 'disabled' });
   });
@@ -158,9 +169,9 @@ describe('summarizePost — each kind', () => {
     expect(params.output_config?.format).toEqual({ type: 'json_schema', schema });
     expect(params.system).toBe(buildReaderRequest({ ...post, kind }).system);
     // Same model, same call shape: a kind changes the question, never the bill's terms.
-    expect(params.model).toBe('claude-sonnet-5');
+    expect(params.model).toBe('claude-sonnet-5-5');
     expect(params.max_tokens).toBe(READER_MAX_TOKENS);
-    expect(params.thinking).toEqual({ type: 'disabled' });
+    expect(params.thinking).toEqual({ type: 'between_tools' });
   });
 
   it('counts an essay-shaped answer to an Alerts request as a schema miss', async () => {

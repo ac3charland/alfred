@@ -8,7 +8,7 @@ const WIRE_NULL: unknown = JSON.parse('null');
 
 const env: ClassifierEnv = {
   ANTHROPIC_API_KEY: 'sk-ant-test-key',
-  CLASSIFIER_MODEL: 'claude-haiku-4-5',
+  CLASSIFIER_MODEL: 'claude-haiku-5-5',
 };
 
 const request: ClassifyRequest = {
@@ -61,21 +61,45 @@ describe('classify — the request', () => {
     await classify(env, request);
 
     const params = sentParams(spy);
-    expect(params.model).toBe('claude-haiku-4-5');
+    expect(params.model).toBe('claude-haiku-5-5');
     expect(params.max_tokens).toBe(MAX_TOKENS);
     expect(params.system).toBe(request.system);
     expect(params.messages).toEqual([{ role: 'user', content: request.user }]);
     expect(params.output_config?.format).toEqual({ type: 'json_schema', schema: request.schema });
   });
 
-  it('carries no thinking key and no output_config.effort key', async () => {
+  it('switches thinking off explicitly — Haiku 5.5 thinks adaptively when the key is omitted', async () => {
     const spy = mockCreate().mockResolvedValue(fakeMessage(textContent('{}'), 'end_turn'));
 
     await classify(env, request);
 
-    const params = sentParams(spy);
-    expect(params).not.toHaveProperty('thinking');
-    expect(params.output_config).not.toHaveProperty('effort');
+    expect(sentParams(spy).thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('spells thinking off for the configured model, so the var stays a deploy flag', async () => {
+    const spy = mockCreate().mockResolvedValue(fakeMessage(textContent('{}'), 'end_turn'));
+
+    await classify({ ...env, CLASSIFIER_MODEL: 'claude-sonnet-5-5' }, request);
+
+    expect(sentParams(spy).thinking).toEqual({ type: 'between_tools' });
+  });
+
+  it('omits the thinking key on a model that cannot switch thinking off', async () => {
+    // Before Haiku 5.5 the call never sent the key, so CLASSIFIER_MODEL could point at Opus 5.5;
+    // `disabled` would 400 there on every item.
+    const spy = mockCreate().mockResolvedValue(fakeMessage(textContent('{}'), 'end_turn'));
+
+    await classify({ ...env, CLASSIFIER_MODEL: 'claude-opus-5-5' }, request);
+
+    expect(sentParams(spy)).not.toHaveProperty('thinking');
+  });
+
+  it('carries no output_config.effort key', async () => {
+    const spy = mockCreate().mockResolvedValue(fakeMessage(textContent('{}'), 'end_turn'));
+
+    await classify(env, request);
+
+    expect(sentParams(spy).output_config).not.toHaveProperty('effort');
   });
 });
 

@@ -69,7 +69,7 @@ const DEV_VARS = path.join(HERE, '..', '.dev.vars');
 const RESULTS_DIR = path.join(HERE, '..', 'eval-results');
 
 /** The model `wrangler.toml` ships as `READER_MODEL`. Override with `--model` to compare another. */
-const DEFAULT_MODEL = 'claude-sonnet-5';
+const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
 /** How many mailbox messages a run reads when `--limit` is not given. */
 const DEFAULT_LIMIT = 5;
@@ -84,6 +84,8 @@ const DEFAULT_LIMIT = 5;
 const PRICES: { prefix: string; input: number; output: number }[] = [
   { prefix: 'claude-opus-5', input: 5, output: 25 },
   { prefix: 'claude-sonnet-5', input: 2, output: 10 },
+  // Haiku 5.5's rate for a prompt of 100K tokens or fewer; above that it is $0.50 / $2.50.
+  { prefix: 'claude-haiku-5-5', input: 0.1, output: 0.5 },
   { prefix: 'claude-haiku-4-5', input: 1, output: 5 },
 ];
 

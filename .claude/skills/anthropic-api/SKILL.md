@@ -156,7 +156,7 @@ Source: Anthropic, "Structured outputs", platform.claude.com.
 | **Stream the response** | SDK: `client.messages.stream({...}).on("text", cb)` or `for await (const event of stream)`; fetch: `"stream": true` in body, parse SSE lines | SSE event flow: `message_start` → `content_block_start` → N×`content_block_delta` → `content_block_stop` → `message_delta` (has final `stop_reason`) → `message_stop`. For tool use in streams, `input_json_delta` events carry partial JSON — accumulate and parse at `content_block_stop`. |
 | **Use the SDK with full TypeScript types** | `import Anthropic from "@anthropic-ai/sdk"` — all params and responses are typed via `Anthropic.MessageCreateParams`, `Anthropic.Message`, `Anthropic.ToolUseBlock`, etc. | The SDK auto-sends `anthropic-version: 2023-06-01`. To override, pass `headers` in the request options — but this may cause type mismatches. |
 | **Prompt for text cleanup (no tools)** | `system` field for instructions + single `user` message with the raw voice text; read `response.content[0].text` | Keep `max_tokens` proportional to expected output. For short cleanups, 512–1024 is sufficient. `temperature`/`top_p`/`top_k` are removed on current models and return a 400 — steer with the prompt. |
-| **Pick a model** | `claude-haiku-4-5` for high-volume, latency-sensitive classification; `claude-sonnet-5` for the speed/quality balance; `claude-opus-5` for complex multi-step reasoning | See Version Gotchas for exact IDs. Never hard-code the id in a Worker — make it a `[vars]` entry so changing it is a deploy flag. At alfred's volumes every tier is inside noise, so pick by *fit* (does it support the feature you need?), not by price. |
+| **Pick a model** | `claude-haiku-5-5` for high-volume, latency-sensitive classification; `claude-sonnet-5-5` for the speed/quality balance; `claude-opus-5-5` for complex multi-step reasoning | See Version Gotchas for exact IDs. Never hard-code the id in a Worker — make it a `[vars]` entry so changing it is a deploy flag. At alfred's volumes every tier is inside noise, so pick by *fit* (does it support the feature you need?), not by price. |
 
 Source: Anthropic platform docs (platform.claude.com), fetched June 2026.
 
@@ -227,24 +227,29 @@ tool_result blocks immediately after".
 
 **Never set `temperature`, `top_p`, or `top_k` on a current Opus or Sonnet model.**
 They are removed from the 4.6-and-later Opus/Sonnet line and return a 400. Use
-prompting to guide behavior instead. (They remain valid on Haiku 4.5.)
+prompting to guide behavior instead. Haiku 5.5 rejects non-default values too.
 
 **Never use prefill (a trailing assistant message) on a current Opus or Sonnet model.**
 It returns a 400. Use `output_config.format` instead.
 
-**Never send `output_config.effort` to Haiku 4.5.** It rejects the parameter outright.
-A classification task needs no reasoning budget anyway, so omit it — a copied-in
-`effort` from an Opus example is the failure mode to watch for.
+**Omitting `thinking` runs ADAPTIVE thinking on every current model — Haiku 5.5 included —
+billed as output and counted against `max_tokens`.** A structured-output call with a tight
+`max_tokens` truncates silently once reasoning eats the budget, so a call that wants a plain
+answer must switch thinking off explicitly. The spelling of "off" is per model, and the wrong
+one is a 400 on every request:
 
-**On Sonnet 5, omitting `thinking` runs ADAPTIVE thinking — billed as output and counted
-against `max_tokens`.** A structured-output call that copies the classifier's omission (safe
-on Haiku, which never thinks unasked) can truncate silently once reasoning eats the budget.
-Send `thinking: { type: 'disabled' }` explicitly for a call that wants a plain structured
-answer and nothing else. `@anthropic-ai/sdk` ≥ 0.116 types this as `ThinkingConfigDisabled`
-and types `output_config.effort` as a first-class field, and an `as const` JSON-schema literal
-assigns straight into `output_config.format.schema` with no cast needed. (`workers/src/reader/summarize.ts`.)
+| Model | Thinking off |
+|---|---|
+| Sonnet 5.5 | `{ type: 'between_tools' }` — no other field; effort `high` or below; every other model 400s on it |
+| Haiku 5.5, Sonnet 5, Opus 5 | `{ type: 'disabled' }` — Haiku 5.5 / Opus 5 only at effort `high` or below |
+| Opus 5.5, Fable 5/5.1 | Can't — any spelling 400s; omit `thinking` and lower `effort` |
 
-**Haiku 4.5's minimum cacheable prefix is 4096 tokens**, so a compact prompt silently
+Never hand-write either spelling in a Worker call: spread `thinkingOffParams(model)`
+(`workers/src/thinking.ts`), so each `*_MODEL` var stays a deploy flag. `@anthropic-ai/sdk`
+≥ 0.130 types `between_tools`; `output_config.effort` and an `as const` JSON-schema literal in
+`output_config.format.schema` need no cast.
+
+**Haiku's minimum cacheable prefix is large (4096 tokens on Haiku 4.5)**, so a compact prompt silently
 never caches: `cache_read_input_tokens: 0` is the expected reading, not a bug. Never pad
 a prompt to reach the floor — crossing it only makes caching *possible*, and a write
 costs 1.25× against a read's 0.1×, so it loses money unless several calls share the
@@ -270,10 +275,10 @@ pinned snapshots despite lacking a date suffix. Do not append a date: `claude-so
 is correct; `claude-sonnet-4-6-20250101` does not exist.
 
 **Current models:**
-- `claude-opus-5` — complex multi-step reasoning, 1M context, 128k output
-- `claude-sonnet-5` — speed/quality balance, 1M context, 128k output
-- `claude-haiku-4-5` (alias) or `claude-haiku-4-5-20251001` (pinned) — fastest, 200k context,
-  64k output. Supports structured outputs; rejects `effort`.
+- `claude-opus-5-5` — complex multi-step reasoning, 1M context, 128k output
+- `claude-sonnet-5-5` — speed/quality balance, 1M context, 128k output
+- `claude-haiku-5-5` — fastest, 1M context, 128k output. Supports structured outputs and
+  `effort` (default `medium`); thinks by default (see the thinking-off table above).
 
 Model ids move faster than this file. Look them up against the bundled `claude-api` skill (or the
 Models API) rather than from memory before writing one into code.

@@ -11,6 +11,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import type { ClassifyRequest } from './prompt';
+import { thinkingOffParams } from './thinking';
 import { type ClassifyFailure, type ClassifyOutcome, parseVerdict } from './verdict';
 
 /** The bindings this module reads. The key is a Cloudflare SECRET and lives only here. */
@@ -102,6 +103,9 @@ export async function classifyJson(
     message = await client.messages.create({
       model: env.CLASSIFIER_MODEL,
       max_tokens: MAX_TOKENS,
+      // Haiku 5.5 thinks adaptively when this key is omitted (Haiku 4.5 never did), and thinking
+      // counts against MAX_TOKENS. No `effort`: thinking off keeps the call as it was on 4.5.
+      ...thinkingOffParams(env.CLASSIFIER_MODEL),
       system: request.system,
       messages: [{ role: 'user', content: request.user }],
       // Structured outputs: the schema is rebuilt per sweep from live folder/project/epic ids,
