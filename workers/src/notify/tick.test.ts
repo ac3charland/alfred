@@ -322,6 +322,29 @@ describe('runNotifyTick — failures', () => {
     expect(released.map((call) => call.url)).toEqual([expect.stringContaining('id=in.(n2)')]);
   });
 
+  it('never releases an uncertain send whose attempt failed to record, so it is never resent', async () => {
+    const calls: Call[] = [];
+    spyOnFetch().mockImplementation((input: FetchInput, init?: FetchInit) => {
+      const url = decodeURIComponent(input as string);
+      calls.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: JSON.parse((init?.body ?? '{}') as string) as Record<string, unknown>,
+      });
+      if (url.includes('/rpc/')) return Promise.resolve(Response.json([asap('n1'), asap('n2')]));
+      if (url.includes('telegram')) return Promise.resolve(status(502)());
+      // Counting n1's uncertain attempt fails; the release that follows succeeds.
+      if (url.includes('id=eq.n1')) return Promise.resolve(new Response('down', { status: 503 }));
+      return Promise.resolve(Response.json([{}]));
+    });
+
+    const result = await runNotifyTick(env, NOW);
+
+    expect(result.aborted).toBe(true);
+    const released = patches(calls).filter((call) => 'leased_at' in call.body);
+    expect(released.map((call) => call.url)).toEqual([expect.stringContaining('id=in.(n2)')]);
+  });
+
   it('reports a release that fails without throwing', async () => {
     spyOnFetch().mockImplementation((input: FetchInput) => {
       const url = input as string;
