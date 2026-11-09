@@ -10,17 +10,22 @@
  *   sent           stamp sent_at, Telegram's message id and the text.
  *   rate_limited   stop the tick; the claim stays unsent with no attempt counted, so the next tick
  *                  retries it. Telegram's per-chat rate is handled here, not by sleeping.
- *   transient      count the attempt and carry on; the RPC re-returns the claim next tick.
- *   rejected       the same — a 400 that survived the plain-text resend.
+ *   uncertain      a timeout, network failure, 5xx, or 2xx without a message id: Telegram may
+ *                  have shown it. Count the attempt but keep the lease, so the RPC abandons it
+ *                  rather than resend it, and stop the tick: Telegram is struggling, and each
+ *                  further send risks another ping that can be neither recorded nor retried.
+ *   rejected       a 400 that survived the plain-text resend: count the attempt and carry on;
+ *                  the RPC re-returns the claim next tick.
  *   systemic       a bad token or chat id, or a chat the bot cannot write to: every later send
  *                  would fail the same way, so stop with a banner and count nothing. Each tick
  *                  until it is fixed still spends one send (and logs the banner) finding that out;
  *                  fixing it within the hour delivers everything claimed meanwhile.
  *
- * Delivery is at most once. Every claim the tick hands back unsent — a counted failure, a rate
- * limit, a systemic stop, or one it never reached — is released, so the next tick retries it. The
- * one claim it never releases is a ping Telegram accepted but whose recording PATCH failed: its
- * lease runs out and the RPC abandons it, rather than send it a second time.
+ * Delivery is at most once, by one rule: release only what was definitely not shown. Every claim
+ * the tick hands back unsent — a rejection, a rate limit, a systemic stop, or one it never reached —
+ * is released, so the next tick retries it. A claim that MAY have been shown — an uncertain send,
+ * or a ping Telegram accepted whose recording PATCH failed — keeps its lease until it runs out and
+ * the RPC abandons it: a lost ping rather than a double one.
  */
 import { DIGEST_BUILD_REQUESTS, type DigestEnv, composeDigest } from '../digest/compose';
 import { type TelegramEnv, sendTelegram } from '../telegram';
@@ -30,6 +35,7 @@ import {
   claimNotifications,
   markSent,
   recordFailedAttempt,
+  recordUncertainAttempt,
   releaseClaims,
 } from './store';
 
@@ -93,7 +99,10 @@ export interface NotifyTickSummary {
   claimed: number;
   sent: number;
   failed: number;
-  /** Failed sends that used a claim's last attempt; the next tick's RPC abandons them. */
+  /**
+   * Failed sends the RPC will abandon: those that used a claim's last attempt, and those that may
+   * have been shown.
+   */
   abandoned: number;
   aborted: boolean;
   failures: string[];
@@ -165,8 +174,8 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
   let spent = 1;
   /** Claims whose outcome is recorded: sent, or a counted (and released) failure. */
   const settled = new Set<string>();
-  /** A claim Telegram accepted whose recording failed: left leased, so it is never resent. */
-  let sentUnrecorded: string | undefined;
+  /** Claims that may have been shown: left leased, so they are abandoned rather than resent. */
+  const maybeShown = new Set<string>();
 
   try {
     for (const claim of claims) {
@@ -201,14 +210,13 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
 
       if (outcome.kind === 'sent') {
         spent += 1;
-        sentUnrecorded = claim.id;
+        maybeShown.add(claim.id);
         await markSent(env, claim.id, {
           at: new Date(),
           messageId: outcome.messageId,
           // What Telegram received: the HTML, unless the plain-text resend is what got through.
           text: requests === 2 ? text.plain : text.html,
         });
-        sentUnrecorded = undefined;
         settled.add(claim.id);
         result.sent += 1;
         continue;
@@ -226,17 +234,27 @@ export async function runNotifyTick(env: NotifyEnv, now: Date): Promise<NotifyTi
         break;
       }
       spent += 1;
+      if (outcome.kind === 'uncertain') {
+        maybeShown.add(claim.id);
+        await recordUncertainAttempt(env, claim.id, claim.attempts, outcome.error);
+        result.failed += 1;
+        result.abandoned += 1;
+        result.failures.push(
+          `${claim.kind} ${claim.id}: ${outcome.error} — may have been shown, so it is not resent`,
+        );
+        break;
+      }
       await countFailure(env, claim, outcome.error, result);
       settled.add(claim.id);
     }
   } catch (error) {
-    // A recording PATCH failed. A ping that went out stays leased (and is abandoned, not resent);
-    // everything else unrecorded is released below and retried.
+    // A recording PATCH failed. A ping that may have gone out stays leased (and is abandoned, not
+    // resent); everything else unrecorded is released below and retried.
     result.aborted = true;
     result.failures.push(`record failed: ${message(error)}`);
   }
 
-  const unsent = claims.filter((claim) => !settled.has(claim.id) && claim.id !== sentUnrecorded);
+  const unsent = claims.filter((claim) => !settled.has(claim.id) && !maybeShown.has(claim.id));
   if (unsent.length > 0) {
     try {
       await releaseClaims(

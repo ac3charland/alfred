@@ -20,8 +20,11 @@ export interface TelegramEnv {
 export type TelegramOutcome =
   | { kind: 'sent'; messageId: number }
   | { kind: 'rate_limited'; retryAfter?: number }
-  /** 5xx, a network failure or a timeout: worth another try on a later tick. */
-  | { kind: 'transient'; error: string }
+  /**
+   * 5xx, a network failure, a timeout, or a 2xx without a message id: the request may have reached
+   * Telegram and been shown, so a resend could duplicate it. Telegram offers no idempotency key.
+   */
+  | { kind: 'uncertain'; error: string }
   /** 400 even as plain text, or another 4xx this chat cannot fix by waiting. */
   | { kind: 'rejected'; error: string }
   /** 401/403/404, or a 400 "chat not found": a bad token or chat id, or a chat the bot can't write to. */
@@ -38,8 +41,12 @@ const API = 'https://api.telegram.org';
 /** A bad token (401; 404 when it names no bot) or a chat the bot may not write to (403). */
 const SYSTEMIC_STATUSES: ReadonlySet<number> = new Set([401, 403, 404]);
 
-/** Long enough for a slow Telegram, short enough that a hung send cannot hold the tick. */
-const SEND_TIMEOUT_MS = 10_000;
+/**
+ * Generous on purpose. A send that times out may still have been shown (ALF-345), and then it can
+ * be neither recorded nor resent, so waiting longer turns more slow sends into known ones. A tick
+ * stops at the first timeout, so one hung send costs it at most this long.
+ */
+const SEND_TIMEOUT_MS = 30_000;
 
 /** The response fields read — every one optional, because an error body need not carry them. */
 interface BotApiResponse {
@@ -109,7 +116,7 @@ function isWrongChat(reply: Reply): boolean {
 }
 
 function toOutcome(reply: Reply): TelegramOutcome {
-  if (reply.status === 'network') return { kind: 'transient', error: reply.error };
+  if (reply.status === 'network') return { kind: 'uncertain', error: reply.error };
 
   const { status, body } = reply;
   const error = `HTTP ${String(status)}${body.description === undefined ? '' : `: ${body.description}`}`;
@@ -123,7 +130,7 @@ function toOutcome(reply: Reply): TelegramOutcome {
       : { kind: 'rate_limited', retryAfter };
   }
   if (SYSTEMIC_STATUSES.has(status) || isWrongChat(reply)) return { kind: 'systemic', error };
-  if (status >= 500) return { kind: 'transient', error };
-  // A 2xx without a message id is a reply nobody can act on; count it like any other rejection.
+  // A 2xx without a message id was most likely shown; like a 5xx, Telegram may have shown it.
+  if (status >= 500 || (status >= 200 && status < 300)) return { kind: 'uncertain', error };
   return { kind: 'rejected', error };
 }

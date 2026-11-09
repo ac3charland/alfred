@@ -83,9 +83,9 @@ describe('sendTelegram', () => {
     [
       500,
       { ok: false, description: 'Internal' },
-      { kind: 'transient', error: 'HTTP 500: Internal' },
+      { kind: 'uncertain', error: 'HTTP 500: Internal' },
     ],
-    [502, {}, { kind: 'transient', error: 'HTTP 502' }],
+    [502, {}, { kind: 'uncertain', error: 'HTTP 502' }],
     [
       401,
       { ok: false, description: 'Unauthorized' },
@@ -106,7 +106,7 @@ describe('sendTelegram', () => {
       { ok: false, description: 'Conflict' },
       { kind: 'rejected', error: 'HTTP 409: Conflict' },
     ],
-    [200, { ok: true }, { kind: 'rejected', error: 'HTTP 200' }],
+    [200, { ok: true }, { kind: 'uncertain', error: 'HTTP 200' }],
   ])('maps HTTP %i to its outcome without a resend', async (status, body, outcome) => {
     const spy = spyOnFetch().mockResolvedValue(reply(status, body));
 
@@ -118,12 +118,12 @@ describe('sendTelegram', () => {
     spyOnFetch().mockResolvedValue(new Response('<html>bad gateway</html>', { status: 502 }));
 
     await expect(sendTelegram(env, 'h', 'p')).resolves.toEqual({
-      outcome: { kind: 'transient', error: 'HTTP 502' },
+      outcome: { kind: 'uncertain', error: 'HTTP 502' },
       requests: 1,
     });
   });
 
-  it('counts a network failure as transient, with the token scrubbed from its message', async () => {
+  it('counts a network failure as uncertain, with the token scrubbed from its message', async () => {
     // Some runtimes build a fetch error's message from the URL — which carries the token.
     spyOnFetch().mockRejectedValue(
       new TypeError(`fetch failed: https://api.telegram.org/bot${TOKEN}/sendMessage`),
@@ -132,18 +132,22 @@ describe('sendTelegram', () => {
     const { outcome } = await sendTelegram(env, 'h', 'p');
 
     expect(outcome).toEqual({
-      kind: 'transient',
+      kind: 'uncertain',
       error: 'TypeError: fetch failed: https://api.telegram.org/bot<redacted>/sendMessage',
     });
     expect(JSON.stringify(outcome)).not.toContain(TOKEN);
   });
 
-  it('times a hung request out rather than holding the tick', async () => {
+  it('times a hung request out after 30 s rather than holding the tick', async () => {
     const spy = spyOnFetch().mockImplementation(() => Promise.resolve(sent()));
+    const timeout = jest.spyOn(AbortSignal, 'timeout');
 
     await sendTelegram(env, 'h', 'p');
 
     expect(spy.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    // Generous: a reply that arrives late is a send we know about; one we abandon may be a ping
+    // the owner saw while the tick recorded a failure.
+    expect(timeout).toHaveBeenCalledWith(30_000);
   });
 });
 

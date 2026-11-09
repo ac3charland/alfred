@@ -100,6 +100,25 @@ export async function recordFailedAttempt(
 }
 
 /**
+ * Count a send that may have been shown (a timeout, a network failure, a 5xx) WITHOUT releasing
+ * it. Its lease runs out and the RPC abandons it, as it does a sent ping whose recording failed:
+ * Telegram offers no way to tell, so it is never resent.
+ */
+export async function recordUncertainAttempt(
+  env: SupabaseEnv,
+  id: string,
+  attempts: number,
+  error: string,
+): Promise<void> {
+  await fetchJson<unknown[]>(
+    env,
+    restQueryUrl(env, 'notifications', { id: `eq.${id}` }),
+    { method: 'PATCH', body: JSON.stringify({ attempts: attempts + 1, last_error: error }) },
+    `PATCH notifications (${id})`,
+  );
+}
+
+/**
  * Hand claims back unsent and uncounted — the ones a tick was given but never got to, or stopped
  * on (a rate limit, a systemic failure) — so the next tick retries them. A claim left leased is
  * abandoned once its lease runs out: the RPC reads an unreleased lease as "may have been sent".
