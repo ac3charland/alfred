@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-344 — Import articles from RSS and Atom feeds</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p1:has([value=a]:checked) [data-opt]:not([data-opt~=a]),
+#p1:has([value=b]:checked) [data-opt]:not([data-opt~=b]),
+#p1:has([value=c]:checked) [data-opt]:not([data-opt~=c]){display:none}
+
+/* The app's tokens, from frontend/app/globals.css; the heading from atoms/view-heading.tsx, cards
+   from components/reader/publications.styles.ts, chips from atoms/badge.tsx (muted, rounded-full) and
+   atoms/toggle-button.tsx, the field from atoms/input.tsx, buttons from atoms/button.tsx, the row
+   from components/reader/post-row.styles.ts. Tailwind v4 radii: sm 4px · md 6px · lg 8px · xl 12px. */
+@font-face{font-family:"Geist";font-weight:100 900;font-display:swap;
+  src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-sans.woff2) format("woff2")}
+.app{--bg:#0a0e17;--fg:#e8edf5;--surface:#0f1626;--border:#1e2a3f;--mutedfg:#8a96a8;--secondary:#1e2a3f;
+  --input:#1e2a3f;--teal:#4fd1e0;--green:#34d399;--amber:#f0b429;--red:#f87171;
+  background:var(--bg);color:var(--fg);overflow:hidden;padding:18px;border-radius:10px;
+  font:14px/1.45 "Geist",system-ui,sans-serif}
+.app *{box-sizing:border-box}
+.app p{margin:0}
+.app code{font:12px ui-monospace,monospace;background:var(--secondary);color:var(--fg);padding:0 3px;border-radius:3px}
+.app .a-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px}
+.app .a-vh{display:flex;align-items:center;gap:12px}
+.app .a-vh-ic{width:40px;height:40px;flex:none;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:17px}
+.app .a-vh-t{font:24px/1.2 "Instrument Serif",Georgia,"Times New Roman",serif;color:var(--fg)}
+.app .a-vh-d{font-size:14px;color:var(--mutedfg);max-width:30rem}
+.app .a-obtn{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-weight:500;white-space:nowrap}
+.app .a-btn{display:inline-flex;align-items:center;height:36px;padding:0 16px;border-radius:4px;font-size:14px;font-weight:500;background:var(--teal);color:var(--bg);white-space:nowrap}
+.app .a-count{margin-top:24px;font-size:14px;color:var(--mutedfg)}
+.app .a-add{margin-top:24px;display:flex;flex-direction:column;gap:6px}
+.app .a-cap{font-size:12px;font-weight:500;letter-spacing:.025em;text-transform:uppercase;color:rgba(138,150,168,.7)}
+.app .a-addrow{display:flex;gap:8px}
+.app .a-input{flex:1;min-width:0;height:36px;padding:8px 12px;border:1px solid var(--border);background:var(--input);border-radius:4px;font-size:14px;color:var(--fg);white-space:nowrap;overflow:hidden}
+.app .a-input.is-empty{color:var(--mutedfg)}
+.app .a-err{font-size:12px;color:var(--red)}
+.app .a-list{margin-top:24px;display:flex;flex-direction:column;gap:12px}
+.app .a-card{display:flex;flex-direction:column;gap:12px;border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:16px}
+.app .a-card.is-paused{opacity:.55}
+.app .a-rowline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.app .a-name{font-weight:500;font-size:14px}
+.app .a-badge{display:inline-flex;align-items:center;border:1px solid rgba(30,42,63,.7);color:var(--mutedfg);border-radius:999px;padding:2px 8px;font-size:12px}
+.app .a-toggle{margin-left:auto;display:inline-flex;border:1px solid rgba(79,209,224,.6);background:rgba(79,209,224,.1);color:var(--teal);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:500}
+.app .a-toggle.is-off{border-color:var(--border);background:none;color:var(--mutedfg)}
+.app .a-sub{font-size:12px;color:var(--mutedfg)}
+.app .a-warn{font-size:12px;color:var(--amber)}
+.app .a-note{font-size:12px;color:var(--mutedfg);font-style:italic}
+.app .a-row{border:1px solid transparent;border-radius:8px;padding:8px 12px}
+.app .a-eyebrow{font-size:12px;font-weight:600;color:var(--green)}
+.app .a-meta{font-size:12px;color:var(--mutedfg)}
+.app .a-title{margin-top:6px;font:18px/1.35 "Instrument Serif",Georgia,"Times New Roman",serif;color:var(--fg)}
+.app .a-gist{margin-top:4px;font-size:14px;line-height:1.6}
+.app .a-verbs{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.app .a-verb{font-size:13px;font-weight:500;padding:4px 8px;border-radius:4px;color:var(--fg)}
+.app .a-verb.is-send{background:var(--teal);color:var(--bg)}
+.app .a-verb.is-quiet{color:var(--mutedfg)}
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Reader · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>344</span><span class="sep"> — </span><span class="ttl">Import articles from RSS and Atom feeds</span></h1>
+  <p class="change" id="change">Paste a blog's feed URL (e.g. <code>https://mlarson.org/feed.xml</code>) on the publications page. Each new post then lands in the reading list, summarised like a newsletter.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>Break the epic's "no RSS" non-goal?</h3>
+      <p class="pick">Yes. Feeds become a fourth post source, sharing the 30-a-day summary ceiling.</p>
+      <p class="why">You asked for it. Instapaper already broke "one source", and the epic shaped the tables for exactly this.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>Where does a broken feed show?</h3>
+      <p class="pick">On its own card: an amber line saying what failed and since when.</p>
+      <p class="why">A per-feed fault needs a per-feed fix. A header note would nag on every Reader view.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d7">D7</a>Check the URL when it's added?</h3>
+      <p class="pick">Yes. Fetch it once, refuse anything that isn't RSS or Atom, and name the card from the feed's title.</p>
+      <p class="why">Pasting a homepage is the likeliest mistake. It should fail at the field, not silently an hour later.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>Where are feeds added?</h3>
+      <p class="pick">On the publications roster: a feed is a card with the same toggle and summary type.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>What does a new feed backfill?</h3>
+      <p class="pick">Entries published in the last seven days.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>What about excerpt-only feeds?</h3>
+      <p class="pick">Fetch the entry's page and read the article from it.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d4">D4</a>How often is a feed polled?</h3>
+      <p class="pick">Hourly, as a leg of the existing five-minute Reader tick.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="a" checked>A · feed added</label>
+      <label><input type="radio" name="p1" value="b">B · not a feed (D7)</label>
+      <label><input type="radio" name="p1" value="c">C · feed failing (D6)</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="The Reader publications page with an Add feed field above the roster, a feed card for mlarson.org, and a Substack card below it">
+        <div class="a-top">
+          <div class="a-vh">
+            <span class="a-vh-ic">▤</span>
+            <div><p class="a-vh-t">Publications</p>
+              <p class="a-vh-d">Who the Reader summarises. Substack is added automatically, blogs by their feed URL, and anyone else you promote from the candidates below.</p></div>
+          </div>
+          <span class="a-obtn">⧉ Copy Gmail filter query</span>
+        </div>
+        <p class="a-count">3 enabled · 1 paused</p>
+
+        <div class="a-add">
+          <p class="a-cap">Add a feed</p>
+          <div class="a-addrow" data-opt="a c">
+            <span class="a-input is-empty">https://example.com/feed.xml</span><span class="a-btn">Add feed</span>
+          </div>
+          <div class="a-addrow" data-opt="b">
+            <span class="a-input">https://mlarson.org</span><span class="a-btn">Add feed</span>
+          </div>
+          <p class="a-err" data-opt="b">That page isn’t an RSS or Atom feed. Paste the feed’s own URL, often ending in /feed.xml, /rss or /atom.xml.</p>
+        </div>
+
+        <div class="a-list">
+          <div class="a-card">
+            <div class="a-rowline">
+              <span class="a-name">mlarson.org</span>
+              <span class="a-badge">feed</span>
+              <span class="a-badge">Essay ▾</span>
+              <span class="a-toggle">Enabled</span>
+            </div>
+            <p class="a-sub" data-opt="a b">https://mlarson.org/feed.xml · last post Nov 3 · checked 12 min ago</p>
+            <p class="a-sub" data-opt="c">https://mlarson.org/feed.xml · last post Nov 3 · checked 12 min ago</p>
+            <p class="a-warn" data-opt="c">Couldn’t read the feed: it answered 404. Failing since 3 hours ago; retried hourly.</p>
+            <p class="a-note">Add a note</p>
+          </div>
+          <div class="a-card">
+            <div class="a-rowline">
+              <span class="a-name">Import AI</span>
+              <span class="a-badge">auto</span>
+              <span class="a-badge">Roundup ▾</span>
+              <span class="a-toggle">Enabled</span>
+            </div>
+            <p class="a-sub">importai@substack.com · last post Nov 8</p>
+            <p class="a-note">Add a note</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The publications page. The new <i>Add a feed</i> field sits above the roster. A feed's card shows a <i>feed</i> chip where a sender shows <i>auto</i>/<i>owner</i>, and its URL and last check where a sender shows its address. B: a homepage pasted in is refused at the field. C: a feed that stops answering says so on its card.</figcaption>
+  </figure>
+
+  <figure class="plate" id="p2">
+    <div class="mount">
+      <div class="app" role="img" aria-label="A reading-list row for a post from the mlarson.org feed, identical in shape to a newsletter row">
+        <div class="a-row">
+          <span class="a-eyebrow">mlarson.org</span>
+          <span class="a-meta">Nov 3 · 9 min read</span>
+          <p class="a-title">[the post's title, from the feed entry]</p>
+          <p class="a-gist">[the gist, written by the publication's summary type, exactly as for a newsletter]</p>
+          <div class="a-verbs"><span class="a-verb is-send">Send</span><span class="a-verb is-quiet">Original ↗</span><span class="a-verb">Overview</span><span class="a-verb is-quiet">Archive</span></div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate II.</b>A feed post in the reading list. It's an ordinary row: the eyebrow is the feed's card name, the date is the entry's publish date, and Original opens the entry's link. There's no "via" suffix.</figcaption>
+  </figure>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 540 200" role="img" aria-label="The Reader tick runs retries and newsletters, then the new feed leg, then the To Reader leg; the feed leg fetches one due feed, then each new entry's page when the feed only has an excerpt, inserts reader_posts rows, and the shared summariser summarises them">
+      <g><rect x="10" y="20" width="150" height="46" rx="6"/><text x="22" y="40">Reader tick · */5</text><text class="s" x="22" y="56">retries → newsletters</text></g>
+      <g class="new"><rect x="195" y="20" width="150" height="46" rx="6"/><text x="207" y="40">Feed leg</text><text class="s" x="207" y="56">one due feed, hourly</text></g>
+      <g><rect x="380" y="20" width="150" height="46" rx="6"/><text x="392" y="40">To Reader leg</text><text class="s" x="392" y="56">Instapaper, last</text></g>
+      <g class="new"><rect x="195" y="120" width="150" height="46" rx="6"/><text x="207" y="140">feed.xml (+ page)</text><text class="s" x="207" y="156">conditional GET</text></g>
+      <g><rect x="10" y="120" width="150" height="46" rx="6"/><text x="22" y="140">reader_posts</text><text class="s" x="22" y="156">source = 'feed'</text></g>
+      <g><rect x="380" y="120" width="150" height="46" rx="6"/><text x="392" y="140">summarizePost</text><text class="s" x="392" y="156">same prompt, same cap</text></g>
+      <path d="M160 43 H195"/><path d="M345 43 H380"/>
+      <path class="hot" d="M270 66 V120"/><path class="hot" d="M195 143 H160"/><path class="hot" d="M345 143 H380"/>
+    </svg>
+    <figcaption><b>Fig. 1.</b>The feed leg slots between newsletters and the To Reader leg and feeds the summariser the Reader already has.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>Finding the feed from a homepage URL, removing a feed (pause it), merging a post that arrives both by email and by feed, or re-summarising an entry that's edited after import.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul><li>Feed posts count toward the 30-a-day summary ceiling. A prolific feed can crowd out newsletters on a busy day.</li>
+    <li>The build session's network must allow <code>mlarson.org</code> to capture the real-feed fixture (<a href="#out">§ unknowns</a>).</li></ul>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p>The ticket asks for articles imported via <code>feed.xml</code> URLs, with <code>https://mlarson.org/feed.xml</code> as the motivating case. The owner refined the scope in this session: feeds go on the publications roster (D1), the first poll takes the last seven days (D2), excerpt-only feeds fall back to the entry's page (D3), and each feed is polled hourly inside the existing tick (D4).</p>
+  <p><b>What exists.</b> The Reader (epic ALF-232, <code>docs/specs/epics/ALF-232.html</code>) has three post sources on <code>reader_posts.source</code>:</p>
+  <ul>
+    <li><code>gmail</code>: newsletters from the comms mirror, matched to <code>reader_publications</code> by sender handle (0035).</li>
+    <li><code>instapaper</code>: the To Reader leg (ALF-272, 0041).</li>
+    <li><code>research</code>: reports from the research Routine (0047).</li>
+  </ul>
+  <p>A publication carries an enable toggle and a <code>summary_kind</code> (ALF-322, 0052). The tick lives in <code>workers/src/reader/scheduled.ts</code>. Its order is config → ceiling → health → discovery → roster → worklist → To Reader → loop, and it is bound by <code>READER_TICK_LIMIT = 6</code> posts and the 50-subrequest budget, whose table lives in that constant's doc comment. <code>to-reader.ts</code> is the template for a non-mail leg: pure planning functions, then an intake that reads → INSERTs (the claim) → summarises. <code>comms/email-text.ts</code> exports <code>htmlToText</code> and <code>truncateAtCodePointBoundary</code>. <code>extract.ts</code> owns <code>READER_TEXT_CHARS</code> / <code>READER_HTML_CHARS</code>.</p>
+  <p><b>Where sources disagree.</b> Epic §5 lists "No RSS" as a non-goal for <em>that epic</em>, and calls RSS "the obvious second source later", with the tables shaped for a second intake. This story is that later source (D5).</p>
+  <p><b>The motivating feed was not inspected.</b> <code>mlarson.org</code> was unreachable from the refinement sandbox. Whether it is RSS or Atom, and whether it carries full content, is unknown. So the spec handles RSS 2.0, Atom 1.0 and RSS 1.0/RDF, both with full content and excerpt-only.</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>Where are feeds added? · settled</h3>
+    <p>A feed is a <code>reader_publications</code> row with a <code>feed_url</code> instead of a <code>handle</code>. It inherits the enable toggle, the rename, the note and the summary-kind chip for free, and the publications store, routes and view already render it. <i>Considered:</i> a separate Feeds section, which would duplicate every one of those affordances.</p>
+  </section>
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>What does a new feed backfill? · settled</h3>
+    <p>Every poll considers only entries whose date (D11) is within the last seven days. That covers the first poll and a poll after re-enabling. This mirrors the newsletter worklist's horizon, so pausing and re-enabling a feed behaves exactly as it does for a sender. <i>Considered:</i> the newest N whatever their age; nothing older than the add.</p>
+  </section>
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>Excerpt-only feeds · settled</h3>
+    <p>When an entry's own content is an excerpt (D12), the leg GETs the entry's link and extracts the article (D13). It keeps whichever text is longer. If the page fetch fails, the excerpt is stored and summarised anyway, so the floor (title and link) is never lost. <i>Considered:</i> summarising the excerpt; filing excerpt-only entries as failed.</p>
+  </section>
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>Polling cadence · settled</h3>
+    <p>A feed is <em>due</em> when it is enabled and its <code>feed_checked_at</code> is null or more than an hour old. Each tick polls at most <b>one</b> due feed, the most overdue (null first). With twelve ticks an hour that serves twelve feeds an hour at the hourly cadence. <i>Considered:</i> polling every feed every tick.</p>
+  </section>
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>Departing from epic §5 · proposed</h3>
+    <p>Feeds become <code>source = 'feed'</code> on <code>reader_posts</code>, the fourth value, with their own identity branch. Feed summaries are model calls like any other and count toward <code>READER_DAILY_CAP</code>. A separate cap would be a second money knob for a single owner. The leg runs after newsletters and retries, so on a busy day mail goes first and feed entries wait (D9). <i>Considered:</i> leaving feeds out of the cap, which would make a misconfigured feed unbounded spend.</p>
+  </section>
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>Feed health on the card · proposed</h3>
+    <p>Each feed row carries its own <code>feed_last_success_at</code>, <code>feed_last_error</code> and <code>feed_last_error_at</code>. The card shows "checked &lt;relative&gt;" and, when the error is newer than the last success, the amber line in Plate I·C. The "since" time counts from the last success, as the Instapaper note does. <code>reader_health</code> is untouched. <i>Considered:</i> a header note like Instapaper's, which fits a single credential but is too loud for one dead blog among many.</p>
+  </section>
+  <section class="rec" id="d7">
+    <h3><span class="tag">D7</span>Validate on add · proposed</h3>
+    <p><code>POST /api/reader/publications</code> with a <code>feed_url</code> fetches the URL server-side (10 s timeout, 5 MB cap) and parses it with the same parser as the Worker (D10):</p>
+    <ul>
+      <li>Not XML, or no RSS/Atom root: <b>422</b> <code>not-a-feed</code>.</li>
+      <li>Network error, timeout or non-2xx: <b>422</b> <code>unreachable</code>, quoting the status.</li>
+      <li>Already on the roster (after normalisation, D14): <b>409</b>.</li>
+    </ul>
+    <p>On success the row's name is the feed's title, falling back to the host without <code>www.</code>, and <code>feed_checked_at</code> is left null so the next tick polls it at once. <i>Considered:</i> accepting any URL and letting the first poll report, which leaves an obvious mistake undiscovered for up to five minutes on a card the owner has already left.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+  <section class="rec" id="d8">
+    <h4>D8 · Schema shape</h4>
+    <p><code>reader_publications.handle</code> becomes nullable, and a new <code>feed_url</code> (unique) is added. A CHECK requires exactly one of the two. A null handle never matches <code>v_reader_worklist</code>'s join or <code>v_reader_candidates</code>' <code>not exists</code>, and Postgres <code>unique</code> admits many nulls, so discovery's <code>on conflict (handle)</code> upsert is unaffected. "Is a feed" is always <code>feed_url is not null</code>. The existing <code>source</code> column stays provenance (<code>auto</code>|<code>owner</code>), and a feed is <code>owner</code>. The card shows the <i>feed</i> chip in place of the provenance chip.</p>
+  </section>
+  <section class="rec" id="d9">
+    <h4>D9 · Where the leg sits and what it costs</h4>
+    <p>Order: retries → newsletters → <b>feed leg</b> → To Reader. The feed leg runs only when the ceiling isn't spent, a slot is free, and a feed is due. When it runs it pays three fixed fetches: the feed GET, the "already a post?" read, and the feed stamp PATCH. It pays for them by <b>lowering the tick's post limit by one</b>. Each new entry costs ≤ 6: page GET (only for excerpts), insert, Anthropic ×2, terminal patch. That is the same as a newsletter. Worst tick: 9 fixed + 3 To Reader + 3 feed + 5 × 6 = <b>45</b> ≤ 50. The roster read the tick already makes gains the feed columns, so choosing the due feed costs nothing. The <code>READER_TICK_LIMIT</code> doc table gains the feed rows and this arithmetic.</p>
+  </section>
+  <section class="rec" id="d10">
+    <h4>D10 · Parsing</h4>
+    <p>Workers have no <code>DOMParser</code>. Add <code>fast-xml-parser</code> (pure JS, no Node built-ins) to <code>workers</code> and <code>frontend</code>. A hand-rolled regex parser would get CDATA, entities and namespaces wrong. The parse-to-entries code is one pure module per package. The route only needs "is it a feed, and what's its title", so its probe is small. The two must agree on what counts as a feed: rss/channel, feed (Atom), or rdf:RDF root.</p>
+  </section>
+  <section class="rec" id="d11">
+    <h4>D11 · Entry identity and date</h4>
+    <p><b>Identity</b> (<code>feed_entry_id</code>): Atom <code>id</code>, else RSS <code>guid</code>, else the entry link, else <code>sha256(title + date)</code>. It is unique per publication. <b>Date</b>: Atom <code>published</code> ?? <code>updated</code>; RSS <code>pubDate</code> ?? <code>dc:date</code>. Parsed, then clamped to ≤ now, and stored as <code>received_at</code> (so list order and the 90-day text sweep work unchanged). An entry with no parseable date is dated at the poll instant, and so is in-horizon. To bound that, each poll considers only the <b>20</b> entries nearest the top of the document. An edited entry keeps its identity and is never re-imported.</p>
+  </section>
+  <section class="rec" id="d12">
+    <h4>D12 · What counts as an excerpt</h4>
+    <p>The entry body is Atom <code>content</code> ?? <code>summary</code>, or RSS <code>content:encoded</code> ?? <code>description</code>, run through <code>htmlToText</code>. It is an excerpt when it is under <b>250 words</b>, or when the only body is Atom <code>summary</code> / RSS <code>description</code> and it ends in an ellipsis or a "read more"-style link. Otherwise it is the article, and no page fetch happens.</p>
+  </section>
+  <section class="rec" id="d13">
+    <h4>D13 · Page extraction</h4>
+    <p>The entry page is fetched only over http(s), with a 10 s timeout and a <code>READER_HTML_CHARS</code> cap. The main text comes from the first <code>&lt;article&gt;</code>, else <code>&lt;main&gt;</code>, else <code>&lt;body&gt;</code>, with <code>script, style, nav, header, footer, aside, form</code> removed, then <code>htmlToText</code>. If that section is longer than the feed body's text, it becomes the post's <code>text</code> and <code>html</code>, and <code>html_extracted = true</code>. No readability library is added: blogs that publish feeds are overwhelmingly simple templates, and the summary only needs the prose.</p>
+  </section>
+  <section class="rec" id="d14">
+    <h4>D14 · URL normalisation and fetch etiquette</h4>
+    <p><code>feed_url</code> is stored trimmed, with the scheme and host lower-cased and the fragment dropped. The path and query are kept as typed. Fetches send <code>User-Agent: alfred-reader (+https://github.com/ac3charland/alfred)</code>, and conditional-GET with the stored <code>feed_etag</code> / <code>feed_last_modified</code>. A 304 just stamps <code>feed_checked_at</code> and <code>feed_last_success_at</code>. Redirects are followed, but the stored URL isn't rewritten.</p>
+  </section>
+  <section class="rec" id="d15">
+    <h4>D15 · A feed is "checked" only once it's drained</h4>
+    <p>When a poll finds more new in-horizon entries than the tick's free slots, the leg takes the oldest first. It does <b>not</b> stamp <code>feed_checked_at</code> or the validators, so the feed stays due and the next tick re-polls it and takes the rest. A fully drained poll, a 304 or a failure stamps <code>feed_checked_at</code>. A failure also stamps the error, so a dead feed is retried hourly, not every five minutes.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <h3>Adding a feed (P1, D7)</h3>
+  <ul>
+    <li>The <i>Add a feed</i> caption, field and button sit between the count line and the roster. Enter submits. The button is disabled while the field is empty or a submit is in flight.</li>
+    <li>On success the new card appears at its sorted place (by name, as the view already sorts) and the field clears.</li>
+    <li>On 422 or 409 the field keeps its text, and one red line beneath it gives the reason. <code>not-a-feed</code> gives Plate I·B's words. <code>unreachable</code> gives "Couldn't reach that URL (&lt;status or 'no answer'&gt;)." 409 gives "That feed is already on the roster."</li>
+    <li>The heading's description changes to Plate I's wording. The empty-state copy mentions feeds the same way.</li>
+  </ul>
+  <h3>A feed's card (P1, D6, D8)</h3>
+  <ul>
+    <li>The chip reads <i>feed</i>, not the provenance. The sub-line reads <code>&lt;feed_url&gt; · last post &lt;date&gt;|no posts yet · checked &lt;relative&gt;|not checked yet</code>.</li>
+    <li>The amber line shows when <code>feed_last_error_at &gt; feed_last_success_at</code> (or there is no success yet). Its text: "Couldn't read the feed: &lt;error words&gt;. Failing since &lt;relative from last success, or from the first error&gt;; retried hourly."</li>
+    <li>Error words: "it answered &lt;status&gt;", "it didn't answer", "it isn't an RSS or Atom feed any more", "it's too large to read".</li>
+    <li>The toggle's title for a feed: "Paused feeds aren't polled; posts already here stay. Re-enabling takes posts from the last seven days."</li>
+    <li>The kind chip, rename and note behave exactly as for a sender. A kind change applies to the next summary only (ALF-322).</li>
+    <li><b>Copy Gmail filter query</b> ignores feed rows. Its disabled state counts enabled <em>senders</em>, so a roster of only feeds disables it with its existing tooltip. The count line counts feeds and senders alike.</li>
+  </ul>
+  <h3>The feed leg (D4, D9, D11–D15)</h3>
+  <ol>
+    <li>Skip when the ceiling is spent, no slot is free, or no feed is due.</li>
+    <li>Pick the most overdue due feed and conditional-GET it. A transport failure, non-2xx (≠ 304), unparsable body, or body over 5 MB: stamp the error and <code>feed_checked_at</code>, then end the leg. Feed failures never enter <code>summary.failures</code>, so they don't hold back <code>last_success_at</code>.</li>
+    <li>Parse the entries, keep the first 20, drop those dated outside the seven-day horizon, and read which <code>feed_entry_id</code>s are already posts for this publication.</li>
+    <li>Take the new entries, oldest first, up to the free slots. For each: build text (D12, D13), then INSERT a <code>reader_posts</code> row: <code>source='feed'</code>, <code>publication_id</code>, <code>feed_entry_id</code>, title (collapsed whitespace; else "Untitled"), author (entry author ?? feed author), <code>canonical_url</code> (entry link if http(s)), <code>received_at</code>, <code>text</code>/<code>html</code>/<code>word_count</code>/<code>html_extracted</code>. A unique-violation is a lost race: skip it. Then summarise through the same <code>summarizePost</code> path with the publication's name and kind. Empty text → filed <code>failed</code> with <code>NO_READABLE_BODY</code>, as intake does.</li>
+    <li>If every new entry was taken, stamp <code>feed_checked_at</code>, <code>feed_last_success_at</code>, <code>feed_etag</code> and <code>feed_last_modified</code> in one PATCH. Otherwise stamp nothing (D15).</li>
+    <li><code>ReaderTickSummary</code> gains <code>feed?: { feedId, status: 'not-modified' | 'polled' | 'failed' | skip reason, taken, failures[] }</code>, and <code>logReaderTick</code> prints it.</li>
+  </ol>
+  <h3>A feed post in the list (P2)</h3>
+  <p><code>postEyebrow</code> returns the linked publication's name for <code>source='feed'</code>, falling back to <code>UNKNOWN_PUBLICATION</code>. No "via" suffix. Every verb (Send, Original, Overview, Archive, Retry) works unchanged. Original opens <code>canonical_url</code>, and a feed post with no link has no Original, the same as an Instapaper article with no URL.</p>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <h3>Migration <code>database/migrations/&lt;next&gt;_reader_feeds.sql</code> (take the next free number at build time)</h3>
+<pre>-- reader_publications: a roster row is a sender XOR a feed
+alter table reader_publications alter column handle drop not null;
+alter table reader_publications
+  add column feed_url             text unique,
+  add column feed_etag            text,
+  add column feed_last_modified   text,
+  add column feed_checked_at      timestamptz,
+  add column feed_last_success_at timestamptz,
+  add column feed_last_error      text,
+  add column feed_last_error_at   timestamptz,
+  add constraint reader_publications_sender_xor_feed
+      check ((handle is null) &lt;&gt; (feed_url is null));
+-- comment on each new column, house style
+
+-- reader_posts: the fourth source
+alter table reader_posts add column feed_entry_id text;
+alter table reader_posts drop constraint reader_posts_source_valid;
+alter table reader_posts add constraint reader_posts_source_valid
+  check (source in ('gmail', 'instapaper', 'research', 'feed'));
+alter table reader_posts drop constraint reader_posts_source_identity;
+alter table reader_posts add constraint reader_posts_source_identity check (
+     &lt;the three existing branches, verbatim from 0047&gt;
+  or (source = 'feed' and publication_id is not null and feed_entry_id is not null
+                      and comm_message_id is null
+                      and account_key is null and gmail_message_id is null));
+create unique index reader_posts_feed_source_key
+  on reader_posts (publication_id, feed_entry_id) where source = 'feed';
+
+-- v_reader_publications: recreate with the feed columns, then re-grant (0052's pattern)
+-- notify pgrst, 'reload schema';</pre>
+  <p>Regenerate <code>frontend/lib/database.types.ts</code> with the generator. Update <code>ReaderPublication</code> (handle <code>string | null</code>, plus the feed fields) and the post source union in <code>frontend/lib/types.ts</code> and <code>workers/src/reader/types.ts</code>. Every <code>publication.handle</code> reader must handle null; the type-check finds them.</p>
+  <h3>Route</h3>
+<pre>POST /api/reader/publications
+  body: { handle, name?, summary_kind? }            // unchanged
+      | { feed_url: string (http/https URL), name?, summary_kind? }
+  201 → ReaderPublication
+  409 → { error: 'duplicate' }
+  422 → { error: 'not-a-feed' } | { error: 'unreachable', status?: number }</pre>
+  <p><code>createReaderPublicationSchema</code> becomes a <code>z.union</code> of the two shapes. The store gains <code>addFeed(url) → Promise&lt;ReaderPublicationListItem&gt;</code>. It is not optimistic: the row doesn't exist until the probe passes, so the button shows pending and the card appears on success.</p>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <ol>
+    <li><b>Migration</b> + regenerated types + type updates (D8). Run <code>migration-lint</code> (view re-grant).</li>
+    <li><b>Worker, pure</b>: <code>workers/src/reader/feeds.ts</code> with <code>parseFeed(xml) → { title?, author?, entries: FeedEntry[] } | undefined</code>, <code>entryIdentity</code>, <code>entryDate</code>, <code>isExcerpt</code>, <code>pageArticleHtml(html)</code>, <code>dueFeed(roster, now)</code>, <code>planFeedEntries(entries, existingIds, now, slots)</code>. Fixtures in <code>workers/src/reader/fixtures/feeds/</code>.</li>
+    <li><b>Worker, effectful</b>: <code>workers/src/reader/feed-leg.ts</code> (<code>runFeedLeg</code>, fetches injected as <code>to-reader.ts</code> does), store helpers (<code>insertFeedPost</code>, <code>fetchFeedEntryIds</code>, <code>stampFeed</code>), roster read extended, wiring and budget table in <code>scheduled.ts</code> (D9), <code>logReaderTick</code>.</li>
+    <li><b>Frontend</b>: <code>frontend/lib/reader/feed-probe.ts</code> (fetch + sniff + title), the route branch, schemas, data-layer <code>createReaderPublication</code>, <code>addFeed</code> in <code>reader-settings-store.tsx</code>, an <code>AddFeedForm</code> component in <code>components/reader/</code>, the card's feed variant in <code>publications-card.tsx</code>, the copy-query filter, and <code>postEyebrow</code>.</li>
+    <li>Read the <code>cloudflare-workers</code>, <code>supabase</code>, <code>data-flow</code> and <code>frontend-architecture</code> skills first. Reuse the <code>Input</code>/<code>Button</code> atoms; check for an existing inline-add form atom before writing one.</li>
+  </ol>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D1 D7 P1">Pasting a valid RSS or Atom URL and pressing Add feed creates a roster card named from the feed's title, with the <i>feed</i> chip, Essay kind, Enabled.</li>
+    <li data-trace="D7 P1">A non-feed URL (an HTML page) shows Plate I·B's error under the field and creates nothing. An unreachable URL and a duplicate show their own lines.</li>
+    <li data-trace="D4 D9">The next tick polls a never-checked feed. A checked feed isn't polled again until an hour has passed. At most one feed is polled per tick.</li>
+    <li data-trace="D2">The first poll imports only entries dated within the last seven days. Older entries never become posts.</li>
+    <li data-trace="D5 P2">Each imported entry is a <code>reader_posts</code> row with <code>source='feed'</code>, summarised with its publication's kind, shown in the list as in Plate II, and counted toward the daily ceiling.</li>
+    <li data-trace="D3 D12 D13">For an excerpt-only entry the post's text comes from the entry page's article. For a full-content entry no page is fetched.</li>
+    <li data-trace="D11">Re-polling a feed never duplicates a post, including when an entry's <code>updated</code> date changes.</li>
+    <li data-trace="D6 P1">A feed that answers 404 shows Plate I·C's amber line on its card. The next successful poll clears it.</li>
+    <li data-trace="D1 P1">Pausing a feed stops its polling. Rename, note and kind work as on a sender card.</li>
+    <li data-trace="impl">Copy Gmail filter query never includes a feed, and is disabled when no sender is enabled.</li>
+  </ul>
+  <h3>Review focus</h3>
+  <ul class="checks">
+    <li data-trace="D15">A poll with more new entries than free slots → the oldest are taken, the feed stays due, and the next tick takes the rest without duplicates.</li>
+    <li data-trace="D13">The entry page fails (403/timeout) → the post is stored from the excerpt and summarised, and the feed isn't marked failing.</li>
+    <li data-trace="D11">Entries with no date, or a date in the future → dated at the poll instant (clamped), with at most 20 considered.</li>
+    <li data-trace="impl">An entry link that's <code>javascript:</code> or relative → no Original link (relative links resolve against the feed URL first), never a non-http href.</li>
+    <li data-trace="D9">The ceiling is spent, or newsletters fill all six slots → the leg makes no fetch at all, and the feed stays due.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><b>Jest, workers</b>: <code>feeds.test.ts</code> over fixtures (RSS 2.0 with <code>content:encoded</code>, Atom full, Atom summary-only, RSS description-only, RDF, undated, malformed, HTML page, and the captured mlarson.org feed). Covers identity, date, horizon, the 20 cap, excerpt detection and page extraction. <code>feed-leg.test.ts</code> covers the leg with injected fetch: 304, 404, drain/partial (D15), page failure, race on insert. <code>scheduled.test.ts</code> covers ordering, the slot reduction and the ceiling skip.</li>
+    <li><b>Jest, frontend</b>: route tests for each response, schema union, <code>feed-probe</code>, store <code>addFeed</code>, the copy-query filter, and <code>postEyebrow</code> for feeds.</li>
+    <li><b>RTL / Storybook</b>: <code>publications-view</code> stories and tests for Plate I's three states. A <code>post-row</code> story for a feed post.</li>
+    <li><b>Playwright</b>: add a feed with the route mocked → card appears; a not-a-feed response → error line.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the <code>showboat</code> skill's evidence rules. Capture: <code>exec</code> of the parser over the mlarson.org fixture (entries, dates, excerpt verdicts); a screenshot of <code>/reader/publications</code> with the feed card (and the Plate I·B error); and a reading-list screenshot with a feed post. If a Storybook baseline moves, embed the diff per the <code>storybook</code> skill.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><b>Autodiscovery</b> (homepage → <code>&lt;link rel="alternate"&gt;</code>) is out: it's cheap, but it changes D7's contract. Promote it in review if wanted. <b>Delete</b> is out because senders can't be deleted either. <b>Cross-source dedupe</b> is out per epic §5: don't add a feed for a publication that also mails you.</li>
+    <li><b>Unknown:</b> mlarson.org's format and whether it carries full content. The build session must capture it as a fixture. If its host is blocked, ask the owner to allow <code>mlarson.org</code> in the environment's network settings.</li>
+    <li><b>Risk:</b> D13's <code>&lt;article&gt;</code>/<code>&lt;main&gt;</code> heuristic on unusual templates. The eval harness (<code>npm run eval:reader</code>) is the place to check a bad summary's source text.</li>
+    <li><b>Risk:</b> bot-blocking hosts (Cloudflare challenges) answer 403 to Workers. That surfaces as D6's error line, which is the correct outcome.</li>
+  </ul>
+</section>
+
+<section id="after-merge">
+  <h2>After it ships (for you)</h2>
+  <ol>
+    <li>On <code>/reader/publications</code>, add <code>https://mlarson.org/feed.xml</code>. Within five minutes the last week's posts appear in the reading list.</li>
+    <li>Set its summary type if Essay isn't right.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
