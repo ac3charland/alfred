@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-280 — Podcasts — and any YouTube video — in the Reader</title><style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · FINDINGS — what a findings document adds to the house stylesheet ═══ */
+#landed>.side~*+*{margin-top:.75rem}
+.detail aside{margin:0 0 .9rem;padding:.75rem 1rem;background:var(--wash);border-left:3px solid var(--rule)}
+.detail aside>h3:first-child{margin-top:0}
+.detail aside>:last-child{margin-bottom:0}
+
+</style>
+</head>
+<body>
+
+<main class="page">
+
+<!-- ════════════════════════════ ABOVE THE FOLD ════════════════════════════ -->
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Reader · Spike findings</span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>280</span><span class="sep"> — </span><span class="ttl">Podcasts — and any YouTube video — in the Reader</span></h1>
+  <p class="change" id="answer">Make YouTube the Reader’s video source, not podcast RSS. The Mac daemon fetches existing captions with a self-updating yt-dlp, and the Worker summarises them with timestamps that jump back into the video.</p>
+</header>
+
+<section class="sec" id="landed">
+  <h2 class="side">Where we landed</h2>
+  <p>Treat a video like a newsletter post. A pasted link becomes a <code>video</code> Inbox item, and <b>Dispatch</b> turns it into a queued Reader post. ALF-298’s research items already follow exactly this route. The daemon pulls the queue, fetches the captions on the owner’s home internet connection, and posts them back. The existing summariser then writes the gist and overview, with each idea pinned to a moment in the video. Channel subscriptions come second: they feed the same queue and skip the Inbox. Next, cut two stories: <b>(1) ad-hoc video items end to end</b>, then <b>(2) channel subscriptions</b>.</p>
+  <ol class="list">
+    <li><h3>Source</h3>
+      <p class="pick">YouTube covers podcasts and every other video; RSS covers only podcasts.</p>
+      <p class="why">None of the three target shows publishes a transcript in its feed — <a href="#shows">§2</a></p></li>
+    <li><h3>Transcripts</h3>
+      <p class="pick">Fetch captions that already exist instead of transcribing audio: $0 instead of ~$0.30 an episode.</p>
+      <p class="why">Speech-to-text vendors priced in <a href="#sources-of-text">§3</a></p></li>
+    <li><h3>Where it runs</h3>
+      <p class="pick">The Mac daemon, because YouTube blocks cloud IPs and its official captions API only works for videos you own.</p>
+      <p class="why">The owner picked owning the fetcher over a captions middleman — <a href="#where">§4</a></p></li>
+    <li><h3>Keeping yt-dlp alive</h3>
+      <p class="pick">Standalone binary, a daily <code>--update-to nightly</code>, and Node as the JavaScript runtime it needs.</p>
+      <p class="why">Since 2025.11.12, YouTube downloads need an external JS runtime — <a href="#daemon">§5.3</a></p></li>
+    <li><h3>Cost</h3>
+      <p class="pick">About $0.09 an episode, all of it the Claude summary; roughly $2 a month.</p>
+      <p class="why">Sonnet 5 on a ~30k-token transcript — <a href="#cost">§7</a></p></li>
+  </ol>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 640 300" role="img" aria-label="A pasted link or a channel feed queues a Reader post; the Mac daemon fetches the captions with yt-dlp and posts them back; the Worker summarises; the Reader links each timestamp to YouTube.">
+      <g class="new"><rect x="10" y="20" width="180" height="50" rx="6"/><text x="22" y="42">Inbox · video item</text><text class="s" x="22" y="58">pasted link → Dispatch</text></g>
+      <g class="new"><rect x="10" y="110" width="180" height="50" rx="6"/><text x="22" y="132">Channel feeds</text><text class="s" x="22" y="148">polled on the reader tick</text></g>
+      <g class="new"><rect x="230" y="65" width="180" height="50" rx="6"/><text x="242" y="87">reader_posts</text><text class="s" x="242" y="103">source youtube · queued</text></g>
+      <g class="new"><rect x="450" y="20" width="180" height="50" rx="6"/><text x="462" y="42">Mac daemon</text><text class="s" x="462" y="58">yt-dlp · captions</text></g>
+      <g><rect x="450" y="110" width="180" height="50" rx="6"/><text x="462" y="132">Reader tick</text><text class="s" x="462" y="148">summarise + timestamps</text></g>
+      <g><rect x="230" y="200" width="180" height="50" rx="6"/><text x="242" y="222">Reader UI</text><text class="s" x="242" y="238">gist · overview · map</text></g>
+      <g><rect x="450" y="200" width="180" height="50" rx="6"/><text x="462" y="222">YouTube</text><text class="s" x="462" y="238">watch?v=…&amp;t=1234s</text></g>
+      <path class="hot" d="M190 45 L230 80"/>
+      <path class="hot" d="M190 135 L230 100"/>
+      <path class="hot" d="M410 80 L450 45"/>
+      <text class="lb" x="418" y="56">pull</text>
+      <path class="hot" d="M540 70 L540 110"/>
+      <text class="lb" x="547" y="94">captions</text>
+      <path d="M450 135 L410 100"/>
+      <path d="M320 115 L320 200"/>
+      <path d="M410 225 L450 225"/>
+      <text class="lb" x="420" y="218">tap</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b>The teal boxes are new. Both ways in queue the same kind of post, the daemon supplies the captions, and everything downstream is the existing Reader.</figcaption>
+  </figure>
+</section>
+
+</section>
+
+<!-- ════════════════════════════ THE FOLD ════════════════════════════ -->
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>The evidence</h2>
+  <p>Everything below is for whoever builds on this. Acting on the answer needs only what’s above.</p>
+</div>
+
+<!-- ════════════════════════════ BELOW THE FOLD ════════════════════════════ -->
+<section class="detail" id="detail" data-fold="below">
+
+<section id="question">
+  <h2>How the question moved</h2>
+  <p>The ticket asked for podcasts in the Reader: ingest new episodes, transcribe them or find transcripts, and timestamp the key ideas so a section can be heard without the whole episode. It also asked about platforms, ingestion, and where transcription runs and at what cost. Interviewing the owner reshaped it three times:</p>
+  <ul>
+    <li><b>The owner doesn’t listen to podcasts.</b> Episodes are too long and too thin for their schedule. Friends send YouTube links, and every show the owner cares about is on YouTube. The goal is to skim a whole medium the owner currently skips.</li>
+    <li><b>Both ad-hoc and subscription intake, eventually.</b> Ad-hoc comes first as the MVP. The end state is “point a show at alfred and let it surface the good bits”.</li>
+    <li><b>No personalisation.</b> “Surface the relevant points” means the Reader’s existing static highlighting (ALF-232 D7), not ranking against an interests profile.</li>
+  </ul>
+  <p>About half of the links friends send are YouTube-only (talks, lectures, interviews with no podcast feed). That decided it: YouTube, not RSS, is the one source that serves both intake paths and any video at all.</p>
+  <p><b>The epic’s non-goal.</b> ALF-232 §5 lists “no podcasts” and “email via the comms mirror is the only intake”. Two later stories already broke that rule on purpose: Instapaper (ALF-272, migration <code>0041</code>) and research reports (ALF-298, <code>0047</code>). Both added a <code>reader_posts.source</code> value with its own identity branch. A YouTube source is the third instance of that pattern. A refinement should say explicitly that it supersedes §5.</p>
+</section>
+
+<section id="shows">
+  <h2>What the owner’s shows actually publish</h2>
+  <p>The owner ran a feed probe (Apple directory lookup, then each feed’s three newest items) on their Mac. This sandbox’s egress policy blocks every podcast and YouTube host, so the probe couldn’t run here. Results as of 2026-10-03:</p>
+  <div class="scroll"><table>
+    <tr><th>Show</th><th>Feed host</th><th>Podcast 2.0 namespace</th><th><code>podcast:transcript</code></th><th>Show-notes timestamps</th><th>Length</th></tr>
+    <tr><td>The Cognitive Revolution</td><td><code>feeds.megaphone.fm</code> (audio via <code>pdst.fm</code>)</td><td>no</td><td>none</td><td>30–38 per episode</td><td>1 h 29 – 2 h 15</td></tr>
+    <tr><td>Machine Learning Street Talk</td><td><code>anchor.fm</code> (audio via <code>traffic.megaphone.fm</code>)</td><td>yes</td><td>none</td><td>8–49</td><td>44 m – 1 h 14</td></tr>
+    <tr><td>The Argument</td><td><code>audioboom.com</code> (audio via <code>pscrb.fm</code>)</td><td>yes</td><td>none</td><td>9–10</td><td>1 h 02 – 1 h 35</td></tr>
+  </table></div>
+  <ul>
+    <li><b>None of the three publishes a transcript in its feed.</b> Podcast Index puts the transcript tag on about 53% of newly published episodes, but this owner’s shows are in the other half. The industry average is no guide to a specific list of shows.</li>
+    <li><b>All of them publish creator-written chapter timestamps.</b> On YouTube these surface as video chapters, and yt-dlp returns them in its JSON metadata (<code>chapters</code>). That gives a free, human-written segment map (§5.4).</li>
+    <li><b>Substack was a dead end.</b> All three shows also post on Substack, which auto-transcribes uploaded podcasts. But a recent Cognitive Revolution post had captions in its video player and no Transcript tab. Those captions come from an undocumented player endpoint, so nothing should be built on them.</li>
+    <li>The Argument match was the Audioboom feed by “The Argument”, not NYT Opinion’s show of the same name. That’s assumed to be the right one.</li>
+  </ul>
+</section>
+
+<section id="sources-of-text">
+  <h2>Where the text can come from</h2>
+  <p>Every way to get a timed transcript of a video or episode, priced for the owner’s volume: three shows is about 20 episodes a month, roughly 1.5 h each, around 30 audio-hours a month, plus ad-hoc links. Vendor prices come from search snippets of the official pricing pages. The pages themselves were blocked here, so re-check before relying on a number.</p>
+  <div class="scroll"><table>
+    <tr><th>Option</th><th>Per 2-h episode</th><th>Notes</th></tr>
+    <tr><td><b>YouTube captions via yt-dlp on the Mac</b> (chosen)</td><td>$0</td><td>Creator or auto captions with segment timings. Needs a residential IP, and both the JS runtime and PO tokens are handled by yt-dlp.</td></tr>
+    <tr><td>YouTube Data API <code>captions.download</code></td><td>—</td><td><b>Owner-only.</b> It returns 403 for any video you don’t own, so it’s useless here.</td></tr>
+    <tr><td>Captions middleman (Supadata, TranscriptAPI)</td><td>~$0.02, or $0 on Supadata’s free 100 credits/month</td><td>Runs in the cloud and needs no Mac. Its business is out-maneuvering YouTube; the owner declined adding the dependency.</td></tr>
+    <tr><td>Groq <code>whisper-large-v3-turbo</code></td><td>~$0.08 ($0.04/h)</td><td>Takes a URL, but has no webhook and no speaker labels. Behaviour on 100 MB+ files behind redirect chains is unverified. Groq is unrelated to xAI’s Grok; Nvidia licensed its tech in Dec 2025 and Groq stayed independent.</td></tr>
+    <tr><td>Cloudflare Workers AI Whisper</td><td>~$0.06 ($0.0005/min)</td><td>Takes bytes only, with no URL input. A 100 MB episode won’t fit the Worker’s 128 MB memory without chunking.</td></tr>
+    <tr><td>AssemblyAI Universal-2 / 3.5 Pro</td><td>$0.30 / $0.42 (+$0.04 speaker labels)</td><td>Takes a URL and a webhook, which suits a Worker well. Auto Chapters is deprecated.</td></tr>
+    <tr><td>Deepgram Nova-3</td><td>$0.52 (+$0.24 speaker labels)</td><td>Takes a URL and a callback.</td></tr>
+    <tr><td>OpenAI <code>whisper-1</code> / <code>gpt-4o-mini-transcribe</code></td><td>$0.72 / $0.36</td><td>25 MB upload cap, so it means chunking. The 4o models return no timestamps.</td></tr>
+    <tr><td>Local Whisper on the Mac (whisper.cpp / MLX)</td><td>$0</td><td>The fallback for a video with no captions (§7). Several minutes of CPU per episode.</td></tr>
+  </table></div>
+  <p>At this volume every cloud option is a rounding error: $1–10 a month. The owner’s point was that $10 a month would still be more than double alfred’s whole current API bill, and that ruled out the top of the table. Cost doesn’t decide between the bottom options, though. YouTube does: only a residential IP, or a middleman, can fetch the captions.</p>
+</section>
+
+<section id="where">
+  <h2>Why the Mac, and what that costs</h2>
+  <p><b>YouTube blocks cloud IPs.</b> The <code>youtube-transcript-api</code> README states that requests from AWS, GCP, Azure and similar providers mostly fail with <code>RequestBlocked</code>/<code>IpBlocked</code>. Cloudflare’s Worker egress counts as one of those. The daemon runs on the owner’s home connection.</p>
+  <p>The owner weighed it against a captions middleman and chose to own the fetcher. yt-dlp is still a dependency, but it comes with no account, no bill and no vendor; the risk is whether its maintainers keep pace with YouTube, which they have so far. Speed doesn’t matter (“these things are by definition not urgent”), so a laptop that’s asleep only delays a post.</p>
+  <p><b>The real cost is a design change, not money.</b> <code>daemon/README.md</code> describes the daemon as a <i>write-only dumb pipe</i>: it holds one ingest credential, posts messages, and never reads anything back. This feature needs it to <b>receive work</b>, meaning to learn which videos to fetch. The proposal (§5.3) keeps that as narrow as possible: a signed GET that returns only public video IDs. The refinement has to decide that trust change deliberately.</p>
+  <p><b>Terms of Service.</b> Both yt-dlp and every captions middleman break YouTube’s ToS, which forbids automated access outside the official API. For one person’s reading list the practical risk is negligible, and the owner has been told.</p>
+</section>
+
+<section id="shape">
+  <h2>Technical shape</h2>
+  <p>Detailed enough for a refinement to expand; the refinement decides the names.</p>
+
+  <h3 id="intake">5.1 Ad-hoc intake: a <code>video</code> item type, modelled on ALF-298</h3>
+  <p>The owner pastes the link into the Inbox (their choice) and it waits for <b>Dispatch</b> (also their choice). That keeps one Inbox model, and a link can still be a plain “watch this” task. ALF-298’s research item is the template to copy (<code>docs/specs/archive/ALF-298.html</code>, migrations <code>0046</code>–<code>0047</code>):</p>
+  <ul>
+    <li><b>Enum value in its own migration file.</b> <code>alter type item_type add value 'video'</code> alone, because Postgres refuses to use a new enum value inside the transaction that added it. <code>0046</code>’s header records that trap.</li>
+    <li><b>Typing without a model call.</b> A capture whose text is a YouTube URL (<code>youtube.com/watch?v=</code>, <code>youtu.be/</code>, <code>/shorts/</code>, <code>/live/</code>) can be typed <code>video</code> by pattern before the classifier (<code>workers/src/verdict.ts</code>) runs. ALF-298 D7 lets the classifier guess research; this one is deterministic.</li>
+    <li><b>Dispatch.</b> Copy the <code>send_items_to_research</code> RPC: stamp <code>dispatched_at</code>, insert a queued <code>reader_posts</code> row, and delete the item, all in one transaction. Also relax <code>items_dispatched_needs_folder</code> for <code>video</code>, and add the per-type branch through the dispatch path (row flags, the Classify menus, <code>lib/tasks/dispatch.ts</code>, the store’s <code>dispatchItems</code>). ALF-298’s file list covers it.</li>
+  </ul>
+
+  <h3 id="data">5.2 Data</h3>
+  <ul>
+    <li><code>reader_posts.source</code> gains <code>'youtube'</code>, with a new branch in <code>reader_posts_source_identity</code>: <code>youtube_video_id</code> is required and none of the mail identity is set. A partial unique index on <code>youtube_video_id</code> where <code>source = 'youtube'</code> dedupes a link pasted twice against a subscription that picks up the same video.</li>
+    <li>A captions lifecycle column, by analogy with <code>research_state</code>: <code>captions_state</code> = <code>queued | fetching | done | unavailable | failed</code>, plus <code>captions_attempts</code>, <code>captions_error</code> and <code>captions_fetched_at</code>, and a derived “stale” with Retry, as in ALF-298 D12. <code>unavailable</code> (no captions yet) is different from <code>failed</code> (yt-dlp broke) because the two need different fixes.</li>
+    <li>The post body stores the transcript as timed segments, not the flat <code>text</code> a newsletter uses: <code>[{start, end, text}]</code> as JSON, plus <code>duration_seconds</code>, <code>channel_id</code>/<code>channel_name</code> and the creator chapters. The existing 90-day text sweep applies to it.</li>
+    <li>Subscriptions need a channel roster. <code>reader_publications</code> is keyed on an email handle, so a separate small <code>reader_channels</code> table (channel id, name, enabled) is probably cleaner than overloading it. That’s Story 2’s call.</li>
+  </ul>
+
+  <h3 id="daemon">5.3 The daemon’s new job: fetching captions</h3>
+  <ul>
+    <li><b>Pull.</b> On its existing ~5-minute cadence (<code>EXPECTED_INTERVAL_SECONDS = 300</code> in <code>daemon/src/contract.ts</code>), the daemon calls a new HMAC-signed Worker endpoint, for example <code>GET /reader/videos/pending</code>, which returns <code>[{post_id, video_id}]</code>. The endpoint flips each returned row to <code>fetching</code> with a lease, the way the reader tick’s <code>summarizing_since</code> lease works, so an overlapping run doesn’t double-fetch. Whether this reuses the comms ingest secret or gets its own is part of the trust decision in §4.</li>
+    <li><b>Fetch.</b> Prefer creator captions over auto captions, and take JSON metadata in the same call:
+<pre>yt-dlp --skip-download --write-subs --write-auto-subs \
+  --sub-langs "en.*" --sub-format json3 \
+  --dump-json --no-simulate --js-runtimes node:&lt;path&gt; \
+  -o "&lt;tmp&gt;/%(id)s" "https://www.youtube.com/watch?v=&lt;id&gt;"</pre>
+      <code>--dump-json</code> supplies the title, channel, duration, description and <code>chapters</code>. Prefer <code>json3</code> over VTT: auto-caption VTT is known to repeat rolling lines, which would need deduping. Verify both formats on real videos during the build.</li>
+    <li><b>Deliver.</b> POST the segments and metadata back over the same signed path the comms ingest uses (<code>workers/src/comms/ingest.ts</code>). The Worker validates the body, writes it, and sets <code>captions_state = done</code>, after which the summariser picks the post up like any other. If no captions exist yet, report <code>unavailable</code> instead. Auto captions can lag hours behind an upload, so the queue retries with backoff and gives up after about 48 hours.</li>
+    <li><b>Keeping yt-dlp alive</b> (an explicit requirement from the owner):
+      <ul>
+        <li>Install the <b>standalone macOS binary</b> into the daemon’s own support directory, not via Homebrew or pip. Only the standalone binary self-updates with <code>-U</code>; package-manager installs update through the package manager.</li>
+        <li>Run <code>yt-dlp --update-to nightly</code> at daemon start, once a day, and <b>immediately after any extraction failure</b>, then retry once. The nightly channel builds daily and gets YouTube fixes days before stable.</li>
+        <li><b>JS runtime:</b> since 2025.11.12, yt-dlp needs an external JavaScript runtime to solve YouTube’s challenges. Deno is recommended; Node ≥ 20 is supported via <code>--js-runtimes node:&lt;path&gt;</code>, and the daemon already runs on Node. Pass the daemon’s own Node path so there’s nothing new to install. Deno remains an option if Node proves flaky.</li>
+        <li>Report the yt-dlp version and the last update result on the daemon’s heartbeat, so the Reader’s health surface can say “captions fetcher broken since Tuesday” instead of showing a queue that silently stalls.</li>
+      </ul></li>
+    <li><b>PO tokens.</b> YouTube may require proof-of-origin tokens for subtitle requests on some clients. yt-dlp added PO-token support for subtitles, and enforcement keeps changing (<a href="https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide">PO Token Guide</a>). This is exactly the churn the auto-update exists for.</li>
+  </ul>
+
+  <h3 id="summary">5.4 The summary: the Reader’s shape plus timestamps</h3>
+  <ul>
+    <li>The output is the same D6 shape (<code>workers/src/reader/schema.ts</code>: headline, gist, novel ideas, evidence, argument, who should read). It stays static: no interests profile, per the owner.</li>
+    <li><b>Timestamps on bullets.</b> For a <code>youtube</code> post, each <code>novel_ideas</code>/<code>evidence</code> item becomes <code>{text, at_seconds}</code>. Use a source-specific schema variant rather than changing the newsletter schema that every post shares. As <code>schema.ts</code> already does with budgets, check <code>at_seconds</code> after parsing (it must be ≤ the duration) and snap it to the nearest segment start.</li>
+    <li><b>A segment map.</b> Use the creator’s chapters when the video has them (all three target shows do), with a one-line summary for each. When it doesn’t, the model proposes 5–12 segments from the timed transcript.</li>
+    <li><b>Prompt input.</b> Merge caption segments into ~30-second paragraphs, each prefixed <code>[mm:ss]</code>, which keeps the token count near the spoken word count. A 2-hour episode comes to about 19k words, or 30–35k input tokens. That’s within Sonnet 5’s 1M context, but the existing 400k-character intake ceiling (ALF-232 D3) needs checking against a 2.5-hour transcript.</li>
+    <li><b>Links.</b> Each timestamp is <code>https://www.youtube.com/watch?v=&lt;id&gt;&amp;t=&lt;s&gt;s</code>, which opens the YouTube app at that moment on the phone. “Open original” is the plain video URL.</li>
+  </ul>
+
+  <h3 id="subs">5.5 Subscriptions (Story 2)</h3>
+  <ul>
+    <li>Every channel has a public, key-free Atom feed, <code>https://www.youtube.com/feeds/videos.xml?channel_id=&lt;id&gt;</code>, which lists its 15 most recent uploads. It still worked in 2026, though it had intermittent 404s from Dec 2025, now stable. The reader tick polls each enabled channel and queues any unseen <code>video_id</code> directly as a post, skipping the Inbox, the way a newsletter arrives.</li>
+    <li><b>Unverified:</b> whether YouTube serves that feed to Cloudflare’s IPs. If it doesn’t, the daemon polls the feeds too, and the channel list then has to be available to it.</li>
+    <li>The feed includes Shorts. Skip anything the daemon reports as under ~3 minutes.</li>
+    <li>Cost guard: videos count against the Reader’s daily model-call ceiling (<code>READER_DAILY_CAP</code>, ALF-232 D9). At about 3× an article’s cost per call, a separate small cap may read better. That’s the refinement’s call.</li>
+  </ul>
+</section>
+
+<section id="alternatives">
+  <h2>Alternatives we’re not taking</h2>
+  <aside><h3>Podcast RSS feeds plus cloud speech-to-text</h3><p>The first plan, and it works for all three shows: the MP3s are plainly downloadable, AssemblyAI takes a URL plus a webhook, and it costs ~$0.30 an episode. Ruled out because it covers only podcasts. Half of the owner’s ad-hoc links are YouTube-only, and the owner wants “any content on YouTube”. It also pays to transcribe audio when captions usually already exist.</p></aside>
+  <aside><h3>A captions middleman (Supadata and others)</h3><p>Fully cloud and likely free at this volume. The owner chose not to add an external dependency whose business is out-maneuvering YouTube. If the daemon route proves too brittle, this is the fallback, behind the same “captions fetcher” seam, with no changes needed to the Reader.</p></aside>
+  <aside><h3>Workers AI Whisper or Groq in the cloud</h3><p>The cheapest speech-to-text options ($0.03–0.04/h), but they need audio, and audio is exactly what YouTube won’t serve to a Worker. They’re only relevant to an RSS design.</p></aside>
+  <aside><h3>Substack transcripts through the existing newsletter pipe</h3><p>It looked like zero new intake, because the shows post to Substack and the Reader already ingests Substack mail. The Cognitive Revolution’s Substack page had no Transcript tab, and the player captions come from an undocumented endpoint.</p></aside>
+  <aside><h3>Instapaper as the intake</h3><p>Instapaper is already a Reader source (ALF-272) and saves YouTube links. The owner preferred pasting into the alfred Inbox, which also gets the Dispatch gate for free.</p></aside>
+  <aside><h3>Personalised segment ranking</h3><p>Raised because “surface the relevant points” could mean ranking against the owner’s interests. The owner clarified it means the existing static highlighting, so ALF-232 D7 stands.</p></aside>
+  <aside><h3>Transcribing locally as the primary path</h3><p>Briefly favoured on cost, before captions came up. It’s kept only as the fallback for a video with no captions (§7).</p></aside>
+</section>
+
+<section id="cost">
+  <h2>Cost &amp; open questions</h2>
+  <h3>Money</h3>
+  <ul>
+    <li>Captions cost $0.</li>
+    <li>The summary on Sonnet 5 ($2 / $10 per M tokens) is about 30–35k tokens in and 2–3k out, roughly <b>$0.09 for a 2-hour episode</b>. At about 20 subscribed episodes plus about 10 ad-hoc videos a month, that’s <b>about $2–3 a month</b>, against about $10 a month for the RSS plus speech-to-text design.</li>
+  </ul>
+  <h3>Risks</h3>
+  <ul>
+    <li><b>The YouTube arms race.</b> JS challenges, PO tokens and IP reputation keep changing, and yt-dlp is the buffer. Auto-update and health reporting turn a break into a visible stall rather than silent rot.</li>
+    <li><b>The daemon’s trust boundary moves</b> (§4), and it needs a deliberate refinement decision.</li>
+    <li><b>Freshness depends on the Mac being awake.</b> The owner accepted this.</li>
+    <li><b>Caption quality.</b> Auto captions mishear jargon (MLST especially) and carry no speaker labels. A summary tolerates both better than a human reader would, but this hasn’t been tested on these shows.</li>
+  </ul>
+  <h3>Unverified: check in the build or refinement</h3>
+  <ul>
+    <li>Whether the Cloudflare Worker can fetch <code>youtube.com/feeds/videos.xml</code>. This sandbox can’t reach YouTube at all.</li>
+    <li>How often the target shows’ videos have captions, and how many hours auto captions lag after upload.</li>
+    <li>yt-dlp with <code>--js-runtimes node</code> on the daemon’s Node version, and the <code>json3</code> output format, on a real video.</li>
+    <li>The real token count of a 2.5-hour transcript, against the 400k-character intake ceiling.</li>
+    <li>All vendor prices in §3. They came from search snippets; the official pages were blocked here.</li>
+  </ul>
+  <h3>Open for the refinement</h3>
+  <ul>
+    <li>Whether the pull endpoint gets its own secret or reuses the comms ingest secret.</li>
+    <li>A <code>reader_channels</code> table, or growing <code>reader_publications</code>.</li>
+    <li>A separate daily cap for videos.</li>
+    <li>When a video has no captions, whether to fall back to local Whisper or show “no transcript” with “open original”. The second is enough for an MVP.</li>
+  </ul>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <ol>
+    <li>Repo: <code>docs/specs/epics/ALF-232.html</code> (D2, D3, D6, D7, D9, §5) and <code>docs/specs/epics/ALF-232-notes.md</code>; <code>docs/specs/archive/ALF-298.html</code>; <code>database/migrations/0035_reader.sql</code>, <code>0041_reader_instapaper_source.sql</code>, <code>0046_research_item_type.sql</code>, <code>0047_research.sql</code>; <code>workers/src/reader/schema.ts</code>; <code>workers/src/index.ts</code> (<code>/comms/ingest</code>); <code>daemon/README.md</code>, <code>daemon/src/contract.ts</code>; <code>workers/wrangler.toml</code> (<code>READER_MODEL = "claude-sonnet-5"</code>).</li>
+    <li>Owner-run feed probe: an Apple directory lookup plus each feed’s three newest items, on the owner’s Mac, 2026-10-03 (§2). The sandbox’s proxy refused <code>itunes.apple.com</code>, <code>feeds.megaphone.fm</code>, <code>anchor.fm</code>, <code>www.youtube.com</code> and the rest.</li>
+    <li>Podcast transcript-tag adoption: <a href="https://blubrry.com/?p=92916">Blubrry, April 2025 statistics</a>; <a href="https://voxbooster.com/blog/podcast-hosting-platform-statistics-2026/">voxbooster, hosting statistics 2026</a>.</li>
+    <li>YouTube blocking cloud IPs: <a href="https://github.com/jdepoix/youtube-transcript-api">youtube-transcript-api README</a>; <a href="https://transcriptapi.com/blog/fix-youtube-transcript-api-errors">transcriptapi.com, IP blocks</a>.</li>
+    <li>Official captions API is owner-only: <a href="https://developers.google.com/youtube/v3/docs/errors">YouTube Data API errors</a>.</li>
+    <li>yt-dlp: <a href="https://github.com/yt-dlp/yt-dlp/issues/15012">#15012, external JS runtime</a>; <a href="https://gigazine.net/news/20251113-yt-dlp-required-deno-javascript-runtime/">Gigazine, 2025-11-13</a>; <a href="https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide">PO Token Guide</a>; <a href="https://github.com/yt-dlp/yt-dlp">README: release channels and self-updater</a>.</li>
+    <li>YouTube channel feeds: <a href="https://www.wprssaggregator.com/youtube-rss-feed/">WP RSS Aggregator, YouTube RSS</a>; <a href="https://discuss.privacyguides.net/t/how-to-create-a-rss-feed-for-any-youtube-channel/35169">Privacy Guides thread</a>.</li>
+    <li>Speech-to-text pricing (snippets of): <a href="https://developers.cloudflare.com/workers-ai/platform/pricing/">Workers AI pricing</a>, <a href="https://developers.cloudflare.com/workers/platform/limits">Workers limits</a>, <a href="https://www.assemblyai.com/pricing">AssemblyAI pricing</a>, <a href="https://developers.deepgram.com/docs/callback">Deepgram callback</a>, <a href="https://console.groq.com/docs/speech-to-text">Groq speech-to-text</a>, <a href="https://developers.openai.com/docs/guides/speech-to-text">OpenAI speech-to-text</a>, <a href="https://supadata.ai/blog/best-youtube-transcript-api">Supadata</a>.</li>
+    <li>Groq and Nvidia: <a href="https://w.media/nvidia-licenses-groqs-tech-for-ai-inference-in-us-20-billion-deal/">w.media</a>; <a href="https://techblog.comsoc.org/2025/12/26/groq-and-nvidia-in-non-exclusive-ai-inference-technology-licensing-agreement-top-groq-execs-joining-nvidia/">IEEE ComSoc</a>.</li>
+    <li>Substack transcription: <a href="https://on.substack.com/p/transcription">On Substack</a>. Sonnet 5 pricing ($2 / $10 per M tokens): the Claude API reference, cached 2026-09-25.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
