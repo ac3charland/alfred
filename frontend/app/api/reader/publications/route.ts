@@ -6,6 +6,7 @@ import { mapSupabaseError } from '@/lib/api/supabase-errors';
 import {
   createReaderFeed,
   createReaderPublication,
+  findReaderFeed,
   getReaderPublications,
 } from '@/lib/data/reader-publications';
 import { feedHostName, normaliseFeedUrl, probeFeed } from '@/lib/reader/feed-probe';
@@ -16,7 +17,7 @@ import { feedHostName, normaliseFeedUrl, probeFeed } from '@/lib/reader/feed-pro
 //
 // A feed is fetched before it is stored: anything that isn't RSS or Atom is a 422 `not-a-feed`,
 // a URL that doesn't answer (or answers non-2xx) a 422 `unreachable` quoting the status, and a
-// feed already on the roster a 409 `duplicate`. The card is named from the feed's own title,
+// feed already on the roster a 409 `duplicate` — checked first, with no fetch. The card is named from the feed's own title,
 // else its host.
 //
 // POST returns the stored TABLE row, not the view: a publication created a moment ago has no
@@ -44,6 +45,15 @@ export const POST = withSession(async (session, request) => {
   if ('feed_url' in input) {
     // The schema has already refused anything that isn't an http(s) URL, so this always parses.
     const feedUrl = normaliseFeedUrl(input.feed_url) ?? input.feed_url;
+    // Already on the roster is the answer whether or not the blog answers today, and it costs no
+    // fetch. The insert's unique violation below still catches a race with another add.
+    const existing = await findReaderFeed(session.supabase, feedUrl);
+    if (existing.error) {
+      const { status, message } = mapSupabaseError(existing.error);
+      return jsonError(status, message);
+    }
+    if (existing.data !== null) return jsonError(409, 'duplicate');
+
     const probe = await probeFeed(feedUrl);
     if (probe.kind === 'not-a-feed') return jsonError(422, 'not-a-feed');
     if (probe.kind === 'unreachable') {

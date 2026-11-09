@@ -494,6 +494,41 @@ describe('PublicationsView — feeds', () => {
       expect(screen.getByText('feed')).toBeInTheDocument();
     });
 
+    it('clears a refusal as soon as the URL is edited', async () => {
+      const user = userEvent.setup();
+      jest
+        .mocked(apiClient.createReaderPublication)
+        .mockRejectedValue(new apiClient.ApiError('x', 422, 'not-a-feed', { error: 'not-a-feed' }));
+      renderWithProviders(<PublicationsView now={NOW} />, { readerSettings: { publications: [] } });
+
+      const field = screen.getByRole('textbox', { name: 'Feed URL' });
+      await user.type(field, 'https://mlarson.org{Enter}');
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+      await user.type(field, '/feed.xml');
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(field).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('lets the server refuse a URL without a scheme, worded under the field rather than by the browser', async () => {
+      const user = userEvent.setup();
+      jest
+        .mocked(apiClient.createReaderPublication)
+        .mockRejectedValue(new apiClient.ApiError('x', 400, 'Not an http(s) URL'));
+      renderWithProviders(<PublicationsView now={NOW} />, { readerSettings: { publications: [] } });
+
+      expect(screen.getByRole('form', { name: 'Add a feed' })).toHaveAttribute('novalidate');
+      await user.type(
+        screen.getByRole('textbox', { name: 'Feed URL' }),
+        'mlarson.org/feed.xml{Enter}',
+      );
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        "That isn't a web address. Paste the full URL, starting with https://.",
+      );
+    });
+
     it.each([
       [
         'a page that isn’t a feed',

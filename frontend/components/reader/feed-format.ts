@@ -60,6 +60,10 @@ export const NOT_A_FEED_MESSAGE =
 /** The line under the Add field for a feed already on the roster. */
 export const DUPLICATE_FEED_MESSAGE = 'That feed is already on the roster.';
 
+/** The line under the Add field for text the route won't take as an http(s) URL. */
+export const NOT_A_URL_MESSAGE =
+  "That isn't a web address. Paste the full URL, starting with https://.";
+
 /** The line for anything else that went wrong. */
 export const ADD_FEED_FAILED_MESSAGE = "Couldn't add that feed.";
 
@@ -72,6 +76,7 @@ function refusal(body: unknown): { error?: unknown; status?: unknown } {
 export function addFeedErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return ADD_FEED_FAILED_MESSAGE;
   if (error.status === 409) return DUPLICATE_FEED_MESSAGE;
+  if (error.status === 400) return NOT_A_URL_MESSAGE;
   if (error.status !== 422) return ADD_FEED_FAILED_MESSAGE;
   const body = refusal(error.body);
   if (body.error === 'not-a-feed') return NOT_A_FEED_MESSAGE;

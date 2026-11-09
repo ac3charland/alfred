@@ -40,6 +40,9 @@ export function AddFeedForm() {
     <form
       className="flex flex-col gap-2"
       aria-label="Add a feed"
+      // The route judges the URL, so a pasted host with no scheme gets this field's own line
+      // rather than the browser's validation bubble.
+      noValidate
       onSubmit={(event_) => {
         event_.preventDefault();
         void submit();
@@ -59,6 +62,8 @@ export function AddFeedForm() {
           disabled={pending}
           onChange={(event_) => {
             setUrl(event_.target.value);
+            // A refusal was about the text it was given; an edit is a new attempt.
+            setError(undefined);
           }}
         />
         <Button type="submit" size="sm" variant="accent" disabled={pending || url.trim() === ''}>

@@ -32,7 +32,9 @@ const parser = new XMLParser({
   textNodeName: '#text',
   parseTagValue: false,
   // Only the title is read, so nothing below the channel needs to survive as anything useful.
-  stopNodes: ['*.item', '*.entry'],
+  // A title is kept as its raw source — markup, references and CDATA alike — and decoded by
+  // `plainTitle`, so an Atom `type="xhtml"` title keeps every word, as the Worker's parser does.
+  stopNodes: ['*.item', '*.entry', '*.title'],
 });
 
 function isRecord(node: unknown): node is Record<string, unknown> {
@@ -54,23 +56,32 @@ function codePoint(reference: string, digits: string, radix: number): string {
 }
 
 /**
- * Markup out, character references decoded, whitespace collapsed. The parser decodes the XML
- * layer; an HTML-typed title (`type="html"`, or an RSS title escaped twice) still carries tags and
- * references of its own.
+ * A title's raw source as plain text: CDATA unwrapped and the XML layer of references decoded,
+ * then markup out and the references an HTML-typed title (`type="html"`, or an RSS title escaped
+ * twice) carries of its own, whitespace collapsed.
  */
 function plainTitle(raw: string | undefined): string | undefined {
-  const text = (raw ?? '')
-    .replaceAll(/<[^>]*>/g, ' ')
+  const text = decodeReferences(
+    decodeReferences((raw ?? '').replaceAll(/<!\[CDATA\[([\S\s]*?)]]>/g, '$1')).replaceAll(
+      /<[^>]*>/g,
+      ' ',
+    ),
+  )
+    .replaceAll(/\s+/g, ' ')
+    .trim();
+  return text === '' ? undefined : text;
+}
+
+/** One layer of character references: numeric, and the five XML entities. */
+function decodeReferences(text: string): string {
+  return text
     .replaceAll(/&#x([\da-f]+);/gi, (reference, hex: string) => codePoint(reference, hex, 16))
     .replaceAll(/&#(\d+);/g, (reference, decimal: string) => codePoint(reference, decimal, 10))
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', "'")
-    .replaceAll('&amp;', '&')
-    .replaceAll(/\s+/g, ' ')
-    .trim();
-  return text === '' ? undefined : text;
+    .replaceAll('&apos;', "'")
+    .replaceAll('&amp;', '&');
 }
 
 /**
@@ -103,8 +114,9 @@ export function sniffFeed(xml: string): { title: string | undefined } | undefine
 }
 
 /**
- * A feed URL as the roster stores it: trimmed, scheme and host lower-cased (the `URL` parser does
- * both), the fragment dropped, the path and query as typed. `undefined` for anything not
+ * A feed URL as the roster stores it, in the `URL` parser's canonical form: trimmed, scheme and
+ * host lower-cased, the fragment dropped, the path and query otherwise kept (percent-escaped and
+ * dot segments resolved, as the parser does) — so two spellings of one feed meet the same row. `undefined` for anything not
  * `http(s)`.
  */
 export function normaliseFeedUrl(raw: string): string | undefined {

@@ -140,6 +140,17 @@ export async function createReaderPublication(
 }
 
 /**
+ * The roster row already holding this (normalised) feed URL, if any — read before the route
+ * fetches the URL, so a feed already on the roster is a 409 even while its blog is down.
+ */
+export async function findReaderFeed(
+  supabase: SupabaseClient<Database>,
+  feedUrl: string,
+): Promise<{ data: { id: string } | null; error: PostgrestError | null }> {
+  return supabase.from('reader_publications').select('id').eq('feed_url', feedUrl).maybeSingle();
+}
+
+/**
  * Put a feed on the roster, once the route has fetched it and found a feed. `feedUrl` arrives
  * already normalised and `name` already chosen (the feed's title, else its host) — this layer
  * only stores. A feed has no handle and no mail domain; it is always `source: 'owner'`, and its

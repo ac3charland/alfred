@@ -33,6 +33,16 @@ describe('sniffFeed', () => {
       '<feed><title type="html">On &lt;em&gt;lanterns&lt;/em&gt; &amp;#8217;n</title></feed>',
       'On lanterns ’n',
     ],
+    [
+      'an xhtml title, every word in order',
+      '<feed><title type="xhtml"><div>My <b>Blog</b> post</div></title></feed>',
+      'My Blog post',
+    ],
+    [
+      'a CDATA title',
+      '<rss><channel><title><![CDATA[Tide & <i>Harbour</i>]]></title></channel></rss>',
+      'Tide & Harbour',
+    ],
   ])('reads %s as a feed with its title', (_label, xml, title) => {
     expect(sniffFeed(xml)).toEqual({ title });
   });

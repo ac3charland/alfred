@@ -36,8 +36,9 @@ comment on column reader_publications.handle is
    on feed_url instead; exactly one of the two is set.';
 
 comment on column reader_publications.feed_url is
-  'An RSS or Atom feed''s URL, as the owner pasted it: trimmed, scheme and host lower-cased, the
-   fragment dropped, path and query kept. Set only on a feed row — "is a feed" is always
+  'An RSS or Atom feed''s URL, as the owner pasted it, in the URL parser''s canonical form:
+   trimmed, scheme and host lower-cased, the fragment dropped, the path and query otherwise kept
+   (escaped where the parser escapes). Set only on a feed row — "is a feed" is always
    feed_url is not null. Checked to parse as a feed when it is added, never rewritten after.';
 
 comment on column reader_publications.feed_etag is

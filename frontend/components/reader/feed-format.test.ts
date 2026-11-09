@@ -103,6 +103,10 @@ describe('addFeedErrorMessage', () => {
       "Couldn't reach that URL (no answer).",
     ],
     [new ApiError('x', 409, 'duplicate', { error: 'duplicate' }), DUPLICATE_FEED_MESSAGE],
+    [
+      new ApiError('x', 400, 'Not an http(s) URL', { error: 'Not an http(s) URL' }),
+      "That isn't a web address. Paste the full URL, starting with https://.",
+    ],
     [new ApiError('x', 500, 'boom', { error: 'boom' }), "Couldn't add that feed."],
     [new Error('offline'), "Couldn't add that feed."],
   ])('words %p', (error, message) => {

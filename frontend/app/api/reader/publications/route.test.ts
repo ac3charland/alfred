@@ -257,7 +257,23 @@ describe('POST /api/reader/publications — a feed', () => {
     await expect(response.json()).resolves.toEqual({ error: 'unreachable' });
   });
 
-  it('409s duplicate on a feed already on the roster', async () => {
+  it('409s duplicate on a feed already on the roster without fetching it, even when it is down', async () => {
+    const supabase = signedIn({ reader_publications: { maybeSingle: { data: { id: 'pub-1' } } } });
+    const fetchSpy = jest.spyOn(globalThis, 'fetch');
+
+    const response = await POST(post({ feed_url: 'https://MLARSON.org/feed.xml' }), STUB_CONTEXT);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: 'duplicate' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(supabase.table('reader_publications').eq).toHaveBeenCalledWith(
+      'feed_url',
+      'https://mlarson.org/feed.xml',
+    );
+    expect(supabase.table('reader_publications').insert).not.toHaveBeenCalled();
+  });
+
+  it('409s duplicate when a concurrent add wins the insert', async () => {
     signedIn({
       reader_publications: {
         single: {
