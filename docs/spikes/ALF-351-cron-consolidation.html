@@ -169,11 +169,12 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   </div>
   <h1><span class="ref"><small>ALF<span class="hy">-</span></small>351</span><span class="sep"> — </span><span class="ttl">Consolidate Cloudflare cron triggers to one every-minute trigger</span></h1>
   <p class="change" id="answer">Yes, one <code>* * * * *</code> trigger can replace all five, but only if each due unit still gets its own invocation, because merging them into one run would exhaust the 50-subrequest budget.</p>
+  <p class="revised" id="revised">Revised 2026-11-09: Cloudflare’s docs were read in a second session. Limits and trigger counts are confirmed, but a self-binding and a fresh callee budget are still undocumented, so the probe still gates the build.</p>
 </header>
 
 <section class="sec" id="landed">
   <h2 class="side">Where we landed</h2>
-  <p>Don't run the units in one handler. Reader (48 of 50), retention (50) and notify (up to 50) are each sized to a whole invocation, and every 30th minute four units are due together. Make the minute trigger a thin dispatcher: derive the due units from <code>event.scheduledTime</code> and hand each to the Worker itself as a separate invocation. Probe that first, since I could not verify the platform behaviour offline. If the probe fails, the fallback is the Paid plan, which makes consolidation unnecessary. The next story would be the probe, then the dispatcher, with the first story gated on the probe result.</p>
+  <p>Don't run the units in one handler. Reader (48 of 50), retention (50) and notify (up to 50) are each sized to a whole invocation, and every 30th minute four units are due together. Make the minute trigger a thin dispatcher: derive the due units from <code>event.scheduledTime</code> and hand each to the Worker itself as a separate invocation. Probe that first: the docs are silent on both a Worker binding to itself and the callee getting a fresh budget. If the probe fails, the fallback is the Paid plan, which makes consolidation unnecessary. The next story would be the probe, then the dispatcher, with the first story gated on the probe result.</p>
   <ol class="list">
     <li><h3>Budget blocks in-process</h3>
       <p class="pick">Co-scheduled units would share one 50-fetch budget.</p>
@@ -213,7 +214,7 @@ figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right
   <tr><td>Daily retention, prices, wiki sync</td><td><code>17 9 * * *</code></td><td>exactly 50</td><td><code>index.ts:172-188</code></td></tr>
   </tbody></table>
   <p>Nothing here is small enough to ride along. Every 30th minute (minute 0 and 30) the tick, poll, reader and notify are all due at once, so merged in-process they would need roughly 150+ fetches against a ceiling of 50. The overshoot throws part-way, and the repo records that this only shows up with real data, never in stubbed tests. Reader also runs for up to ~10 minutes (<code>reader/scheduled.ts:150-155</code>), so a serial single handler would hold notify behind it and break notify’s “at most a minute late” promise. Running the units in parallel fixes the latency but not the shared budget.</p>
-  <p>The CPU ceiling is a second shared limit. The retention comment budgets the wiki sync’s parsing at about 6 ms (<code>index.ts:186-187</code>), which only makes sense against the Free plan’s 10 ms CPU limit per invocation, so merged units would also pool CPU. I did not verify the 10 ms figure against Cloudflare’s docs.</p>
+  <p>The CPU ceiling is a second shared limit. The retention comment budgets the wiki sync’s parsing at about 6 ms (<code>index.ts:186-187</code>), which only makes sense against the Free plan’s 10 ms CPU limit per invocation, so merged units would also pool CPU. A later docs read confirmed it: 10 ms CPU per HTTP request and per Cron Trigger on Free.</p>
   <p>One benefit comes free with a single expression. Offset-stepped ranges are normalised by the scheduler and collapse onto other schedules (<code>index.ts:160-168</code>, skill lines 149-156). With one trigger, that whole class of bug and the “unrecognised cron” fall-through disappear.</p>
 </section>
 
@@ -230,11 +231,12 @@ retention: d.getUTCHours() === 9 &amp;&amp; m === 17   // 17 is odd, 17%3=2, 17%
   <p>Per 30 minutes: notify 30, tick 15, poll 10, reader 6. The maximum concurrent units in any minute is four. Express this as a pure <code>dueUnits(scheduledTime)</code> function, and hold the table <code>{ name, due, run }</code> in code so a new feature is one row, with no trigger and no wrangler change.</p>
   <h3>Giving each unit its own budget</h3>
   <p>The recommended mechanism is a self service binding that exposes each unit as a <code>WorkerEntrypoint</code> RPC method. The minute handler awaits <code>Promise.allSettled</code> over the due units. A failed unit cannot skip the others, because each runs in its own invocation with its own try/catch, as retention already does. RPC methods are not publicly routable, unlike a <code>fetch</code> route, which would need HMAC protection. The dispatcher spends one subrequest per due unit, at most four.</p>
+  <p>The dispatcher is itself an invocation with its own 50 fetches, so it can run one unit inline (notify, which idles at one fetch) and fan out only the others. That saves a call every minute. The docs say a single request may make at most 32 Worker invocations (each service-binding call counts), so four calls sit far inside it. Whether a cron-started run counts as a “request” for that cap is undocumented.</p>
   <h3>Files touched</h3>
   <ul>
     <li><code>workers/wrangler.toml</code>: <code>crons = ["* * * * *"]</code>, plus the self-binding. Rewrite the five-schedule comment block.</li>
     <li><code>workers/src/index.ts</code>: delete the five cron constants and string-equality dispatch, and add <code>dueUnits</code> and the dispatcher.</li>
-    <li><code>workers/src/index.test.ts:964-993</code>: the “distinct expressions”, “offset step” and “registers exactly these” tests become a table-driven <code>dueUnits</code> test over one 30-minute window plus the 09:17 case, and an assertion that wrangler.toml holds exactly <code>* * * * *</code>. The per-cron dispatch tests (e.g. lines 895-962) change to pass a <code>scheduledTime</code>.</li>
+    <li><code>workers/src/index.test.ts:964-993</code>: the “distinct expressions”, “offset step” and “registers exactly these” tests become a table-driven <code>dueUnits</code> test over one 30-minute window plus the 09:17 case, and an assertion that wrangler.toml holds exactly <code>* * * * *</code>. The per-cron dispatch tests (e.g. lines 895-962) change to pass a <code>scheduledTime</code>. Per the docs, <code>scheduledTime</code> is on the <code>controller</code> argument, and a dev server fires the handler at <code>/cdn-cgi/local/scheduled</code> with a <code>time</code> query parameter to override it, so a demo can pick any minute.</li>
     <li>Update the <code>cloudflare-workers</code> skill: the five-trigger note, and the normalisation trap, which becomes moot.</li>
   </ul>
   <h3>Observability</h3>
@@ -245,19 +247,20 @@ retention: d.getUTCHours() === 9 &amp;&amp; m === 17   // 17 is odd, 17%3=2, 17%
   <h2>Alternatives we’re not taking</h2>
   <aside><h3>One handler running every due unit in-process</h3><p>The simplest design, and the one the title implies. Ruled out by the shared 50-fetch budget and shared CPU: reader alone uses 48, and four units coincide every 30 minutes.</p></aside>
   <aside><h3>Partial consolidation</h3><p>Folding only “small” units into notify. Nothing is small: notify idles at one fetch but is sized to 50 when busy, and every other unit is sized to a full invocation. This is the status quo the comments already describe.</p></aside>
-  <aside><h3>Upgrade to the Workers Paid plan instead</h3><p>Not ruled out; it is the fallback and arguably the cheaper answer. The repo’s own notes say 1000 subrequests per invocation on Paid, which makes in-process dispatch viable, and the trigger count stops being scarce. It trades engineering for a recurring cost, and I could not check Paid’s trigger and CPU limits offline. It is a product decision for the owner.</p></aside>
-  <aside><h3>Queues, Workflows or Durable Object alarms as the fan-out</h3><p>Each could give per-unit invocations, but each adds a new binding and operational surface, and I could not confirm Free-plan availability or limits. Try the self binding first.</p></aside>
+  <aside><h3>Upgrade to the Workers Paid plan instead</h3><p>Not ruled out; it is the fallback and arguably the cheaper answer. The repo’s own notes say 1000 subrequests per invocation on Paid, which makes in-process dispatch viable, and the trigger count stops being scarce. It trades engineering for a recurring cost, and the docs list 250 cron triggers on Paid against 5 on Free. It is a product decision for the owner.</p></aside>
+  <aside><h3>Queues, Workflows or Durable Object alarms as the fan-out</h3><p>Each adds a new binding and operational surface. Queues are available on Free, but include only 10,000 operations a day, with 24-hour retention. The reader of the docs estimated roughly 3 operations per message (from memory, unconfirmed). Fan-out averages about two due non-notify units a minute, so about 3,000 messages a day and about 9,000 operations, which is borderline. Use Queues only if the self-binding probe fails and the Paid plan is unwanted, and confirm the per-message operation count first.</p></aside>
 </section>
 
 <section id="cost">
   <h2>Cost &amp; open questions</h2>
   <p><b>Effort:</b> small. It is roughly one file of dispatch logic, one config line, and tests rewritten as a table. The unit modules (<code>runSweep</code>, <code>runCommsPoll</code>, <code>runReaderTick</code>, <code>runNotifyTick</code>, retention) are untouched.</p>
-  <p><b>Unverified, and gating the recommendation</b> (the Cloudflare docs host was blocked from this session, so none of this was checked against documentation or a live deploy):</p>
+  <p><b>Confirmed from the docs</b> (read by a second session with access, not by me; verify against the live pages before relying on them): Free allows 5 cron triggers per account (250 on Paid); 50 subrequests per invocation; 10 ms CPU per HTTP request and per Cron Trigger; 100,000 requests a day. A service-binding call counts toward the caller’s subrequest limit. A named <code>WorkerEntrypoint</code> can be bound via <code>entrypoint</code>.</p>
+  <p><b>Still undocumented, and gating the recommendation:</b></p>
   <ul>
-    <li>Does a call through a service binding to the same Worker start a fresh invocation with its own 50-fetch budget and CPU allowance on the Free plan? A one-hour probe settles it: deploy a throwaway entrypoint that makes 60 fetches and call it from a cron.</li>
-    <li>Can a Worker bind to itself with an <code>entrypoint</code> on Free?</li>
-    <li>What do the extra invocations cost against the Free plan’s daily request allowance? Today’s five triggers fire roughly 2.9k times a day, so fan-out roughly doubling that looks safe, but check the current limit.</li>
-    <li>Can <code>wrangler dev --test-scheduled</code> fake a <code>scheduledTime</code>? If not, tests and demos should call the exported dispatcher directly.</li>
+    <li>Can a Worker bind to itself? A one-hour probe settles it: deploy the self-binding on Free.</li>
+    <li>Does the callee get its own 50-fetch and 10 ms CPU budget? Test by having the callee make 51 fetches and, separately, burn more than 10 ms of CPU while the caller idles. The limits page has a “subrequests to internal services: 1,000” row it does not explain, so the answer may be better than 50.</li>
+    <li>Do service-binding calls count against the 100,000 daily requests? Today’s five triggers fire roughly 2.9k times a day, so even doubling it is far inside the allowance.</li>
+    <li>Delivery guarantees for cron (skipped or duplicated minutes) are not documented. Treat the units as needing to tolerate both.</li>
   </ul>
   <p><b>Risks:</b> a missed or delayed minute loses that minute’s units, as it does today. Duplicate or late delivery behaviour is unchanged only if each unit is already idempotent, which I did not audit. The cutover is one <code>wrangler deploy</code> (merging deploys, per the skill), swapping the trigger set and code together.</p>
 </section>
@@ -273,7 +276,7 @@ retention: d.getUTCHours() === 9 &amp;&amp; m === 17   // 17 is odd, 17%3=2, 17%
     <li><code>.claude/skills/cloudflare-workers/SKILL.md</code> (lines 121-168 cron triggers; line 188 the subrequest budget rule).</li>
     <li><code>docs/specs/archive/ALF-333.html</code> and <code>ALF-343.html</code>: earlier specs recording the trigger and budget constraints.</li>
     <li>Commands: <code>grep</code> for <code>crons|scheduled(|event.cron</code> across the repo; <code>git log -- workers/wrangler.toml</code>.</li>
-    <li>Not reachable from this session: <code>developers.cloudflare.com</code> (Workers limits, Cron Triggers). The platform claims above marked unverified rest on the repo’s own recorded behaviour.</li>
+    <li>Cloudflare docs (<code>developers.cloudflare.com</code>), read by a separate session on 2026-11-09 because the host was blocked here: Workers limits, service bindings and RPC, Cron Triggers, scheduled handler, Queues limits and pricing. Quotes are the other session’s; re-check the live pages.</li>
   </ol>
 </section>
 
