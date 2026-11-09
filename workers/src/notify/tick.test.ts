@@ -221,24 +221,40 @@ describe('runNotifyTick — failures', () => {
     ]);
   });
 
-  it('counts a 5xx as an attempt and carries on to the next claim', async () => {
-    const { calls } = mockWorld([asap('n1', 1), asap('n2')], [status(502), ok]);
+  it.each([
+    ['a 5xx', status(502), 'HTTP 502: nope'],
+    [
+      'a timeout',
+      (): Response => {
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      },
+      'TimeoutError: The operation was aborted due to timeout',
+    ],
+  ])(
+    'keeps the lease on a send that may have been shown (%s), and stops the tick',
+    async (_label, reply, error) => {
+      const { calls } = mockWorld([asap('n1', 1), asap('n2')], [reply, ok]);
 
-    const result = await runNotifyTick(env, NOW);
+      const result = await runNotifyTick(env, NOW);
 
-    const [attempt] = patches(calls);
-    expect(attempt?.url).toContain('id=eq.n1');
-    // Released with the count, so the next tick (not one five minutes on) retries it.
-    expect(attempt?.body).toEqual({
-      attempts: 2,
-      last_error: 'HTTP 502: nope',
-      leased_at: WIRE_NULL,
-    });
-    expect(result).toMatchObject({ sent: 1, failed: 1, abandoned: 0 });
-  });
+      // Telegram is struggling: nothing more is sent this tick.
+      expect(sends(calls)).toHaveLength(1);
+      const [attempt, released] = patches(calls);
+      expect(attempt?.url).toContain('id=eq.n1');
+      // Counted but still leased, so the RPC abandons it rather than resend it.
+      expect(attempt?.body).toEqual({ attempts: 2, last_error: error });
+      // Only the claim never tried goes back for the next tick.
+      expect(decodeURIComponent(released?.url ?? '')).toContain('id=in.(n2)');
+      expect(patches(calls)).toHaveLength(2);
+      expect(result).toMatchObject({ sent: 0, failed: 1, abandoned: 1, aborted: false });
+      expect(result.failures).toEqual([
+        `comms_asap n1: ${error} — may have been shown, so it is not resent`,
+      ]);
+    },
+  );
 
   it('reports a failure on a claim’s last attempt as abandoned', async () => {
-    mockWorld([asap('n1', MAX_ATTEMPTS - 1)], [status(500)]);
+    mockWorld([asap('n1', MAX_ATTEMPTS - 1)], [status(400)]);
 
     await expect(runNotifyTick(env, NOW)).resolves.toMatchObject({ failed: 1, abandoned: 1 });
     expect(MAX_ATTEMPTS).toBe(3);
@@ -302,6 +318,29 @@ describe('runNotifyTick — failures', () => {
 
     expect(result.aborted).toBe(true);
     expect(result.failures[0]).toContain('record failed');
+    const released = patches(calls).filter((call) => 'leased_at' in call.body);
+    expect(released.map((call) => call.url)).toEqual([expect.stringContaining('id=in.(n2)')]);
+  });
+
+  it('never releases an uncertain send whose attempt failed to record, so it is never resent', async () => {
+    const calls: Call[] = [];
+    spyOnFetch().mockImplementation((input: FetchInput, init?: FetchInit) => {
+      const url = decodeURIComponent(input as string);
+      calls.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: JSON.parse((init?.body ?? '{}') as string) as Record<string, unknown>,
+      });
+      if (url.includes('/rpc/')) return Promise.resolve(Response.json([asap('n1'), asap('n2')]));
+      if (url.includes('telegram')) return Promise.resolve(status(502)());
+      // Counting n1's uncertain attempt fails; the release that follows succeeds.
+      if (url.includes('id=eq.n1')) return Promise.resolve(new Response('down', { status: 503 }));
+      return Promise.resolve(Response.json([{}]));
+    });
+
+    const result = await runNotifyTick(env, NOW);
+
+    expect(result.aborted).toBe(true);
     const released = patches(calls).filter((call) => 'leased_at' in call.body);
     expect(released.map((call) => call.url)).toEqual([expect.stringContaining('id=in.(n2)')]);
   });
@@ -569,15 +608,38 @@ describe('runNotifyTick — the morning digest', () => {
     mockModel()
       .mockResolvedValueOnce(opener('First try.'))
       .mockResolvedValueOnce(opener('Second try.'));
-    const first = digestWorld([digest('d1')], { telegram: [status(502)] });
+    // A 400 even as plain text: Telegram definitely showed nothing, so the next tick retries.
+    const first = digestWorld([digest('d1')], { telegram: [status(400)] });
     const failed = await runNotifyTick(digestEnv, NOW);
     expect(failed.failed).toBe(1);
-    expect(patches(first.calls)[0]?.body).toMatchObject({ attempts: 1 });
+    expect(patches(first.calls)[0]?.body).toMatchObject({ attempts: 1, leased_at: WIRE_NULL });
 
     const second = digestWorld([digest('d1', 1)]);
     const sent = await runNotifyTick(digestEnv, new Date(NOW.getTime() + 60_000));
     expect(sent.sent).toBe(1);
     expect(patches(second.calls)[0]?.body['text']).toContain('<i>Second try.</i>');
+  });
+
+  it('keeps a timed-out digest leased, so the 07:01 tick cannot send a second one', async () => {
+    // ALF-345: Telegram delivered the 07:00 send, but the reply never made it back. The tick read
+    // that as a failure, released the claim, and 07:01 rebuilt and sent the digest again.
+    mockModel().mockResolvedValue(opener('First try.'));
+    const { calls } = digestWorld([digest('d1')], {
+      telegram: [
+        (): Response => {
+          throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+        },
+      ],
+    });
+
+    const result = await runNotifyTick(digestEnv, NOW);
+
+    expect(sends(calls)).toHaveLength(1);
+    // The one write counts the attempt and leaves the lease: no later tick may resend it.
+    expect(patches(calls).map((call) => call.body)).toEqual([
+      { attempts: 1, last_error: 'TimeoutError: The operation was aborted due to timeout' },
+    ]);
+    expect(result).toMatchObject({ sent: 0, failed: 1, abandoned: 1 });
   });
 
   it('starts a digest only when its own worst case (6) still fits the budget', async () => {

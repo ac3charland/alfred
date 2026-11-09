@@ -3531,7 +3531,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
            returning id`,
         [account],
       );
-      const [old1, old2] = inserted.map((r) => r.id);
+      const [old1, old2, new1] = inserted.map((r) => r.id);
       for (const id of [old1, old2]) {
         await client.query(
           `insert into comm_verdicts (message_id, tier, owes_reply, ask, reason, provider, model,
@@ -3551,11 +3551,19 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         [old2],
       );
       if (purged[0]?.n !== 1) throw new Error('the purge did not delete exactly one message');
+      // The sweep is table-wide, and earlier assertions seed fixed dates that age past 60 days
+      // as the calendar moves, so expect every expired row — this test's old-1 among them.
+      const { rows: expired } = await client.query<{ n: number }>(
+        `select count(*)::int as n from comm_messages
+          where received_at < now() - interval '60 days'`,
+      );
       const { rows: swept } = await client.query<{ n: number }>(
         `select comm_sweep_expired(60) as n`,
       );
-      if (swept[0]?.n !== 1)
-        throw new Error(`the sweep deleted ${String(swept[0]?.n)} rows, expected 1`);
+      if (swept[0]?.n !== expired[0]?.n)
+        throw new Error(
+          `the sweep deleted ${String(swept[0]?.n)} rows, expected ${String(expired[0]?.n)}`,
+        );
       const { rows: verdicts } = await client.query<{ n: string }>(
         `select count(*)::text as n from comm_verdicts`,
       );
@@ -3577,7 +3585,13 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         [account],
       );
       if (remaining[0]?.n !== '1') throw new Error('the fresh message did not survive');
-      return 'sweep: 1 deleted, verdicts cascaded, example kept; purge: example text nulled';
+      const { rows: left } = await client.query<{ id: string }>(
+        `select id from comm_messages where id = any($1::uuid[])`,
+        [[old1, new1]],
+      );
+      if (left.length !== 1 || left[0]?.id !== new1)
+        throw new Error('the sweep kept the 61-day-old message or deleted the fresh one');
+      return 'sweep: every expired row deleted, the fresh one kept, verdicts cascaded, example kept; purge: example text nulled';
     },
   );
 

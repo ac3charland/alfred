@@ -54,11 +54,14 @@ steps are in [`docs/telegram.md`](../../../docs/telegram.md); this skill is for 
 | 400 | plain-text resend, then `rejected` if it 400s again | count an attempt |
 | 401, 403, 404, or 400 "chat not found" | `systemic` (bad token or chat id / never started / blocked) | abort the tick, count nothing |
 | 429 | `rate_limited` (+ `retry_after`) | stop the tick, count nothing |
-| 5xx, network, 10 s timeout | `transient` | count an attempt; retried next tick |
+| 5xx, network, 30 s timeout, 2xx without `message_id` | `uncertain` (may have been shown) | count an attempt, keep the lease, stop the tick |
 
-Every claim a tick hands back unsent (counted failure, 429, systemic stop, never reached) is
-released (`leased_at` → NULL) and retried next tick. A lease that runs out unreleased means "sent,
-maybe, but unrecorded", and `claim_notifications` abandons it: at most once. A new failure path
+A timeout means we stopped waiting, not that Telegram didn't send: `sendMessage` has no idempotency
+key and a bot can't read its chat, so a maybe-shown send can never be safely retried (resending
+one is how ALF-345 sent two digests a minute apart). The rule: release (`leased_at` → NULL) only
+what was definitely not shown (400, 429, systemic stop, never reached), so the next tick retries
+it. A maybe-shown claim (`uncertain`, or sent but its recording PATCH failed) keeps its lease, and
+`claim_notifications` abandons it when the lease runs out: at most once. A new failure path
 must record or release its claim, or that ping is silently dropped.
 
 ## Common pitfalls
