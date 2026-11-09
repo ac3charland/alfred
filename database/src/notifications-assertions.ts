@@ -74,7 +74,7 @@ async function claim(
   return rows;
 }
 
-/** Claim with the digest on at 07:00, as the deployed Worker does. */
+/** Claim with the digest on at 07:00. */
 function claimDigest(client: Client, now: string): Promise<Claim[]> {
   return claim(client, now, { digestTime: '07:00' });
 }
