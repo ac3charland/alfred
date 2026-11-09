@@ -3551,11 +3551,19 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         [old2],
       );
       if (purged[0]?.n !== 1) throw new Error('the purge did not delete exactly one message');
+      // The sweep is table-wide, and earlier assertions seed fixed dates that age past 60 days
+      // as the calendar moves, so expect every expired row — this test's old-1 among them.
+      const { rows: expired } = await client.query<{ n: number }>(
+        `select count(*)::int as n from comm_messages
+          where received_at < now() - interval '60 days'`,
+      );
       const { rows: swept } = await client.query<{ n: number }>(
         `select comm_sweep_expired(60) as n`,
       );
-      if (swept[0]?.n !== 1)
-        throw new Error(`the sweep deleted ${String(swept[0]?.n)} rows, expected 1`);
+      if (swept[0]?.n !== expired[0]?.n)
+        throw new Error(
+          `the sweep deleted ${String(swept[0]?.n)} rows, expected ${String(expired[0]?.n)}`,
+        );
       const { rows: verdicts } = await client.query<{ n: string }>(
         `select count(*)::text as n from comm_verdicts`,
       );
