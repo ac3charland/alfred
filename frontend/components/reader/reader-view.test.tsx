@@ -101,7 +101,7 @@ describe('ReaderView', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Publications' })).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Who the Reader summarises. Auto-added from Substack; anyone else you promote from the candidates below.',
+        'Who the Reader summarises. Substack is added automatically, blogs by their feed URL, and anyone else you promote from the candidates below.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('No publications yet.')).toBeInTheDocument();

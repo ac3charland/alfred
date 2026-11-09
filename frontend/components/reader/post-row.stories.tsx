@@ -9,6 +9,8 @@ import {
   makeAlertsOverview,
   makeFurtherReading,
   makeReaderArticle,
+  makeReaderFeed,
+  makeReaderFeedPost,
   makeReaderOverview,
   makeReaderPost,
   makeResearchPost,
@@ -1055,4 +1057,55 @@ export const AlertsFiledInArchive: Story = {
     }),
   },
   parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+};
+
+// ── A feed post ──────────────────────────────────────────────────────────────
+
+const MLARSON_FEED = makeReaderFeed('mlarson.org', 'https://mlarson.org/feed.xml', {
+  id: '00000000-0000-4000-8000-0000000000fe',
+});
+
+/**
+ * An entry of a feed on the roster: an ordinary row. The eyebrow is the feed's card name, the date
+ * is the entry's own publish date, Original opens the entry's link, and there is no "via" suffix.
+ */
+export const FeedPost: Story = {
+  args: {
+    post: (() => {
+      const {
+        text: _text,
+        html: _html,
+        ...listItem
+      } = makeReaderFeedPost(MLARSON_FEED.id, {
+        id: 'p-feed',
+        received_at: '2026-09-14T08:11:17.000Z',
+        summary_state: 'done',
+        headline: 'Parenting as a stream of small experiments',
+        gist:
+          'A weekly note on earlier bedtimes, tweaking schedules as a new parent, three books ' +
+          'started (two abandoned), and a healing Saturday long run. Light, warm reading.',
+        overview: makeReaderOverview(),
+        model: 'claude-sonnet-5',
+        prompt_version: 2,
+        summarized_at: '2026-09-14T09:00:00.000Z',
+      });
+      return listItem;
+    })(),
+  },
+  decorators: [
+    (Story) => (
+      <ReaderSettingsProvider
+        initialPublications={[{ ...MLARSON_FEED, last_post_at: null }]}
+        initialCandidates={[]}
+      >
+        <Story />
+      </ReaderSettingsProvider>
+    ),
+  ],
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText('mlarson.org')).toBeVisible();
+    await expect(canvas.queryByText(/via/)).toBeNull();
+  },
 };

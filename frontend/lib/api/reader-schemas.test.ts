@@ -6,6 +6,30 @@ import {
 } from './reader-schemas';
 
 describe('createReaderPublicationSchema', () => {
+  it('takes a feed by its URL, trimmed', () => {
+    expect(
+      createReaderPublicationSchema.parse({ feed_url: '  https://mlarson.org/feed.xml ' }),
+    ).toEqual({ feed_url: 'https://mlarson.org/feed.xml' });
+  });
+
+  it.each([
+    ['not a URL', 'mlarson.org/feed.xml'],
+    ['not http(s)', 'ftp://mlarson.org/feed.xml'],
+    ['a script', 'javascript:alert(1)'],
+    ['empty', ' '],
+  ])('rejects a feed URL that is %s', (_name, feedUrl) => {
+    expect(createReaderPublicationSchema.safeParse({ feed_url: feedUrl }).success).toBe(false);
+  });
+
+  it('rejects a body naming both a handle and a feed', () => {
+    expect(
+      createReaderPublicationSchema.safeParse({
+        handle: 'news@example.com',
+        feed_url: 'https://example.com/feed.xml',
+      }).success,
+    ).toBe(false);
+  });
+
   it('takes a handle on its own — the name is optional', () => {
     const parsed = createReaderPublicationSchema.safeParse({ handle: 'news@example.com' });
 
@@ -16,7 +40,7 @@ describe('createReaderPublicationSchema', () => {
   it('trims the handle, so a pasted address with a stray space still matches the roster', () => {
     const parsed = createReaderPublicationSchema.safeParse({ handle: '  news@example.com ' });
 
-    expect(parsed.data?.handle).toBe('news@example.com');
+    expect(parsed.data).toEqual({ handle: 'news@example.com' });
   });
 
   it('rejects an empty or whitespace-only handle — the roster is keyed on it', () => {

@@ -1,5 +1,7 @@
 import {
   makeReaderArticle,
+  makeReaderFeed,
+  makeReaderFeedPost,
   makeReaderPost,
   makeReaderPublication,
   makeResearchPost,
@@ -9,6 +11,7 @@ import {
   INSTAPAPER_EYEBROW,
   RESEARCH_EYEBROW,
   VIA_INSTAPAPER,
+  isFeedPost,
   isInstapaperPost,
   postEyebrow,
 } from './source';
@@ -42,6 +45,25 @@ describe('postEyebrow', () => {
   it('falls back to Instapaper for an article with neither', () => {
     expect(postEyebrow(makeReaderArticle({ site: null }), PUBLICATIONS)).toBe(INSTAPAPER_EYEBROW);
     expect(INSTAPAPER_EYEBROW).toBe('Instapaper');
+  });
+});
+
+describe('postEyebrow for a feed post', () => {
+  const FEED = makeReaderFeed('mlarson.org', 'https://mlarson.org/feed.xml');
+
+  it('names the feed’s card, never the entry’s author', () => {
+    const post = makeReaderFeedPost(FEED.id, { author: 'Mark Larson' });
+    expect(postEyebrow(post, [...PUBLICATIONS, FEED])).toBe('mlarson.org');
+  });
+
+  it('falls back to the unknown-publication line when the feed is not in the roster', () => {
+    expect(postEyebrow(makeReaderFeedPost(FEED.id), PUBLICATIONS)).toBe('Unknown publication');
+  });
+
+  it('is told from the other sources by its source alone', () => {
+    expect(isFeedPost(makeReaderFeedPost(FEED.id))).toBe(true);
+    expect(isFeedPost(makeReaderArticle())).toBe(false);
+    expect(isInstapaperPost(makeReaderFeedPost(FEED.id))).toBe(false);
   });
 });
 

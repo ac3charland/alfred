@@ -40,6 +40,7 @@ export const READER_POST_LIST_COLUMNS = [
   'canonical_url',
   'comm_message_id',
   'created_at',
+  'feed_entry_id',
   'further_sent_instapaper',
   'further_sent_reader',
   'gist',

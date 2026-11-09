@@ -84,9 +84,20 @@ export class ApiError extends Error {
     readonly status: number,
     /** The `{ error }` sentence from the response envelope, when it carried one. */
     readonly detail: string | undefined,
+    /** The whole parsed JSON body, for a route whose error carries more than the sentence. */
+    readonly body?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
+  }
+}
+
+/** A failed response body as JSON, or nothing when it isn't JSON. */
+function parseErrorBody(body: string): unknown {
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return undefined;
   }
 }
 
@@ -121,6 +132,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
       `API ${init?.method ?? 'GET'} ${path} failed: ${String(response.status)} ${text}`,
       response.status,
       readErrorDetail(text),
+      parseErrorBody(text),
     );
   }
 
@@ -801,7 +813,9 @@ export function fetchReaderPublications(): Promise<ReaderPublicationListItem[]> 
 }
 
 /**
- * Put a sender on the roster. Returns the stored TABLE row — a publication created a moment ago
+ * Put a sender (by handle) or a feed (by URL) on the roster. A feed is fetched first, so its
+ * refusal is an `ApiError` whose `body` names why (`not-a-feed`, `unreachable`, `duplicate`).
+ * Returns the stored TABLE row — a publication created a moment ago
  * has no posts, so there is no derived last-post date to report and the caller supplies null.
  */
 export function createReaderPublication(

@@ -253,3 +253,78 @@ test.describe('the publications roster', () => {
     expect(copied).toBe('*@substack.com AND -no-reply@substack.com');
   });
 });
+
+/**
+ * Adding a feed by its URL. The route fetches the URL from the Next server, where page.route()
+ * can't reach, so the mock backend serves the feed (and a homepage that isn't one).
+ */
+test.describe('adding a feed', () => {
+  const FEED_URL = `${MOCK_URL}/__mock__/feeds/blog.xml`;
+
+  test('adds a feed: the card appears named from the feed’s title, and it is on the server', async ({
+    page,
+    seed,
+    request,
+  }) => {
+    await seed({ commAccounts: [ACCOUNT], readerPublications: [ENABLED] });
+    await page.goto('/reader/publications');
+
+    const field = page.getByRole('textbox', { name: 'Feed URL' });
+    await field.fill(FEED_URL);
+    await field.press('Enter');
+
+    const card = page.getByRole('listitem').filter({ hasText: 'Mock Blog' });
+    await expect(card.getByText('feed', { exact: true })).toBeVisible();
+    await expect(card.getByText(`${FEED_URL} · no posts yet · not checked yet`)).toBeVisible();
+    await expect(
+      card.getByRole('button', { name: /summary type for mock blog: essay/i }),
+    ).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Enabled' })).toBeVisible();
+    await expect(field).toHaveValue('');
+    await expect(page.getByText('2 enabled · 0 paused')).toBeVisible();
+
+    const response = await request.get(`${MOCK_URL}/__mock__/state`);
+    const state = (await response.json()) as {
+      readerPublications: { feed_url: string | null; handle: string | null; source: string }[];
+    };
+    expect(state.readerPublications.find((row) => row.feed_url === FEED_URL)).toMatchObject({
+      handle: null,
+      source: 'owner',
+    });
+  });
+
+  test('refuses a page that is not a feed, keeping the text and adding nothing', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ commAccounts: [ACCOUNT], readerPublications: [ENABLED] });
+    await page.goto('/reader/publications');
+
+    const field = page.getByRole('textbox', { name: 'Feed URL' });
+    await field.fill(`${MOCK_URL}/__mock__/feeds/homepage`);
+    await page.getByRole('button', { name: 'Add feed' }).click();
+
+    await expect(page.getByRole('form', { name: 'Add a feed' }).getByRole('alert')).toHaveText(
+      "That page isn't an RSS or Atom feed. Paste the feed's own URL, often ending in /feed.xml, /rss or /atom.xml.",
+    );
+    await expect(field).toHaveValue(`${MOCK_URL}/__mock__/feeds/homepage`);
+    await expect(page.getByText('1 enabled · 0 paused')).toBeVisible();
+  });
+
+  test('says a feed already on the roster is already there', async ({ page, seed }) => {
+    await seed({
+      commAccounts: [ACCOUNT],
+      readerPublications: [
+        makeReaderPublication('Mock Blog', { feed_url: FEED_URL, handle: null, source: 'owner' }),
+      ],
+    });
+    await page.goto('/reader/publications');
+
+    await page.getByRole('textbox', { name: 'Feed URL' }).fill(FEED_URL);
+    await page.getByRole('button', { name: 'Add feed' }).click();
+
+    await expect(page.getByRole('form', { name: 'Add a feed' }).getByRole('alert')).toHaveText(
+      'That feed is already on the roster.',
+    );
+  });
+});

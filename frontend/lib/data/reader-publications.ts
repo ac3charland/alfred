@@ -2,7 +2,7 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
 import type {
-  CreateReaderPublicationInput,
+  CreateReaderSenderInput,
   UpdateReaderPublicationInput,
 } from '@/lib/api/reader-schemas';
 import { toUpdatePayload } from '@/lib/api/updates';
@@ -117,7 +117,7 @@ export async function getReaderSettingsSeed(
  */
 export async function createReaderPublication(
   supabase: SupabaseClient<Database>,
-  input: CreateReaderPublicationInput,
+  input: CreateReaderSenderInput,
 ): Promise<{ data: ReaderPublication | null; error: PostgrestError | null }> {
   const handle = input.handle.trim().toLowerCase();
   const atIndex = handle.indexOf('@');
@@ -134,6 +134,30 @@ export async function createReaderPublication(
       enabled: true,
       // Absent, the column's own default — essay — applies.
       ...(input.summary_kind === undefined ? {} : { summary_kind: input.summary_kind }),
+    })
+    .select()
+    .single();
+}
+
+/**
+ * Put a feed on the roster, once the route has fetched it and found a feed. `feedUrl` arrives
+ * already normalised and `name` already chosen (the feed's title, else its host) — this layer
+ * only stores. A feed has no handle and no mail domain; it is always `source: 'owner'`, and its
+ * `feed_checked_at` is left null so the Worker's next tick polls it at once. A URL already on the
+ * roster comes back as the unique violation's error, which the route answers as a 409.
+ */
+export async function createReaderFeed(
+  supabase: SupabaseClient<Database>,
+  input: { feedUrl: string; name: string; summaryKind?: ReaderPublication['summary_kind'] },
+): Promise<{ data: ReaderPublication | null; error: PostgrestError | null }> {
+  return supabase
+    .from('reader_publications')
+    .insert({
+      feed_url: input.feedUrl,
+      name: input.name,
+      source: 'owner',
+      enabled: true,
+      ...(input.summaryKind === undefined ? {} : { summary_kind: input.summaryKind }),
     })
     .select()
     .single();

@@ -60,9 +60,13 @@ export function makeReaderPublication(
   name: string,
   overrides: Partial<ReaderPublication> = {},
 ): ReaderPublication {
+  const feedUrl = overrides.feed_url ?? null;
   return {
     id: overrides.id ?? crypto.randomUUID(),
-    handle: overrides.handle ?? `${name.toLowerCase().replaceAll(/\s+/g, '')}@substack.com`,
+    // A feed row has no handle: exactly one of the two is set.
+    handle:
+      overrides.handle ??
+      (feedUrl === null ? `${name.toLowerCase().replaceAll(/\s+/g, '')}@substack.com` : null),
     name,
     domain: overrides.domain ?? null,
     enabled: overrides.enabled ?? true,
@@ -71,7 +75,23 @@ export function makeReaderPublication(
     summary_kind: overrides.summary_kind ?? 'essay',
     first_seen_at: overrides.first_seen_at ?? nextTimestamp(),
     created_at: overrides.created_at ?? nextTimestamp(),
+    feed_url: feedUrl,
+    feed_etag: overrides.feed_etag ?? null,
+    feed_last_modified: overrides.feed_last_modified ?? null,
+    feed_checked_at: overrides.feed_checked_at ?? null,
+    feed_last_success_at: overrides.feed_last_success_at ?? null,
+    feed_last_error: overrides.feed_last_error ?? null,
+    feed_last_error_at: overrides.feed_last_error_at ?? null,
   };
+}
+
+/** A feed on the roster: an owner row with a `feed_url` and no handle. */
+export function makeReaderFeed(
+  name: string,
+  feedUrl: string,
+  overrides: Partial<ReaderPublication> = {},
+): ReaderPublication {
+  return makeReaderPublication(name, { source: 'owner', ...overrides, feed_url: feedUrl });
 }
 
 /**
@@ -95,6 +115,7 @@ export function makeReaderPost(
     source: overrides.source ?? 'gmail',
     publication_id: publicationId,
     site: overrides.site ?? null,
+    feed_entry_id: overrides.feed_entry_id ?? null,
     comm_message_id: overrides.comm_message_id ?? null,
     account_key: overrides.account_key ?? 'gmail-personal',
     gmail_message_id: overrides.gmail_message_id ?? crypto.randomUUID(),
@@ -170,6 +191,34 @@ export function makeReaderArticle(
     rfc822_message_id: null,
     html: null,
     instapaper_bookmark_id: overrides.instapaper_bookmark_id ?? bookmarkSequence,
+  };
+}
+
+/**
+ * A feed post, as the Worker's feed leg writes one: linked to its feed, keyed on the entry's id,
+ * dated at the entry's own publish date, with none of a newsletter's mail identity.
+ */
+export function makeReaderFeedPost(
+  feedId: string,
+  overrides: Partial<Omit<ReaderPost, 'overview'>> & {
+    overview?: StoredReaderOverview | null;
+  } = {},
+): ReaderPost {
+  return {
+    ...makeReaderPost(feedId, {
+      title: '2026, Week 45',
+      canonical_url: 'https://mlarson.org/2026/11/08/2026-week-45/',
+      author: 'Mark Larson',
+      word_count: 1840,
+      html_extracted: true,
+      ...overrides,
+    }),
+    source: 'feed',
+    feed_entry_id: overrides.feed_entry_id ?? 'https://mlarson.org/2026/11/08/2026-week-45/',
+    account_key: null,
+    gmail_message_id: null,
+    comm_message_id: null,
+    rfc822_message_id: null,
   };
 }
 

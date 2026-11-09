@@ -32,3 +32,9 @@ export const PUBLICATION_CAPTION =
  */
 export const KIND_CHIP =
   'inline-flex items-center gap-1 data-[state=open]:border-accent-green/60 data-[state=open]:text-accent-green';
+
+/** The amber line a failing feed's card shows under its sub-line. */
+export const FEED_FAILURE_LINE = 'text-xs text-accent-amber';
+
+/** The red line under the Add-a-feed field when a URL is refused. */
+export const FEED_FIELD_ERROR = 'text-xs text-accent-red';

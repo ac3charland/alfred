@@ -66,6 +66,12 @@ export interface ReaderSettingsActions {
    * rather than inventing one.
    */
   addCandidate: (handle: string, kind: ReaderSummaryKind) => Promise<ReaderPublicationListItem>;
+  /**
+   * Put a feed on the roster by its URL. Not optimistic: the route fetches the URL first and the
+   * row doesn't exist until that passes, so the caller shows pending and the card appears on
+   * success. A refusal re-throws the `ApiError` untouched — the Add field words it, no toast.
+   */
+  addFeed: (url: string) => Promise<ReaderPublicationListItem>;
   /** Put the Gmail filter query that matches the roster on the clipboard. */
   copyFilterQuery: () => Promise<void>;
 }
@@ -263,6 +269,12 @@ export function ReaderSettingsProvider({
         const publication: ReaderPublicationListItem = { ...saved, last_post_at: null };
         dispatch({ type: 'publications', action: { type: 'insert', item: publication } });
         dispatch({ type: 'candidates', action: { type: 'remove', ids: [handle] } });
+        return publication;
+      },
+      async addFeed(url) {
+        const saved = await createReaderPublication({ feed_url: url });
+        const publication: ReaderPublicationListItem = { ...saved, last_post_at: null };
+        dispatch({ type: 'publications', action: { type: 'upsert', items: [publication] } });
         return publication;
       },
       async copyFilterQuery() {

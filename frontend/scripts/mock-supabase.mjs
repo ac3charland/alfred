@@ -53,6 +53,10 @@
  *   The research Routine's API trigger (not part of Supabase — the research routes fire it from
  *   the Next server, so RESEARCH_ROUTINE_FIRE_URL points it here):
  *     POST /__mock__/routine/fire      → a session URL, or the status a test set
+ *   A blog's feed (not part of Supabase — adding a feed makes the Next server fetch its URL,
+ *   where page.route() can't reach, so a test adds one of these URLs):
+ *     GET  /__mock__/feeds/blog.xml   → a small Atom feed titled "Mock Blog"
+ *     GET  /__mock__/feeds/homepage   → an HTML page, which is not a feed
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed   GET /__mock__/state
  *     POST /__mock__/github/fail-next  → make the next matching GitHub request fail once
@@ -748,9 +752,11 @@ function commExampleSetVersion() {
 
 /** A roster row. `source` has no DB default (the migration always states it), so this picks one. */
 function newReaderPublication(input) {
+  // Migration 0056: a roster row is a sender (handle) XOR a feed (feed_url).
+  const feedUrl = input.feed_url ?? null;
   return {
     id: input.id ?? randomUUID(),
-    handle: input.handle ?? '',
+    handle: input.handle ?? (feedUrl === null ? '' : null),
     name: input.name ?? '',
     domain: input.domain ?? null,
     enabled: input.enabled ?? true,
@@ -760,6 +766,13 @@ function newReaderPublication(input) {
     summary_kind: input.summary_kind ?? 'essay',
     first_seen_at: input.first_seen_at ?? new Date().toISOString(),
     created_at: input.created_at ?? new Date().toISOString(),
+    feed_url: feedUrl,
+    feed_etag: input.feed_etag ?? null,
+    feed_last_modified: input.feed_last_modified ?? null,
+    feed_checked_at: input.feed_checked_at ?? null,
+    feed_last_success_at: input.feed_last_success_at ?? null,
+    feed_last_error: input.feed_last_error ?? null,
+    feed_last_error_at: input.feed_last_error_at ?? null,
   };
 }
 
@@ -777,6 +790,7 @@ function newReaderPost(input) {
     id: input.id ?? randomUUID(),
     source,
     site: input.site ?? null,
+    feed_entry_id: input.feed_entry_id ?? null,
     publication_id: input.publication_id ?? null,
     comm_message_id: input.comm_message_id ?? null,
     account_key: mailDefault(input.account_key, 'gmail-personal'),
@@ -2073,23 +2087,29 @@ function handleRest(req, res, url, body) {
   if (req.method === 'POST') {
     const construct = rowConstructorFor(rest);
     const inputs = Array.isArray(body) ? body : [body];
-    // `reader_publications.handle` is UNIQUE (migration 0035), and the roster route's whole 409
-    // case rests on it — so the mock refuses a duplicate with the PostgREST body the real index
-    // produces, rather than quietly storing a second row.
-    const duplicate =
+    // `reader_publications.handle` and `.feed_url` are each UNIQUE (migrations 0035, 0056), and
+    // the roster route's 409 cases rest on them — so the mock refuses a duplicate with the
+    // PostgREST body the real index produces, rather than quietly storing a second row. A null
+    // never collides, as in Postgres.
+    const duplicateOn = (column) =>
       rest === 'reader_publications'
-        ? inputs.find((input) =>
-            readerPublications.some((row) => String(row.handle) === String(input?.handle)),
+        ? inputs.find(
+            (input) =>
+              input?.[column] != null &&
+              readerPublications.some((row) => String(row[column]) === String(input[column])),
           )
         : undefined;
-    if (duplicate !== undefined) {
-      sendJson(res, 409, {
-        code: '23505',
-        details: `Key (handle)=(${String(duplicate.handle)}) already exists.`,
-        hint: null,
-        message: 'duplicate key value violates unique constraint "reader_publications_handle_key"',
-      });
-      return;
+    for (const column of ['handle', 'feed_url']) {
+      const duplicate = duplicateOn(column);
+      if (duplicate !== undefined) {
+        sendJson(res, 409, {
+          code: '23505',
+          details: `Key (${column})=(${String(duplicate[column])}) already exists.`,
+          hint: null,
+          message: `duplicate key value violates unique constraint "reader_publications_${column}_key"`,
+        });
+        return;
+      }
     }
     // An upsert arrives as a POST carrying `Prefer: resolution=merge-duplicates` and the
     // conflict target in `on_conflict` — that is how supabase-js sends `.upsert()`, and it is
@@ -2744,6 +2764,20 @@ function handleControl(req, res, url, body) {
       codeSessions,
       github: githubState(),
     });
+    return;
+  }
+  if (url.pathname === '/__mock__/feeds/blog.xml' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/atom+xml' });
+    res.end(
+      '<?xml version="1.0" encoding="utf-8"?>' +
+        '<feed xmlns="http://www.w3.org/2005/Atom"><title>Mock Blog</title>' +
+        '<entry><id>mock-1</id><title>A post</title></entry></feed>',
+    );
+    return;
+  }
+  if (url.pathname === '/__mock__/feeds/homepage' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<!DOCTYPE html><html><head><title>Mock Blog</title></head><body></body></html>');
     return;
   }
   if (url.pathname === '/__mock__/routine/respond' && req.method === 'POST') {

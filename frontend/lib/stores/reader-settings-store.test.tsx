@@ -5,6 +5,7 @@ import * as apiClient from '@/lib/api-client';
 import { copyToClipboard } from '@/lib/clipboard';
 import {
   makeReaderCandidate,
+  makeReaderFeed,
   makeReaderPublication,
   makeReaderPublicationListItem,
   resetReaderFixtureClock,
@@ -304,6 +305,44 @@ describe('ReaderSettingsProvider', () => {
 
       expect(result.current.publications[0]?.name).toBe(PUBLICATION.name);
       expect(mockShowToast).toHaveBeenCalledWith("Couldn't save that publication");
+    });
+  });
+
+  describe('addFeed', () => {
+    it('posts the URL and puts the stored feed on the roster, sorted by name', async () => {
+      const saved = makeReaderFeed('Mark Larson', 'https://mlarson.org/feed.xml', {
+        id: '00000000-0000-4000-8000-0000000000fe',
+      });
+      mockCreateReaderPublication.mockResolvedValue(saved);
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([PUBLICATION]) });
+
+      let added: ReaderPublicationListItem | undefined;
+      await act(async () => {
+        added = await result.current.actions.addFeed('https://mlarson.org/feed.xml');
+      });
+
+      expect(mockCreateReaderPublication).toHaveBeenCalledWith({
+        feed_url: 'https://mlarson.org/feed.xml',
+      });
+      expect(added).toEqual({ ...saved, last_post_at: null });
+      expect(result.current.publications.map((row) => row.name)).toEqual([
+        'Mark Larson',
+        'Second Thoughts',
+      ]);
+      expect(mockShowToast).not.toHaveBeenCalled();
+    });
+
+    it('is not optimistic: a refused URL adds nothing, toasts nothing, and re-throws', async () => {
+      const refusal = new apiClient.ApiError('422', 422, 'not-a-feed', { error: 'not-a-feed' });
+      mockCreateReaderPublication.mockRejectedValue(refusal);
+      const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([PUBLICATION]) });
+
+      await act(async () => {
+        await expect(result.current.actions.addFeed('https://mlarson.org')).rejects.toBe(refusal);
+      });
+
+      expect(result.current.publications).toEqual([PUBLICATION]);
+      expect(mockShowToast).not.toHaveBeenCalled();
     });
   });
 

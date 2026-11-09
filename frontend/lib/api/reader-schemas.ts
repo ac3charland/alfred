@@ -56,18 +56,48 @@ const HANDLE_PATTERN = /^[^\s@<>]+@[^\s@<>]+$/;
 export const readerSummaryKindSchema = z.enum(['essay', 'roundup', 'alerts']);
 
 /**
- * Body for POST /api/reader/publications — putting a sender on the roster by hand, either from
- * the candidates list or typed in. An absent kind is left to the column's default, essay. Only the handle is required: it is the join key every match
- * is made on, so it is trimmed here and normalised further server-side, while the display name
- * falls back to something derived from the handle rather than being demanded of the owner.
+ * A sender put on the roster by hand, either from the candidates list or typed in. An absent kind
+ * is left to the column's default, essay. Only the handle is required: it is the join key every
+ * match is made on, so it is trimmed here and normalised further server-side, while the display
+ * name falls back to something derived from the handle rather than being demanded of the owner.
  */
-export const createReaderPublicationSchema = z.object({
-  handle: z.string().trim().min(1).regex(HANDLE_PATTERN, 'Not an email address'),
-  name: z.string().trim().min(1).optional(),
-  summary_kind: readerSummaryKindSchema.optional(),
-});
+export const createReaderSenderSchema = z
+  .object({
+    handle: z.string().trim().min(1).regex(HANDLE_PATTERN, 'Not an email address'),
+    name: z.string().trim().min(1).optional(),
+    summary_kind: readerSummaryKindSchema.optional(),
+  })
+  .strict();
+
+/**
+ * A feed put on the roster by its URL. The route fetches it before anything is stored, and names
+ * the card from the feed's own title when no name is given.
+ */
+export const createReaderFeedSchema = z
+  .object({
+    // An `http(s)` URL is the only kind of feed address the roster takes.
+    feed_url: z
+      .string()
+      .trim()
+      .pipe(z.url({ protocol: /^https?$/, error: 'Not an http(s) URL' })),
+    name: z.string().trim().min(1).optional(),
+    summary_kind: readerSummaryKindSchema.optional(),
+  })
+  .strict();
+
+/**
+ * Body for POST /api/reader/publications — a sender by its handle, or a feed by its URL. Both
+ * shapes are strict, so a body naming both a handle and a feed is a 400 rather than one of them
+ * silently dropped.
+ */
+export const createReaderPublicationSchema = z.union([
+  createReaderSenderSchema,
+  createReaderFeedSchema,
+]);
 
 export type CreateReaderPublicationInput = z.infer<typeof createReaderPublicationSchema>;
+export type CreateReaderSenderInput = z.infer<typeof createReaderSenderSchema>;
+export type CreateReaderFeedInput = z.infer<typeof createReaderFeedSchema>;
 
 /**
  * Body for PATCH /api/reader/publications/[id] — every field optional, at least one required. A
