@@ -115,9 +115,11 @@ crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *", "*/5 * * * *", "* * * * *"]
 # ALFRED_APP_URL — the app's public origin, which every Telegram ping links into (/comms, /today).
 #   Public, so a var rather than a secret.
 # DIGEST_TIME — when the morning Telegram digest goes out, `HH:MM` on a 24-hour clock read in
-#   CLASSIFIER_TIMEZONE. It rides the one-minute notify tick: the first tick in the hour from this
-#   time claims that day's digest, so a deploy after the hour starts tomorrow. "" turns it off; a
-#   malformed value logs and turns it off, never the other pings. `GET /` reports which.
+#   CLASSIFIER_TIMEZONE. 07:10 rather than 07:00: the top of the hour is where every scheduler in
+#   the world queues up, and a slow send is one that may be shown but never recorded (ALF-345).
+#   It rides the one-minute notify tick: the first tick in the hour from this time claims that
+#   day's digest, so a deploy after the hour starts tomorrow. "" turns it off; a malformed value
+#   logs and turns it off, never the other pings. `GET /` reports which.
 # DIGEST_MODEL — which model writes the digest's opener, about one call a day. The call shape is
 #   READER_MODEL's (`thinking: { type: 'disabled' }`, with `output_config.effort: 'low'`), so the
 #   same constraints apply: Sonnet 5 or Opus 5, never Fable. Any failure sends the digest without
@@ -129,7 +131,7 @@ READER_MODEL = "claude-sonnet-5"
 READER_DAILY_CAP = "30"
 WIKI_REPO = "ac3charland/knowledge"
 ALFRED_APP_URL = "https://alfred-six-gamma.vercel.app"
-DIGEST_TIME = "07:00"
+DIGEST_TIME = "07:10"
 DIGEST_MODEL = "claude-sonnet-5"
 
 # WORKER_VERSION is deliberately NOT declared here, unlike the two vars above. It is the commit
