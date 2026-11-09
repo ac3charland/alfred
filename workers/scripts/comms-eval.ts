@@ -41,7 +41,7 @@ const DEV_VARS = path.join(HERE, '..', '.dev.vars');
 const RESULTS_DIR = path.join(HERE, '..', 'eval-results');
 
 /** The model the module ships with. Override to compare a bigger one on the same fixtures. */
-const DEFAULT_MODEL = 'claude-haiku-4-5';
+const DEFAULT_MODEL = 'claude-haiku-5-5';
 
 /** Read one key out of `.dev.vars`, which is dotenv format: `KEY=value`, `#` comments, blanks. */
 function readDevVar(name: string): string | undefined {

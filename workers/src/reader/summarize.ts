@@ -4,10 +4,10 @@
  *
  * This module deliberately DUPLICATES the twenty lines of stop-reason and error mapping that
  * `classifier.ts` carries rather than importing them. The two are not the same call and must not
- * become coupled: the classifier sends a per-sweep schema to Haiku with no thinking key and no
- * effort, while this sends a fixed schema to Sonnet with `thinking: { type: 'disabled' }` and
- * `effort: 'medium'` — a combination Haiku rejects outright. Sharing the call would mean one
- * module growing flags for the other's model, and the first flag would be the last honest moment.
+ * become coupled: the classifier sends a per-sweep schema to Haiku with no effort, while this
+ * sends a fixed schema to Sonnet with `effort: 'medium'`. Sharing the call would mean one module
+ * growing flags for the other's model, and the first flag would be the last honest moment. (Both
+ * switch thinking off through `thinkingOff`, a fact about models rather than a shared call.)
  * The taxonomy is shared by CONVENTION; the code is not.
  *
  * Nothing here throws. The tick calls it once per post inside a loop, and an unhandled rejection
@@ -15,6 +15,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 
+import { thinkingOff } from '../thinking';
 import { buildReaderRequest } from './prompt';
 import { readReaderSummary } from './schema';
 import type { SummaryConfig, SummaryInput, SummaryOutcome, SummaryUsage } from './types';
@@ -29,7 +30,7 @@ export const READER_MAX_TOKENS = 4096;
 /**
  * Per-request budget, and one retry rather than the SDK's two.
  *
- * The classifier's 10 s fits a ~100-token verdict; ~1 500 output tokens from Sonnet 5 takes
+ * The classifier's 10 s fits a ~100-token verdict; ~1 500 output tokens from Sonnet takes
  * 15–40 s, so 10 s here would time out routinely and file every post as a transport failure. 60 s
  * is sized against the tick instead: the worst post costs 60 s × 2 attempts, six of them plus the
  * Gmail reads is ~12.5 minutes against a 15-minute wall clock, which is why the tick carries its
@@ -111,10 +112,9 @@ export async function summarizePost(
     message = await client.messages.create({
       model: config.model,
       max_tokens: READER_MAX_TOKENS,
-      // Sonnet 5 runs ADAPTIVE thinking when this key is omitted — billed as output and
-      // counted against max_tokens, which is exactly the silent truncation this call must not
-      // have. The classifier gets away with omitting it only because Haiku never thinks unasked.
-      thinking: { type: 'disabled' },
+      // Sonnet runs ADAPTIVE thinking when this key is omitted — billed as output and counted
+      // against max_tokens, which is exactly the silent truncation this call must not have.
+      thinking: thinkingOff(config.model),
       output_config: {
         effort: 'medium',
         format: { type: 'json_schema', schema: request.schema },

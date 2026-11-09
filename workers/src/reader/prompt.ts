@@ -11,7 +11,7 @@
  * apart from one written under the current wording without keeping the old text anywhere.
  *
  * Two things this prompt deliberately does NOT do. It never tells the model not to think or to
- * answer without reasoning: the call already sends `thinking: { type: 'disabled' }`, and such
+ * answer without reasoning: the call already switches thinking off (`thinkingOff`), and such
  * lines are a documented way to make reasoning leak into the answer as tag-like text. And it
  * never asks for JSON in prose — the schema is the contract, and repeating it here would be a
  * second copy to drift.
@@ -52,7 +52,7 @@ export const RESEARCH_AUTHOR = 'Claude Code research routine';
 
 /**
  * How much of a post's text the model ever sees — about 37 000 tokens, roughly $0.08 of input at
- * Sonnet 5's list price.
+ * Sonnet 5.5's list price (the same as Sonnet 5's).
  *
  * This is the pathological case, not the typical one: a normal newsletter is an order of
  * magnitude smaller. It exists because the cost of a call is overwhelmingly its input, and a

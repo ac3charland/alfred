@@ -992,6 +992,17 @@ describe('worker.scheduled', () => {
     );
   });
 
+  it('ships Haiku 5.5 as the classifier and Sonnet 5.5 as the reader and the digest', () => {
+    // Every model call switches thinking off with `thinkingOff`, which knows these ids; the
+    // defaults are pinned rather than left to drift.
+    const toml = readFileSync(path.join(__dirname, '..', 'wrangler.toml'), 'utf8');
+    const shipped = (name: string) => new RegExp(`^${name} = "([^"]+)"$`, 'm').exec(toml)?.[1];
+
+    expect(shipped('CLASSIFIER_MODEL')).toBe('claude-haiku-5-5');
+    expect(shipped('READER_MODEL')).toBe('claude-sonnet-5-5');
+    expect(shipped('DIGEST_MODEL')).toBe('claude-sonnet-5-5');
+  });
+
   it('names an unrecognised cron in the log rather than taking the tick path in silence', async () => {
     // The fall-through is deliberate — a renamed schedule should keep triaging — but it is also
     // how an unreachable dispatch hides. `wrangler tail` has to be able to say the string arrived
