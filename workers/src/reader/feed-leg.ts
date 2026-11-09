@@ -77,12 +77,18 @@ export type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
 class TooLargeError extends Error {}
 
 /**
- * A response body as text, read no further than `maxBytes`: a feed or a page past it throws
- * rather than being held whole in the Worker's memory.
+ * A response body as text, read no further than `maxBytes`, so nothing past it is ever held in
+ * the Worker's memory. Past the cap, `'throw'` refuses the body (a feed: a partial document would
+ * parse to the wrong entries); `'truncate'` keeps what came first (a page: the article sits near
+ * the top, and `pageArticleHtml` reads an article the cut left unclosed to the end).
  */
-async function readCapped(response: Response, maxBytes: number): Promise<string> {
+async function readCapped(
+  response: Response,
+  maxBytes: number,
+  overflow: 'throw' | 'truncate',
+): Promise<string> {
   const declared = Number.parseInt(response.headers.get('Content-Length') ?? '', 10);
-  if (!Number.isNaN(declared) && declared > maxBytes) {
+  if (overflow === 'throw' && !Number.isNaN(declared) && declared > maxBytes) {
     await response.body?.cancel();
     throw new TooLargeError();
   }
@@ -95,11 +101,13 @@ async function readCapped(response: Response, maxBytes: number): Promise<string>
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    bytes += value.byteLength;
-    if (bytes > maxBytes) {
+    if (bytes + value.byteLength > maxBytes) {
       await reader.cancel();
-      throw new TooLargeError();
+      if (overflow === 'throw') throw new TooLargeError();
+      // A multi-byte character the cap cuts through decodes as one replacement character.
+      return text + decoder.decode(value.subarray(0, maxBytes - bytes));
     }
+    bytes += value.byteLength;
     text += decoder.decode(value, { stream: true });
   }
   return text + decoder.decode();
@@ -127,7 +135,7 @@ export function feedHttp(fetcher: Fetcher = (url, init) => fetch(url, init)): Fe
           await response.body?.cancel();
           return { kind: 'failed', error: FEED_ERROR_WORDS.status(response.status) };
         }
-        const body = await readCapped(response, FEED_MAX_BYTES);
+        const body = await readCapped(response, FEED_MAX_BYTES, 'throw');
         return {
           kind: 'ok',
           body,
@@ -156,7 +164,8 @@ export function feedHttp(fetcher: Fetcher = (url, init) => fetch(url, init)): Fe
           await response.body?.cancel();
           return;
         }
-        return await readCapped(response, READER_HTML_CHARS);
+        // Read as bytes, so the page held is never more characters than the stored-HTML ceiling.
+        return await readCapped(response, READER_HTML_CHARS, 'truncate');
       } catch {
         return;
       }

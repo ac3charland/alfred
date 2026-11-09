@@ -74,6 +74,9 @@ export interface FeedRosterRow {
   feed_checked_at?: string | undefined;
 }
 
+/** The text-bearing elements read as markup: titles and every kind of body. */
+const MARKUP_FIELDS = ['title', 'content', 'summary', 'description', 'content:encoded'];
+
 /** Elements that can repeat, kept as arrays even when a document carries one. */
 const REPEATING = new Set(['entry', 'item', 'link', 'author', 'guid']);
 
@@ -85,6 +88,9 @@ const parser = new XMLParser({
   parseTagValue: false,
   parseAttributeValue: false,
   isArray: (name) => REPEATING.has(name),
+  // Kept as their raw source, so an Atom `type="xhtml"` body's inline markup survives in order
+  // rather than being split into child keys; `markupOf` decodes the rest.
+  stopNodes: MARKUP_FIELDS.map((name) => `*.${name}`),
 });
 
 /** A parsed XML node: a string, or an element object with attributes and children. */
@@ -111,6 +117,33 @@ function textOf(node: XmlNode): string | undefined {
     .map(([, child]) => textOf(child) ?? '')
     .filter((run) => run !== '');
   return runs.length === 0 ? undefined : runs.join(' ');
+}
+
+/** The five predefined XML entities and numeric references — one layer of XML escaping. */
+function decodeXml(text: string): string {
+  return text.replaceAll(/&(#x[\da-f]+|#\d+|lt|gt|quot|apos|amp);/gi, (match, entity: string) => {
+    const named: Record<string, string> = { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' };
+    const lower = entity.toLowerCase();
+    if (named[lower] !== undefined) return named[lower];
+    const hex = lower.startsWith('#x');
+    const code = Number.parseInt(lower.slice(hex ? 2 : 1), hex ? 16 : 10);
+    return Number.isNaN(code) || code > 0x10_ff_ff ? match : String.fromCodePoint(code);
+  });
+}
+
+/**
+ * A markup field's content as HTML. An Atom `type="xhtml"` field already IS markup; anything else
+ * is HTML escaped once for XML — entity-encoded or wrapped in CDATA — so it is unescaped once,
+ * leaving CDATA sections exactly as written.
+ */
+function markupOf(node: XmlNode): string | undefined {
+  const raw = textOf(node);
+  if (raw === undefined) return undefined;
+  if (attribute(node, 'type') === 'xhtml') return raw;
+  return raw
+    .split(/(<!\[CDATA\[[\S\s]*?]]>)/)
+    .map((part) => (part.startsWith('<![CDATA[') ? part.slice(9, -3) : decodeXml(part)))
+    .join('');
 }
 
 /** An attribute of a node. */
@@ -187,11 +220,11 @@ function atomAuthor(node: Record<string, unknown>): string | undefined {
 }
 
 function atomEntry(entry: Record<string, unknown>, base?: string): FeedEntry {
-  const content = textOf(entry['content']);
-  const summary = textOf(entry['summary']);
+  const content = markupOf(entry['content']);
+  const summary = markupOf(entry['summary']);
   return {
     id: present(textOf(entry['id'])),
-    title: plain(textOf(entry['title'])),
+    title: plain(markupOf(entry['title'])),
     link: webLink(atomLink(entry), base),
     author: atomAuthor(entry),
     rawDate: present(textOf(entry['published'])) ?? present(textOf(entry['updated'])),
@@ -210,15 +243,15 @@ function rssAuthor(item: Record<string, unknown>): string | undefined {
 }
 
 function rssEntry(item: Record<string, unknown>, base?: string): FeedEntry {
-  const encoded = textOf(item['content:encoded']);
-  const description = textOf(item['description']);
+  const encoded = markupOf(item['content:encoded']);
+  const description = markupOf(item['description']);
   const guid = item['guid'];
   const guidText = present(textOf(guid));
   // A guid is the entry's page unless it says it isn't (`isPermaLink="false"`).
   const permalink = attribute(guid, 'isPermaLink') === 'false' ? undefined : guidText;
   return {
     id: guidText ?? present(attribute(item, 'rdf:about')),
-    title: plain(textOf(item['title'])),
+    title: plain(markupOf(item['title'])),
     link: webLink(textOf(item['link']), base) ?? webLink(permalink, base),
     author: rssAuthor(item),
     rawDate: present(textOf(item['pubDate'])) ?? present(textOf(item['dc:date'])),
@@ -245,7 +278,7 @@ export function parseFeed(xml: string, base?: string): ParsedFeed | undefined {
 
   if (root.kind === 'atom') {
     return {
-      title: present(plain(textOf(root.node['title']))),
+      title: present(plain(markupOf(root.node['title']))),
       author: atomAuthor(root.node),
       entries: nodes(root.node['entry']).map((entry) => atomEntry(entry, base)),
     };
@@ -256,7 +289,7 @@ export function parseFeed(xml: string, base?: string): ParsedFeed | undefined {
   // RSS 2.0 nests its items in the channel; RSS 1.0 makes them the channel's siblings.
   const items = root.kind === 'rss' ? channelNode['item'] : root.node['item'];
   return {
-    title: present(plain(textOf(channelNode['title']))),
+    title: present(plain(markupOf(channelNode['title']))),
     author: present(textOf(channelNode['dc:creator'])),
     entries: nodes(items).map((item) => rssEntry(item, base)),
   };
@@ -313,13 +346,23 @@ export function isExcerpt(entry: FeedEntry): boolean {
 /** The chrome around an article: never part of what the summary reads. */
 const CHROME = /<(script|style|nav|header|footer|aside|form|noscript)\b[^>]*>[\S\s]*?<\/\1\s*>/gi;
 
-/** From the first opening of `tag` to its last closing: the whole element, nesting and all. */
+/**
+ * The inside of the first `tag` element, nesting and all: its own closing tag is found by
+ * counting the same tag's openings and closings, so later siblings (related posts, comments) stay
+ * out. An element never closed runs to the end of the page.
+ */
 function section(html: string, tag: string): string | undefined {
   const open = new RegExp(String.raw`<${tag}\b[^>]*>`, 'i').exec(html);
   if (open === null) return undefined;
-  const closeIndex = html.toLowerCase().lastIndexOf(`</${tag}`);
-  if (closeIndex <= open.index) return undefined;
-  return html.slice(open.index + open[0].length, closeIndex);
+  const start = open.index + open[0].length;
+  const boundary = new RegExp(String.raw`<(/?)${tag}\b[^>]*>`, 'gi');
+  boundary.lastIndex = start;
+  let depth = 1;
+  for (let match = boundary.exec(html); match !== null; match = boundary.exec(html)) {
+    depth += match[1] === '/' ? -1 : 1;
+    if (depth === 0) return html.slice(start, match.index);
+  }
+  return html.slice(start);
 }
 
 /**

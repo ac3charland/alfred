@@ -1,3 +1,4 @@
+import { htmlToText } from '../comms/email-text';
 import {
   type DatedEntry,
   EXCERPT_WORDS,
@@ -52,7 +53,7 @@ describe('parseFeed', () => {
       rawDate: '2026-11-08T08:11:17.000Z',
       summaryOnly: false,
     });
-    expect(newest?.html).toContain('<p>I&#39;m taking much earlier bedtimes');
+    expect(newest?.html).toContain("<p>I'm taking much earlier bedtimes");
   });
 
   it('carries full content, so no mlarson.org entry is an excerpt', () => {
@@ -105,6 +106,28 @@ describe('parseFeed', () => {
         rawDate: '2026-11-05T06:00:00Z',
       }),
     ]);
+  });
+
+  it('reads Atom xhtml content and titles as markup, every word in order', () => {
+    const [first] =
+      parseFeed(`<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>x</id>
+        <title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">My <b>Blog</b> post</div></title>
+        <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello <em>world</em> there &amp; back</p></div></content>
+      </entry></feed>`)?.entries ?? [];
+    expect(first?.title).toBe('My Blog post');
+    expect(first?.html).toContain('<p>Hello <em>world</em> there &amp; back</p>');
+    expect(htmlToText(first?.html ?? '')).toBe('Hello world there & back');
+  });
+
+  it('reads an escaped html body and a CDATA body as the same HTML', () => {
+    const escaped = parseFeed(
+      '<rss><channel><item><description>&lt;p&gt;A &amp;amp; B&lt;/p&gt;</description></item></channel></rss>',
+    );
+    const cdata = parseFeed(
+      '<rss><channel><item><description><![CDATA[<p>A &amp; B</p>]]></description></item></channel></rss>',
+    );
+    expect(escaped?.entries[0]?.html).toBe('<p>A &amp; B</p>');
+    expect(cdata?.entries[0]?.html).toBe('<p>A &amp; B</p>');
   });
 
   it('never keeps a non-http link', () => {
@@ -241,6 +264,15 @@ describe('pageArticleHtml', () => {
     ]) {
       expect(article).not.toContain(chrome);
     }
+  });
+
+  it('takes only the first article, not the related posts after it', () => {
+    expect(
+      pageArticleHtml(
+        '<body><article><p>Main</p><article><p>Nested</p></article></article>' +
+          '<section><article>Teaser A</article><article>Teaser B</article></section></body>',
+      ),
+    ).toBe('<p>Main</p><article><p>Nested</p></article>');
   });
 
   it('falls back to main, then body', () => {

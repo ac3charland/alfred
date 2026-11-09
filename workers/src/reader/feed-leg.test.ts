@@ -1,4 +1,5 @@
 import { spyOnFetch } from '../fetch-stub';
+import { READER_HTML_CHARS } from './extract';
 import {
   type DueFeed,
   FEED_USER_AGENT,
@@ -154,6 +155,15 @@ describe('feedHttp', () => {
       error: "it didn't answer",
     });
     await expect(http.getPage('https://quiet.example/')).resolves.toBeUndefined();
+  });
+
+  it('reads an oversize page up to the cap rather than dropping it', async () => {
+    const page = `<article><p>${'word '.repeat(10)}</p></article>${'x'.repeat(READER_HTML_CHARS)}`;
+    const read = await feedHttp(() => Promise.resolve(new Response(page))).getPage(
+      'https://a.example/',
+    );
+    expect(read).toHaveLength(READER_HTML_CHARS);
+    expect(read?.startsWith('<article><p>word')).toBe(true);
   });
 
   it('reads a page, and nothing for a page that answers an error', async () => {
