@@ -10,7 +10,8 @@
  *          digest_facts, unmodified, on a throwaway PostgreSQL carrying every migration.
  *   local  the global fetch: Supabase REST calls become the same SQL against that database, and
  *          api.telegram.org is a stand-in "phone". Its first send is shown on the phone and then
- *          its reply hangs until the Worker's own 30 s abort fires; every later send answers
+ *          its reply hangs until the Worker's own 30 s abort fires (the run waits it out, for
+ *          real); every later send answers
  *          200. No ANTHROPIC_API_KEY is set, so the digest goes out without its model opener.
  */
 import process from 'node:process';
@@ -32,7 +33,6 @@ async function main(): Promise<void> {
     user: cluster.user,
     database: cluster.database,
   });
-  const realSetTimeout = globalThis.setTimeout;
   try {
     await db.connect();
     await bootstrapSupabase(db);
@@ -93,8 +93,6 @@ async function main(): Promise<void> {
       throw new Error(`unexpected request: ${init?.method ?? 'GET'} ${url.pathname}`);
     }) as typeof fetch;
 
-    // The 30 s abort runs on a real timer; let it fire at once so the demo doesn't wait.
-    globalThis.setTimeout = ((fn: () => void) => realSetTimeout(fn, 0)) as typeof setTimeout;
     console.warn = () => undefined;
 
     const env = {
@@ -138,7 +136,6 @@ async function main(): Promise<void> {
     console.log(`The phone, all morning: ${String(phone.length)} messages`);
     for (const line of phone) console.log(`  ${line}`);
   } finally {
-    globalThis.setTimeout = realSetTimeout;
     await db.end();
     cluster.stop();
   }

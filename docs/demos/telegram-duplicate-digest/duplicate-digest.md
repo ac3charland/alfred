@@ -10,7 +10,7 @@ On 2026-11-09 the owner got two morning digests, at 7:00 and 7:01, with differen
 
 A timeout means the Worker stopped waiting, not that Telegram did nothing. `sendMessage` has no idempotency key and a bot cannot read its own chat, so a send whose result is unknown can never be safely retried. The notify tick now has one rule: **release only what was definitely not shown**. A timeout, network failure, 5xx, or 2xx without a message id is `uncertain`. It counts an attempt, keeps its lease (so `claim_notifications` abandons it, as it already did for a sent ping whose recording failed), and stops the tick, since Telegram is struggling. The send timeout is now 30 s, and the digest goes out at 07:10, off the top of the hour.
 
-The harness (`docs/demos/telegram-duplicate-digest/harness.ts`) runs the shipped tick against the real `claim_notifications` and `digest_facts` on a throwaway PostgreSQL. Telegram is a stand-in phone: the first send is shown and its reply never comes, so the Worker's own abort fires. The 30 s timer is collapsed to zero so the run doesn't wait.
+The harness (`docs/demos/telegram-duplicate-digest/harness.ts`) runs the shipped tick against the real `claim_notifications` and `digest_facts` on a throwaway PostgreSQL. Telegram is a stand-in phone: the first send is shown and its reply never comes, so the Worker's own abort fires. The abort is the real 30 s timer, so the run takes about half a minute.
 
 ```bash
 node --import ./workers/scripts/ts-resolve.mjs docs/demos/telegram-duplicate-digest/harness.ts 2>/dev/null
