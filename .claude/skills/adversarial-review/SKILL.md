@@ -71,8 +71,8 @@ pinned by a test that would fail without the change; the edge cases the change c
 repo's CLAUDE.md conventions. Flag any test, fixture, or SQL assertion that mixes a hard-coded date
 with the real clock (`new Date()`, `Date.now()`, `now()`): it passes today and fails once the
 calendar moves past it. The fix is dates derived from now, or a pinned clock (fake timers / an
-injected `now`), never a later literal. Skip what the repo's automated gates (type-check, lint, format)
-already enforce.
+injected `now`), never a later literal. Skip what the repo's automated gates (type-check, lint,
+format) already enforce.
 
 Report, in this order:
 1. Verdict, one line: ship it / ship once the blocking findings are fixed / rethink, and why.
