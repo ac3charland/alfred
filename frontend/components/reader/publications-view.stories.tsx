@@ -2,16 +2,23 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 import { expect, userEvent, within } from 'storybook/test';
 
-import { makeReaderCandidate, makeReaderPublicationListItem } from '@/lib/reader/fixtures';
+import {
+  makeReaderCandidate,
+  makeReaderFeed,
+  makeReaderPublicationListItem,
+} from '@/lib/reader/fixtures';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
+import type { ReaderPublicationListItem } from '@/lib/types';
 
 import { PublicationsView } from './publications-view';
 
 /**
  * The publications roster: an enabled and a paused card plus the candidates section, both of the
  * surface's empty states, a card of each summary kind, and the two pickers a kind is chosen with —
- * the card's chip and a candidate's "Add as".
+ * the card's chip and a candidate's "Add as". The `Feed…` stories are the three states a feed
+ * adds: a feed on the roster, a homepage refused at the Add field, and a feed that stopped
+ * answering.
  */
 
 /** The instant every card's date is read against, as `reading-list-view.stories.tsx` pins its own. */
@@ -167,4 +174,83 @@ export const AddAsOpen: Story = {
     const body = within(canvasElement.ownerDocument.body);
     await expect(await body.findByRole('menuitem', { name: /^Alerts/ })).toBeVisible();
   },
+};
+
+// ── Feeds ────────────────────────────────────────────────────────────────────
+
+/** A healthy feed beside a sender: the feed chip, its URL, its newest post and its last check. */
+const FEED = {
+  ...makeReaderFeed('mlarson.org', 'https://mlarson.org/feed.xml', {
+    feed_checked_at: '2026-09-18T07:48:00.000Z',
+    feed_last_success_at: '2026-09-18T07:48:00.000Z',
+  }),
+  last_post_at: '2026-09-14T12:00:00.000Z',
+};
+
+/** A feed whose blog answered 404 on its last three hourly polls. */
+const FAILING_FEED = {
+  ...makeReaderFeed('mlarson.org', 'https://mlarson.org/feed.xml', {
+    feed_checked_at: '2026-09-18T07:48:00.000Z',
+    feed_last_success_at: '2026-09-18T05:48:00.000Z',
+    feed_last_error: 'it answered 404',
+    feed_last_error_at: '2026-09-18T07:48:00.000Z',
+  }),
+  last_post_at: '2026-09-14T12:00:00.000Z',
+};
+
+const SENDER = makeReaderPublicationListItem('Import AI', {
+  handle: 'importai@substack.com',
+  source: 'auto',
+  summary_kind: 'roundup',
+  last_post_at: '2026-09-17T12:00:00.000Z',
+});
+
+function withRoster(publications: ReaderPublicationListItem[]): Decorator {
+  function RosterDecorator(Story: React.ComponentType) {
+    return (
+      <ToastProvider>
+        <ReaderSettingsProvider initialPublications={publications} initialCandidates={[]}>
+          <Story />
+        </ReaderSettingsProvider>
+      </ToastProvider>
+    );
+  }
+  return RosterDecorator;
+}
+
+/** A feed on the roster: a card like a sender's, with a `feed` chip and its URL and last check. */
+export const FeedAdded: Story = {
+  decorators: [withRoster([FEED, SENDER])],
+  parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
+};
+
+/**
+ * A homepage pasted into the field: the route refuses it as not a feed, and the field keeps the
+ * text with the reason on one line beneath it.
+ */
+export const NotAFeed: Story = {
+  decorators: [withRoster([SENDER])],
+  parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
+  beforeEach: () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = () =>
+      Promise.resolve(Response.json({ error: 'not-a-feed' }, { status: 422 }));
+    return () => {
+      globalThis.fetch = original;
+    };
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Feed URL' }), 'https://mlarson.org');
+    await userEvent.click(canvas.getByRole('button', { name: 'Add feed' }));
+    await expect(await canvas.findByRole('alert')).toHaveTextContent(
+      "That page isn't an RSS or Atom feed.",
+    );
+  },
+};
+
+/** A feed that stopped answering: its card says what failed and since when, in amber. */
+export const FeedFailing: Story = {
+  decorators: [withRoster([FAILING_FEED, SENDER])],
+  parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
 };

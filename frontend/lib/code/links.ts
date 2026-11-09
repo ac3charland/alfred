@@ -215,8 +215,9 @@ function noScheduledCheckInsStep(): string {
  * same eyes. It lives in the prompt rather than only in the skill for the reason the check-in
  * guardrail does (the session has stopped reading files by the time its PR is open), and because
  * the bypass lane loads no skill at all. So the step carries the load-bearing details itself: the
- * explicit model (a subagent left unset inherits the implementer's), report-only, and the
- * foreground wait — which it names as not the check-in the very next line forbids.
+ * explicit model (a subagent left unset inherits the implementer's), report-only, and the wait for
+ * its completion notification — a background dispatch, since the harness backgrounds a subagent
+ * whatever it is asked — which it names as not the check-in the very next line forbids.
  *
  * The implementer — possibly the weaker model — is the one judging which findings are legitimate,
  * so the step makes it record every disposition in the PR description, where the human can audit
@@ -226,7 +227,7 @@ function noScheduledCheckInsStep(): string {
  * document lanes ship no code; the epic lane is deliberately left out for now.
  */
 function adversarialReviewStep(): string {
-  return `Once the PR is open, run ONE round of adversarial review: spawn a subagent with its model set to Opus (e.g. the Agent tool's \`model: "opus"\` — left unset, it typically inherits yours), whatever model you are yourself, to review the PR antagonistically — briefed without your reasoning, and report-only (no edits, commits, or pushes). Run it in the foreground and wait for its report; that wait is your own work, not a check-in. Fix the in-scope findings you verify as legitimate and push; raise real but out-of-scope ones with me rather than widening the diff. Then add an "Adversarial review" section to the PR description listing each finding and what you did with it (fixed, declined and why, or raised with me), leaving the alfred block intact. Follow the adversarial-review skill at \`${ADVERSARIAL_REVIEW_SKILL_PATH}\` where present — it owns how to brief the reviewer and triage its findings. If the ticket context below says otherwise (more rounds, or none), follow it.`;
+  return `Once the PR is open, run ONE round of adversarial review: spawn a subagent with its model set to Opus (e.g. the Agent tool's \`model: "opus"\` — left unset, it typically inherits yours), whatever model you are yourself, to review the PR antagonistically — briefed without your reasoning, and report-only (no edits, commits, or pushes). Dispatch it in the background (the Agent tool's default) and wait for its completion notification — don't poll for it, predict its report, or end your turn as if done; that wait is your own work, not a check-in. Fix the in-scope findings you verify as legitimate and push; raise real but out-of-scope ones with me rather than widening the diff. Then add an "Adversarial review" section to the PR description listing each finding and what you did with it (fixed, declined and why, or raised with me), leaving the alfred block intact. Follow the adversarial-review skill at \`${ADVERSARIAL_REVIEW_SKILL_PATH}\` where present — it owns how to brief the reviewer and triage its findings. If the ticket context below says otherwise (more rounds, or none), follow it.`;
 }
 
 /**

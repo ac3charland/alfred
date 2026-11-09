@@ -94,6 +94,29 @@ export interface ReaderArticleInsert {
   summarizing_since?: string | undefined;
 }
 
+/**
+ * The columns a feed entry is inserted with — the same floor as an article's, keyed on the feed
+ * (`publication_id`) and the entry's identity in it, and carrying none of the mail identity.
+ * `received_at` is the entry's own date, clamped to the poll instant, so the list orders it where
+ * the blog published it and the retention sweep ages it from then.
+ */
+export interface ReaderFeedPostInsert {
+  source: 'feed';
+  publication_id: string;
+  feed_entry_id: string;
+  title: string;
+  author?: string | undefined;
+  canonical_url?: string | undefined;
+  received_at: string;
+  text: string;
+  word_count: number;
+  html_extracted: boolean;
+  html?: string | undefined;
+  summary_state: 'pending' | 'failed';
+  last_error?: string | undefined;
+  summarizing_since?: string | undefined;
+}
+
 /** What an insert did. A conflict is a value rather than a throw — another tick owns the post. */
 export type InsertPostResult = { inserted: true; id: string } | { inserted: false; conflict: true };
 
@@ -145,15 +168,16 @@ export async function countRows(
 /**
  * Insert one post, or report that it already exists.
  *
- * A newsletter's unique key is `(account_key, gmail_message_id)` and an article's is its bookmark
- * id among articles — each a dedupe key, never a cursor — so a 409 means exactly one thing:
+ * A newsletter's unique key is `(account_key, gmail_message_id)`, an article's is its bookmark
+ * id among articles and a feed post's is its entry id within its feed — each a dedupe key, never a
+ * cursor — so a 409 means exactly one thing:
  * another tick (or, for a newsletter, a re-mirrored comms row) already wrote this post. The caller
  * may still have a comms row to stamp, so a conflict is a result and not an error; every other
  * non-2xx throws, as every write in `supabase.ts` does.
  */
 export async function insertPost(
   env: SupabaseEnv,
-  row: ReaderPostInsert | ReaderArticleInsert,
+  row: ReaderPostInsert | ReaderArticleInsert | ReaderFeedPostInsert,
 ): Promise<InsertPostResult> {
   const response = await fetch(restQueryUrl(env, 'reader_posts', {}), {
     method: 'POST',
@@ -208,6 +232,45 @@ export async function fetchPostsForBookmarks(
     archived: row.archived_at !== null,
     bookmarkId: row.instapaper_bookmark_id,
   }));
+}
+
+/**
+ * Quote one value for a PostgREST `in.(…)` list. An entry id is usually a URL, and a URL may hold
+ * the commas and parentheses the list syntax splits on; inside double quotes only `"` and `\`
+ * need escaping.
+ */
+function quoteListValue(value: string): string {
+  return `"${value.replaceAll('\\', '\\\\').replaceAll('"', String.raw`\"`)}"`;
+}
+
+/**
+ * Which of these entry ids are already posts of this feed — the feed leg's "already a post?" read,
+ * one fetch for the whole poll. Keyed on the ids rather than on a date window: an undated entry is
+ * re-dated at every poll, so only its identity says it was taken before.
+ */
+export async function fetchFeedEntryIds(
+  env: SupabaseEnv,
+  publicationId: string,
+  entryIds: readonly string[],
+): Promise<Set<string>> {
+  if (entryIds.length === 0) return new Set();
+  const url = restQueryUrl(env, 'reader_posts', {
+    select: 'feed_entry_id',
+    source: 'eq.feed',
+    publication_id: `eq.${publicationId}`,
+    feed_entry_id: `in.(${entryIds.map((id) => quoteListValue(id)).join(',')})`,
+  });
+  const rows = await fetchJson<{ feed_entry_id: string }[]>(env, url, {}, 'GET reader_posts');
+  return new Set(rows.map((row) => row.feed_entry_id));
+}
+
+/** Write a feed's poll stamp — its check, its validators, its success or its failure. */
+export function stampFeed(
+  env: SupabaseEnv,
+  publicationId: string,
+  updates: Record<string, unknown>,
+): Promise<number> {
+  return patchRows(env, 'reader_publications', { id: `eq.${publicationId}` }, updates);
 }
 
 /**

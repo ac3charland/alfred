@@ -4850,6 +4850,109 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const readerFeedsResult = await attempt(
+    'reader feeds: a roster row is a sender XOR a feed, a feed post needs its feed and entry id ' +
+      'and none of the mail identity, one entry is one post per feed, and v_reader_publications ' +
+      'carries the feed columns (ALF-344)',
+    async () => {
+      const xor = 'reader_publications_sender_xor_feed';
+      for (const [label, columns, values] of [
+        ['a row with neither a handle nor a feed', 'name, source', `'Neither', 'owner'`],
+        [
+          'a row with both a handle and a feed',
+          'handle, feed_url, name, source',
+          `'both@example.com', 'https://both.example/feed.xml', 'Both', 'owner'`,
+        ],
+      ] as const) {
+        try {
+          await client.query(`insert into reader_publications (${columns}) values (${values})`);
+          throw new Error(`${label} was accepted`);
+        } catch (error) {
+          const constraint = (error as { constraint?: unknown }).constraint;
+          if (constraint !== xor) throw error;
+        }
+      }
+
+      const feed = await client.query<{ id: string }>(
+        `insert into reader_publications (feed_url, name, source)
+           values ('https://feeds.example/feed.xml', 'Feeds Example', 'owner') returning id`,
+      );
+      const feedId = feed.rows[0]?.id;
+      if (!feedId) throw new Error('could not seed the feed');
+      const other = await client.query<{ id: string }>(
+        `insert into reader_publications (feed_url, name, source)
+           values ('https://other.example/atom.xml', 'Other Feed', 'owner') returning id`,
+      );
+      const otherId = other.rows[0]?.id;
+      if (!otherId) throw new Error('could not seed the second feed');
+
+      const identity = 'reader_posts_source_identity';
+      const refusals: [string, string, string, unknown[]][] = [
+        ['a feed post with no feed', `source, feed_entry_id`, `'feed', 'entry-a'`, []],
+        ['a feed post with no entry id', `source, publication_id`, `'feed', $1`, [feedId]],
+        [
+          'a feed post carrying a Gmail identity',
+          `source, publication_id, feed_entry_id, account_key, gmail_message_id`,
+          `'feed', $1, 'entry-b', 'gmail-personal', 'feed-msg'`,
+          [feedId],
+        ],
+      ];
+      for (const [label, columns, values, params] of refusals) {
+        const refusal = await readerInsertRefusal(columns, values, params);
+        if (refusal !== identity) {
+          throw new Error(
+            `${label} was ${refusal === ACCEPTED ? 'accepted' : `refused by ${refusal}`}`,
+          );
+        }
+      }
+
+      const first = await readerInsertRefusal(
+        `source, publication_id, feed_entry_id`,
+        `'feed', $1, 'entry-1'`,
+        [feedId],
+      );
+      if (first !== ACCEPTED) throw new Error(`the first feed post was refused by ${first}`);
+      const duplicate = await readerInsertRefusal(
+        `source, publication_id, feed_entry_id`,
+        `'feed', $1, 'entry-1'`,
+        [feedId],
+      );
+      if (duplicate !== 'reader_posts_feed_source_key') {
+        throw new Error(
+          `a second post for one entry was ${duplicate === ACCEPTED ? 'accepted' : `refused by ${duplicate}`}`,
+        );
+      }
+      const sameIdOtherFeed = await readerInsertRefusal(
+        `source, publication_id, feed_entry_id`,
+        `'feed', $1, 'entry-1'`,
+        [otherId],
+      );
+      if (sameIdOtherFeed !== ACCEPTED)
+        throw new Error(`the same entry id on another feed was refused by ${sameIdOtherFeed}`);
+
+      const { rows } = await client.query<{
+        handle: string | null;
+        feed_url: string | null;
+        feed_checked_at: string | null;
+        has_post: boolean;
+      }>(
+        `select handle, feed_url, feed_checked_at, last_post_at is not null as has_post
+           from v_reader_publications where id = $1`,
+        [feedId],
+      );
+      const view = rows[0];
+      if (view?.feed_url !== 'https://feeds.example/feed.xml' || view.handle !== null)
+        throw new Error('v_reader_publications dropped the feed row or its feed_url');
+      if (view.feed_checked_at !== null) throw new Error('a new feed reads as already checked');
+      if (!view.has_post) throw new Error('a feed post does not count as the feed’s last post');
+
+      return (
+        'both malformed roster rows and three malformed feed posts were refused by their CHECKs, ' +
+        'a second post for one entry by the partial unique index, and the view reads the feed'
+      );
+    },
+  );
+
   // ── Wiki (ALF-261) ──────────────────────────────────────────────────────────
 
   const wikiGrantsResult = await attempt(
@@ -6181,6 +6284,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     readerSourceIdentityResult,
     readerInstapaperKeyResult,
     readerInstapaperHealthResult,
+    readerFeedsResult,
     wikiGrantsResult,
     wikiPageChecksResult,
     wikiDispatchCheckResult,

@@ -14,7 +14,7 @@ function domainOf(handle: string): string {
 
 /**
  * The Gmail filter query that keeps the owner's hand-maintained inbox rule matched to the
- * roster, over every ENABLED handle. Pasted straight into the "From" field of Gmail's
+ * roster, over every ENABLED sender's handle — feeds are skipped. Pasted straight into the "From" field of Gmail's
  * create-filter dialog, which already scopes the field to `from:` — so the query itself carries
  * no `from:` prefix of its own; pasting one would double it into `from:from:(…)`.
  *
@@ -32,9 +32,10 @@ function domainOf(handle: string): string {
  * rule that keeps it off the front.
  */
 export function gmailFilterQuery(publications: ReaderPublicationListItem[]): string | null {
+  // A feed has no handle and arrives by no mail, so it is never part of the filter.
   const enabledHandles = publications
     .filter((publication) => publication.enabled)
-    .map((row) => row.handle);
+    .flatMap((row) => (row.handle === null ? [] : [row.handle]));
 
   if (enabledHandles.length === 0) return null;
 

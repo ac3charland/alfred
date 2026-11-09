@@ -6,6 +6,8 @@ import * as React from 'react';
 import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
 import { ViewHeading } from '@/components/atoms/view-heading';
+import { AddFeedForm } from '@/components/reader/add-feed-form';
+import { isFeed } from '@/components/reader/feed-format';
 import { PublicationsCandidates } from '@/components/reader/publications-candidates';
 import { PublicationCard } from '@/components/reader/publications-card';
 import { settle } from '@/components/reader/publications-settle';
@@ -29,7 +31,8 @@ interface PublicationsViewProperties {
  * The publications segment (`/reader/publications`) — the roster the Reader claims mail against,
  * and the off-roster senders it could grow by. Auto-discovered Substack senders and hand-promoted
  * candidates read no differently once they are on the roster; the provenance chip is the only
- * trace of how each one arrived.
+ * trace of how each one arrived. Feeds are added by URL in the field above the roster and sit in
+ * it beside the senders, a `feed` chip in place of the provenance.
  */
 export function PublicationsView({ now: pinnedNow }: PublicationsViewProperties) {
   const publications = useReaderPublications();
@@ -41,6 +44,10 @@ export function PublicationsView({ now: pinnedNow }: PublicationsViewProperties)
   const enabledCount = publications.filter((publication) => publication.enabled).length;
   const pausedCount = publications.length - enabledCount;
   const nothingEnabled = enabledCount === 0;
+  // The Gmail filter only ever matches senders: a roster of nothing but feeds has nothing to copy.
+  const noSenderEnabled = !publications.some(
+    (publication) => publication.enabled && !isFeed(publication),
+  );
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -48,15 +55,15 @@ export function PublicationsView({ now: pinnedNow }: PublicationsViewProperties)
         <ViewHeading
           icon={Newspaper}
           title="Publications"
-          description="Who the Reader summarises. Auto-added from Substack; anyone else you promote from the candidates below."
+          description="Who the Reader summarises. Substack is added automatically, blogs by their feed URL, and anyone else you promote from the candidates below."
           accent="reader"
         />
         <Button
           variant="outline"
           size="sm"
-          disabled={nothingEnabled}
+          disabled={noSenderEnabled}
           title={
-            nothingEnabled
+            noSenderEnabled
               ? 'Nothing to copy — no publication is enabled'
               : 'Copy the Gmail filter query that matches the enabled roster'
           }
@@ -78,10 +85,12 @@ export function PublicationsView({ now: pinnedNow }: PublicationsViewProperties)
         )}
       </p>
 
+      <AddFeedForm />
+
       {publications.length === 0 ? (
         <EmptyState
           title="No publications yet."
-          description="Substack senders are added automatically once their mail arrives; promote anyone else from the candidates."
+          description="Substack senders are added automatically once their mail arrives; add a blog by its feed URL above, or promote anyone else from the candidates."
         />
       ) : (
         <ul className="flex flex-col gap-3">

@@ -3,9 +3,13 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
-import { makeReaderCandidate, makeReaderPublicationListItem } from '@/lib/reader/fixtures';
+import {
+  makeReaderCandidate,
+  makeReaderFeed,
+  makeReaderPublicationListItem,
+} from '@/lib/reader/fixtures';
 import { renderWithProviders } from '@/lib/test-utils';
-import type { ReaderPublication } from '@/lib/types';
+import type { ReaderPublication, ReaderPublicationListItem } from '@/lib/types';
 
 import { PublicationsView } from './publications-view';
 
@@ -183,6 +187,13 @@ describe('PublicationsView', () => {
       source: 'owner',
       notes: null,
       summary_kind: 'alerts',
+      feed_url: null,
+      feed_etag: null,
+      feed_last_modified: null,
+      feed_checked_at: null,
+      feed_last_success_at: null,
+      feed_last_error: null,
+      feed_last_error_at: null,
       first_seen_at: '2026-09-17T00:00:00.000Z',
       created_at: '2026-09-17T00:00:00.000Z',
     });
@@ -320,9 +331,235 @@ describe('PublicationsView', () => {
       source: 'owner',
       notes: null,
       summary_kind: 'essay',
+      feed_url: null,
+      feed_etag: null,
+      feed_last_modified: null,
+      feed_checked_at: null,
+      feed_last_success_at: null,
+      feed_last_error: null,
+      feed_last_error_at: null,
       first_seen_at: '2026-09-17T00:00:00.000Z',
       created_at: '2026-09-17T00:00:00.000Z',
     });
     await screen.findByText('No candidates.');
+  });
+});
+
+describe('PublicationsView — feeds', () => {
+  const FEED_URL = 'https://mlarson.org/feed.xml';
+
+  function feedItem(overrides: Partial<ReaderPublicationListItem> = {}): ReaderPublicationListItem {
+    return {
+      ...makeReaderFeed('mlarson.org', FEED_URL, overrides),
+      last_post_at: null,
+      ...overrides,
+    };
+  }
+
+  it('describes the roster as taking blogs by their feed URL', () => {
+    renderWithProviders(<PublicationsView now={NOW} />);
+
+    expect(
+      screen.getByText(
+        'Who the Reader summarises. Substack is added automatically, blogs by their feed URL, and anyone else you promote from the candidates below.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('mentions feeds in the empty roster state', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, { readerSettings: { publications: [] } });
+
+    expect(screen.getByText(/add a blog by its feed URL above/)).toBeInTheDocument();
+  });
+
+  it('renders a feed’s card with the feed chip, its URL, last post and last check', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: {
+        publications: [
+          feedItem({
+            last_post_at: '2026-09-16T00:00:00.000Z',
+            feed_checked_at: '2026-09-18T11:48:00.000Z',
+          }),
+        ],
+      },
+    });
+
+    expect(screen.getByText('feed')).toBeInTheDocument();
+    expect(screen.queryByText('owner')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(`${FEED_URL} · last post Sep 16 · checked 12m ago`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /summary type for mlarson\.org: essay/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enabled' })).toHaveAttribute(
+      'title',
+      "Paused feeds aren't polled; posts already here stay. Re-enabling takes posts from the last seven days.",
+    );
+  });
+
+  it('shows the amber failure line on a failing feed', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: {
+        publications: [
+          feedItem({
+            feed_last_success_at: '2026-09-18T09:00:00.000Z',
+            feed_last_error: 'it answered 404',
+            feed_last_error_at: '2026-09-18T11:00:00.000Z',
+          }),
+        ],
+      },
+    });
+
+    const line = screen.getByText(
+      "Couldn't read the feed: it answered 404. Failing since 3h ago; retried hourly.",
+    );
+    expect(line).toHaveClass('text-accent-amber');
+  });
+
+  it('drops the failure line once the feed reads again', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: {
+        publications: [
+          feedItem({
+            feed_last_success_at: '2026-09-18T11:30:00.000Z',
+            feed_last_error: 'it answered 404',
+            feed_last_error_at: '2026-09-18T11:00:00.000Z',
+          }),
+        ],
+      },
+    });
+
+    expect(screen.queryByText(/Couldn't read the feed/)).not.toBeInTheDocument();
+  });
+
+  it('counts feeds with the senders, but disables the copy button when no sender is enabled', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: {
+        publications: [feedItem(), makeReaderPublicationListItem('A', { enabled: false })],
+      },
+    });
+
+    expect(screen.getByText(/1 enabled · 1 paused/)).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: /copy gmail filter query/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', 'Nothing to copy — no publication is enabled');
+  });
+
+  it('pauses a feed like a sender', async () => {
+    const user = userEvent.setup();
+    const feed = feedItem();
+    jest.mocked(apiClient.updateReaderPublication).mockResolvedValue({ ...feed, enabled: false });
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: [feed] },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Enabled' }));
+
+    expect(apiClient.updateReaderPublication).toHaveBeenCalledWith(feed.id, { enabled: false });
+    expect(await screen.findByRole('button', { name: 'Paused' })).toBeInTheDocument();
+  });
+
+  describe('Add a feed', () => {
+    it('disables Add feed while the field is empty', () => {
+      renderWithProviders(<PublicationsView now={NOW} />);
+
+      expect(screen.getByRole('button', { name: 'Add feed' })).toBeDisabled();
+    });
+
+    it('adds a feed on Enter: pending while the URL is fetched, then the card, and the field clears', async () => {
+      const user = userEvent.setup();
+      const created = deferred<ReaderPublication>();
+      jest.mocked(apiClient.createReaderPublication).mockReturnValue(created.promise);
+      renderWithProviders(<PublicationsView now={NOW} />, {
+        readerSettings: { publications: [makeReaderPublicationListItem('Zeta')] },
+      });
+
+      const field = screen.getByRole('textbox', { name: 'Feed URL' });
+      await user.type(field, `${FEED_URL}{Enter}`);
+
+      expect(apiClient.createReaderPublication).toHaveBeenCalledWith({ feed_url: FEED_URL });
+      expect(screen.getByRole('button', { name: 'Adding…' })).toBeDisabled();
+
+      await act(async () => {
+        created.settle(makeReaderFeed('Mark Larson', FEED_URL));
+        await created.promise;
+      });
+
+      expect(field).toHaveValue('');
+      const names = screen.getAllByRole('listitem').map((item) => item.textContent);
+      // Sorted by name, as the roster always is.
+      expect(names[0]).toContain('Mark Larson');
+      expect(names[1]).toContain('Zeta');
+      expect(screen.getByText('feed')).toBeInTheDocument();
+    });
+
+    it('clears a refusal as soon as the URL is edited', async () => {
+      const user = userEvent.setup();
+      jest
+        .mocked(apiClient.createReaderPublication)
+        .mockRejectedValue(new apiClient.ApiError('x', 422, 'not-a-feed', { error: 'not-a-feed' }));
+      renderWithProviders(<PublicationsView now={NOW} />, { readerSettings: { publications: [] } });
+
+      const field = screen.getByRole('textbox', { name: 'Feed URL' });
+      await user.type(field, 'https://mlarson.org{Enter}');
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+      await user.type(field, '/feed.xml');
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(field).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('lets the server refuse a URL without a scheme, worded under the field rather than by the browser', async () => {
+      const user = userEvent.setup();
+      jest
+        .mocked(apiClient.createReaderPublication)
+        .mockRejectedValue(new apiClient.ApiError('x', 400, 'Not an http(s) URL'));
+      renderWithProviders(<PublicationsView now={NOW} />, { readerSettings: { publications: [] } });
+
+      expect(screen.getByRole('form', { name: 'Add a feed' })).toHaveAttribute('novalidate');
+      await user.type(
+        screen.getByRole('textbox', { name: 'Feed URL' }),
+        'mlarson.org/feed.xml{Enter}',
+      );
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        "That isn't a web address. Paste the full URL, starting with https://.",
+      );
+    });
+
+    it.each([
+      [
+        'a page that isn’t a feed',
+        new apiClient.ApiError('x', 422, 'not-a-feed', { error: 'not-a-feed' }),
+        "That page isn't an RSS or Atom feed. Paste the feed's own URL, often ending in /feed.xml, /rss or /atom.xml.",
+      ],
+      [
+        'an unreachable URL',
+        new apiClient.ApiError('x', 422, 'unreachable', { error: 'unreachable', status: 503 }),
+        "Couldn't reach that URL (503).",
+      ],
+      [
+        'a duplicate',
+        new apiClient.ApiError('x', 409, 'duplicate', { error: 'duplicate' }),
+        'That feed is already on the roster.',
+      ],
+    ])('keeps the text and says why under the field for %s', async (_label, error, message) => {
+      const user = userEvent.setup();
+      jest.mocked(apiClient.createReaderPublication).mockRejectedValue(error);
+      renderWithProviders(<PublicationsView now={NOW} />, {
+        readerSettings: { publications: [] },
+      });
+
+      const field = screen.getByRole('textbox', { name: 'Feed URL' });
+      await user.type(field, 'https://mlarson.org');
+      await user.click(screen.getByRole('button', { name: 'Add feed' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(message);
+      expect(field).toHaveValue('https://mlarson.org');
+      expect(field).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.queryAllByRole('listitem')).toEqual([]);
+    });
   });
 });

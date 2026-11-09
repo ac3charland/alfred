@@ -10,7 +10,9 @@ import type { ReaderPostListItem, ReaderPublication } from '@/lib/types';
  * article is linked to, else the site it is from, else Instapaper. Nothing links an article to a
  * publication yet — a later story does, by the stored site alone — and the eyebrow picks the name
  * up the moment one is set, from the roster the shell already holds, with no change to the list
- * payload. A newsletter's eyebrow is its author, as it always was.
+ * payload. A newsletter's eyebrow is its author, as it always was. A feed post's is its feed's
+ * card name — every feed post is linked to its feed — with no "via" suffix: the feed is the
+ * source to judge, not a route the post took.
  */
 
 /** The meta line's last word on an article: how it got into the Reader. */
@@ -28,6 +30,11 @@ export const RESEARCH_EYEBROW = 'Research';
 /** A newsletter's eyebrow when the extractor found no author. */
 const UNKNOWN_PUBLICATION = 'Unknown publication';
 
+/** Whether a post is an entry of a feed on the roster. */
+export function isFeedPost(post: Pick<ReaderPostListItem, 'source'>): boolean {
+  return post.source === 'feed';
+}
+
 /** Whether a post is an article from To Reader rather than a newsletter. */
 export function isInstapaperPost(post: Pick<ReaderPostListItem, 'source'>): boolean {
   return post.source === 'instapaper';
@@ -39,10 +46,11 @@ export function postEyebrow(
   publications: readonly Pick<ReaderPublication, 'id' | 'name'>[],
 ): string {
   if (isResearchPost(post)) return RESEARCH_EYEBROW;
-  if (!isInstapaperPost(post)) return post.author ?? UNKNOWN_PUBLICATION;
   const linked =
     post.publication_id === null
       ? undefined
       : publications.find((publication) => publication.id === post.publication_id);
+  if (isFeedPost(post)) return linked?.name ?? UNKNOWN_PUBLICATION;
+  if (!isInstapaperPost(post)) return post.author ?? UNKNOWN_PUBLICATION;
   return linked?.name ?? post.site ?? INSTAPAPER_EYEBROW;
 }

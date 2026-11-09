@@ -87,10 +87,13 @@ export interface ReaderAlertsOverview {
   findings: ReaderAlertFinding[];
 }
 
-/** One roster row: a publication the worklist view matches inbound mail against. */
+/**
+ * One roster row: a sender the worklist view matches inbound mail against, or a feed the feed leg
+ * polls — exactly one of `handle` and `feed_url` is set.
+ */
 export interface ReaderPublication {
   id: string;
-  handle: string;
+  handle?: string | undefined;
   name: string;
   domain?: string | undefined;
   enabled: boolean;
@@ -99,15 +102,23 @@ export interface ReaderPublication {
   summary_kind: ReaderSummaryKind;
   first_seen_at: string;
   created_at: string;
+  feed_url?: string | undefined;
+  feed_etag?: string | undefined;
+  feed_last_modified?: string | undefined;
+  feed_checked_at?: string | undefined;
+  feed_last_success_at?: string | undefined;
+  feed_last_error?: string | undefined;
+  feed_last_error_at?: string | undefined;
 }
 
 /**
  * Where a post came from: a newsletter in the Gmail mirror, an article the owner moved into the
- * "To Reader" folder in Instapaper, or a report a research routine wrote for the owner.
+ * "To Reader" folder in Instapaper, a report a research routine wrote for the owner, or an entry
+ * of a feed on the roster.
  * `reader_posts_source_identity` CHECKs what each one carries. A research post has no text until
  * its report is delivered, and the tick reads it only from then on (see `fetchRetries`).
  */
-export type ReaderPostSource = 'gmail' | 'instapaper' | 'research';
+export type ReaderPostSource = 'gmail' | 'instapaper' | 'research' | 'feed';
 
 /** A stored post: every column of `reader_posts`, with its nulls already mapped to `undefined`. */
 export interface ReaderPost {
@@ -121,6 +132,8 @@ export interface ReaderPost {
   gmail_message_id?: string | undefined;
   /** An article's normalised host, written once at intake. Absent on a newsletter. */
   site?: string | undefined;
+  /** A feed post's identity within its feed. Absent on every other source. */
+  feed_entry_id?: string | undefined;
   /** An article's identity; on a newsletter, the bookmark its Send created. */
   instapaper_bookmark_id?: number | undefined;
   rfc822_message_id?: string | undefined;

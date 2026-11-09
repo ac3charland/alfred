@@ -1198,6 +1198,7 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          feed_entry_id: string | null
           further_sent_instapaper: string[]
           further_sent_reader: string[]
           gist: string | null
@@ -1245,6 +1246,7 @@ export type Database = {
           canonical_url?: string | null
           comm_message_id?: string | null
           created_at?: string
+          feed_entry_id?: string | null
           further_sent_instapaper?: string[]
           further_sent_reader?: string[]
           gist?: string | null
@@ -1292,6 +1294,7 @@ export type Database = {
           canonical_url?: string | null
           comm_message_id?: string | null
           created_at?: string
+          feed_entry_id?: string | null
           further_sent_instapaper?: string[]
           further_sent_reader?: string[]
           gist?: string | null
@@ -1375,8 +1378,15 @@ export type Database = {
           created_at: string
           domain: string | null
           enabled: boolean
+          feed_checked_at: string | null
+          feed_etag: string | null
+          feed_last_error: string | null
+          feed_last_error_at: string | null
+          feed_last_modified: string | null
+          feed_last_success_at: string | null
+          feed_url: string | null
           first_seen_at: string
-          handle: string
+          handle: string | null
           id: string
           name: string
           notes: string | null
@@ -1387,8 +1397,15 @@ export type Database = {
           created_at?: string
           domain?: string | null
           enabled?: boolean
+          feed_checked_at?: string | null
+          feed_etag?: string | null
+          feed_last_error?: string | null
+          feed_last_error_at?: string | null
+          feed_last_modified?: string | null
+          feed_last_success_at?: string | null
+          feed_url?: string | null
           first_seen_at?: string
-          handle: string
+          handle?: string | null
           id?: string
           name: string
           notes?: string | null
@@ -1399,8 +1416,15 @@ export type Database = {
           created_at?: string
           domain?: string | null
           enabled?: boolean
+          feed_checked_at?: string | null
+          feed_etag?: string | null
+          feed_last_error?: string | null
+          feed_last_error_at?: string | null
+          feed_last_modified?: string | null
+          feed_last_success_at?: string | null
+          feed_url?: string | null
           first_seen_at?: string
-          handle?: string
+          handle?: string | null
           id?: string
           name?: string
           notes?: string | null
@@ -1735,6 +1759,13 @@ export type Database = {
           created_at: string | null
           domain: string | null
           enabled: boolean | null
+          feed_checked_at: string | null
+          feed_etag: string | null
+          feed_last_error: string | null
+          feed_last_error_at: string | null
+          feed_last_modified: string | null
+          feed_last_success_at: string | null
+          feed_url: string | null
           first_seen_at: string | null
           handle: string | null
           id: string | null
@@ -1771,6 +1802,7 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          feed_entry_id: string | null
           further_sent_instapaper: string[]
           further_sent_reader: string[]
           gist: string | null
@@ -1835,6 +1867,7 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          feed_entry_id: string | null
           further_sent_instapaper: string[]
           further_sent_reader: string[]
           gist: string | null
@@ -1891,6 +1924,7 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          feed_entry_id: string | null
           further_sent_instapaper: string[]
           further_sent_reader: string[]
           gist: string | null
@@ -2305,6 +2339,7 @@ export type Database = {
           canonical_url: string | null
           comm_message_id: string | null
           created_at: string
+          feed_entry_id: string | null
           further_sent_instapaper: string[]
           further_sent_reader: string[]
           gist: string | null

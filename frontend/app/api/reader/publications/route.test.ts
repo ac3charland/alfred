@@ -1,6 +1,10 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { makeSignedOutDouble, makeSupabaseDouble } from '@/lib/api/supabase-route-double';
-import { makeReaderPublication, makeReaderPublicationListItem } from '@/lib/reader/fixtures';
+import {
+  makeReaderFeed,
+  makeReaderPublication,
+  makeReaderPublicationListItem,
+} from '@/lib/reader/fixtures';
 import { createClient } from '@/lib/supabase/server';
 
 import { GET, POST } from './route';
@@ -154,5 +158,149 @@ describe('POST /api/reader/publications', () => {
     signedOut();
     const response = await POST(post({ handle: 'news@example.com' }), STUB_CONTEXT);
     expect(response.status).toBe(401);
+  });
+});
+
+/** Answer the probe's one fetch with `response`, and record the URL it asked for. */
+function feedAnswers(response: () => Response): { urls: string[] } {
+  const urls: string[] = [];
+  jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    urls.push(input instanceof Request ? input.url : input.toString());
+    return Promise.resolve(response());
+  });
+  return { urls };
+}
+
+describe('POST /api/reader/publications — a feed', () => {
+  const ATOM = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+    <title>Mark Larson</title></feed>`;
+
+  it('fetches the normalised URL, names the card from the feed’s title, and stores it as an owner feed', async () => {
+    const saved = makeReaderFeed('Mark Larson', 'https://mlarson.org/feed.xml');
+    const supabase = signedIn({ reader_publications: { single: { data: saved } } });
+    const { urls } = feedAnswers(() => new Response(ATOM));
+
+    const response = await POST(
+      post({ feed_url: ' HTTPS://MLARSON.ORG/feed.xml#latest ' }),
+      STUB_CONTEXT,
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual(saved);
+    expect(urls).toEqual(['https://mlarson.org/feed.xml']);
+    expect(supabase.table('reader_publications').insert).toHaveBeenCalledWith({
+      feed_url: 'https://mlarson.org/feed.xml',
+      name: 'Mark Larson',
+      source: 'owner',
+      enabled: true,
+    });
+  });
+
+  it('names a feed with no title by its host, without www.', async () => {
+    const supabase = signedIn({
+      reader_publications: { single: { data: makeReaderFeed('x', 'https://www.x.example/rss') } },
+    });
+    feedAnswers(() => new Response('<rss><channel></channel></rss>'));
+
+    await POST(post({ feed_url: 'https://www.x.example/rss' }), STUB_CONTEXT);
+
+    expect(supabase.table('reader_publications').insert).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'x.example' }),
+    );
+  });
+
+  it('keeps a supplied name and kind', async () => {
+    const supabase = signedIn({
+      reader_publications: { single: { data: makeReaderFeed('x', 'https://x.example/rss') } },
+    });
+    feedAnswers(() => new Response(ATOM));
+
+    await POST(
+      post({ feed_url: 'https://x.example/rss', name: 'Mine', summary_kind: 'roundup' }),
+      STUB_CONTEXT,
+    );
+
+    expect(supabase.table('reader_publications').insert).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Mine', summary_kind: 'roundup' }),
+    );
+  });
+
+  it('422s not-a-feed on a page that isn’t RSS or Atom, and stores nothing', async () => {
+    const supabase = signedIn();
+    feedAnswers(() => new Response('<!DOCTYPE html><html><body>hi</body></html>'));
+
+    const response = await POST(post({ feed_url: 'https://mlarson.org' }), STUB_CONTEXT);
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({ error: 'not-a-feed' });
+    expect(supabase.table('reader_publications').insert).not.toHaveBeenCalled();
+  });
+
+  it('422s unreachable, quoting the status, on a non-2xx', async () => {
+    const supabase = signedIn();
+    feedAnswers(() => new Response('gone', { status: 404 }));
+
+    const response = await POST(post({ feed_url: 'https://mlarson.org/rss' }), STUB_CONTEXT);
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({ error: 'unreachable', status: 404 });
+    expect(supabase.table('reader_publications').insert).not.toHaveBeenCalled();
+  });
+
+  it('422s unreachable with no status when nothing answers', async () => {
+    signedIn();
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
+
+    const response = await POST(post({ feed_url: 'https://nowhere.example/rss' }), STUB_CONTEXT);
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({ error: 'unreachable' });
+  });
+
+  it('409s duplicate on a feed already on the roster without fetching it, even when it is down', async () => {
+    const supabase = signedIn({ reader_publications: { maybeSingle: { data: { id: 'pub-1' } } } });
+    const fetchSpy = jest.spyOn(globalThis, 'fetch');
+
+    const response = await POST(post({ feed_url: 'https://MLARSON.org/feed.xml' }), STUB_CONTEXT);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: 'duplicate' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(supabase.table('reader_publications').eq).toHaveBeenCalledWith(
+      'feed_url',
+      'https://mlarson.org/feed.xml',
+    );
+    expect(supabase.table('reader_publications').insert).not.toHaveBeenCalled();
+  });
+
+  it('409s duplicate when a concurrent add wins the insert', async () => {
+    signedIn({
+      reader_publications: {
+        single: {
+          data: null,
+          error: {
+            message:
+              'duplicate key value violates unique constraint "reader_publications_feed_url_key"',
+            code: '23505',
+          },
+        },
+      },
+    });
+    feedAnswers(() => new Response(ATOM));
+
+    const response = await POST(post({ feed_url: 'https://mlarson.org/feed.xml' }), STUB_CONTEXT);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: 'duplicate' });
+  });
+
+  it('400s on a URL that isn’t http(s), without fetching it', async () => {
+    signedIn();
+    const fetchSpy = jest.spyOn(globalThis, 'fetch');
+
+    const response = await POST(post({ feed_url: 'file:///etc/passwd' }), STUB_CONTEXT);
+
+    expect(response.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

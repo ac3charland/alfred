@@ -1,8 +1,16 @@
-import { makeReaderPublicationListItem } from '@/lib/reader/fixtures';
+import { makeReaderFeed, makeReaderPublicationListItem } from '@/lib/reader/fixtures';
 
 import { gmailFilterQuery } from './gmail-filter';
 
 describe('gmailFilterQuery', () => {
+  it('never includes a feed, which arrives by no mail', () => {
+    const feed = { ...makeReaderFeed('Blog', 'https://blog.example/feed.xml'), last_post_at: null };
+    const sender = makeReaderPublicationListItem('News', { handle: 'news@example.com' });
+
+    expect(gmailFilterQuery([feed, sender])).toBe('news@example.com');
+    expect(gmailFilterQuery([feed])).toBeNull();
+  });
+
   it('collapses every substack handle into one wildcard clause, excluding the stats digest', () => {
     const publications = [
       makeReaderPublicationListItem('A', { handle: 'a@substack.com', enabled: true }),

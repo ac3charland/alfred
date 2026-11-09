@@ -8,8 +8,20 @@ import { EditableTextField } from '@/components/atoms/editable-text-field';
 import { InlineNoteField } from '@/components/atoms/inline-note-field';
 import { PickerChip } from '@/components/atoms/picker-chip';
 import { ToggleButton } from '@/components/atoms/toggle-button';
+import {
+  FEED_TOGGLE_TITLE,
+  SENDER_TOGGLE_TITLE,
+  feedFailureLine,
+  feedSubline,
+  isFeed,
+} from '@/components/reader/feed-format';
 import { settle } from '@/components/reader/publications-settle';
-import { KIND_CHIP, PAUSED_CARD, PUBLICATION_CARD } from '@/components/reader/publications.styles';
+import {
+  FEED_FAILURE_LINE,
+  KIND_CHIP,
+  PAUSED_CARD,
+  PUBLICATION_CARD,
+} from '@/components/reader/publications.styles';
 import { formatPostDate } from '@/components/reader/reader-format';
 import { SUMMARY_KIND_OPTIONS, summaryKindLabel } from '@/lib/reader/kinds';
 import { summaryKindOf } from '@/lib/reader/overview';
@@ -30,7 +42,9 @@ const KIND_OPTIONS = SUMMARY_KIND_OPTIONS.map((option) => ({
 
 /**
  * One roster card: the name (editable), the provenance chip, the kind chip, the pause toggle, the
- * handle line with its newest post, and a note. The kind chip picks which question the summariser
+ * handle line with its newest post, and a note. A feed's card wears a `feed` chip where a sender
+ * shows its provenance, its URL and last check where a sender shows its handle, and — while the
+ * feed is failing — an amber line saying what failed and since when. The kind chip picks which question the summariser
  * asks of this publication's mail; a pick saves at once and applies to the next summary, never to
  * one already written. A paused card wears {@link PAUSED_CARD} — still fully legible,
  * visibly out of rotation, mirroring the comms settings surfaces' own pruned-card treatment.
@@ -44,6 +58,8 @@ export function PublicationCard({
 }) {
   const { rename, setEnabled, setNotes, setKind } = useReaderSettingsActions();
   const kind = summaryKindOf(publication);
+  const feed = isFeed(publication);
+  const failure = feed ? feedFailureLine(publication, now) : undefined;
 
   return (
     <li className={cn(PUBLICATION_CARD, !publication.enabled && PAUSED_CARD)}>
@@ -59,7 +75,7 @@ export function PublicationCard({
           <span className="truncate text-sm font-medium text-foreground">{publication.name}</span>
         </EditableTextField>
 
-        <Badge variant="muted">{publication.source}</Badge>
+        <Badge variant="muted">{feed ? 'feed' : publication.source}</Badge>
 
         <PickerChip
           value={kind}
@@ -89,18 +105,26 @@ export function PublicationCard({
           onToggle={() => {
             void settle(setEnabled(publication.id, !publication.enabled));
           }}
-          title="Paused publications are not claimed; posts already here stay. Re-enabling claims only mail from the last seven days."
+          title={feed ? FEED_TOGGLE_TITLE : SENDER_TOGGLE_TITLE}
         >
           {publication.enabled ? 'Enabled' : 'Paused'}
         </ToggleButton>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        {publication.handle} ·{' '}
-        {publication.last_post_at === null
-          ? 'no posts yet'
-          : `last post ${formatPostDate(publication.last_post_at, now)}`}
+      <p className="text-xs break-all text-muted-foreground">
+        {feed ? (
+          feedSubline(publication, now)
+        ) : (
+          <>
+            {publication.handle} ·{' '}
+            {publication.last_post_at === null
+              ? 'no posts yet'
+              : `last post ${formatPostDate(publication.last_post_at, now)}`}
+          </>
+        )}
       </p>
+
+      {failure !== undefined && <p className={FEED_FAILURE_LINE}>{failure}</p>}
 
       <InlineNoteField
         value={publication.notes}

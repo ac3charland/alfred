@@ -55,6 +55,8 @@ export {
   makeFurtherReading,
   makeInstapaperHealth,
   makeReaderArticle,
+  makeReaderFeed,
+  makeReaderFeedPost,
   makeReaderHealth,
   makeReaderOverview,
   makeReaderPost,

@@ -813,7 +813,11 @@ describe('the adversarial-review step', () => {
       const line = reviewLine(prompt);
       expect(line).toMatch(/\bONE round\b/);
       expect(line).toMatch(/once the PR is open/i);
-      expect(line).toMatch(/in the foreground and wait for its report/i);
+      // Dispatched in the background (the harness backgrounds a subagent whatever it is asked),
+      // with its completion notification as the next input rather than a poll.
+      expect(line).toMatch(/dispatch it in the background/i);
+      expect(line).toMatch(/completion notification/i);
+      expect(line).not.toMatch(/foreground/i);
       // The wait happens after the PR opens, so say outright it isn't the check-in the next
       // line forbids.
       expect(line).toMatch(/not a check-in/i);
