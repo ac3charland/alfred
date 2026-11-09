@@ -36,7 +36,7 @@ re-poll with that post stored takes: 0 entries
 
 ![](reader-feeds-image-1.png)
 
-Then the feed's own URL. Before pressing Enter:
+Then the feed's own URL. Editing the field clears the refusal. Before pressing Enter:
 
 ![](reader-feeds-image-2.png)
 
@@ -55,3 +55,70 @@ After Enter, the card appears at its sorted place. It is named from the feed's t
 **Moved Storybook baselines.** The Add-a-feed field sits above the roster on every publications story, and the heading's description changed, so six `Reader/PublicationsView` baselines moved (approved and committed). Below is the `Populated` diff: baseline | changed pixels | new. Four new baselines cover the feed states: `FeedAdded`, `NotAFeed`, `FeedFailing` and `Reader/PostRow` `FeedPost`.
 
 ![](reader-feeds-image-6.png)
+
+The two other refusals: a URL that doesn't answer quotes its status, and a feed already on the roster says so. The duplicate check runs before any fetch, so it holds even while the blog is down.
+
+![](reader-feeds-image-7.png)
+
+![](reader-feeds-image-8.png)
+
+**The Worker importing feeds, tick by tick.** This runs the production `runReaderTick` eight times against stand-ins. PostgREST is an in-memory roster and post table, and the blogs are canned responses: the mlarson.org capture, an excerpt-only feed with its entry page, and a feed that 404s and later recovers. Only the summariser is replaced; its input is printed instead of sent to the model. What it shows:
+- one feed polled per tick, never-checked first;
+- each new entry inserted as `source=feed` with its own date, then summarised with its feed's kind;
+- an excerpt's page read for the article;
+- the drained-poll stamp with its validators;
+- a 404 stamped on the feed and retried hourly, never as a tick failure;
+- an ETag re-poll that re-imports nothing;
+- the recovery's success stamp, newer than the error, which clears the card's amber line.
+
+```bash
+node docs/demos/reader-feeds/tick-harness.mjs
+```
+
+```output
+
+2026-11-09T12:00:00.000Z — three never-checked feeds: ONE is polled a tick, the lowest id first — it 404s
+    GET https://dead.example/rss
+    stamp Dead Blog: {"feed_checked_at":"2026-11-09T12:00:00.000Z","feed_last_error":"it answered 404","feed_last_error_at":"2026-11-09T12:00:00.000Z"}
+    → feed: {"feedId":"pub-dead","status":"failed","taken":0,"failures":["it answered 404"]}; tick failures: []
+
+2026-11-09T12:05:00.000Z — the next never-checked feed: mlarson.org's one entry inside seven days is imported
+    GET https://mlarson.org/feed.xml
+    insert reader_posts: source=feed feed=pub-mlarson entry=https://mlarson.org/2026/11/08/2026-week-45/ received_at=2026-11-08T08:11:17.000Z words=403
+    summarise: kind=essay publication="mlarson.org" title="2026, Week 45" words=403
+    stamp mlarson.org: {"feed_checked_at":"2026-11-09T12:05:00.000Z","feed_last_success_at":"2026-11-09T12:05:00.000Z","feed_etag":"\"m1\"","feed_last_modified":null}
+    → feed: {"feedId":"pub-mlarson","status":"polled","taken":1,"failures":[]}; tick failures: []
+
+2026-11-09T12:10:00.000Z — the excerpt-only feed: its entry page is read and its article stored
+    GET https://quiet.example/feed.xml
+    GET https://quiet.example/posts/cities
+    insert reader_posts: source=feed feed=pub-quiet entry=https://quiet.example/posts/cities received_at=2026-11-08T07:00:00.000Z words=300
+    summarise: kind=roundup publication="Quiet Cities" title="Cities are getting quieter" words=300
+    stamp Quiet Cities: {"feed_checked_at":"2026-11-09T12:10:00.000Z","feed_last_success_at":"2026-11-09T12:10:00.000Z","feed_etag":null,"feed_last_modified":"Sun, 08 Nov 2026 07:00:00 GMT"}
+    → feed: {"feedId":"pub-quiet","status":"polled","taken":1,"failures":[]}; tick failures: []
+
+2026-11-09T12:15:00.000Z — every feed was checked within the hour: nothing is due
+    → feed: {"skipped":"none due"}; tick failures: []
+
+2026-11-09T13:15:00.000Z — an hour on: the dead blog is retried (hourly, not every tick) and still 404s
+    GET https://dead.example/rss
+    stamp Dead Blog: {"feed_checked_at":"2026-11-09T13:15:00.000Z","feed_last_error":"it answered 404","feed_last_error_at":"2026-11-09T13:15:00.000Z"}
+    → feed: {"feedId":"pub-dead","status":"failed","taken":0,"failures":["it answered 404"]}; tick failures: []
+
+2026-11-09T13:20:00.000Z — mlarson.org re-polled with its ETag: its entry is already a post, so nothing is taken
+    GET https://mlarson.org/feed.xml (If-None-Match "m1")
+    stamp mlarson.org: {"feed_checked_at":"2026-11-09T13:20:00.000Z","feed_last_success_at":"2026-11-09T13:20:00.000Z","feed_etag":"\"m1\"","feed_last_modified":null}
+    → feed: {"feedId":"pub-mlarson","status":"polled","taken":0,"failures":[]}; tick failures: []
+
+2026-11-09T13:25:00.000Z — Quiet Cities re-polled: nothing new
+    GET https://quiet.example/feed.xml
+    stamp Quiet Cities: {"feed_checked_at":"2026-11-09T13:25:00.000Z","feed_last_success_at":"2026-11-09T13:25:00.000Z","feed_etag":null,"feed_last_modified":"Sun, 08 Nov 2026 07:00:00 GMT"}
+    → feed: {"feedId":"pub-quiet","status":"polled","taken":0,"failures":[]}; tick failures: []
+
+2026-11-09T14:15:00.000Z — the dead blog answers again: a success stamped after its error, so its card's amber line clears
+    GET https://dead.example/rss
+    stamp Dead Blog: {"feed_checked_at":"2026-11-09T14:15:00.000Z","feed_last_success_at":"2026-11-09T14:15:00.000Z","feed_etag":null,"feed_last_modified":null}
+    → feed: {"feedId":"pub-dead","status":"polled","taken":0,"failures":[]}; tick failures: []
+
+posts stored: 2
+```
