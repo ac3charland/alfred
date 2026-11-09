@@ -93,7 +93,7 @@ test.describe('the Reader module shell', () => {
     await expect(page.getByText('No publications yet.')).toBeVisible();
     await expect(
       page.getByText(
-        'Substack senders are added automatically once their mail arrives; promote anyone else from the candidates.',
+        'Substack senders are added automatically once their mail arrives; add a blog by its feed URL above, or promote anyone else from the candidates.',
       ),
     ).toBeVisible();
   });
