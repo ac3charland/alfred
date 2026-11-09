@@ -43,8 +43,8 @@ wearing a diff.
 6. **Dispatch the adversarial reviewer.** Spawn a subagent with its model set to Opus — the Agent
    tool's `model: "opus"`, whatever model you are — briefed per the adversarial-review skill's
    checklist — it owns what the brief holds, the demo doc among them — but not your diagnosis: it
-   judges whether the fix hits the root cause. Tell it to report only. Run it in the foreground and wait for its report — that wait is your own work,
-   not a check-in.
+   judges whether the fix hits the root cause. Tell it to report only. Dispatch it in the background and wait for its completion
+   notification (the adversarial-review skill says how) — that wait is your own work, not a check-in.
 7. **Repair.** Verify each finding against the code. Fix the in-scope legitimate ones — a new
    defect gets its own red test first — raise adjacent bugs with the human (they're new stories),
    and decline the rest only with evidence. Push through the normal gates.

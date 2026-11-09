@@ -32,8 +32,8 @@ work these steps in order:
 5. **Dispatch the adversarial reviewer.** Spawn a subagent with its model set to Opus — the Agent
    tool's `model: "opus"`, whatever model you are — briefed per the adversarial-review skill's
    checklist — it owns what the brief holds, the demo doc among them — but not your reasoning.
-   Tell it to report only. Run it in the foreground and wait for its report —
-   that wait is your own work, not a check-in.
+   Tell it to report only. Dispatch it in the background and wait for its completion notification
+   (the adversarial-review skill says how) — that wait is your own work, not a check-in.
 6. **Repair.** Verify each finding against the code. Fix the in-scope legitimate ones test-first,
    raise real out-of-scope ones with the human, and decline the rest only with evidence. Push
    through the normal gates.

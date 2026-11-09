@@ -31,9 +31,11 @@ override it — more rounds, a named focus, or no review — and when it does, f
 
 ## Spawn it, then wait
 
-Set the model explicitly — in Claude Code, the Agent tool with `model: "opus"` — and run it in the
-foreground: its report is your next input. Waiting on it is your own work, not a check-in on the
-PR. If you can't get an Opus reviewer, say so to the human and in the PR rather than quietly
+Set the model explicitly — in Claude Code, the Agent tool with `model: "opus"` — and dispatch it in
+the background, the Agent tool's default (the harness backgrounds it even when asked not to). Its
+completion notification is your next input: meanwhile do only work its findings can't change, and
+never poll for it, predict its report, or end your turn as if done. Waiting on it is your own work,
+not a check-in on the PR. If you can't get an Opus reviewer, say so to the human and in the PR rather than quietly
 reviewing the change yourself.
 
 ## Brief it cold
