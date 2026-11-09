@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-351 — Consolidate Cloudflare cron triggers to one every-minute trigger</title><style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · FINDINGS — what a findings document adds to the house stylesheet ═══ */
+#landed>.side~*+*{margin-top:.75rem}
+.detail aside{margin:0 0 .9rem;padding:.75rem 1rem;background:var(--wash);border-left:3px solid var(--rule)}
+.detail aside>h3:first-child{margin-top:0}
+.detail aside>:last-child{margin-bottom:0}
+
+.detail td.n,.detail th.n{text-align:right;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<main class="page">
+
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>alfred · Spike findings</span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>351</span><span class="sep"> — </span><span class="ttl">Consolidate Cloudflare cron triggers to one every-minute trigger</span></h1>
+  <p class="change" id="answer">Yes, one <code>* * * * *</code> trigger can replace all five, but only if each due unit still gets its own invocation, because merging them into one run would exhaust the 50-subrequest budget.</p>
+</header>
+
+<section class="sec" id="landed">
+  <h2 class="side">Where we landed</h2>
+  <p>Don't run the units in one handler. Reader (48 of 50), retention (50) and notify (up to 50) are each sized to a whole invocation, and every 30th minute four units are due together. Make the minute trigger a thin dispatcher: derive the due units from <code>event.scheduledTime</code> and hand each to the Worker itself as a separate invocation. Probe that first, since I could not verify the platform behaviour offline. If the probe fails, the fallback is the Paid plan, which makes consolidation unnecessary. The next story would be the probe, then the dispatcher, with the first story gated on the probe result.</p>
+  <ol class="list">
+    <li><h3>Budget blocks in-process</h3>
+      <p class="pick">Co-scheduled units would share one 50-fetch budget.</p>
+      <p class="why">Units are budgeted to the full 50 — <a href="#why">section 1</a></p></li>
+    <li><h3>The schedule is pure arithmetic</h3>
+      <p class="pick">Minute modulo 2, 3 and 5; 60 divides all three.</p>
+      <p class="why">Pattern repeats every 30 minutes — <a href="#shape">section 2</a></p></li>
+    <li><h3>It removes a known trap</h3>
+      <p class="pick">One expression cannot collapse onto another.</p>
+      <p class="why">The POLL_CRON incident — <a href="#why">section 1</a></p></li>
+    <li><h3>Fan-out is unverified</h3>
+      <p class="pick">Self service binding needs a one-hour probe.</p>
+      <p class="why"><a href="#cost">section 4</a></p></li>
+  </ol>
+</section>
+
+</section>
+
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>The evidence</h2>
+  <p>Everything below is for whoever builds on this. Acting on the answer needs only what’s above.</p>
+</div>
+
+<section class="detail" id="detail" data-fold="below">
+
+<section id="why">
+  <h2>Why: the code today, and why in-process dispatch fails</h2>
+  <p><code>workers/wrangler.toml:87</code> registers five crons: <code>*/2</code>, <code>*/3</code>, <code>17 9 * * *</code>, <code>*/5</code> and <code>* * * * *</code>. <code>workers/src/index.ts:293-336</code> dispatches on <code>event.cron</code> string equality, one branch per constant. The Free plan allows five triggers per account, and the code and the <code>cloudflare-workers</code> skill both say all five are used. The notify comment (<code>index.ts:200-210</code>) says the next scheduled feature must share notify’s budget or go Paid. That scarcity is the motivation for this spike.</p>
+  <p>The five units were split onto separate triggers for one stated reason: the Workers Free plan allows 50 outbound fetches per invocation, and sharing a tick made units starve each other (<code>index.ts:154-158</code>, <code>wrangler.toml:69-75</code>; the skill states the same rule at <code>.claude/skills/cloudflare-workers/SKILL.md:188</code>).</p>
+  <table>
+  <thead><tr><th>Unit</th><th>Fires today</th><th>Recorded budget</th><th>Source</th></tr></thead>
+  <tbody>
+  <tr><td>Classifier sweep + comms judge</td><td><code>*/2</code></td><td>sized to its own 50</td><td><code>index.ts:147-152</code></td></tr>
+  <tr><td>Gmail poll</td><td><code>*/3</code></td><td>sized to its own 50</td><td><code>index.ts:154-170</code></td></tr>
+  <tr><td>Reader tick</td><td><code>*/5</code></td><td>48 worst case</td><td><code>reader/scheduled.ts:127-148</code></td></tr>
+  <tr><td>Notify (+ morning digest)</td><td><code>* * * * *</code></td><td>idle 1; up to 50</td><td><code>notify/tick.ts:46-56</code></td></tr>
+  <tr><td>Daily retention, prices, wiki sync</td><td><code>17 9 * * *</code></td><td>exactly 50</td><td><code>index.ts:172-188</code></td></tr>
+  </tbody></table>
+  <p>Nothing here is small enough to ride along. Every 30th minute (minute 0 and 30) the tick, poll, reader and notify are all due at once, so merged in-process they would need roughly 150+ fetches against a ceiling of 50. The overshoot throws part-way, and the repo records that this only shows up with real data, never in stubbed tests. Reader also runs for up to ~10 minutes (<code>reader/scheduled.ts:150-155</code>), so a serial single handler would hold notify behind it and break notify’s “at most a minute late” promise. Running the units in parallel fixes the latency but not the shared budget.</p>
+  <p>The CPU ceiling is a second shared limit. The retention comment budgets the wiki sync’s parsing at about 6 ms (<code>index.ts:186-187</code>), which only makes sense against the Free plan’s 10 ms CPU limit per invocation, so merged units would also pool CPU. I did not verify the 10 ms figure against Cloudflare’s docs.</p>
+  <p>One benefit comes free with a single expression. Offset-stepped ranges are normalised by the scheduler and collapse onto other schedules (<code>index.ts:160-168</code>, skill lines 149-156). With one trigger, that whole class of bug and the “unrecognised cron” fall-through disappear.</p>
+</section>
+
+<section id="shape">
+  <h2>Technical shape</h2>
+  <h3>Which units are due</h3>
+  <p>Derive the minute from <code>event.scheduledTime</code> (the intended fire time, so a late delivery doesn’t shift the schedule), not from <code>Date.now()</code>. 60 is divisible by 2, 3 and 5, so minute-of-hour modulo gives the same cadence as today’s <code>*/N</code> expressions, repeating every 30 minutes.</p>
+<pre>const d = new Date(event.scheduledTime), m = d.getUTCMinutes();
+notify:    always
+tick:      m % 2 === 0
+poll:      m % 3 === 0
+reader:    m % 5 === 0
+retention: d.getUTCHours() === 9 &amp;&amp; m === 17   // 17 is odd, 17%3=2, 17%5=2: coincides with notify only</pre>
+  <p>Per 30 minutes: notify 30, tick 15, poll 10, reader 6. The maximum concurrent units in any minute is four. Express this as a pure <code>dueUnits(scheduledTime)</code> function, and hold the table <code>{ name, due, run }</code> in code so a new feature is one row, with no trigger and no wrangler change.</p>
+  <h3>Giving each unit its own budget</h3>
+  <p>The recommended mechanism is a self service binding that exposes each unit as a <code>WorkerEntrypoint</code> RPC method. The minute handler awaits <code>Promise.allSettled</code> over the due units. A failed unit cannot skip the others, because each runs in its own invocation with its own try/catch, as retention already does. RPC methods are not publicly routable, unlike a <code>fetch</code> route, which would need HMAC protection. The dispatcher spends one subrequest per due unit, at most four.</p>
+  <h3>Files touched</h3>
+  <ul>
+    <li><code>workers/wrangler.toml</code>: <code>crons = ["* * * * *"]</code>, plus the self-binding. Rewrite the five-schedule comment block.</li>
+    <li><code>workers/src/index.ts</code>: delete the five cron constants and string-equality dispatch, and add <code>dueUnits</code> and the dispatcher.</li>
+    <li><code>workers/src/index.test.ts:964-993</code>: the “distinct expressions”, “offset step” and “registers exactly these” tests become a table-driven <code>dueUnits</code> test over one 30-minute window plus the 09:17 case, and an assertion that wrangler.toml holds exactly <code>* * * * *</code>. The per-cron dispatch tests (e.g. lines 895-962) change to pass a <code>scheduledTime</code>.</li>
+    <li>Update the <code>cloudflare-workers</code> skill: the five-trigger note, and the normalisation trap, which becomes moot.</li>
+  </ul>
+  <h3>Observability</h3>
+  <p><code>wrangler tail</code> will show every invocation as <code>* * * * *</code>, so log one line per dispatch naming the units fired (and never log secrets).</p>
+</section>
+
+<section id="alternatives">
+  <h2>Alternatives we’re not taking</h2>
+  <aside><h3>One handler running every due unit in-process</h3><p>The simplest design, and the one the title implies. Ruled out by the shared 50-fetch budget and shared CPU: reader alone uses 48, and four units coincide every 30 minutes.</p></aside>
+  <aside><h3>Partial consolidation</h3><p>Folding only “small” units into notify. Nothing is small: notify idles at one fetch but is sized to 50 when busy, and every other unit is sized to a full invocation. This is the status quo the comments already describe.</p></aside>
+  <aside><h3>Upgrade to the Workers Paid plan instead</h3><p>Not ruled out; it is the fallback and arguably the cheaper answer. The repo’s own notes say 1000 subrequests per invocation on Paid, which makes in-process dispatch viable, and the trigger count stops being scarce. It trades engineering for a recurring cost, and I could not check Paid’s trigger and CPU limits offline. It is a product decision for the owner.</p></aside>
+  <aside><h3>Queues, Workflows or Durable Object alarms as the fan-out</h3><p>Each could give per-unit invocations, but each adds a new binding and operational surface, and I could not confirm Free-plan availability or limits. Try the self binding first.</p></aside>
+</section>
+
+<section id="cost">
+  <h2>Cost &amp; open questions</h2>
+  <p><b>Effort:</b> small. It is roughly one file of dispatch logic, one config line, and tests rewritten as a table. The unit modules (<code>runSweep</code>, <code>runCommsPoll</code>, <code>runReaderTick</code>, <code>runNotifyTick</code>, retention) are untouched.</p>
+  <p><b>Unverified, and gating the recommendation</b> (the Cloudflare docs host was blocked from this session, so none of this was checked against documentation or a live deploy):</p>
+  <ul>
+    <li>Does a call through a service binding to the same Worker start a fresh invocation with its own 50-fetch budget and CPU allowance on the Free plan? A one-hour probe settles it: deploy a throwaway entrypoint that makes 60 fetches and call it from a cron.</li>
+    <li>Can a Worker bind to itself with an <code>entrypoint</code> on Free?</li>
+    <li>What do the extra invocations cost against the Free plan’s daily request allowance? Today’s five triggers fire roughly 2.9k times a day, so fan-out roughly doubling that looks safe, but check the current limit.</li>
+    <li>Can <code>wrangler dev --test-scheduled</code> fake a <code>scheduledTime</code>? If not, tests and demos should call the exported dispatcher directly.</li>
+  </ul>
+  <p><b>Risks:</b> a missed or delayed minute loses that minute’s units, as it does today. Duplicate or late delivery behaviour is unchanged only if each unit is already idempotent, which I did not audit. The cutover is one <code>wrangler deploy</code> (merging deploys, per the skill), swapping the trigger set and code together.</p>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <ol>
+    <li><code>workers/wrangler.toml</code> (lines 57-87): the cron block and its comments.</li>
+    <li><code>workers/src/index.ts</code> (lines 141-210 cron constants and budget comments; 283-336 <code>scheduled</code> dispatch).</li>
+    <li><code>workers/src/reader/scheduled.ts</code> (lines 120-155): reader subrequest table and wall-clock budget.</li>
+    <li><code>workers/src/notify/tick.ts</code> (lines 40-70): notify subrequest ceiling.</li>
+    <li><code>workers/src/index.test.ts</code> (lines 819-993): the cron dispatch and registration tests.</li>
+    <li><code>.claude/skills/cloudflare-workers/SKILL.md</code> (lines 121-168 cron triggers; line 188 the subrequest budget rule).</li>
+    <li><code>docs/specs/archive/ALF-333.html</code> and <code>ALF-343.html</code>: earlier specs recording the trigger and budget constraints.</li>
+    <li>Commands: <code>grep</code> for <code>crons|scheduled(|event.cron</code> across the repo; <code>git log -- workers/wrangler.toml</code>.</li>
+    <li>Not reachable from this session: <code>developers.cloudflare.com</code> (Workers limits, Cron Triggers). The platform claims above marked unverified rest on the repo’s own recorded behaviour.</li>
+  </ol>
+</section>
+
+</section>
+</main>
+
+</body>
+</html>
