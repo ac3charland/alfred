@@ -1464,6 +1464,59 @@ describe('worker.scheduled', () => {
     expect(logged[1]).toBe('reader instapaper: skipped (no free slot)');
   });
 
+  it('logs the feed leg’s line, with its failure on stderr, ahead of the To Reader leg’s', async () => {
+    jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
+      discovered: 0,
+      intake: 0,
+      summarized: 0,
+      refused: 0,
+      countedFailures: 0,
+      uncountedFailures: 0,
+      skippedForCap: 0,
+      skippedForBudget: 0,
+      failures: [],
+      feed: { feedId: 'pub-feed', status: 'failed', taken: 0, failures: ['it answered 404'] },
+      instapaper: { skipped: 'unconfigured' },
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(READER_CRON), env, ctx);
+
+    expect(logged[1]).toBe('reader feed: pub-feed failed, 0 taken in');
+    expect(logged[2]).toBe('reader instapaper: skipped (unconfigured)');
+    expect(errors).toEqual(['reader: feed pub-feed: it answered 404']);
+  });
+
+  it('logs why the feed leg polled nothing', async () => {
+    jest.spyOn(readerScheduled, 'runReaderTick').mockResolvedValue({
+      discovered: 0,
+      intake: 0,
+      summarized: 0,
+      refused: 0,
+      countedFailures: 0,
+      uncountedFailures: 0,
+      skippedForCap: 0,
+      skippedForBudget: 0,
+      failures: [],
+      feed: { skipped: 'none due' },
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(READER_CRON), env, ctx);
+
+    expect(logged[1]).toBe('reader feed: skipped (none due)');
+  });
+
   it('logs what each retention sweep did, comms then reader', async () => {
     jest
       .spyOn(commsScheduled, 'runCommsRetention')

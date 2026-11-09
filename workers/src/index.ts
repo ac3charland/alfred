@@ -402,6 +402,17 @@ function logReaderTick(summary: ReaderTickSummary): void {
   );
   for (const failure of summary.failures) console.error(`reader: ${failure}`);
 
+  // The feed leg's own line — nothing when the tick stopped before deciding on it.
+  const feed = summary.feed;
+  if (feed !== undefined) {
+    if ('skipped' in feed) {
+      console.log(`reader feed: skipped (${feed.skipped})`);
+    } else {
+      console.log(`reader feed: ${feed.feedId} ${feed.status}, ${String(feed.taken)} taken in`);
+      for (const failure of feed.failures) console.error(`reader: feed ${feed.feedId}: ${failure}`);
+    }
+  }
+
   // The To Reader leg's own line — nothing when the tick stopped before deciding on it.
   const leg = summary.instapaper;
   if (leg === undefined) return;

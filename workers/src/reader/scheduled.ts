@@ -4,7 +4,7 @@
  * The ordering is the whole module and every step of it is load-bearing:
  *
  *   config → credentials → ceiling → health start → discovery → roster → worklist →
- *   To Reader listing → token → the loop → health end
+ *   feed poll → To Reader listing → token → the loop → feed stamp → health end
  *
  * CONFIG AND CREDENTIALS FIRST, and fail closed. The daily ceiling is the money guard, and the
  * one failure it must not have is an unparsable value silently becoming "unlimited" — so a bad
@@ -41,6 +41,11 @@
  * RETRIES GO AHEAD OF FRESH POSTS, so a post that failed once is never starved by a busy morning.
  * On a capped day the retry read is not even sent: it exists only to feed model calls.
  *
+ * THE FEED LEG GOES NEXT (`feed-leg.ts`): one due feed a tick, into the slots the newsletters
+ * left, and paid for by taking one post off the tick's limit. Like the To Reader leg it fetches
+ * before the token is minted and never on a capped day; its failures are the feed's own, stamped
+ * on its roster row and reported in `summary.feed`, never in `summary.failures`.
+ *
  * THE TO READER LEG GOES LAST (`to-reader.ts`), and only into the slots the newsletters left: a
  * newsletter is bound by the worklist's seven-day horizon, a bookmark waits in its folder. It lists
  * Instapaper before the Gmail token is minted, so its three fetches are counted before any post
@@ -67,6 +72,17 @@ import { type SupabaseEnv, fetchJson, restQueryUrl } from '../supabase';
 import { type ReaderConfig, readReaderConfig } from './config';
 import { discoverPublications } from './discovery';
 import {
+  type DueFeed,
+  type FeedHttp,
+  type FeedValidators,
+  drainedStamp,
+  entryTitle,
+  feedHttp,
+  intakeFeedEntry,
+  openFeedPoll,
+} from './feed-leg';
+import { type DatedEntry, dueFeed } from './feeds';
+import {
   type InstapaperOutcome,
   recordInstapaperHealth,
   recordRunError,
@@ -83,6 +99,7 @@ import {
   fetchPostsForBookmarks,
   leasePost,
   patchPost,
+  stampFeed,
 } from './store';
 import { summarizePost } from './summarize';
 import {
@@ -114,13 +131,19 @@ import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
  * |---|---|---|
  * | Per tick | ceiling count · health start · discovery read · discovery upsert · roster read · pending-retry read · worklist read · token mint · health end | 9 |
  * | Per tick, To Reader leg | Instapaper `folders/list` · `bookmarks/list` · the "already a post?" read | 3 |
+ * | Per tick, feed leg | the feed GET · the "already a post?" read · the feed stamp PATCH | 3 |
  * | Per fresh post | Gmail `messages.get` · insert post · stamp comms row · Anthropic ×2 (one SDK retry) · terminal patch | 6 |
  * | Per new bookmark | Instapaper `get_text` · insert post · Instapaper `archive` · Anthropic ×2 · terminal patch | 6 |
+ * | Per new feed entry | (the entry page GET, for an excerpt only) · insert post · Anthropic ×2 · terminal patch | ≤ 5 |
  * | Per bookmark already a post | (restore PATCH) · Instapaper `archive` | ≤ 2 |
  * | Per retried pending post | lease CAS · Anthropic ×2 · terminal patch | 4 |
- * | Worst tick (six new bookmarks) | 9 + 3 + 6 × 6 | **48** |
+ * | Worst tick without a feed (six new bookmarks) | 9 + 3 + 6 × 6 | **48** |
+ * | Worst tick with a feed (five posts) | 9 + 3 + 3 + 5 × 6 | **45** |
  *
- * Six fresh newsletters cost 9 + 6 × 6 = 45 and leave the leg no slot, so it never lists.
+ * The feed leg pays for its three fetches by lowering the tick's post limit by one whenever it
+ * fetches — a 304, a failure or a poll with nothing new included: the posts left for it and To
+ * Reader are five, not six. Six fresh newsletters cost 9 + 6 × 6 = 45
+ * and leave both legs no slot, so neither fetches anything.
  * Numbering a post's links for its Further reading list costs none of these: the HTML is already
  * in memory at intake, and a retry reads it in the select it already makes. The
  * roster read is the ninth per-tick fetch: the worklist view carries `publication_id` but not the
@@ -128,6 +151,8 @@ import { type RetryRow, fetchFresh, fetchRetries } from './worklist';
  * per tick is the only way to get them that does not cost a fetch per post. On a tick where discovery found nothing
  * to upsert it simply takes that slot back and the per-tick count is 8 again. A bookmark
  * Instapaper has no text for costs 3: `get_text`, an insert filed as failed, `archive`.
+ *
+ * The roster read also carries every feed's columns, so choosing the due feed costs nothing.
  *
  * Adding one more fetch per post means dropping this limit to five; adding two means four.
  */
@@ -167,6 +192,19 @@ export interface ReaderInstapaperTally {
 /** Why the leg did not list at all this tick. None of them is a failure, and none is stamped. */
 export type ReaderInstapaperSkip = 'unconfigured' | 'capped' | 'no free slot';
 
+/** Why the feed leg polled nothing this tick. None of them is a failure. */
+export type ReaderFeedSkip = 'capped' | 'no free slot' | 'none due';
+
+/** What the feed leg did on a tick where it polled a feed. */
+export interface ReaderFeedTally {
+  feedId: string;
+  status: 'not-modified' | 'polled' | 'failed';
+  /** Entries stored as new posts — including one filed `failed` for having no text. */
+  taken: number;
+  /** The feed's failure, in the words its card quotes. Never in the tick's own `failures`. */
+  failures: string[];
+}
+
 /** What one tick did. Every early return reports this same shape. */
 export interface ReaderTickSummary {
   /** Publications the discovery upsert actually stored. */
@@ -200,6 +238,8 @@ export interface ReaderTickSummary {
    * when the tick stopped before deciding.
    */
   instapaper?: ReaderInstapaperTally | { skipped: ReaderInstapaperSkip } | undefined;
+  /** The feed leg: its tally when it polled, why not when it didn't, absent when never decided. */
+  feed?: ReaderFeedTally | { skipped: ReaderFeedSkip } | undefined;
 }
 
 /**
@@ -217,11 +257,16 @@ interface CeilingHolder {
   leg: () => InstapaperOutcome | undefined;
 }
 
-/** The roster, as the one read per tick returns it. */
+/** The roster, as the one read per tick returns it — JSON nulls, not `undefined`. */
 interface RosterRow {
   id: string;
   name: string;
   summary_kind: ReaderSummaryKind;
+  enabled: boolean;
+  feed_url: string | null;
+  feed_etag: string | null;
+  feed_last_modified: string | null;
+  feed_checked_at: string | null;
 }
 
 /** One publication as the tick needs it: the name the model is told, and the kind it is asked. */
@@ -233,11 +278,29 @@ interface RosterEntry {
 /** The roster, keyed by publication id. */
 type Roster = ReadonlyMap<string, RosterEntry>;
 
+/** A feed's row as the leg chooses among them. */
+type FeedRow = DueFeed;
+
 /** One unit of work: a fresh message to read, a pending post to try again, or a bookmark to take. */
 type WorkItem =
   | { kind: 'fresh'; row: WorklistRow }
   | { kind: 'retry'; row: RetryRow }
-  | { kind: 'bookmark'; bookmark: InstapaperBookmark; existing: BookmarkedPost | undefined };
+  | { kind: 'bookmark'; bookmark: InstapaperBookmark; existing: BookmarkedPost | undefined }
+  | { kind: 'feed-entry'; entry: DatedEntry };
+
+/**
+ * The feed leg's state across one tick: the feed it polled, what the poll would stamp once every
+ * entry it took is handled, and how many are not yet. An entry the budget or the ceiling left
+ * untaken keeps the feed due, so the next tick re-polls it and takes the rest.
+ */
+interface FeedLeg {
+  http: FeedHttp;
+  feed: DueFeed;
+  tally: ReaderFeedTally;
+  drained: boolean;
+  validators: FeedValidators;
+  unreached: number;
+}
 
 /**
  * The To Reader leg's state across one tick: the client, the tally, the last failure in the
@@ -299,14 +362,34 @@ function utcMidnight(now: Date): Date {
  * kind. The kind is read here, at summarise time, rather than stamped at intake — so a Retry
  * summary asks the publication's CURRENT kind.
  */
-async function readRoster(env: ReaderEnv): Promise<Roster> {
+async function readRoster(env: ReaderEnv): Promise<{ roster: Roster; feeds: FeedRow[] }> {
   const rows = await fetchJson<RosterRow[]>(
     env,
-    restQueryUrl(env, 'reader_publications', { select: 'id,name,summary_kind' }),
+    restQueryUrl(env, 'reader_publications', {
+      select: 'id,name,summary_kind,enabled,feed_url,feed_etag,feed_last_modified,feed_checked_at',
+    }),
     {},
     'GET reader_publications',
   );
-  return new Map(rows.map((row) => [row.id, { name: row.name, kind: row.summary_kind }]));
+  return {
+    roster: new Map(rows.map((row) => [row.id, { name: row.name, kind: row.summary_kind }])),
+    feeds: rows.flatMap((row): FeedRow[] => {
+      const feedUrl = row.feed_url ?? undefined;
+      return feedUrl === undefined
+        ? []
+        : [
+            {
+              id: row.id,
+              name: row.name,
+              enabled: row.enabled,
+              feed_url: feedUrl,
+              feed_etag: row.feed_etag ?? undefined,
+              feed_last_modified: row.feed_last_modified ?? undefined,
+              feed_checked_at: row.feed_checked_at ?? undefined,
+            },
+          ];
+    }),
+  };
 }
 
 /**
@@ -617,6 +700,104 @@ async function openLeg(
   };
 }
 
+/**
+ * Poll the due feed, or record why the leg didn't: the ceiling is spent, no slot is free once the
+ * leg's own cost is paid, or no feed is due. A poll that ends at once (a 304, a failure, nothing
+ * new) has already stamped the feed.
+ */
+async function openFeedLeg(
+  env: ReaderEnv,
+  feeds: readonly FeedRow[],
+  context: { now: Date; capped: boolean; slots: number; summary: ReaderTickSummary },
+): Promise<{ ran: boolean; leg: FeedLeg | undefined; items: WorkItem[] }> {
+  const { now, summary } = context;
+  if (context.capped) {
+    summary.feed = { skipped: 'capped' };
+    return { ran: false, leg: undefined, items: [] };
+  }
+  if (context.slots <= 0) {
+    summary.feed = { skipped: 'no free slot' };
+    return { ran: false, leg: undefined, items: [] };
+  }
+  const due = dueFeed(feeds, now);
+  if (due === undefined) {
+    summary.feed = { skipped: 'none due' };
+    return { ran: false, leg: undefined, items: [] };
+  }
+
+  const http = feedHttp();
+  const tally: ReaderFeedTally = { feedId: due.id, status: 'polled', taken: 0, failures: [] };
+  summary.feed = tally;
+  const feed = due;
+  const poll = await openFeedPoll(env, http, feed, now, context.slots);
+  if (poll.kind !== 'polled') {
+    tally.status = poll.kind;
+    if (poll.kind === 'failed') tally.failures.push(poll.error);
+    return { ran: true, leg: undefined, items: [] };
+  }
+  // Nothing new: the poll already stamped the feed checked.
+  if (poll.entries.length === 0) return { ran: true, leg: undefined, items: [] };
+  return {
+    ran: true,
+    leg: {
+      http,
+      feed,
+      tally,
+      drained: poll.drained,
+      validators: poll.validators,
+      unreached: poll.entries.length,
+    },
+    items: poll.entries.map((entry): WorkItem => ({ kind: 'feed-entry', entry })),
+  };
+}
+
+/**
+ * Take one feed entry in, and say whether there is now a post for the model. On a day the ceiling
+ * is reached mid-tick it is left untaken — the feed stays due and a later tick takes it.
+ */
+async function prepareFeedEntry(
+  env: ReaderEnv,
+  leg: FeedLeg,
+  entry: DatedEntry,
+  context: { roster: Roster; now: Date; capped: boolean; summary: ReaderTickSummary },
+): Promise<PreparedResult> {
+  if (context.capped) {
+    context.summary.skippedForCap += 1;
+    leg.drained = false;
+    return { kind: 'skip' };
+  }
+  const taken = await intakeFeedEntry(env, leg.http, leg.feed.id, entry, context.now);
+  if (taken.kind === 'conflict') return { kind: 'skip' };
+  leg.tally.taken += 1;
+  if (taken.kind === 'filed') return { kind: 'skip' };
+  const publication = context.roster.get(leg.feed.id);
+  return {
+    kind: 'summarize',
+    id: taken.id,
+    input: {
+      kind: publication?.kind ?? 'essay',
+      publication: publication?.name ?? leg.feed.name,
+      ...(entry.author === undefined ? {} : { author: entry.author }),
+      title: entryTitle(entry),
+      receivedAt: entry.date.toISOString(),
+      wordCount: taken.body.wordCount,
+      text: taken.body.text,
+      html: taken.body.html,
+      canonicalUrl: entry.link,
+    },
+    attempts: 0,
+  };
+}
+
+/**
+ * Stamp the polled feed checked, once every entry its poll took has been handled and the poll
+ * took every new one. Otherwise nothing: the feed stays due and the next tick takes the rest.
+ */
+async function closeFeedLeg(env: ReaderEnv, leg: FeedLeg | undefined, now: Date): Promise<void> {
+  if (leg === undefined || !leg.drained || leg.unreached > 0) return;
+  await stampFeed(env, leg.feed.id, drainedStamp(now, leg.validators));
+}
+
 /** An Alerts summary that found nothing — the one summary the tick files on its own. */
 function isNothingNotable(summary: StoredReaderSummary): boolean {
   return summary.kind === 'alerts' && summary.overview.findings.length === 0;
@@ -822,7 +1003,7 @@ async function tick(
   await recordRunStart(env, now, ceiling());
 
   summary.discovered = await discoverPublications(env, now);
-  const roster = await readRoster(env);
+  const { roster, feeds } = await readRoster(env);
 
   // Skipped entirely on a capped day: the retry list exists only to feed model calls, while a
   // fresh post's intake is still worth running because the row is the floor whether or not it is
@@ -834,9 +1015,22 @@ async function tick(
     ...fresh.map((row): WorkItem => ({ kind: 'fresh', row })),
   ].slice(0, READER_TICK_LIMIT);
 
-  // The To Reader leg takes only what the newsletters and retries left of the per-tick limit. It
-  // lists before the token is minted, so its fetches are spent, and counted, ahead of any post's.
-  const slots = Math.max(0, READER_TICK_LIMIT - retries.length - fresh.length);
+  // The feed leg takes what the newsletters and retries left of the per-tick limit, less the one
+  // post its own three fetches cost. It polls before the token is minted, as To Reader lists.
+  let slots = Math.max(0, READER_TICK_LIMIT - retries.length - fresh.length);
+  const feedOpened = await openFeedLeg(env, feeds, {
+    now,
+    capped: capped(),
+    slots: slots - 1,
+    summary,
+  });
+  const feedLeg = feedOpened.leg;
+  // Whatever the poll found, its fetches are spent: the post they cost comes off the limit.
+  if (feedOpened.ran) slots = Math.max(0, slots - 1 - feedOpened.items.length);
+  work.push(...feedOpened.items);
+
+  // The To Reader leg takes only what is left. It lists before the token is minted, so its
+  // fetches are spent, and counted, ahead of any post's.
   const credentials = instapaperCredentials(env);
   let leg: Leg | undefined;
   if (credentials === undefined) {
@@ -879,6 +1073,7 @@ async function tick(
     // To Reader is never reached, which is what keeps that tick from stamping the leg's success.
     const reached = (): void => {
       if (item.kind === 'bookmark' && leg !== undefined) leg.unreached -= 1;
+      if (item.kind === 'feed-entry' && feedLeg !== undefined) feedLeg.unreached -= 1;
     };
 
     // A leg Instapaper has stopped answering leaves the rest of its bookmarks in To Reader; the
@@ -901,12 +1096,18 @@ async function tick(
       continue;
     }
 
-    const prepared = await prepareItem(env, client, item, leg, {
-      roster,
-      now,
-      capped: capped(),
-      summary,
-    });
+    const prepared = await prepareItem(
+      env,
+      client,
+      item,
+      { leg, feedLeg },
+      {
+        roster,
+        now,
+        capped: capped(),
+        summary,
+      },
+    );
 
     if (prepared.kind === 'stop') {
       await (prepared.systemic
@@ -942,6 +1143,8 @@ async function tick(
     }
   }
 
+  await closeFeedLeg(env, feedLeg, now);
+
   // Only on a clean pass — every path that pushes a failure has already returned. A Gmail outage
   // that kept stamping success would read as healthy forever, which is the one thing the health
   // row exists to prevent.
@@ -954,15 +1157,21 @@ function prepareItem(
   env: ReaderEnv,
   client: GmailClient,
   item: WorkItem,
-  leg: Leg | undefined,
+  legs: { leg: Leg | undefined; feedLeg: FeedLeg | undefined },
   context: { roster: Roster; now: Date; capped: boolean; summary: ReaderTickSummary },
 ): Promise<PreparedResult> {
+  const { leg, feedLeg } = legs;
   switch (item.kind) {
     case 'fresh': {
       return prepareFresh(env, client, item.row, context);
     }
     case 'retry': {
       return prepareRetry(env, item.row, context.roster, context.now);
+    }
+    case 'feed-entry': {
+      // A feed entry only exists because the feed leg polled.
+      if (feedLeg === undefined) return Promise.resolve({ kind: 'skip' });
+      return prepareFeedEntry(env, feedLeg, item.entry, context);
     }
     default: {
       // A bookmark item only exists because a leg listed it.

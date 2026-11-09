@@ -2,6 +2,7 @@ import type { GmailMessage } from '../comms/gmail-api';
 import { type FetchInit, type FetchInput, spyOnFetch } from '../fetch-stub';
 import { READER_DEFAULT_DAILY_CAP } from './config';
 import { ESSAY_MESSAGE, PLAIN_TEXT_ONLY_MESSAGE, READ_IN_APP_MESSAGE } from './fixtures';
+import { RSS_DESCRIPTION_ONLY_FEED, numberedFeed } from './fixtures/feeds';
 import * as retention from './retention';
 import { READER_TICK_BUDGET_MS, runReaderRetention, runReaderTick } from './scheduled';
 import * as summarize from './summarize';
@@ -67,14 +68,16 @@ interface Call {
   url: string;
   method: string;
   body: string | undefined;
+  /** The request's headers, lower-cased — recorded by `harness`, absent from hand-rolled stubs. */
+  headers?: Record<string, string>;
 }
 
 /** What the fake world holds for one test. */
 interface Scenario {
   /** Rows `v_reader_discovery` answers with. */
   discovery?: unknown[];
-  /** Rows `reader_publications?select=id,name,summary_kind` answers with. */
-  roster?: { id: string; name: string; summary_kind?: string }[];
+  /** Rows the roster read (`reader_publications?select=…`) answers with. */
+  roster?: Record<string, unknown>[];
   /** The `Content-Range` total the ceiling count reads. */
   callsToday?: number;
   /** Rows the pending-retry read answers with. */
@@ -97,6 +100,10 @@ interface Scenario {
   instapaper?: InstapaperWorld;
   /** Rows the "already a post?" read answers with, by bookmark id. */
   bookmarked?: Record<string, unknown>[];
+  /** What each feed or entry page answers, by URL. A URL with no answer here is a 404. */
+  web?: Record<string, () => Response>;
+  /** Rows the feed leg's "already a post?" read answers with. */
+  feedPosts?: { feed_entry_id: string }[];
 }
 
 /** Instapaper, as the To Reader leg sees it. */
@@ -154,7 +161,12 @@ function harness(scenario: Scenario = {}): Call[] {
   spyOnFetch().mockImplementation((input: FetchInput, init?: FetchInit) => {
     const url = input as string;
     const method = init?.method ?? 'GET';
-    calls.push({ url, method, body: typeof init?.body === 'string' ? init.body : undefined });
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === 'string' ? init.body : undefined,
+      headers: Object.fromEntries(new Headers(init?.headers).entries()),
+    });
 
     if (url.startsWith(OAUTH_ENDPOINT)) {
       const respond = scenario.oauth ?? (() => Response.json({ access_token: 'ya29.access' }));
@@ -199,6 +211,12 @@ function harness(scenario: Scenario = {}): Call[] {
       }
     }
 
+    const page = scenario.web?.[url];
+    if (page !== undefined) return Promise.resolve(page());
+    if (!url.startsWith(SUPABASE_URL) && !url.startsWith(GMAIL_PREFIX)) {
+      return Promise.resolve(new Response('not found', { status: 404 }));
+    }
+
     if (url.startsWith(GMAIL_PREFIX)) {
       const id = new URL(url).pathname.slice('/gmail/v1/users/me/messages/'.length);
       const status = scenario.messageStatus?.[id];
@@ -238,6 +256,9 @@ function harness(scenario: Scenario = {}): Call[] {
         return Promise.resolve(
           Response.json(Array.from({ length: matched }, () => ({ id: 'row' }))),
         );
+      }
+      if (url.includes('feed_entry_id=in.')) {
+        return Promise.resolve(Response.json(scenario.feedPosts ?? []));
       }
       if (url.includes('instapaper_bookmark_id=in.')) {
         return Promise.resolve(Response.json(scenario.bookmarked ?? []));
@@ -1083,6 +1104,8 @@ describe('runReaderTick — one whole tick over the fixtures', () => {
       failures: [],
       // No Instapaper secrets in this env, so the leg says it is off rather than going quiet.
       instapaper: { skipped: 'unconfigured' },
+      // No feed on the roster.
+      feed: { skipped: 'none due' },
     });
   });
 });
@@ -1930,7 +1953,7 @@ describe('runReaderTick — summary kinds', () => {
     const rosterReads = restCalls(calls, 'reader_publications', 'GET');
     expect(rosterReads).toHaveLength(1);
     expect(new URL(rosterReads[0]?.url ?? '').searchParams.get('select')).toBe(
-      'id,name,summary_kind',
+      'id,name,summary_kind,enabled,feed_url,feed_etag,feed_last_modified,feed_checked_at',
     );
     expect(summarizedInputs(summarized)[0]).toMatchObject({
       kind: 'roundup',
@@ -2225,5 +2248,310 @@ describe('runReaderTick — the To Reader leg only succeeds when it finished', (
       instapaper_last_error: "Instapaper rejected alfred's credentials",
       instapaper_last_error_at: NOW_ISO,
     });
+  });
+});
+
+// ── The feed leg ─────────────────────────────────────────────────────────────
+
+const FEED_URL = 'https://numbered.example/feed.xml';
+
+/** A feed on the roster, in the roster read's wire shape. */
+function feedRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'pub-feed',
+    name: 'Numbered',
+    summary_kind: 'roundup',
+    enabled: true,
+    feed_url: FEED_URL,
+    feed_etag: WIRE_NULL,
+    feed_last_modified: WIRE_NULL,
+    feed_checked_at: WIRE_NULL,
+    ...overrides,
+  };
+}
+
+/** A feed document answering 200, with an ETag. */
+function feedResponse(xml: string): () => Response {
+  return () => new Response(xml, { headers: { ETag: '"v2"', 'Content-Type': 'application/xml' } });
+}
+
+/** Every recorded feed-post insert's body. */
+function feedInserts(calls: Call[]): Record<string, unknown>[] {
+  return restCalls(calls, 'reader_posts', 'POST')
+    .map((call) => payload(call))
+    .filter((body) => body['source'] === 'feed');
+}
+
+/** Every recorded stamp of the feed's roster row. */
+function feedStamps(calls: Call[]): Record<string, unknown>[] {
+  return restCalls(calls, 'reader_publications', 'PATCH').map((call) => payload(call));
+}
+
+describe('runReaderTick — the feed leg', () => {
+  it('polls a never-checked feed, stores each new entry as a feed post, summarises it with the feed’s kind, and stamps the feed', async () => {
+    const calls = harness({
+      roster: [feedRow()],
+      web: { [FEED_URL]: feedResponse(numberedFeed(2, new Date('2026-09-18T10:00:00Z'))) },
+    });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    const feedGet = calls.find((call) => call.url === FEED_URL);
+    expect(feedGet).toBeDefined();
+    const inserts = feedInserts(calls);
+    // Oldest first.
+    expect(inserts.map((body) => body['feed_entry_id'])).toEqual(['entry-1', 'entry-0']);
+    expect(inserts[0]).toMatchObject({
+      source: 'feed',
+      publication_id: 'pub-feed',
+      title: 'Entry 1',
+      canonical_url: 'https://numbered.example/1',
+      received_at: '2026-09-18T09:00:00.000Z',
+      summary_state: 'pending',
+      summarizing_since: NOW_ISO,
+    });
+    expect(summarizedInputs(summarized)[0]).toMatchObject({
+      kind: 'roundup',
+      publication: 'Numbered',
+      title: 'Entry 1',
+      receivedAt: '2026-09-18T09:00:00.000Z',
+    });
+    expect(feedStamps(calls)).toEqual([
+      {
+        feed_checked_at: NOW_ISO,
+        feed_last_success_at: NOW_ISO,
+        feed_etag: '"v2"',
+        feed_last_modified: WIRE_NULL,
+      },
+    ]);
+    expect(summary.feed).toEqual({ feedId: 'pub-feed', status: 'polled', taken: 2, failures: [] });
+    // Feed posts count toward the ceiling like every other model call.
+    expect(summary.summarized).toBe(2);
+    expect(summary.failures).toEqual([]);
+  });
+
+  it('runs after the newsletters and before the To Reader leg, and before the token is minted', async () => {
+    const calls = harness({
+      fresh: [worklistRow()],
+      messages: [ESSAY_MESSAGE],
+      roster: [feedRow()],
+      web: { [FEED_URL]: feedResponse(numberedFeed(1, new Date('2026-09-18T10:00:00Z'))) },
+      instapaper: { bookmarks: [] },
+    });
+    mockSummarize();
+
+    await runReaderTick(instapaperEnv, NOW);
+
+    const worklist = indexOfCall(calls, (call) => call.url.includes('v_reader_worklist'));
+    const feed = indexOfCall(calls, (call) => call.url === FEED_URL);
+    const folders = indexOfCall(calls, (call) => call.url.includes('folders/list'));
+    const token = indexOfCall(calls, (call) => call.url.startsWith(OAUTH_ENDPOINT));
+    expect(worklist).toBeLessThan(feed);
+    expect(feed).toBeLessThan(folders);
+    expect(feed).toBeLessThan(token);
+    // The essay is taken before the feed entry: newsletters go first.
+    const posts = restCalls(calls, 'reader_posts', 'POST').map((call) => payload(call));
+    expect(posts.map((body) => body['source'] ?? 'gmail')).toEqual(['gmail', 'feed']);
+  });
+
+  it('pays for its own fetches with one post: with one slot left it makes no fetch at all', async () => {
+    const calls = harness({
+      fresh: Array.from({ length: 5 }, (_, index) =>
+        worklistRow({
+          comm_message_id: `c${String(index)}`,
+          gmail_message_id: `m${String(index)}`,
+        }),
+      ),
+      roster: [feedRow()],
+      web: { [FEED_URL]: feedResponse(numberedFeed(1, new Date('2026-09-18T10:00:00Z'))) },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(calls.find((call) => call.url === FEED_URL)).toBeUndefined();
+    expect(summary.feed).toEqual({ skipped: 'no free slot' });
+    expect(feedStamps(calls)).toEqual([]);
+  });
+
+  it('takes at most five posts in all when it runs, and leaves the feed due when it couldn’t take everything', async () => {
+    const calls = harness({
+      fresh: Array.from({ length: 2 }, (_, index) =>
+        worklistRow({
+          comm_message_id: `c${String(index)}`,
+          gmail_message_id: `m${String(index)}`,
+        }),
+      ),
+      messages: [],
+      roster: [feedRow()],
+      web: { [FEED_URL]: feedResponse(numberedFeed(5, new Date('2026-09-18T10:00:00Z'))) },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    // Six slots, less two newsletters, less one for the leg's own fetches: three entries.
+    expect(feedInserts(calls).map((body) => body['feed_entry_id'])).toEqual([
+      'entry-4',
+      'entry-3',
+      'entry-2',
+    ]);
+    expect(summary.feed).toMatchObject({ status: 'polled', taken: 3 });
+    // Not drained: no stamp, so the next tick re-polls and takes the rest.
+    expect(feedStamps(calls)).toEqual([]);
+  });
+
+  it('makes no fetch and stays due on a capped day', async () => {
+    const calls = harness({
+      callsToday: 30,
+      roster: [feedRow()],
+      web: { [FEED_URL]: feedResponse(numberedFeed(1, new Date('2026-09-18T10:00:00Z'))) },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(calls.find((call) => call.url === FEED_URL)).toBeUndefined();
+    expect(summary.feed).toEqual({ skipped: 'capped' });
+    expect(feedStamps(calls)).toEqual([]);
+  });
+
+  it.each([
+    ['paused', { enabled: false }],
+    ['checked within the hour', { feed_checked_at: '2026-09-18T11:00:00.000Z' }],
+  ])('does not poll a feed that is %s', async (_label, overrides) => {
+    const calls = harness({
+      roster: [feedRow(overrides)],
+      web: { [FEED_URL]: feedResponse(numberedFeed(1, new Date('2026-09-18T10:00:00Z'))) },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(calls.find((call) => call.url === FEED_URL)).toBeUndefined();
+    expect(summary.feed).toEqual({ skipped: 'none due' });
+  });
+
+  it('polls a feed again once its check is an hour old', async () => {
+    const calls = harness({
+      roster: [feedRow({ feed_checked_at: '2026-09-18T10:45:00.000Z', feed_etag: '"v1"' })],
+      web: { [FEED_URL]: () => new Response(undefined, { status: 304 }) },
+    });
+    mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    const feedGet = calls.find((call) => call.url === FEED_URL);
+    expect(feedGet?.headers?.['if-none-match']).toBe('"v1"');
+    expect(feedGet?.headers?.['user-agent']).toBe(
+      'alfred-reader (+https://github.com/ac3charland/alfred)',
+    );
+    expect(summary.feed).toEqual({
+      feedId: 'pub-feed',
+      status: 'not-modified',
+      taken: 0,
+      failures: [],
+    });
+    expect(feedStamps(calls)).toEqual([
+      { feed_checked_at: NOW_ISO, feed_last_success_at: NOW_ISO },
+    ]);
+  });
+
+  it('stamps a 404 on the feed and keeps it out of the tick’s own failures', async () => {
+    const calls = harness({ roster: [feedRow()] });
+    mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(feedStamps(calls)).toEqual([
+      {
+        feed_checked_at: NOW_ISO,
+        feed_last_error: 'it answered 404',
+        feed_last_error_at: NOW_ISO,
+      },
+    ]);
+    expect(summary.feed).toEqual({
+      feedId: 'pub-feed',
+      status: 'failed',
+      taken: 0,
+      failures: ['it answered 404'],
+    });
+    expect(summary.failures).toEqual([]);
+    // The tick's own success is still stamped.
+    expect(healthWrites(calls).at(-1)).toHaveProperty('last_success_at', NOW_ISO);
+  });
+
+  it('never re-imports an entry that is already a post', async () => {
+    const calls = harness({
+      roster: [feedRow()],
+      web: { [FEED_URL]: feedResponse(numberedFeed(2, new Date('2026-09-18T10:00:00Z'))) },
+      feedPosts: [{ feed_entry_id: 'entry-0' }, { feed_entry_id: 'entry-1' }],
+    });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(env, NOW);
+
+    expect(feedInserts(calls)).toEqual([]);
+    expect(summarized).not.toHaveBeenCalled();
+    expect(summary.feed).toMatchObject({ status: 'polled', taken: 0 });
+    // Drained with nothing to take: stamped checked at once.
+    expect(feedStamps(calls)).toHaveLength(1);
+  });
+
+  it('reads an excerpt’s page and stores its article', async () => {
+    const page = `<html><body><article><p>${'Noise maps show a decline. '.repeat(80)}</p></article></body></html>`;
+    const calls = harness({
+      roster: [feedRow({ feed_url: 'https://quiet.example/feed.xml' })],
+      web: {
+        'https://quiet.example/feed.xml': feedResponse(
+          RSS_DESCRIPTION_ONLY_FEED.replace('Sun, 08 Nov 2026', 'Fri, 18 Sep 2026'),
+        ),
+        'https://quiet.example/posts/cities': () => new Response(page),
+      },
+    });
+    mockSummarize();
+
+    await runReaderTick(env, NOW);
+
+    const [insert] = feedInserts(calls);
+    expect(String(insert?.['text'])).toContain('Noise maps show a decline. Noise maps');
+    expect(insert?.['word_count']).toBe(400);
+    expect(insert?.['html']).toContain('<p>Noise maps');
+  });
+});
+
+describe('runReaderTick — the feed leg’s subrequests', () => {
+  it('spends at most 45 of the 50 fetches on its worst tick: a feed poll with nothing new, then five bookmarks', async () => {
+    const ids = [100, 101, 102, 103, 104, 105];
+    const bookmarks = ids.map((id) => bookmarkRow({ bookmark_id: id, time: 1_788_000_000 + id }));
+    const texts: Record<number, string> = Object.fromEntries(ids.map((id) => [id, ARTICLE_HTML]));
+    const calls = harness({
+      // A discovery upsert, so every one of the nine per-tick fetches is spent.
+      discovery: [
+        {
+          handle: 'harborline@substack.com',
+          name: 'Harborline',
+          first_seen_at: '2026-09-12T00:00:00.000Z',
+          message_count: 1,
+        },
+      ],
+      roster: [feedRow()],
+      web: { [FEED_URL]: feedResponse(numberedFeed(1, new Date('2026-09-18T10:00:00Z'))) },
+      feedPosts: [{ feed_entry_id: 'entry-0' }],
+      instapaper: { bookmarks, texts },
+    });
+    const summarized = mockSummarize();
+
+    const summary = await runReaderTick(instapaperEnv, NOW);
+
+    expect(summary.feed).toMatchObject({ status: 'polled', taken: 0 });
+    // The feed's three fetches cost a post even though it took none: five bookmarks, not six.
+    expect(summary.instapaper).toMatchObject({ taken: 5 });
+    // `summarizePost` is mocked, so each model call's two possible Anthropic requests are added
+    // back by hand: 9 per tick + 3 for the feed + 3 for To Reader + 5 × 6 per bookmark.
+    const fetches = calls.length + 2 * summarized.mock.calls.length;
+    expect(fetches).toBe(45);
+    expect(fetches).toBeLessThanOrEqual(50);
   });
 });
