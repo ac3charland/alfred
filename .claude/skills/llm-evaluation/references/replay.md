@@ -55,11 +55,18 @@ use it to find where arms differ, and the ledger to decide.
   - review the branch diff instead of a PR;
   - nobody answers questions;
   - don't read the merged solution (name the PR, branch and archived spec);
-  - **never `git fetch`; point `origin/main` at the base instead** (`git update-ref
-    refs/remotes/origin/main <base>`) before the first push, because the pre-push gate diffs
-    against `origin/main` and a fetch brings in the merged solution;
+  - **never fetch main; point `origin/main` at the base instead**, before the first push, because
+    the pre-push gate diffs against `origin/main` and fetching main brings in the merged solution.
+    Use `git fetch origin <arm's base branch>:refs/remotes/origin/main`: auto mode can refuse
+    `git update-ref` as destructive, and an arm then can't push. Add a fallback: if a permission
+    check refuses it, paste `git diff <base> HEAD -- . ':(exclude)*.png'` into the report;
   - send the final report to `@parent` with `send_message`, because a child that finishes cleanly
     doesn't notify its parent.
+- **Push the base commits from a docs-only branch.** Pushing an old main commit to a new branch
+  runs the pre-push gate against HEAD; on a docs-only HEAD, `check-scope` skips the package suites.
+- **A usage limit stops every arm at once.** Once it resets, a `send_message` to each arm saying
+  "resume where you left off" works. A container restart drops an arm's background pre-push gate,
+  and the arm then sits idle: tell it to compare `HEAD` with `git ls-remote` and re-push.
 - **A historical base lacks newer tooling.** For example, the recording hook is absent before
   ALF-310, so the replay writes no ledger row. Its date-bound tests may also have rotted (on a
   late-September base, a habits E2E's June dates fell outside the window and failed the pre-push
@@ -95,6 +102,16 @@ use it to find where arms differ, and the ledger to decide.
 - **A bug has an objective check: the merged fix's behavioural test.** Insert it into each arm's
   worktree and run it through `npm run test`. It fails on the base, and passes only where the arm
   fixed the real cause. A test that calls the original fix's own functions isn't portable.
+- **For a concurrency bug, have the judges save their probes.** Ask each judge to write the
+  interleavings it tried as standalone end-state tests (store ranks equal the server's, no tie),
+  then run them against base and every arm. A probe that passes on base and fails on an arm is a
+  regression. Probes only see the failure classes they were written for, so keep a judge per
+  patch as well.
+- **To judge reruns, read each patch alone.** Give one blind absolute judge (SHIP / NOT READY) to
+  each patch, and re-judge the first pair in the same mode. Single judges weight rare multi-tab
+  cases inconsistently, so record whether each blocker is reachable from one tab.
+- **Give each judge a scratch worktree path containing its own id.** Judges clean up with globs,
+  and one deleted another's worktree.
 
 ## Replaying a review round
 
