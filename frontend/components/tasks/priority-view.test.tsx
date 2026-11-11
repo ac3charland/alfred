@@ -450,6 +450,20 @@ describe('PriorityView', () => {
     });
   });
 
+  it('keeps the "Set priority" prompt on unprioritised subtasks too (ALF-349)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PriorityView />, {
+      tasks: [
+        makeItem('Parent', { id: 'p', priority: 'high' }),
+        makeItem('Child', { id: 'c', parent_id: 'p' }),
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Expand subtasks' }));
+
+    expect(screen.getByRole('button', { name: 'Set priority' })).toBeInTheDocument();
+  });
+
   it('treats a task whose priority is missing (undefined) as unprioritised, without crashing', () => {
     // Reproduces the production data shape: getAllItems reads the `task_items` view, which (until
     // the view is recreated to carry the column) drops `priority`, so every row arrives with it

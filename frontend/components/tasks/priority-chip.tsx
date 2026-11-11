@@ -32,7 +32,7 @@ export interface PriorityChipProperties {
    * the chip once a level exists); the detail panel passes "No priority", the By-Priority view
    * "Set priority".
    */
-  emptyLabel?: string;
+  emptyLabel?: string | undefined;
   /** Alignment for the picker menu (Radix `align`). Defaults to `start`. */
   menuAlign?: 'start' | 'center' | 'end';
   /**

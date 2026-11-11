@@ -22,6 +22,11 @@ interface TriageListProperties {
   tasks: readonly ItemNode[];
   showCompleted: boolean;
   onToggleCompleted: () => void;
+  /**
+   * The muted chip an unprioritised row offers ("Set priority" in By Priority, whose whole point
+   * is ranking). Omit for a list where an unset level is noise — Today (ALF-349).
+   */
+  priorityPrompt?: string | undefined;
 }
 
 /**
@@ -45,6 +50,7 @@ export function TriageList({
   tasks,
   showCompleted,
   onToggleCompleted,
+  priorityPrompt,
 }: TriageListProperties) {
   const bucketName = useBucketName();
 
@@ -66,6 +72,7 @@ export function TriageList({
               depth={0}
               folderName={bucketName(task)}
               showCompleted={showCompleted}
+              priorityPrompt={priorityPrompt}
             />
           ))}
         </ul>

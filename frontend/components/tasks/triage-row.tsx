@@ -36,8 +36,12 @@ import { cn } from '@/lib/utils';
  *
  * The title stays a real `<a href>` that jumps to the task in its containing view and rings it
  * there via {@link navigateToTaskAndFocus}, so ⌘/middle-clicks still open a new tab. The priority
- * chip (level, or a muted "Set priority" prompt) opens its own picker to re-prioritise in place.
+ * chip opens its own picker to re-prioritise in place; an unprioritised row shows the view's
+ * `priorityPrompt` (By Priority's "Set priority") or nothing at all (Today — ALF-349).
  * Only a depth-0 row shows the folder/Inbox label — subtasks share their root's bucket.
+ *
+ * Below `md` the meta (due, priority, folder) drops to a second line under the title, so a phone
+ * gives the title the row's full width instead of squeezing it beside the chips (ALF-349).
  *
  * Must be mounted under a `TasksProvider` (the shell-seeded store).
  */
@@ -46,12 +50,15 @@ export function TriageRow({
   depth,
   folderName,
   showCompleted,
+  priorityPrompt,
 }: {
   node: ItemNode;
   depth: number;
   /** The containing folder/Inbox label — only supplied (and shown) at the top level. */
   folderName?: string;
   showCompleted: boolean;
+  /** The muted chip an unprioritised row shows; omit to show nothing until a level is set. */
+  priorityPrompt?: string | undefined;
 }) {
   const { completeTask, uncompleteTask, updateTask } = useTaskActions();
   const allTasks = useTasks();
@@ -68,6 +75,12 @@ export function TriageRow({
     ? node.children
     : node.children.filter((child) => child.status === 'active');
   const hasChildren = visibleChildren.length > 0;
+
+  // Each meta piece renders only when it has something to say, and the wrapper only when one
+  // does — an empty wrapper would add a blank second line on a phone.
+  const showDue = isTask && Boolean(node.due_date);
+  const showPriority = isTask && (node.priority != null || priorityPrompt !== undefined);
+  const hasMeta = showDue || showPriority || folderName !== undefined;
 
   const href = React.useMemo(() => taskDestination(node, allTasks), [node, allTasks]);
 
@@ -105,7 +118,7 @@ export function TriageRow({
   return (
     <li className={depth === 0 ? 'rounded-lg border border-border bg-surface' : 'list-none'}>
       <div
-        className="flex items-center gap-2 rounded-lg py-2 pr-3 transition-colors duration-100 hover:bg-secondary/30 motion-reduce:transition-none"
+        className="flex items-start gap-2 rounded-lg py-2 pr-3 md:items-center transition-colors duration-100 hover:bg-secondary/30 motion-reduce:transition-none"
         style={{ paddingLeft: rowLeft }}
       >
         {/* Expand/collapse — only for a row that actually has visible subtasks; otherwise an
@@ -149,39 +162,48 @@ export function TriageRow({
           <span className={cn(checkboxSizeClass, 'shrink-0')} aria-hidden="true" />
         )}
 
-        <a
-          href={href}
-          onClick={(event_) => {
-            // Let the browser handle a modified/middle click (new tab); hijack only a plain click.
-            if (!isPlainLeftClick(event_)) return;
-            event_.preventDefault();
-            navigateToTaskAndFocus(node.id, href);
-          }}
-          className={cn(
-            'min-w-0 flex-1 truncate rounded-sm text-sm transition-colors duration-100',
-            'hover:text-accent-teal focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal motion-reduce:transition-none',
-            isCompleted ? 'text-muted-foreground line-through' : 'text-foreground',
+        <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-row md:items-center md:gap-2">
+          <a
+            href={href}
+            onClick={(event_) => {
+              // Let the browser handle a modified/middle click (new tab); hijack only a plain click.
+              if (!isPlainLeftClick(event_)) return;
+              event_.preventDefault();
+              navigateToTaskAndFocus(node.id, href);
+            }}
+            className={cn(
+              // Mobile: a 24px line box so the title centres on the 24px checkbox it is top-aligned with.
+              'min-w-0 truncate rounded-sm text-sm leading-6 transition-colors duration-100 md:flex-1 md:leading-5',
+              'hover:text-accent-teal focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal motion-reduce:transition-none',
+              isCompleted ? 'text-muted-foreground line-through' : 'text-foreground',
+            )}
+          >
+            {node.title}
+          </a>
+
+          {hasMeta && (
+            <div className="flex min-w-0 items-center gap-2">
+              {isTask && node.due_date && (
+                <DueDateChip dueDate={node.due_date} dueTime={node.due_time} />
+              )}
+
+              {showPriority && (
+                <PriorityChip
+                  priority={node.priority}
+                  emptyLabel={priorityPrompt}
+                  menuAlign="end"
+                  onChange={handlePriorityChange}
+                />
+              )}
+
+              {folderName !== undefined && (
+                <span className="min-w-0 truncate text-xs text-muted-foreground md:w-20 md:shrink-0 md:text-right">
+                  {folderName}
+                </span>
+              )}
+            </div>
           )}
-        >
-          {node.title}
-        </a>
-
-        {isTask && node.due_date && <DueDateChip dueDate={node.due_date} dueTime={node.due_time} />}
-
-        {isTask && (
-          <PriorityChip
-            priority={node.priority}
-            emptyLabel="Set priority"
-            menuAlign="end"
-            onChange={handlePriorityChange}
-          />
-        )}
-
-        {folderName !== undefined && (
-          <span className="w-20 shrink-0 truncate text-right text-xs text-muted-foreground">
-            {folderName}
-          </span>
-        )}
+        </div>
       </div>
 
       {hasChildren && (
@@ -193,6 +215,7 @@ export function TriageRow({
                 node={child}
                 depth={depth + 1}
                 showCompleted={showCompleted}
+                priorityPrompt={priorityPrompt}
               />
             ))}
           </ul>
