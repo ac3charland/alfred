@@ -190,6 +190,30 @@ describe('TodayView', () => {
     expect(screen.getByRole('link', { name: 'Already done' })).toBeInTheDocument();
   });
 
+  it('offers no "Set priority" prompt on an unprioritised row, top-level or subtask (ALF-349)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<TodayView />, {
+      tasks: [
+        makeItem('Unranked', { id: 'u', due_date: TODAY }),
+        makeItem('Unranked step', { id: 'us', parent_id: 'u' }),
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Expand subtasks' }));
+
+    expect(screen.getByRole('link', { name: 'Unranked step' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set priority' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Set priority')).not.toBeInTheDocument();
+  });
+
+  it('still shows a set level as a chip, so a same-day tie stays legible (ALF-349)', () => {
+    renderWithProviders(<TodayView />, {
+      tasks: [makeItem('Ranked', { due_date: TODAY, priority: 'high' })],
+    });
+
+    expect(screen.getByRole('button', { name: 'Priority: High' })).toBeInTheDocument();
+  });
+
   it('explains the empty list rather than showing a bare list', () => {
     renderWithProviders(<TodayView />, { tasks: [makeItem('Someday', { due_date: null })] });
 

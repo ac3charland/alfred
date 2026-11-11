@@ -30,6 +30,7 @@ export function PriorityView() {
       listLabel="Tasks by priority"
       emptyMessage="No tasks yet. Capture a task and give it a priority to see it ranked here."
       tasks={tasks}
+      priorityPrompt="Set priority"
       showCompleted={showCompleted}
       onToggleCompleted={() => {
         setShowCompleted((on) => !on);
