@@ -4041,7 +4041,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         ask: string;
         attempts: number;
       }>(
-        `select reclassify_requested_at::text as requested, reclassify_failed_at::text as failed,
+        // Read back in UTC: a bare `::text` renders in the session's time zone, which is the
+        // machine's own for a local cluster.
+        `select reclassify_requested_at::text as requested,
+                (reclassify_failed_at at time zone 'utc')::text as failed,
                 tier, judged_by, ask, classify_attempts as attempts
            from comm_messages where id = $1`,
         [id],
