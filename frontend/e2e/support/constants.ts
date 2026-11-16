@@ -65,7 +65,7 @@ export {
 } from '@/lib/reader/fixtures';
 
 /** And the wiki's. */
-export { makeWikiPage, makeWikiSync, wikiFixtureSet } from '@/lib/wiki/fixtures';
+export { makeWikiPage, makeWikiSync, wikiFixtureSet, wikiWebFixtureSet } from '@/lib/wiki/fixtures';
 
 export const MOCK_PORT = 54_331;
 export const MOCK_URL = `http://localhost:${String(MOCK_PORT)}`;

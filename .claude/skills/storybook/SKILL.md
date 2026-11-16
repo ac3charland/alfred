@@ -526,6 +526,12 @@ a named cache volume **keyed by arch**: native bindings (`@oxc-parser`, `lightni
 arch-specific, so a volume shared across arches feeds the wrong binaries to the container and
 crashes the Storybook build with `Cannot find native binding`.
 
+**Stale node_modules cache gotcha.** On macOS the volumes are filled by one `npm ci` and reused
+behind a marker file that a changed `package-lock.json` does not clear. After a dependency lands
+on `main`, the Storybook build in the container dies with `unable to find package.json for
+<package>` and `Module not found`, though the host build is fine. Re-run with `REINSTALL=1` (it
+passes through `git push` to the hook: `REINSTALL=1 git push`).
+
 **`getStoryContext` for per-story directives.** `getStoryContext(page, context)` (from
 `@storybook/test-runner`) returns the resolved story context — read
 `storyContext.parameters` and `storyContext.tags` to branch behaviour. Storybook

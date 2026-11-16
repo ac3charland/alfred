@@ -2,7 +2,8 @@ import { cn } from '@/lib/utils';
 
 /**
  * The web's look, in one place. The stage writes each node's and edge's light as `data-state`
- * (`lit` · `neighbour` · `dim` · `rest`), whether the day's concept is featured — no other node
+ * (`lit` · `neighbour` · `rest`), `data-active` on itself while the pointer or keyboard is on a
+ * node — which dims everything at rest — whether the day's concept is featured — no other node
  * lit — as `data-featured`, and whether a name shows as `data-shown`; React writes `data-kind`
  * and `data-focus`. Every class below keys off those attributes, so a hover restyles
  * the web without React rendering anything. Changes are instant — no transition — since a
@@ -12,6 +13,17 @@ import { cn } from '@/lib/utils';
  * other dot is muted, a concept filled and an entity a ring, so a second hue never competes with
  * the module colours.
  */
+
+/**
+ * How a node and an edge at rest dim while the stage is active. A plain descendant selector on
+ * the stage's attribute, so flipping it restyles the nodes and edges themselves and nothing
+ * inside them. It names the stage (`data-wiki-stage`), so no other ancestor's `data-active` can
+ * dim the web.
+ */
+const DIMMED = {
+  node: '[[data-wiki-stage][data-active=true]_&[data-state=rest]]:opacity-30',
+  edge: '[[data-wiki-stage][data-active=true]_&[data-state=rest]]:stroke-muted-foreground/10',
+} as const;
 
 /** The frame round the stage, and the place the Fit button sits over it. */
 export const stageFrameClass = 'relative';
@@ -37,20 +49,27 @@ export const edgeLayerClass = 'pointer-events-none absolute inset-0 h-full w-ful
 export const edgeClass = cn(
   'stroke-muted-foreground/[0.28] stroke-1',
   'data-[state=lit]:stroke-accent-violet/70 data-[state=lit]:stroke-[1.5]',
-  'data-[state=dim]:stroke-muted-foreground/10',
+  DIMMED.edge,
 );
 
 /** The element the stage places at a dot's centre; it has no size of its own. */
 export const nodeClass = cn(
   'group/node absolute left-0 top-0',
-  'data-[state=dim]:opacity-30',
+  DIMMED.node,
   'data-[state=neighbour]:z-[5] data-[featured=true]:z-10 data-[state=lit]:z-20',
 );
 
-/** The node's link: a 24 px round hit area centred on the dot, bigger than the smallest dots. */
+/**
+ * The node's link: a 24 px round hit area centred on the dot, bigger than the smallest dots.
+ *
+ * It sets its own `text-decoration` because preflight's `a { text-decoration: inherit }` is an
+ * explicit inherit of a property that doesn't inherit, and the browser answers one by restyling
+ * the link every time its parent's style changes. The parent here is the node the stage moves
+ * every frame, so that one rule restyled every link in the web on every tick.
+ */
 export const nodeLinkClass = cn(
   'group/link absolute left-0 top-0 block size-6 -translate-x-1/2 -translate-y-1/2 rounded-full',
-  'focus:outline-none',
+  '[text-decoration:none] focus:outline-none',
 );
 
 /** The dot, centred in the link; its size is set inline from the node's degree. */
