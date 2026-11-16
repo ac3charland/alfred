@@ -204,9 +204,14 @@ export function createWikiWebStage(): WikiWebStage {
     return focusId !== null && litId() === focusId;
   };
 
+  /** Write `light` as an element's `data-state`, only when it isn't that already. */
+  const writeLight = (element: HTMLElement | SVGElement, light: WikiWebLight) => {
+    if (element.dataset['state'] !== light) element.dataset['state'] = light;
+  };
+
   /** Write a node's light, and whether it shows as the day's concept. */
   const lightNode = (id: string, element: HTMLElement) => {
-    element.dataset['state'] = lightOf(id);
+    writeLight(element, lightOf(id));
     if (id === scene?.focusId && featured()) element.dataset['featured'] = 'true';
     else delete element.dataset['featured'];
   };
@@ -321,7 +326,7 @@ export function createWikiWebStage(): WikiWebStage {
     for (const [id, element] of nodeElements) lightNode(id, element);
     for (const edge of scene.edges) {
       const element = edgeElements.get(edgeKey(edge));
-      if (element) element.dataset['state'] = edgeLightOf(edge);
+      if (element) writeLight(element, edgeLightOf(edge));
     }
     drawNames();
   };
@@ -479,7 +484,7 @@ export function createWikiWebStage(): WikiWebStage {
       edgeElements.set(key, element);
       const edge = scene?.edges.find((each) => edgeKey(each) === key);
       if (edge) {
-        element.dataset['state'] = edgeLightOf(edge);
+        writeLight(element, edgeLightOf(edge));
         drawEdge(edge, element);
       }
     },

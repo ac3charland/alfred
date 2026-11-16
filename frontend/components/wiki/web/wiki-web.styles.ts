@@ -17,11 +17,12 @@ import { cn } from '@/lib/utils';
 /**
  * How a node and an edge at rest dim while the stage is active. A plain descendant selector on
  * the stage's attribute, so flipping it restyles the nodes and edges themselves and nothing
- * inside them.
+ * inside them. It names the stage (`data-wiki-stage`), so no other ancestor's `data-active` can
+ * dim the web.
  */
 const DIMMED = {
-  node: '[[data-active=true]_&[data-state=rest]]:opacity-30',
-  edge: '[[data-active=true]_&[data-state=rest]]:stroke-muted-foreground/10',
+  node: '[[data-wiki-stage][data-active=true]_&[data-state=rest]]:opacity-30',
+  edge: '[[data-wiki-stage][data-active=true]_&[data-state=rest]]:stroke-muted-foreground/10',
 } as const;
 
 /** The frame round the stage, and the place the Fit button sits over it. */

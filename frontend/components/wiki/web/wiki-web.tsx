@@ -184,6 +184,7 @@ export function WikiWeb({
       <div className={stageFrameClass}>
         <div
           ref={stageElement}
+          data-wiki-stage=""
           role="group"
           aria-labelledby={labelledBy}
           aria-describedby={hintId}
