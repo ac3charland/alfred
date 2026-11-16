@@ -15,7 +15,7 @@
  *
  * Then a node is hovered and left on the settled web (reduced motion, so no tick is counted with
  * it), and the trace says how many elements the largest pass restyled: the dimming of everything
- * else.
+ * else. `HOVER_SHOT=<path>` saves a screenshot of the hovered web.
  *
  * Output is deterministic: the element counts are printed per node to one decimal, and the
  * timings only as which side of a wide band they fall on.
@@ -172,6 +172,12 @@ async function measureHover() {
   await browser.startTracing(still, { categories: ['devtools.timeline'] });
   await still.mouse.move(spot.x, spot.y);
   await web.and(still.locator('[data-active=true]')).waitFor();
+  // A node at rest, far from the pointer's: what the reader sees of the dimming.
+  const dimmed = await web
+    .locator('[data-wiki-node][data-state=rest]')
+    .last()
+    .evaluate((node) => getComputedStyle(node).opacity);
+  if (process.env.HOVER_SHOT) await still.screenshot({ path: process.env.HOVER_SHOT });
   await still.mouse.move(2, 2);
   await web.and(still.locator(':not([data-active])')).waitFor();
   const trace = JSON.parse((await browser.stopTracing()).toString());
@@ -180,7 +186,7 @@ async function measureHover() {
       .filter((event) => event.name === 'UpdateLayoutTree')
       .map((event) => event.args?.elementCount ?? 0),
   );
-  return { nodes, edges, perElement: largest / (nodes + edges) };
+  return { nodes, edges, dimmed, perElement: largest / (nodes + edges) };
 }
 const hover = await measureHover();
 await browser.close();
@@ -195,6 +201,7 @@ console.log(`nodes on the web: ${withFix.count}`);
 report('as built', withFix);
 report(`with ${FIX} taken off the node links`, withoutFix);
 console.log(`hovering a node, then leaving it (${hover.nodes} nodes, ${hover.edges} edges)`);
+console.log(`  opacity of a node at rest while another is hovered: ${hover.dimmed}`);
 console.log(
   `  elements restyled by the largest pass, per node and edge: ${hover.perElement.toFixed(1)}`,
 );

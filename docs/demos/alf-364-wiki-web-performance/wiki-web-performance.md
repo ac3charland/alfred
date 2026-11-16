@@ -48,20 +48,20 @@ Measured the same way as the table above, over 20 hovers in and out on the settl
 | | CPU | Elements restyled by the dimming pass | Style per hover change | Main thread per hover change |
 | --- | --- | --- | --- | --- |
 | before | 1x | 1,842 | 2.9 ms | 5.1 ms |
-| after | 1x | about 960 | 1.8 ms | 5.0 ms |
+| after | 1x | 800 to 960, by the node hovered | 1.8 ms | 5.0 ms |
 | before | 4x | 1,842 | 11.4 ms | 19.4 ms |
-| after | 4x | about 960 | 3.9 ms | 11.2 ms |
+| after | 4x | 800 to 960, by the node hovered | 3.9 ms | 11.2 ms |
 
 ## What keeps it fixed
 
 `frontend/e2e/wiki-web-restyle.spec.ts` traces Chromium on the 52-node sample web and reads how many elements each style pass restyled. It counts elements rather than milliseconds, so it gives the same answer on a slow CI machine.
 
 - **A tick** (a dot dragged): each node once, 54 elements for 52 nodes. Without the link's class the median pass restyles 106 and the test fails (`Expected: < 78, Received: 106`).
-- **A hover**: the largest pass must stay under 1.5 elements per node and edge (179 for 52 nodes and 67 edges). It is 159 now and was 327. The same test pins the look in a real browser: a node at rest computes to `opacity: 0.3` while another is hovered and `1` after, and a resting edge's stroke changes and returns.
+- **A hover**: the largest pass must stay under 2 elements per node and edge (238 for 52 nodes and 67 edges). It is 167 now — the nodes and edges, and what is inside the few whose light changed — and was 327. The same test pins the look in a real browser: a node at rest computes to `opacity: 0.3` while another is hovered and `1` after, and a resting edge's stroke changes and returns.
 
 ## Run it yourself
 
-`with-app.sh` builds the app against the in-memory mock, boots both, seeds the same 261-node wiki, signs in through the login form and runs `measure.mjs` in headless Chromium. It drags a dot while Chromium traces, twice: on the page as built, then on the same page with the class taken off the node links. As built, a tick restyles each node once; without the class it restyles every node and its link. Then it hovers a node on the settled web and leaves it, and prints what the largest style pass restyled per node and edge; before this change that figure was 2.3. The counts don't vary from run to run, and the timings are printed only as which side of a wide band they fall on, so `verify` re-runs this.
+`with-app.sh` builds the app against the in-memory mock, boots both, seeds the same 261-node wiki, signs in through the login form and runs `measure.mjs` in headless Chromium. It drags a dot while Chromium traces, twice: on the page as built, then on the same page with the class taken off the node links. As built, a tick restyles each node once; without the class it restyles every node and its link. Then it hovers a node on the settled web and leaves it, and prints the opacity a node at rest computes to while the other is hovered (the dimming the reader sees) and what the largest style pass restyled per node and edge; before this change that figure was 2.3. The counts don't vary from run to run, and the timings are printed only as which side of a wide band they fall on, so `verify` re-runs this.
 
 ```bash
 docs/demos/alf-364-wiki-web-performance/with-app.sh 2>/dev/null
@@ -78,5 +78,12 @@ with [text-decoration:none] taken off the node links
   style per tick under 5 ms: no
   style per tick over 10 ms: yes
 hovering a node, then leaving it (261 nodes, 537 edges)
+  opacity of a node at rest while another is hovered: 0.3
   elements restyled by the largest pass, per node and edge: 1.0
 ```
+
+## The hovered web
+
+A node hovered on the 261-node web, as the harness above leaves it (`HOVER_SHOT=<path>` saves the shot): its neighbourhood lit and named, everything else dimmed from the one attribute on the stage.
+
+![](wiki-web-performance-image-2.png)
