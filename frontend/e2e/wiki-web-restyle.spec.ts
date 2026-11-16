@@ -1,4 +1,4 @@
-import type { Locator } from '@playwright/test';
+import type { Browser, Locator, Page } from '@playwright/test';
 
 import { stableSorted } from '@/lib/sort';
 
@@ -12,15 +12,34 @@ import { expect, test } from './support/fixtures';
  * under it. That is easy to lose without seeing it: a child whose style explicitly inherits a
  * property that doesn't inherit — preflight's `a { text-decoration: inherit }` — is restyled
  * whenever its parent's style changes, which doubled the elements restyled per frame and, at a
- * few hundred nodes, took the web from 120 fps to 25. Only the browser's own trace shows it —
- * jsdom has no style engine and the page looks the same either way — so this reads the trace:
- * a count of elements, which doesn't depend on how fast the machine is.
+ * few hundred nodes, took the web from 120 fps to 25. A hover is the same kind of cost: dimming
+ * the rest of the web should restyle each node and edge, not everything inside every node. Only
+ * the browser's own trace shows either — jsdom has no style engine and the page looks the same
+ * either way — so this reads the trace: a count of elements, which doesn't depend on how fast the
+ * machine is.
  */
 
 /** One style pass in a Chromium trace, and how many elements it restyled. */
 interface TraceEvent {
   name: string;
   args?: { elementCount?: number };
+}
+
+/** How many elements each style pass restyled while `act` ran, in the order they happened. */
+async function restyledDuring(
+  browser: Browser,
+  page: Page,
+  act: () => Promise<void>,
+): Promise<number[]> {
+  await browser.startTracing(page, { categories: ['devtools.timeline'] });
+  await act();
+  const recorded = await browser.stopTracing();
+  const trace = JSON.parse(recorded.toString()) as { traceEvents: TraceEvent[] };
+  return trace.traceEvents.flatMap((event) =>
+    event.name === 'UpdateLayoutTree' && event.args?.elementCount !== undefined
+      ? [event.args.elementCount]
+      : [],
+  );
 }
 
 const median = (values: readonly number[]): number =>
@@ -53,27 +72,60 @@ test.describe('the Wiki landing web — what a frame restyles', () => {
     const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
     // A held dot keeps the physics awake, so every frame of the drag moves every node.
-    await browser.startTracing(page, { categories: ['devtools.timeline'] });
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    for (let step = 1; step <= 30; step += 1) {
-      await page.mouse.move(from.x + step * 3, from.y + step * 2);
-    }
-    await page.mouse.up();
-    const recorded = await browser.stopTracing();
-    const trace = JSON.parse(recorded.toString()) as { traceEvents: TraceEvent[] };
+    const passes = await restyledDuring(browser, page, async () => {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      for (let step = 1; step <= 30; step += 1) {
+        await page.mouse.move(from.x + step * 3, from.y + step * 2);
+      }
+      await page.mouse.up();
+    });
 
     // The passes that restyled the web: a tick touches every node, and nothing else on the page
     // comes near that many elements.
-    const ticks = trace.traceEvents.flatMap((event) =>
-      event.name === 'UpdateLayoutTree' &&
-      event.args?.elementCount !== undefined &&
-      event.args.elementCount >= count
-        ? [event.args.elementCount]
-        : [],
-    );
+    const ticks = passes.filter((restyled) => restyled >= count);
     expect(ticks.length).toBeGreaterThan(5);
     // A node each, and room for the names that move with them — but not a second element per node.
     expect(median(ticks)).toBeLessThan(count * 1.5);
+  });
+
+  test('dims the rest of the web under a hover by restyling each node and edge once, not what is inside them', async ({
+    page,
+    seed,
+    browser,
+  }) => {
+    const { pages, sync } = wikiWebFixtureSet();
+    await seed({ wikiPages: pages, wikiSync: [sync] });
+    // Settled before its one paint, so no tick's restyle is mistaken for the hover's.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/wiki');
+
+    const web = page.getByRole('group', { name: /Concepts & entities/ });
+    const medina = web.getByRole('link', { name: 'John Medina, entity' });
+    await expect(medina).toBeVisible();
+    const nodes = await web.locator('[data-wiki-node]').count();
+    const edges = await web.locator('line').count();
+    // A page John Medina doesn't link to: it dims while he is hovered.
+    const other = web.locator('[data-wiki-node]', {
+      has: page.getByRole('link', { name: 'Zettelkasten, concept' }),
+    });
+    const edge = web.locator('line[data-state="rest"]').first();
+    const strokeOf = () => edge.evaluate((line) => getComputedStyle(line).stroke);
+    const resting = await strokeOf();
+
+    const passes = await restyledDuring(browser, page, async () => {
+      await medina.hover();
+      await expect(web).toHaveAttribute('data-active', 'true');
+      await expect(other).toHaveCSS('opacity', '0.3');
+      expect(await strokeOf()).not.toBe(resting);
+
+      await page.mouse.move(0, 0);
+      await expect(web).not.toHaveAttribute('data-active');
+      await expect(other).toHaveCSS('opacity', '1');
+      expect(await strokeOf()).toBe(resting);
+    });
+
+    // In and out, the most any one pass restyles is the nodes and edges themselves.
+    expect(Math.max(...passes)).toBeLessThan((nodes + edges) * 1.5);
   });
 });
