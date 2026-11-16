@@ -125,7 +125,8 @@ test.describe('the Wiki landing web — what a frame restyles', () => {
       expect(await strokeOf()).toBe(resting);
     });
 
-    // In and out, the most any one pass restyles is the nodes and edges themselves.
-    expect(Math.max(...passes)).toBeLessThan((nodes + edges) * 1.5);
+    // In and out, a pass restyles the nodes and edges themselves, and what is inside the few
+    // whose light changed. Restyling what is inside every node comes to 2.7 each.
+    expect(Math.max(...passes)).toBeLessThan((nodes + edges) * 2);
   });
 });
