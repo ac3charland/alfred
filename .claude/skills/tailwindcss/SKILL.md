@@ -122,6 +122,8 @@ v3?
 
 - **Two variant classes that set the same property on one element have no defined winner.** When both `group-data-[state=lit]/node:font-medium` and `group-data-[featured=true]/node:font-semibold` match, the generated CSS order decides, not the class string. Make the states exclusive with one arbitrary group variant (`group-[[data-state=lit]:not([data-featured])]/node:font-medium`, in `wiki-web.styles.ts`), and pin the computed style in Playwright, since jsdom computes none.
 
+- **Give a link inside an element that moves every frame its own `[text-decoration:none]`.** Preflight's `a { text-decoration: inherit }` explicitly inherits a property that doesn't inherit, so the browser restyles the link whenever its parent's style changes — and a parent whose `transform` is written per frame restyles every such link per frame, at a cost that grows with the square of their number (261 links: 45 ms a frame). The page looks identical either way; `e2e/wiki-web-restyle.spec.ts` pins it by counting restyled elements in a trace.
+
 - **Always pair `motion-reduce:` with every animated class.** The alfred project's design spec requires respecting `prefers-reduced-motion`. Minimum: `motion-reduce:transition-none` or `motion-reduce:animate-none` alongside every `transition-*` or `animate-*`.
 
 - **The shadow scale shifted by one step in v4.** The old `shadow` is now `shadow-sm`; old `shadow-sm` is now `shadow-xs`. If a shadow looks larger than expected, you are probably hitting v3 muscle memory on the class name.

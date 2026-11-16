@@ -110,6 +110,28 @@ check is then cleaner as fresh before/after locator `boundingBox()` measurements
 per-frame sampling, since those rows are reconciled to new DOM nodes on commit. Used by
 `e2e/task-delete.spec.ts`.
 
+## Low framerate — measure what a frame costs
+
+For "it's slow" rather than "it glitches", read the main thread's own counters over a
+window of frames through CDP, in a throwaway spec:
+
+```ts
+const cdp = await page.context().newCDPSession(page);
+await cdp.send('Performance.enable');
+await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 }); // a slower machine
+const { metrics } = await cdp.send('Performance.getMetrics'); // before and after the window
+```
+
+The deltas of `ScriptDuration`, `RecalcStyleDuration`, `LayoutDuration` and `TaskDuration`,
+divided by the frames in the window, say which stage to chase. When style dominates, find
+the rule by bisecting in the page: set half the `CSSStyleRule`s' `selectorText` to a class
+nothing has, time a write plus a forced `getComputedStyle`, and narrow.
+
+Guard the fix with a count, not a time, so the test doesn't depend on the machine:
+`browser.startTracing(page, { categories: ['devtools.timeline'] })` records each style pass
+as an `UpdateLayoutTree` event whose `args.elementCount` is how many elements it restyled
+(`e2e/wiki-web-restyle.spec.ts`).
+
 ## Limitations (state these when you report a finding)
 
 - **~16ms granularity.** Sampling is per `requestAnimationFrame`, so a glitch shorter
