@@ -47,10 +47,17 @@ export const nodeClass = cn(
   'data-[state=neighbour]:z-[5] data-[featured=true]:z-10 data-[state=lit]:z-20',
 );
 
-/** The node's link: a 24 px round hit area centred on the dot, bigger than the smallest dots. */
+/**
+ * The node's link: a 24 px round hit area centred on the dot, bigger than the smallest dots.
+ *
+ * It sets its own `text-decoration` because preflight's `a { text-decoration: inherit }` is an
+ * explicit inherit of a property that doesn't inherit, and the browser answers one by restyling
+ * the link every time its parent's style changes. The parent here is the node the stage moves
+ * every frame, so that one rule restyled every link in the web on every tick.
+ */
 export const nodeLinkClass = cn(
   'group/link absolute left-0 top-0 block size-6 -translate-x-1/2 -translate-y-1/2 rounded-full',
-  'focus:outline-none',
+  '[text-decoration:none] focus:outline-none',
 );
 
 /** The dot, centred in the link; its size is set inline from the node's degree. */
