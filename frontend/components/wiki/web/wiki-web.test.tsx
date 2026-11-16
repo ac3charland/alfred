@@ -98,6 +98,9 @@ function nodeElement(path: string): HTMLElement {
 
 const linkOf = (path: string): HTMLElement => within(nodeElement(path)).getByRole('link');
 const stateOf = (path: string): string | undefined => nodeElement(path).dataset['state'];
+
+/** Whether the stage is dimming every node and edge at rest: a node is lit by pointer or keyboard. */
+const dimming = (): boolean => stage().dataset['active'] === 'true';
 const nameShown = (path: string): boolean =>
   nodeElement(path).querySelector<HTMLElement>('[data-shown]')?.dataset['shown'] === 'true';
 
@@ -358,11 +361,14 @@ describe('WikiWeb — hover', () => {
       expect(stateOf(path)).toBe('neighbour');
       expect(nameShown(path)).toBe(true);
     }
-    expect(stateOf('wiki/concepts/zettelkasten.md')).toBe('dim');
+    // The rest dim from one attribute on the stage, not one write a node.
+    expect(dimming()).toBe(true);
+    expect(stateOf('wiki/concepts/zettelkasten.md')).toBe('rest');
     expect(nameShown('wiki/entities/robert-bjork.md')).toBe(false);
 
     await user.unhover(linkOf(MEDINA));
 
+    expect(dimming()).toBe(false);
     expect(stateOf(MEDINA)).toBe('rest');
     expect(stateOf('wiki/concepts/zettelkasten.md')).toBe('rest');
     expect(nameShown('wiki/entities/robert-bjork.md')).toBe(true);
@@ -376,11 +382,13 @@ describe('WikiWeb — hover', () => {
     await user.hover(linkOf(MEDINA));
 
     expect(nodeElement(FOCUS).dataset['featured']).toBeUndefined();
-    expect(stateOf(FOCUS)).toBe('dim');
+    expect(dimming()).toBe(true);
+    expect(stateOf(FOCUS)).toBe('rest');
     expect(nameShown(FOCUS)).toBe(false);
 
     await user.unhover(linkOf(MEDINA));
 
+    expect(dimming()).toBe(false);
     expect(nodeElement(FOCUS).dataset['featured']).toBe('true');
     expect(stateOf(FOCUS)).toBe('rest');
     expect(nameShown(FOCUS)).toBe(true);
@@ -586,7 +594,8 @@ describe('WikiWeb — the keyboard', () => {
 
     expect(neighboursOf(SAMPLE.nodes.at(-1)?.path ?? '')).not.toContain(FOCUS);
     expect(nodeElement(FOCUS).dataset['featured']).toBeUndefined();
-    expect(stateOf(FOCUS)).toBe('dim');
+    expect(dimming()).toBe(true);
+    expect(stateOf(FOCUS)).toBe('rest');
     expect(nameShown(FOCUS)).toBe(false);
 
     await user.tab();

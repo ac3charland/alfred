@@ -135,6 +135,15 @@ export function WikiWeb({
 
   useWikiWebGestures(stageRef, stage, setHold);
 
+  // The stage element is the gestures' and the size's (the ref) and the lighting's (the stage).
+  const stageElement = React.useCallback(
+    (element: HTMLDivElement | null) => {
+      stageRef.current = element;
+      stage.setStage(element);
+    },
+    [stage],
+  );
+
   // A node the keyboard reaches is lit like a hover, and brought into view if the stage clips it.
   const keyboardFocus = React.useCallback(
     (id: string | null) => {
@@ -174,7 +183,7 @@ export function WikiWeb({
     <div className={cn('flex flex-col', className)}>
       <div className={stageFrameClass}>
         <div
-          ref={stageRef}
+          ref={stageElement}
           role="group"
           aria-labelledby={labelledBy}
           aria-describedby={hintId}

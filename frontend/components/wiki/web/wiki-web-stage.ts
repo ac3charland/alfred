@@ -28,15 +28,19 @@ export interface WikiWebScene {
  * How a dot or an edge is lit, written to its `data-state`:
  * - `lit` — the node under the pointer or keyboard, or an edge touching it;
  * - `neighbour` — a node linked to the lit one (or to the focus, at rest);
- * - `dim` — everything else while a node is lit by the pointer or keyboard;
  * - `rest` — everything else.
+ *
+ * While a node is lit by the pointer or keyboard, everything at `rest` dims. That is one
+ * attribute on the stage, `data-active`, not a state of each dot: a hover then writes to the few
+ * nodes and edges whose light changed and to the stage, where a `dim` on every other node and
+ * edge restyled the whole web twice, on the way in and on the way out.
  *
  * The focus is marked `data-focus` for good; its own look is `data-featured`, which the stage
  * writes only while no other node is lit: at rest, or while the focus is the node lit. Lighting
  * another node takes it away, so the day's concept is then an ordinary dot — dimmed, or lit as a
  * neighbour.
  */
-export type WikiWebLight = 'lit' | 'neighbour' | 'dim' | 'rest';
+export type WikiWebLight = 'lit' | 'neighbour' | 'rest';
 
 /**
  * The web's moving half, outside React: the physics, where every dot is, the view, the lighting
@@ -45,6 +49,8 @@ export type WikiWebLight = 'lit' | 'neighbour' | 'dim' | 'rest';
  * React renders a node once however much the web moves.
  */
 export interface WikiWebStage {
+  /** The stage's own element, which carries `data-active` while a node is lit (`null` as it unmounts). */
+  setStage: (element: HTMLElement | null) => void;
   /** The element that places a node at its dot's centre, by path (`null` as it unmounts). */
   setNode: (id: string, element: HTMLElement | null) => void;
   /** A node's name, measured once and placed (or hidden) on every paint. */
@@ -132,6 +138,7 @@ export function createWikiWebStage(): WikiWebStage {
   const nodeElements = new Map<string, HTMLElement>();
   const nameElements = new Map<string, HTMLElement>();
   const edgeElements = new Map<string, SVGLineElement>();
+  let stageElement: HTMLElement | null = null;
   // Names don't scale with the view, so each is measured once, the first time it's placed.
   const nameWidths = new Map<string, number>();
   // Where every dot is, by path: the only record of it, and the next sim's warm start.
@@ -174,12 +181,21 @@ export function createWikiWebStage(): WikiWebStage {
     scene?.focusId ??
     null;
 
+  /** Whether the pointer or the keyboard is on a node, so everything at rest dims. */
+  const active = (): boolean => hovered !== null || keyboard !== null;
+
+  /** Write whether the web is active onto the stage. */
+  const lightStage = () => {
+    if (!stageElement) return;
+    if (active()) stageElement.dataset['active'] = 'true';
+    else delete stageElement.dataset['active'];
+  };
+
   const lightOf = (id: string): WikiWebLight => {
     const lit = litId();
-    const active = hovered !== null || keyboard !== null;
-    if (active && id === lit) return 'lit';
+    if (active() && id === lit) return 'lit';
     if (lit !== null && around.get(lit)?.has(id)) return 'neighbour';
-    return active ? 'dim' : 'rest';
+    return 'rest';
   };
 
   /** Whether the focus shows as the day's concept: only while no other node is lit. */
@@ -197,8 +213,7 @@ export function createWikiWebStage(): WikiWebStage {
 
   const edgeLightOf = ({ a, b }: WikiWebEdge): WikiWebLight => {
     const lit = litId();
-    if (lit !== null && (a === lit || b === lit)) return 'lit';
-    return hovered !== null || keyboard !== null ? 'dim' : 'rest';
+    return lit !== null && (a === lit || b === lit) ? 'lit' : 'rest';
   };
 
   const screenOf = (id: string): Point | undefined => {
@@ -294,8 +309,9 @@ export function createWikiWebStage(): WikiWebStage {
     drawNames();
   };
 
-  /** Write every node's and edge's light, then the names, which follow it. */
+  /** Write the stage's, every node's and every edge's light, then the names, which follow it. */
   const applyLight = () => {
+    lightStage();
     if (!scene) return;
     // The focus's name is larger and bolder while it is featured, so it is measured again.
     if (featured() !== featuring) {
@@ -429,6 +445,10 @@ export function createWikiWebStage(): WikiWebStage {
   };
 
   return {
+    setStage: (element) => {
+      stageElement = element;
+      lightStage();
+    },
     setNode: (id, element) => {
       if (element === null) {
         nodeElements.delete(id);
