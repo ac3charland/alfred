@@ -13,6 +13,10 @@
  * time Chromium's trace says how many elements every style pass restyled, and its counters say
  * how long style took.
  *
+ * Then a node is hovered and left on the settled web (reduced motion, so no tick is counted with
+ * it), and the trace says how many elements the largest pass restyled: the dimming of everything
+ * else.
+ *
  * Output is deterministic: the element counts are printed per node to one decimal, and the
  * timings only as which side of a wide band they fall on.
  */
@@ -145,6 +149,40 @@ await page.addInitScript((fix) => {
   }).observe(document, { childList: true, subtree: true });
 }, FIX);
 const withoutFix = await measure();
+
+/** Hover a node on the settled web and leave it; the most any one style pass restyled. */
+async function measureHover() {
+  const still = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await still.context().addCookies(await page.context().cookies());
+  await still.emulateMedia({ reducedMotion: 'reduce' });
+  await still.goto(`${APP}/wiki`);
+  const web = still.getByRole('group', { name: /Concepts & entities/ });
+  await web.locator('[data-wiki-node] a').first().waitFor();
+  const nodes = await web.locator('[data-wiki-node]').count();
+  const edges = await web.locator('line').count();
+  // A node nothing else covers, so the pointer lands on it.
+  const spot = await web.locator('[data-wiki-node] a').evaluateAll((links) => {
+    for (const link of links) {
+      const box = link.getBoundingClientRect();
+      const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      if (document.elementFromPoint(at.x, at.y)?.closest('a') === link) return at;
+    }
+    return null;
+  });
+  await browser.startTracing(still, { categories: ['devtools.timeline'] });
+  await still.mouse.move(spot.x, spot.y);
+  await web.and(still.locator('[data-active=true]')).waitFor();
+  await still.mouse.move(2, 2);
+  await web.and(still.locator(':not([data-active])')).waitFor();
+  const trace = JSON.parse((await browser.stopTracing()).toString());
+  const largest = Math.max(
+    ...trace.traceEvents
+      .filter((event) => event.name === 'UpdateLayoutTree')
+      .map((event) => event.args?.elementCount ?? 0),
+  );
+  return { nodes, edges, perElement: largest / (nodes + edges) };
+}
+const hover = await measureHover();
 await browser.close();
 
 const report = (label, { perNode, msPerTick }) => {
@@ -156,3 +194,7 @@ const report = (label, { perNode, msPerTick }) => {
 console.log(`nodes on the web: ${withFix.count}`);
 report('as built', withFix);
 report(`with ${FIX} taken off the node links`, withoutFix);
+console.log(`hovering a node, then leaving it (${hover.nodes} nodes, ${hover.edges} edges)`);
+console.log(
+  `  elements restyled by the largest pass, per node and edge: ${hover.perElement.toFixed(1)}`,
+);
