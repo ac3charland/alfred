@@ -22,6 +22,7 @@ describe('readerHotkeyAction — the key map', () => {
     ['o', 'open'],
     ['e', 'archive'],
     ['v', 'overview'],
+    ['a', 'capture'],
     ['Escape', 'deselect'],
   ])('reads %s as %s', (key, action) => {
     expect(press(key)).toBe(action);
@@ -53,6 +54,13 @@ describe('readerHotkeyAction — when a keystroke is not a verb', () => {
   it.each(['metaKey', 'ctrlKey', 'altKey'] as const)('ignores a %s chord', (modifier) => {
     expect(press('e', { [modifier]: true })).toBeUndefined();
   });
+
+  it.each(['metaKey', 'ctrlKey', 'altKey'] as const)(
+    'leaves a %s+a chord (select-all) to the browser',
+    (modifier) => {
+      expect(press('a', { [modifier]: true })).toBeUndefined();
+    },
+  );
 
   it('ignores a keystroke aimed at a text field', () => {
     const input = document.createElement('input');
