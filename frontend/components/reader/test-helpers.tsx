@@ -3,12 +3,15 @@ import * as React from 'react';
 
 import { ToastViewport } from '@/components/shell/toast-viewport';
 import { NO_READER_HEALTH } from '@/lib/reader/fixtures';
+import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { ReaderSettingsProvider } from '@/lib/stores/reader-settings-store';
 import { ReaderProvider } from '@/lib/stores/reader-store';
 import { ResearchConfigProvider } from '@/lib/stores/research-config';
+import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import { WikiProvider } from '@/lib/stores/wiki-store';
 import type {
+  Item,
   ReaderHealthSnapshot,
   ReaderPostListItem,
   ReaderPublicationListItem,
@@ -26,12 +29,14 @@ export interface RenderReaderOptions {
   publications?: ReaderPublicationListItem[];
   /** Whether the deployment can research a question (Retry research). Defaults to true. */
   researchConfigured?: boolean;
+  /** The Tasks store's seed — what the row's Add-to-Inbox field writes into. Empty by default. */
+  tasks?: Item[];
 }
 
 /**
  * Render a Reader component inside `ReaderProvider` + `ReaderSettingsProvider` + `ToastProvider` +
- * `WikiProvider` (mirrors `renderWithProviders` in `lib/test-utils.tsx`, scoped to this module's
- * own tests rather than extending the shared cross-module helper for a store no other module
+ * `WikiProvider` + `TasksProvider` — the row's Add-to-Inbox field writes through the last — (mirrors
+ * `renderWithProviders` in `lib/test-utils.tsx`, scoped to this module's own tests rather than extending the shared cross-module helper for a store no other module
  * reads). The wiki provider sits outside the Reader's and the settings provider inside it, as in
  * the shell layout.
  */
@@ -45,6 +50,7 @@ export function renderReader(
     instapaperConfigured = true,
     publications = [],
     researchConfigured = true,
+    tasks = [],
   }: RenderReaderOptions = {},
 ) {
   // Via RTL's own `wrapper` option, not inlined around `ui` directly: only that way does the
@@ -59,15 +65,19 @@ export function renderReader(
             initialSync={null}
             config={{ repo: wikiWritable ? 'ac3charland/knowledge' : null, writable: wikiWritable }}
           >
-            <ReaderProvider
-              initialPosts={initialPosts}
-              initialHealth={initialHealth}
-              instapaperConfigured={instapaperConfigured}
-            >
-              <ReaderSettingsProvider initialPublications={publications} initialCandidates={[]}>
-                {children}
-              </ReaderSettingsProvider>
-            </ReaderProvider>
+            <ExpansionProvider>
+              <TasksProvider initialTasks={tasks}>
+                <ReaderProvider
+                  initialPosts={initialPosts}
+                  initialHealth={initialHealth}
+                  instapaperConfigured={instapaperConfigured}
+                >
+                  <ReaderSettingsProvider initialPublications={publications} initialCandidates={[]}>
+                    {children}
+                  </ReaderSettingsProvider>
+                </ReaderProvider>
+              </TasksProvider>
+            </ExpansionProvider>
           </WikiProvider>
         </ResearchConfigProvider>
         <ToastViewport />
