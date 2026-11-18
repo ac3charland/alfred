@@ -1109,3 +1109,53 @@ export const FeedPost: Story = {
     await expect(canvas.queryByText(/via/)).toBeNull();
   },
 };
+
+// ---------------------------------------------------------------------------
+// Add to Inbox
+// ---------------------------------------------------------------------------
+
+const CAPTURE_TEXT = 'Ask Ana whether our classifier evals have a sim-to-real gap too';
+
+/** The verb pressed: its wash, and the field under the verb line with a draft and Add live. */
+export const InboxCaptureOpen: Story = {
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Add to Inbox' }));
+    await userEvent.type(canvas.getByRole('textbox', { name: 'New Inbox item' }), CAPTURE_TEXT);
+    await expect(canvas.getByRole('button', { name: 'Add' })).toBeEnabled();
+  },
+};
+
+/**
+ * Right after an add: the field cleared and still open for the next one, the post still in the
+ * list, and the toast whose text links to the Inbox.
+ */
+export const InboxCaptureAdded: Story = {
+  parameters: { visualTest: { target: '[data-testid="row-frame"]' } },
+  decorators: [withToastUnderRow],
+  beforeEach: () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (!requestUrl(input).endsWith('/api/items')) return new Promise(() => {});
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json(
+        { ...body, id: '00000000-0000-4000-8000-0000000000a1' },
+        { status: 201, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    return () => {
+      globalThis.fetch = original;
+    };
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Add to Inbox' }));
+    await userEvent.type(
+      canvas.getByRole('textbox', { name: 'New Inbox item' }),
+      `${CAPTURE_TEXT}{Enter}`,
+    );
+    await expect(await canvas.findByRole('link', { name: 'Added to Inbox' })).toBeInTheDocument();
+    await expect(canvas.getByRole('textbox', { name: 'New Inbox item' })).toHaveValue('');
+  },
+};
