@@ -250,6 +250,41 @@ describe('addTask', () => {
     expect(fresh?.sort_order).toBe(31);
   });
 
+  it('forwards a provenance link and note to the create as source_url and notes', async () => {
+    mockCreateItem.mockResolvedValue(item({ id: 'server-1' }));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({
+        text: 'Ask Ana',
+        sourceUrl: 'https://example.com/post',
+        notes: 'From the Reader: “A post” — Example',
+      });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Ask Ana',
+        item_type: 'unclassified',
+        source_url: 'https://example.com/post',
+        notes: 'From the Reader: “A post” — Example',
+      }),
+    );
+  });
+
+  it('sends no source_url or notes key when the capture carries neither', async () => {
+    mockCreateItem.mockResolvedValue(item({ id: 'server-1' }));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'Buy milk' });
+    });
+
+    const sent = mockCreateItem.mock.calls[0]?.[0];
+    expect(sent).not.toHaveProperty('source_url');
+    expect(sent).not.toHaveProperty('notes');
+  });
+
   it('rolls back the optimistic item when creation fails', async () => {
     mockCreateItem.mockRejectedValue(new Error('network'));
     const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });

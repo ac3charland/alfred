@@ -85,6 +85,10 @@ interface AddTaskInput {
   title?: string | undefined; // cleaned title (prefix stripped + first letter capitalized)
   itemType?: ItemType | undefined; // 'code' on a match
   intendedProjectId?: string | null | undefined;
+  // Provenance, supplied by a capture made from somewhere else (a Reader post): the link back to
+  // what prompted it, and a note naming it so the task's detail panel shows where it came from.
+  sourceUrl?: string | undefined;
+  notes?: string | undefined;
 }
 
 /** The inline-editable scalar fields of a task (title, due date + time, notes, recurrence, priority). */
@@ -513,6 +517,8 @@ export function TasksProvider({
           // which may never carry one (the DB CHECK is code-only).
           ...(input.intendedProjectId != null &&
             parentId === undefined && { intended_project_id: input.intendedProjectId }),
+          ...(input.sourceUrl !== undefined && { source_url: input.sourceUrl }),
+          ...(input.notes !== undefined && { notes: input.notes }),
         };
         // Append at the bottom of the parent's current children (ALF-117): one past the largest
         // sibling sort_order — or the largest across all rows when the group is empty, so it still
