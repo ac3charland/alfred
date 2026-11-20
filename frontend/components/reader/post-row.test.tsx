@@ -303,7 +303,7 @@ describe('PostRow — the verb row', () => {
       />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Add to Inbox', 'Archive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Archive', 'Add to Inbox']);
     expect(screen.queryByText('Open')).not.toBeInTheDocument();
   });
 
@@ -321,9 +321,9 @@ describe('PostRow — the verb row', () => {
 
     expect(verbRow()).toEqual([
       'Send to Instapaper',
-      'Add to Inbox',
       'Retry summary',
       'Archive',
+      'Add to Inbox',
       'Original',
     ]);
   });
@@ -336,7 +336,7 @@ describe('PostRow — the verb row', () => {
       />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Add to Inbox', 'Archive', 'Original']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Add to Inbox', 'Original']);
   });
 
   it('reads Unarchive in Archive’s slot in the archive', () => {
@@ -353,7 +353,7 @@ describe('PostRow — the verb row', () => {
       />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Add to Inbox', 'Unarchive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Unarchive', 'Add to Inbox']);
   });
 });
 
@@ -1401,7 +1401,7 @@ describe('PostRow — a research post while the report is being written', () => 
   it('draws Send disabled with the reason, then Archive, then the Session link', () => {
     renderReader(<PostRow post={research()} now={NOW} />);
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Add to Inbox', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Add to Inbox', 'Session']);
     expect(sendButton()).toBeDisabled();
     expect(sendButton()).toHaveAttribute('title', "The report hasn't arrived yet.");
     expect(screen.queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument();
@@ -1429,7 +1429,7 @@ describe('PostRow — a research post while the report is being written', () => 
       <PostRow post={research({ ...JUST_QUEUED, research_session_url: null })} now={NOW} />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Add to Inbox', 'Archive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Add to Inbox']);
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
@@ -1539,14 +1539,14 @@ describe('PostRow — a research post with no report', () => {
       <PostRow post={research({ ...FAILED, research_session_url: SESSION_URL })} now={NOW} />,
     );
 
-    expect(verbRow()).toEqual(['Add to Inbox', 'Retry research', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Add to Inbox', 'Session']);
     expect(screen.queryByRole('button', { name: 'Send to Instapaper' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Session' })).toHaveAttribute('href', SESSION_URL);
   });
 
   it('draws no Session link when the fire never got a session', () => {
     renderReader(<PostRow post={research(FAILED)} now={NOW} />);
-    expect(verbRow()).toEqual(['Add to Inbox', 'Retry research', 'Archive']);
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Add to Inbox']);
   });
 
   it('reads a session silent for three hours as no report, and says so', () => {
@@ -1563,7 +1563,7 @@ describe('PostRow — a research post with no report', () => {
         'No report — the session hasn’t reported back in 3 hours. Open it, or retry to start a new one.',
       ),
     ).toBeInTheDocument();
-    expect(verbRow()).toEqual(['Add to Inbox', 'Retry research', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Add to Inbox', 'Session']);
     expect(screen.getByTestId('reader-row')).toHaveClass('opacity-70');
   });
 
@@ -1595,7 +1595,7 @@ describe('PostRow — a research post with no report', () => {
     expect(
       screen.getByText('No report — the research never started. Retry to start a session.'),
     ).toBeInTheDocument();
-    expect(verbRow()).toEqual(['Add to Inbox', 'Retry research', 'Archive']);
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Add to Inbox']);
   });
 
   it('starts a new session when Retry research is clicked, and the row reads as researching at once', async () => {
@@ -1652,7 +1652,7 @@ describe('PostRow — a research post with no report', () => {
     renderReader(<PostRow post={row} now={NOW} />, [row], undefined, { researchConfigured: false });
 
     expect(screen.queryByRole('button', { name: 'Retry research' })).not.toBeInTheDocument();
-    expect(verbRow()).toEqual(['Add to Inbox', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Archive', 'Add to Inbox', 'Session']);
   });
 
   it('answers i with nothing: there is no Send to run', async () => {
@@ -1702,7 +1702,7 @@ describe('PostRow — a delivered research report', () => {
     const user = userEvent.setup();
     renderReader(<PostRow post={report()} now={NOW} />);
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Add to Inbox', 'Archive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Archive', 'Add to Inbox']);
     await user.click(screen.getByRole('button', { name: 'Overview' }));
 
     const footer = screen.getByRole('link', { name: 'Session' });
@@ -1750,7 +1750,7 @@ describe('PostRow — a delivered research report', () => {
       screen.getByText('The summary is on its way — send it now, or check back in a few minutes.'),
     ).toBeInTheDocument();
     // Sendable at once — the body is here — and Session sits where Original would.
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Add to Inbox', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Add to Inbox', 'Session']);
     expect(sendButton()).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Retry research' })).not.toBeInTheDocument();
   });
@@ -1765,9 +1765,9 @@ describe('PostRow — a delivered research report', () => {
 
     expect(verbRow()).toEqual([
       'Send to Instapaper',
-      'Add to Inbox',
       'Retry summary',
       'Archive',
+      'Add to Inbox',
       'Session',
     ]);
     expect(screen.getByText('summary failed')).toBeInTheDocument();
@@ -1789,7 +1789,7 @@ describe('PostRow — a delivered research report', () => {
       <PostRow post={report({ archived_at: minutesBeforeNow(1) })} now={NOW} variant="archive" />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Add to Inbox', 'Unarchive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Unarchive', 'Add to Inbox']);
   });
 });
 

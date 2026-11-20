@@ -548,22 +548,6 @@ export function PostRow({
                 </Button>
               )}
 
-              <Button
-                ref={captureVerbRef}
-                variant="ghost"
-                size="sm"
-                className={cn(verbButtonClass, 'gap-1.5', captureOpen && 'bg-secondary')}
-                aria-expanded={captureOpen}
-                onClick={() => {
-                  onSelect?.(post.id);
-                  setCaptureOpen((open) => !open);
-                }}
-              >
-                <Inbox size={14} />
-                Add to Inbox
-                {hint('a')}
-              </Button>
-
               {retryable && (
                 <Button
                   variant="outline"
@@ -605,6 +589,24 @@ export function PostRow({
               >
                 {archiveLabel}
                 {hint('e')}
+              </Button>
+
+              {/* After Archive rather than before it: on a phone Send, Overview and Archive keep
+                  their one line, and this is the verb that wraps. */}
+              <Button
+                ref={captureVerbRef}
+                variant="ghost"
+                size="sm"
+                className={cn(verbButtonClass, 'gap-1.5', captureOpen && 'bg-secondary')}
+                aria-expanded={captureOpen}
+                onClick={() => {
+                  onSelect?.(post.id);
+                  setCaptureOpen((open) => !open);
+                }}
+              >
+                <Inbox size={14} />
+                Add to Inbox
+                {hint('a')}
               </Button>
 
               {!originalInPanel && original}
