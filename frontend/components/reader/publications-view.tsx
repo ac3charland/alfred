@@ -45,6 +45,14 @@ export function PublicationsView({ now: pinnedNow }: PublicationsViewProperties)
   const liveNow = useNow();
   const now = pinnedNow ?? liveNow;
   const [query, setQuery] = React.useState('');
+  // A publication that just joined the roster (an added feed, a promoted candidate) would sit
+  // hidden behind a query it doesn't match, so the add would seem to vanish: a growing roster
+  // clears the query. Adjusted during render, React's pattern for state that follows a prop.
+  const [rosterSize, setRosterSize] = React.useState(publications.length);
+  if (publications.length !== rosterSize) {
+    setRosterSize(publications.length);
+    if (publications.length > rosterSize) setQuery('');
+  }
   const shown = publications.filter((publication) => matchesPublicationQuery(publication, query));
 
   const enabledCount = publications.filter((publication) => publication.enabled).length;

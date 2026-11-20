@@ -6,6 +6,7 @@ import * as apiClient from '@/lib/api-client';
 import {
   makeReaderCandidate,
   makeReaderFeed,
+  makeReaderPublication,
   makeReaderPublicationListItem,
 } from '@/lib/reader/fixtures';
 import { renderWithProviders } from '@/lib/test-utils';
@@ -440,6 +441,27 @@ describe('PublicationsView — search', () => {
     await user.type(searchBox(), 'import');
 
     expect(screen.getByText('Amazon.com')).toBeInTheDocument();
+  });
+
+  it('clears the query when a publication joins the roster, so the new card is not hidden', async () => {
+    const candidate = makeReaderCandidate('hello@bensbites.beehiiv.com', { name: "Ben's Bites" });
+    jest
+      .mocked(apiClient.createReaderPublication)
+      .mockResolvedValue(
+        makeReaderPublication("Ben's Bites", { id: 'new-id', handle: candidate.handle }),
+      );
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: roster, candidates: [candidate] },
+    });
+
+    await user.type(searchBox(), 'import');
+    await user.click(screen.getByRole('button', { name: /add ben's bites as/i }));
+    await user.click(screen.getByRole('menuitem', { name: /alerts/i }));
+
+    await screen.findByText('No candidates.');
+    expect(searchBox()).toHaveValue('');
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
   });
 
   it('offers no search box while the roster is empty', () => {
