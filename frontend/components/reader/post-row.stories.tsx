@@ -1138,7 +1138,9 @@ export const InboxCaptureAdded: Story = {
     const original = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       if (!requestUrl(input).endsWith('/api/items')) return new Promise(() => {});
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      // The api client always sends a JSON string; anything else would be a different request.
+      const sent = typeof init?.body === 'string' ? init.body : '{}';
+      const body = JSON.parse(sent) as Record<string, unknown>;
       return Response.json(
         { ...body, id: '00000000-0000-4000-8000-0000000000a1' },
         { status: 201, headers: { 'Content-Type': 'application/json' } },
