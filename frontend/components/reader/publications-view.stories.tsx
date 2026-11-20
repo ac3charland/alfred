@@ -73,7 +73,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A populated roster (one paused) alongside two candidates — the demo doc's screenshot. */
 const withPopulated: Decorator = (Story) => (
   <ToastProvider>
     <ReaderSettingsProvider initialPublications={PUBLICATIONS} initialCandidates={CANDIDATES}>
@@ -82,6 +81,7 @@ const withPopulated: Decorator = (Story) => (
   </ToastProvider>
 );
 
+/** A populated roster (one paused) alongside two candidates — the demo doc's screenshot. */
 export const Populated: Story = {
   decorators: [withPopulated],
   parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
