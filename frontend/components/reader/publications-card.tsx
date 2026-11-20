@@ -64,9 +64,12 @@ export function PublicationCard({
   return (
     <li className={cn(PUBLICATION_CARD, !publication.enabled && PAUSED_CARD)}>
       {/* The name keeps its full width as its flex basis, so when it can't share the line the
-          controls wrap — as one group — to a second row instead of squeezing or clipping it. */}
+          controls wrap — as one group — to a second row instead of squeezing or clipping it. The
+          grow weights do the alignment: sharing a line, the name takes (nearly) all the spare
+          room and the controls sit flush right; wrapped, the group is alone on its row, stretches
+          to fill it, and its controls start at the left, under the name. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex min-w-0 flex-auto">
+        <div className="flex min-w-0 shrink basis-auto grow-[999]">
           <EditableTextField
             value={publication.name}
             label={`Edit name for ${publication.name}`}
@@ -81,7 +84,7 @@ export function PublicationCard({
           </EditableTextField>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex grow items-center gap-2">
           <Badge variant="muted">{feed ? 'feed' : publication.source}</Badge>
 
           <PickerChip

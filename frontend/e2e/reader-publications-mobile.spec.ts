@@ -6,7 +6,8 @@ import { expect, test } from './support/fixtures';
 /**
  * A publication card's title row at a phone width (ALF-350). The row is name, provenance chip,
  * kind chip and pause toggle. When a name is too long for all of them to share one line, the three
- * controls move down to a second row together and the name stays whole, never clipped. Before the
+ * controls move down to a second row together, left-aligned under the name, and the name stays
+ * whole, never clipped; on one line they stay flush right. Before the
  * fix the row could neither wrap nor shrink: the name sat in `EditableTextField`'s display button,
  * a flex item whose automatic minimum width is its content's, so a long name shoved the kind chip
  * and the toggle out past the card's edge. Layout only happens in a real browser, so this is the
@@ -56,10 +57,19 @@ test('a long publication name moves the controls to a second row instead of over
   for (const control of [sourceBox, kindBox, toggleBox]) {
     expect(control.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height);
   }
+  // …and the wrapped row lines up on the left, under the name.
+  expect(Math.abs(sourceBox.x - nameBox.x)).toBeLessThanOrEqual(1);
 
   // A name short enough to share the line keeps everything on one row.
   const shortCard = page.getByRole('listitem').filter({ hasText: SHORT_NAME });
   const shortNameBox = await box(shortCard.getByText(SHORT_NAME, { exact: true }));
   const shortToggleBox = await box(shortCard.getByRole('button', { name: 'Enabled' }));
   expect(shortToggleBox.y).toBeLessThan(shortNameBox.y + shortNameBox.height);
+  // …with the controls still flush right, as on desktop. Within 2px: the controls' group takes a
+  // 1/1000 sliver of the line's spare room, so "flush" lands a sub-pixel short of the padding edge.
+  const shortCardBox = await box(shortCard);
+  const cardPadding = 16;
+  expect(shortToggleBox.x + shortToggleBox.width).toBeGreaterThanOrEqual(
+    shortCardBox.x + shortCardBox.width - cardPadding - 2,
+  );
 });
