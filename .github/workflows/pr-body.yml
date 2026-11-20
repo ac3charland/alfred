@@ -1,0 +1,33 @@
+name: PR body
+
+# Lints the pull request description itself. A URL wrapped in double backticks —
+# [text](``https://…``) — renders as inline code, not a link, so it breaks every demo and findings
+# link it touches. The rules live in tools/pr-body-lint; see the gh-cli skill.
+#
+# `edited` re-runs the check when only the description changes, so fixing the body turns it green
+# without a push. The body is passed through an env var and a file, never interpolated into the
+# script, so nothing in it can run as shell.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-body:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # No `npm ci`: the linter is dependency-free Node, so the job takes seconds.
+      - name: Check the PR description
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          npm run lint:pr-body -w tools/pr-body-lint -- "$RUNNER_TEMP/pr-body.md"
