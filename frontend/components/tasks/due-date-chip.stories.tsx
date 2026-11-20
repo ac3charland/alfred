@@ -56,6 +56,36 @@ export const UrgencyBands: Story = {
   ),
 };
 
+/** A `YYYY-MM-DD` in the given year offset from now — Mar 4, so it is never Today/Tomorrow. */
+function marchFourth(yearOffset: number): string {
+  return `${String(new Date().getFullYear() + yearOffset)}-03-04`;
+}
+
+/** A date in the current year at least a month from today, so it reads as a plain "Mon D". */
+function thisYearDate(): string {
+  const now = new Date();
+  return `${String(now.getFullYear())}-${now.getMonth() < 6 ? '12' : '01'}-15`;
+}
+
+// ALF-303: a due date outside the current year carries its year ("Mar 4, 2027"); one inside it
+// stays a bare "Mon D". Untimed and timed, last year / this year / next year.
+export const AcrossYears: Story = {
+  args: { dueDate: marchFourth(1) },
+  render: (args) => (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <DueDateChip {...args} dueDate={marchFourth(-1)} aria-label="Last year" />
+        <DueDateChip {...args} dueDate={thisYearDate()} aria-label="This year" />
+        <DueDateChip {...args} dueDate={marchFourth(1)} aria-label="Next year" />
+      </div>
+      <div className="flex items-center gap-3">
+        <DueDateChip {...args} dueDate={marchFourth(1)} dueTime="15:00" />
+        <DueDateChip {...args} dueDate={marchFourth(1)} size="comfortable" />
+      </div>
+    </div>
+  ),
+};
+
 // The larger `comfortable` chip used in the detail panel — same urgency bands, plus the neutral
 // "Set a due date…" prompt when unset.
 export const Comfortable: Story = {
