@@ -71,7 +71,9 @@ naming an element inside a code span, so `` `<a>` `` posts as an empty code span
 element's name in words instead). The body otherwise saves
 fine, so it looks like it worked. It is **not** applied on every call — a `create_pull_request`
 body with absolute links has come through untouched — so treat it as a risk to design around,
-never as a state you can infer from one green result.
+never as a state you can infer from one green result. The `PR body` workflow
+(`tools/pr-body-lint`) fails a PR whose description has a double-backticked URL, and re-runs on
+every description edit.
 
 **Fix — link the demo's FOLDER with a root-relative `/tree/` path:**
 
