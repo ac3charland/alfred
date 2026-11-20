@@ -25,7 +25,7 @@ describe('DueDateChip', () => {
 
       const chip = screen.getByRole('button', { name: 'Due date: 2999-12-31' });
       expect(chip).toHaveAttribute('type', 'button');
-      expect(chip).toHaveTextContent('Dec 31');
+      expect(chip).toHaveTextContent(/^Dec 31, 2999$/);
     });
 
     // ALF-303: the clock is pinned to 2026, so only the other-year chip carries its year.
