@@ -12,6 +12,6 @@ A publication card's title row is the name, provenance chip, kind chip and pause
 
 ![](title-row-image-1.png)
 
-**After** — when the name can't share the line, the three controls drop to a second row together, right-aligned as on desktop, and the name stays whole. A name wider than the card wraps across lines. A short name (Stratechery) keeps everything on one row, unchanged:
+**After** — when the name can't share the line, the three controls drop to a second row together, left-aligned under the name, and the name stays whole. A name wider than the card wraps across lines. A short name (Stratechery) keeps everything on one row, controls flush right as before:
 
 ![](title-row-image-2.png)
