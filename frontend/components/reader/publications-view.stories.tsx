@@ -18,7 +18,7 @@ import { PublicationsView } from './publications-view';
  * surface's empty states, a card of each summary kind, and the two pickers a kind is chosen with —
  * the card's chip and a candidate's "Add as". The `Feed…` stories are the three states a feed
  * adds: a feed on the roster, a homepage refused at the Add field, and a feed that stopped
- * answering. `Searched` is the roster narrowed by its search box.
+ * answering. `Searched` is the roster and candidates narrowed by the search box.
  */
 
 /** The instant every card's date is read against, as `reading-list-view.stories.tsx` pins its own. */
@@ -87,7 +87,10 @@ export const Populated: Story = {
   parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
 };
 
-/** The roster narrowed by its search box: only the matching card stays, the counts don't move. */
+/**
+ * Both lists narrowed by the search box: only the matching card stays, no candidate matches, and
+ * the counts don't move.
+ */
 export const Searched: Story = {
   decorators: [withPopulated],
   parameters: { visualTest: { target: '[data-testid="publications-frame"]' } },
@@ -96,6 +99,7 @@ export const Searched: Story = {
     await userEvent.type(canvas.getByRole('searchbox', { name: 'Search publications' }), 'second');
     await expect(canvas.getByText('Second Thoughts')).toBeVisible();
     await expect(canvas.queryByText('Stratechery')).not.toBeInTheDocument();
+    await expect(canvas.getByText('No candidates match “second”.')).toBeVisible();
   },
 };
 

@@ -6,7 +6,6 @@ import * as apiClient from '@/lib/api-client';
 import {
   makeReaderCandidate,
   makeReaderFeed,
-  makeReaderPublication,
   makeReaderPublicationListItem,
 } from '@/lib/reader/fixtures';
 import { renderWithProviders } from '@/lib/test-utils';
@@ -429,7 +428,32 @@ describe('PublicationsView — search', () => {
     expect(screen.getByText('2 enabled · 1 paused')).toBeInTheDocument();
   });
 
-  it('leaves the candidates unfiltered', async () => {
+  it('filters the candidates by name and handle along with the roster', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: {
+        publications: roster,
+        candidates: [
+          makeReaderCandidate('hello@bensbites.beehiiv.com', { name: "Ben's Bites" }),
+          makeReaderCandidate('deals@amazon.com', { name: 'Amazon.com' }),
+        ],
+      },
+    });
+
+    await user.type(searchBox(), 'beehiiv');
+
+    expect(screen.getByText("Ben's Bites")).toBeInTheDocument();
+    expect(screen.queryByText('Amazon.com')).not.toBeInTheDocument();
+    expect(screen.getByText('No publications match “beehiiv”.')).toBeInTheDocument();
+
+    await user.clear(searchBox());
+    await user.type(searchBox(), 'amazon');
+
+    expect(screen.getByText('Amazon.com')).toBeInTheDocument();
+    expect(screen.queryByText("Ben's Bites")).not.toBeInTheDocument();
+  });
+
+  it('says no candidate matches, naming the query, when none does', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PublicationsView now={NOW} />, {
       readerSettings: {
@@ -440,31 +464,50 @@ describe('PublicationsView — search', () => {
 
     await user.type(searchBox(), 'import');
 
-    expect(screen.getByText('Amazon.com')).toBeInTheDocument();
+    expect(screen.getByText('No candidates match “import”.')).toBeInTheDocument();
+    expect(screen.queryByText('No candidates.')).not.toBeInTheDocument();
   });
 
-  it('clears the query when a publication joins the roster, so the new card is not hidden', async () => {
-    const candidate = makeReaderCandidate('hello@bensbites.beehiiv.com', { name: "Ben's Bites" });
-    jest
-      .mocked(apiClient.createReaderPublication)
-      .mockResolvedValue(
-        makeReaderPublication("Ben's Bites", { id: 'new-id', handle: candidate.handle }),
-      );
+  it('keeps the ordinary empty candidates state when there are none to filter', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PublicationsView now={NOW} />, {
-      readerSettings: { publications: roster, candidates: [candidate] },
+      readerSettings: { publications: roster, candidates: [] },
     });
 
     await user.type(searchBox(), 'import');
-    await user.click(screen.getByRole('button', { name: /add ben's bites as/i }));
-    await user.click(screen.getByRole('menuitem', { name: /alerts/i }));
 
-    await screen.findByText('No candidates.');
+    expect(screen.getByText('No candidates.')).toBeInTheDocument();
+  });
+
+  it('clears the query when a feed joins the roster, so its new card is not hidden', async () => {
+    const user = userEvent.setup();
+    jest
+      .mocked(apiClient.createReaderPublication)
+      .mockResolvedValue(makeReaderFeed('Mark Larson', 'https://mlarson.org/feed.xml'));
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: roster },
+    });
+
+    await user.type(searchBox(), 'import');
+    await user.type(
+      screen.getByRole('textbox', { name: 'Feed URL' }),
+      'https://mlarson.org/feed.xml{Enter}',
+    );
+
+    expect(await screen.findByText('Mark Larson')).toBeInTheDocument();
     expect(searchBox()).toHaveValue('');
     expect(screen.getAllByRole('listitem')).toHaveLength(4);
   });
 
-  it('offers no search box while the roster is empty', () => {
+  it('offers the search box when only candidates are listed', () => {
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { candidates: [makeReaderCandidate('deals@amazon.com')] },
+    });
+
+    expect(searchBox()).toBeInTheDocument();
+  });
+
+  it('offers no search box while there is nothing to search', () => {
     renderWithProviders(<PublicationsView now={NOW} />);
 
     expect(

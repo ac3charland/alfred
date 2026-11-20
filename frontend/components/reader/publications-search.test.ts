@@ -1,6 +1,10 @@
-import { makeReaderFeed, makeReaderPublicationListItem } from '@/lib/reader/fixtures';
+import {
+  makeReaderCandidate,
+  makeReaderFeed,
+  makeReaderPublicationListItem,
+} from '@/lib/reader/fixtures';
 
-import { matchesPublicationQuery } from './publications-search';
+import { matchesCandidateQuery, matchesPublicationQuery } from './publications-search';
 
 describe('matchesPublicationQuery', () => {
   const sender = makeReaderPublicationListItem('Second Thoughts', {
@@ -49,5 +53,30 @@ describe('matchesPublicationQuery', () => {
   it('rejects a publication no field of which contains the query', () => {
     expect(matchesPublicationQuery(sender, 'zebra')).toBe(false);
     expect(matchesPublicationQuery(feed, 'substack')).toBe(false);
+  });
+});
+
+describe('matchesCandidateQuery', () => {
+  const candidate = makeReaderCandidate('hello@bensbites.beehiiv.com', { name: "Ben's Bites" });
+
+  it('matches everything when the query is blank', () => {
+    expect(matchesCandidateQuery(candidate, '  ')).toBe(true);
+  });
+
+  it('matches the name case-insensitively', () => {
+    expect(matchesCandidateQuery(candidate, "BEN'S")).toBe(true);
+  });
+
+  it('matches the handle', () => {
+    expect(matchesCandidateQuery(candidate, 'beehiiv')).toBe(true);
+  });
+
+  it('matches a nameless candidate by its handle', () => {
+    const nameless = makeReaderCandidate('deals@amazon.com');
+    expect(matchesCandidateQuery(nameless, 'amazon')).toBe(true);
+  });
+
+  it('rejects a candidate neither field of which contains the query', () => {
+    expect(matchesCandidateQuery(candidate, 'zebra')).toBe(false);
   });
 });

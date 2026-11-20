@@ -1,4 +1,11 @@
-import type { ReaderPublicationListItem } from '@/lib/types';
+import type { ReaderCandidate, ReaderPublicationListItem } from '@/lib/types';
+
+/** Whether any of `fields` contains the trimmed `query`, ignoring case; a blank query matches. */
+function matchesQuery(fields: readonly (string | null)[], query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (needle === '') return true;
+  return fields.some((field) => field?.toLowerCase().includes(needle) === true);
+}
 
 /**
  * Whether a roster publication answers the publications search box's query: a case-insensitive
@@ -10,13 +17,19 @@ export function matchesPublicationQuery(
   publication: ReaderPublicationListItem,
   query: string,
 ): boolean {
-  const needle = query.trim().toLowerCase();
-  if (needle === '') return true;
-  return [
-    publication.name,
-    publication.handle,
-    publication.domain,
-    publication.feed_url,
-    publication.notes,
-  ].some((field) => field?.toLowerCase().includes(needle) === true);
+  return matchesQuery(
+    [
+      publication.name,
+      publication.handle,
+      publication.domain,
+      publication.feed_url,
+      publication.notes,
+    ],
+    query,
+  );
+}
+
+/** Whether an off-roster candidate answers the same query, by its display name or its handle. */
+export function matchesCandidateQuery(candidate: ReaderCandidate, query: string): boolean {
+  return matchesQuery([candidate.name, candidate.handle], query);
 }
