@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-359 — Log the session URL back to the ticket</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p1:has([value=sheet]:checked) [data-opt=dlg]{display:none}
+#p1:not(:has([value=sheet]:checked)) [data-opt=sheet]{display:none}
+#p1:has([value=one]:checked) .x-more{display:none}
+#p1:has([value=none]:checked) .x-sessions{display:none}
+
+/* The app's tokens (frontend/app/globals.css), scoped to the mockup. */
+@font-face{font-family:Geist;font-weight:100 900;font-display:swap;
+  src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-sans.woff2) format("woff2")}
+@font-face{font-family:"Geist Mono";font-weight:100 900;font-display:swap;
+  src:url(https://raw.githubusercontent.com/ac3charland/alfred/main/frontend/public/fonts/geist-mono.woff2) format("woff2")}
+.app{--bg:#0a0e17;--fg:#e8edf5;--surface:#0f1626;--border:#1e2a3f;--mutedfg:#8a96a8;
+  --teal:#4fd1e0;--blue:#60a5fa;--radius:.5rem;
+  background:var(--bg);color:var(--fg);overflow:hidden;padding:20px;
+  font:14px/1.45 Geist,system-ui,sans-serif}
+.app *{box-sizing:border-box}
+.app code,.app .mono{font-family:"Geist Mono",ui-monospace,monospace;font-size:inherit;color:inherit}
+/* Dialog card: dialogContentVariants (rounded-2xl border bg-surface p-6 + teal glow), maxWidth 2xl */
+.app .dlg{max-width:42rem;margin:0 auto;border:1px solid var(--border);border-radius:1rem;background:var(--surface);
+  padding:24px;box-shadow:0 0 40px 0 rgba(79,209,224,.08)}
+.app .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.app .between{justify-content:space-between;align-items:flex-start}
+.app .ref{font:500 14px "Geist Mono",ui-monospace,monospace;color:var(--teal)}
+.app .chip{border-radius:999px;padding:2px 8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.025em;
+  background:rgb(79 209 224/.15);color:var(--teal)}
+.app .x{color:var(--mutedfg);font-size:18px;line-height:1}
+.app .title{margin:6px 0 0;font-size:18px;font-weight:600;color:var(--fg)}
+.app .crumb{margin:6px 0 0;font-size:12px;color:var(--mutedfg)}
+.app .crumb b{font-weight:400;color:var(--fg)}
+.app .btn{display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius);background:var(--teal);color:#0a0e17;
+  padding:6px 12px;font-size:14px;font-weight:500}
+.app .lnk{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--blue);text-decoration:none}
+.app .lnk svg{flex-shrink:0}
+.app .h{margin:0 0 8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.025em;color:var(--mutedfg)}
+.app .notes{font-size:14px;color:var(--fg)}
+.app .sec-gap{margin-top:20px}
+.app .slist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.app .slist li{display:flex;align-items:baseline;gap:10px}
+.app .when{font-size:12px;color:var(--mutedfg)}
+.app .new{outline:1px dashed rgb(79 209 224/.55);outline-offset:6px;border-radius:4px}
+.app .spec{border-top:1px solid rgb(30 42 63/.6);padding-top:12px;color:var(--mutedfg);font-size:13px}
+/* Phone sheet: SheetDialog — 44px pinned header with inset divider, sheet headings text-sm semibold fg */
+.app .sheet{max-width:360px;margin:0 auto;border:1px solid var(--border);background:var(--surface);border-radius:12px;overflow:hidden}
+.app .sh-head{display:flex;align-items:center;gap:8px;height:44px;padding:0 4px 0 16px;box-shadow:inset 0 -1px 0 var(--border)}
+.app .sh-head .x{margin-left:auto;width:44px;text-align:center}
+.app .sh-body{padding:12px 16px 24px}
+.app .sheet .title{font-size:20px;margin-top:0}
+.app .sheet .h{font-size:14px;text-transform:none;letter-spacing:0;color:var(--fg)}
+.app .specrow{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);padding:12px}
+.app .specrow small{display:block;font-size:12px;color:var(--mutedfg)}
+.app .sh-foot{border-top:1px solid var(--border);padding:10px 16px;display:flex;justify-content:flex-end}
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>alfred · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>359</span><span class="sep"> — </span><span class="ttl">Log the session URL back to the ticket</span></h1>
+  <p class="change" id="change">A story’s detail view gets a <b>Sessions</b> list: every Claude Code session that worked on the story, labelled by lane and start time, each one opening that session. The link shows up seconds after the session’s first prompt.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>Where does the list go?</h3>
+      <p class="pick">A “Sessions” section between Notes and Spec, absent when there are none</p>
+      <p class="why">The header row already holds PR links and the launch button; a list would crowd it.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>How does an open board learn of a session?</h3>
+      <p class="pick">Add <code>code_sessions</code> to the realtime publication</p>
+      <p class="why">Without it, a link you just launched waits for a reload.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d6">D6</a>Where does a live session’s lane come from?</h3>
+      <p class="pick">Read from the launch prompt’s opening line; the backfill’s PR-derived lane still wins</p>
+      <p class="why">Moves <code>launch_lane</code> out of ALF-310’s backfill-only class.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>When is the session first recorded against the ticket?</h3>
+      <p class="pick">On its first prompt, via a new UserPromptSubmit hook, not just at Stop</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d2">D2</a>Which sessions show?</h3>
+      <p class="pick">All of them, newest first, labelled by lane and start time</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d3">D3</a>Epics too?</h3>
+      <p class="pick">Stories only</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="several" checked>Several sessions</label>
+      <label><input type="radio" name="p1" value="one">One (just launched)</label>
+      <label><input type="radio" name="p1" value="none">None</label>
+      <label><input type="radio" name="p1" value="sheet">Phone sheet</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="The story detail dialog with a Sessions section listing session links">
+
+        <div class="dlg" data-opt="dlg">
+          <div class="row between">
+            <div>
+              <div class="row"><span class="ref">ALF-359</span><span class="chip">In development</span></div>
+              <p class="title">Log the session URL back to the ticket</p>
+              <p class="crumb">alfred <span aria-hidden="true">›</span> <b>Session ledger</b></p>
+            </div>
+            <span class="x">×</span>
+          </div>
+          <div class="row" style="margin-top:16px;gap:12px 16px">
+            <span class="btn">Open Claude Code</span>
+            <a class="lnk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Refinement PR</a>
+          </div>
+          <div class="sec-gap">
+            <p class="h">Notes</p>
+            <p class="notes">Add a hook to Claude Code sessions that logs the session URL back to the ticket in the app.</p>
+          </div>
+          <div class="sec-gap x-sessions new">
+            <p class="h">Sessions</p>
+            <ul class="slist">
+              <li><a class="lnk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Implementation session</a><span class="when">Nov 21, 9:14 AM</span></li>
+              <li class="x-more"><a class="lnk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Refinement session</a><span class="when">Nov 20, 3:02 PM</span></li>
+              <li class="x-more"><a class="lnk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Session</a><span class="when">Nov 19, 11:47 AM</span></li>
+            </ul>
+          </div>
+          <div class="sec-gap">
+            <p class="h">Spec</p>
+            <p class="spec">docs/specs/ALF-359.html · View in repo</p>
+          </div>
+        </div>
+
+        <div class="sheet" data-opt="sheet">
+          <div class="sh-head"><span class="ref">ALF-359</span><span class="chip">In development</span><span class="x">×</span></div>
+          <div class="sh-body">
+            <p class="title">Log the session URL back to the ticket</p>
+            <p class="crumb">alfred <span aria-hidden="true">›</span> <b>Session ledger</b></p>
+            <div class="row" style="margin-top:12px"><a class="lnk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Refinement PR</a></div>
+            <div style="margin-top:24px"><p class="h">Notes</p><p class="notes">Add a hook to Claude Code sessions that logs the session URL back to the ticket in the app.</p></div>
+            <div style="margin-top:24px" class="new">
+              <p class="h">Sessions</p>
+              <ul class="slist">
+                <li><a class="lnk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Implementation session</a><span class="when">Nov 21, 9:14 AM</span></li>
+                <li><a class="lnk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Refinement session</a><span class="when">Nov 20, 3:02 PM</span></li>
+              </ul>
+            </div>
+            <div style="margin-top:24px"><p class="h">Spec</p><div class="specrow"><span>▤</span><span>ALF-359 spec<small>Tap to read full-screen</small></span></div></div>
+          </div>
+          <div class="sh-foot"><span class="btn">Open Claude Code</span></div>
+        </div>
+
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The story detail with the new Sessions section (dashed outline, not drawn in the product). Each row opens <code>claude.ai/code/&lt;session id&gt;</code> in a new tab; a session whose lane can’t be read is plain “Session”. With no sessions, the section is absent.</figcaption>
+  </figure>
+</section>
+
+<section id="diagram" aria-label="How it fits">
+  <figure class="fig">
+    <svg class="dg" viewBox="0 0 560 190" role="img" aria-label="Hook to record route to code_sessions to realtime to the code store to the story detail">
+      <g class="new"><rect x="4" y="12" width="150" height="48" rx="4"/><text x="16" y="33">UserPromptSubmit hook</text><text class="s" x="16" y="49">first prompt only</text></g>
+      <g><rect x="4" y="122" width="150" height="48" rx="4"/><text x="16" y="143">SessionStart / Stop</text><text class="s" x="16" y="159">existing (ALF-310)</text></g>
+      <g><rect x="200" y="66" width="150" height="48" rx="4"/><text x="212" y="87">/sessions/record</text><text class="s" x="212" y="103">+ lane from prompt</text></g>
+      <g><rect x="396" y="12" width="160" height="48" rx="4"/><text x="408" y="33">code_sessions</text><text class="s" x="408" y="49">+ realtime</text></g>
+      <g class="new"><rect x="396" y="122" width="160" height="48" rx="4"/><text x="408" y="143">CodeStore sessions</text><text class="s" x="408" y="159">→ story detail</text></g>
+      <path class="hot" d="M154 36 C180 36 180 80 200 84"/>
+      <path d="M154 146 C180 146 180 100 200 96"/>
+      <path class="hot" d="M350 84 C372 84 372 36 396 36"/>
+      <path class="hot" d="M476 60 L476 122"/>
+      <text class="lb" x="484" y="96">realtime</text>
+    </svg>
+    <figcaption><b>Fig. 1.</b>The new write and the new read: both ride the ledger’s existing route and table.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>No running/finished status per session, no session links on epics or board cards, no links for sessions outside alfred’s cloud environment.</p>
+</section>
+
+<section class="sec" id="heads-up">
+  <h2 class="side">Heads-up</h2>
+  <ul><li>Only sessions whose environment sets <code>ALFRED_BASE_URL</code> record; older ones appear once a backfill has run.</li>
+  <li>Every first prompt in an alfred session waits for one ≤ 5 s POST.</li></ul>
+</section>
+
+</section>
+
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p>The ticket asks for “a hook that logs the session URL back to the ticket”. Most of that already exists. The session-ledger recording hook (ALF-310, <code>tools/session-ledger/src/hook/</code>, wired in <code>.claude/settings.json</code> on SessionStart and Stop) POSTs to <code>/api/code/sessions/record</code>, which writes a <code>code_sessions</code> row through <code>record_code_session</code> (migration 0050). That row carries <code>session_id</code> (<code>session_…</code>, so the URL is <code>https://claude.ai/code/&lt;session_id&gt;</code>), <code>repo</code>, and <code>ref</code>, which <code>stop.ts</code> takes from the launch prompt’s leading <code>ALF-nnn</code>.</p>
+  <p>Two gaps remain. (1) <b>Timing:</b> <code>ref</code> arrives only with a Stop write, after the first turn ends, and a refinement or implementation turn can run for a long time. (2) <b>Display:</b> nothing in the frontend reads <code>code_sessions</code>; the story detail (<code>components/code/story-detail-modal.tsx</code>) shows only PR links. A third, smaller gap: <code>launch_lane</code> is backfill-only (inferred from the PR’s <code>alfred</code> block), so a live session has no lane to label it with.</p>
+  <p>The human settled scope in the refinement session: record on the first prompt (D1), list every session (D2), stories only (D3).</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>Record on the first prompt · settled</h3>
+    <p>A new UserPromptSubmit registration runs the same CLI with event <code>prompt</code>. Its write carries the prompt, its skills and its ref, which are the fields a Stop would send for them. <code>record_code_session</code> already freezes the first recorded prompt and fills <code>ref</code> only while it is null, so the later Stop writes leave them alone. Considered: Stop-only (no change); a SessionStart write (no prompt exists yet at that point).</p>
+    <p>Consequence: this write must also send <code>skills</code>, because the prompt freezes with whatever skills come with it (0050’s recorded-wins rule). A prompt write without them would lose the skills for good.</p>
+  </section>
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>Every session, labelled · settled</h3>
+    <p>Reruns, abandoned refinements and review sessions are all history worth reaching. Considered: the latest session per phase, or the latest only.</p>
+  </section>
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>Stories only · settled</h3>
+    <p>Epic sessions are recorded against the epic ref already, so a later ticket can surface them in <code>epic-spec-modal.tsx</code> by reusing D8’s selector.</p>
+  </section>
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>Placement · proposed</h3>
+    <p>Between Notes and Spec in both layouts (P1). The list reads as history, below the actions and above the long spec body. Considered: links inline in the header beside the PR links (crowds out with three or more sessions); a section in the footer controls area (that region holds controls, not links). The rows reuse <code>PrLink</code>’s treatment (accent-blue text, ExternalLink icon), so a session link reads as the same kind of thing as a PR link.</p>
+  </section>
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>Realtime on <code>code_sessions</code> · proposed</h3>
+    <p>Launching opens claude.ai in another tab, and the alfred tab stays put, so no navigation reconcile fires. Without realtime, D1’s early write wouldn’t reach an open board. Considered: fetching on modal open (breaks the data-flow skill’s rule against component fetches); a navigation reconcile only (misses the case above). Payload cost is small: Postgres leaves unchanged TOASTed columns (prompt, <code>session_record</code>) out of an UPDATE, and the store keeps only the slim columns (<code>deliveredColumns</code>).</p>
+  </section>
+  <section class="rec" id="d6">
+    <h3><span class="tag">D6</span>Lane from the prompt · proposed</h3>
+    <p>Every launch builder in <code>frontend/lib/code/links.ts</code> opens its second paragraph with a distinct sentence. The record route classifies any write that carries a prompt with a new pure <code>laneOfPrompt</code> and adds <code>launch_lane</code> to the RPC’s row. The hook stays dumb: it can’t import <code>frontend/</code>, as its import-graph test enforces. In SQL, <code>launch_lane</code> joins the <i>platform-owned</i> class: the hook fills it while null, and on a recorded row the backfill overwrites it only with a value. The backfill’s lane comes from the PR, so it is the more authoritative source and still wins. Considered: no lane, all rows labelled “Session” (fails D2’s label); classifying in the hook (it would need a copy of the builder strings with no test tying them together).</p>
+  </section>
+  <h3>Implementation decisions</h3>
+  <section class="rec" id="d7">
+    <h4>D7 · First prompt only, and only after a recorded start</h4>
+    <p>UserPromptSubmit fires on every prompt. The hook sends a write only when the session’s start state file exists (<code>readState</code> non-null) and no <code>&lt;session&gt;.prompted</code> marker sits beside it. It writes that marker before POSTing, so a slow first prompt can’t race a second. With no state file (a resumed or re-provisioned container), it sends nothing, so a later prompt like “ok, go ahead” can never become the frozen launch prompt; the Stop path heals from the transcript as it does today.</p>
+  </section>
+  <section class="rec" id="d8">
+    <h4>D8 · A session belongs to a story by ref and repo</h4>
+    <p><code>code_sessions.ref</code> has no FK and no project. Match <code>ref === story.ref</code> and <code>repo === `${story.repo_owner}/${story.repo_name}`</code>, so a ref-shaped prompt in another repo never shows up on this ticket.</p>
+  </section>
+  <section class="rec" id="d9">
+    <h4>D9 · Silent stdout on UserPromptSubmit</h4>
+    <p>On UserPromptSubmit, a hook’s stdout on exit 0 is injected into the model’s context. The CLI already prints nothing outside <code>--dry-run</code>; a test must pin that for the <code>prompt</code> event.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+  <h3>Hook (<code>prompt</code> event)</h3>
+  <ul>
+    <li>The gate is unchanged: a <code>cse_</code> remote id, plus <code>ALFRED_BASE_URL</code> unless it is a dry run.</li>
+    <li>Reads <code>prompt</code> from the hook’s stdin JSON. A missing or empty prompt logs <code>PromptMissing</code> and sends nothing.</li>
+    <li>The body is <code>{event:'prompt', session_id, repo, prompt, skills, ref?, warnings:[]}</code>. <code>repo</code> comes from the state file and <code>skills</code> from <code>skillPathsIn(prompt)</code> resolved at the state’s <code>base_sha</code> (the same code as <code>stopBody</code>; extract a shared helper). <code>ref</code> uses the same <code>refOf</code> rule as the stop and is omitted when absent.</li>
+    <li>A failure is one line in <code>hook.log</code>, exit 0, no output.</li>
+  </ul>
+  <h3>Lane labels</h3>
+  <div class="scroll"><table>
+    <tr><th>Prompt’s second paragraph opens</th><th><code>launch_lane</code></th><th>Row label</th></tr>
+    <tr><td><code>You are refining the ticket </code></td><td>refinement</td><td>Refinement session</td></tr>
+    <tr><td><code>You are running a SPIKE for the ticket </code></td><td>spike</td><td>Spike session</td></tr>
+    <tr><td><code>You are fixing the BUG </code></td><td>bug</td><td>Bug-fix session</td></tr>
+    <tr><td><code>You are implementing the ticket X. Implement the merged spec</code></td><td>implementation</td><td>Implementation session</td></tr>
+    <tr><td><code>You are implementing the ticket X. This is a SKIP-REFINEMENT session</code></td><td>bypass</td><td>Skip-refinement session</td></tr>
+    <tr><td><code>You are refining the EPIC </code> / <code>You are implementing the EPIC </code></td><td>epic-refinement / epic-implementation</td><td>(not shown, D3)</td></tr>
+    <tr><td>anything else</td><td>null</td><td>Session</td></tr>
+  </table></div>
+  <h3>List</h3>
+  <ul>
+    <li>Sort by <code>session_created_at</code> descending; nulls go last, then <code>session_id</code> as a stable tiebreak.</li>
+    <li>Time: browser-local, <code>Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})</code>. Reuse an existing formatter in <code>frontend/lib</code> if one matches. A null time shows the label alone.</li>
+    <li>Each row is <code>&lt;a href target=_blank rel=noreferrer&gt;</code> whose accessible name is the label plus the time.</li>
+    <li>Realtime INSERT/UPDATE upserts by <code>session_id</code>, keeping only the slim columns. Rows with a null <code>ref</code> are ignored. DELETE removes the row.</li>
+  </ul>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <pre>-- database/migrations/&lt;next&gt;_session_links.sql
+-- 1. record_code_session (create or replace, same signature):
+--    event in ('session-start','prompt','stop');
+--    launch_lane = coalesce(s.launch_lane, v_in.launch_lane);
+--    stop-code warnings are kept on every non-stop event (was: only on 'session-start').
+-- 2. upsert_code_sessions (create or replace): launch_lane gets the platform-owned rule —
+--    case when recorded_at is null then excluded.launch_lane
+--         else coalesce(excluded.launch_lane, code_sessions.launch_lane) end
+-- 3. alter publication supabase_realtime add table code_sessions;
+-- Update 0050's ownership comment block in the new migration's header.</pre>
+  <pre>// frontend/lib/api/schemas.ts — recordedRowSchema.event: z.enum(['session-start','prompt','stop'])
+//   (the hook still never sends launch_lane; the route adds it)
+// frontend/lib/code/launch-lane.ts
+export function laneOfPrompt(prompt: string): LaunchLane | null
+// frontend/lib/code/links.ts
+export function sessionUrl(sessionId: string): string   // https://claude.ai/code/&lt;id&gt;
+// frontend/lib/types.ts
+export interface CodeSessionLink {
+  session_id: string; ref: string; repo: string;
+  launch_lane: LaunchLane | null; session_created_at: string | null;
+}
+// lib/data/code.ts
+getCodeSessionLinks(): Promise&lt;CodeSessionLink[]&gt;   // where ref is not null
+// code-store: initialSessions prop, sessions slice, useStorySessions(story)</pre>
+  <pre>// .claude/settings.json — add beside SessionStart / Stop
+"UserPromptSubmit": [{ "hooks": [{ "type": "command", "timeout": 10,
+  "command": "NODE_USE_ENV_PROXY=1 node \"$CLAUDE_PROJECT_DIR/tools/session-ledger/src/hook/cli.ts\" prompt" }] }]</pre>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <ol>
+    <li><b>DB</b>: write the migration (Contracts). Extend <code>database/src/session-ledger-assertions.ts</code>. Regenerate <code>database.types.ts</code> if anything changes.</li>
+    <li><b>Hook</b>: add the <code>prompt</code> event to <code>hook/run.ts</code> (stdin <code>prompt</code>), a new <code>hook/prompt.ts</code> body builder, and a marker helper in <code>state.ts</code>. Pull out the shared skills/ref helper from <code>stop.ts</code>. Update <code>settings.json</code> and <code>settings.test.ts</code> (its <code>Settings</code> type gains <code>UserPromptSubmit</code>).</li>
+    <li><b>Route</b>: widen the schema, then in <code>sessions/record/route.ts</code> add <code>launch_lane: laneOfPrompt(row.prompt)</code> whenever <code>row.prompt</code> is present.</li>
+    <li><b>Read path</b>: add <code>getCodeSessionLinks</code> and seed it in <code>app/(shell)/layout.tsx</code>. In the code store: a sessions slice, a <code>code_sessions</code> realtime channel (beside <code>code_items</code>/<code>epics</code>, via <code>joinWhenAuthenticated</code>), and the <code>useStorySessions</code> selector. Add a fixture to the Playwright mock backend.</li>
+    <li><b>UI</b>: <code>components/code/story-detail/session-links.tsx</code> with a <code>layout</code> prop (it uses <code>SECTION_HEADING_CLASS</code>) and returns null when empty. Mount it in both branches of <code>DetailBody</code> per D4. Factor <code>PrLink</code>’s anchor styles so both share them rather than duplicating (frontend-architecture skill).</li>
+    <li>Update the <code>llm-evaluation</code> skill’s ownership notes (lane class, the new event) per compounding-learning.</li>
+  </ol>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D1">An alfred cloud session’s first prompt creates or updates its <code>code_sessions</code> row with <code>ref</code>, <code>prompt</code> (<code>recorded</code>), <code>skills</code> and <code>launch_lane</code> before the turn ends.</li>
+    <li data-trace="D1">Later Stop writes leave that prompt, those skills and that ref unchanged.</li>
+    <li data-trace="D7">A second prompt, or any prompt with no start state file, sends no write.</li>
+    <li data-trace="D9">The <code>prompt</code> event prints nothing and exits 0, including when the POST fails or times out.</li>
+    <li data-trace="D6">Each launch builder’s prompt classifies to its lane; an unrecognised prompt gives null.</li>
+    <li data-trace="D6">A backfill with a lane overwrites a recorded lane; a backfill with null keeps it.</li>
+    <li data-trace="D2 D4 P1">The story detail lists every session for the story’s ref and repo, newest first, labelled per the lane table with its local start time, each opening <code>https://claude.ai/code/&lt;id&gt;</code> in a new tab. This holds in both the dialog and the phone sheet.</li>
+    <li data-trace="D4 P1">With no sessions, the Sessions section is absent.</li>
+    <li data-trace="D5">A session recorded while the modal is open appears without a reload.</li>
+    <li data-trace="D3">Epic sessions don’t appear on any story.</li>
+  </ul>
+  <h3>Review focus</h3>
+  <ul class="checks">
+    <li data-trace="D8">Same ref recorded from a different repo → not listed.</li>
+    <li data-trace="impl">A realtime UPDATE omitting unchanged columns → the row’s lane and time are kept, not blanked.</li>
+    <li data-trace="impl">An empty or missing stdin prompt → logged, no POST, exit 0.</li>
+    <li data-trace="P1">A null <code>session_created_at</code> → the label alone, sorted last.</li>
+    <li data-trace="D1">The first-prompt POST fails → the first Stop still records the prompt, skills, ref and lane.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <ul>
+    <li><b>DB integration</b> (<code>session-ledger-assertions.ts</code>, check:slow): the <code>prompt</code> event, freezing against a later stop, the launch_lane rules in both RPCs, stop-warning retention, and publication membership.</li>
+    <li><b>session-ledger jest</b>: <code>run.test.ts</code>/<code>cli.test.ts</code> for the gate, first-only, no-state, body shape, silence and failure log; <code>settings.test.ts</code> for the registration. The import-graph test stays green.</li>
+    <li><b>frontend jest</b>: <code>launch-lane.test.ts</code> round-trips every builder through <code>laneOfPrompt</code> (decoding the <code>q</code> param), which is the guard against prompt-copy drift. The record route test checks lane injection. Store tests cover the seed, the selector filter/sort and the realtime upsert (with an omitted column).</li>
+    <li><b>RTL + Storybook</b>: <code>session-links</code> in each P1 state and both layouts.</li>
+    <li><b>Playwright</b>: open a seeded story and assert the links and hrefs.</li>
+  </ul>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>Follow the <code>showboat</code> skill’s evidence rules: a screenshot of the story detail with sessions (via the mock backend), plus <code>exec</code> output of a <code>--dry-run</code> <code>prompt</code> event showing the body. Keep the hook silent outside dry-run.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope &amp; risks</h2>
+  <ul>
+    <li><b>Status</b> (running/idle) isn’t recorded by the hook, and a live poll of claude.ai is out of reach from the app.</li>
+    <li><b>Confirm while building</b>: the UserPromptSubmit stdin field is <code>prompt</code>, and it matches the transcript’s first user message (if not, the later Stop’s prompt is ignored, which is harmless).</li>
+    <li><b>Risk</b>: prompt-copy edits in <code>links.ts</code> silently break lane labels; the round-trip test is the guard.</li>
+  </ul>
+</section>
+
+</section>
+</main>
+</body>
+</html>
