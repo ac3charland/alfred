@@ -63,52 +63,62 @@ export function PublicationCard({
 
   return (
     <li className={cn(PUBLICATION_CARD, !publication.enabled && PAUSED_CARD)}>
-      <div className="flex items-center gap-2">
-        <EditableTextField
-          value={publication.name}
-          label={`Edit name for ${publication.name}`}
-          inputClassName="text-sm font-medium"
-          onSave={async (next) => {
-            await rename(publication.id, next);
-          }}
-        >
-          <span className="truncate text-sm font-medium text-foreground">{publication.name}</span>
-        </EditableTextField>
+      {/* The name keeps its full width as its flex basis, so when it can't share the line the
+          controls wrap — as one group — to a second row instead of squeezing or clipping it. The
+          grow weights do the alignment: sharing a line, the name takes (nearly) all the spare
+          room and the controls sit flush right; wrapped, the group is alone on its row, stretches
+          to fill it, and its controls start at the left, under the name. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 shrink basis-auto grow-[999]">
+          <EditableTextField
+            value={publication.name}
+            label={`Edit name for ${publication.name}`}
+            inputClassName="text-sm font-medium"
+            onSave={async (next) => {
+              await rename(publication.id, next);
+            }}
+          >
+            <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere] text-foreground">
+              {publication.name}
+            </span>
+          </EditableTextField>
+        </div>
 
-        <Badge variant="muted">{feed ? 'feed' : publication.source}</Badge>
+        <div className="flex grow items-center gap-2">
+          <Badge variant="muted">{feed ? 'feed' : publication.source}</Badge>
 
-        <PickerChip
-          value={kind}
-          options={KIND_OPTIONS}
-          onSelect={(next) => {
-            const picked = SUMMARY_KIND_OPTIONS.find((option) => option.value === next)?.value;
-            if (picked === undefined || picked === kind) return;
-            void settle(setKind(publication.id, picked));
-          }}
-          trigger={
-            <Badge
-              asButton
-              variant="muted"
-              interactive
-              aria-label={`Summary type for ${publication.name}: ${summaryKindLabel(kind)}`}
-              className={KIND_CHIP}
-            >
-              {summaryKindLabel(kind)}
-              <ChevronDown size={12} aria-hidden="true" />
-            </Badge>
-          }
-        />
+          <PickerChip
+            value={kind}
+            options={KIND_OPTIONS}
+            onSelect={(next) => {
+              const picked = SUMMARY_KIND_OPTIONS.find((option) => option.value === next)?.value;
+              if (picked === undefined || picked === kind) return;
+              void settle(setKind(publication.id, picked));
+            }}
+            trigger={
+              <Badge
+                asButton
+                variant="muted"
+                interactive
+                aria-label={`Summary type for ${publication.name}: ${summaryKindLabel(kind)}`}
+                className={KIND_CHIP}
+              >
+                {summaryKindLabel(kind)}
+                <ChevronDown size={12} aria-hidden="true" />
+              </Badge>
+            }
+          />
 
-        <ToggleButton
-          className="ml-auto"
-          pressed={publication.enabled}
-          onToggle={() => {
-            void settle(setEnabled(publication.id, !publication.enabled));
-          }}
-          title={feed ? FEED_TOGGLE_TITLE : SENDER_TOGGLE_TITLE}
-        >
-          {publication.enabled ? 'Enabled' : 'Paused'}
-        </ToggleButton>
+          <ToggleButton
+            pressed={publication.enabled}
+            onToggle={() => {
+              void settle(setEnabled(publication.id, !publication.enabled));
+            }}
+            title={feed ? FEED_TOGGLE_TITLE : SENDER_TOGGLE_TITLE}
+          >
+            {publication.enabled ? 'Enabled' : 'Paused'}
+          </ToggleButton>
+        </div>
       </div>
 
       <p className="text-xs break-all text-muted-foreground">
