@@ -25,13 +25,17 @@ import type { ReaderCandidate, ReaderSummaryKind } from '@/lib/types';
  * the very next tick: an Add that defaulted to Essay would spend summaries reading a shop's promos
  * as essays before the owner could change it.
  * Ranking is the view's own (`v_reader_candidates`) — this component renders whatever order it
- * is handed rather than re-sorting.
+ * is handed rather than re-sorting. The publications search box hands it only the candidates
+ * matching its query; `noMatchQuery` names that query when it hid every one.
  */
 export function PublicationsCandidates({
   candidates,
+  noMatchQuery,
   now,
 }: {
   candidates: ReaderCandidate[];
+  /** The search query, when it filtered out every candidate there was. */
+  noMatchQuery?: string | undefined;
   now: Date;
 }) {
   const { addCandidate } = useReaderSettingsActions();
@@ -58,63 +62,67 @@ export function PublicationsCandidates({
         Candidates — bulk senders not on the roster · last 30 days
       </p>
 
-      {candidates.length === 0 ? (
-        <EmptyState
-          title="No candidates."
-          description="Every bulk sender from the last 30 days is already on the roster."
-        />
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {candidates.map((candidate) => (
-            <li
-              key={candidate.handle}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2"
-            >
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-foreground">
-                  {candidate.name ?? candidate.handle}
-                </span>
-                <span className="text-xs text-muted-foreground">{candidate.handle}</span>
-                <span className="text-xs text-muted-foreground">
-                  {String(candidate.message_count)} message
-                  {candidate.message_count === 1 ? '' : 's'} · last{' '}
-                  {formatPostDate(candidate.last_seen_at, now)}
-                </span>
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="accent"
-                    size="sm"
-                    disabled={pending.has(candidate.handle)}
-                    aria-label={`Add ${candidate.name ?? candidate.handle} as…`}
-                  >
-                    <Plus size={14} />
-                    Add as
-                    <ChevronDown size={14} aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {SUMMARY_KIND_OPTIONS.map((option) => (
-                    <DropdownMenuItem
-                      key={option.value}
-                      onSelect={() => {
-                        add(candidate.handle, option.value);
-                      }}
+      {noMatchQuery === undefined ? (
+        candidates.length === 0 ? (
+          <EmptyState
+            title="No candidates."
+            description="Every bulk sender from the last 30 days is already on the roster."
+          />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {candidates.map((candidate) => (
+              <li
+                key={candidate.handle}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2"
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-foreground">
+                    {candidate.name ?? candidate.handle}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{candidate.handle}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {String(candidate.message_count)} message
+                    {candidate.message_count === 1 ? '' : 's'} · last{' '}
+                    {formatPostDate(candidate.last_seen_at, now)}
+                  </span>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="accent"
+                      size="sm"
+                      disabled={pending.has(candidate.handle)}
+                      aria-label={`Add ${candidate.name ?? candidate.handle} as…`}
                     >
-                      <span className="flex flex-col">
-                        <span>{option.label}</span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {option.description}
+                      <Plus size={14} />
+                      Add as
+                      <ChevronDown size={14} aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {SUMMARY_KIND_OPTIONS.map((option) => (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onSelect={() => {
+                          add(candidate.handle, option.value);
+                        }}
+                      >
+                        <span className="flex flex-col">
+                          <span>{option.label}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {option.description}
+                          </span>
                         </span>
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </li>
-          ))}
-        </ul>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : (
+        <EmptyState title={`No candidates match “${noMatchQuery}”.`} />
       )}
     </div>
   );
