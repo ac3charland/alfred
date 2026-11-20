@@ -39,7 +39,7 @@ export function parseDueDate(iso: string): Date {
 /**
  * Format a `Date`'s local calendar date as `Mon D` (abbreviated month + day), e.g. `Aug 1`.
  * Used by the recurrence-rule summary for an absolute end date (`until Aug 1`); unlike
- * {@link formatDueDate} it is never relative ("Today"/"Tomorrow").
+ * {@link formatDueDate} it is never relative ("Today"/"Tomorrow") and never adds a year.
  */
 export function formatMonthDay(iso: string): string {
   const date = parseDueDate(iso);
