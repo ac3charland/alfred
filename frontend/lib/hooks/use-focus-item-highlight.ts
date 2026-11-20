@@ -9,6 +9,27 @@ import { consumeTaskFocus } from '@/components/tasks/navigate-to-task';
 const HIGHLIGHT_MS = 1600;
 
 /**
+ * Re-centre `node` once its ancestors finish expanding. A jump to a subtask opens its collapsed
+ * ancestors in the same tick (ALF-361), so the first scroll measures the row squashed at its
+ * parent's position; the expand then pushes it down — off-screen for a low parent. Wait a frame
+ * for the expand transitions to start, then scroll again when the ones on an ancestor end.
+ * `getAnimations` is feature-detected (jsdom lacks it).
+ */
+function scrollAfterAncestorsExpand(node: HTMLElement): void {
+  if (typeof document.getAnimations !== 'function') return;
+  globalThis.requestAnimationFrame(() => {
+    const expanding = document.getAnimations().filter((animation) => {
+      const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
+      return target !== null && target !== node && target.contains(node);
+    });
+    if (expanding.length === 0) return;
+    void Promise.allSettled(expanding.map((animation) => animation.finished)).then(() => {
+      if (node.isConnected) node.scrollIntoView({ block: 'center' });
+    });
+  });
+}
+
+/**
  * Scroll this row into view and flag a transient highlight whenever a "go to this task" jump names
  * its id. The caller attaches `ref` to its row element and toggles a ring class on `highlighted` (a
  * static ring under reduced motion — no pulse).
@@ -32,6 +53,7 @@ export function useFocusItemHighlight<T extends HTMLElement>(
       // `scrollIntoView` is unimplemented under jsdom, so feature-detect before calling.
       if (node && typeof node.scrollIntoView === 'function') {
         node.scrollIntoView({ block: 'center' });
+        scrollAfterAncestorsExpand(node);
       }
       setHighlighted(true);
     };
