@@ -345,6 +345,112 @@ describe('PublicationsView', () => {
   });
 });
 
+/** The roster's search box. */
+function searchBox() {
+  return screen.getByRole('searchbox', { name: 'Search publications' });
+}
+
+describe('PublicationsView — search', () => {
+  const roster = [
+    makeReaderPublicationListItem('Second Thoughts', {
+      handle: 'secondthoughts@substack.com',
+      enabled: true,
+    }),
+    makeReaderPublicationListItem('Import AI', { handle: 'jack@importai.net', enabled: false }),
+    {
+      ...makeReaderFeed('mlarson.org', 'https://mlarson.org/feed.xml'),
+      last_post_at: null,
+    },
+  ];
+
+  it('filters the roster to the publications matching the query', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: roster },
+    });
+
+    await user.type(searchBox(), 'import');
+
+    const cards = screen.getAllByRole('listitem');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toHaveTextContent('Import AI');
+  });
+
+  it('matches a sender by its handle and a feed by its URL', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: roster },
+    });
+
+    await user.type(searchBox(), 'substack.com');
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByText('Second Thoughts')).toBeInTheDocument();
+
+    await user.clear(searchBox());
+    await user.type(searchBox(), 'feed.xml');
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByText('mlarson.org')).toBeInTheDocument();
+  });
+
+  it('brings the whole roster back when the query is cleared', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: roster },
+    });
+
+    await user.type(searchBox(), 'import');
+    await user.clear(searchBox());
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('says nothing matches, naming the query, when no publication does', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: roster },
+    });
+
+    await user.type(searchBox(), 'zebra');
+
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(screen.getByText('No publications match “zebra”.')).toBeInTheDocument();
+    expect(screen.queryByText('No publications yet.')).not.toBeInTheDocument();
+  });
+
+  it('keeps the counts describing the whole roster while a query narrows it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: { publications: roster },
+    });
+
+    await user.type(searchBox(), 'import');
+
+    expect(screen.getByText('2 enabled · 1 paused')).toBeInTheDocument();
+  });
+
+  it('leaves the candidates unfiltered', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublicationsView now={NOW} />, {
+      readerSettings: {
+        publications: roster,
+        candidates: [makeReaderCandidate('deals@amazon.com', { name: 'Amazon.com' })],
+      },
+    });
+
+    await user.type(searchBox(), 'import');
+
+    expect(screen.getByText('Amazon.com')).toBeInTheDocument();
+  });
+
+  it('offers no search box while the roster is empty', () => {
+    renderWithProviders(<PublicationsView now={NOW} />);
+
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search publications' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe('PublicationsView — feeds', () => {
   const FEED_URL = 'https://mlarson.org/feed.xml';
 
