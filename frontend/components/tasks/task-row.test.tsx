@@ -1268,63 +1268,63 @@ describe('TaskRow', () => {
     });
 
     it('shows the abbreviated month name and day for other dates (Jan)', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 0, 20) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Jan 20');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 0, 20) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Jan 20$/);
     });
 
     it('shows "Feb" for February', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 1, 10) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Feb 10');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 1, 10) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Feb 10$/);
     });
 
     it('shows "Mar" for March', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 2, 5) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Mar 5');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 2, 5) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Mar 5$/);
     });
 
     it('shows "Apr" for April', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 3, 8) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Apr 8');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 3, 8) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Apr 8$/);
     });
 
     it('shows "May" for May', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 4, 1) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('May 1');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 4, 1) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^May 1$/);
     });
 
     it('shows "Jun" for June', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 5, 20) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Jun 20');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 5, 20) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Jun 20$/);
     });
 
     it('shows "Jul" for July', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 6, 4) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Jul 4');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 6, 4) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Jul 4$/);
     });
 
     it('shows "Aug" for August', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 7, 25) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Aug 25');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 7, 25) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Aug 25$/);
     });
 
     it('shows "Sep" for September', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 8, 10) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Sep 10');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 8, 10) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Sep 10$/);
     });
 
     it('shows "Oct" for October', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 9, 31) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Oct 31');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 9, 31) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Oct 31$/);
     });
 
     it('shows "Nov" for November', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 10, 11) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Nov 11');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 10, 11) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Nov 11$/);
     });
 
     it('shows "Dec" for December', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2025, 11, 25) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent('Dec 25');
+      renderTasks([{ ...BASE_ITEM, due_date: localDueDate(2026, 11, 25) }]);
+      expect(screen.getByRole('button', { name: /due date/i })).toHaveTextContent(/^Dec 25$/);
     });
   });
 
@@ -4162,7 +4162,9 @@ describe('TaskRow — detail panel (ALF-67)', () => {
       renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', due_time: '15:00:00' }]);
       await openDetails(user);
 
-      expect(screen.getByRole('button', { name: 'Due date' })).toHaveTextContent('Dec 31 3 PM');
+      expect(screen.getByRole('button', { name: 'Due date' })).toHaveTextContent(
+        'Dec 31, 2099 3 PM',
+      );
       await user.click(screen.getByRole('button', { name: 'Due date' }));
       await user.click(await screen.findByRole('button', { name: /^today$/i }));
 

@@ -33,10 +33,17 @@ const monthly: RecurrenceRule = {
 const ending: RecurrenceRule = {
   freq: 'daily',
   interval: 1,
-  end: { type: 'on_date', until: '2026-08-01' },
+  // This year's Aug 1, so the snapshot reads "until Aug 1" whatever year it runs in (a date in
+  // another year would carry its year — ALF-303).
+  end: { type: 'on_date', until: `${String(new Date().getFullYear())}-08-01` },
 };
 
 export const Daily: Story = { args: { rule: daily } };
 export const WeeklyMultiDay: Story = { args: { rule: weekly } };
 export const MonthlyPositional: Story = { args: { rule: monthly } };
 export const WithEndDate: Story = { args: { rule: ending } };
+
+// ALF-303: an end date outside the current year carries its year — "until Aug 1, 2099".
+export const WithEndDateOtherYear: Story = {
+  args: { rule: { ...ending, end: { type: 'on_date', until: '2099-08-01' } } },
+};

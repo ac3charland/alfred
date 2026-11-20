@@ -286,7 +286,7 @@ to never runs (an empty output and a strange exit code, with nothing to show why
 the pattern as `'[h]ttp-server'` matches the real process but not the literal text of the
 command itself. Same for `pkill -f '[n]ext-server'`.
 
-### Playwright timezone / locale screenshots
+### Playwright timezone / locale / clock screenshots
 
 When a fix only manifests in a specific timezone (or locale), the `screenshot` helper
 won't reproduce it — it uses the system timezone (UTC here). Instead write a
@@ -306,7 +306,10 @@ await browser.close();
 ```
 
 Run it with `node --import tsx/esm frontend/e2e/capture-tz.ts` (tsx is already a
-dev dep). Build Storybook first, serve it on 6006, take the shot, then kill the
+dev dep). The same script shoots a **date-dependent** state (a year boundary, a
+weekday) on any day: Storybook has no clock mock, so call
+`await page.clock.setFixedTime(new Date(2026, 11, 31, 12))` before `goto`, against a story whose
+dates derive from `new Date()`. Build Storybook first, serve it on 6006, take the shot, then kill the
 server. Do this **twice** when you need before/after screenshots for a bug:
 
 1. Temporarily revert the fix in the source file. Once the fix is committed, `git stash` reverts

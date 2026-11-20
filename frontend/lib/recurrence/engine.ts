@@ -4,7 +4,7 @@
  * exhaustively unit-testable. Date parsing reuses `lib/date-utils`' local-midnight convention
  * (`parseDueDate`), so calendar-date math never drifts across a DST boundary.
  */
-import { formatMonthDay, parseDueDate } from '@/lib/date-utils';
+import { formatCalendarDate, parseDueDate } from '@/lib/date-utils';
 
 import type { MonthlyMode, RecurrenceRule, Weekday } from './types';
 
@@ -236,7 +236,7 @@ export function summarizeRule(rule: RecurrenceRule): string {
       return base;
     }
     case 'on_date': {
-      return `${base} until ${formatMonthDay(rule.end.until)}`;
+      return `${base} until ${formatCalendarDate(rule.end.until)}`;
     }
     case 'after': {
       return `${base} for ${String(rule.end.count)} times`;
