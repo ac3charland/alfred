@@ -35,3 +35,13 @@ The two new baselines, open and just added:
 ![](reader-inbox-capture-image-8.png)
 
 ![](reader-inbox-capture-image-9.png)
+
+**A failed add.** With `POST /api/items` answering 500, the store rolls back and shows its own "Couldn't add task" toast. The field gets the typed text back, and no "Added to Inbox" toast appears.
+
+![](reader-inbox-capture-image-9.png)
+
+**In the archive.** The same verb and field sit beside Unarchive.
+
+![](reader-inbox-capture-image-10.png)
+
+Covered by tests only, since they have no distinct screen: Escape or a second click on the verb closes the field and discards the draft (focus returns to the verb, and the row stays selected). A post with no link sends no `source_url` and gets a one-line note.
