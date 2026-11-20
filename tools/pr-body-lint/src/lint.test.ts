@@ -62,6 +62,21 @@ describe('lintPrBody', () => {
     expect(lintPrBody(body)).toEqual([{ line: 10, url: URL }]);
   });
 
+  it('treats a triple-backtick code span as inline code, not a fence', () => {
+    // CommonMark: a backtick fence's info string can't contain a backtick.
+    const body = ['```npm ci``` must run first.', '', `[demo](${BT}${URL}${BT})`].join('\n');
+    expect(lintPrBody(body)).toEqual([{ line: 3, url: URL }]);
+  });
+
+  it('flags a double-backticked root-relative link target', () => {
+    const href = '/ac3charland/alfred/blob/b/docs/demos/x/demo.md';
+    expect(lintPrBody(`📝 [demo](${BT}${href}${BT})`)).toEqual([{ line: 1, url: href }]);
+  });
+
+  it('leaves a double-backticked path outside a link alone', () => {
+    expect(lintPrBody(`run ${BT}/usr/bin/env node${BT}`)).toEqual([]);
+  });
+
   it('handles CRLF line endings', () => {
     expect(lintPrBody(`ok\r\n${BT}${URL}${BT}\r\n`)).toEqual([{ line: 2, url: URL }]);
   });

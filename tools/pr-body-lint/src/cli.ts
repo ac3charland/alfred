@@ -11,9 +11,10 @@ Usage:
   --help, -h            Show this help.
 
 Rule:
-  ✗ double-backticked-url — a URL wrapped in double backticks, [text](\`\`https://…\`\`) or
-                            \`\`https://…\`\`, renders as inline code, not a link. Write the plain
-                            URL: [text](https://…). Fenced code blocks are not checked.
+  ✗ double-backticked-url — a URL wrapped in double backticks renders as inline code, not a
+                            link: a link target, [text](\`\`https://…\`\`) or [text](\`\`/o/r/…\`\`),
+                            or a bare \`\`https://…\`\`. Write the plain URL: [text](https://…).
+                            Fenced code blocks are not checked.
 
 In this repo, the PR body workflow runs it: npm run lint:pr-body -w tools/pr-body-lint -- <file>
 `;
