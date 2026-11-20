@@ -80,15 +80,15 @@ function sortChildren(nodes: ItemNode[]): ItemNode[] {
 
 /**
  * Walk the ancestor chain from a starting `parentId` up a FLAT list, returning the
- * ancestor titles ordered oldest → youngest (root first, immediate parent last).
+ * ancestors ordered oldest → youngest (root first, immediate parent last).
  * Pass the node's own `parent_id` as the start — the node itself need not be in the
  * list, only its ancestors (which may be active items filtered out of a view, e.g.
  * the completed view's breadcrumb). Returns [] for a null start or an absent chain,
  * and halts on a cycle (a `seen` set guards against an infinite loop).
  */
-export function getAncestorTitles(items: Item[], parentId: string | null): string[] {
+function getAncestors(items: Item[], parentId: string | null): Item[] {
   const byId = new Map(items.map((item) => [item.id, item] as const));
-  const titles: string[] = [];
+  const ancestors: Item[] = [];
   const seen = new Set<string>();
   let currentId = parentId;
   // Stryker disable next-line ConditionalExpression: AT_CEILING — when currentId is null, byId.get(null) is undefined → break; entering the loop changes nothing observable.
@@ -97,10 +97,20 @@ export function getAncestorTitles(items: Item[], parentId: string | null): strin
     const parent = byId.get(currentId);
     if (parent === undefined) break;
     // Walk youngest → oldest but prepend, so the result is oldest-first with no reverse().
-    titles.unshift(parent.title);
+    ancestors.unshift(parent);
     currentId = parent.parent_id;
   }
-  return titles;
+  return ancestors;
+}
+
+/** The ancestor titles, oldest → youngest — see {@link getAncestors}. */
+export function getAncestorTitles(items: Item[], parentId: string | null): string[] {
+  return getAncestors(items, parentId).map((ancestor) => ancestor.title);
+}
+
+/** The ancestor ids, oldest → youngest — see {@link getAncestors}. */
+export function getAncestorIds(items: Item[], parentId: string | null): string[] {
+  return getAncestors(items, parentId).map((ancestor) => ancestor.id);
 }
 
 /** Walk the ancestor chain to find how many levels deep `itemId` is (root = 0). */

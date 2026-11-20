@@ -54,6 +54,46 @@ test('⌘P focuses the field; selecting a task jumps to its folder view', async 
   ).toBeVisible();
 });
 
+test('selecting a deep subtask in the open folder opens its parent and scrolls it into view', async ({
+  page,
+  seed,
+}) => {
+  // ALF-361: the parent has many subtasks, so its last one expands past the fold — it only lands
+  // on screen if the scroll waits for the parent's expand to finish laying out.
+  const folder = makeFolder('Home');
+  const fillers = Array.from({ length: 10 }, (_, index) =>
+    makeItem(`Filler ${String(index)}`, { item_type: 'task', folder_id: folder.id }),
+  );
+  const parent = makeItem('Zeta parent', {
+    item_type: 'task',
+    folder_id: folder.id,
+    priority: 'low',
+  });
+  const kids = Array.from({ length: 15 }, (_, index) =>
+    makeItem(index === 14 ? 'Firewall the guest wifi' : `Kid ${String(index)}`, {
+      item_type: 'task',
+      folder_id: folder.id,
+      parent_id: parent.id,
+    }),
+  );
+  await page.setViewportSize({ width: 1100, height: 640 });
+  await seed({ folders: [folder], items: [...fillers, parent, ...kids] });
+  await page.goto(`/folders/${folder.id}`);
+  await expect(page.getByText('Zeta parent')).toBeVisible();
+
+  await page.keyboard.press('ControlOrMeta+KeyP');
+  await page.keyboard.type('firewall');
+  await page.keyboard.press('Enter');
+
+  // Judge the settled layout: mid-expand, the row still sits at its collapsed parent's position.
+  const target = page.getByText('Firewall the guest wifi');
+  await expect(target).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.getAnimations().length), { intervals: [50] })
+    .toBe(0);
+  await expect(target).toBeInViewport();
+});
+
 test('selecting a story opens the board with its detail modal', async ({ page, seed }) => {
   const project = makeProject('Alfred', { id: PROJECT_ID, key: 'ALF' });
   const epic = makeEpic('Communication Firewall', {
