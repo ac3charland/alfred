@@ -28,6 +28,22 @@ describe('DueDateChip', () => {
       expect(chip).toHaveTextContent('Dec 31');
     });
 
+    // ALF-303: the clock is pinned to 2026, so only the other-year chip carries its year.
+    it('shows the year only for a due date outside the current year', () => {
+      const { rerender } = render(<DueDateChip dueDate="2027-03-04" />);
+      expect(screen.getByRole('button', { name: /^Due date/ })).toHaveTextContent(/^Mar 4, 2027$/);
+
+      rerender(<DueDateChip dueDate="2026-03-04" />);
+      expect(screen.getByRole('button', { name: /^Due date/ })).toHaveTextContent(/^Mar 4$/);
+    });
+
+    it('shows the year on a timed chip too', () => {
+      render(<DueDateChip dueDate="2027-03-04" dueTime="15:00" />);
+      expect(screen.getByRole('button', { name: /^Due date/ })).toHaveTextContent(
+        /^Mar 4, 2027 3 PM$/,
+      );
+    });
+
     it('uses the blue treatment for a future date', () => {
       render(<DueDateChip dueDate="2999-12-31" />);
 

@@ -115,7 +115,23 @@ describe('formatDueDate', () => {
     [10, 11, 'Nov 11'],
     [11, 25, 'Dec 25'],
   ])('returns "%s" for month %i, day %i', (month0, day, expected) => {
-    expect(formatDueDate(localDueDate(2025, month0, day))).toBe(expected);
+    expect(formatDueDate(localDueDate(2026, month0, day))).toBe(expected);
+  });
+
+  // ALF-303: outside the current year the bare "Mon D" is ambiguous, so the year rides along.
+  it('appends the year for a date in a later year', () => {
+    expect(formatDueDate('2027-01-05')).toBe('Jan 5, 2027');
+  });
+
+  it('appends the year for a date in an earlier year', () => {
+    expect(formatDueDate('2025-12-25')).toBe('Dec 25, 2025');
+  });
+
+  it('keeps the relative label across a year boundary', () => {
+    setClockNow(localInstant(11, 31, 12, 0));
+    expect(formatDueDate('2027-01-01')).toBe('Tomorrow');
+    setClockNow(localInstant(0, 1, 12, 0, 2027));
+    expect(formatDueDate('2026-12-31')).toBe('Yesterday');
   });
 
   it('returns the abbreviated month + day for a date more than 1 day away', () => {
@@ -136,8 +152,8 @@ describe('formatDueDate', () => {
   });
 
   it('returns the correct month and day for a YYYY-MM-DD date string', () => {
-    // Jun 20 2025 in local time — must not shift to Jun 19 in negative-UTC zones.
-    expect(formatDueDate(localDueDate(2025, 5, 20))).toBe('Jun 20');
+    // Jun 20 2026 (the pinned year) in local time — must not shift to Jun 19 in negative-UTC zones.
+    expect(formatDueDate(localDueDate(2026, 5, 20))).toBe('Jun 20');
   });
 });
 
@@ -352,8 +368,14 @@ describe('localISODate', () => {
 // ---------------------------------------------------------------------------
 
 /** A local instant, as the ISO string `setClockNow` takes — zone-independent fixtures. */
-function localInstant(month0: number, day: number, hour: number, minute: number): string {
-  return new Date(2026, month0, day, hour, minute).toISOString();
+function localInstant(
+  month0: number,
+  day: number,
+  hour: number,
+  minute: number,
+  year = 2026,
+): string {
+  return new Date(year, month0, day, hour, minute).toISOString();
 }
 
 describe('normalizeDueTime', () => {

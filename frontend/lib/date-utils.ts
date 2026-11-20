@@ -133,7 +133,8 @@ export function todayISODate(): string {
  * Returns a human-readable label for an ISO due-date string.
  *  - "Today" if the date matches today's local date
  *  - "Tomorrow" / "Yesterday" for ±1 day
- *  - "Mon DD" (abbreviated month + day number) otherwise
+ *  - "Mon DD" (abbreviated month + day number) otherwise, plus ", YYYY" when the date falls
+ *    outside the current year (ALF-303) — a bare "Jan 5" would read as this year's
  */
 export function formatDueDate(iso: string): string {
   const date = parseDueDate(iso);
@@ -144,7 +145,10 @@ export function formatDueDate(iso: string): string {
   if (diffDays === 1) return 'Tomorrow';
   if (diffDays === -1) return 'Yesterday';
   // Stryker disable next-line StringLiteral: AT_CEILING — `date.getMonth()` always returns 0-11, so MONTHS[month] is always defined; the `?? ''` fallback is dead code for the defensive impossible case.
-  return `${MONTHS[date.getMonth()] ?? ''} ${String(date.getDate())}`;
+  const monthDay = `${MONTHS[date.getMonth()] ?? ''} ${String(date.getDate())}`;
+  return date.getFullYear() === now.getFullYear()
+    ? monthDay
+    : `${monthDay}, ${String(date.getFullYear())}`;
 }
 
 /**

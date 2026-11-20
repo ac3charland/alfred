@@ -4162,7 +4162,9 @@ describe('TaskRow — detail panel (ALF-67)', () => {
       renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', due_time: '15:00:00' }]);
       await openDetails(user);
 
-      expect(screen.getByRole('button', { name: 'Due date' })).toHaveTextContent('Dec 31 3 PM');
+      expect(screen.getByRole('button', { name: 'Due date' })).toHaveTextContent(
+        'Dec 31, 2099 3 PM',
+      );
       await user.click(screen.getByRole('button', { name: 'Due date' }));
       await user.click(await screen.findByRole('button', { name: /^today$/i }));
 
