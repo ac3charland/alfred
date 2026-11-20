@@ -172,7 +172,8 @@ cleanup (the returned function) always runs when navigating away — use this fo
   `todayISODate()` for the case being shown, permanently-past/future literals (`2020-…` / `2099-…`)
   elsewhere. This bites more than a literal "today": any fixture read by a today-relative
   formatter (e.g. `formatDueDate`'s "Today"/"Tomorrow"/"Yesterday" window) re-enters that window on
-  the ~3 calendar days a year it lands within a day of the real date — a near-term literal
+  the ~3 calendar days a year it lands within a day of the real date, and `formatCalendarDate`
+  (due badges, recurrence "until") adds `, YYYY` once the real year moves past it — a near-term literal
   (`'2026-08-07'`) isn't safe just because it looked far away when written; only a `2020…`/`2099…`-
   scale literal is. The drift can hide under a `visualTest` story's 1% threshold in a bigger crop
   (more rows/whitespace) even while a tighter crop of the same fixture fails — grep sibling stories
