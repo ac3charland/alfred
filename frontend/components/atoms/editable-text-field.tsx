@@ -64,7 +64,7 @@ export function EditableTextField({
     <button
       type="button"
       onClick={begin}
-      className="group/editable flex flex-1 items-center gap-2 rounded-sm text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+      className="group/editable flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
     >
       {children ?? value}
     </button>
