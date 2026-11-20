@@ -222,6 +222,7 @@ export function PostRow({
   const [captureOpen, setCaptureOpen] = React.useState(false);
   const captureVerbRef = React.useRef<HTMLButtonElement>(null);
   const captureInputRef = React.useRef<HTMLInputElement>(null);
+  const captureId = React.useId();
   const shellRef = React.useRef<HTMLDivElement>(null);
   // What the card and the Overview verb say they control, so a screen reader can follow the
   // disclosure to the region it opens rather than being told a state with no referent.
@@ -599,6 +600,8 @@ export function PostRow({
                 size="sm"
                 className={cn(verbButtonClass, 'gap-1.5', captureOpen && 'bg-secondary')}
                 aria-expanded={captureOpen}
+                // Only while open: the field is mounted only then, and a dangling id points nowhere.
+                aria-controls={captureOpen ? captureId : undefined}
                 onClick={() => {
                   onSelect?.(post.id);
                   setCaptureOpen((open) => !open);
@@ -615,7 +618,12 @@ export function PostRow({
             {/* Under the verbs and outside the overview's collapse, so every row has it — pending,
                 failed and research rows included, which have no panel to put it in. */}
             {captureOpen && (
-              <ReaderInboxCapture post={post} onClose={closeCapture} inputRef={captureInputRef} />
+              <ReaderInboxCapture
+                id={captureId}
+                post={post}
+                onClose={closeCapture}
+                inputRef={captureInputRef}
+              />
             )}
 
             {/* The id the card and the Overview verb point at sits on a plain wrapper rather than

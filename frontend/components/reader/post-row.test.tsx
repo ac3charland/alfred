@@ -2050,9 +2050,16 @@ describe('PostRow — Add to Inbox', () => {
     expect(captureVerb()).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('textbox', { name: 'New Inbox item' })).not.toBeInTheDocument();
 
+    expect(captureVerb()).not.toHaveAttribute('aria-controls');
+
     await user.click(captureVerb());
     expect(captureVerb()).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('textbox', { name: 'New Inbox item' })).toHaveFocus();
+    const field = screen.getByRole('textbox', { name: 'New Inbox item' });
+    expect(field).toHaveFocus();
+    expect(field.closest('form')).toHaveAttribute(
+      'id',
+      captureVerb().getAttribute('aria-controls'),
+    );
     expect(onSelect).toHaveBeenCalledWith('p-1');
 
     await user.click(captureVerb());

@@ -15,6 +15,8 @@ import type { ReaderPostListItem } from '@/lib/types';
 import { captureFieldClass, captureInputClass } from './post-row.styles';
 
 export interface ReaderInboxCaptureProperties {
+  /** The form's id, so the verb that toggles it can name it in `aria-controls`. */
+  id?: string;
   post: ReaderPostListItem;
   /** Close the field (Escape) — the row unmounts it, which discards any draft. */
   onClose: () => void;
@@ -35,7 +37,7 @@ export interface ReaderInboxCaptureProperties {
  * failure is rolled back and toasted there; this only puts the text back so it isn't lost, and
  * confirms a success with its own toast linking to the Inbox.
  */
-export function ReaderInboxCapture({ post, onClose, inputRef }: ReaderInboxCaptureProperties) {
+export function ReaderInboxCapture({ id, post, onClose, inputRef }: ReaderInboxCaptureProperties) {
   const { addTask } = useTaskActions();
   const { showToast } = useToastActions();
   const publications = useReaderPublications();
@@ -73,6 +75,7 @@ export function ReaderInboxCapture({ post, onClose, inputRef }: ReaderInboxCaptu
 
   return (
     <form
+      id={id}
       className={captureFieldClass}
       data-testid="reader-row-capture"
       onSubmit={(event) => {

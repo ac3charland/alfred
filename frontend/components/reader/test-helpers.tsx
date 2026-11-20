@@ -35,9 +35,9 @@ export interface RenderReaderOptions {
 
 /**
  * Render a Reader component inside `ReaderProvider` + `ReaderSettingsProvider` + `ToastProvider` +
- * `WikiProvider` + `TasksProvider` — the row's Add-to-Inbox field writes through the last — (mirrors
- * `renderWithProviders` in `lib/test-utils.tsx`, scoped to this module's own tests rather than extending the shared cross-module helper for a store no other module
- * reads). The wiki provider sits outside the Reader's and the settings provider inside it, as in
+ * `WikiProvider` + `TasksProvider` (the row's Add-to-Inbox field writes through it). Mirrors
+ * `renderWithProviders` in `lib/test-utils.tsx`, scoped to this module's own tests rather than
+ * extending the shared cross-module helper for a store no other module reads. The wiki provider sits outside the Reader's and the settings provider inside it, as in
  * the shell layout.
  */
 export function renderReader(
