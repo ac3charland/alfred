@@ -9,7 +9,7 @@ import {
   flattenResults,
   optionDomId,
 } from '@/components/shell/search-results';
-import { navigateToTaskAndFocus } from '@/components/tasks/navigate-to-task';
+import { useNavigateToTask } from '@/lib/hooks/use-navigate-to-task';
 import { useCodeStories } from '@/lib/stores/code-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useSearch, useSearchActions } from '@/lib/stores/search-store';
@@ -60,6 +60,7 @@ export function useSearchCombobox({
   const stories = useCodeStories();
   const folders = useFolders();
   const pages = useWikiPages();
+  const navigateToTask = useNavigateToTask();
   const [activeIndex, setActiveIndex] = React.useState(0);
 
   const results = React.useMemo(
@@ -84,14 +85,14 @@ export function useSearchCombobox({
       // Client-side view switch (ViewLink convention). A task additionally scrolls its destination
       // row in + highlights it; a story just routes to the board with `?story=`.
       if (result.kind === 'task') {
-        navigateToTaskAndFocus(result.id, result.href);
+        navigateToTask(result.id, result.href);
       } else {
         globalThis.history.pushState(null, '', result.href);
       }
       closeDropdown();
       inputRef.current?.blur();
     },
-    [closeDropdown, inputRef],
+    [closeDropdown, inputRef, navigateToTask],
   );
 
   const handleKeyDown = (event_: React.KeyboardEvent<HTMLInputElement>) => {

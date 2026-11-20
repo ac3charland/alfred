@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import { SearchBox } from '@/components/shell/search-box';
 import { ALFRED_FOCUS_ITEM_EVENT } from '@/components/tasks/alfred-link';
+import { TaskList } from '@/components/tasks/task-list';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
@@ -12,6 +13,7 @@ import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import { WikiProvider } from '@/lib/stores/wiki-store';
+import { renderWithProviders } from '@/lib/test-utils';
 import type { CodeStory, Item, WikiPageIndexRow } from '@/lib/types';
 import { makeWikiPage, toWikiIndexRow } from '@/lib/wiki/fixtures';
 
@@ -440,5 +442,36 @@ describe('SearchBox', () => {
       await user.click(screen.getByRole('checkbox', { name: 'Show completed' }));
       expect(await screen.findByText('Firewall done task')).toBeInTheDocument();
     });
+  });
+
+  it("opens a selected subtask's collapsed ancestors so its row shows and rings (ALF-361)", async () => {
+    const user = userEvent.setup();
+    jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+    // Two levels deep in a folder: both the root and the middle row start collapsed.
+    const inFolder = { folder_id: 'f1', dispatched_at: '2025-01-01T00:00:00Z' };
+    const tasks = [
+      makeItem({ id: 'root', title: 'Plan the offsite', ...inFolder }),
+      makeItem({ id: 'mid', title: 'Book the venue', parent_id: 'root', ...inFolder }),
+      makeItem({ id: 'leaf', title: 'Firewall the guest wifi', parent_id: 'mid', ...inFolder }),
+    ];
+    renderWithProviders(
+      <SearchProvider>
+        <SearchBox />
+        <TaskList scope={{ type: 'folder', folderId: 'f1' }} />
+      </SearchProvider>,
+      { tasks },
+    );
+    // Collapsed subtask lists are aria-hidden, so no subtask list is reachable yet.
+    expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('firewall');
+    await user.keyboard('{Enter}');
+
+    // Reachable by role only once every ancestor's subtask list is open (not aria-hidden).
+    const leafCheckbox = screen.getByRole('button', {
+      name: 'Mark "Firewall the guest wifi" complete',
+    });
+    expect(leafCheckbox.closest('[data-testid="task-row-body"]')).toHaveClass('ring-accent-teal');
   });
 });

@@ -7,6 +7,7 @@ import type { Folder, Item } from '@/lib/types';
 
 import { ALFRED_FOCUS_ITEM_EVENT } from './alfred-link';
 import { PriorityView } from './priority-view';
+import { TaskList } from './task-list';
 
 // api-client is the seam the store calls; mock it so tests never hit the network.
 jest.mock('@/lib/api-client');
@@ -402,6 +403,43 @@ describe('PriorityView', () => {
         expect(focusIds).toEqual(['filed']);
       } finally {
         globalThis.removeEventListener(ALFRED_FOCUS_ITEM_EVENT, listener);
+        pushState.mockRestore();
+      }
+    });
+
+    it("opens a subtask's collapsed ancestors in its folder so the jump lands visibly (ALF-361)", async () => {
+      const user = userEvent.setup();
+      const pushState = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+
+      try {
+        // The By-Priority list beside the folder it jumps into, as after the view switch.
+        renderWithProviders(
+          <>
+            <PriorityView />
+            <section aria-label="Work folder">
+              <TaskList scope={{ type: 'folder', folderId: 'f1' }} />
+            </section>
+          </>,
+          {
+            tasks: [
+              makeItem('Plan', { id: 'plan', priority: 'high', folder_id: 'f1' }),
+              makeItem('Leaf', { id: 'leaf', parent_id: 'plan', folder_id: 'f1' }),
+            ],
+          },
+        );
+        // Open the subtask in the By-Priority list (its first chevron) and follow its link.
+        const [priorityChevron] = screen.getAllByRole('button', { name: 'Expand subtasks' });
+        if (priorityChevron === undefined) throw new Error('no chevron');
+        await user.click(priorityChevron);
+        fireEvent.click(screen.getByRole('link', { name: 'Leaf' }), { button: 0 });
+
+        // The folder's row for Leaf is reachable by role only once "Plan" is open there too.
+        const folder = screen.getByRole('region', { name: 'Work folder' });
+        const leafCheckbox = within(folder).getByRole('button', { name: 'Mark "Leaf" complete' });
+        expect(leafCheckbox.closest('[data-testid="task-row-body"]')).toHaveClass(
+          'ring-accent-teal',
+        );
+      } finally {
         pushState.mockRestore();
       }
     });

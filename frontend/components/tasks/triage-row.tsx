@@ -8,7 +8,6 @@ import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { IconButton } from '@/components/atoms/icon-button';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
-import { navigateToTaskAndFocus } from '@/components/tasks/navigate-to-task';
 import { PriorityChip } from '@/components/tasks/priority-chip';
 import {
   checkboxIncompleteClass,
@@ -17,6 +16,7 @@ import {
   chevronIconClass,
 } from '@/components/tasks/task-row.styles';
 import { useIndentation } from '@/lib/hooks/use-indentation';
+import { useNavigateToTask } from '@/lib/hooks/use-navigate-to-task';
 import type { TaskPriority } from '@/lib/priority';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { taskDestination } from '@/lib/tasks/task-location';
@@ -35,7 +35,7 @@ import { cn } from '@/lib/utils';
  * and ticking things off, not for restructuring.
  *
  * The title stays a real `<a href>` that jumps to the task in its containing view and rings it
- * there via {@link navigateToTaskAndFocus}, so ⌘/middle-clicks still open a new tab. The priority
+ * there via {@link useNavigateToTask}, so ⌘/middle-clicks still open a new tab. The priority
  * chip opens its own picker to re-prioritise in place; an unprioritised row shows the view's
  * `priorityPrompt` (By Priority's "Set priority") or nothing at all (Today — ALF-349).
  * Only a depth-0 row shows the folder/Inbox label — subtasks share their root's bucket.
@@ -62,6 +62,7 @@ export function TriageRow({
 }) {
   const { completeTask, uncompleteTask, updateTask } = useTaskActions();
   const allTasks = useTasks();
+  const navigateToTask = useNavigateToTask();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
 
@@ -169,7 +170,7 @@ export function TriageRow({
               // Let the browser handle a modified/middle click (new tab); hijack only a plain click.
               if (!isPlainLeftClick(event_)) return;
               event_.preventDefault();
-              navigateToTaskAndFocus(node.id, href);
+              navigateToTask(node.id, href);
             }}
             className={cn(
               // Mobile: a 24px line box so the title centres on the 24px checkbox it is top-aligned with.
