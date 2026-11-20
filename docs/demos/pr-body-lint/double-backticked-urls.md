@@ -38,3 +38,17 @@ printf "%s\n" "\`\`\`md" "[x](\`\`https://example.com\`\`)" "\`\`\`" | npm run -
 pr-body-lint: 0 error(s).
 exit 0
 ```
+
+A multi-line body: a bare double-backticked URL on line 3, a double-backticked root-relative link target on line 5 (the form the demo pr-link emits), and a triple-backtick inline code span on line 1 that must not swallow the rest of the body as a fence. Each finding names its line.
+
+```bash
+printf "%s\n" "\`\`\`npm ci\`\`\` runs first." "" "Findings: \`\`https://example.com/findings.html\`\`" "" "📝 [demo.md](\`\`/o/r/blob/b/docs/demos/x/demo.md\`\`)" | npm run --silent lint:pr-body -w tools/pr-body-lint; echo "exit $?"
+```
+
+```output
+  ✗ error [double-backticked-url] line 3: https://example.com/findings.html is wrapped in double backticks, so it renders as code, not a link. Remove the backticks.
+  ✗ error [double-backticked-url] line 5: /o/r/blob/b/docs/demos/x/demo.md is wrapped in double backticks, so it renders as code, not a link. Remove the backticks.
+
+pr-body-lint: 2 error(s).
+exit 1
+```
