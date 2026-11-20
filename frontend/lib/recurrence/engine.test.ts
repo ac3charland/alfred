@@ -1,5 +1,9 @@
+import { pinClock } from '@/lib/pin-clock';
+
 import { nextOccurrence, summarizeRule } from './engine';
 import type { RecurrenceEnd, RecurrenceRule } from './types';
+
+pinClock('2026-07-28T12:00:00.000Z');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -366,6 +370,23 @@ describe('summarizeRule', () => {
         rule({ freq: 'daily', interval: 1, end: { type: 'on_date', until: '2026-08-01' } }),
       ),
     ).toBe('Daily until Aug 1');
+  });
+
+  // ALF-303: an end date outside the current (pinned, 2026) year carries its year.
+  it('adds the year to an until date outside the current year', () => {
+    expect(
+      summarizeRule(
+        rule({ freq: 'daily', interval: 1, end: { type: 'on_date', until: '2027-01-05' } }),
+      ),
+    ).toBe('Daily until Jan 5, 2027');
+  });
+
+  it('never makes an until date relative', () => {
+    expect(
+      summarizeRule(
+        rule({ freq: 'daily', interval: 1, end: { type: 'on_date', until: '2026-07-29' } }),
+      ),
+    ).toBe('Daily until Jul 29');
   });
 
   it('appends a count suffix for after', () => {

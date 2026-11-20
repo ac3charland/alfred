@@ -38,12 +38,24 @@ export function parseDueDate(iso: string): Date {
 
 /**
  * Format a `Date`'s local calendar date as `Mon D` (abbreviated month + day), e.g. `Aug 1`.
- * Used by the recurrence-rule summary for an absolute end date (`until Aug 1`); unlike
- * {@link formatDueDate} it is never relative ("Today"/"Tomorrow") and never adds a year.
+ * Used by the weekly-plan picker; never relative ("Today"/"Tomorrow") and never adds a year.
  */
 export function formatMonthDay(iso: string): string {
   const date = parseDueDate(iso);
   return `${MONTHS[date.getMonth()] ?? ''} ${String(date.getDate())}`;
+}
+
+/**
+ * An absolute calendar date: `Mon D` inside the current year, `Mon D, YYYY` outside it
+ * (ALF-303), since a bare "Jan 5" reads as this year's. Never relative. The fallback for
+ * {@link formatDueDate} and the recurrence summary's end date (`until Jan 5, 2027`).
+ */
+export function formatCalendarDate(iso: string): string {
+  const date = parseDueDate(iso);
+  const year = date.getFullYear();
+  return year === new Date().getFullYear()
+    ? formatMonthDay(iso)
+    : `${formatMonthDay(iso)}, ${String(year)}`;
 }
 
 /** Build a `YYYY-MM-DD` string from local year / 0-based month / day numbers. */
@@ -133,8 +145,7 @@ export function todayISODate(): string {
  * Returns a human-readable label for an ISO due-date string.
  *  - "Today" if the date matches today's local date
  *  - "Tomorrow" / "Yesterday" for ±1 day
- *  - "Mon DD" (abbreviated month + day number) otherwise, plus ", YYYY" when the date falls
- *    outside the current year (ALF-303) — a bare "Jan 5" would read as this year's
+ *  - {@link formatCalendarDate} otherwise: "Mon D", plus ", YYYY" outside the current year
  */
 export function formatDueDate(iso: string): string {
   const date = parseDueDate(iso);
@@ -144,11 +155,7 @@ export function formatDueDate(iso: string): string {
   if (date.toDateString() === todayString) return 'Today';
   if (diffDays === 1) return 'Tomorrow';
   if (diffDays === -1) return 'Yesterday';
-  // Stryker disable next-line StringLiteral: AT_CEILING — `date.getMonth()` always returns 0-11, so MONTHS[month] is always defined; the `?? ''` fallback is dead code for the defensive impossible case.
-  const monthDay = `${MONTHS[date.getMonth()] ?? ''} ${String(date.getDate())}`;
-  return date.getFullYear() === now.getFullYear()
-    ? monthDay
-    : `${monthDay}, ${String(date.getFullYear())}`;
+  return formatCalendarDate(iso);
 }
 
 /**
