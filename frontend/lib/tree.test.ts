@@ -8,6 +8,7 @@ import {
   collectSubtree,
   countCompletedDescendants,
   countOverdueDescendants,
+  getAncestorIds,
   getAncestorTitles,
   getDescendantIds,
   getItemDepth,
@@ -340,6 +341,13 @@ describe('getAncestorTitles', () => {
     ];
     // Walks x → y, then y → x is already seen, so it halts.
     expect(getAncestorTitles(cyclic, 'x')).toStrictEqual(['Y', 'X']);
+  });
+});
+
+describe('getAncestorIds', () => {
+  it('lists ancestor ids oldest → youngest, sharing the titles walk', () => {
+    expect(getAncestorIds(ancestorChain(), 'b')).toStrictEqual(['a', 'b']);
+    expect(getAncestorIds(ancestorChain(), null)).toStrictEqual([]);
   });
 });
 

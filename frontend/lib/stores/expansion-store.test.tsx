@@ -85,6 +85,22 @@ describe('ExpansionProvider', () => {
     expect(result.current.state.subtasks.has('a')).toBe(true);
   });
 
+  it('expandCompleted opens a completed panel, and is a no-op when already open', () => {
+    const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
+
+    act(() => {
+      result.current.actions.expandCompleted('a');
+    });
+    const openedSet = result.current.state.completed;
+    act(() => {
+      result.current.actions.expandCompleted('a');
+    });
+
+    // Unlike toggleCompleted, a second call never closes it — and keeps the set identity.
+    expect(result.current.state.completed.has('a')).toBe(true);
+    expect(result.current.state.completed).toBe(openedSet);
+  });
+
   it('expandSubtasks on an already-open row is a no-op (same set reference)', () => {
     const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
 

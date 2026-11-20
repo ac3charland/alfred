@@ -41,6 +41,8 @@ interface ExpansionActions {
   expandSubtasks: (id: string) => void;
   /** Flip a row's completed-children sub-panel open/closed. */
   toggleCompleted: (id: string) => void;
+  /** Ensure a row's completed-children sub-panel is open (idempotent) — a jump to a completed child. */
+  expandCompleted: (id: string) => void;
   /** Flip a row's inline detail panel open/closed ("Open details"). */
   toggleDetails: (id: string) => void;
   /** Close a row's inline detail panel (idempotent) — the Escape / click-outside dismiss. */
@@ -114,6 +116,9 @@ export function ExpansionProvider({ children }: { children: React.ReactNode }) {
       },
       toggleCompleted(id) {
         setCompleted((current) => withToggled(current, id));
+      },
+      expandCompleted(id) {
+        setCompleted((current) => (current.has(id) ? current : new Set(current).add(id)));
       },
       toggleDetails(id) {
         setDetails((current) => withToggled(current, id));

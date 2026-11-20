@@ -474,4 +474,40 @@ describe('SearchBox', () => {
     });
     expect(leafCheckbox.closest('[data-testid="task-row-body"]')).toHaveClass('ring-accent-teal');
   });
+
+  it("opens the parent's completed panel when the selected subtask is completed (ALF-361)", async () => {
+    const user = userEvent.setup();
+    jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+    const inFolder = { folder_id: 'f1', dispatched_at: '2025-01-01T00:00:00Z' };
+    const tasks = [
+      makeItem({ id: 'root', title: 'Plan the offsite', ...inFolder }),
+      makeItem({
+        id: 'done',
+        title: 'Firewall the guest wifi',
+        parent_id: 'root',
+        status: 'completed',
+        completed_at: '2025-01-02T00:00:00Z',
+        ...inFolder,
+      }),
+    ];
+    renderWithProviders(
+      <SearchProvider>
+        <SearchBox />
+        <TaskList scope={{ type: 'folder', folderId: 'f1' }} />
+      </SearchProvider>,
+      { tasks },
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('firewall');
+    await user.click(screen.getByRole('checkbox', { name: 'Show completed' }));
+    const listbox = await screen.findByRole('listbox');
+    await user.click(await within(listbox).findByText('Firewall the guest wifi'));
+
+    // A completed child sits behind its active parent's "Show completed" panel — that opens too.
+    const doneCheckbox = screen.getByRole('button', {
+      name: 'Mark "Firewall the guest wifi" active',
+    });
+    expect(doneCheckbox.closest('[data-testid="task-row-body"]')).toHaveClass('ring-accent-teal');
+  });
 });
