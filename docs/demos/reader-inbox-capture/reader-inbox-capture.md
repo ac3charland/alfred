@@ -8,7 +8,7 @@ branch: claude/loving-knuth-xyzfym
 
 Every reader row now has an **Add to Inbox** verb (key `a` on the selected row) that toggles a one-line field under the verb line. Whatever is typed lands in the Inbox as an unclassified capture: its title is the trimmed text, its `source_url` the row's Original (or Session) link, and its notes name the post. The post stays on the list. Captured live through the Playwright mock backend.
 
-**1. Select the post and press `a`.** The field opens under the verbs, focused; the verb takes its pressed wash and shows its `a` keycap.
+**1. Select the post and press `a`.** The field opens under the verbs, focused; the verb takes its pressed wash and shows its `a` keycap. It sits after Archive and before Original.
 
 ![](reader-inbox-capture-image-1.png)
 
@@ -20,17 +20,15 @@ Every reader row now has an **Add to Inbox** verb (key `a` on the selected row) 
 
 ![](reader-inbox-capture-image-3.png)
 
-**At phone width (375 px)** the verb line wraps the way it already did, and the input and Add button share one line, with the input shrinking.
+**At phone width (375 px)** Send, Overview and Archive keep their one line, and Add to Inbox is the verb that wraps to a second line. The input and the Add button share one line, with the input shrinking.
 
 ![](reader-inbox-capture-image-4.png)
 
-**Storybook baselines.** Two new snapshot stories, `InboxCaptureOpen` and `InboxCaptureAdded`, pin the open and just-added states. The new verb moved every existing `PostRow` baseline, and the reading-list and archive baselines that draw rows; all were regenerated through the snapshot gate. Three moved by more than the 1% gate threshold. Their diffs (baseline | changed pixels | new) follow; the rest moved by less and were removed and rewritten so they wouldn't stay stale.
+**Storybook baselines.** Two new snapshot stories, `InboxCaptureOpen` and `InboxCaptureAdded`, pin the open and just-added states. The new verb also changes every existing `PostRow` baseline, plus the reading-list and archive baselines that draw rows. Because it's appended at the end of the verb line, each one moves by less than the gate's 1% threshold, so the gate writes no diff images. Those baselines were deleted and rewritten through the snapshot gate so they wouldn't stay stale. Before (`main`) and after for the failed row:
 
 ![](reader-inbox-capture-image-5.png)
 
 ![](reader-inbox-capture-image-6.png)
-
-![](reader-inbox-capture-image-7.png)
 
 The two new baselines, open and just added:
 
