@@ -373,6 +373,11 @@ needs no edit. Anchor the spec's fixtures to **today** rather than the dates the
 run happened to fall on, or a recapture silently redraws a different calendar. Regenerate
 any `exec`-captured `.txt` the same way and re-run `demo -- verify`.
 
+**Wait out CSS transitions before a still.** A class assertion (`toHaveClass(/ring-…/)`) passes the
+instant the class lands, so a screenshot right after catches a `transition-*` mid-flight (a ring at
+alpha 0.01, an expand at 0 height) and looks like the change didn't happen. Gate the shot on
+`await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0)`.
+
 **Shoot a phone layout with `isMobile: true`, not `hasTouch` alone.** A narrow desktop-Chromium
 context (`hasTouch: true, viewport: { width: 390, … }`) paints a phantom ~15px strip over the right
 edge — even with no page overflow (`clientWidth` stays 390) — so every screenshot looks clipped on
