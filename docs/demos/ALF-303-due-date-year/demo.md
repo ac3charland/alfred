@@ -23,3 +23,11 @@ Second, the mobile task cards: `Jul 9, 2099` and `Jul 12, 2099`. On a narrow car
 Relative labels still win across New Year. This is the `Tasks/DueDateChip › AroundToday` story (yesterday / tomorrow / the day after, worked out from now), shot with Playwright's `page.clock.setFixedTime` pinned to Dec 31, 2026 at noon. Dec 30 reads `Yesterday`. Jan 1, 2027 reads `Tomorrow`, with no year. Jan 2, 2027 is the first label to carry its year.
 
 ![](demo-image-4.png)
+
+A repeat rule's end date follows the same rule. It is never relative, but an end date outside the current year carries its year. Here are the two `Atoms/RecurrenceChip` snapshot baselines. First, `WithEndDate` (this year's Aug 1) reads `Daily until Aug 1`:
+
+![](demo-image-5.png)
+
+Second, the new `WithEndDateOtherYear` (2099) reads `Daily until Aug 1, 2099`:
+
+![](demo-image-6.png)
