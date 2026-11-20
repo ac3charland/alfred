@@ -19,3 +19,7 @@ Two committed Storybook baselines moved, both because their fixtures sit in 2099
 Second, the mobile task cards: `Jul 9, 2099` and `Jul 12, 2099`. On a narrow card the longer badge pushes the `0/1` subtask counter onto its own line. That only happens for other-year dates, and it is the cost of showing the year.
 
 ![](demo-image-3.png)
+
+Relative labels still win across New Year. This is the `Tasks/DueDateChip › AroundToday` story (yesterday / tomorrow / the day after, worked out from now), shot with Playwright's `page.clock.setFixedTime` pinned to Dec 31, 2026 at noon. Dec 30 reads `Yesterday`. Jan 1, 2027 reads `Tomorrow`, with no year. Jan 2, 2027 is the first label to carry its year.
+
+![](demo-image-4.png)
