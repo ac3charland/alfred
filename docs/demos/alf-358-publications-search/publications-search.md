@@ -2,38 +2,45 @@
 branch: claude/publications-search-reader-ohj3s5
 ---
 
-# Reader: search the publications roster
+# Reader: search publications and candidates
 
-*2026-11-20T03:26:14.933Z*
+*2026-11-20T03:49:27.057Z*
 
-ALF-358 adds a search box over the publications roster at /reader/publications. Typing filters the roster cards with a case-insensitive substring match on name, handle, domain, feed URL and note. The enabled/paused counts and the Gmail filter button still describe the whole roster, and the candidates are never filtered. When a publication joins the roster (a feed added, a candidate promoted), the query clears so the new card can't hide behind it. The shots below come from the live app at the real route, driven by Playwright against the in-memory Supabase mock with three publications and one candidate seeded.
+**What changed:** /reader/publications has a search box. Typing filters both lists on the page:
+- **the roster**, matching a publication's name, handle, domain, feed URL or note
+- **the candidates**, matching a sender's name or handle
 
-**Before:** the full roster of three publications (one paused), the new search box above the cards, and Ben's Bites as a candidate.
+The "2 enabled · 1 paused" line always counts the whole roster.
+
+The three shots are the live page, seeded with three publications and two candidates.
+
+### 1. Empty box: everything shows
+Three publications, two candidates (Ben's Bites, Not Boring).
 
 ![](publications-search-image-1.png)
 
-**Typing `jack@`, a handle-only match:** only Import AI (jack@importai.net) is left. The count line still reads 2 enabled · 1 paused, and the Ben's Bites candidate is untouched.
+### 2. Query `substack`: both lists narrow
+The roster keeps only Second Thoughts (secondthoughts@**substack**.com). The candidates keep only Not Boring (packy@notboring.**substack**.com). The count line is unchanged.
 
 ![](publications-search-image-2.png)
 
-**Typing `zebra`:** nothing matches, so the roster gives way to an empty state that names the query.
+### 3. Query `zebra`: no match in either list
+Each list says so and names the query.
 
 ![](publications-search-image-3.png)
 
-**Promoting Ben's Bites with the query still in:** the roster grows, the query clears, and the new card shows alongside the rest (3 enabled · 1 paused).
-
-![](publications-search-image-4.png)
-
-**Tests.** The matcher's unit tests and the view's search tests (filter, match on handle and feed URL, clear restores, no-match state, counts unchanged, candidates untouched, query cleared on a roster add, no box on an empty roster):
+### Tests
+The search tests: the matchers for publications and candidates, plus the view tests. Those cover each list filtering, the no-match states, the counts staying whole, and the query clearing when a newly added feed joins the roster, so its card isn't hidden.
 
 ```bash
-npm run -s test -w frontend -- components/reader/publications-search components/reader/publications-view -t 'matchesPublicationQuery|search' 2>&1 | grep -E '^Tests:'
+npm run -s test -w frontend -- components/reader/publications-search components/reader/publications-view -t 'matches|search' 2>&1 | grep -E '^Tests:'
 ```
 
 ```output
-Tests:       35 skipped, 16 passed, 51 total
+Tests:       35 skipped, 24 passed, 59 total
 ```
 
-**Visual baselines.** The search box sits above the cards, so every Storybook baseline with a populated roster moves down by one field. Below is the Populated story's diff (baseline | changed pixels | new render); the other seven move the same way. A new `Searched` story pins the narrowed state.
+### Visual baseline
+The `Searched` Storybook story, before and after this change: the candidates now give way to "No candidates match" (baseline | changed pixels | new render). The other publications baselines moved only because the search box pushes the cards down.
 
-![](publications-search-image-5.png)
+![](publications-search-image-4.png)
