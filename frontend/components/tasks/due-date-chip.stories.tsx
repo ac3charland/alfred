@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 
+import { addDays } from '@/lib/date-utils';
+
 import { DueDateChip } from './due-date-chip';
 
 const meta = {
@@ -82,6 +84,19 @@ export const AcrossYears: Story = {
         <DueDateChip {...args} dueDate={marchFourth(1)} dueTime="15:00" />
         <DueDateChip {...args} dueDate={marchFourth(1)} size="comfortable" />
       </div>
+    </div>
+  ),
+};
+
+// ALF-303: the relative labels win over the year — on Dec 31, Jan 1 next year reads "Tomorrow"
+// while Jan 2 reads "Jan 2, <next year>". Yesterday / tomorrow / the day after, from now.
+export const AroundToday: Story = {
+  args: { dueDate: addDays(todayLocalYMD(), 1) },
+  render: (args) => (
+    <div className="flex items-center gap-3">
+      <DueDateChip {...args} dueDate={addDays(todayLocalYMD(), -1)} aria-label="Yesterday" />
+      <DueDateChip {...args} dueDate={addDays(todayLocalYMD(), 1)} aria-label="Tomorrow" />
+      <DueDateChip {...args} dueDate={addDays(todayLocalYMD(), 2)} aria-label="Day after" />
     </div>
   ),
 };
