@@ -5,7 +5,8 @@ import { isHotkeyBlocked } from '@/lib/comms/hotkeys';
  * selected and the selected row has verbs.
  *
  * Its own map rather than the queue's, because the two lists share only navigation — a post is
- * sent on, archived and skimmed, not tiered or spun into an Inbox item. The one letter the two
+ * sent on, archived and skimmed, not tiered or turned wholesale into an Inbox item (a post only
+ * prompts one, typed by the owner into the row's Add-to-Inbox field). The one letter the two
  * share means the same thing in both: `i` sends the selected row somewhere else (Comms' to the
  * Inbox, the Reader's to Instapaper). What IS shared is the rule
  * that decides whether a keystroke is a command at all (`isHotkeyBlocked`, imported): a keystroke
@@ -32,6 +33,8 @@ export type ReaderHotkeyAction =
   | 'archive'
   /** Show or hide the selected row's overview panel. */
   | 'overview'
+  /** Open (or focus) the selected row's Add-to-Inbox field. */
+  | 'capture'
   /** Drop the selection entirely. */
   | 'deselect';
 
@@ -53,6 +56,7 @@ const KEYS: Record<string, ReaderHotkeyAction> = {
   o: 'open',
   e: 'archive',
   v: 'overview',
+  a: 'capture',
   escape: 'deselect',
 };
 

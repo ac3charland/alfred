@@ -133,3 +133,12 @@ export const verbRowClass = 'mt-2 flex flex-wrap items-center gap-1.5 md:gap-2';
 
 /** Each verb's padding: trimmed below `md` (see `verbRowClass`), the sm button's own from `md` up. */
 export const verbButtonClass = 'px-2.5 md:px-3';
+
+/**
+ * The Add-to-Inbox field under the verb line: the input and its Add button share one line at
+ * every width, the input shrinking (`min-w-0`) rather than pushing the button off a phone.
+ */
+export const captureFieldClass = 'mt-2 flex items-center gap-2';
+
+/** The field's input — `min-w-0` so a long draft scrolls inside it instead of widening the row. */
+export const captureInputClass = 'h-8 min-w-0 flex-1';

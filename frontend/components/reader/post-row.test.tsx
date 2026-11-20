@@ -16,7 +16,7 @@ import {
 } from '@/lib/reader/fixtures';
 import { stableSorted } from '@/lib/sort';
 import { useArchivedPosts, useReaderPosts } from '@/lib/stores/reader-store';
-import type { ReaderOverview, ReaderPostListItem } from '@/lib/types';
+import type { Item, ReaderOverview, ReaderPostListItem } from '@/lib/types';
 
 import { PostList } from './post-list';
 import { PostRow } from './post-row';
@@ -303,7 +303,7 @@ describe('PostRow — the verb row', () => {
       />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Archive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Archive', 'Add to Inbox']);
     expect(screen.queryByText('Open')).not.toBeInTheDocument();
   });
 
@@ -319,7 +319,13 @@ describe('PostRow — the verb row', () => {
       />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Retry summary', 'Archive', 'Original']);
+    expect(verbRow()).toEqual([
+      'Send to Instapaper',
+      'Retry summary',
+      'Archive',
+      'Add to Inbox',
+      'Original',
+    ]);
   });
 
   it('ends a first-time pending row with Original too', () => {
@@ -330,7 +336,7 @@ describe('PostRow — the verb row', () => {
       />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Original']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Add to Inbox', 'Original']);
   });
 
   it('reads Unarchive in Archive’s slot in the archive', () => {
@@ -347,7 +353,7 @@ describe('PostRow — the verb row', () => {
       />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Unarchive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Unarchive', 'Add to Inbox']);
   });
 });
 
@@ -1395,7 +1401,7 @@ describe('PostRow — a research post while the report is being written', () => 
   it('draws Send disabled with the reason, then Archive, then the Session link', () => {
     renderReader(<PostRow post={research()} now={NOW} />);
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Add to Inbox', 'Session']);
     expect(sendButton()).toBeDisabled();
     expect(sendButton()).toHaveAttribute('title', "The report hasn't arrived yet.");
     expect(screen.queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument();
@@ -1423,7 +1429,7 @@ describe('PostRow — a research post while the report is being written', () => 
       <PostRow post={research({ ...JUST_QUEUED, research_session_url: null })} now={NOW} />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Add to Inbox']);
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
@@ -1533,14 +1539,14 @@ describe('PostRow — a research post with no report', () => {
       <PostRow post={research({ ...FAILED, research_session_url: SESSION_URL })} now={NOW} />,
     );
 
-    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Add to Inbox', 'Session']);
     expect(screen.queryByRole('button', { name: 'Send to Instapaper' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Session' })).toHaveAttribute('href', SESSION_URL);
   });
 
   it('draws no Session link when the fire never got a session', () => {
     renderReader(<PostRow post={research(FAILED)} now={NOW} />);
-    expect(verbRow()).toEqual(['Retry research', 'Archive']);
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Add to Inbox']);
   });
 
   it('reads a session silent for three hours as no report, and says so', () => {
@@ -1557,7 +1563,7 @@ describe('PostRow — a research post with no report', () => {
         'No report — the session hasn’t reported back in 3 hours. Open it, or retry to start a new one.',
       ),
     ).toBeInTheDocument();
-    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Add to Inbox', 'Session']);
     expect(screen.getByTestId('reader-row')).toHaveClass('opacity-70');
   });
 
@@ -1589,7 +1595,7 @@ describe('PostRow — a research post with no report', () => {
     expect(
       screen.getByText('No report — the research never started. Retry to start a session.'),
     ).toBeInTheDocument();
-    expect(verbRow()).toEqual(['Retry research', 'Archive']);
+    expect(verbRow()).toEqual(['Retry research', 'Archive', 'Add to Inbox']);
   });
 
   it('starts a new session when Retry research is clicked, and the row reads as researching at once', async () => {
@@ -1646,7 +1652,7 @@ describe('PostRow — a research post with no report', () => {
     renderReader(<PostRow post={row} now={NOW} />, [row], undefined, { researchConfigured: false });
 
     expect(screen.queryByRole('button', { name: 'Retry research' })).not.toBeInTheDocument();
-    expect(verbRow()).toEqual(['Archive', 'Session']);
+    expect(verbRow()).toEqual(['Archive', 'Add to Inbox', 'Session']);
   });
 
   it('answers i with nothing: there is no Send to run', async () => {
@@ -1696,7 +1702,7 @@ describe('PostRow — a delivered research report', () => {
     const user = userEvent.setup();
     renderReader(<PostRow post={report()} now={NOW} />);
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Archive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Archive', 'Add to Inbox']);
     await user.click(screen.getByRole('button', { name: 'Overview' }));
 
     const footer = screen.getByRole('link', { name: 'Session' });
@@ -1744,7 +1750,7 @@ describe('PostRow — a delivered research report', () => {
       screen.getByText('The summary is on its way — send it now, or check back in a few minutes.'),
     ).toBeInTheDocument();
     // Sendable at once — the body is here — and Session sits where Original would.
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Session']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Archive', 'Add to Inbox', 'Session']);
     expect(sendButton()).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Retry research' })).not.toBeInTheDocument();
   });
@@ -1757,7 +1763,13 @@ describe('PostRow — a delivered research report', () => {
       />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Retry summary', 'Archive', 'Session']);
+    expect(verbRow()).toEqual([
+      'Send to Instapaper',
+      'Retry summary',
+      'Archive',
+      'Add to Inbox',
+      'Session',
+    ]);
     expect(screen.getByText('summary failed')).toBeInTheDocument();
   });
 
@@ -1777,7 +1789,7 @@ describe('PostRow — a delivered research report', () => {
       <PostRow post={report({ archived_at: minutesBeforeNow(1) })} now={NOW} variant="archive" />,
     );
 
-    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Unarchive']);
+    expect(verbRow()).toEqual(['Send to Instapaper', 'Overview', 'Unarchive', 'Add to Inbox']);
   });
 });
 
@@ -1996,5 +2008,181 @@ describe('PostRow — an Alerts post', () => {
 
     expect(screen.getByRole('button', { name: /Send to Instapaper/ })).toBeInTheDocument();
     expect(screen.getByText(/The summary is on its way/)).toBeInTheDocument();
+  });
+});
+
+function captureVerb(): HTMLElement {
+  return screen.getByRole('button', { name: 'Add to Inbox' });
+}
+
+/** The server answers a create with the row it was sent, under an id of its own. */
+function echoCreate(): void {
+  mockApi.createItem.mockImplementation((input) =>
+    Promise.resolve({ ...input, id: `server-${input.title ?? 'item'}` } as unknown as Item),
+  );
+}
+
+/** The row drawing `title` — scoped by title because the list orders rows newest first. */
+function rowTitled(title: string): HTMLElement {
+  const row = screen
+    .getAllByTestId('reader-row')
+    .find((candidate) => within(candidate).queryByText(title) !== null);
+  if (row === undefined) throw new Error(`no row titled ${title}`);
+  return row;
+}
+
+describe('PostRow — Add to Inbox', () => {
+  const DONE = {
+    id: 'p-1',
+    title: 'Import AI 412',
+    canonical_url: 'https://example.test/p/import-ai-412',
+    summary_state: 'done',
+    gist: 'a gist',
+    overview: makeReaderOverview(),
+    word_count: 900,
+  } as const;
+
+  it('toggles a focused field under the verbs, the verb carrying aria-expanded', async () => {
+    const user = userEvent.setup();
+    const onSelect = jest.fn();
+    renderReader(<PostRow post={post(DONE)} now={NOW} onSelect={onSelect} />);
+
+    expect(captureVerb()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('textbox', { name: 'New Inbox item' })).not.toBeInTheDocument();
+
+    expect(captureVerb()).not.toHaveAttribute('aria-controls');
+
+    await user.click(captureVerb());
+    expect(captureVerb()).toHaveAttribute('aria-expanded', 'true');
+    const field = screen.getByRole('textbox', { name: 'New Inbox item' });
+    expect(field).toHaveFocus();
+    expect(field.closest('form')).toHaveAttribute(
+      'id',
+      captureVerb().getAttribute('aria-controls'),
+    );
+    expect(onSelect).toHaveBeenCalledWith('p-1');
+
+    await user.click(captureVerb());
+    expect(captureVerb()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('textbox', { name: 'New Inbox item' })).not.toBeInTheDocument();
+  });
+
+  it('sits outside the overview, so a row with no panel has it too', async () => {
+    const user = userEvent.setup();
+    renderReader(<PostRow post={post({ ...DONE, summary_state: 'failed' })} now={NOW} />);
+
+    await user.click(captureVerb());
+
+    expect(screen.getByRole('textbox', { name: 'New Inbox item' })).toBeInTheDocument();
+  });
+
+  it('opens and focuses on a, with a keycap on the selected row only', async () => {
+    const user = userEvent.setup();
+    const row = post(DONE);
+    const { rerender } = renderReader(<PostRow post={row} now={NOW} />, [row]);
+    expect(within(captureVerb()).queryByText('a')).not.toBeInTheDocument();
+
+    rerender(<PostRow post={row} now={NOW} selected />);
+    expect(within(captureVerb()).getByText('a')).toBeInTheDocument();
+
+    await user.keyboard('a');
+
+    const field = screen.getByRole('textbox', { name: 'New Inbox item' });
+    expect(field).toHaveFocus();
+    // The key that opened the field is not typed into it.
+    expect(field).toHaveValue('');
+  });
+
+  it('puts the cursor back in a field already open when a is pressed again', async () => {
+    const user = userEvent.setup();
+    const row = post(DONE);
+    renderReader(<PostRow post={row} now={NOW} selected />, [row]);
+
+    await user.keyboard('a');
+    await user.type(screen.getByRole('textbox', { name: 'New Inbox item' }), 'kept');
+    await user.click(captureVerb());
+    await user.click(captureVerb());
+    // Reopened fresh — the draft went with the close.
+    expect(screen.getByRole('textbox', { name: 'New Inbox item' })).toHaveValue('');
+    await user.type(screen.getByRole('textbox', { name: 'New Inbox item' }), 'draft');
+    captureVerb().focus();
+
+    await user.keyboard('a');
+
+    expect(screen.getByRole('textbox', { name: 'New Inbox item' })).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'New Inbox item' })).toHaveValue('draft');
+  });
+
+  it('types every verb letter into the field without firing its verb', async () => {
+    const user = userEvent.setup();
+    const onExit = jest.fn();
+    const row = post(DONE);
+    const open = jest.spyOn(globalThis, 'open').mockReturnValue(null);
+    renderReader(<PostRow post={row} now={NOW} selected onExit={onExit} />, [row]);
+
+    await user.click(captureVerb());
+    await user.keyboard('jkeiova');
+
+    expect(screen.getByRole('textbox', { name: 'New Inbox item' })).toHaveValue('jkeiova');
+    expect(onExit).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Hide overview' })).not.toBeInTheDocument();
+    expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
+    expect(mockApi.sendReaderPostToInstapaper).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it('closes on Escape, handing focus back to the verb and keeping the row selected', async () => {
+    const user = userEvent.setup();
+    const row = post(DONE);
+    renderReader(<StoreList />, [row]);
+
+    await user.keyboard('j');
+    await user.keyboard('a');
+    await user.keyboard('half a thought{Escape}');
+
+    expect(screen.queryByRole('textbox', { name: 'New Inbox item' })).not.toBeInTheDocument();
+    expect(captureVerb()).toHaveFocus();
+    expect(screen.getByTestId('reader-row').dataset['selected']).toBe('true');
+  });
+
+  it('leaves the post in the list after an add, the field empty, open and focused', async () => {
+    echoCreate();
+    const user = userEvent.setup();
+    const row = post(DONE);
+    renderReader(<StoreList />, [row]);
+
+    await user.click(captureVerb());
+    await user.keyboard('Ask Ana{Enter}');
+
+    expect(mockApi.createItem).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Import AI 412')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'New Inbox item' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'New Inbox item' })).toHaveFocus();
+    expect(mockApi.patchReaderPost).not.toHaveBeenCalled();
+  });
+
+  it('keeps each open row’s draft its own', async () => {
+    echoCreate();
+    const user = userEvent.setup();
+    const rows = [
+      post({ ...DONE, id: 'p-1', title: 'First post' }),
+      post({ ...DONE, id: 'p-2', title: 'Second post' }),
+    ];
+    renderReader(<StoreList />, rows);
+
+    const first = within(rowTitled('First post'));
+    const second = within(rowTitled('Second post'));
+    await user.click(first.getByRole('button', { name: 'Add to Inbox' }));
+    await user.keyboard('from the first');
+    await user.click(second.getByRole('button', { name: 'Add to Inbox' }));
+    await user.keyboard('from the second{Enter}');
+
+    expect(first.getByRole('textbox', { name: 'New Inbox item' })).toHaveValue('from the first');
+    expect(second.getByRole('textbox', { name: 'New Inbox item' })).toHaveValue('');
+    expect(mockApi.createItem).toHaveBeenCalledTimes(1);
+    const sent = mockApi.createItem.mock.calls[0]?.[0];
+    expect(sent?.title).toBe('from the second');
+    expect(sent?.notes).toContain('“Second post”');
   });
 });

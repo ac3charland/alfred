@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUpRight, RotateCw } from 'lucide-react';
+import { ArrowUpRight, Inbox, RotateCw } from 'lucide-react';
 import * as React from 'react';
 
 import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
@@ -23,6 +23,7 @@ import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
 import { AlertFindings, NOTHING_NOTABLE_LINE } from './alert-findings';
+import { ReaderInboxCapture } from './inbox-capture';
 import { PostMarkers } from './post-markers';
 import { PostOverview } from './post-overview';
 import {
@@ -62,7 +63,8 @@ import { RoundupOverview } from './roundup-overview';
  *
  * The row owns its own exit animation (archiving collapses before the mutation commits, so the
  * list doesn't jump), its own overview toggle (local `useState`; no cross-row coordination
- * store — more than one row may sit expanded at once, unlike a single-selection queue) and,
+ * store — more than one row may sit expanded at once, unlike a single-selection queue), its
+ * Add-to-Inbox field (local too, for the same reason) and,
  * while it is the selected row, the verb hotkeys. Selection itself belongs to the list, since
  * only one row may hold it and navigation has to work with nothing selected at all.
  */
@@ -216,6 +218,11 @@ export function PostRow({
   // How many times the panel has been opened — the overview's key, so each opening starts with
   // nothing ticked while a closing one keeps its state through the fold (and a send in flight).
   const [openings, setOpenings] = React.useState(0);
+  // The Add-to-Inbox field. Its draft lives in the field itself, which mounts only while open.
+  const [captureOpen, setCaptureOpen] = React.useState(false);
+  const captureVerbRef = React.useRef<HTMLButtonElement>(null);
+  const captureInputRef = React.useRef<HTMLInputElement>(null);
+  const captureId = React.useId();
   const shellRef = React.useRef<HTMLDivElement>(null);
   // What the card and the Overview verb say they control, so a screen reader can follow the
   // disclosure to the region it opens rather than being told a state with no referent.
@@ -338,6 +345,18 @@ export function PostRow({
     setOverviewOpen((open) => !open);
   }, [hasPanel, panelOpen]);
 
+  /** `a`: open the field, or — already open — put the cursor back in it. */
+  const openCapture = React.useCallback(() => {
+    if (captureOpen) captureInputRef.current?.focus();
+    else setCaptureOpen(true);
+  }, [captureOpen]);
+
+  /** Escape in the field: close it and hand focus back to the verb that opened it. */
+  const closeCapture = React.useCallback(() => {
+    setCaptureOpen(false);
+    captureVerbRef.current?.focus();
+  }, []);
+
   // Bring the selected row into view when the keyboard walks onto it. `nearest` scrolls the
   // least that makes the row visible, so a row already on screen doesn't jump under the owner.
   React.useEffect(() => {
@@ -384,6 +403,12 @@ export function PostRow({
           toggleOverview();
           break;
         }
+        case 'capture': {
+          // Default prevented so the `a` isn't typed into the field it just focused.
+          event.preventDefault();
+          openCapture();
+          break;
+        }
         default: {
           // `next` / `previous` / `deselect` belong to the list.
           break;
@@ -405,6 +430,7 @@ export function PostRow({
     openOriginal,
     beginArchive,
     toggleOverview,
+    openCapture,
   ]);
 
   /** The key that runs a verb, beside its label — on the selected row only, desktop only. */
@@ -566,8 +592,39 @@ export function PostRow({
                 {hint('e')}
               </Button>
 
+              {/* After Archive rather than before it: on a phone Send, Overview and Archive keep
+                  their one line, and this is the verb that wraps. */}
+              <Button
+                ref={captureVerbRef}
+                variant="ghost"
+                size="sm"
+                className={cn(verbButtonClass, 'gap-1.5', captureOpen && 'bg-secondary')}
+                aria-expanded={captureOpen}
+                // Only while open: the field is mounted only then, and a dangling id points nowhere.
+                aria-controls={captureOpen ? captureId : undefined}
+                onClick={() => {
+                  onSelect?.(post.id);
+                  setCaptureOpen((open) => !open);
+                }}
+              >
+                <Inbox size={14} />
+                Add to Inbox
+                {hint('a')}
+              </Button>
+
               {!originalInPanel && original}
             </div>
+
+            {/* Under the verbs and outside the overview's collapse, so every row has it — pending,
+                failed and research rows included, which have no panel to put it in. */}
+            {captureOpen && (
+              <ReaderInboxCapture
+                id={captureId}
+                post={post}
+                onClose={closeCapture}
+                inputRef={captureInputRef}
+              />
+            )}
 
             {/* The id the card and the Overview verb point at sits on a plain wrapper rather than
                 on the collapse itself, so the shared atom keeps its own small prop surface. */}
