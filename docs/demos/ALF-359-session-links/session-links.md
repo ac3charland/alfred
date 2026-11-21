@@ -62,10 +62,6 @@ session_01Demo.prompted
 no start state: [] exit 0
 ```
 
-## The lane label
-
-The record route adds the launch lane that the prompt matches to any write that carries a prompt (`laneOfPrompt`, round-tripped against every launch builder in its unit tests). That lane is the label each row below shows.
-
 ## The story detail's Sessions section
 
 Between Notes and Spec, newest first, each row labelled by lane with its local start time and opening the session on claude.ai in a new tab. A session whose lane can't be read is plain "Session". These are the new Storybook visual baselines (the store seeded as the shell layout seeds it from `code_sessions`):
@@ -80,4 +76,55 @@ The phone sheet:
 
 ![](session-links-image-3.png)
 
-With no sessions the section is absent — the existing `ReadyForDev` baseline is unchanged by this branch. A session recorded while the detail is open arrives over the new `code_sessions` realtime channel (pinned by the code-store tests), and the Playwright spec `lists the story’s recorded sessions…` asserts the links and hrefs end to end, excluding the same ref from another repo and the epic's own session.
+## The whole journey, in the real app
+
+`with-app.sh` builds and boots the real Next app against the E2E suite's in-memory Supabase mock, then `journey.mjs` does the following:
+
+1. Opens ALF-5 with no sessions recorded.
+2. POSTs a session start and the hook's first-prompt write to the real record route, using a refinement launch prompt. The route adds the launch lane it reads from the prompt.
+3. Sends the first stop, which carries a later message and another ref.
+4. Re-runs a backfill with no lane.
+5. Reopens ALF-5.
+
+The same ref recorded in another repo, and the epic's own session, are seeded beside it and must not show. The mock mirrors the RPCs' column ownership (the real SQL is pinned by the database integration suite). It has no realtime socket, so step 5 reopens the page. A session arriving live on an open detail over the new `code_sessions` channel is pinned by the code-store tests instead.
+
+```bash
+docs/demos/ALF-359-session-links/with-app.sh /tmp/alf-359-shots
+```
+
+```output
+before.png: sections ["Notes","Spec","Priority","Move this story"]; session links []
+after the first-prompt write:
+{
+  "session_id": "session_01DemoRefine",
+  "ref": "ALF-5",
+  "launch_lane": "refinement",
+  "prompt_source": "recorded",
+  "prompt": "ALF-5: Log the session URL back to the ticket\n\nYou are refining the ticket ALF-5. Produce a SPEC ONLY — describe the concrete change."
+}
+after the first stop:
+{
+  "session_id": "session_01DemoRefine",
+  "ref": "ALF-5",
+  "launch_lane": "refinement",
+  "prompt_source": "recorded",
+  "prompt": "ALF-5: Log the session URL back to the ticket\n\nYou are refining the ticket ALF-5. Produce a SPEC ONLY — describe the concrete change."
+}
+after a backfill re-run with no lane:
+{
+  "session_id": "session_01DemoRefine",
+  "ref": "ALF-5",
+  "launch_lane": "refinement",
+  "prompt_source": "recorded",
+  "prompt": "ALF-5: Log the session URL back to the ticket\n\nYou are refining the ticket ALF-5. Produce a SPEC ONLY — describe the concrete change."
+}
+after.png: sections ["Notes","Sessions","Spec","Priority","Move this story"]; session links ["Refinement session Nov 21, 9:14 AM → https://claude.ai/code/session_01DemoRefine"]
+```
+
+Before: ALF-5 open with nothing recorded. No Sessions section.
+
+![](session-links-image-4.png)
+
+After: one link, labelled by the lane the route read from the prompt, with its local start time, opening `claude.ai/code/session_01DemoRefine`. Neither the other repo's ALF-5 session nor the epic's session appears.
+
+![](session-links-image-5.png)
