@@ -187,28 +187,33 @@ export const MobileReadyForDev: Story = {
   },
 };
 
-/** Sessions recorded against STORY, as the shell seeds them (times in UTC, shown local). */
+/** A local instant, so the rendered start time is the same whatever zone the snapshot runs in. */
+function local(day: number, hour: number, minute: number): string {
+  return new Date(2026, 10, day, hour, minute).toISOString();
+}
+
+/** Sessions recorded against STORY, as the shell seeds them. */
 const SESSIONS: CodeSessionLink[] = [
   {
     session_id: 'session_01Implementation',
     ref: STORY.ref ?? '',
     repo: 'ac3charland/alfred',
     launch_lane: 'implementation',
-    session_created_at: '2026-11-21T09:14:00Z',
+    session_created_at: local(21, 9, 14),
   },
   {
     session_id: 'session_01Refinement',
     ref: STORY.ref ?? '',
     repo: 'ac3charland/alfred',
     launch_lane: 'refinement',
-    session_created_at: '2026-11-20T15:02:00Z',
+    session_created_at: local(20, 15, 2),
   },
   {
     session_id: 'session_01Unlabelled',
     ref: STORY.ref ?? '',
     repo: 'ac3charland/alfred',
     launch_lane: null,
-    session_created_at: '2026-11-19T11:47:00Z',
+    session_created_at: local(19, 11, 47),
   },
 ];
 
