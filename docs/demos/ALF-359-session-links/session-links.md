@@ -64,36 +64,7 @@ no start state: [] exit 0
 
 ## The lane label
 
-The record route labels any write carrying a prompt with the launch lane that prompt reads as. The guard against prompt-copy drift is a round-trip of every real launch builder through `laneOfPrompt`:
-
-```bash
-npm run test -w frontend -- lib/code/launch-lane.test.ts --verbose --reporters=default 2>&1 | grep -E "✓|✕|Tests:" | sed -E "s/ \([0-9]+ ms\)//"
-```
-
-```output
-    ✓ reads refinement from its builder’s prompt
-    ✓ reads spike from its builder’s prompt
-    ✓ reads bug from its builder’s prompt
-    ✓ reads implementation from its builder’s prompt
-    ✓ reads bypass from its builder’s prompt
-    ✓ reads epic-refinement from its builder’s prompt
-    ✓ reads epic-implementation from its builder’s prompt
-    ✓ covers every lane
-    ✓ reads a prompt pasted with CRLF line endings
-    ✓ is null for an empty prompt
-    ✓ is null for a one-paragraph prompt
-    ✓ is null for a hand-written prompt
-    ✓ is null for an opening sentence in the first paragraph
-    ✓ is null for an opening sentence past the second paragraph
-    ✓ labels refinement as Refinement session
-    ✓ labels spike as Spike session
-    ✓ labels bug as Bug-fix session
-    ✓ labels implementation as Implementation session
-    ✓ labels bypass as Skip-refinement session
-    ✓ labels null as Session
-    ✓ keeps a known lane and drops anything else to null
-Tests:       21 passed, 21 total
-```
+The record route adds the launch lane that the prompt matches to any write that carries a prompt (`laneOfPrompt`, round-tripped against every launch builder in its unit tests). That lane is the label each row below shows.
 
 ## The story detail's Sessions section
 
