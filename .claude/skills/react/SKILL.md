@@ -152,6 +152,7 @@ Does a deep subtree need shared data without prop drilling?
 - The `eslint-plugin-react-hooks` rules `rules-of-hooks` and `exhaustive-deps` are configured as **errors** in this project. Never add `// eslint-disable` to silence them — fix the code. Every error the linter reports is a real bug.
 - Objects and functions created inside a component are new references every render. Putting them in a dependency array causes the effect to re-run on every render. Move the object/function inside the effect, or stabilize it with `useCallback`/`useMemo`.
 - Stable values (refs, setter functions from `useState`, dispatch from `useReducer`) do not need to be in the dependency array — they are guaranteed stable across renders.
+- **A memoized derivation that reads the clock freezes.** A helper calling `new Date()` inside `useMemo` (or a hook React Compiler memoizes) is invisible to `exhaustive-deps`, so "today" sticks at the last render whose deps changed — a tab left open overnight shows yesterday's Today list. Pass the time in as a parameter from `useNow(...)` and depend on it (or on its derived `localISODate`), as `useTasksDueToday` and `useFolderBadgeCounts` do.
 
 **Keys and recursive lists**
 - Always key list items by their stable, unique database ID. Never use array index as a key for a list that can reorder, filter, or update.
