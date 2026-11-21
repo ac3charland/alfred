@@ -12,6 +12,7 @@ import { resetCommFixtureClock } from '@/lib/comms/fixtures';
 import { resetReaderFixtureClock } from '@/lib/reader/fixtures';
 import type {
   CodeItem,
+  CodeSessionLink,
   CommAccount,
   CommClassifierHealth,
   CommCorrection,
@@ -136,6 +137,8 @@ export interface SeedState {
   wikiSync?: WikiSync[];
   /** Folder names already taken in the wiki repo's inbox/ when the test starts. */
   githubInbox?: string[];
+  /** Session-ledger rows (`code_sessions`); the story detail links those naming a ticket. */
+  codeSessions?: (CodeSessionLink & { prompt?: string | null })[];
 }
 
 let sequence = 0;

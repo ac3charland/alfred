@@ -52,6 +52,7 @@ export const test = base.extend<Fixtures>({
           wikiPages: state.wikiPages ?? [],
           wikiSync: state.wikiSync ?? [],
           githubInbox: state.githubInbox ?? [],
+          codeSessions: state.codeSessions ?? [],
         },
       });
       expect(response.ok()).toBeTruthy();

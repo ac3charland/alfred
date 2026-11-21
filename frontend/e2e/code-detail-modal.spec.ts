@@ -1,3 +1,5 @@
+import type { CodeSessionLink } from '@/lib/types';
+
 import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/constants';
 import { expect, test } from './support/fixtures';
 
@@ -366,4 +368,73 @@ test('re-ranks a story from the modal, in its project and across the whole Backl
   await page.goto('/code/backlog');
   await expect(page.getByRole('listitem').nth(0)).toContainText('ALF-5');
   await expect(page.getByRole('listitem').nth(1)).toContainText('RLP-1');
+});
+
+/** A recorded session of ALF-5, as the session ledger holds it. */
+function session(
+  sessionId: string,
+  overrides: Partial<CodeSessionLink>,
+  createdAt: string | null,
+): CodeSessionLink & { prompt: string } {
+  return {
+    session_id: sessionId,
+    ref: 'ALF-5',
+    repo: 'ac3charland/alfred',
+    launch_lane: null,
+    session_created_at: createdAt,
+    // A column the store never keeps: the seed read must not need it.
+    prompt: 'ALF-5: Log the session URL back to the ticket',
+    ...overrides,
+  };
+}
+
+test('lists the story’s recorded sessions, each opening its claude.ai session', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', { id: PROJECT_ID, key: 'ALF' });
+  const epic = makeEpic('Session ledger', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const item = makeItem('Log the session URL back to the ticket', {
+    id: STORY_ITEM_ID,
+    item_type: 'code',
+  });
+  const story = makeCodeStory({
+    item_id: STORY_ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 5,
+    ref: 'ALF-5',
+    factory_state: 'in_development',
+  });
+
+  await seed({
+    projects: [project],
+    epics: [epic],
+    items: [item],
+    codeItems: [story],
+    codeSessions: [
+      session('session_01Refine', { launch_lane: 'refinement' }, '2026-11-20T15:02:00Z'),
+      session('session_01Build', { launch_lane: 'implementation' }, '2026-11-21T09:14:00Z'),
+      // Not this story's: the same ref in another repo, and the epic's own session.
+      session('session_01Elsewhere', { repo: 'ac3charland/realplay' }, '2026-11-22T09:00:00Z'),
+      session('session_01Epic', { ref: 'ALF-1', launch_lane: 'epic-refinement' }, null),
+    ],
+  });
+  await page.goto(`/code/${PROJECT_ID}`);
+  await page.getByRole('button', { name: /open ALF-5/i }).click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Sessions' })).toBeVisible();
+  const links = dialog.getByRole('link', { name: /session/i });
+  await expect(links).toHaveCount(2);
+  await expect(links.nth(0)).toHaveText(/^Implementation session/);
+  await expect(links.nth(0)).toHaveAttribute('href', 'https://claude.ai/code/session_01Build');
+  await expect(links.nth(0)).toHaveAttribute('target', '_blank');
+  await expect(links.nth(1)).toHaveText(/^Refinement session/);
+  await expect(links.nth(1)).toHaveAttribute('href', 'https://claude.ai/code/session_01Refine');
 });

@@ -32,6 +32,7 @@ import { PrLink } from '@/components/code/story-detail/pr-link';
 import { PrimaryAction } from '@/components/code/story-detail/primary-action';
 import { PriorityControls } from '@/components/code/story-detail/priority-controls';
 import { RefinementMark } from '@/components/code/story-detail/refinement-mark';
+import { SessionLinks } from '@/components/code/story-detail/session-links';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
 import { SpecRow } from '@/components/code/story-detail/spec-row';
 import { StoryKindBadge } from '@/components/code/story-kind-badge';
@@ -243,6 +244,8 @@ function DetailBody({
             />
           </div>
 
+          <SessionLinks story={story} layout="sheet" />
+
           <div className="mt-6">
             <SpecRow story={story} />
           </div>
@@ -310,6 +313,9 @@ function DetailBody({
           <EditableNotes story={story} layout="dialog" />
         </div>
 
+        {/* Every session recorded against the story, between its notes and its spec. */}
+        <SessionLinks story={story} layout="dialog" />
+
         <SpecBody story={story} />
       </div>
 
@@ -341,7 +347,7 @@ export interface StoryDetailModalProperties {
 /**
  * The Jira-style story detail modal: a Radix Dialog (modelled on `cascade-modal` /
  * `gate-dialog`, sized up) opened from a board card. Shows the ref + inline-editable title,
- * the Project › Epic breadcrumb, the factory-state chip, notes, the rendered spec (an HTML
+ * the Project › Epic breadcrumb, the factory-state chip, notes, the recorded sessions, the rendered spec (an HTML
  * plan in an isolated frame, or legacy markdown) with a "View in repo" link, PR links, the phase-appropriate
  * "Open Claude Code" launch button, the "Needs refinement" mark, the Backlog priority jumps, and
  * the manual fallback controls.

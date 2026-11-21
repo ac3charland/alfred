@@ -223,6 +223,19 @@ export function formatDueTime(time: string, locale?: string): string {
   return format.format(new Date(2000, 0, 1, hour, minute));
 }
 
+/**
+ * An instant as a short local date and time — "Nov 21, 9:14 AM" in en-US — in the device's own
+ * zone and clock format. `locale` defaults to the runtime's own (tests pin it).
+ */
+export function formatShortDateTime(iso: string, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(iso));
+}
+
 /** A due chip's text: the date label ("Tomorrow"), plus the time when there is one. */
 export function formatDueLabel(date: string, time: string | null, locale?: string): string {
   const day = formatDueDate(date);

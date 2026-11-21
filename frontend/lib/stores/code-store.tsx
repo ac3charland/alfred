@@ -1,6 +1,9 @@
 'use client';
 
-import type { RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
+import type {
+  RealtimePostgresChangesPayload,
+  RealtimePostgresUpdatePayload,
+} from '@supabase/supabase-js';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
@@ -21,6 +24,12 @@ import {
 import type { ProjectColor } from '@/lib/code/project-color';
 import { renameStateChange, requiresRefinementFor } from '@/lib/code/refinement';
 import { refinementMarkTarget } from '@/lib/code/refinement-mark';
+import {
+  type CodeSessionChange,
+  dropSession,
+  landSessionChange,
+  sessionsForStory,
+} from '@/lib/code/session-links';
 import { codeStoryStatusPatch } from '@/lib/code/status';
 import { stableSorted } from '@/lib/sort';
 import { assertNever } from '@/lib/stores/assert-never';
@@ -30,7 +39,14 @@ import { useToastActions } from '@/lib/stores/toast-store';
 import { createClient } from '@/lib/supabase/client';
 import { deliveredColumns, joinWhenAuthenticated } from '@/lib/supabase/realtime';
 import { makeOptimisticEpic, makeOptimisticProject, makeOptimisticStory, tempId } from '@/lib/tree';
-import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
+import type {
+  CodeFactoryState,
+  CodeItem,
+  CodeSessionLink,
+  CodeStory,
+  Epic,
+  Project,
+} from '@/lib/types';
 
 /**
  * Code store — the source of truth for the Software Factory module (projects, epics,
@@ -451,6 +467,8 @@ interface CodeState {
   projects: Project[];
   epics: Epic[];
   stories: CodeStory[];
+  /** Every recorded Claude Code session that names a ticket; read-only here, fed by realtime. */
+  sessions: CodeSessionLink[];
 }
 
 type CodeAction =
@@ -465,10 +483,12 @@ type CodeAction =
   | { type: 'insertStory'; story: CodeStory }
   | { type: 'replaceStory'; itemId: string; story: CodeStory }
   | { type: 'patchStory'; itemId: string; patch: Partial<CodeStory> }
-  | { type: 'removeStory'; itemId: string };
+  | { type: 'removeStory'; itemId: string }
+  | { type: 'landSession'; change: CodeSessionChange }
+  | { type: 'dropSession'; sessionId: string | undefined };
 
 /**
- * Pure reducer over the three code slices. Each `replace`/`patch`/`remove` is keyed by id
+ * Pure reducer over the code slices. Each `replace`/`patch`/`remove` is keyed by id
  * and is a no-op when the id is absent — the race rule: a reconcile for a row already
  * removed adds nothing back.
  */
@@ -527,6 +547,12 @@ export function codeReducer(state: CodeState, action: CodeAction): CodeState {
     case 'removeStory': {
       return { ...state, stories: state.stories.filter((s) => s.item_id !== action.itemId) };
     }
+    case 'landSession': {
+      return { ...state, sessions: landSessionChange(state.sessions, action.change) };
+    }
+    case 'dropSession': {
+      return { ...state, sessions: dropSession(state.sessions, action.sessionId) };
+    }
     default: {
       return assertNever(action, 'code action');
     }
@@ -583,22 +609,33 @@ const { StateContext: CodeStoriesContext, useStateValue: useStoriesValue } = cre
   CodeStory[],
   never
 >('a CodeProvider');
+const { StateContext: CodeSessionsContext, useStateValue: useSessionsValue } = createContextPair<
+  CodeSessionLink[],
+  never
+>('a CodeProvider');
+
+/** The provider's default for a mount that seeds no sessions (stable, so it never re-seeds). */
+const NO_SESSIONS: CodeSessionLink[] = [];
 
 export function CodeProvider({
   initialProjects,
   initialEpics,
   initialStories,
+  initialSessions = NO_SESSIONS,
   children,
 }: {
   initialProjects: Project[];
   initialEpics: Epic[];
   initialStories: CodeStory[];
+  /** The recorded sessions the story detail links (the shell layout seeds them). */
+  initialSessions?: CodeSessionLink[] | undefined;
   children: React.ReactNode;
 }) {
   const [state, dispatch] = React.useReducer(codeReducer, {
     projects: initialProjects,
     epics: initialEpics,
     stories: initialStories,
+    sessions: initialSessions,
   });
 
   // Latest state, readable inside the stable action closures so they can capture
@@ -725,6 +762,17 @@ export function CodeProvider({
       });
     };
 
+    // A session's first prompt records it while its claude.ai tab has focus and this one sits
+    // still, so no navigation reconcile would ever fetch it: push each change in. SILENT, like the
+    // epic stream — a link appearing in the detail is all there is to see.
+    const handleSessionChange = (payload: RealtimePostgresChangesPayload<CodeSessionChange>) => {
+      if (payload.eventType === 'DELETE') {
+        dispatch({ type: 'dropSession', sessionId: payload.old.session_id });
+        return;
+      }
+      dispatch({ type: 'landSession', change: payload.new });
+    };
+
     const channel = supabase
       .channel('code_items')
       .on(
@@ -741,9 +789,18 @@ export function CodeProvider({
         handleEpicUpdate,
       );
 
+    const sessionsChannel = supabase
+      .channel('code_sessions')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'code_sessions' },
+        handleSessionChange,
+      );
+
     const cancelJoin = joinWhenAuthenticated(supabase.realtime, () => {
       channel.subscribe();
       epicsChannel.subscribe();
+      sessionsChannel.subscribe();
     });
 
     document.addEventListener('visibilitychange', handleVisible);
@@ -753,6 +810,7 @@ export function CodeProvider({
       cancelJoin();
       void supabase.removeChannel(channel);
       void supabase.removeChannel(epicsChannel);
+      void supabase.removeChannel(sessionsChannel);
       document.removeEventListener('visibilitychange', handleVisible);
       window.removeEventListener('focus', handleVisible);
       restoreTitle();
@@ -1540,7 +1598,9 @@ export function CodeProvider({
       <CodeProjectsContext.Provider value={state.projects}>
         <CodeEpicsContext.Provider value={state.epics}>
           <CodeStoriesContext.Provider value={state.stories}>
-            {children}
+            <CodeSessionsContext.Provider value={state.sessions}>
+              {children}
+            </CodeSessionsContext.Provider>
           </CodeStoriesContext.Provider>
         </CodeEpicsContext.Provider>
       </CodeProjectsContext.Provider>
@@ -1625,6 +1685,21 @@ export function useEpics(): Epic[] {
  */
 export function useCodeStories(): CodeStory[] {
   return useStoriesValue('useCodeStories');
+}
+
+/**
+ * The recorded Claude Code sessions of one story — its ref in its own repo — newest first. Memoized
+ * on the session slice and the story's identity columns.
+ */
+export function useStorySessions(
+  story: Pick<CodeStory, 'ref' | 'repo_owner' | 'repo_name'>,
+): CodeSessionLink[] {
+  const sessions = useSessionsValue('useStorySessions');
+  const { ref, repo_owner: repoOwner, repo_name: repoName } = story;
+  return React.useMemo(
+    () => sessionsForStory(sessions, { ref, repo_owner: repoOwner, repo_name: repoName }),
+    [sessions, ref, repoOwner, repoName],
+  );
 }
 
 /**
