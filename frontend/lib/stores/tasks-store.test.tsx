@@ -18,6 +18,7 @@ import {
   useScopedTasks,
   useTaskActions,
   useTasks,
+  useTasksDueToday,
 } from './tasks-store';
 
 jest.mock('@/lib/api-client');
@@ -3053,6 +3054,42 @@ describe('context wiring', () => {
     const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(useTaskActions)).toThrow(/must be used within a TasksProvider/);
     spy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useTasksDueToday (the Today view's forest — ALF-106)
+// ---------------------------------------------------------------------------
+
+describe('useTasksDueToday', () => {
+  beforeEach(() => {
+    // Only the interval timer is faked: the pinned clock still answers "what time is it".
+    jest.useFakeTimers({ doNotFake: ['Date'] });
+    setClockNow(new Date(2026, 10, 20, 23, 59, 30).toISOString());
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("brings in tomorrow's tasks once the day rolls over, with no edit or reload (ALF-369)", () => {
+    // A weekly plan seeds a task per day; a tab left open overnight must show the next day's
+    // when that day arrives, not only after an unrelated edit re-derives the list.
+    const items = [
+      item({ id: 'fri', due_date: '2026-11-20' }),
+      item({ id: 'sat', due_date: '2026-11-21' }),
+    ];
+    const { result } = renderHook(() => useTasksDueToday({ showCompleted: false }), {
+      wrapper: makeWrapper(items),
+    });
+    expect(result.current.map((node) => node.id)).toEqual(['fri']);
+
+    act(() => {
+      setClockNow(new Date(2026, 10, 21, 0, 0, 1).toISOString());
+      jest.advanceTimersByTime(60_000);
+    });
+
+    expect(result.current.map((node) => node.id)).toEqual(['fri', 'sat']);
   });
 });
 
