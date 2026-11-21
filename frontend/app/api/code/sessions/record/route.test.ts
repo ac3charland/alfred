@@ -127,7 +127,7 @@ describe('POST /api/code/sessions/record', () => {
   });
 
   describe('recording', () => {
-    it('hands the contract fixture to record_code_session unchanged', async () => {
+    it('hands the contract fixture to record_code_session, plus the lane its prompt reads as', async () => {
       const fixture = contractFixture();
       const admin = keyed();
 
@@ -136,7 +136,40 @@ describe('POST /api/code/sessions/record', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toStrictEqual({ inserted: false });
       expect(admin.rpc).toHaveBeenCalledTimes(1);
-      expect(admin.rpc).toHaveBeenCalledWith('record_code_session', { p_row: fixture });
+      // The fixture's prompt is no launch prompt, so its lane is null.
+      expect(admin.rpc).toHaveBeenCalledWith('record_code_session', {
+        p_row: { ...fixture, launch_lane: null },
+      });
+    });
+
+    it('records a first-prompt write with the lane of the launch prompt it carries', async () => {
+      const admin = keyed();
+      const row = {
+        event: 'prompt',
+        session_id: 'session_01FixturePrompt',
+        repo: 'ac3charland/alfred',
+        prompt:
+          'ALF-359: Log the session URL\n\nYou are refining the ticket ALF-359. Produce a SPEC ONLY.',
+        skills: [{ path: '.claude/skills/refinement/SKILL.md', blob_sha: null }],
+        ref: 'ALF-359',
+        warnings: [],
+      };
+
+      const response = await POST(post(row, withKey));
+
+      expect(response.status).toBe(200);
+      expect(admin.rpc).toHaveBeenCalledWith('record_code_session', {
+        p_row: { ...row, launch_lane: 'refinement' },
+      });
+    });
+
+    it('adds no lane to a write without a prompt', async () => {
+      const admin = keyed();
+      const row = startRow();
+
+      await POST(post(row, withKey));
+
+      expect(admin.rpc).toHaveBeenCalledWith('record_code_session', { p_row: row });
     });
 
     it('answers inserted: true when the function created the row', async () => {
@@ -182,6 +215,7 @@ describe('POST /api/code/sessions/record', () => {
   describe('validation', () => {
     it.each([
       ['an unknown key', startRow({ lane: 'human' })],
+      ['a launch lane, which the route reads from the prompt', startRow({ launch_lane: 'bug' })],
       ['cost_usd, which the hook never sends', { ...contractFixture(), cost_usd: 1.5 }],
       ['a missing event', { ...startRow(), event: undefined }],
       ['an event outside the enum', startRow({ event: 'session-end' })],

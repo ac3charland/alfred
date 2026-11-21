@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { LAUNCH_LANES } from '@/lib/code/launch-lane';
 import { PROJECT_COLORS } from '@/lib/code/project-color';
 
 /**
@@ -825,17 +826,7 @@ export const ledgerRowSchema = z.strictObject({
   cache_read_tokens: ledgerCount,
   cache_write_tokens: ledgerCount,
   ref: ledgerText,
-  launch_lane: z
-    .enum([
-      'refinement',
-      'spike',
-      'bug',
-      'implementation',
-      'bypass',
-      'epic-refinement',
-      'epic-implementation',
-    ])
-    .nullable(),
+  launch_lane: z.enum(LAUNCH_LANES).nullable(),
   pr_number: z.number().int().positive().nullable(),
   pr_state: z.enum(['merged', 'closed', 'open']).nullable(),
   pr_opened_at: ledgerTimestamp,
@@ -887,13 +878,14 @@ const recordedOptional = <T extends z.ZodType>(schema: T) => schema.nullish();
 
 /**
  * POST /api/code/sessions/record — one hook write. The hook sends the picture so far on a
- * session start (identity, start commit) and on every stop (prompt, skills, usage), so the
- * optional groups belong to one event or the other but the route does not police which: the
- * SQL function ignores what an event does not own. Strict, so a cost (which alfred prices
- * itself) or any other drift is a 400 rather than a column quietly written.
+ * session start (identity, start commit), on the first prompt (the prompt, its skills and ref)
+ * and on every stop (prompt, skills, usage), so the optional groups belong to one event or
+ * another but the route does not police which: the SQL function ignores what an event does not
+ * own. Strict, so a cost (which alfred prices itself), a launch lane (which the route reads from
+ * the prompt) or any other drift is a 400 rather than a column quietly written.
  */
 export const recordedRowSchema = z.strictObject({
-  event: z.enum(['session-start', 'stop']),
+  event: z.enum(['session-start', 'prompt', 'stop']),
   session_id: z.string().regex(/^session_[A-Za-z0-9]+$/),
   repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
   session_created_at: recordedOptional(z.iso.datetime({ offset: true })),
