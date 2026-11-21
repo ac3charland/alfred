@@ -1,4 +1,4 @@
-import { isDueTodayOrOverdue } from '@/lib/date-utils';
+import { localISODate, parseDueDate } from '@/lib/date-utils';
 import { compareKeyByDue, rankNodes } from '@/lib/priority';
 import type { ItemNode } from '@/lib/tree';
 
@@ -18,9 +18,9 @@ import type { ItemNode } from '@/lib/tree';
  * ROOT is filtered by the view's Show-completed toggle in {@link rankDueToday}, not by this
  * predicate, so turning that toggle on can reveal what you finished today.
  */
-function isDueInSubtree(node: ItemNode): boolean {
-  if (node.due_date !== null && isDueTodayOrOverdue(node.due_date)) return true;
-  return node.children.some((child) => child.status === 'active' && isDueInSubtree(child));
+function isDueInSubtree(node: ItemNode, today: string): boolean {
+  if (node.due_date !== null && localISODate(parseDueDate(node.due_date)) <= today) return true;
+  return node.children.some((child) => child.status === 'active' && isDueInSubtree(child, today));
 }
 
 /**
@@ -32,10 +32,17 @@ function isDueInSubtree(node: ItemNode): boolean {
  * filter is a deadline, so a Low-priority task that is a week late outranks a High-priority one
  * due at the end of the day. Completed top-level tasks are hidden unless `showCompleted`; each
  * kept root travels with its whole subtree, so its subtasks still render when it is expanded.
+ *
+ * `today` (local `YYYY-MM-DD`) is a parameter, not a clock read, so a memoised caller re-derives
+ * the list when the day rolls over (ALF-369) — see `useTasksDueToday`.
  */
-export function rankDueToday(roots: readonly ItemNode[], showCompleted: boolean): ItemNode[] {
+export function rankDueToday(
+  roots: readonly ItemNode[],
+  showCompleted: boolean,
+  today: string,
+): ItemNode[] {
   const visible = roots.filter(
-    (node) => (showCompleted || node.status === 'active') && isDueInSubtree(node),
+    (node) => (showCompleted || node.status === 'active') && isDueInSubtree(node, today),
   );
   return rankNodes(visible, compareKeyByDue);
 }
