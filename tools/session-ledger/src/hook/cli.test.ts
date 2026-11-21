@@ -230,6 +230,84 @@ describe('the contract fixture', () => {
   });
 });
 
+describe('the first prompt', () => {
+  const promptInput = JSON.stringify({
+    hook_event_name: 'UserPromptSubmit',
+    prompt: `ALF-359: log it\n\nRead ${SKILL}`,
+  });
+
+  it('posts the prompt once, exiting 0 with no output for the model to read', async () => {
+    const tmp = freshTmp();
+    writeState(tmp);
+    const alfred = await serve(200);
+    try {
+      for (let index = 0; index < 2; index += 1) {
+        const run = await hook(['prompt'], {
+          stdin: promptInput,
+          env: cloudEnv(tmp, { ALFRED_BASE_URL: alfred.url }),
+          cwd: repo.dir,
+        });
+        expect(run).toEqual({ code: 0, stdout: '', stderr: '' });
+      }
+    } finally {
+      alfred.server.close();
+    }
+    expect(alfred.received).toHaveLength(1);
+    expect(JSON.parse(alfred.received[0]?.body ?? '')).toMatchObject({
+      event: 'prompt',
+      session_id: SESSION_ID,
+      repo: 'ac3charland/alfred',
+      ref: 'ALF-359',
+      skills: [{ path: SKILL }],
+    });
+    expect(logLines(tmp)).toEqual([]);
+  });
+
+  it('exits 0 with no output when alfred refuses the write, logging the status', async () => {
+    const tmp = freshTmp();
+    writeState(tmp);
+    const alfred = await serve(500);
+    try {
+      const run = await hook(['prompt'], {
+        stdin: promptInput,
+        env: cloudEnv(tmp, { ALFRED_BASE_URL: alfred.url }),
+        cwd: repo.dir,
+      });
+      expect(run).toEqual({ code: 0, stdout: '', stderr: '' });
+    } finally {
+      alfred.server.close();
+    }
+    expect(logLines(tmp)).toEqual([
+      expect.stringMatching(new RegExp(` · prompt · ${SESSION_ID} · 500$`)),
+    ]);
+  });
+
+  it('exits 0 with no output when alfred never answers, logging a TimeoutError', async () => {
+    const tmp = freshTmp();
+    writeState(tmp);
+    // Accepts the connection and never responds, so only the five-second limit ends the write.
+    const silent = createServer((request) => {
+      request.resume();
+    });
+    await new Promise<void>((resolve) => silent.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${String((silent.address() as AddressInfo).port)}`;
+    try {
+      const run = await hook(['prompt'], {
+        stdin: promptInput,
+        env: cloudEnv(tmp, { ALFRED_BASE_URL: url }),
+        cwd: repo.dir,
+      });
+      expect(run).toEqual({ code: 0, stdout: '', stderr: '' });
+    } finally {
+      silent.closeAllConnections();
+      silent.close();
+    }
+    expect(logLines(tmp)).toEqual([
+      expect.stringMatching(new RegExp(` · prompt · ${SESSION_ID} · TimeoutError$`)),
+    ]);
+  });
+});
+
 describe('the gate', () => {
   it.each([
     ['no cse_ session id', { ALFRED_BASE_URL: 'http://127.0.0.1:9' }],
@@ -240,7 +318,7 @@ describe('the gate', () => {
     ],
   ])('exits 0 and prints nothing with %s, before reading anything', async (_name, env) => {
     const tmp = freshTmp();
-    for (const event of ['session-start', 'stop']) {
+    for (const event of ['session-start', 'prompt', 'stop']) {
       // Garbage stdin and a transcript path that doesn't exist: both would fail loudly if read.
       const run = await hook([event], {
         stdin: '{not json',

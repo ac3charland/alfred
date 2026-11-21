@@ -3,7 +3,8 @@ import path from 'node:path';
 
 /**
  * The hook's scratch space, `<tmp>/alfred-session-ledger/`: one state file per session, written
- * at session start and read at every stop, and the log of failed writes.
+ * at session start and read at the first prompt and every stop; a marker per session once its first
+ * prompt is claimed; and the log of failed writes.
  */
 
 /** What session start observed, which the session itself will have changed by its first stop. */
@@ -34,6 +35,22 @@ export function readState(tmpDir: string, sessionId: string): StartState | null 
     return { repo, base_sha, builder_sha: typeof builder_sha === 'string' ? builder_sha : null };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Claim the session's first prompt: true exactly once per session, for whichever call creates the
+ * `<session>.prompted` marker first (an exclusive create, so two racing prompts can't both win).
+ * False once claimed, and false when the marker can't be written, since then a later prompt could
+ * not be told apart from the first.
+ */
+export function claimFirstPrompt(tmpDir: string, sessionId: string): boolean {
+  try {
+    mkdirSync(scratchDir(tmpDir), { recursive: true });
+    writeFileSync(path.join(scratchDir(tmpDir), `${sessionId}.prompted`), '', { flag: 'wx' });
+    return true;
+  } catch {
+    return false;
   }
 }
 
