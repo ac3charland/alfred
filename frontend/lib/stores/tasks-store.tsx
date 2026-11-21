@@ -1378,7 +1378,13 @@ export function useTasksByPriority({ showCompleted }: { showCompleted: boolean }
  */
 export function useTasksDueToday({ showCompleted }: { showCompleted: boolean }): ItemNode[] {
   const items = useTasks();
-  return React.useMemo(() => rankDueToday(buildTree(items), showCompleted), [items, showCompleted]);
+  // The day comes from a ticking clock, not a read inside the memo: a tab left open overnight
+  // would otherwise keep yesterday's "today" until some edit happened to re-derive the list.
+  const today = localISODate(useNow(60_000));
+  return React.useMemo(
+    () => rankDueToday(buildTree(items), showCompleted, today),
+    [items, showCompleted, today],
+  );
 }
 
 /**

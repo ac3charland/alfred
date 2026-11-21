@@ -45,7 +45,7 @@ function task(title: string, overrides: Partial<Item> = {}): Item {
 
 /** Rank a flat item list the way the Today view does, and read back the titles in order. */
 function ranked(items: Item[], showCompleted = false): string[] {
-  return rankDueToday(buildTree(items), showCompleted).map((node) => node.title);
+  return rankDueToday(buildTree(items), showCompleted, '2026-09-06').map((node) => node.title);
 }
 
 describe('rankDueToday', () => {
