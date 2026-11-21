@@ -458,7 +458,7 @@ export async function runSessionLedgerAssertions(client: Client): Promise<Assert
         const firstStop = {
           ...hookStop(id, 'ALF-310: the prompt exactly as sent', 1000),
           // None of these may land: a cost, a backfill-only column, a base outside session-start,
-          // and a warning code the hook doesn't own.
+          // and a warning code the hook doesn't own. The lane is platform-owned, so it does.
           cost_usd: 1234,
           pr_state: 'open',
           launch_lane: 'bug',
@@ -473,9 +473,9 @@ export async function runSessionLedgerAssertions(client: Client): Promise<Assert
           ['ALF-310: the prompt exactly as sent', 'recorded', 'ALF-310', 'max', 'base-recorded'],
         );
         expectEqual(
-          'backfill columns untouched',
+          'backfill column untouched, lane filled',
           [one['pr_state'], one['launch_lane']],
-          [undefined, undefined],
+          [undefined, 'bug'],
         );
         expectEqual('cost priced, not sent', String(one['cost_usd']), USAGE_COST);
         expectEqual('only hook codes', one['warnings'], ['subagents_unreadable']);
@@ -774,6 +774,123 @@ export async function runSessionLedgerAssertions(client: Client): Promise<Assert
     },
   );
 
+  const promptEventResult = await attempt(
+    'a prompt write records the prompt, skills, ref and lane, which a later stop leaves frozen, ' +
+      'and keeps the stop codes the last stop reported (ALF-359)',
+    async () => {
+      const id = 'session_hook_prompt';
+      try {
+        await record(client, hookStart(id), 'authenticated');
+        const promptWrite = {
+          event: 'prompt',
+          session_id: id,
+          repo: REPO,
+          prompt: 'ALF-359: the first prompt',
+          skills: [{ path: '.claude/skills/refinement/SKILL.md', blob_sha: 'skill-first' }],
+          ref: 'ALF-359',
+          launch_lane: 'refinement',
+          warnings: [],
+        };
+        expectEqual('updates', await record(client, promptWrite, 'authenticated'), false);
+        const first = await read(client, id);
+        expectEqual(
+          'prompt write lands',
+          [first['prompt'], first['prompt_source'], first['skills'], first['ref']],
+          ['ALF-359: the first prompt', 'recorded', promptWrite.skills, 'ALF-359'],
+        );
+        expectEqual('lane filled', first['launch_lane'], 'refinement');
+        expectEqual('start kept', first['base_sha'], 'base-recorded');
+
+        await record(
+          client,
+          {
+            ...hookStop(id, 'a later message', 1000),
+            ref: 'ALF-1',
+            launch_lane: 'bug',
+            warnings: ['subagents_unreadable'],
+          },
+          'authenticated',
+        );
+        const stopped = await read(client, id);
+        expectEqual(
+          'frozen by the stop',
+          [stopped['prompt'], stopped['skills'], stopped['ref'], stopped['launch_lane']],
+          [first['prompt'], first['skills'], 'ALF-359', 'refinement'],
+        );
+        // No price history is seeded, so the stop's usage is unpriced.
+        expectEqual('stop codes', stopped['warnings'], ['price_unknown', 'subagents_unreadable']);
+
+        // A second prompt write (the hook never sends one, but the RPC must not care) keeps them.
+        await record(client, { ...promptWrite, prompt: 'x' }, 'authenticated');
+        const again = await read(client, id);
+        expectEqual('stop codes kept', again['warnings'], [
+          'price_unknown',
+          'subagents_unreadable',
+        ]);
+        expectEqual('still frozen', again['prompt'], 'ALF-359: the first prompt');
+
+        let rejected = false;
+        try {
+          await record(client, { ...promptWrite, event: 'session-end' }, 'authenticated');
+        } catch {
+          rejected = true;
+        }
+        if (!rejected) throw new Error('an unknown event was accepted');
+      } finally {
+        await cleanUp(client);
+      }
+      return 'prompt event records first; stop leaves it; stop codes survive non-stop writes';
+    },
+  );
+
+  const laneOwnershipResult = await attempt(
+    'the backfill replaces a recorded launch lane only with a value, and an unrecorded row takes ' +
+      'whatever it sends (ALF-359)',
+    async () => {
+      const recorded = 'session_hook_lane';
+      const unrecorded = 'session_hook_lane_backfill';
+      try {
+        await record(client, {
+          event: 'prompt',
+          session_id: recorded,
+          repo: REPO,
+          prompt: 'p',
+          skills: [],
+          launch_lane: 'spike',
+          warnings: [],
+        });
+        // An omitted key reaches the RPC as null, as the CLI's null does.
+        await upsert(client, [{ ...backfillRow(recorded), launch_lane: undefined }]);
+        const kept = await read(client, recorded);
+        expectEqual('null keeps it', kept['launch_lane'], 'spike');
+        await upsert(client, [{ ...backfillRow(recorded), launch_lane: 'implementation' }]);
+        const replaced = await read(client, recorded);
+        expectEqual('a value replaces it', replaced['launch_lane'], 'implementation');
+
+        await upsert(client, [backfillRow(unrecorded)]);
+        await upsert(client, [{ ...backfillRow(unrecorded), launch_lane: undefined }]);
+        const followed = await read(client, unrecorded);
+        expectNull('unrecorded follows the backfill', followed['launch_lane']);
+      } finally {
+        await cleanUp(client);
+      }
+      return 'recorded lane kept against null, replaced by a value';
+    },
+  );
+
+  const publicationResult = await attempt(
+    'code_sessions is in the supabase_realtime publication so a new session reaches an open ' +
+      'board (ALF-359)',
+    async () => {
+      const { rows } = await client.query(
+        `select tablename from pg_publication_tables
+          where pubname = 'supabase_realtime' and tablename = 'code_sessions'`,
+      );
+      if (rows.length === 0) throw new Error('code_sessions is not published to supabase_realtime');
+      return 'code_sessions published to supabase_realtime';
+    },
+  );
+
   return [
     grantsResult,
     ratesResult,
@@ -786,5 +903,8 @@ export async function runSessionLedgerAssertions(client: Client): Promise<Assert
     startOnlyResult,
     skillsKeptResult,
     fetchedResult,
+    promptEventResult,
+    laneOwnershipResult,
+    publicationResult,
   ];
 }
