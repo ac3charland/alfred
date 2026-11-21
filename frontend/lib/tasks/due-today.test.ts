@@ -61,6 +61,18 @@ describe('rankDueToday', () => {
       ).toEqual(['Overdue', 'Due today']);
     });
 
+    it('judges a timestamped due date by its local calendar day, not as an instant', () => {
+      // Built from local fields, so the instant falls later on the pinned day in any zone.
+      const laterToday = new Date(2026, 8, 6, 15, 0).toISOString();
+      const earlyTomorrow = new Date(2026, 8, 7, 0, 30).toISOString();
+      expect(
+        ranked([
+          task('Later today', { due_date: laterToday }),
+          task('Early tomorrow', { due_date: earlyTomorrow }),
+        ]),
+      ).toEqual(['Later today']);
+    });
+
     it('lists only top-level tasks — a due subtask never becomes its own row', () => {
       expect(
         ranked([
