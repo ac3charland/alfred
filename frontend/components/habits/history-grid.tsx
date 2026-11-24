@@ -2,9 +2,15 @@
 
 import * as React from 'react';
 
+import { BottomSheetDialog } from '@/components/atoms/dialog';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/atoms/popover';
 import { DayEditor } from '@/components/habits/day-editor';
-import { beforeStartName, dayAccessibleName } from '@/components/habits/habit-format';
+import {
+  beforeStartName,
+  dayAccessibleName,
+  formatShortDate,
+} from '@/components/habits/habit-format';
+import { GRID_ROWS, WEEKDAY_LINE } from '@/components/habits/habits.styles';
 import { HistoryCell } from '@/components/habits/history-cell';
 import {
   APP_WINDOW_DAYS,
@@ -14,7 +20,9 @@ import {
   parseCriteria,
   parseResults,
 } from '@/lib/habits';
+import { TOUCH_QUERY, useMediaQuery } from '@/lib/hooks/use-media-query';
 import type { Habit, HabitEntry } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 /** The row labels down the left edge — Monday at the top, every other day named. */
 const WEEKDAY_LABELS = ['M', '', 'W', '', 'F', '', 'S'];
@@ -48,6 +56,12 @@ interface HistoryGridProperties {
  * VIRTUAL anchor. That keeps a quarter's worth of cells from each mounting their own popover,
  * and — because no cell's markup changes when the editor opens — the button the editor came
  * from is still the same DOM node when Escape hands focus back to it.
+ *
+ * On a touch device (a phone-width viewport or a coarse pointer) the same editor opens in a
+ * bottom sheet instead, thumb-sized. The squares grow in CSS, so the first paint is already the
+ * right size; the container is chosen here, which is safe because the editor only mounts after a
+ * tap. One `openDate` and one editor element serve both, so a window resized across the line
+ * keeps the same day open in the other container.
  */
 export function HistoryGrid({
   habit,
@@ -72,11 +86,38 @@ export function HistoryGrid({
     return buildHabitCalendar(habit, Object.values(entries), { from, to, today });
   }, [habit, entries, today, windowDays]);
 
+  const touch = useMediaQuery(TOUCH_QUERY);
   const openEntry = openDate === undefined ? undefined : entries[openDate];
+
+  const close = () => {
+    setOpenDate(undefined);
+  };
+  // Neither container has a trigger to restore focus to — the popover's anchor is virtual and the
+  // sheet is opened by state — so send it back to the cell the editor was opened from.
+  const returnFocus = (event_: Event) => {
+    event_.preventDefault();
+    openCellRef.current?.focus();
+  };
+
+  const editor = openDate !== undefined && (
+    <DayEditor
+      habitId={habit.id}
+      date={openDate}
+      criteria={criteria}
+      results={parseResults(openEntry?.results ?? null)}
+      storedStatus={openEntry?.status === 'skipped' ? undefined : openEntry?.status}
+      isSkipped={openEntry?.status === 'skipped'}
+      skipReason={openEntry?.note ?? null}
+      isBeforeStart={openDate < habit.started_on}
+      onClose={close}
+      touch={touch}
+      habitName={habit.name}
+    />
+  );
 
   return (
     <Popover
-      open={openDate !== undefined}
+      open={!touch && openDate !== undefined}
       onOpenChange={(open) => {
         if (!open) setOpenDate(undefined);
       }}
@@ -90,10 +131,13 @@ export function HistoryGrid({
         <div
           aria-hidden="true"
           data-testid="history-weekdays"
-          className="grid shrink-0 grid-rows-[repeat(7,26px)] gap-1.5 py-2 pr-1 text-right text-[10px] text-muted-foreground"
+          className={cn(
+            'grid shrink-0 gap-1.5 py-2 pr-1 text-right text-[10px] text-muted-foreground',
+            GRID_ROWS,
+          )}
         >
           {WEEKDAY_LABELS.map((label, index) => (
-            <span key={index} className="leading-[26px]">
+            <span key={index} className={WEEKDAY_LINE}>
               {label}
             </span>
           ))}
@@ -103,7 +147,9 @@ export function HistoryGrid({
             dir="ltr"
             role="group"
             aria-label={`${habit.name} history`}
-            className="grid w-max grid-flow-col grid-rows-[repeat(7,26px)] gap-1.5 py-2"
+            // On touch the strip's ends are padded by the hit area's outset, so the outermost
+            // columns' targets aren't clipped by the scroller.
+            className={cn('grid w-max grid-flow-col gap-1.5 py-2 touch:px-[3px]', GRID_ROWS)}
           >
             {calendar.map((day, index) => (
               <HistoryCell
@@ -138,31 +184,20 @@ export function HistoryGrid({
       </div>
 
       <PopoverAnchor virtualRef={anchorRef} />
-      <PopoverContent
-        className="p-0"
-        onCloseAutoFocus={(event_) => {
-          // A virtual anchor is not a trigger, so Radix has nothing to restore focus to —
-          // send it back to the cell the editor was opened from.
-          event_.preventDefault();
-          openCellRef.current?.focus();
-        }}
-      >
-        {openDate !== undefined && (
-          <DayEditor
-            habitId={habit.id}
-            date={openDate}
-            criteria={criteria}
-            results={parseResults(openEntry?.results ?? null)}
-            storedStatus={openEntry?.status === 'skipped' ? undefined : openEntry?.status}
-            isSkipped={openEntry?.status === 'skipped'}
-            skipReason={openEntry?.note ?? null}
-            isBeforeStart={openDate < habit.started_on}
-            onClose={() => {
-              setOpenDate(undefined);
-            }}
-          />
-        )}
+      <PopoverContent className="p-0" onCloseAutoFocus={returnFocus}>
+        {!touch && editor}
       </PopoverContent>
+
+      <BottomSheetDialog
+        open={touch && openDate !== undefined}
+        onOpenChange={(open) => {
+          if (!open) close();
+        }}
+        label={openDate === undefined ? '' : `${formatShortDate(openDate)} — ${habit.name}`}
+        onCloseAutoFocus={returnFocus}
+      >
+        {touch && editor}
+      </BottomSheetDialog>
     </Popover>
   );
 }

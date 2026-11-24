@@ -5,11 +5,14 @@ import * as React from 'react';
 import { Button } from '@/components/atoms/button';
 import { TextField } from '@/components/atoms/text-field';
 import { formatShortDate } from '@/components/habits/habit-format';
+import { cn } from '@/lib/utils';
 
 interface SkipPanelProperties {
   date: string;
   onCancel: () => void;
   onSkip: (reason: string) => void;
+  /** Thumb-sized: a full-width 44px field and two 44px buttons sharing the width. */
+  touch?: boolean;
 }
 
 /**
@@ -26,7 +29,7 @@ interface SkipPanelProperties {
  * the two things this step charges for: a tap that fills the field is a tap that skips the
  * day, and "Illness" chosen off a list is a category, not something a human wrote.
  */
-export function SkipPanel({ date, onCancel, onSkip }: SkipPanelProperties) {
+export function SkipPanel({ date, onCancel, onSkip, touch = false }: SkipPanelProperties) {
   const [reason, setReason] = React.useState('');
   const reasonRef = React.useRef<HTMLInputElement>(null);
   const canSkip = reason.trim() !== '';
@@ -41,11 +44,13 @@ export function SkipPanel({ date, onCancel, onSkip }: SkipPanelProperties) {
   };
 
   return (
-    <div className="flex w-[265px] flex-col gap-2 p-2">
-      <p className="text-[13px] font-semibold text-foreground">Skip {formatShortDate(date)}?</p>
+    <div className={touch ? 'flex flex-col gap-3 p-4' : 'flex w-[265px] flex-col gap-2 p-2'}>
+      <p className={cn('font-semibold text-foreground', touch ? 'text-base' : 'text-[13px]')}>
+        Skip {formatShortDate(date)}?
+      </p>
       {/* The consequence, in the owner's terms rather than the model's — this is the one place
           the allowance rules are explained rather than merely shown. */}
-      <p className="text-xs leading-relaxed text-muted-foreground">
+      <p className={cn('leading-relaxed text-muted-foreground', touch ? 'text-[13px]' : 'text-xs')}>
         This day won&apos;t count for or against the habit, and won&apos;t spend your allowance.
       </p>
       <TextField
@@ -59,13 +64,24 @@ export function SkipPanel({ date, onCancel, onSkip }: SkipPanelProperties) {
         onKeyDown={(event_) => {
           if (event_.key === 'Enter') commit();
         }}
-        className="px-2 py-1"
+        className={touch ? 'h-11 w-full px-3 text-base' : 'px-2 py-1'}
       />
-      <div className="flex justify-end gap-1.5">
-        <Button variant="outline" size="sm" onClick={onCancel}>
+      <div className={touch ? 'flex gap-2' : 'flex justify-end gap-1.5'}>
+        <Button
+          variant="outline"
+          size="sm"
+          className={touch ? 'h-11 flex-1 text-[15px]' : undefined}
+          onClick={onCancel}
+        >
           Cancel
         </Button>
-        <Button variant="accent" size="sm" disabled={!canSkip} onClick={commit}>
+        <Button
+          variant="accent"
+          size="sm"
+          className={touch ? 'h-11 flex-1 text-[15px]' : undefined}
+          disabled={!canSkip}
+          onClick={commit}
+        >
           Skip this day
         </Button>
       </div>
