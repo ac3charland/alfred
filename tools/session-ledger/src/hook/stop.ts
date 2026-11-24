@@ -1,12 +1,11 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { GitHistory } from '../git.ts';
 import type { GitRunner } from '../git.ts';
-import { skillPathsIn } from '../replay.ts';
 import { byString, sortedBy } from '../sort.ts';
 import type { JsonObject } from '../types.ts';
 import { named } from './failure.ts';
+import { promptFields } from './prompt.ts';
 import { repoFromRemote } from './repo.ts';
 import { readState } from './state.ts';
 import {
@@ -20,11 +19,6 @@ import {
 import type { UsageByModel } from './transcript.ts';
 
 const AGENT_FILE = /^agent-.+\.jsonl$/;
-
-/** The leading ticket ref (`ALF-310`) of a prompt, when it has one. */
-function refOf(prompt: string): string | null {
-  return /^[A-Z]+-\d+/.exec(prompt)?.[0] ?? null;
-}
 
 interface Subagents {
   usage: UsageByModel;
@@ -63,7 +57,7 @@ function readSubagents(transcriptPath: string): Subagents {
 /**
  * The stop write: the whole picture so far, recounted from the transcripts, so a missed write is
  * healed by the next one. The prompt, skills and ref ride along on every stop; the server freezes
- * them after the first. No cost is sent — alfred prices the usage.
+ * them after the first write that carried them (the first prompt's, when that one landed). No cost is sent — alfred prices the usage.
  */
 export function stopBody(args: {
   sessionId: string;
@@ -87,25 +81,12 @@ export function stopBody(args: {
   if (subagents.unreadable) warnings.add('subagents_unreadable');
   if (subagents.partial) warnings.add('subagent_usage_partial');
 
-  // Skills resolve to blobs at the commit the session started on; without it there is no answer.
-  const history = new GitHistory(args.git);
-  const skills =
-    state === null
-      ? undefined
-      : skillPathsIn(facts.prompt ?? '').map((skill) => ({
-          path: skill,
-          blob_sha: history.blobAt(state.base_sha, skill),
-        }));
-  const ref = facts.prompt === null ? null : refOf(facts.prompt);
-
   return {
     event: 'stop',
     session_id: args.sessionId,
     repo,
     session_created_at: facts.createdAt,
-    ...(facts.prompt !== null && { prompt: facts.prompt }),
-    ...(facts.prompt !== null && skills !== undefined && { skills }),
-    ...(ref !== null && { ref }),
+    ...(facts.prompt !== null && promptFields(facts.prompt, state, args.git)),
     model: facts.model,
     served_model: facts.servedModel,
     effort_level: facts.effort ?? args.env['CLAUDE_EFFORT'] ?? null,

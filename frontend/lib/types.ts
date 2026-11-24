@@ -1,4 +1,5 @@
 // alfred — convenience aliases over the generated Supabase schema types.
+import type { LaunchLane } from '@/lib/code/launch-lane';
 import type { Database } from '@/lib/database.types';
 import type { WeekWindow } from '@/lib/github/week';
 
@@ -45,6 +46,19 @@ export type CodeItemUpdate = Database['public']['Tables']['code_items']['Update'
 
 /** The flattened board read shape: a code story joined to its item, project, epic. */
 export type CodeStory = Database['public']['Views']['v_code_stories']['Row'];
+
+/**
+ * A recorded Claude Code session as the story detail links it: the slim `code_sessions` columns
+ * the store keeps. A session belongs to a story by `ref` AND `repo` (`owner/name`), since `ref`
+ * has no foreign key and another repo's prompt could open with the same ref.
+ */
+export interface CodeSessionLink {
+  session_id: string;
+  ref: string;
+  repo: string;
+  launch_lane: LaunchLane | null;
+  session_created_at: string | null;
+}
 
 /** A row returned by the `get_subtree` RPC: an item plus its depth in the tree. */
 export type SubtreeRow = Database['public']['Functions']['get_subtree']['Returns'][number];

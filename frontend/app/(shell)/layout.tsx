@@ -3,7 +3,7 @@ import * as React from 'react';
 import { AppShell } from '@/components/shell/app-shell';
 import { TaskDndProvider } from '@/components/tasks/task-dnd-provider';
 import { requireUser } from '@/lib/auth/require-user';
-import { getCodeStories, getEpics, getProjects } from '@/lib/data/code';
+import { getCodeSessionLinks, getCodeStories, getEpics, getProjects } from '@/lib/data/code';
 import { getCommsSeed, getCommsSettingsSeed } from '@/lib/data/comms';
 import { getFolders } from '@/lib/data/folders';
 import { getHabitSeed } from '@/lib/data/habits';
@@ -64,6 +64,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     projects,
     epics,
     stories,
+    sessions,
     weeklyPlanIndex,
     latestWeeklyPlan,
     habitSeed,
@@ -79,6 +80,8 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     getProjects(),
     getEpics(),
     getCodeStories(),
+    // The story detail's session links: slim columns only, never a prompt or a session record.
+    getCodeSessionLinks(),
     getWeeklyPlanIndex(),
     getLatestWeeklyPlan(),
     // One read backs the habit definitions, the windowed entries and the all-history stats the
@@ -131,6 +134,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                           initialProjects={projects}
                           initialEpics={epics}
                           initialStories={stories}
+                          initialSessions={sessions}
                         >
                           <CodeFilterProvider>
                             <FolderSortProvider>

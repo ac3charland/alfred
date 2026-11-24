@@ -249,3 +249,41 @@ test('records a session through the hook route; a backfill re-run keeps what it 
     warnings: ['builder_changed_near_start', 'price_unknown', 'subagents_unreadable'],
   });
 });
+
+test('records the first prompt with the lane it reads as, which the first stop leaves alone', async ({
+  request,
+  seed,
+}) => {
+  await seed({});
+  const stop = recordedStop();
+  const sessionId = stop['session_id'] as string;
+  const launchPrompt =
+    'ALF-359: Log the session URL\n\nYou are refining the ticket ALF-359. Produce a SPEC ONLY.';
+
+  const first = await request.post('/api/code/sessions/record', {
+    headers: ledgerKey,
+    data: {
+      event: 'prompt',
+      session_id: sessionId,
+      repo: 'ac3charland/alfred',
+      prompt: launchPrompt,
+      skills: [],
+      ref: 'ALF-359',
+      warnings: [],
+    },
+  });
+  expect(await first.json()).toEqual({ inserted: true });
+
+  await request.post('/api/code/sessions/record', { headers: ledgerKey, data: stop });
+
+  const stateResponse = await request.get(`${MOCK_URL}/__mock__/state`);
+  const state = (await stateResponse.json()) as { codeSessions: Record<string, unknown>[] };
+  expect(state.codeSessions[0]).toMatchObject({
+    prompt: launchPrompt,
+    prompt_source: 'recorded',
+    skills: [],
+    ref: 'ALF-359',
+    launch_lane: 'refinement',
+    output_tokens: stop['output_tokens'],
+  });
+});

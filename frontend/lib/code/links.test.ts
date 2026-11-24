@@ -10,6 +10,7 @@ import {
   buildRefinementUrl,
   buildSpikeUrl,
   promptFromLaunchUrl,
+  sessionUrl,
 } from './links';
 
 /**
@@ -1309,5 +1310,11 @@ describe('buildEpicImplementationUrl', () => {
     const rawQuery =
       buildEpicImplementationUrl(makeProject(), makeSpeccedEpic()).split('?', 2)[1] ?? '';
     expect(rawQuery).not.toMatch(/[ \n`]/);
+  });
+});
+
+describe('sessionUrl', () => {
+  it('opens the session on claude.ai/code', () => {
+    expect(sessionUrl('session_01AbCd')).toBe('https://claude.ai/code/session_01AbCd');
   });
 });

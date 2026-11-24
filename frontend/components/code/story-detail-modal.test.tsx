@@ -7,7 +7,7 @@ import type { LaunchPhase } from '@/lib/code/launch';
 import { MOBILE_QUERY } from '@/lib/hooks/use-media-query';
 import { CodeProvider, PRIORITY_SYNC_DEBOUNCE_MS, useProjectBoard } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
-import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
+import type { CodeItem, CodeSessionLink, CodeStory, Epic, Project } from '@/lib/types';
 
 import { StoryDetailModal } from './story-detail-modal';
 
@@ -166,6 +166,7 @@ function renderModal(
   options: {
     onOpenSession?: (s: CodeStory, p: LaunchPhase) => void | Promise<void>;
     project?: Project;
+    sessions?: CodeSessionLink[];
   } = {},
 ) {
   const onOpenSession = options.onOpenSession ?? jest.fn(() => Promise.resolve());
@@ -175,6 +176,7 @@ function renderModal(
         initialProjects={[options.project ?? PROJECT]}
         initialEpics={[EPIC]}
         initialStories={[story]}
+        initialSessions={options.sessions}
       >
         <ModalHarness itemId={story.item_id ?? ''} onOpenSession={onOpenSession} />
       </CodeProvider>
@@ -1940,5 +1942,118 @@ describe('StoryDetailModal on a phone', () => {
         region('body').getByRole('button', { name: /inbound filter spec/i }),
       ).toBeInTheDocument();
     });
+  });
+});
+
+/** A local instant, so its local rendering is the same in every zone the suite runs in. */
+function local(day: number, hour: number, minute: number): string {
+  return new Date(2026, 10, day, hour, minute).toISOString();
+}
+
+/** The links of the open detail's Sessions section: text (spaces normalised), href, target, rel. */
+function sessionLinks() {
+  const section = screen.getByRole('heading', { name: 'Sessions' }).closest('section');
+  if (section === null) throw new Error('no Sessions section');
+  return within(section)
+    .getAllByRole('link')
+    .map((link) => ({
+      name: link.textContent.replaceAll(/\s+/gu, ' '),
+      href: link.getAttribute('href'),
+      target: link.getAttribute('target'),
+      rel: link.getAttribute('rel'),
+    }));
+}
+
+describe('StoryDetailModal session links', () => {
+  const originalMatchMedia = globalThis.matchMedia;
+
+  afterEach(() => {
+    globalThis.matchMedia = originalMatchMedia;
+  });
+
+  // The story is ALF-42 in ac3charland/alfred, under the epic ALF-1.
+  const SESSIONS: CodeSessionLink[] = [
+    {
+      session_id: 'session_refine',
+      ref: 'ALF-42',
+      repo: 'ac3charland/alfred',
+      launch_lane: 'refinement',
+      session_created_at: local(20, 15, 2),
+    },
+    {
+      session_id: 'session_untimed',
+      ref: 'ALF-42',
+      repo: 'ac3charland/alfred',
+      launch_lane: null,
+      session_created_at: null,
+    },
+    {
+      session_id: 'session_build',
+      ref: 'ALF-42',
+      repo: 'ac3charland/alfred',
+      launch_lane: 'implementation',
+      session_created_at: local(21, 9, 14),
+    },
+    // Neither of these is this story's: the same ref in another repo, and the epic's own session.
+    {
+      session_id: 'session_elsewhere',
+      ref: 'ALF-42',
+      repo: 'ac3charland/realplay',
+      launch_lane: 'bug',
+      session_created_at: local(22, 8, 0),
+    },
+    {
+      session_id: 'session_epic',
+      ref: 'ALF-1',
+      repo: 'ac3charland/alfred',
+      launch_lane: 'epic-refinement',
+      session_created_at: local(22, 8, 0),
+    },
+  ];
+
+  const EXPECTED = [
+    ['Implementation session Nov 21, 9:14 AM', 'session_build'],
+    ['Refinement session Nov 20, 3:02 PM', 'session_refine'],
+    ['Session', 'session_untimed'],
+  ] as const;
+
+  it.each([
+    ['the dialog', false],
+    ['the phone sheet', true],
+  ])('lists every session of the story newest first, each opening it, in %s', (_name, phone) => {
+    globalThis.matchMedia = (query: string) =>
+      Object.assign(originalMatchMedia(query), { matches: phone && query === MOBILE_QUERY });
+    const { dialog } = renderModal(makeStory(), { sessions: SESSIONS });
+
+    expect(sessionLinks()).toEqual(
+      EXPECTED.map(([name, id]) => ({
+        name,
+        href: `https://claude.ai/code/${id}`,
+        target: '_blank',
+        rel: 'noreferrer',
+      })),
+    );
+    for (const [name] of EXPECTED) {
+      expect(dialog.getByRole('link', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('places Sessions after the notes and before the spec', () => {
+    const { dialog } = renderModal(
+      makeStory({
+        factory_state: 'ready_for_dev',
+        spec_markdown: '# Plan',
+        spec_path: 'docs/x.md',
+      }),
+      { sessions: SESSIONS },
+    );
+    const headings = dialog.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings.indexOf('Sessions')).toBe(headings.indexOf('Notes') + 1);
+    expect(headings.indexOf('Spec')).toBeGreaterThan(headings.indexOf('Sessions'));
+  });
+
+  it('has no Sessions section when the story has none', () => {
+    const { dialog } = renderModal(makeStory(), { sessions: SESSIONS.slice(3) });
+    expect(dialog.queryByRole('heading', { name: 'Sessions' })).not.toBeInTheDocument();
   });
 });

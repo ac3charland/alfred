@@ -5,8 +5,8 @@ import { gitIn } from '../git.ts';
 import { runHook } from './run.ts';
 
 /**
- * `node cli.ts session-start|stop [--dry-run]`, wired to Claude Code's SessionStart and Stop
- * hooks in .claude/settings.json. Whatever happens it exits 0 and prints nothing, so it can
+ * `node cli.ts session-start|prompt|stop [--dry-run]`, wired to Claude Code's SessionStart,
+ * UserPromptSubmit and Stop hooks in .claude/settings.json. Whatever happens it exits 0 and prints nothing, so it can
  * never block or clutter a session.
  */
 

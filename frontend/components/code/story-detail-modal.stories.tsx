@@ -3,7 +3,7 @@ import * as React from 'react';
 import { userEvent, waitFor, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
-import type { CodeStory, Epic, Project } from '@/lib/types';
+import type { CodeSessionLink, CodeStory, Epic, Project } from '@/lib/types';
 
 import { StoryDetailModal } from './story-detail-modal';
 
@@ -182,6 +182,78 @@ export const PriorityAtBothExtremes: Story = {
  */
 export const MobileReadyForDev: Story = {
   args: { story: STORY },
+  parameters: {
+    visualTest: { target: '[role="dialog"]', viewport: { width: 390, height: 844 } },
+  },
+};
+
+/** A local instant, so the rendered start time is the same whatever zone the snapshot runs in. */
+function local(day: number, hour: number, minute: number): string {
+  return new Date(2026, 10, day, hour, minute).toISOString();
+}
+
+/** Sessions recorded against STORY, as the shell seeds them. */
+const SESSIONS: CodeSessionLink[] = [
+  {
+    session_id: 'session_01Implementation',
+    ref: STORY.ref ?? '',
+    repo: 'ac3charland/alfred',
+    launch_lane: 'implementation',
+    session_created_at: local(21, 9, 14),
+  },
+  {
+    session_id: 'session_01Refinement',
+    ref: STORY.ref ?? '',
+    repo: 'ac3charland/alfred',
+    launch_lane: 'refinement',
+    session_created_at: local(20, 15, 2),
+  },
+  {
+    session_id: 'session_01Unlabelled',
+    ref: STORY.ref ?? '',
+    repo: 'ac3charland/alfred',
+    launch_lane: null,
+    session_created_at: local(19, 11, 47),
+  },
+];
+
+/** Seed the store with `sessions` beside STORY and its neighbours. */
+function withSessions(sessions: CodeSessionLink[]) {
+  return function SessionsDecorator(StoryComponent: React.ComponentType) {
+    return (
+      <CodeProvider
+        initialProjects={[PROJECT]}
+        initialEpics={[EPIC]}
+        initialStories={[STORY, ...NEIGHBOURS]}
+        initialSessions={sessions}
+      >
+        <StoryComponent />
+      </CodeProvider>
+    );
+  };
+}
+
+/**
+ * Three sessions recorded against the story: a Sessions section between Notes and Spec, newest
+ * first, each row a lane label and its local start time that opens the session on claude.ai. The
+ * oldest has no readable lane, so it reads plain "Session". With none, the section is absent
+ * ({@link ReadyForDev}).
+ */
+export const WithSessions: Story = {
+  args: { story: STORY },
+  decorators: [withSessions(SESSIONS)],
+};
+
+/** One session, just launched: the section holds a single row. */
+export const WithOneSession: Story = {
+  args: { story: STORY },
+  decorators: [withSessions(SESSIONS.slice(0, 1))],
+};
+
+/** The sessions on the phone sheet: the same section between the note and the spec row. */
+export const MobileWithSessions: Story = {
+  args: { story: STORY },
+  decorators: [withSessions(SESSIONS)],
   parameters: {
     visualTest: { target: '[role="dialog"]', viewport: { width: 390, height: 844 } },
   },

@@ -246,6 +246,11 @@ function buildUrl(project: Project, prompt: string): string {
   return `${CLAUDE_CODE_WEB_URL}?${parameters.toString()}`;
 }
 
+/** The claude.ai page of one recorded Claude Code session (`session_…` id). */
+export function sessionUrl(sessionId: string): string {
+  return `${CLAUDE_CODE_WEB_URL}/${encodeURIComponent(sessionId)}`;
+}
+
 /**
  * The decoded prompt a launch URL carries in its `q` param — the exact text the link prefills.
  *

@@ -15,6 +15,17 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "NODE_USE_ENV_PROXY=1 node \"$CLAUDE_PROJECT_DIR/tools/session-ledger/src/hook/cli.ts\" prompt"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

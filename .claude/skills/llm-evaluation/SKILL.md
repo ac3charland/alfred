@@ -52,7 +52,7 @@ randomised trial developers felt 20% faster and measured 19% slower.
 
 ## The data: `code_sessions`
 
-One row per Claude Code session that worked on this repo (migrations `0049`, `0050`). Cloud
+One row per Claude Code session that worked on this repo (migrations `0049`, `0050`, `0057`). Cloud
 sessions write their own row as they run ([recording.md](./references/recording.md)); the backfill
 adds history and everything after the session (PR outcomes):
 
@@ -61,7 +61,7 @@ adds history and everything after the session (PR outcomes):
 | `configured_model`, `model`, `served_model`, `effort_level` | what was picked, and what actually served the last turn (a fallback shows as a mismatch) |
 | `cost_usd`, `*_tokens` | API-equivalent cost and tokens. Recorded rows: whole-session totals, subagents included as far as their transcripts show (`subagent_usage_partial` when not; no cost then), priced by alfred from `model_price_history`. Backfill-only rows (`recorded_at` null): the session record's, which includes subagents |
 | `usage_by_model`, `subagent_count`, `recorded_at` | recorded rows only: tokens per model split main thread vs subagents, and the last hook write |
-| `launch_lane`, `ref` | which launch prompt started it, inferred from the PR's `alfred` block |
+| `launch_lane`, `ref` | which launch prompt started it: read from the recorded prompt, replaced by the PR's `alfred` block once the backfill infers one |
 | `pr_state`, `pr_*_at`, `human_commits_after_open` | the outcome: merged or not, and owner rework after the PR opened |
 | `prompt`, `prompt_source`, `builder_sha`, `spec_*`, `skills` | the launch prompt, spec and skills as of `base_sha` (main at session start); `builder_sha` groups rows by prompt version |
 | `warnings` | why any value above is null — filter on them rather than trusting a null |

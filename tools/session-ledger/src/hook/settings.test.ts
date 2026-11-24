@@ -15,7 +15,7 @@ interface HookGroup {
 }
 interface Settings {
   enabledPlugins: Record<string, boolean>;
-  hooks: { SessionStart: HookGroup[]; Stop: HookGroup[] };
+  hooks: { SessionStart: HookGroup[]; UserPromptSubmit: HookGroup[]; Stop: HookGroup[] };
 }
 
 const settings = JSON.parse(
@@ -55,8 +55,19 @@ describe('.claude/settings.json hooks', () => {
     expect(existsSync(script)).toBe(true);
   });
 
-  it('points both events at the same CLI', () => {
+  it('runs the hook CLI on every prompt, with no stdout that could reach the model', () => {
+    const { group, hook, script } = only(settings.hooks.UserPromptSubmit);
+    expect(group.matcher).toBeUndefined();
+    expect(hook.type).toBe('command');
+    expect(hook.timeout).toBe(10);
+    expect(hook.command).toMatch(/^NODE_USE_ENV_PROXY=1 node "/);
+    expect(hook.command).toMatch(/ prompt$/);
+    expect(existsSync(script)).toBe(true);
+  });
+
+  it('points every event at the same CLI', () => {
     expect(only(settings.hooks.SessionStart).script).toBe(only(settings.hooks.Stop).script);
+    expect(only(settings.hooks.UserPromptSubmit).script).toBe(only(settings.hooks.Stop).script);
     expect(only(settings.hooks.Stop).script).toBe(
       path.join(REPO_ROOT, 'tools/session-ledger/src/hook/cli.ts'),
     );

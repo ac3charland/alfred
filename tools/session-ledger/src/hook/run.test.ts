@@ -84,7 +84,7 @@ describe('the gate', () => {
     ['an empty ALFRED_BASE_URL', { ...ENV, ALFRED_BASE_URL: '  ' }],
   ])('does nothing for %s', async (_name, env) => {
     const git = jest.fn<HookDeps['git']>();
-    for (const event of ['session-start', 'stop']) {
+    for (const event of ['session-start', 'prompt', 'stop']) {
       await runHook([event], deps({ env, git }));
     }
     expect(fetchMock).not.toHaveBeenCalled();
@@ -443,5 +443,130 @@ describe('stop', () => {
       base_sha: repo.head,
     });
     expect(existsSync(path.join(tmp, STATE_DIR, 'session_01Test.json'))).toBe(true);
+  });
+});
+
+/** A start state naming HEAD, as session start leaves it. */
+function writeStartState(): void {
+  mkdirSync(path.join(tmp, STATE_DIR), { recursive: true });
+  writeFileSync(
+    path.join(tmp, STATE_DIR, 'session_01Test.json'),
+    JSON.stringify({ repo: 'o/n', base_sha: repo.head, builder_sha: null }),
+  );
+}
+
+describe('prompt', () => {
+  const PROMPT =
+    'ALF-359: log the session\n\nRead .claude/skills/implement-spec/SKILL.md and .claude/skills/gone/SKILL.md';
+
+  beforeEach(() => {
+    readStdin.mockResolvedValue(JSON.stringify({ prompt: PROMPT, transcript_path: '/x.jsonl' }));
+  });
+
+  it('posts the first prompt with its skills at the start commit, its ref and the state repo', async () => {
+    writeStartState();
+    await runHook(['prompt'], deps());
+    const blob = gitIn(repo.dir)([
+      'rev-parse',
+      `${repo.head}:.claude/skills/implement-spec/SKILL.md`,
+    ]).stdout.trim();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://alfred.example.app/api/code/sessions/record',
+    );
+    expect(postedBody()).toEqual({
+      event: 'prompt',
+      session_id: 'session_01Test',
+      repo: 'o/n',
+      prompt: PROMPT,
+      skills: [
+        { path: '.claude/skills/implement-spec/SKILL.md', blob_sha: blob },
+        { path: '.claude/skills/gone/SKILL.md', blob_sha: null },
+      ],
+      ref: 'ALF-359',
+      warnings: [],
+    });
+    expect(logLines()).toEqual([]);
+    expect(output).toEqual([]);
+  });
+
+  it('omits the ref when the prompt does not open with one, but still sends the skills', async () => {
+    writeStartState();
+    readStdin.mockResolvedValue(JSON.stringify({ prompt: 'fix the login page' }));
+    await runHook(['prompt'], deps());
+    expect(postedBody()).toEqual({
+      event: 'prompt',
+      session_id: 'session_01Test',
+      repo: 'o/n',
+      prompt: 'fix the login page',
+      skills: [],
+      warnings: [],
+    });
+  });
+
+  it('writes only on the first prompt of a session', async () => {
+    writeStartState();
+    await runHook(['prompt'], deps());
+    readStdin.mockResolvedValue(JSON.stringify({ prompt: 'ok, go ahead' }));
+    await runHook(['prompt'], deps());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(postedBody()['prompt']).toBe(PROMPT);
+    expect(existsSync(path.join(tmp, STATE_DIR, 'session_01Test.prompted'))).toBe(true);
+  });
+
+  it('claims the first prompt before posting, so a prompt during a slow first write sends nothing', async () => {
+    writeStartState();
+    // The second prompt arrives while the first write is still in flight.
+    fetchMock.mockImplementationOnce(async () => {
+      await runHook(['prompt'], deps());
+      return new Response(null, { status: 200 });
+    });
+    await runHook(['prompt'], deps());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing, reads nothing and claims nothing without a start state', async () => {
+    await runHook(['prompt'], deps());
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readStdin).not.toHaveBeenCalled();
+    expect(existsSync(path.join(tmp, STATE_DIR, 'session_01Test.prompted'))).toBe(false);
+    expect(logLines()).toEqual([]);
+    expect(output).toEqual([]);
+  });
+
+  it.each([['{}'], ['{"prompt":""}'], ['{"prompt":7}'], ['null']])(
+    'logs PromptMissing and posts nothing for stdin %s',
+    async (stdin) => {
+      writeStartState();
+      readStdin.mockResolvedValue(stdin);
+      await runHook(['prompt'], deps());
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(logLines()).toEqual([
+        '2026-10-03T09:12:40.123Z · prompt · session_01Test · PromptMissing',
+      ]);
+      expect(output).toEqual([]);
+    },
+  );
+
+  it('logs a refused or failed write by its status or name, and prints nothing', async () => {
+    writeStartState();
+    fetchMock.mockResolvedValue(new Response(null, { status: 500 }));
+    await runHook(['prompt'], deps());
+    expect(logLines()).toEqual(['2026-10-03T09:12:40.123Z · prompt · session_01Test · 500']);
+    expect(output).toEqual([]);
+  });
+
+  it('prints the body under --dry-run, without a host or a request', async () => {
+    writeStartState();
+    await runHook(
+      ['prompt', '--dry-run'],
+      deps({ env: { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01Test' } }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(JSON.parse(output[0] ?? '')).toMatchObject({
+      event: 'prompt',
+      prompt: PROMPT,
+      ref: 'ALF-359',
+    });
   });
 });

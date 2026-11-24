@@ -179,7 +179,8 @@ const LEDGER_USAGE = [
   'usage_by_model',
 ];
 const LEDGER_HOOK_OWNED = [...LEDGER_USAGE, 'cost_usd', 'recorded_at'];
-const LEDGER_PLATFORM_OWNED = ['session_created_at', 'model', 'effort_level', 'ref'];
+// launch_lane joined this class in migration 0057: the record route reads it from the prompt.
+const LEDGER_PLATFORM_OWNED = ['session_created_at', 'model', 'effort_level', 'ref', 'launch_lane'];
 const LEDGER_STOP_CODES = new Set([
   'start_unrecorded',
   'subagent_usage_partial',

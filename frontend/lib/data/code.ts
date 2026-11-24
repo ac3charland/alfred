@@ -2,10 +2,11 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
 import type { ListEpicsQuery } from '@/lib/api/schemas';
+import { toLaunchLane } from '@/lib/code/launch-lane';
 import type { Database } from '@/lib/database.types';
 import type { MeasuredProject } from '@/lib/github/config';
 import { createClient } from '@/lib/supabase/server';
-import type { CodeStory, Epic, Project } from '@/lib/types';
+import type { CodeSessionLink, CodeStory, Epic, Project } from '@/lib/types';
 
 /**
  * Server-only read layer for the Software Factory (the `code` module).
@@ -53,6 +54,19 @@ export async function getCodeStories(): Promise<CodeStory[]> {
     .order('ref_number', { ascending: true })
     .overrideTypes<CodeStory[]>();
   return data ?? [];
+}
+
+/**
+ * Every recorded Claude Code session that names a ticket, as the story detail links them: only the
+ * slim columns, never the prompt or the session record. The store filters them per story.
+ */
+export async function getCodeSessionLinks(): Promise<CodeSessionLink[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('code_sessions')
+    .select('session_id, ref, repo, launch_lane, session_created_at')
+    .not('ref', 'is', null);
+  return (data ?? []).map((row) => ({ ...row, launch_lane: toLaunchLane(row.launch_lane) }));
 }
 
 // ---------------------------------------------------------------------------

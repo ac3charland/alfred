@@ -4,7 +4,7 @@ import * as React from 'react';
 import { StoryCard } from '@/components/code/story-card';
 import * as api from '@/lib/api-client';
 import { holdRealtimeAuth } from '@/lib/supabase/hold-realtime-auth';
-import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
+import type { CodeItem, CodeSessionLink, CodeStory, Epic, Project } from '@/lib/types';
 
 import {
   ALL_FACTORY_STATES,
@@ -23,6 +23,7 @@ import {
   useProjects,
   useRankedProjects,
   useStoryRankFlags,
+  useStorySessions,
 } from './code-store';
 
 // api-client is the seam the store calls; mock it so tests never hit the network.
@@ -50,6 +51,7 @@ const mockListCode = jest.mocked(api.listCode);
 // subscription silently overwrite the first.
 let mockRealtimeHandler: ((payload: { new: CodeItem }) => void) | undefined;
 let mockEpicRealtimeHandler: ((payload: { new: Epic }) => void) | undefined;
+let mockSessionRealtimeHandler: ((payload: unknown) => void) | undefined;
 const mockRemoveChannel = jest.fn();
 // Every channel join, and the realtime auth call that has to come first (ALF-258).
 const mockSubscribe = jest.fn();
@@ -60,6 +62,8 @@ jest.mock('@/lib/supabase/client', () => ({
       on: (_event: string, filter: { table?: string }, handler: (payload: never) => void) => {
         if (filter.table === 'epics') {
           mockEpicRealtimeHandler = handler as (payload: { new: Epic }) => void;
+        } else if (filter.table === 'code_sessions') {
+          mockSessionRealtimeHandler = handler as (payload: unknown) => void;
         } else {
           mockRealtimeHandler = handler as (payload: { new: CodeItem }) => void;
         }
@@ -291,13 +295,31 @@ function BoardCards() {
   );
 }
 
-function makeWrapper(seed: { projects?: Project[]; epics?: Epic[]; stories?: CodeStory[] }) {
+/** A recorded session of ALF-359 in ac3charland/alfred. */
+function mine(overrides: Partial<CodeSessionLink> = {}): CodeSessionLink {
+  return {
+    session_id: 'session_a',
+    ref: 'ALF-359',
+    repo: 'ac3charland/alfred',
+    launch_lane: 'refinement',
+    session_created_at: '2026-11-20T21:02:00Z',
+    ...overrides,
+  };
+}
+
+function makeWrapper(seed: {
+  projects?: Project[];
+  epics?: Epic[];
+  stories?: CodeStory[];
+  sessions?: CodeSessionLink[];
+}) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <CodeProvider
         initialProjects={seed.projects ?? []}
         initialEpics={seed.epics ?? []}
         initialStories={seed.stories ?? []}
+        initialSessions={seed.sessions}
       >
         {children}
       </CodeProvider>
@@ -2744,7 +2766,7 @@ describe('code-store', () => {
     describe('the patchProject reducer action', () => {
       it('patches the matching project and leaves its siblings alone', () => {
         const next = codeReducer(
-          { projects: [PROJECT_A, PROJECT_B], epics: [], stories: [] },
+          { projects: [PROJECT_A, PROJECT_B], epics: [], stories: [], sessions: [] },
           { type: 'patchProject', id: 'p2', patch: { description: 'Described' } },
         );
 
@@ -2753,7 +2775,7 @@ describe('code-store', () => {
       });
 
       it('is a no-op for an id no longer in the list (the race rule)', () => {
-        const before = { projects: [PROJECT_A], epics: [], stories: [] };
+        const before = { projects: [PROJECT_A], epics: [], stories: [], sessions: [] };
 
         const next = codeReducer(before, {
           type: 'patchProject',
@@ -4162,7 +4184,7 @@ describe('code-store', () => {
       });
     });
 
-    it('joins both channels only once the socket holds the session token (ALF-258)', async () => {
+    it('joins every channel only once the socket holds the session token (ALF-258)', async () => {
       // A join sent before the token is loaded goes out as `anon`, which RLS lets see nothing.
       const releaseAuth = holdRealtimeAuth(mockSetAuth);
       mockSubscribe.mockClear();
@@ -4175,15 +4197,16 @@ describe('code-store', () => {
 
       await releaseAuth();
 
-      expect(mockSubscribe).toHaveBeenCalledTimes(2);
+      // code_items, epics and code_sessions.
+      expect(mockSubscribe).toHaveBeenCalledTimes(3);
     });
 
-    it('tears BOTH channels down on unmount (code_items and epics)', () => {
+    it('tears every channel down on unmount (code_items, epics and code_sessions)', () => {
       const { unmount } = renderHook(() => useProjectBoard('p1'), {
         wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
       });
       unmount();
-      expect(mockRemoveChannel).toHaveBeenCalledTimes(2);
+      expect(mockRemoveChannel).toHaveBeenCalledTimes(3);
     });
 
     describe('notifications', () => {
@@ -4472,6 +4495,84 @@ describe('code-store', () => {
 
       expect(result.current[0]?.name).toBe('Renamed locally');
       expect(result.current[0]?.spec_path).toBe('docs/specs/epics/ALF-12.html');
+    });
+  });
+
+  // A session's first prompt records it while this tab sits still on the story, so the detail
+  // needs the push channel to show the link without a reload.
+  describe('session links', () => {
+    const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-359' });
+
+    function renderSessions(sessions: CodeSessionLink[] = []) {
+      return renderHook(() => useStorySessions(story), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], stories: [story], sessions }),
+      });
+    }
+
+    it('reads the seeded sessions of the story, newest first, and none of another repo', () => {
+      const { result } = renderSessions([
+        mine(),
+        mine({ session_id: 'session_b', session_created_at: '2026-11-21T15:14:00Z' }),
+        mine({ session_id: 'session_c', repo: 'ac3charland/realplay' }),
+        mine({ session_id: 'session_d', ref: 'ALF-12' }),
+      ]);
+      expect(result.current.map((s) => s.session_id)).toEqual(['session_b', 'session_a']);
+    });
+
+    it('is empty when nothing is seeded', () => {
+      expect(renderSessions().result.current).toEqual([]);
+    });
+
+    it('adds a session on a realtime INSERT, with no reload', () => {
+      const { result } = renderSessions();
+      act(() => {
+        mockSessionRealtimeHandler?.({
+          eventType: 'INSERT',
+          new: { ...mine(), prompt: 'never kept', session_record: null },
+          old: {},
+        });
+      });
+      expect(result.current).toEqual([mine()]);
+    });
+
+    it('keeps the lane and time when an UPDATE leaves those columns out', () => {
+      const { result } = renderSessions([mine()]);
+      act(() => {
+        mockSessionRealtimeHandler?.({
+          eventType: 'UPDATE',
+          new: { session_id: 'session_a', ref: 'ALF-359', repo: 'ac3charland/alfred' },
+          old: { session_id: 'session_a' },
+        });
+      });
+      expect(result.current).toEqual([mine()]);
+    });
+
+    it('ignores a session with no ref, and removes one on DELETE', () => {
+      const { result } = renderSessions([mine()]);
+      act(() => {
+        mockSessionRealtimeHandler?.({
+          eventType: 'INSERT',
+          new: { ...mine({ session_id: 'session_z' }), ref: null },
+          old: {},
+        });
+      });
+      expect(result.current.map((s) => s.session_id)).toEqual(['session_a']);
+      act(() => {
+        mockSessionRealtimeHandler?.({
+          eventType: 'DELETE',
+          new: {},
+          old: { session_id: 'session_a' },
+        });
+      });
+      expect(result.current).toEqual([]);
+    });
+
+    it('fires no toast for a session change', () => {
+      renderSessions();
+      act(() => {
+        mockSessionRealtimeHandler?.({ eventType: 'INSERT', new: mine(), old: {} });
+      });
+      expect(mockShowToast).not.toHaveBeenCalled();
     });
   });
 });

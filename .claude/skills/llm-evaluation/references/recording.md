@@ -16,7 +16,11 @@ Every alfred cloud session writes its own ledger row as it runs. A project hook
 
 - **SessionStart** (`startup` only): `base_sha` (HEAD before the session changes anything),
   `builder_sha`, `repo`. Also writes a state file, `$TMPDIR/alfred-session-ledger/<session_id>.json`,
-  that later stops read the start commit from.
+  that later writes read the start commit from.
+- **UserPromptSubmit** (first prompt only, and only after a recorded start): the prompt, its `skills`
+  and `ref`, so the story detail links the session while its first turn runs. A
+  `<session_id>.prompted` marker beside the state file claims it; with no state file (a resumed
+  container) nothing is sent, so a later "ok, go ahead" never becomes the frozen prompt.
 - **Stop** (every turn's end): the whole picture so far, recounted from the transcripts, so a missed
   write is healed by the next: the prompt, the `skills` it names (blobs at `base_sha`), `ref`,
   models, effort, tokens per model split main thread vs subagents, `subagent_count`. Never a cost.
@@ -31,8 +35,10 @@ Every alfred cloud session writes its own ledger row as it runs. A project hook
   disk. The hook still records what it saw but flags `subagent_usage_partial`, and such a row gets
   no cost rather than a low one.
 
-Nothing after the session goes idle is recorded: PR outcomes, lane, title, status and
-`session_record` still come from the [backfill](./backfill.md). Re-running it is safe.
+The record route adds `launch_lane` to any write carrying a prompt, from the prompt's opening lines
+(`laneOfPrompt` in `frontend/lib/code/launch-lane.ts`; null for a hand-written prompt). Nothing after
+the session goes idle is recorded: PR outcomes, title, status and `session_record` still come from
+the [backfill](./backfill.md), whose PR-derived lane replaces the prompt's. Re-running it is safe.
 
 ## Who owns each column
 
@@ -41,8 +47,8 @@ The two RPCs enforce this, so the final row is the same whichever order the hook
 | Class | Columns | Hook (`record_code_session`) | Backfill (`upsert_code_sessions`) |
 | --- | --- | --- | --- |
 | hook-owned | `*_tokens`, `cost_usd`, `served_model`, `subagent_count`, `usage_by_model`, `recorded_at` | every stop; usage never goes backwards | keeps them once the hook has recorded usage; never writes the last three |
-| recorded-wins | `prompt`, `prompt_source`, `skills`, `base_sha`, `builder_sha` | first recorded prompt (and its skills) freezes; base/builder from session start | keeps them once recorded, except a start the hook missed (`start_unrecorded`) |
-| platform-owned | `session_created_at`, `model`, `effort_level`, `ref` | fills only while null | overwrites, but never with a null on a recorded row |
+| recorded-wins | `prompt`, `prompt_source`, `skills`, `base_sha`, `builder_sha` | first recorded prompt (and its skills) freezes, from a prompt write or a stop; base/builder from session start | keeps them once recorded, except a start the hook missed (`start_unrecorded`) |
+| platform-owned | `session_created_at`, `model`, `effort_level`, `ref`, `launch_lane` | fills only while null | overwrites, but never with a null on a recorded row |
 | backfill-only | everything else | never | overwrites |
 
 ## Running, disabling, debugging
@@ -50,8 +56,8 @@ The two RPCs enforce this, so the final row is the same whichever order the hook
 - **Runs only** when `CLAUDE_CODE_REMOTE_SESSION_ID` starts with `cse_` and `ALFRED_BASE_URL` is set,
   so local sessions and forks of the public repo skip it. **Disable** it by unsetting
   `ALFRED_BASE_URL` in the cloud environment.
-- **Silent by design**: it always exits 0 and prints nothing (SessionStart stdout would enter the
-  session's context). A failed write appends one line to `$TMPDIR/alfred-session-ledger/hook.log`:
+- **Silent by design**: it always exits 0 and prints nothing (SessionStart and UserPromptSubmit
+  stdout would enter the session's context). A failed write appends one line to `$TMPDIR/alfred-session-ledger/hook.log`:
   time · event · session · HTTP status or error name. The next stop is the retry.
 - **Credentials**: the proxy adds the ledger credential, which Node's `fetch` only sees under
   `NODE_USE_ENV_PROXY=1` (the settings command sets it); a 401/403 in `hook.log` means the
