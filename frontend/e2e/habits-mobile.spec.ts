@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { localDaysAgo, localToday, makeHabit, makeHabitEntry } from './support/constants';
 import { expect, test } from './support/fixtures';
+import { sampleDuring } from './support/probe';
 
 /**
  * Logging a habit day on a phone: thumb-sized squares, and an editor that rises as a bottom sheet
@@ -130,6 +131,61 @@ test('logs a day through the sheet with Yes and a time, and it survives a reload
 
   await page.reload();
   await expect(cell).toHaveAttribute('data-status', 'met');
+});
+
+test('a tap on the overlay closes the sheet, keeping a count typed but never committed', async ({
+  page,
+  seed,
+}) => {
+  const habit = makeHabit('Water', {
+    started_on: localDaysAgo(30),
+    criteria: [{ key: 'glasses', label: 'Glasses', kind: 'count', target: 3, comparator: 'gte' }],
+  });
+  await seed({ habits: [habit] });
+  await page.goto('/habits');
+
+  const cell = square(page, localToday());
+  await tapCentre(page, cell.locator('button'));
+  const sheet = page.getByRole('dialog', { name: /Water/ });
+  await sheet.getByLabel('Glasses', { exact: true }).fill('4');
+
+  // Well above the sheet, on the dimmed overlay.
+  await page.touchscreen.tap(195, 100);
+
+  await expect(sheet).toBeHidden();
+  await expect(cell).toHaveAttribute('data-status', 'met');
+  await expect(cell.locator('button')).toBeFocused();
+  await page.reload();
+  await expect(cell).toHaveAttribute('data-status', 'met');
+});
+
+test('the sheet keeps its content while it fades out, rather than collapsing first', async ({
+  page,
+  seed,
+}) => {
+  const habit = makeHabit('Morning routine', { started_on: localDaysAgo(30) });
+  await seed({ habits: [habit] });
+  await page.goto('/habits');
+
+  await tapCentre(page, square(page, localToday()).locator('button'));
+  const sheet = page.getByRole('dialog', { name: /Morning routine/ });
+  await expect(sheet).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
+  const open = await boxOf(sheet);
+
+  const frames = await sampleDuring(
+    page,
+    { selector: '[role="dialog"]', read: { kind: 'rect', props: ['height'] }, durationMs: 500 },
+    () => sheet.getByRole('button', { name: 'Done' }).tap(),
+  );
+  const heights = frames
+    .map((frame) => (frame.values === null ? null : Number(frame.values['height'])))
+    .filter((height): height is number => height !== null);
+
+  // Every frame the sheet is still drawn, it is drawn whole — then it is gone.
+  expect(heights.length).toBeGreaterThan(0);
+  expect(Math.min(...heights)).toBe(open.height);
+  expect(frames.at(-1)?.values).toBeNull();
 });
 
 test('skips a day from inside the sheet, after a typed reason', async ({ page, seed }) => {

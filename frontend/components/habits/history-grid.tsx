@@ -70,6 +70,9 @@ export function HistoryGrid({
   windowDays = APP_WINDOW_DAYS,
 }: HistoryGridProperties) {
   const [openDate, setOpenDate] = React.useState<string | undefined>();
+  // The day the editor draws, which outlives `openDate` by the container's exit animation: closing
+  // only clears `openDate`, so the sheet fades out whole instead of emptying to a sliver first.
+  const [shownDate, setShownDate] = React.useState<string | undefined>();
   const openCellRef = React.useRef<HTMLButtonElement | null>(null);
   // A stable virtual anchor that measures whichever cell is open, so the popover positions
   // itself over that cell without any cell having to render a Radix anchor of its own.
@@ -87,7 +90,7 @@ export function HistoryGrid({
   }, [habit, entries, today, windowDays]);
 
   const touch = useMediaQuery(TOUCH_QUERY);
-  const openEntry = openDate === undefined ? undefined : entries[openDate];
+  const shownEntry = shownDate === undefined ? undefined : entries[shownDate];
 
   const close = () => {
     setOpenDate(undefined);
@@ -99,16 +102,19 @@ export function HistoryGrid({
     openCellRef.current?.focus();
   };
 
-  const editor = openDate !== undefined && (
+  const editor = shownDate !== undefined && (
     <DayEditor
+      // A day opened while the last one is still fading out is a fresh editor, not a re-dated one.
+      key={shownDate}
+      closing={openDate === undefined}
       habitId={habit.id}
-      date={openDate}
+      date={shownDate}
       criteria={criteria}
-      results={parseResults(openEntry?.results ?? null)}
-      storedStatus={openEntry?.status === 'skipped' ? undefined : openEntry?.status}
-      isSkipped={openEntry?.status === 'skipped'}
-      skipReason={openEntry?.note ?? null}
-      isBeforeStart={openDate < habit.started_on}
+      results={parseResults(shownEntry?.results ?? null)}
+      storedStatus={shownEntry?.status === 'skipped' ? undefined : shownEntry?.status}
+      isSkipped={shownEntry?.status === 'skipped'}
+      skipReason={shownEntry?.note ?? null}
+      isBeforeStart={shownDate < habit.started_on}
       onClose={close}
       touch={touch}
       habitName={habit.name}
@@ -174,6 +180,7 @@ export function HistoryGrid({
                       onOpen: (event: React.MouseEvent<HTMLButtonElement>) => {
                         openCellRef.current = event.currentTarget;
                         setOpenDate(day.date);
+                        setShownDate(day.date);
                       },
                     }
                   : {})}
@@ -193,7 +200,7 @@ export function HistoryGrid({
         onOpenChange={(open) => {
           if (!open) close();
         }}
-        label={openDate === undefined ? '' : `${formatShortDate(openDate)} — ${habit.name}`}
+        label={shownDate === undefined ? '' : `${formatShortDate(shownDate)} — ${habit.name}`}
         onCloseAutoFocus={returnFocus}
       >
         {touch && editor}
