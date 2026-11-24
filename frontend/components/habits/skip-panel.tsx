@@ -13,6 +13,8 @@ interface SkipPanelProperties {
   onSkip: (reason: string) => void;
   /** Thumb-sized: a full-width 44px field and two 44px buttons sharing the width. */
   touch?: boolean;
+  /** The habit's name, shown under the title in touch mode — the sheet covers the card. */
+  habitName?: string | undefined;
 }
 
 /**
@@ -29,7 +31,13 @@ interface SkipPanelProperties {
  * the two things this step charges for: a tap that fills the field is a tap that skips the
  * day, and "Illness" chosen off a list is a category, not something a human wrote.
  */
-export function SkipPanel({ date, onCancel, onSkip, touch = false }: SkipPanelProperties) {
+export function SkipPanel({
+  date,
+  onCancel,
+  onSkip,
+  touch = false,
+  habitName,
+}: SkipPanelProperties) {
   const [reason, setReason] = React.useState('');
   const reasonRef = React.useRef<HTMLInputElement>(null);
   const canSkip = reason.trim() !== '';
@@ -47,6 +55,9 @@ export function SkipPanel({ date, onCancel, onSkip, touch = false }: SkipPanelPr
     <div className={touch ? 'flex flex-col gap-3 p-4' : 'flex w-[265px] flex-col gap-2 p-2'}>
       <p className={cn('font-semibold text-foreground', touch ? 'text-base' : 'text-[13px]')}>
         Skip {formatShortDate(date)}?
+        {touch && habitName !== undefined && (
+          <span className="block text-[13px] font-normal text-muted-foreground">{habitName}</span>
+        )}
       </p>
       {/* The consequence, in the owner's terms rather than the model's — this is the one place
           the allowance rules are explained rather than merely shown. */}

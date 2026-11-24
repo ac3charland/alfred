@@ -620,6 +620,9 @@ describe('DayEditor — touch mode', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Mark as skipped…' }));
 
     const reason = screen.getByLabelText('Reason for skipping');
+    // The sheet covers the card, so the skip step names the habit too.
+    expect(screen.getByText('Skip Thu 23 Jul?')).toBeInTheDocument();
+    expect(screen.getByText('Morning routine')).toBeInTheDocument();
     const cancel = screen.getByRole('button', { name: 'Cancel' });
     const skip = screen.getByRole('button', { name: 'Skip this day' });
     expect(reason).toHaveFocus();
@@ -669,5 +672,50 @@ describe('DayEditor — a typed value on close, on desktop too', () => {
 
     expect(logDay).toHaveBeenCalledTimes(1);
     expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { meditate: 25 });
+  });
+});
+
+/** An open editor, and a way to close it as the grid does: by flagging it, not unmounting it. */
+function renderOpen(criteria: HabitCriterion[]) {
+  const element = (closing: boolean) => (
+    <DayEditor
+      habitId={HABIT_ID}
+      date={DATE}
+      criteria={criteria}
+      results={{}}
+      isSkipped={false}
+      skipReason={null}
+      isBeforeStart={false}
+      onClose={jest.fn()}
+      closing={closing}
+    />
+  );
+  const view = renderWithProviders(element(false), {
+    habits: { habits: [HABIT], entries: [], today: DATE },
+  });
+  return {
+    close: () => {
+      view.rerender(element(true));
+    },
+    unmount: view.unmount,
+  };
+}
+
+describe('DayEditor — closing while its container fades out', () => {
+  it('saves at the moment it closes, not when the exit animation later unmounts it', async () => {
+    const user = userEvent.setup();
+    const { close, unmount } = renderOpen([MEDITATE, LIGHT]);
+
+    await user.click(screen.getByRole('button', { name: 'Outside for light' }));
+    await user.type(screen.getByLabelText('Meditate'), '25');
+    close();
+
+    expect(logDay).toHaveBeenCalledTimes(1);
+    expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { light: true, meditate: 25 });
+
+    // Neither the debounce nor the unmount sends it again.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    unmount();
+    expect(logDay).toHaveBeenCalledTimes(1);
   });
 });

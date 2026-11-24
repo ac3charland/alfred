@@ -66,6 +66,11 @@ interface DayEditorProperties {
   touch?: boolean;
   /** The habit's name, shown under the date in touch mode — the sheet covers the card that said so. */
   habitName?: string;
+  /**
+   * The container is closing — the editor stays drawn while it fades out. Everything owed to the
+   * store is sent now rather than at unmount, so a navigation during the fade loses nothing.
+   */
+  closing?: boolean;
 }
 
 /** A measured field's draft not yet told to the store; `value` is absent for a cleared field. */
@@ -348,6 +353,7 @@ export function DayEditor({
   onClose,
   touch = false,
   habitName,
+  closing = false,
 }: DayEditorProperties) {
   const { logDay, skipDay } = useHabitActions();
   const [draft, setDraft] = React.useState<HabitResults>(results);
@@ -359,7 +365,10 @@ export function DayEditor({
   const draftRef = React.useRef(draft);
   const pendingRef = React.useRef<HabitResults | undefined>(undefined);
 
-  const send = useDebouncedCallback((next: HabitResults) => {
+  // Sends whatever is still owed when it fires, so a flush that already sent it leaves nothing.
+  const send = useDebouncedCallback(() => {
+    const next = pendingRef.current;
+    if (next === undefined) return;
     pendingRef.current = undefined;
     void logDay(habitId, date, next);
   }, COMMIT_DELAY_MS);
@@ -373,22 +382,35 @@ export function DayEditor({
     };
   }, []);
 
+  // Send everything still owed — the debounced change and any field's typed but uncommitted
+  // value — in one write: the editor closing is not a reason to lose the day the owner just
+  // recorded. Each field hands its draft over once, so a second flush finds nothing.
+  const flush = React.useCallback(() => {
+    let next = pendingRef.current;
+    for (const [key, take] of fieldsRef.current) {
+      const field = take();
+      if (field !== undefined) next = withResult(next ?? draftRef.current, key, field.value);
+    }
+    pendingRef.current = undefined;
+    if (next !== undefined) {
+      draftRef.current = next;
+      void logDay(habitId, date, next);
+    }
+  }, [logDay, habitId, date]);
+
+  React.useEffect(() => {
+    if (closing) flush();
+  }, [closing, flush]);
+
   // The debounce cancels itself on unmount, so a change made in the last fraction of a second
-  // before Escape would otherwise be silently dropped. Flush it instead — with any field's typed
-  // but uncommitted value folded in, in one write: the editor closing is not a reason to lose
-  // the day the owner just recorded. The fields' own cleanups run after this one (React unmounts
-  // parents first), so this is the last moment the editor can still send what they hold.
+  // before Escape would otherwise be silently dropped. The fields' own cleanups run after this
+  // one (React unmounts parents first), so this is the last moment the editor can still send
+  // what they hold.
   React.useEffect(
     () => () => {
-      let next = pendingRef.current;
-      for (const [key, take] of fieldsRef.current) {
-        const field = take();
-        if (field !== undefined) next = withResult(next ?? draftRef.current, key, field.value);
-      }
-      pendingRef.current = undefined;
-      if (next !== undefined) void logDay(habitId, date, next);
+      flush();
     },
-    [logDay, habitId, date],
+    [flush],
   );
 
   const commit = (key: string, value: boolean | number | undefined) => {
@@ -396,7 +418,7 @@ export function DayEditor({
     draftRef.current = next;
     pendingRef.current = next;
     setDraft(next);
-    send(next);
+    send();
   };
 
   if (mode === 'skip') {
@@ -404,6 +426,7 @@ export function DayEditor({
       <SkipPanel
         date={date}
         touch={touch}
+        habitName={habitName}
         onCancel={() => {
           setMode('edit');
         }}
