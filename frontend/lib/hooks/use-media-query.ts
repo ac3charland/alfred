@@ -10,6 +10,13 @@ import * as React from 'react';
 export const MOBILE_QUERY = '(width < 48rem)';
 
 /**
+ * A phone-width viewport, or a touch-first device at any width — a phone turned sideways is
+ * 844px wide, so width alone would hand it back the dense desktop controls. Pairs with the
+ * `touch:` variant in `app/globals.css`, which must state the same condition (a test pins the two).
+ */
+export const TOUCH_QUERY = '(width < 48rem) or (pointer: coarse)';
+
+/**
  * Subscribe to a CSS media query, lint-clean (no setState-in-effect) and SSR-safe via
  * `useSyncExternalStore` — mirrors `usePrefersReducedMotion`. Returns `false` on the server
  * (no `matchMedia`) and corrects after hydration.

@@ -1,8 +1,9 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import { HistoryGrid } from '@/components/habits/history-grid';
+import { TOUCH_QUERY } from '@/lib/hooks/use-media-query';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { Habit, HabitDayStatus, HabitEntry } from '@/lib/types';
 
@@ -327,5 +328,119 @@ describe('HistoryGrid — opening the editor', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByText('Mon 13 Jul')).not.toBeInTheDocument();
     expect(target).toHaveFocus();
+  });
+});
+
+/**
+ * A `matchMedia` whose answer to TOUCH_QUERY the test sets, and can flip mid-test the way a
+ * desktop window dragged across 768px does.
+ */
+function installTouch(initial: boolean) {
+  const original = globalThis.matchMedia;
+  let touch = initial;
+  const listeners = new Set<() => void>();
+  globalThis.matchMedia = (query: string) =>
+    ({
+      media: query,
+      onchange: null,
+      dispatchEvent: () => true,
+      get matches() {
+        return query === TOUCH_QUERY && touch;
+      },
+      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    }) as unknown as MediaQueryList;
+  return {
+    set(next: boolean) {
+      touch = next;
+      act(() => {
+        for (const listener of listeners) listener();
+      });
+    },
+    restore() {
+      globalThis.matchMedia = original;
+    },
+  };
+}
+
+describe('HistoryGrid — on a touch device', () => {
+  let touch: ReturnType<typeof installTouch>;
+  afterEach(() => {
+    touch.restore();
+  });
+
+  const SHEET_NAME = 'Mon 13 Jul — Morning routine';
+
+  it('opens a bottom sheet named for the day and the habit, not the popover', async () => {
+    touch = installTouch(true);
+    const user = userEvent.setup();
+    renderGrid(Object.fromEntries([entry('2026-07-13', 'met')]));
+
+    await user.click(screen.getByRole('button', { name: /Monday 13 July/ }));
+
+    const sheet = screen.getByRole('dialog', { name: SHEET_NAME });
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(sheet).toHaveClass('rounded-t-2xl');
+    expect(within(sheet).getByText('Mon 13 Jul')).toBeInTheDocument();
+    expect(within(sheet).getByText('Morning routine')).toBeInTheDocument();
+    expect(within(sheet).getByText('Met')).toBeInTheDocument();
+    expect(within(sheet).getByRole('group', { name: 'Outside for light' })).toBeInTheDocument();
+  });
+
+  it('keeps the popover, and its dense editor, without one', async () => {
+    touch = installTouch(false);
+    const user = userEvent.setup();
+    renderGrid(Object.fromEntries([entry('2026-07-13', 'met')]));
+
+    await user.click(screen.getByRole('button', { name: /Monday 13 July/ }));
+
+    expect(screen.queryByRole('dialog', { name: SHEET_NAME })).not.toBeInTheDocument();
+    expect(screen.getByText('Mon 13 Jul')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Outside for light' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'Done',
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.click(screen.getByRole('button', { name: 'Done' }));
+      },
+    ],
+    [
+      'Escape',
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.keyboard('{Escape}');
+      },
+    ],
+  ])('closes on %s and hands focus back to the square', async (_name, close) => {
+    touch = installTouch(true);
+    const user = userEvent.setup();
+    renderGrid(Object.fromEntries([entry('2026-07-13', 'met')]));
+    const square = screen.getByRole('button', { name: /Monday 13 July/ });
+
+    await user.click(square);
+    expect(screen.getByRole('dialog', { name: SHEET_NAME })).toBeInTheDocument();
+    await close(user);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(square).toHaveFocus();
+  });
+
+  it('keeps the same day open across a flip into or out of touch mode', async () => {
+    touch = installTouch(false);
+    const user = userEvent.setup();
+    renderGrid({});
+
+    await user.click(screen.getByRole('button', { name: /Monday 13 July/ }));
+    expect(screen.getByText('Mon 13 Jul')).toBeInTheDocument();
+
+    touch.set(true);
+    expect(screen.getByRole('dialog', { name: SHEET_NAME })).toBeInTheDocument();
+
+    touch.set(false);
+    expect(screen.queryByRole('dialog', { name: SHEET_NAME })).not.toBeInTheDocument();
+    expect(screen.getByText('Mon 13 Jul')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Outside for light' })).toBeInTheDocument();
   });
 });

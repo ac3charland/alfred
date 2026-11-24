@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -412,5 +412,310 @@ describe('DayEditor — a day the criteria moved under', () => {
     await waitFor(() => {
       expect(logDay).toHaveBeenCalled();
     });
+  });
+});
+
+/** A touch-mode yes/no criterion: the group its label names, and its two answers. */
+function yesNo(label: string) {
+  const group = screen.getByRole('group', { name: label });
+  return {
+    group,
+    yes: within(group).getByRole('button', { name: 'Yes' }),
+    no: within(group).getByRole('button', { name: 'No' }),
+  };
+}
+
+describe('DayEditor — touch mode', () => {
+  const GLASSES: HabitCriterion = {
+    key: 'glasses',
+    label: 'Glasses of water',
+    kind: 'count',
+    target: 3,
+    comparator: 'gte',
+  };
+
+  function renderTouch(properties: Partial<React.ComponentProps<typeof DayEditor>> = {}) {
+    const onClose = jest.fn();
+    const view = renderWithProviders(
+      <DayEditor
+        habitId={HABIT_ID}
+        date={DATE}
+        criteria={[WAKE, LIGHT]}
+        results={{}}
+        isSkipped={false}
+        skipReason={null}
+        isBeforeStart={false}
+        onClose={onClose}
+        touch
+        habitName="Morning routine"
+        {...properties}
+      />,
+      { habits: { habits: [HABIT], entries: [], today: DATE } },
+    );
+    return { onClose, unmount: view.unmount };
+  }
+
+  it('names the habit under the date, since the sheet covers the card that said so', () => {
+    renderTouch();
+    expect(screen.getByText('Thu 23 Jul')).toBeInTheDocument();
+    expect(screen.getByText('Morning routine')).toBeInTheDocument();
+  });
+
+  it('offers a yes/no criterion as two buttons, neither lit while unrecorded', () => {
+    renderTouch();
+    const { yes, no } = yesNo('Outside for light');
+    expect(yes).toHaveAttribute('aria-pressed', 'false');
+    expect(no).toHaveAttribute('aria-pressed', 'false');
+    // The cycling box is the desktop control only.
+    expect(screen.queryByRole('button', { name: 'Outside for light' })).not.toBeInTheDocument();
+  });
+
+  it('records the answer tapped and lights it, the verdict and cost line following', async () => {
+    const user = userEvent.setup();
+    renderTouch({ results: { wake: 364 } });
+    const { yes, no } = yesNo('Outside for light');
+
+    await user.click(yes);
+    expect(yes).toHaveAttribute('aria-pressed', 'true');
+    expect(no).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('Met')).toBeInTheDocument();
+    expect(screen.getByText('Earned — costs nothing')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(logDay).toHaveBeenLastCalledWith(HABIT_ID, DATE, { wake: 364, light: true });
+    });
+
+    await user.click(no);
+    expect(no).toHaveAttribute('aria-pressed', 'true');
+    expect(yes).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('Partial')).toBeInTheDocument();
+    expect(screen.getByText("Spends this week's allowance")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(logDay).toHaveBeenLastCalledWith(HABIT_ID, DATE, { wake: 364, light: false });
+    });
+  });
+
+  it('clears the criterion when the lit answer is tapped again, removing its key', async () => {
+    const user = userEvent.setup();
+    renderTouch({ results: { light: false } });
+    const { yes, no } = yesNo('Outside for light');
+    expect(no).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(no);
+
+    expect(no).toHaveAttribute('aria-pressed', 'false');
+    expect(yes).toHaveAttribute('aria-pressed', 'false');
+    await waitFor(() => {
+      expect(logDay).toHaveBeenLastCalledWith(HABIT_ID, DATE, {});
+    });
+  });
+
+  it('sends Yes-then-No inside the debounce as one write, recording No', async () => {
+    const user = userEvent.setup();
+    renderTouch();
+    const { yes, no } = yesNo('Outside for light');
+
+    await user.click(yes);
+    await user.click(no);
+
+    await waitFor(() => {
+      expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { light: false });
+    });
+    expect(logDay).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on Done, which saves nothing of its own — every change already committed', async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderTouch();
+
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(logDay).not.toHaveBeenCalled();
+  });
+
+  it('saves a typed value the editor is closed on, though the field never blurred', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderTouch({ criteria: [GLASSES] });
+
+    await user.type(screen.getByLabelText('Glasses of water'), '4');
+    // No blur, no Enter: iOS Safari need not blur a field when a button is tapped, and a removed
+    // element fires no blur at all.
+    unmount();
+
+    expect(logDay).toHaveBeenCalledTimes(1);
+    expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { glasses: 4 });
+  });
+
+  it('folds a typed value and a pending answer into the one write sent on close', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderTouch({ criteria: [GLASSES, LIGHT] });
+
+    await user.click(yesNo('Outside for light').yes);
+    await user.type(screen.getByLabelText('Glasses of water'), '4');
+    unmount();
+
+    expect(logDay).toHaveBeenCalledTimes(1);
+    expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { light: true, glasses: 4 });
+  });
+
+  it('still writes nothing when a day is only opened and closed', () => {
+    const { unmount } = renderTouch({ criteria: [GLASSES, WAKE] });
+    unmount();
+    expect(logDay).not.toHaveBeenCalled();
+  });
+
+  it('keeps a typed value when the skip step replaces the criteria', async () => {
+    const user = userEvent.setup();
+    renderTouch({ criteria: [GLASSES] });
+
+    await user.type(screen.getByLabelText('Glasses of water'), '4');
+    // Opening the menu by keyboard keeps focus in the field until the rows unmount.
+    screen.getByLabelText('Glasses of water').focus();
+    await user.click(screen.getByRole('button', { name: /More options/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Mark as skipped…' }));
+
+    await waitFor(() => {
+      expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { glasses: 4 });
+    });
+  });
+
+  it('draws every control and button at least 44px tall', () => {
+    renderTouch({ criteria: [WAKE, LIGHT, GLASSES] });
+
+    for (const control of [
+      screen.getByLabelText('Up by 6:15'),
+      screen.getByLabelText('Glasses of water'),
+      yesNo('Outside for light').yes,
+      yesNo('Outside for light').no,
+      screen.getByRole('button', { name: /More options/ }),
+      screen.getByRole('button', { name: 'Done' }),
+    ]) {
+      expect(control).toHaveClass('h-11');
+    }
+    expect(screen.getByRole('button', { name: /More options/ })).toHaveClass('w-11');
+    expect(screen.getByRole('button', { name: 'Done' })).toHaveClass('w-full');
+  });
+
+  it('gives a number field a decimal keypad whose return key says done', () => {
+    renderTouch({ criteria: [GLASSES] });
+    const field = screen.getByLabelText('Glasses of water');
+    expect(field).toHaveAttribute('inputmode', 'decimal');
+    expect(field).toHaveAttribute('enterkeyhint', 'done');
+    expect(field).toHaveClass('w-[72px]', 'text-base', 'font-mono');
+  });
+
+  it('gives the ⋯ menu’s item a thumb-sized row', async () => {
+    const user = userEvent.setup();
+    renderTouch();
+    await user.click(screen.getByRole('button', { name: /More options/ }));
+    expect(await screen.findByRole('menuitem', { name: 'Mark as skipped…' })).toHaveClass(
+      'min-h-11',
+    );
+  });
+
+  it('sizes the skip step for a thumb, and closes once the day is skipped', async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderTouch();
+    await user.click(screen.getByRole('button', { name: /More options/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Mark as skipped…' }));
+
+    const reason = screen.getByLabelText('Reason for skipping');
+    // The sheet covers the card, so the skip step names the habit too.
+    expect(screen.getByText('Skip Thu 23 Jul?')).toBeInTheDocument();
+    expect(screen.getByText('Morning routine')).toBeInTheDocument();
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const skip = screen.getByRole('button', { name: 'Skip this day' });
+    expect(reason).toHaveFocus();
+    expect(reason).toHaveClass('h-11', 'w-full', 'text-base');
+    expect(cancel).toHaveClass('h-11', 'flex-1');
+    expect(skip).toHaveClass('h-11', 'flex-1');
+
+    await user.type(reason, 'flu');
+    await user.click(skip);
+    expect(skipDay).toHaveBeenCalledWith(HABIT_ID, DATE, 'flu');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('shows a skipped day’s reason in place of the criteria, with Done beneath', () => {
+    renderTouch({ isSkipped: true, skipReason: 'Flu — in bed all day' });
+    expect(screen.getByText('Flu — in bed all day')).toHaveClass('text-[15px]');
+    expect(screen.queryByRole('group', { name: 'Outside for light' })).not.toBeInTheDocument();
+    expect(screen.getByText('Excused — costs nothing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+  });
+
+  it('keeps the desktop editor free of a Done button', () => {
+    renderEditor();
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
+  });
+});
+
+describe('DayEditor — a typed value on close, on desktop too', () => {
+  it('saves a draft the editor unmounts on before the field blurs', async () => {
+    const user = userEvent.setup();
+    const view = renderWithProviders(
+      <DayEditor
+        habitId={HABIT_ID}
+        date={DATE}
+        criteria={[MEDITATE]}
+        results={{}}
+        isSkipped={false}
+        skipReason={null}
+        isBeforeStart={false}
+        onClose={jest.fn()}
+      />,
+      { habits: { habits: [HABIT], entries: [], today: DATE } },
+    );
+
+    await user.type(screen.getByLabelText('Meditate'), '25');
+    view.unmount();
+
+    expect(logDay).toHaveBeenCalledTimes(1);
+    expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { meditate: 25 });
+  });
+});
+
+/** An open editor, and a way to close it as the grid does: by flagging it, not unmounting it. */
+function renderOpen(criteria: HabitCriterion[]) {
+  const element = (closing: boolean) => (
+    <DayEditor
+      habitId={HABIT_ID}
+      date={DATE}
+      criteria={criteria}
+      results={{}}
+      isSkipped={false}
+      skipReason={null}
+      isBeforeStart={false}
+      onClose={jest.fn()}
+      closing={closing}
+    />
+  );
+  const view = renderWithProviders(element(false), {
+    habits: { habits: [HABIT], entries: [], today: DATE },
+  });
+  return {
+    close: () => {
+      view.rerender(element(true));
+    },
+    unmount: view.unmount,
+  };
+}
+
+describe('DayEditor — closing while its container fades out', () => {
+  it('saves at the moment it closes, not when the exit animation later unmounts it', async () => {
+    const user = userEvent.setup();
+    const { close, unmount } = renderOpen([MEDITATE, LIGHT]);
+
+    await user.click(screen.getByRole('button', { name: 'Outside for light' }));
+    await user.type(screen.getByLabelText('Meditate'), '25');
+    close();
+
+    expect(logDay).toHaveBeenCalledTimes(1);
+    expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { light: true, meditate: 25 });
+
+    // Neither the debounce nor the unmount sends it again.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    unmount();
+    expect(logDay).toHaveBeenCalledTimes(1);
   });
 });

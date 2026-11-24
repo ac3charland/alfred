@@ -42,6 +42,8 @@ The `inline` keyword tells Tailwind to resolve the variable at use-time, not at 
 ```
 Then toggle a `.dark` class on `<html>` with JavaScript (e.g. `next-themes`). The `dark:` modifier is then driven by that class.
 
+A media-query variant takes the at-rule shorthand, and level-4 `or` / range syntax passes through verbatim: `@custom-variant touch (@media (width < 48rem) or (pointer: coarse));` (alfred's `touch:`, paired with `TOUCH_QUERY` in `lib/hooks/use-media-query.ts`).
+
 ---
 
 ## Decision Tree

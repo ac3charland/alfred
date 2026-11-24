@@ -4,6 +4,7 @@ import { MoreHorizontal } from 'lucide-react';
 import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
+import { Button } from '@/components/atoms/button';
 import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import {
   DropdownMenu,
@@ -12,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { IconButton } from '@/components/atoms/icon-button';
+import { ToggleButton } from '@/components/atoms/toggle-button';
 import { UnitField } from '@/components/atoms/unit-field';
 import {
   DURATION_UNIT,
@@ -57,6 +59,99 @@ interface DayEditorProperties {
   /** Whether the day predates the habit's start, so recording it will move the start back. */
   isBeforeStart: boolean;
   onClose: () => void;
+  /**
+   * Thumb-sized: full-width rows, 44px controls, Yes / No buttons in place of the cycling box, and
+   * a Done button. For the bottom sheet a touch device opens; off, the dense popover layout.
+   */
+  touch?: boolean;
+  /** The habit's name, shown under the date in touch mode — the sheet covers the card that said so. */
+  habitName?: string;
+  /**
+   * The container is closing — the editor stays drawn while it fades out. Everything owed to the
+   * store is sent now rather than at unmount, so a navigation during the fade loses nothing.
+   */
+  closing?: boolean;
+}
+
+/** A measured field's draft not yet told to the store; `value` is absent for a cleared field. */
+interface FieldDraft {
+  value: number | undefined;
+}
+
+/**
+ * Hand over a field's untold draft, marking it told. `undefined` when there is nothing new, so
+ * opening and closing an unlogged day never logs it.
+ */
+type TakeDraft = () => FieldDraft | undefined;
+
+/** Lets each measured field offer the editor its draft when the editor closes. */
+type RegisterField = (key: string, take: TakeDraft) => () => void;
+
+/** The results with one criterion set — or REMOVED, when `value` is undefined. */
+function withResult(
+  results: HabitResults,
+  key: string,
+  value: boolean | number | undefined,
+): HabitResults {
+  // Clearing a field REMOVES its key rather than storing a falsy value — "not recorded" and
+  // "recorded as no" are different days, and only an absent key says the first.
+  const next: HabitResults = Object.fromEntries(
+    Object.entries(results).filter(([recorded]) => recorded !== key),
+  );
+  if (value !== undefined) next[key] = value;
+  return next;
+}
+
+/** A typed field's text as the number the store keeps: minutes after midnight for a time. */
+function parseMeasured(kind: HabitCriterion['kind'], text: string): number | undefined {
+  if (text.trim() === '') return undefined;
+  const parsed = kind === 'time' ? timeToMinutes(text) : Number(text);
+  return parsed === undefined || Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * A yes/no criterion on a touch device: two buttons rather than the cycling box, because reaching
+ * ✕ through ✓ lets one slip or double-tap record the opposite answer. Tapping the lit one clears
+ * the criterion — the model still needs "not recorded" as distinct from "recorded as no".
+ */
+function YesNo({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: boolean | undefined;
+  onCommit: (next: boolean | undefined) => void;
+}) {
+  const answer = (pick: boolean) => {
+    onCommit(value === pick ? undefined : pick);
+  };
+  const half = 'h-11 min-w-[72px] justify-center px-3 text-[15px]';
+  return (
+    <div role="group" aria-label={label} className="flex shrink-0 gap-2">
+      {/* The glyphs sit beside the words, so the answer never rests on colour alone. */}
+      <ToggleButton
+        pressed={value === true}
+        tone="affirm"
+        className={half}
+        onToggle={() => {
+          answer(true);
+        }}
+      >
+        <span aria-hidden="true">✓</span> Yes
+      </ToggleButton>
+      <ToggleButton
+        pressed={value === false}
+        tone="deny"
+        className={half}
+        onToggle={() => {
+          answer(false);
+        }}
+      >
+        <span aria-hidden="true">✕</span> No
+      </ToggleButton>
+    </div>
+  );
 }
 
 /** One criterion's row: its label, and the control that records it. */
@@ -64,17 +159,42 @@ function CriterionRow({
   criterion,
   value,
   onCommit,
+  register,
+  touch,
 }: {
   criterion: HabitCriterion;
   value: boolean | number | undefined;
   onCommit: (next: boolean | number | undefined) => void;
+  register: RegisterField;
+  touch: boolean;
 }) {
   const outcome = evaluateCriterion(criterion, value);
+  // On touch a long label wraps beside a control that keeps its size.
+  const row = touch
+    ? 'flex min-h-14 items-center justify-between gap-3 border-b border-border py-2 last:border-b-0'
+    : 'flex items-center justify-between gap-3 border-b border-border py-1.5 last:border-b-0';
+  const label = (
+    <span className={touch ? 'min-w-0 text-[15px] text-foreground' : 'text-xs text-foreground'}>
+      {criterion.label}
+    </span>
+  );
 
   if (criterion.kind === 'boolean') {
+    if (touch) {
+      return (
+        <div className={row}>
+          {label}
+          <YesNo
+            label={criterion.label}
+            value={typeof value === 'boolean' ? value : undefined}
+            onCommit={onCommit}
+          />
+        </div>
+      );
+    }
     return (
-      <div className="flex items-center justify-between gap-3 border-b border-border py-1.5 last:border-b-0">
-        <span className="text-xs text-foreground">{criterion.label}</span>
+      <div className={row}>
+        {label}
         {/* Tri-state: unrecorded → ✓ → ✕ → unrecorded. An untouched criterion must not read
             as a ✕ — "not recorded" and "recorded as no" are different days. */}
         <CheckboxButton
@@ -100,14 +220,16 @@ function CriterionRow({
   const text = value === undefined ? '' : isTime ? minutesToTime(Number(value)) : String(value);
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border py-1.5 last:border-b-0">
-      <span className="text-xs text-foreground">{criterion.label}</span>
+    <div className={row}>
+      {label}
       <MeasuredField
         criterion={criterion}
         initialText={text}
         onCommit={(next) => {
           onCommit(next);
         }}
+        register={register}
+        touch={touch}
       />
     </div>
   );
@@ -116,34 +238,61 @@ function CriterionRow({
 /**
  * A measured criterion's field. It keeps its own draft while focused so typing never fights
  * the store, and commits on blur or Enter — there is no Save button anywhere in this editor.
+ *
+ * Neither is guaranteed before the field goes away: tapping a button need not blur a field in
+ * iOS Safari, and a removed element fires no blur. So the field also offers its draft to the
+ * editor, which collects it when the editor closes; and if the field alone goes (the skip step
+ * replacing the rows), it commits its own draft on the way out.
  */
 function MeasuredField({
   criterion,
   initialText,
   onCommit,
+  register,
+  touch,
 }: {
   criterion: HabitCriterion;
   initialText: string;
   onCommit: (next?: number) => void;
+  register: RegisterField;
+  touch: boolean;
 }) {
   const [text, setText] = React.useState(initialText);
   const isTime = criterion.kind === 'time';
+  const { key, kind } = criterion;
 
+  // Read by the unmount path, which runs after the last render's closures are gone.
+  const textRef = React.useRef(initialText);
   // What the field has already told the store. Blur fires whenever focus leaves — including
   // when the day was merely opened and the ⋯ menu clicked — so without this an untouched
   // empty field would log an empty day, and just LOOKING at an unlogged day would mark it
   // missed.
   const committedRef = React.useRef(initialText);
+  const onCommitRef = React.useRef(onCommit);
+  React.useEffect(() => {
+    onCommitRef.current = onCommit;
+  }, [onCommit]);
+
+  const take = React.useCallback((): FieldDraft | undefined => {
+    if (textRef.current === committedRef.current) return undefined;
+    committedRef.current = textRef.current;
+    return { value: parseMeasured(kind, textRef.current) };
+  }, [kind]);
+
+  React.useEffect(() => {
+    const unregister = register(key, take);
+    return () => {
+      unregister();
+      // A no-op once the closing editor has collected the draft; otherwise the editor is still
+      // open, and this is an ordinary commit.
+      const draft = take();
+      if (draft !== undefined) onCommitRef.current(draft.value);
+    };
+  }, [register, key, take]);
 
   const commit = () => {
-    if (text === committedRef.current) return;
-    committedRef.current = text;
-    if (text.trim() === '') {
-      onCommit();
-      return;
-    }
-    const parsed = isTime ? timeToMinutes(text) : Number(text);
-    onCommit(parsed === undefined || Number.isNaN(parsed) ? undefined : parsed);
+    const draft = take();
+    if (draft !== undefined) onCommit(draft.value);
   };
 
   return (
@@ -154,13 +303,19 @@ function MeasuredField({
       aria-label={criterion.label}
       value={text}
       onChange={(event_) => {
+        textRef.current = event_.target.value;
         setText(event_.target.value);
       }}
       onBlur={commit}
       onKeyDown={(event_) => {
         if (event_.key === 'Enter') commit();
       }}
-      className="w-[92px] px-1.5 py-0.5 text-xs font-mono"
+      {...(touch && !isTime ? { inputMode: 'decimal', enterKeyHint: 'done' } : {})}
+      className={
+        touch
+          ? cn('h-11 px-2 text-base font-mono', isTime ? 'min-w-[104px]' : 'w-[72px]')
+          : 'w-[92px] px-1.5 py-0.5 text-xs font-mono'
+      }
     />
   );
 }
@@ -196,6 +351,9 @@ export function DayEditor({
   skipReason,
   isBeforeStart,
   onClose,
+  touch = false,
+  habitName,
+  closing = false,
 }: DayEditorProperties) {
   const { logDay, skipDay } = useHabitActions();
   const [draft, setDraft] = React.useState<HabitResults>(results);
@@ -207,38 +365,68 @@ export function DayEditor({
   const draftRef = React.useRef(draft);
   const pendingRef = React.useRef<HabitResults | undefined>(undefined);
 
-  const send = useDebouncedCallback((next: HabitResults) => {
+  // Sends whatever is still owed when it fires, so a flush that already sent it leaves nothing.
+  const send = useDebouncedCallback(() => {
+    const next = pendingRef.current;
+    if (next === undefined) return;
     pendingRef.current = undefined;
     void logDay(habitId, date, next);
   }, COMMIT_DELAY_MS);
 
+  // Each measured field's way to hand over a draft it has not committed yet.
+  const fieldsRef = React.useRef(new Map<string, TakeDraft>());
+  const register = React.useCallback<RegisterField>((key, take) => {
+    fieldsRef.current.set(key, take);
+    return () => {
+      if (fieldsRef.current.get(key) === take) fieldsRef.current.delete(key);
+    };
+  }, []);
+
+  // Send everything still owed — the debounced change and any field's typed but uncommitted
+  // value — in one write: the editor closing is not a reason to lose the day the owner just
+  // recorded. Each field hands its draft over once, so a second flush finds nothing.
+  const flush = React.useCallback(() => {
+    let next = pendingRef.current;
+    for (const [key, take] of fieldsRef.current) {
+      const field = take();
+      if (field !== undefined) next = withResult(next ?? draftRef.current, key, field.value);
+    }
+    pendingRef.current = undefined;
+    if (next !== undefined) {
+      draftRef.current = next;
+      void logDay(habitId, date, next);
+    }
+  }, [logDay, habitId, date]);
+
+  React.useEffect(() => {
+    if (closing) flush();
+  }, [closing, flush]);
+
   // The debounce cancels itself on unmount, so a change made in the last fraction of a second
-  // before Escape would otherwise be silently dropped. Flush it instead: the editor closing is
-  // not a reason to lose the day the owner just recorded.
+  // before Escape would otherwise be silently dropped. The fields' own cleanups run after this
+  // one (React unmounts parents first), so this is the last moment the editor can still send
+  // what they hold.
   React.useEffect(
     () => () => {
-      if (pendingRef.current !== undefined) void logDay(habitId, date, pendingRef.current);
+      flush();
     },
-    [logDay, habitId, date],
+    [flush],
   );
 
   const commit = (key: string, value: boolean | number | undefined) => {
-    // Clearing a field REMOVES its key rather than storing a falsy value — "not recorded" and
-    // "recorded as no" are different days, and only an absent key says the first.
-    const next: HabitResults = Object.fromEntries(
-      Object.entries(draftRef.current).filter(([recorded]) => recorded !== key),
-    );
-    if (value !== undefined) next[key] = value;
+    const next = withResult(draftRef.current, key, value);
     draftRef.current = next;
     pendingRef.current = next;
     setDraft(next);
-    send(next);
+    send();
   };
 
   if (mode === 'skip') {
     return (
       <SkipPanel
         date={date}
+        touch={touch}
+        habitName={habitName}
         onCancel={() => {
           setMode('edit');
         }}
@@ -261,56 +449,100 @@ export function DayEditor({
       ? rescoreNotice(storedStatus, storedNow)
       : undefined;
 
-  return (
-    <div className="flex w-[265px] flex-col p-2">
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <span className="text-[13px] font-semibold text-foreground">{formatShortDate(date)}</span>
-        <Badge variant={isSkipped ? 'muted' : STATUS_VARIANT[status]} className="font-semibold">
-          {isSkipped ? STATUS_WORD.skipped : STATUS_WORD[status]}
-        </Badge>
-      </div>
+  const verdict = (
+    <Badge
+      variant={isSkipped ? 'muted' : STATUS_VARIANT[status]}
+      className={cn('font-semibold', touch && 'text-[13px]')}
+    >
+      {isSkipped ? STATUS_WORD.skipped : STATUS_WORD[status]}
+    </Badge>
+  );
 
-      {/* A skipped day's criteria never produced its verdict — Skipped is never derived — so
-          re-showing them as blank checkboxes would misrepresent why the day reads this way,
-          and toggling one would silently re-log the day out from under the skip. The reason
-          is what actually explains this square. */}
-      {isSkipped
-        ? skipReason !== null &&
-          skipReason.trim() !== '' && (
-            <p className="border-b border-border py-1.5 text-xs leading-relaxed text-foreground last:border-b-0">
-              {skipReason.trim()}
-            </p>
-          )
-        : criteria.map((criterion) => (
-            <CriterionRow
-              key={criterion.key}
-              criterion={criterion}
-              value={draft[criterion.key]}
-              onCommit={(next) => {
-                commit(criterion.key, next);
-              }}
-            />
-          ))}
+  // A skipped day's criteria never produced its verdict — Skipped is never derived — so
+  // re-showing them as blank checkboxes would misrepresent why the day reads this way, and
+  // toggling one would silently re-log the day out from under the skip. The reason is what
+  // actually explains this square.
+  const body = isSkipped
+    ? skipReason !== null &&
+      skipReason.trim() !== '' && (
+        <p
+          className={cn(
+            'border-b border-border leading-relaxed text-foreground last:border-b-0',
+            touch ? 'py-2 text-[15px]' : 'py-1.5 text-xs',
+          )}
+        >
+          {skipReason.trim()}
+        </p>
+      )
+    : criteria.map((criterion) => (
+        <CriterionRow
+          key={criterion.key}
+          criterion={criterion}
+          value={draft[criterion.key]}
+          onCommit={(next) => {
+            commit(criterion.key, next);
+          }}
+          register={register}
+          touch={touch}
+        />
+      ));
+
+  return (
+    // On touch the editor fills the sheet, and only the rows scroll when they don't fit: the
+    // header, the cost line and Done stay where a thumb can find them.
+    <div
+      className={
+        touch ? 'flex min-h-0 flex-1 flex-col px-4 pt-4 pb-4' : 'flex w-[265px] flex-col p-2'
+      }
+    >
+      {touch ? (
+        <div className="mb-2 flex shrink-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col">
+            <span className="text-base font-semibold text-foreground">{formatShortDate(date)}</span>
+            {habitName !== undefined && (
+              <span className="text-[13px] text-muted-foreground">{habitName}</span>
+            )}
+          </div>
+          {verdict}
+        </div>
+      ) : (
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <span className="text-[13px] font-semibold text-foreground">{formatShortDate(date)}</span>
+          {verdict}
+        </div>
+      )}
+
+      {touch ? <div className="min-h-0 flex-1 overflow-y-auto">{body}</div> : body}
 
       {rescore !== undefined && (
-        <p className="mt-1.5 border-t border-border pt-1.5 text-[11px] leading-snug text-accent-amber">
+        <p
+          className={cn(
+            'mt-1.5 shrink-0 border-t border-border pt-1.5 leading-snug text-accent-amber',
+            touch ? 'text-[13px]' : 'text-[11px]',
+          )}
+        >
           {rescore}
         </p>
       )}
 
-      <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-border pt-1.5">
+      <div className="mt-1.5 flex shrink-0 items-center justify-between gap-3 border-t border-border pt-1.5">
         {/* Named in the owner's terms, and only when there is a cost to name. */}
-        <span className="text-[11px] text-muted-foreground">
+        <span className={cn('text-muted-foreground', touch ? 'text-[13px]' : 'text-[11px]')}>
           {costLine(status, isSkipped, isBeforeStart)}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <IconButton size="sm" aria-label={`More options for ${formatShortDate(date)}`}>
-              <MoreHorizontal size={13} />
+            <IconButton
+              size="sm"
+              className={touch ? 'h-11 w-11' : undefined}
+              aria-label={`More options for ${formatShortDate(date)}`}
+            >
+              <MoreHorizontal size={touch ? 18 : 13} />
             </IconButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
+              className={touch ? 'min-h-11 text-[15px]' : undefined}
               onSelect={() => {
                 setMode('skip');
               }}
@@ -320,6 +552,14 @@ export function DayEditor({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Nothing here needs saving — every change commits itself. Done is the thumb-sized way out
+          a sheet with no visible exit would otherwise lack. */}
+      {touch && (
+        <Button variant="secondary" className="mt-3 h-11 w-full shrink-0" onClick={onClose}>
+          Done
+        </Button>
+      )}
     </div>
   );
 }

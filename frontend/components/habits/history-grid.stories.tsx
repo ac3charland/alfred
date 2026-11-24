@@ -1,4 +1,5 @@
 import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
+import { screen, userEvent, within } from 'storybook/test';
 
 import { VISUAL_TARGET, withVisualFrame } from '@/components/atoms/visual-test';
 import type { Habit, HabitDayStatus, HabitEntry } from '@/lib/types';
@@ -157,4 +158,79 @@ export const HugsTheRightEdge: Story = {
 export const OpensOnTheNewestWeek: Story = {
   decorators: [withWidth('w-[280px]')],
   args: { entries: metRun(), windowDays: 84 },
+};
+
+/** A phone, where the touch layout takes over: thumb-sized squares and a bottom-sheet editor. */
+const PHONE = { width: 390, height: 844 } as const;
+
+/**
+ * On a phone the squares grow to 38px on a 44px pitch — a thumb-sized target with no dead gap
+ * between neighbours — and the strip still opens on the newest week, the older ones a scroll away.
+ */
+export const TouchGrid: Story = {
+  parameters: { visualTest: { target: VISUAL_TARGET, viewport: PHONE } },
+  args: { entries: metRun([entry('2026-07-22', 'partial'), entry('2026-07-24', 'skipped')]) },
+};
+
+/** The habit the sheet stories open: one of each control the editor draws on a phone. */
+const ROUTINE: Habit = {
+  ...HABIT,
+  criteria: [
+    { key: 'wake', label: 'Up by 6:15', kind: 'time', target: 375, comparator: 'lte' },
+    { key: 'light', label: 'Outside for light', kind: 'boolean' },
+    { key: 'stretch', label: 'Stretch', kind: 'duration', target: 10, comparator: 'gte' },
+    { key: 'phone', label: 'No phone in bed', kind: 'boolean' },
+  ],
+};
+
+/** Open a day's sheet the way a thumb does: a tap on its square. */
+async function openDay(canvasElement: HTMLElement, date: string) {
+  const square = canvasElement.querySelector(`[data-date="${date}"] button`);
+  if (!(square instanceof HTMLElement)) throw new Error(`no square for ${date}`);
+  await userEvent.click(square);
+  return screen.findByRole('dialog');
+}
+
+/**
+ * The logging sheet: a recorded time, a yes/no answered Yes, an empty duration, and a yes/no
+ * answered No — every control a criterion can draw, each 44px tall, over the dimmed page.
+ */
+export const TouchSheetLogging: Story = {
+  parameters: { visualTest: { target: 'body', viewport: PHONE } },
+  args: {
+    habit: ROUTINE,
+    entries: metRun([
+      {
+        ...entry(TODAY, 'partial'),
+        results: { wake: 364, light: true, phone: false },
+      },
+    ]),
+  },
+  play: async ({ canvasElement }) => {
+    await openDay(canvasElement, TODAY);
+  },
+};
+
+/** The skip step inside the sheet: the full-width reason field, and two buttons sharing a row. */
+export const TouchSheetSkipStep: Story = {
+  parameters: { visualTest: { target: 'body', viewport: PHONE } },
+  args: { habit: ROUTINE, entries: metRun() },
+  play: async ({ canvasElement }) => {
+    const sheet = await openDay(canvasElement, TODAY);
+    await userEvent.click(within(sheet).getByRole('button', { name: /More options/ }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Mark as skipped…' }));
+    await screen.findByLabelText('Reason for skipping');
+  },
+};
+
+/** An excused day: its reason stands in for the criteria, above the cost line and Done. */
+export const TouchSheetSkipped: Story = {
+  parameters: { visualTest: { target: 'body', viewport: PHONE } },
+  args: {
+    habit: ROUTINE,
+    entries: metRun([entry('2026-07-24', 'skipped', 'Flu — in bed all day')]),
+  },
+  play: async ({ canvasElement }) => {
+    await openDay(canvasElement, '2026-07-24');
+  },
 };
