@@ -3,6 +3,9 @@
 
 /* ── Dark-mode variant driven by .dark class on <html> ───────────────────── */
 @custom-variant dark (&:where(.dark, .dark *));
+/* A phone-width viewport or a touch-first device. The same condition as TOUCH_QUERY in
+   lib/hooks/use-media-query.ts, which picks the JS-chosen half of the same layout. */
+@custom-variant touch (@media (width < 48rem) or (pointer: coarse));
 
 /* ── shadcn/ui semantic variables ────────────────────────────────────────── */
 /* These are plain CSS variables. Map to @theme inline below so Tailwind
