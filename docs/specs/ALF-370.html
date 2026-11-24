@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-370 — Make habit entry more mobile-friendly</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE · 1 · TOKENS — the ink budget. Paper, three printed inks (navy,
+   oxblood, brass) and one light (alfred's teal, the Lit glow); every other
+   value is a tint. Day is ink on cool paper, night is alfred's own dark
+   tokens. Sections 1–3 are the house stylesheet: keep them verbatim.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:#edf0f1; --ink:#13203a; --muted:#4e5a6e;
+  --teal:#0b6b78;                          /* alfred teal, pressed dark enough for AA on paper */
+  --oxblood:#8e2a22; --brass:#7d5a0e;
+  --rule:color-mix(in srgb,var(--ink) 20%,transparent);
+  --wash:color-mix(in srgb,var(--ink) 5%,transparent);
+  --mount:color-mix(in srgb,var(--ink) 8%,var(--paper));
+  --shadow:0 0 0 1px rgb(11 107 120/.22),0 0 28px 4px rgb(11 107 120/.2);  /* Lit: alfred's glow, backlit on paper */
+  --lift:0 0 .3em rgb(11 107 120/.35);
+  /* Ink roles ("whose move"): colour says who holds the decision */
+  --c-open:var(--oxblood);                 /* open: waiting on you — ☞, the stamp */
+  --c-prop:var(--teal);                    /* proposed: alfred's call — → */
+  --c-set:var(--brass);                    /* settled: you decided — ✓ */
+  --f-display:Baskerville,"Libre Baskerville","Baskerville Old Face","Hoefler Text",Georgia,serif;
+  --f-label:"Gill Sans","Gill Sans MT",Seravek,"Avenir Next",Calibri,system-ui,sans-serif;
+  --f-body:Georgia,Gelasio,Cambria,"Noto Serif",serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --w-display:400; --side:8rem; --note:11rem; --gut:calc(var(--note) + 2rem);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0f1626; --ink:#e8edf5; --muted:#8a96a8; --teal:#4fd1e0;
+  --oxblood:#f87171; --brass:#f0b429;      /* alfred's own accent-red and accent-amber */
+  --rule:#1e2a3f; --wash:rgb(232 237 245/.04); --mount:#131c2e;
+  --shadow:0 0 24px 2px rgb(79 209 224/.15);   /* alfred's glow-teal, widened */
+  --lift:0 0 .4em rgb(79 209 224/.45);
+}}
+
+/* ═══ TEMPLATE · 2 · PAGE + BRIEF (above the fold) — margin notes: each key point in
+   the text column, its "why" and each caption in the margin beside it ═══ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:1.0625rem/1.6 var(--f-body)}
+.page{max-width:58rem;margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 16px 5rem}
+a{color:var(--teal);text-underline-offset:2px}
+code{font:.86em var(--f-mono)}
+p,ol,ul,figure{margin:0}
+
+.mast-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.wordmark{font:1.25rem Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+.stamp{margin-left:auto;border:1px solid var(--c-open);color:var(--c-open);border-radius:999px;padding:.1rem .7rem}
+.stamp::after{content:"Ready for review"}
+body:has(#decisions [data-state=open]) .stamp::after{content:"Your call needed"}
+.mast h1{display:grid;grid-template-columns:minmax(0,1fr) var(--note);gap:0 2rem;align-items:start;margin:1.75rem 0 1.25rem;font-weight:400;text-wrap:balance}
+.ref{grid-area:1/2;justify-self:end;text-align:right;font:var(--w-display) 5rem/.8 var(--f-display);letter-spacing:-.02em;white-space:nowrap;text-shadow:var(--lift)}
+.ref small{display:block;font:500 .8125rem var(--f-label);letter-spacing:.02em;color:var(--teal);text-shadow:none;margin-bottom:.4rem}
+.sep{display:none}
+.mast h1 .hy{font-size:0}
+.ttl{grid-area:1/1;font:italic var(--w-display) clamp(1.5rem,1.05rem + 1.6vw,2.125rem)/1.12 var(--f-display)}
+.change,.revised{padding-right:var(--gut);font-size:1.1875rem;line-height:1.5}
+.revised{margin-top:.6rem;font:italic .9375rem var(--f-body);color:var(--muted)}
+.mast::after{content:"";display:block;margin-top:1.75rem;border-top:1px solid var(--ink)}
+
+.sec{display:grid;grid-template-columns:var(--side) minmax(0,1fr);gap:0 1.5rem;margin-top:2.25rem}
+.side{margin:0;padding-top:.2rem;font:600 .8125rem/1.3 var(--f-label);color:var(--muted)}
+.sec>.side~*{grid-column:2}
+.sec>p,.sec>ul,.legend{padding-right:var(--gut)}
+.sec>ul{padding-left:1.1rem}
+.list{list-style:none;padding:0}
+.list>li{display:grid;grid-template-columns:minmax(0,1fr) var(--note);grid-template-rows:auto 1fr;column-gap:2rem;padding:.85rem 0;border-top:1px solid var(--rule)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list h3{grid-area:1/1;margin:0 0 .2rem;font:500 .8125rem var(--f-label);color:var(--muted)}
+.list h3::after{font-weight:400}
+#decisions [data-state=open] h3::after{content:" · open — your pick";color:var(--c-open)}
+#decisions [data-state=proposed] h3::after{content:" · proposed";color:var(--c-prop)}
+#decisions [data-state=settled] h3::after{content:" · settled";color:var(--c-set)}
+.tag{font-weight:700;margin-right:.35rem;text-decoration:none;color:var(--c-prop)}
+#decisions [data-state=settled] .tag{color:var(--c-set)}
+#decisions [data-state=open] .tag{color:var(--c-open)}
+.pick{grid-area:2/1;align-self:start;position:relative;font-size:1.125rem;line-height:1.4}
+.pick::before{content:"\2192";position:absolute;left:-1.35em;color:var(--c-prop)}
+#decisions [data-state=open] .pick{color:var(--c-open)}
+#decisions [data-state=open] .pick::before{content:"\261E\FE0E";left:-1.5em;top:-.05em;color:var(--c-open)}
+#decisions [data-state=settled] .pick::before{content:"\2713\FE0E";color:var(--c-set)}
+.why{grid-area:1/2/3/3;padding-top:.1rem;font:italic .8125rem/1.45 var(--f-body);color:var(--muted)}
+.legend{margin-top:.9rem;font:.8125rem/1.5 var(--f-label);color:var(--muted)}
+.m-open{color:var(--c-open)} .m-prop{color:var(--c-prop)} .m-set{color:var(--c-set)}
+
+.plate,.fig{display:grid;grid-template-columns:minmax(0,1fr) var(--note);column-gap:2rem;align-items:end;margin-top:2.5rem}
+.plate .mount{position:relative;padding:14px;background:var(--mount);outline:1px solid var(--rule);outline-offset:-6px}
+.plate .app{position:relative;box-shadow:var(--shadow)}
+figcaption{font-size:.8125rem;color:var(--muted)}
+figcaption b{font:italic 400 1rem var(--f-display);color:var(--ink);margin-right:.3rem}
+.fig svg{display:block;width:100%;max-width:34rem;height:auto}
+.dg rect{fill:var(--wash);stroke:var(--rule);stroke-width:1.25}
+.dg .new rect{stroke:var(--teal);stroke-width:1.5}
+.dg text{font:600 12px var(--f-label);fill:var(--ink)}
+.dg .s{font-weight:400;font-size:11px;fill:var(--muted)}
+.dg .new .s{fill:var(--teal)}
+.dg path{fill:none;stroke:var(--muted);stroke-width:1.25}
+.dg .hot{stroke:var(--teal)}
+.dg .lb{font:italic 400 11px var(--f-body);fill:var(--muted)}
+.dg .rl{stroke:var(--ink)}
+.dg .knock{fill:var(--paper);stroke:none}
+
+/* Phones: one column. The margin notes and captions drop under what they explain. */
+@media (max-width:43.99rem){
+  :root{--side:0rem;--gut:0rem}
+  .mast h1{grid-template-columns:1fr;gap:.9rem}
+  .ref,.ttl{grid-area:auto}
+  .ref{justify-self:start;text-align:left;font-size:4.5rem}
+  .sec{grid-template-columns:1fr;gap:.6rem;margin-top:2rem}
+  .sec>.side~*{grid-column:auto}
+  .list{padding-left:1.5rem}
+  .list>li,.plate,.fig{display:block}
+  .why{margin-top:.25rem;font-size:.875rem}
+  figcaption{margin-top:.75rem;font-size:.9375rem}
+}
+
+/* ═══ TEMPLATE · 3 · DETAIL (below the fold) — calm, dense, no personality ═══ */
+.fold{margin:4rem 0 1.5rem;text-align:center}
+.fold::before{content:"";display:block;border-top:1px solid var(--ink)}
+.fold h2{margin:1.25rem 0 0;font:italic 400 1.5rem var(--f-display)}
+.fold p{font-size:.9375rem;color:var(--muted)}
+.detail{font-size:.9375rem;line-height:1.55;counter-reset:s}
+.detail>section{max-width:40rem}
+.detail>section>h2{margin:2.75rem 0 .6rem;font:600 1.0625rem var(--f-label)}
+.detail>section>h2::before{counter-increment:s;content:counter(s) ". "}
+.detail h3{margin:1.75rem 0 .45rem;font:600 .9375rem var(--f-label)}
+.detail h4{margin:1.25rem 0 .3rem;font:600 .875rem var(--f-label);color:var(--muted)}
+.detail p,.detail ul,.detail ol,.detail pre,.detail table,.detail blockquote{margin:0 0 .9rem}
+.detail ul,.detail ol{padding-left:1.25rem}
+.detail li{margin:.2rem 0}
+.detail blockquote{padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+.detail pre{padding:.75rem 1rem;overflow-x:auto;white-space:pre-wrap;background:var(--wash);border-left:3px solid var(--rule);font:.8125rem/1.55 var(--f-mono)}
+.scroll{overflow-x:auto}
+.detail table{width:100%;border-collapse:collapse;font-size:.875rem}
+.detail th,.detail td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+.detail th{font:600 .8125rem var(--f-label);color:var(--muted)}
+.detail td code{word-break:break-word}
+.rec{padding-top:.1rem}
+.rec>h3 .tag{margin-right:.45rem}
+.checks{list-style:none;padding:0!important}
+.checks li{padding-left:1.5rem;position:relative;margin:.45rem 0}
+.checks li::before{content:"\2610";position:absolute;left:0;color:var(--teal)}
+.checks li[data-trace]::after{content:"  " attr(data-trace);font:.75rem var(--f-mono);color:var(--muted);white-space:nowrap}
+
+/* ═══ TEMPLATE · 4 · PLATE — the switcher, then the app's own tokens scoped to .app ═══ */
+/* The switcher: one per plate, in the document's chrome above the mount, never inside the canvas. */
+.switch{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.25rem 1.1rem;margin:0 0 .75rem;padding:0;border:0;font:500 .8125rem var(--f-label);color:var(--muted)}
+.switch legend{float:left;padding:0;color:var(--ink)}
+.switch input{margin:0 .3rem 0 0;accent-color:var(--ink)}
+#p1 [data-opt]{display:none}
+#p1:has([value=a]:checked) [data-opt~=a],#p1:has([value=b]:checked) [data-opt~=b],
+#p1:has([value=c]:checked) [data-opt~=c],#p1:has([value=d]:checked) [data-opt~=d],
+#p1:has([value=e]:checked) [data-opt~=e]{display:block}
+/* The app's own tokens (frontend/app/globals.css), scoped to the canvas. Geist and Instrument Serif are
+   fetched by next/font at build time, not committed, so system faces stand in for them here. */
+.app{--bg:#0a0e17;--fg:#e8edf5;--surface:#0f1626;--border:#1e2a3f;--mfg:#8a96a8;--input:#1e2a3f;
+  --a-teal:#4fd1e0;--a-green:#34d399;--a-amber:#f0b429;--a-red:#f87171;--unknown:#141d2e;--bridge:#48566e;
+  background:var(--bg);color:var(--fg);overflow:hidden;width:100%;max-width:390px;margin:0 auto;
+  font:14px/1.45 Geist,system-ui,-apple-system,"Segoe UI",sans-serif}
+.app *{box-sizing:border-box}
+.app .scr{padding:16px;display:flex;flex-direction:column;gap:16px}
+#p1:has([value=c]:checked) .app,#p1:has([value=d]:checked) .app,#p1:has([value=e]:checked) .app{min-height:690px}
+.app .top{display:flex;align-items:center;justify-content:space-between}
+.app .top b{font:400 24px/1.2 "Instrument Serif",Georgia,serif}
+.app .btn{display:inline-flex;align-items:center;justify-content:center;border-radius:4px;font-weight:500;white-space:nowrap}
+.app .btn.sm{height:32px;padding:0 12px;font-size:12px}
+.app .btn.t{height:44px;padding:0 16px;font-size:15px}
+.app .btn.accent{background:var(--a-teal);color:var(--bg)}
+.app .btn.secondary{background:var(--border);color:var(--fg)}
+.app .btn.outline{border:1px solid var(--border);color:var(--fg)}
+.app .btn.off{opacity:.5}
+.app .hcard{border:1px solid var(--border);border-radius:8px;background:rgb(15 22 38/.4);padding:16px}
+.app .hhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+.app .hhead b{font-size:14px;font-weight:600}
+.app .hhead span{font-size:12px;color:var(--mfg)}
+.app .hhead em{margin-left:auto;font-style:normal;color:var(--mfg);letter-spacing:1px}
+.app .hgrid{display:flex;justify-content:flex-end;align-items:flex-start;gap:6px;margin-top:4px;min-width:0}
+.app .hdays{display:grid;grid-template-rows:repeat(7,var(--c));gap:6px;padding:8px 4px 8px 0;text-align:right;font-size:10px;color:var(--mfg);line-height:var(--c);flex:none}
+.app .hscroll{direction:rtl;overflow-x:auto;min-width:0}
+.app .hcells{direction:ltr;display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,var(--c));gap:6px;padding:8px 0;width:max-content}
+.app .s26{--c:26px;--lw:10px;--dash:13px}
+.app .s38{--c:38px;--lw:14px;--dash:16px}
+.app .hc{position:relative;width:var(--c);height:var(--c);border-radius:6px}
+.app .hc.met{background:rgb(52 211 153/.2);box-shadow:inset 0 0 0 1px rgb(52 211 153/.75)}
+.app .hc.partial{background:rgb(240 180 41/.2);box-shadow:inset 0 0 0 1px rgb(240 180 41/.75)}
+.app .hc.missed{background:rgb(248 113 113/.2);box-shadow:inset 0 0 0 1px rgb(248 113 113/.75)}
+.app .hc.skipped{background:var(--unknown);box-shadow:inset 0 0 0 1px var(--border)}
+.app .hc.unknown{background:var(--unknown)}
+.app .hc.na{border:1px dashed var(--border)}
+.app .hc.today{box-shadow:0 0 0 2px var(--a-teal)}
+.app .dash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:normal var(--dash)/1 inherit;color:var(--mfg)}
+.app .ln{position:absolute;left:50%;top:100%;width:var(--lw);height:7px;transform:translateX(-50%);border-radius:0 0 3px 3px}
+.app .ln.in{top:auto;bottom:100%;border-radius:3px 3px 0 0}
+.app .ln.streak{background:var(--a-green);box-shadow:0 0 10px 2px rgb(52 211 153/.5)}
+.app .ln.bridge{background:var(--bridge)}
+.app .rail{margin-top:12px;border-top:1px solid var(--border);padding-top:10px;font-size:11px;color:var(--mfg)}
+.app .dim{position:absolute;inset:0;background:rgb(0 0 0/.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.app .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--border);
+  border-radius:16px 16px 0 0;box-shadow:0 0 40px 0 rgb(79 209 224/.08);padding:16px 16px 20px}
+.app .sh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
+.app .sh b{display:block;font-size:16px;font-weight:600}
+.app .sh small{display:block;font-size:13px;color:var(--mfg)}
+.app .pill{flex:none;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:600}
+.app .pill.alert{background:rgb(245 158 11/.15);color:#fbbf24}
+.app .pill.muted{border:1px solid rgb(30 42 63/.7);color:var(--mfg)}
+.app .row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;border-bottom:1px solid var(--border)}
+.app .row>span{font-size:15px}
+.app .fld{display:inline-flex;align-items:center;height:44px;border:1px solid var(--border);border-radius:4px;background:var(--input);
+  padding:0 12px;font:16px ui-monospace,"Geist Mono",Menlo,monospace;color:var(--fg)}
+.app .fld.time{min-width:104px}.app .fld.num{width:72px}.app .fld.txt{display:flex;width:100%;font-family:inherit;color:var(--mfg)}
+.app .unit{margin-left:6px;font-size:13px;color:var(--mfg)}
+.app .yn{display:inline-flex;gap:6px}
+.app .yn span{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:44px;min-width:68px;padding:0 12px;
+  border:1px solid var(--border);border-radius:4px;font-size:15px;font-weight:600;color:var(--mfg)}
+.app .yn .yes{border-color:var(--a-green);background:rgb(52 211 153/.15);color:var(--a-green)}
+.app .yn .no{border-color:var(--a-red);background:rgb(248 113 113/.15);color:var(--a-red)}
+.app .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px}
+.app .foot span{font-size:13px;color:var(--mfg)}
+.app .more{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:4px;color:var(--mfg);font-size:18px;letter-spacing:1px}
+.app .wide{display:flex;width:100%}
+.app .two{display:flex;gap:8px;margin-top:12px}.app .two .btn{flex:1}
+.app .say{margin:0 0 12px;font-size:14px;line-height:1.6;color:var(--mfg)}
+.app .reason{margin:0;padding:14px 0;border-bottom:1px solid var(--border);font-size:15px;line-height:1.6}
+/* Long paths in the working detail wrap instead of widening a phone-width page. */
+.detail li code,.detail p code{overflow-wrap:anywhere}
+
+</style>
+</head>
+<body data-kind="story">
+
+<main class="page">
+
+<section id="brief" data-fold="above">
+
+<header class="mast" id="head">
+  <div class="mast-bar">
+    <span class="wordmark">alfred</span>
+    <span>Habit Tracker · Refinement spec</span>
+    <span class="stamp"></span>
+  </div>
+  <h1><span class="ref"><small>ALF<span class="hy">-</span></small>370</span><span class="sep"> — </span><span class="ttl">Make habit entry more mobile-friendly</span></h1>
+  <p class="change" id="change">On a phone, the history grid’s day squares grow to thumb size, and tapping one opens the day editor as a bottom sheet with full-size controls. Desktop is unchanged.</p>
+</header>
+
+<section class="sec" id="decisions">
+  <h2 class="side">Decisions</h2>
+  <ol class="list">
+    <li data-state="proposed"><h3><a class="tag" href="#d2">D2</a>Which devices get the touch treatment?</h3>
+      <p class="pick">Any screen under 768px wide, or any touch-first device at any width.</p>
+      <p class="why">Width alone hands the small controls back when the phone is turned sideways.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d3">D3</a>How big are the day squares?</h3>
+      <p class="pick">38px squares on a 44px pitch, the whole pitch tappable.</p>
+      <p class="why">44px is the standard thumb target. Costs: about seven weeks on screen, not nine.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d4">D4</a>How is a yes/no criterion recorded?</h3>
+      <p class="pick">Two buttons, Yes and No; tapping the lit one again clears it.</p>
+      <p class="why">Cycling through ✓ to reach ✕ lets one slip record the wrong answer.</p></li>
+    <li data-state="proposed"><h3><a class="tag" href="#d5">D5</a>How does the sheet close?</h3>
+      <p class="pick">A full-width Done button, a tap outside, or Escape. No swipe.</p>
+      <p class="why">Nothing needs saving; Done is a thumb-sized exit. Swipe needs a gesture library.</p></li>
+    <li data-state="settled"><h3><a class="tag" href="#d1">D1</a>Where does the editor open on a phone?</h3>
+      <p class="pick">A bottom sheet, opened from the grid; the grid stays the only way in.</p></li>
+  </ol>
+  <p class="legend"><span class="m-open">☞ open</span>: your pick · <span class="m-prop">→ proposed</span>: my call · <span class="m-set">✓ settled</span>: yours. Merging accepts every proposed row.</p>
+</section>
+
+<section id="plates" aria-label="What you’ll see">
+  <figure class="plate" id="p1">
+    <fieldset class="switch"><legend>States</legend>
+      <label><input type="radio" name="p1" value="a">Grid today (26px)</label>
+      <label><input type="radio" name="p1" value="b">Grid (38px)</label>
+      <label><input type="radio" name="p1" value="c" checked>Sheet · logging</label>
+      <label><input type="radio" name="p1" value="d">Sheet · skip step</label>
+      <label><input type="radio" name="p1" value="e">Sheet · skipped day</label>
+    </fieldset>
+    <div class="mount">
+      <div class="app" role="img" aria-label="The habits view on a 390px-wide phone: the history grid at its current and its new size, and the day editor as a bottom sheet in three states">
+        <div class="scr">
+          <div class="top"><b>Habits</b><span class="btn sm accent">+ New habit</span></div>
+          <div class="hcard">
+            <div class="hhead"><b>Morning routine</b><span>· every day · 1 miss / rolling week</span><em>···</em></div>
+            <div data-opt="a"><div class="hgrid s26">
+        <div class="hdays"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+        <div class="hscroll"><div class="hcells"><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln bridge"></i></span><span class="hc partial"><i class="ln bridge"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln bridge"></i></span><span class="hc missed"></span><span class="hc missed"></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln bridge"></i></span><span class="hc unknown"><i class="ln bridge"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln bridge"></i><i class="ln streak in"></i></span><span class="hc partial"><i class="ln bridge"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc skipped"><i class="dash">–</i><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln bridge"></i></span><span class="hc missed"><i class="ln bridge"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak in"></i></span><span class="hc unknown today"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span></div></div>
+      </div></div>
+            <div data-opt="b c d e"><div class="hgrid s38">
+        <div class="hdays"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+        <div class="hscroll"><div class="hcells"><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln bridge"></i></span><span class="hc partial"><i class="ln bridge"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln bridge"></i></span><span class="hc missed"></span><span class="hc missed"></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln bridge"></i></span><span class="hc unknown"><i class="ln bridge"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln bridge"></i><i class="ln streak in"></i></span><span class="hc partial"><i class="ln bridge"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc skipped"><i class="dash">–</i><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i><i class="ln streak in"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln bridge"></i></span><span class="hc missed"><i class="ln bridge"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak"></i></span><span class="hc met"><i class="ln streak in"></i></span><span class="hc unknown today"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span><span class="hc na"></span></div></div>
+      </div></div>
+            <div class="rail">Stats rail, unchanged — cropped here</div>
+          </div>
+        </div>
+
+        <div class="dim" data-opt="c d e"></div>
+
+        <div class="sheet" data-opt="c">
+          <div class="sh"><div><b>Tue 24 Nov</b><small>Morning routine</small></div><span class="pill alert">Partial</span></div>
+          <div class="row"><span>Up by 6:15</span><span class="fld time">06:04</span></div>
+          <div class="row"><span>Outside for light</span><span class="yn"><span class="yes">✓ Yes</span><span>✕ No</span></span></div>
+          <div class="row"><span>Stretch</span><span><span class="fld num"></span><span class="unit">min</span></span></div>
+          <div class="row"><span>No phone in bed</span><span class="yn"><span>✓ Yes</span><span class="no">✕ No</span></span></div>
+          <div class="foot"><span>Spends this week’s allowance</span><span class="more">···</span></div>
+          <span class="btn t secondary wide">Done</span>
+        </div>
+
+        <div class="sheet" data-opt="d">
+          <div class="sh"><div><b>Skip Tue 24 Nov?</b><small>Morning routine</small></div></div>
+          <p class="say">This day won’t count for or against the habit, and won’t spend your allowance.</p>
+          <span class="fld txt">Why is this day excused?</span>
+          <div class="two"><span class="btn t outline">Cancel</span><span class="btn t accent off">Skip this day</span></div>
+        </div>
+
+        <div class="sheet" data-opt="e">
+          <div class="sh"><div><b>Thu 12 Nov</b><small>Morning routine</small></div><span class="pill muted">Skipped</span></div>
+          <p class="reason">Flu — in bed all day</p>
+          <div class="foot"><span>Excused — costs nothing</span><span class="more">···</span></div>
+          <span class="btn t secondary wide">Done</span>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Plate I.</b>The phone view, to scale at 390px; the grid scrolls sideways as it does in the app. In the logging sheet the four rows show every control: a time, a yes/no answered Yes, an empty duration, and a yes/no answered No. An unanswered yes/no shows both halves grey. Every control and button is 44px tall. <em>Skip this day</em> is drawn disabled, as it is until a reason is typed.</figcaption>
+  </figure>
+</section>
+
+<section class="sec" id="not-doing">
+  <h2 class="side">Not doing</h2>
+  <p>No Today shortcut outside the grid. No change to creating or editing a habit on a phone. No swipe-to-dismiss.</p>
+</section>
+
+</section>
+
+<div class="fold" id="fold" role="separator" aria-label="The fold">
+  <h2>Working detail</h2>
+  <p>Everything below is for the implementing agent. Approving needs only what’s above.</p>
+</div>
+
+<section class="detail" id="detail" data-fold="below">
+
+<section id="context">
+  <h2>Context</h2>
+  <p>ALF-370 belongs to epic ALF-146 (<code>docs/specs/epics/ALF-146.html</code>). The ticket carried a title only, so scope was pinned with the owner in the refinement session:</p>
+  <ul>
+    <li><strong>Scope:</strong> logging a day only. The habit create/edit form is untouched.</li>
+    <li><strong>What hurts on a phone:</strong> the day squares are too small to hit, and the controls inside the editor are too small. The popover’s positioning and the number of steps were not named as problems.</li>
+    <li><strong>Direction:</strong> keep the grid as the only entry point; on a phone the editor opens as a bottom sheet with 44px controls. An always-visible Today row was offered and declined.</li>
+  </ul>
+  <h3>What exists today</h3>
+  <ul>
+    <li><code>frontend/components/habits/history-grid.tsx</code> renders the grid and hosts one Radix popover for the whole grid, positioned on the open cell through a virtual anchor. Focus returns to the cell on close.</li>
+    <li><code>history-cell.tsx</code> draws a 26px square (<code>h-[26px] w-[26px]</code>); the grid’s row template, the weekday labels’ line-height and <code>CELL_SIZE_PX</code> in <code>habits.styles.ts</code> all repeat that 26. Squares sit 6px apart, so the tappable area is 26×26 with dead gaps between.</li>
+    <li><code>day-editor.tsx</code> is a fixed 265px column: a 13px date, a verdict badge, one row per criterion, a cost line and a 20px ⋯ button. A yes/no criterion is a 17px box that cycles unrecorded → ✓ → ✕ → unrecorded. A measured criterion is a 92px field that commits on blur or Enter. Writes are debounced 250ms and flushed on unmount. <code>skip-panel.tsx</code> replaces the editor in place for the skip step.</li>
+    <li>Phone conventions already in the repo: <code>MOBILE_QUERY</code> and <code>useMediaQuery</code> (<code>lib/hooks/use-media-query.ts</code>); <code>useVisualViewport</code> and the full-screen <code>SheetDialog</code> that rides above the on-screen keyboard (<code>components/atoms/dialog.tsx</code>); a global rule lifting every input to 16px on coarse pointers (<code>app/globals.css</code>). There is no bottom-anchored sheet yet.</li>
+  </ul>
+  <p>Epic §6 settles that tapping a day opens a derived-only editor and that <em>skipped</em> lives in an overflow menu. Neither changes here. The epic does not say the editor is a popover; that came from the day-editor story, and D1 departs from it on touch devices only.</p>
+</section>
+
+<section id="decision-records">
+  <h2>Decision records</h2>
+
+  <section class="rec" id="d1">
+    <h3><span class="tag">D1</span>Where does the editor open on a phone? · settled</h3>
+    <p>The owner’s pick. Considered: an always-visible Today row on each card plus a sheet for past days (declined: the grid stays the one way in); keeping the popover and only enlarging targets (declined: least improvement). Consequence: finding today still means finding its square, so D3’s larger squares and the existing teal ring carry that on their own.</p>
+  </section>
+
+  <section class="rec" id="d2">
+    <h3><span class="tag">D2</span>Which devices get the touch treatment? · proposed</h3>
+    <p>One switch, <code>TOUCH_QUERY</code>, true when the viewport is under 48rem wide <em>or</em> the primary pointer is coarse. It drives all three changes together: square size, sheet versus popover, and control size.</p>
+    <p>Considered: width only, the repo’s <code>MOBILE_QUERY</code> — a phone in landscape is 844px wide, so it would fall back to 26px squares and the small popover on the very device the ticket is about. Coarse pointer only — a narrow desktop window would keep a popover that has little room. Two independent switches (size by pointer, container by width) — four combinations to test for no gain.</p>
+    <p>Consequences: a tablet gets the sheet too, so the sheet is capped at 28rem wide and centred. A narrow desktop window with a mouse gets the touch treatment; harmless.</p>
+  </section>
+
+  <section class="rec" id="d3">
+    <h3><span class="tag">D3</span>How big are the day squares? · proposed</h3>
+    <p>38px squares, the 6px gap unchanged, giving a 44px pitch. Each cell’s hit area extends 3px past its square on every side, so neighbouring targets meet and no tap lands in a dead gap.</p>
+    <p>Considered: 34px on a 40px pitch — nine weeks become about seven and a half instead of seven, but the target stays under the 44px that Apple’s guidelines and WCAG 2.5.5 name. Keeping 26px and only widening the hit area — the most it can reach without overlapping is 32px. Consequence: at 390px wide about seven weeks are visible instead of nine, and each card grows about 85px taller. Older weeks are still one sideways scroll away.</p>
+  </section>
+
+  <section class="rec" id="d4">
+    <h3><span class="tag">D4</span>How is a yes/no criterion recorded? · proposed</h3>
+    <p>In touch mode only, the tri-state box becomes two buttons. Considered: the same cycling box at 44px — the size was half the problem; the other half is that reaching ✕ means passing through ✓, so a slip or a double-tap records the opposite answer. Two buttons make either answer one deliberate tap. The third state survives because the model needs it: an unrecorded criterion and one recorded as “no” are different days.</p>
+    <p>Desktop keeps the cycling box, where a precise pointer makes it fast and its tests and muscle memory already exist.</p>
+  </section>
+
+  <section class="rec" id="d5">
+    <h3><span class="tag">D5</span>How does the sheet close? · proposed</h3>
+    <p>The editor has no Save: every change commits itself. A sheet with no visible way out reads as unfinished on a phone, and a small × in the top corner is the furthest point from the thumb. Done only closes. Considered: swipe-down — it needs a gesture library or hand-rolled touch handling for something a tap outside already does; no drag handle is drawn, because a handle promises a drag.</p>
+  </section>
+
+  <h3>Implementation decisions</h3>
+
+  <section class="rec" id="d6">
+    <h4>D6 · Squares resize in CSS; the container and controls switch in JS</h4>
+    <p>The grid is server-rendered, and <code>useMediaQuery</code> answers <code>false</code> until hydration, so sizing squares from the hook would paint 26px and jump to 38px. Square geometry is therefore CSS behind a <code>touch:</code> variant. The editor only mounts after a tap, so the hook is safe there: <code>HistoryGrid</code> reads it once and passes the result to both the container choice and <code>DayEditor</code>, so the two cannot disagree.</p>
+  </section>
+
+  <section class="rec" id="d7">
+    <h4>D7 · A new bottom-sheet atom that follows the visible viewport</h4>
+    <p>iOS Safari does not shrink the layout viewport for the on-screen keyboard, so a plain <code>fixed bottom-0</code> sheet would sit underneath it the moment the skip reason or a count is focused. The atom positions its bottom edge from <code>useVisualViewport()</code>, as <code>SheetDialog</code> already sizes itself, and falls back to <code>bottom-0</code> where the API is absent. It lives beside the other dialog scaffolds in <code>components/atoms/dialog.tsx</code>.</p>
+  </section>
+
+  <section class="rec" id="d8">
+    <h4>D8 · One editor, one <code>touch</code> prop</h4>
+    <p><code>DayEditor</code> and <code>SkipPanel</code> gain a <code>touch</code> flag rather than a phone-only copy. The commit, debounce, flush and verdict logic stays in one place; only sizing and the yes/no control branch.</p>
+  </section>
+
+  <section class="rec" id="d9">
+    <h4>D9 · A typed value is saved however the editor closes</h4>
+    <p>A measured field commits on blur or Enter. On a touch device neither is guaranteed before the editor goes away: tapping a button does not reliably blur a field in iOS Safari, and a removed element does not fire blur. So a field holding an uncommitted draft commits it when the editor unmounts, in both modes. This extends the principle the editor already states for its debounce: closing is not a reason to lose what was just recorded.</p>
+  </section>
+
+  <section class="rec" id="d10">
+    <h4>D10 · Skip stays behind ⋯</h4>
+    <p>Epic §6 puts <em>skipped</em> in an overflow menu so it is not a fourth thing to tap past each morning. The sheet keeps that; the ⋯ button and its menu item only grow to 44px.</p>
+  </section>
+</section>
+
+<section id="behavior" data-kind="story">
+  <h2>Behaviour</h2>
+
+  <h3>Touch mode</h3>
+  <p>Touch mode is on when <code>TOUCH_QUERY</code> matches (D2). Everything below applies only in touch mode. With it off, the grid, the popover and the editor render exactly as they do today.</p>
+
+  <h3>The grid (P1 · Grid 38px)</h3>
+  <div class="scroll"><table>
+    <tr><th>Part</th><th>Today</th><th>Touch mode</th></tr>
+    <tr><td>Square</td><td>26 × 26px</td><td>38 × 38px</td></tr>
+    <tr><td>Gap</td><td>6px</td><td>6px</td></tr>
+    <tr><td>Tap target</td><td>26 × 26px</td><td>44 × 44px, tiled (the button’s hit area reaches 3px past the square)</td></tr>
+    <tr><td>Row template and weekday label line-height</td><td>26px</td><td>38px</td></tr>
+    <tr><td>Connector</td><td>10 × 7px</td><td>14 × 7px, same tones, still ignores pointer events</td></tr>
+    <tr><td>Skipped dash</td><td>13px</td><td>16px</td></tr>
+  </table></div>
+  <ul>
+    <li>The corner radius, plate colours, today ring, legend, right-edge anchoring and sideways scroll are unchanged.</li>
+    <li>A day that cannot be logged stays inert and out of the tab order; its square grows, but it has no hit area.</li>
+    <li>The sizes come from CSS alone, so the first paint is already the right size (D6).</li>
+  </ul>
+
+  <h3>The sheet (P1 · Sheet states)</h3>
+  <ul>
+    <li>Tapping a loggable square opens a modal bottom sheet instead of the popover: a dimmed, blurred overlay (the shared <code>DialogOverlay</code>), focus trapped inside, page scroll locked.</li>
+    <li>It spans the full width up to 28rem, centred when the screen is wider. Top corners are rounded 16px; the surface, border and glow match the app’s dialogs. Bottom padding adds <code>env(safe-area-inset-bottom)</code>.</li>
+    <li>Its bottom edge sits at the bottom of the <em>visible</em> viewport, so it rises with the on-screen keyboard (D7).</li>
+    <li>It is never taller than the visible viewport less 16px. When the criteria do not fit, the criterion rows scroll; the header, cost line and Done stay in place.</li>
+    <li>The header shows the date and, beneath it, the habit’s name. The popover was anchored to its square, so the card said which habit it was; the sheet covers the card, so it has to say so itself. The sheet’s accessible name is “{date} — {habit name}”.</li>
+    <li>On opening, focus goes to the sheet itself, not to a field, so no keyboard or picker appears uninvited. The skip step still focuses its reason field, as it does today.</li>
+    <li>Done, a tap on the overlay, and Escape all close it (D5). Focus returns to the square it was opened from.</li>
+    <li>If touch mode flips while the editor is open (a desktop window resized across 768px), the editor stays open on the same day in the other container, and nothing typed is lost.</li>
+  </ul>
+
+  <h3>The editor in touch mode</h3>
+  <div class="scroll"><table>
+    <tr><th>Part</th><th>Touch mode</th></tr>
+    <tr><td>Width</td><td>Fills the sheet (the fixed 265px is desktop only)</td></tr>
+    <tr><td>Date / habit name / verdict badge</td><td>16px semibold / 13px muted / 13px, same variants as today</td></tr>
+    <tr><td>Criterion row</td><td>At least 56px tall, label 15px; a long label wraps and the control keeps its size</td></tr>
+    <tr><td>Yes/no criterion</td><td>Two 44px buttons (D4)</td></tr>
+    <tr><td>Time criterion</td><td>Native time field, 44px tall, 16px mono, at least 104px wide</td></tr>
+    <tr><td>Count / duration criterion</td><td>Number field, 44px tall, 16px mono, 72px wide, <code>inputMode="decimal"</code>, <code>enterKeyHint="done"</code>; a duration keeps its “min” caption</td></tr>
+    <tr><td>Re-score notice, cost line</td><td>13px; same wording and conditions as today</td></tr>
+    <tr><td>⋯ button</td><td>44 × 44px; its “Mark as skipped…” item is at least 44px tall (D10)</td></tr>
+    <tr><td>Done</td><td>Full width, 44px, the <code>secondary</code> button tone</td></tr>
+  </table></div>
+
+  <h4>Yes/no (D4)</h4>
+  <ul>
+    <li>A group named by the criterion’s label, holding two buttons named “Yes” and “No”, each with <code>aria-pressed</code>.</li>
+    <li>Tapping an unlit button records that answer. Tapping the lit button clears the criterion back to unrecorded, removing its key from the results as the cycling box does today.</li>
+    <li>Yes lit is green, No lit is red, an unlit half is the neutral border with muted text. The glyphs ✓ and ✕ sit beside the words, so the answer never rests on colour alone.</li>
+    <li>Each tap goes through the editor’s existing commit path: the verdict badge and cost line re-derive at once, and the write is debounced 250ms.</li>
+  </ul>
+
+  <h4>Measured fields</h4>
+  <ul>
+    <li>Commit on blur or Enter, as today, and also when the editor unmounts with an uncommitted draft (D9). An untouched field still commits nothing, so opening and closing an unlogged day does not log it.</li>
+    <li>Clearing a field removes the criterion’s key, as today.</li>
+  </ul>
+
+  <h4>The skip step and a skipped day</h4>
+  <ul>
+    <li>The skip step keeps its wording and its rule that a reason must be typed. The reason field is full width, 44px tall, 16px. Cancel and “Skip this day” are 44px tall and share the width equally.</li>
+    <li>Skipping closes the sheet, as it closes the popover today. Cancel returns to the criteria.</li>
+    <li>A skipped day shows its reason at 15px in place of the criterion rows, then the cost line, ⋯ and Done.</li>
+  </ul>
+</section>
+
+<section id="contracts" data-kind="story">
+  <h2>Contracts</h2>
+  <p>No route, schema or store change. The component surface, as a sketch (names are the implementer’s to refine):</p>
+<pre>// frontend/lib/hooks/use-media-query.ts
+/** A phone-width viewport, or a touch-first device at any width. */
+export const TOUCH_QUERY = '(width &lt; 48rem) or (pointer: coarse)';
+
+/* frontend/app/globals.css — the same condition as a utility variant */
+@custom-variant touch (@media (width &lt; 48rem) or (pointer: coarse));
+
+// frontend/components/atoms/dialog.tsx
+export interface BottomSheetDialogProperties
+  extends React.ComponentPropsWithoutRef&lt;typeof DialogPrimitive.Content&gt; {
+  open: boolean;
+  onOpenChange: (open: boolean) =&gt; void;
+  /** The accessible name, rendered as a visually hidden DialogTitle. */
+  label: string;
+  overlayClassName?: string | undefined;
+}
+
+// frontend/components/habits/day-editor.tsx — additions
+touch?: boolean;        // default false: today's dense layout
+habitName?: string;     // shown under the date in touch mode
+
+// frontend/components/habits/skip-panel.tsx — addition
+touch?: boolean;</pre>
+  <p>The JS string and the CSS variant must state the same condition. Put them next to a comment naming each other, and pin the pair with a test if a cheap one exists.</p>
+</section>
+
+<section id="plan" data-kind="story">
+  <h2>Plan</h2>
+  <p>Read first: the <code>frontend-architecture</code>, <code>react</code>, <code>tailwindcss</code>, <code>shadcn-ui</code>, <code>react-testing-library</code>, <code>playwright</code> and <code>storybook</code> skills. Red/green throughout.</p>
+  <ol>
+    <li><strong>The switch.</strong> Add <code>TOUCH_QUERY</code> and the <code>touch:</code> custom variant.</li>
+    <li><strong>The grid.</strong> In <code>habits.styles.ts</code>, declare the touch geometry beside <code>CELL_SIZE_PX</code> and move the square, row-template, label and connector sizing into exported class strings carrying both sizes (<code>h-[26px] touch:h-[38px]</code> …), unit-tested in <code>habits.styles.test.ts</code> like the plates. Apply them in <code>history-cell.tsx</code> and <code>history-grid.tsx</code>. Add the tiled hit area to the cell’s button.</li>
+    <li><strong>The atom.</strong> Add <code>BottomSheetDialog</code> to <code>components/atoms/dialog.tsx</code>: <code>Root → Portal → DialogOverlay → Content</code>, bottom-anchored through <code>useVisualViewport()</code>, capped width and height, a flex column so a caller’s middle region can scroll. Unit-test it in <code>dialog.test.tsx</code>.</li>
+    <li><strong>The yes/no control.</strong> Check <code>ToggleButton</code>, <code>OptionButton</code> and <code>CheckboxButton</code> in <code>components/atoms/</code> before adding anything; add an atom only if none can carry a pressed, toned 44px button. No raw <code>&lt;button&gt;</code> in the feature component.</li>
+    <li><strong>The editor.</strong> Add <code>touch</code> and <code>habitName</code> to <code>DayEditor</code>; branch the sizing, the yes/no control and the Done button. Add <code>touch</code> to <code>SkipPanel</code>. Implement D9.
+      <p>D9 has an ordering trap. On unmount React runs a parent’s effect cleanup before its children’s, so <code>DayEditor</code>’s existing flush has already run when a <code>MeasuredField</code>’s cleanup fires; a child that only calls <code>onCommit</code> then would queue a write nobody sends. Have the editor’s own flush collect the fields’ uncommitted drafts, or give the late commit a path that writes immediately.</p></li>
+    <li><strong>The host.</strong> In <code>HistoryGrid</code>, read <code>useMediaQuery(TOUCH_QUERY)</code>. Keep one <code>openDate</code> state and one editor element; open the popover when touch is off and the sheet when it is on. Reuse the existing focus-return handler for both. Done calls the same close as Escape.</li>
+    <li><strong>Stories, e2e, demo.</strong> See Tests and Demo evidence.</li>
+  </ol>
+  <p>Files: <code>frontend/lib/hooks/use-media-query.ts</code>, <code>frontend/app/globals.css</code>, <code>frontend/components/atoms/dialog.tsx</code> (+ test), possibly one new atom, <code>frontend/components/habits/{habits.styles,history-cell,history-grid,day-editor,skip-panel}</code> (+ tests and stories), <code>frontend/e2e/</code>. One session; no subagents needed.</p>
+</section>
+
+<section id="ac" data-kind="story">
+  <h2>Acceptance criteria</h2>
+  <ul class="checks">
+    <li data-trace="D2">With touch mode off (a wide viewport and a fine pointer), the grid, popover and editor are unchanged: the existing habit unit tests, e2e specs and Storybook baselines pass without edits to their desktop expectations.</li>
+    <li data-trace="D2">Touch mode is on at 390px wide with a fine pointer, and at 1024px wide with a coarse pointer.</li>
+    <li data-trace="D3 P1">In touch mode each square is 38 × 38px on a 44px pitch, and a tap anywhere in a loggable day’s 44 × 44px area opens that day, including a tap in the gap beside its square.</li>
+    <li data-trace="D3 P1">In touch mode the newest week is still against the right edge on arrival and older weeks scroll into view; connectors still join linked days across the 6px gap and the Sunday–Monday stubs still show.</li>
+    <li data-trace="D1 P1">In touch mode tapping a loggable square opens a bottom sheet, not a popover, named “{date} — {habit name}”, showing the date, the habit’s name and the derived verdict.</li>
+    <li data-trace="P1">In the sheet every control and button is at least 44px tall: time and number fields, Yes, No, ⋯, its menu item, Done, the skip reason field, Cancel and “Skip this day”.</li>
+    <li data-trace="D4 P1">In touch mode a yes/no criterion offers Yes and No. Tapping one records it and lights it; tapping the lit one clears the criterion; the verdict badge and cost line follow each tap.</li>
+    <li data-trace="D5 P1">Done, a tap on the overlay and Escape each close the sheet, save what was recorded, repaint the square, and return focus to it.</li>
+    <li data-trace="D10 P1">⋯ → “Mark as skipped…” opens the skip step inside the sheet; a typed reason enables “Skip this day”, which skips the day and closes the sheet; Cancel returns to the criteria.</li>
+    <li data-trace="P1">Opening a skipped day shows its reason in place of the criterion rows.</li>
+    <li data-trace="impl">The first paint of <code>/habits</code> on a phone already has 38px squares: no resize after hydration.</li>
+  </ul>
+  <h3>Review focus</h3>
+  <ul class="checks">
+    <li data-trace="D5">A count is typed and Done is tapped while the field still has focus and has never blurred → the value is saved and the square repaints.</li>
+    <li data-trace="P1">The on-screen keyboard opens for a count or the skip reason → the focused field and the sheet’s buttons stay visible above it.</li>
+    <li data-trace="P1">A habit with eight criteria on a 390 × 600px viewport → the rows scroll inside the sheet; the header, cost line and Done stay reachable.</li>
+    <li data-trace="D4">Yes then No tapped within 250ms → one write, recording No.</li>
+    <li data-trace="D5">A save fails while the sheet is open → the store’s rollback and toast behave as today, and the toast is visible above the overlay without trapping Done.</li>
+  </ul>
+</section>
+
+<section id="tests" data-kind="story">
+  <h2>Tests</h2>
+  <div class="scroll"><table>
+    <tr><th>Tier</th><th>Pins</th></tr>
+    <tr><td>Jest · <code>habits.styles.test.ts</code></td><td>The touch geometry constants and class strings (38px square, 44px pitch, 14px connector).</td></tr>
+    <tr><td>RTL · <code>day-editor.test.tsx</code></td><td><code>touch</code>: Yes/No record, re-tap clears, verdict follows; Done calls <code>onClose</code>; habit name shown; unmount with an uncommitted measured draft calls <code>logDay</code> once with it (D9); an untouched field still logs nothing; Yes-then-No inside the debounce is one write. Without <code>touch</code>: the existing cycling-box tests stay as they are.</td></tr>
+    <tr><td>RTL · skip panel, <code>history-grid.test.tsx</code></td><td>With <code>matchMedia</code> matching <code>TOUCH_QUERY</code>, a cell click opens a dialog with the sheet’s name and no popover; without it, the popover as today. Flipping the match while open keeps the same day open.</td></tr>
+    <tr><td>RTL · <code>dialog.test.tsx</code></td><td><code>BottomSheetDialog</code>: label, overlay, bottom offset derived from a stubbed <code>visualViewport</code>, the <code>bottom-0</code> fallback.</td></tr>
+    <tr><td>Storybook</td><td>New stories at a phone viewport: the touch grid, and the touch editor in the three sheet states of P1. New baselines only; no existing baseline moves.</td></tr>
+    <tr><td>Playwright · new <code>habits-mobile.spec.ts</code></td><td><code>hasTouch: true</code>, 390 × 844: square and target sizes by bounding box; tap in a gap opens the neighbouring day; log a day through the sheet with Yes/No and a time, Done, reload, still logged; the skip journey; eight criteria on a short viewport. One test at 1024px with <code>hasTouch</code> for D2.</td></tr>
+  </table></div>
+  <p><code>e2e/habits-grid-recent.spec.ts</code> already runs at 390px, which is now touch mode. If its column arithmetic assumed 26px squares, update the numbers to the new geometry; its claims (newest week at the right edge, the rest a scroll away) must keep holding.</p>
+  <p>Chromium focuses a button on click, so Playwright cannot reproduce the iOS no-blur case; D9 is pinned by the RTL unmount test.</p>
+</section>
+
+<section id="demo" data-kind="story">
+  <h2>Demo evidence</h2>
+  <p>A demo doc under <code>docs/demos/</code> per the <code>showboat</code> skill, whose evidence rules govern. It should show the phone view of <code>/habits</code> and the sheet in the states P1 draws, captured at a phone viewport, plus the run of the new mobile e2e spec.</p>
+</section>
+
+<section id="out">
+  <h2>Out of scope, risks &amp; unknowns</h2>
+  <ul>
+    <li><strong>Today shortcut.</strong> Offered and declined in refinement (D1). If today’s square is still slow to find at 38px, that is the follow-up to reopen.</li>
+    <li><strong>Habit create/edit on a phone.</strong> The sentence form and its criterion popovers have the same small-control problem. Scoped out by the owner; worth its own ticket.</li>
+    <li><strong>Swipe-to-dismiss, and stepping to the previous or next day inside the sheet.</strong> Neither was asked for; the first needs a gesture dependency.</li>
+    <li><strong>Unknown: the <code>or</code> media query.</strong> Confirm Tailwind’s compiler passes <code>(width &lt; 48rem) or (pointer: coarse)</code> through <code>@custom-variant</code> unchanged. If not, the comma form <code>(width &lt; 48rem), (pointer: coarse)</code> means the same and works in <code>matchMedia</code> too.</li>
+    <li><strong>Unknown: clearing a time on iOS.</strong> A recorded time is cleared on desktop by emptying the field. Check on a real iPhone that the native time picker offers a way to empty it. If it does not, a recorded time cannot be un-recorded on a phone; that predates this story, so raise it with the owner rather than inventing a control nobody approved.</li>
+    <li><strong>Risk: toast over the sheet.</strong> The toast viewport is <code>z-[60]</code> at the bottom right, above the dialog layer. A failure toast will overlap the sheet’s lower corner while it shows. Acceptable if Done stays tappable once it clears; do not restack the toast in this story.</li>
+    <li><strong>Risk: taller cards.</strong> Each card is about 85px taller in touch mode (D3). With several habits the page is noticeably longer.</li>
+  </ul>
+</section>
+
+</section>
+</main>
+
+</body>
+
+</html>
