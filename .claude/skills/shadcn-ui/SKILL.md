@@ -145,6 +145,14 @@ Use this when:
   (unified), not `import * as DialogPrimitive from "@radix-ui/react-dialog"`. Mixing both causes
   duplicate instances and broken state.
 
+- **A controlled dialog/popover whose content is derived from the "open" state empties before it
+  fades out.** Radix keeps `Content` mounted through its exit animation, but if closing clears the
+  state the children render from (`openDate → undefined`), the children vanish at once and only an
+  empty frame fades. Keep a separate "shown" value that closing does not clear (key the child by it),
+  and if the child saves on unmount, flush on close instead (a `closing` prop): the unmount now
+  arrives after the fade, so a navigation during it drops the write.
+  (`components/habits/history-grid.tsx` + `day-editor.tsx`.)
+
 - **A `disabled` menu item's `title` tooltip is unreachable — put the hint in visible text.** Every
   `DropdownMenu` item variant carries `data-[disabled]:pointer-events-none`, so a disabled item or
   sub-trigger is not a hover target and the browser never renders its `title` — and touch never
