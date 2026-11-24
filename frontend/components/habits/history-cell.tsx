@@ -2,7 +2,15 @@
 
 import * as React from 'react';
 
-import { CELL_PLATE, CELL_TODAY, LINK_TONE } from '@/components/habits/habits.styles';
+import {
+  CELL_BOX,
+  CELL_HIT_AREA,
+  CELL_PLATE,
+  CELL_TODAY,
+  CONNECTOR_WIDTH,
+  LINK_TONE,
+  SKIP_DASH,
+} from '@/components/habits/habits.styles';
 import { isoWeekday } from '@/lib/habits';
 import type { HabitDay } from '@/lib/habits';
 import { cn } from '@/lib/utils';
@@ -29,7 +37,8 @@ function Connector({ tone, place }: { tone: 'streak' | 'bridge'; place: 'out' | 
       data-connector={place}
       data-tone={tone}
       className={cn(
-        'pointer-events-none absolute left-1/2 w-[10px] -translate-x-1/2',
+        'pointer-events-none absolute left-1/2 -translate-x-1/2',
+        CONNECTOR_WIDTH,
         LINK_TONE[tone],
         place === 'out'
           ? 'top-full h-[7px] rounded-b-[3px]'
@@ -70,7 +79,10 @@ export function HistoryCell({ day, previousLink, name, onOpen }: HistoryCellProp
       {day.status === 'skipped' && (
         <span
           aria-hidden="true"
-          className="absolute inset-0 flex items-center justify-center text-[13px] leading-none text-muted-foreground"
+          className={cn(
+            'absolute inset-0 flex items-center justify-center leading-none text-muted-foreground',
+            SKIP_DASH,
+          )}
         >
           –
         </span>
@@ -86,6 +98,8 @@ export function HistoryCell({ day, previousLink, name, onOpen }: HistoryCellProp
       onClick={onOpen}
       className={cn(
         'block h-full w-full rounded-md',
+        // On touch the hit area tiles the grid: a tap in the gap still opens the nearest day.
+        CELL_HIT_AREA,
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-2 focus-visible:ring-offset-background',
       )}
     >
@@ -95,7 +109,7 @@ export function HistoryCell({ day, previousLink, name, onOpen }: HistoryCellProp
 
   return (
     <div
-      className="relative h-[26px] w-[26px]"
+      className={cn('relative', CELL_BOX)}
       data-date={day.date}
       data-status={day.status}
       data-in-streak={day.inStreak ? 'true' : 'false'}
