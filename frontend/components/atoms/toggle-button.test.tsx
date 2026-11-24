@@ -96,4 +96,35 @@ describe('ToggleButton', () => {
 
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
+
+  it('lights in the tone it is given, and stays neutral while unpressed', () => {
+    const { rerender } = render(
+      <ToggleButton pressed tone="affirm" onToggle={() => {}}>
+        Yes
+      </ToggleButton>,
+    );
+    expect(screen.getByRole('button', { name: 'Yes' })).toHaveClass(
+      'border-accent-green',
+      'text-accent-green',
+    );
+
+    rerender(
+      <ToggleButton pressed tone="deny" onToggle={() => {}}>
+        Yes
+      </ToggleButton>,
+    );
+    expect(screen.getByRole('button', { name: 'Yes' })).toHaveClass(
+      'border-accent-red',
+      'text-accent-red',
+    );
+
+    rerender(
+      <ToggleButton pressed={false} tone="deny" onToggle={() => {}}>
+        Yes
+      </ToggleButton>,
+    );
+    const button = screen.getByRole('button', { name: 'Yes' });
+    expect(button).toHaveClass('border-border', 'text-muted-foreground');
+    expect(button).not.toHaveClass('text-accent-red');
+  });
 });

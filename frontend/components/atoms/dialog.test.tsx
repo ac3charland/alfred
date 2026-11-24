@@ -5,6 +5,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 
 import {
+  BottomSheetDialog,
   DialogClose,
   DialogCloseButton,
   DialogContent,
@@ -532,5 +533,98 @@ describe('SheetDialog', () => {
 
       expect(scrollIntoView).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('BottomSheetDialog', () => {
+  afterEach(() => {
+    installVisualViewport(undefined);
+  });
+
+  function renderBottomSheet(onOpenChange = jest.fn()) {
+    render(
+      <BottomSheetDialog open onOpenChange={onOpenChange} label="Tue 24 Nov — Morning routine">
+        <label>
+          Count
+          <input />
+        </label>
+      </BottomSheetDialog>,
+    );
+    return { onOpenChange };
+  }
+
+  it('is named by its label, without drawing it', () => {
+    renderBottomSheet();
+    const sheet = screen.getByRole('dialog', { name: 'Tue 24 Nov — Morning routine' });
+    expect(screen.getByText('Tue 24 Nov — Morning routine')).toHaveClass('sr-only');
+    expect(sheet).toBeInTheDocument();
+  });
+
+  it('sits over the shared dimmed overlay', () => {
+    renderBottomSheet();
+    expect(document.querySelector('.backdrop-blur-sm')).toHaveClass(
+      'fixed',
+      'inset-0',
+      'bg-black/60',
+    );
+  });
+
+  it('is a bottom-anchored card capped at 28rem, rounded on top, clear of the home indicator', () => {
+    installVisualViewport(new FakeVisualViewport());
+    renderBottomSheet();
+    expect(screen.getByRole('dialog')).toHaveClass(
+      'fixed',
+      'inset-x-0',
+      'mx-auto',
+      'max-w-md',
+      'rounded-t-2xl',
+      'flex',
+      'flex-col',
+      'pb-[env(safe-area-inset-bottom)]',
+    );
+  });
+
+  it('rides the visible viewport’s bottom edge, so the keyboard raises it', () => {
+    Object.defineProperty(globalThis, 'innerHeight', { configurable: true, value: 844 });
+    const viewport = new FakeVisualViewport();
+    viewport.height = 844;
+    viewport.offsetTop = 0;
+    installVisualViewport(viewport);
+    renderBottomSheet();
+
+    const sheet = screen.getByRole('dialog');
+    expect(sheet).toHaveStyle({ bottom: '0px', maxHeight: '828px' });
+
+    // The keyboard rises: 500px stay visible, and iOS has panned 20px down the page.
+    act(() => {
+      viewport.height = 500;
+      viewport.offsetTop = 20;
+      viewport.dispatchEvent(new Event('resize'));
+    });
+
+    expect(sheet).toHaveStyle({ bottom: '324px', maxHeight: '484px' });
+    expect(sheet).not.toHaveClass('bottom-0');
+  });
+
+  it('falls back to the bottom of a 100dvh screen where the visual viewport API is absent', () => {
+    installVisualViewport(undefined);
+    renderBottomSheet();
+
+    const sheet = screen.getByRole('dialog');
+    expect(sheet).toHaveClass('bottom-0', 'max-h-[calc(100dvh-16px)]');
+    expect(sheet.style.bottom).toBe('');
+  });
+
+  it('focuses the sheet itself on opening, so no keyboard rises uninvited', () => {
+    renderBottomSheet();
+    expect(screen.getByRole('dialog')).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'Count' })).not.toHaveFocus();
+  });
+
+  it('closes on Escape', async () => {
+    const user = userEvent.setup();
+    const { onOpenChange } = renderBottomSheet();
+    await user.keyboard('{Escape}');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

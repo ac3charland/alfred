@@ -337,6 +337,95 @@ export function SheetDialog({
   );
 }
 
+export interface BottomSheetDialogProperties extends React.ComponentPropsWithoutRef<
+  typeof DialogPrimitive.Content
+> {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** The accessible name, rendered as a visually hidden title. */
+  label: string;
+  /** Extra classes for the overlay — pass `z-[55]` here to match a deeper stacking context. */
+  overlayClassName?: string | undefined;
+}
+
+/** How far short of the visible viewport's top the sheet stops at its tallest. */
+const BOTTOM_SHEET_TOP_GAP_PX = 16;
+
+/**
+ * A modal card that rises from the bottom of the screen: the same
+ * `Root → Portal → Overlay → Content` scaffold as `FormDialog`, spanning the width up to 28rem
+ * (centred beyond that, so a tablet gets a sheet rather than a banner), rounded on top only.
+ *
+ * Its bottom edge follows `window.visualViewport`, as {@link SheetDialog}'s height does: iOS
+ * Safari does not shrink the layout viewport for the on-screen keyboard, so a plain `bottom-0`
+ * sheet would sit underneath it the moment a field inside is focused. It is never taller than the
+ * visible viewport less 16px. Where the API is absent it falls back to `bottom-0` and `100dvh`.
+ *
+ * `children` are laid out in a flex column, so a caller can pin a header and footer and give the
+ * middle region `min-h-0 flex-1 overflow-y-auto` to scroll when the content does not fit.
+ *
+ * On opening, focus goes to the sheet itself rather than its first field: on a phone, focusing a
+ * field raises the keyboard (or a picker) before the owner has asked for one.
+ */
+export function BottomSheetDialog({
+  open,
+  onOpenChange,
+  label,
+  className,
+  overlayClassName,
+  style,
+  onOpenAutoFocus,
+  children,
+  ...contentProps
+}: BottomSheetDialogProperties) {
+  const viewport = useVisualViewport();
+  const contentRef = React.useRef<HTMLDivElement>(null);
+
+  // The gap between the layout viewport's bottom and the visible part's: the keyboard's height on
+  // iOS, and 0 wherever the browser resizes the layout viewport instead.
+  const placement =
+    viewport === null
+      ? undefined
+      : {
+          bottom: Math.max(0, globalThis.innerHeight - (viewport.offsetTop + viewport.height)),
+          maxHeight: viewport.height - BOTTOM_SHEET_TOP_GAP_PX,
+        };
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogOverlay className={overlayClassName} />
+        <DialogPrimitive.Content
+          ref={contentRef}
+          className={cn(
+            'fixed inset-x-0 z-50 mx-auto flex w-full max-w-md flex-col',
+            'rounded-t-2xl border border-b-0 border-border bg-surface',
+            'shadow-[0_0_40px_0_rgba(79,209,224,0.08)] focus:outline-none',
+            'pb-[env(safe-area-inset-bottom)]',
+            placement === undefined && 'bottom-0 max-h-[calc(100dvh-16px)]',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none',
+            className,
+          )}
+          style={placement === undefined ? style : { ...style, ...placement }}
+          // No description anywhere — silences the Radix warning without inventing prose.
+          aria-describedby={undefined}
+          onOpenAutoFocus={(event_) => {
+            onOpenAutoFocus?.(event_);
+            if (event_.defaultPrevented) return;
+            event_.preventDefault();
+            contentRef.current?.focus();
+          }}
+          {...contentProps}
+        >
+          <DialogPrimitive.Title className="sr-only">{label}</DialogPrimitive.Title>
+          {children}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
 export {
   DialogOverlay,
   dialogContentVariants,
